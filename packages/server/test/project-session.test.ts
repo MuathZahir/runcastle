@@ -6,7 +6,7 @@ import type { EventRow, Project, SessionRow } from '@runcastle/core'
 import { SessionKind, isProjectSessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import {
@@ -16,7 +16,7 @@ import {
   renderProjectPrompt,
   renderSettings,
 } from '../src/launcher/artifacts'
-import { handlePtyExit, launchProjectSession } from '../src/launcher/launcher'
+import { launchProjectSession } from '../src/launcher/launcher'
 import { KICKOFF_LINES, buildClaudeArgs } from '../src/launcher/runtimes/claude'
 import {
   awaitProjectLandings,
@@ -40,6 +40,10 @@ import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedProject } from './helpers/fixtures'
+import { createAgentHost } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
+import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 
 /**
  * The project session (feature-grouping decisions 17–20): a project-scoped
@@ -456,15 +460,7 @@ describe('launching, resuming and landing a project session', () => {
     return row
   }
 
-  /** The argv of the MOST RECENT launch (a relaunch appends a second event). */
-  function launchCommand(): string {
-    const launched = listByProject(ctx, project.id)
-      .filter((e) => e.type === 'session.launched')
-      .at(-1)
-    return String((launched?.data as { command?: string })?.command ?? '')
-  }
-
-  it('lands codex project-session work when its PTY exits', async () => {
+  it('lands project work when its thread’s process stops', async () => {
     const { worktreePath } = await ensureProjectWorktree(project)
     writeFileSync(join(worktreePath, 'CODEX.md'), 'landed at exit\n')
     git(worktreePath, 'add', 'CODEX.md')
@@ -475,13 +471,16 @@ describe('launching, resuming and landing a project session', () => {
       worktreePath,
       model: { id: 'gpt-5', runtime: 'codex' },
     })
+    const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    await host.prompt(session.id, { text: 'hi' }, { source: 'human' })
+    await vi.waitFor(() => expect(getSessionRow(ctx, session.id)?.status).toBe('live'))
 
-    handlePtyExit(ctx, undefined, session, {}, 0)
+    await host.stop(session.id, 'idle')
     await awaitProjectLandings()
 
     expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
     expect(git(repoPath, 'show', 'main:CODEX.md')).toBe('landed at exit')
-    expect(listByProject(ctx, project.id).filter((e) => e.type === 'session.pty_exited')).toHaveLength(1)
+    expect(listByProject(ctx, project.id).filter((e) => e.type === 'session.process_stopped')).toHaveLength(1)
   })
 
   it('creates a project-keyed row in its own worktree on the project branch', async () => {
@@ -501,29 +500,30 @@ describe('launching, resuming and landing a project session', () => {
 
   it('launches as the orchestrator, prompts off, with settings that do not pre-approve commits', async () => {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const spec = await acpLaunchOf(ctx, sessionId)
 
-    expect(launchCommand()).toContain('--permission-mode bypassPermissions')
-
+    expect(spec.sessionMode).toBe('bypassPermissions')
     const settings = JSON.parse(
-      readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8'),
+      readFileSync(spec.files.find((f) => f.endsWith('settings.json')) as string, 'utf8'),
     ) as { permissions: { allow: string[] } }
     expect(settings.permissions.allow).not.toContain('Bash(git add:*)')
     expect(settings.permissions.allow).not.toContain('Bash(git commit:*)')
     expect(settings.permissions.allow).toContain('Bash(git status:*)')
   })
 
-  it('refuses a second concurrent project session with a clear message', async () => {
-    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-    await expect(
-      launchProjectSession(ctx, { projectId: project.id }, { spawn: false }),
-    ).rejects.toThrow(/already open/i)
+  // The project chat is a list of threads (decision 5): New opens another beside an open one.
+  it('opens a new thread for every New, whatever is open', async () => {
+    const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const second = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const triage = await launchProjectSession(ctx, { projectId: project.id, purpose: 'triage' }, { spawn: false })
+
+    expect(new Set([first.sessionId, second.sessionId, triage.sessionId]).size).toBe(3)
   })
 
   /**
-   * Clicking "New", closing the terminal, and clicking "New" again — the whole
-   * report behind this ticket, which used to fail the second launch with
-   * "Branch with name runcastle/project already exists". The session is a
-   * singleton, so this is the ONLY way to open a second one.
+   * Clicking "New", closing the conversation, and clicking "New" again — the
+   * whole report behind this ticket, which used to fail the second launch with
+   * "Branch with name runcastle/project already exists".
    */
   it('launches again after the first session is closed', async () => {
     const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
@@ -551,11 +551,10 @@ describe('launching, resuming and landing a project session', () => {
 
   /**
    * The Notes card's "Triage N notes" door (decisions.md #6). Its briefing is the
-   * session's opening MOVE, so ADR-0009 #4 makes the launch fresh whatever
-   * conversation it was pointed at — a `--resume` shows Claude Code's "start from
-   * a summary?" chooser, which eats the keystrokes carrying the briefing.
+   * conversation's opening MOVE, so it opens a new thread whatever conversation
+   * it was pointed at.
    */
-  it('carries the triage briefing in argv and never resumes', async () => {
+  it('says the triage briefing as a new thread’s first prompt, never reopening one', async () => {
     const prior = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endSession(ctx, prior.sessionId)
     ctx.db
@@ -565,36 +564,27 @@ describe('launching, resuming and landing a project session', () => {
       .run()
     await awaitProjectLandings()
 
-    await launchProjectSession(
+    const { sessionId } = await launchProjectSession(
       ctx,
       { projectId: project.id, purpose: 'triage', resumeSessionId: prior.sessionId },
       { spawn: false },
     )
 
-    const command = launchCommand()
-    expect(command).toContain('list_project_notes')
-    expect(command).toContain('/runcastle:project')
-    expect(command).not.toContain('--resume')
+    expect(sessionId).not.toBe(prior.sessionId)
+    const said = kickoffOf(sessionId)
+    expect(said).toContain('list_project_notes')
+    expect(said).toContain('/runcastle:project')
     expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resumed')
   })
 
-  /** The one-live-session guard is orthogonal to the purpose and still stands. */
-  it('still refuses a triage launch while a chat is open', async () => {
-    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-    await expect(
-      launchProjectSession(ctx, { projectId: project.id, purpose: 'triage' }, { spawn: false }),
-    ).rejects.toThrow(/already open/i)
-  })
-
-  /** The count the system prompt states is the one the store holds at launch. */
-  it('states the open-note count in the system prompt it launches with', async () => {
+  /** The count the system prompt states is the one the store holds when the process starts. */
+  it('states the open-note count in the system prompt it starts with', async () => {
     addProjectNote(ctx, project.id, 'crumbs overflow on a long title')
     addProjectNote(ctx, project.id, 'the burn page flashes on resolve')
 
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    const prompt = readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8')
-    expect(prompt).toContain('This project has 2 open notes')
+    expect(await briefOf(ctx, sessionId)).toContain('This project has 2 open notes')
   })
 
   it('lands the session’s commits on the base branch when the terminal ends', async () => {
