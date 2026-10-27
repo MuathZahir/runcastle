@@ -1,6 +1,8 @@
 import { AskAnswer, Effort, type ModelChoice, type ThreadEntry, type ThreadEvent, type ThreadView, type UsageReport } from '@runcastle/core'
 import * as z from 'zod'
 import { NotImplementedError } from '../../errors'
+import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
+import { agentHost } from '../../threads/types'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -39,10 +41,10 @@ export const threadRouter = router({
    * Terminal-era conversations are listed once per agent conversation, with
    * `readOnlyTranscript` until they are continued.
    */
-  list: publicProcedure.input(scope).query((): ThreadEntry[] => todo('1')),
+  list: publicProcedure.input(scope).query(({ ctx, input }): ThreadEntry[] => listThreads(ctx, input)),
 
   /** A thread folded to what the column renders: the first paint, before `events` catches up. */
-  view: publicProcedure.input(threadId).query((): ThreadView => todo('1')),
+  view: publicProcedure.input(threadId).query(({ ctx, input }): ThreadView => threadView(ctx, input.threadId)),
 
   /**
    * The thread's log after `after` (all of it when omitted). The web folds it
@@ -52,7 +54,7 @@ export const threadRouter = router({
    */
   events: publicProcedure
     .input(threadId.extend({ after: z.number().int().optional() }))
-    .query((): { events: ThreadEvent[] } => todo('1')),
+    .query(({ ctx, input }): { events: ThreadEvent[] } => ({ events: threadEvents(ctx, input.threadId, input.after) })),
 
   /** Send the human's message. Starts the agent when none runs; joins a running turn. */
   send: publicProcedure
@@ -65,15 +67,30 @@ export const threadRouter = router({
         fast: z.boolean().optional(),
       }),
     )
-    .mutation((): { promptId: string } => todo('1')),
+    .mutation(({ ctx, input }): Promise<{ promptId: string }> => {
+      const { threadId: id, text, images, model, effort, fast } = input
+      return agentHost(ctx).prompt(
+        id,
+        { text, ...(images ? { images } : {}) },
+        { source: 'human', ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) },
+      )
+    }),
 
   /** Stop the running turn (Stop, Esc). */
-  stop: publicProcedure.input(threadId).mutation((): { ok: true } => todo('1')),
+  stop: publicProcedure.input(threadId).mutation(async ({ ctx, input }): Promise<{ ok: true }> => {
+    threadRow(ctx, input.threadId)
+    await agentHost(ctx).cancel(input.threadId)
+    return { ok: true }
+  }),
 
   /** Answer the open approval or question. */
   answer: publicProcedure
     .input(threadId.extend({ askId: z.string(), answer: AskAnswer }))
-    .mutation((): { ok: true } => todo('1')),
+    .mutation(async ({ ctx, input }): Promise<{ ok: true }> => {
+      threadRow(ctx, input.threadId)
+      await agentHost(ctx).answer(input.threadId, input.askId, input.answer)
+      return { ok: true }
+    }),
 
   /** New thread: a side thread on a feature (ticket 1), a fresh chat on a project (ticket 4). Nothing starts until its first message. */
   new: publicProcedure.input(scope).mutation((): { threadId: string } => todo('1')),
