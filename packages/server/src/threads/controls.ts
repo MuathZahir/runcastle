@@ -126,7 +126,7 @@ export function catalogFromOptions(
  * its own (Claude Code's aliases, `haiku`), so a roster id is matched by the
  * label its adapter gives the model ("Haiku 5.5"). Undefined when no entry is.
  */
-export function modelValue(option: SelectOption, id: string): string | undefined {
+function modelValue(option: SelectOption, id: string): string | undefined {
   const values = selectValues(option)
   if (values.some((c) => c.value === id)) return id
   const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(labelKey))
