@@ -43,6 +43,14 @@ export type LiveSignal =
       kind: 'turn'
       sessionId: string
     }
+  | {
+      /**
+       * A thread's log grew (chat-as-web-components; ADR-0015). The web reads
+       * the events after its cursor (`thread.events`) and folds them.
+       */
+      kind: 'thread'
+      threadId: string
+    }
 
 type Subscriber = (signal: LiveSignal) => void
 

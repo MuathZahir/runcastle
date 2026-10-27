@@ -83,13 +83,10 @@ export function agentHost(_ctx: AppCtx): AgentHost {
 
 /**
  * Append one event to a thread's log and publish `{ kind: 'thread', threadId }`
- * on the live bus. Assigns the next index and the timestamp. Ticket 1.
+ * on the live bus. Assigns the next index and the timestamp; streaming chunks
+ * of one message are coalesced (see `log.ts`).
  */
-export function appendThreadEvent(_threadId: string, _body: ThreadEventBody): ThreadEvent {
-  throw new NotImplementedError('chat-as-web-components ticket 1: thread log')
-}
+export { appendThreadEvent } from './log'
 
-/** A thread's log, every event with an index greater than `after` (all when omitted). Ticket 1. */
-export function readThreadEvents(_threadId: string, _after?: number): ThreadEvent[] {
-  throw new NotImplementedError('chat-as-web-components ticket 1: thread log')
-}
+/** A thread's log, every event with an index greater than `after` (all when omitted). */
+export { readThreadEvents } from './log'
