@@ -228,7 +228,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /**
    * An ask answered — by the human, by the host on an unattended thread, or
    * withdrawn by the agent. `lines` is what the thread keeps of it, one per
-   * question (or one for an approval): "Allowed  bun add …", "Page size: A4".
+   * question or form field filled (or one for an approval, a link, a decline):
+   * "Allowed  bun add …", "Page size: A4".
    */
   z.object({
     type: z.literal('ask_resolved'),
