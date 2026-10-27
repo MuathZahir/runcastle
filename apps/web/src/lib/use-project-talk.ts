@@ -116,7 +116,8 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
       }
     },
     begin: async () => {
-      const res = await fresh.mutateAsync({ projectId, fresh: true })
+      // The opening waits for the message that started it: one prompt, one answer.
+      const res = await fresh.mutateAsync({ projectId, fresh: true, holdOpening: true })
       return res.sessionId
     },
     starting: launch.isPending || end.isPending,

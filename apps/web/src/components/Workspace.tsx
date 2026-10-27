@@ -980,7 +980,8 @@ export function Workspace({
                   alerts={chatAlerts}
                   hidden={chatHidden}
                   start={async () => {
-                    const res = await startChat.mutateAsync({ featureId, kind: 'chat' })
+                    // The opening waits for the message that started it: one prompt, one answer.
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening: true })
                     return res.sessionId
                   }}
                   onView={(target) => {

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveScenario, ThreadEntry, ThreadEvent } from '@runcastle/core'
@@ -231,6 +233,13 @@ describe('the feature page’s thread switcher', () => {
     fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_started', text: 'Plan the export' }]))
     expect(within(column()).getByText('Plan the export')).toBeTruthy()
+  })
+
+  // Decision 12. No test renders the whole feature page, so its `start` is read
+  // from source: the launch holds its opening for the first message.
+  it('starts the feature chat with its opening held for the first message', () => {
+    const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
+    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening: true \}\)/)
   })
 })
 

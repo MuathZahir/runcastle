@@ -88,7 +88,7 @@ describe('a project chat', () => {
 
     expect(await screen.findByText('A notes inbox for the project')).toBeTruthy()
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_fresh', text: 'A notes inbox for the project' }]))
-    expect(api.inputs('project.talkToProject')).toEqual([{ projectId: 'proj_1', fresh: true }])
+    expect(api.inputs('project.talkToProject')).toEqual([{ projectId: 'proj_1', fresh: true, holdOpening: true }])
     expect(onStarted).toHaveBeenCalledWith('th_fresh')
   })
 })
