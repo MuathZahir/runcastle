@@ -1,8 +1,6 @@
 import { FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import {
-  autoResumeChat,
-  type AutoResumeResult,
   endSession,
   launchDriveFixSession,
   launchScenarioSession,
@@ -87,13 +85,9 @@ export const featureRouter = router({
         kickoffLine: z.string().min(1).optional(),
         purpose: SessionPurpose.optional(),
         purposeData: MergeBranchPair.optional(),
-        // Opening the feature resumes its chat by itself: resume only, refusals quiet.
-        auto: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input: { auto, ...input } }): Promise<AutoResumeResult> =>
-      auto ? autoResumeChat(ctx, input) : launchSession(ctx, input),
-    ),
+    .mutation(({ ctx, input }) => launchSession(ctx, input)),
 
   // "Fix drive" — the one click that turns a failed drive into an agent already
   // holding the failure (multi-service decision 9). Its own door rather than a

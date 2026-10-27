@@ -20,6 +20,7 @@ import {
 } from './acp-map'
 import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
+import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent } from './log'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 
@@ -56,6 +57,34 @@ export interface AgentHostDeps {
   launch?: (ctx: AppCtx, row: SessionRow) => Promise<AcpLaunchSpec>
   /** How long a process with no turn and no open ask lives on. */
   idleMs?: number
+  /** What the rest of the server does as a thread's process starts, works and stops. */
+  lifecycle?: ThreadLifecycle
+}
+
+/**
+ * The server's own reactions to a thread's process, beside the log: the
+ * launcher's briefing, the timeline's events and what a session's end has
+ * always done (see `threads/lifecycle.ts`). Every hook is best effort.
+ */
+export interface ThreadLifecycle {
+  /** Text sent after the first prompt of a newly started process (a resumed main chat's fresh state header). */
+  opening?(row: SessionRow): string | undefined
+  /** The process runs; `source` is who sent the prompt that started it. */
+  started?(row: SessionRow, source: PromptOptions['source']): void
+  /** A turn ended; `source` is who sent the prompt it answered. */
+  turnEnded?(row: SessionRow, source: PromptOptions['source']): void
+  /** The process stopped, with who started it. */
+  stopped?(row: SessionRow, reason: StopReason, startedBy: PromptOptions['source']): void
+}
+
+/** codex-acp's hook-trust extension: the session's hooks, and trusting them. */
+const CODEX_HOOKS_LIST = '_codex/hooks/list'
+const CODEX_HOOKS_TRUST = '_codex/hooks/trust'
+
+interface CodexHook {
+  key: string
+  currentHash: string
+  trustStatus?: string
 }
 
 /** Decision 7: an idle agent process is stopped quietly after half an hour. */
@@ -121,6 +150,10 @@ interface Thread {
   ask?: { ask: Ask; settle: (answer: AskAnswer | 'cancelled') => void }
   idle?: ReturnType<typeof setTimeout>
   map: (update: acp.SessionUpdate) => ThreadEventBody[]
+  /** Who sent the prompt that started this process. */
+  startedBy: PromptOptions['source']
+  /** The lifecycle's opening, sent with the first prompt and then forgotten. */
+  opening?: string
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */
@@ -147,12 +180,14 @@ class Host implements AgentHost {
   private readonly transport: AgentTransport
   private readonly launch: (ctx: AppCtx, row: SessionRow) => Promise<AcpLaunchSpec>
   private readonly idleMs: number
+  private readonly lifecycle: ThreadLifecycle
 
   constructor(deps: AgentHostDeps) {
     this.ctx = deps.ctx
     this.transport = deps.transport ?? spawnAdapter
     this.launch = deps.launch ?? acpLaunchFor
     this.idleMs = deps.idleMs ?? IDLE_STOP_MS
+    this.lifecycle = deps.lifecycle ?? {}
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -180,7 +215,7 @@ class Host implements AgentHost {
       return { promptId: item.id }
     }
     this.logPrompt(threadId, item)
-    this.enqueue(t ?? this.start(row), item)
+    this.enqueue(t ?? this.start(row, opts.source), item)
     return { promptId: item.id }
   }
 
@@ -215,13 +250,13 @@ class Host implements AgentHost {
     }
   }
 
-  async stop(threadId: string, _reason: StopReason): Promise<void> {
+  async stop(threadId: string, reason: StopReason): Promise<void> {
     const t = this.threads.get(threadId)
     if (!t) return
     this.detach(t)
     await t.proc?.kill().catch(() => {})
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
-    markSessionEnded(this.ctx, t.id)
+    this.ended(t, reason)
   }
 
   async stopAll(reason: StopReason): Promise<void> {
@@ -253,8 +288,9 @@ class Host implements AgentHost {
   }
 
   /** Begin starting the thread's agent; prompts queue until it runs. */
-  private start(row: SessionRow): Thread {
+  private start(row: SessionRow, startedBy: PromptOptions['source']): Thread {
     let n = 0
+    const opening = this.hook(() => this.lifecycle.opening?.(row))
     const t: Thread = {
       id: row.id,
       state: 'starting',
@@ -263,6 +299,8 @@ class Host implements AgentHost {
       turn: null,
       queue: [],
       map: createUpdateMapper((prefix) => `${prefix}_${row.id}_${Date.now().toString(36)}_${++n}`),
+      startedBy,
+      ...(opening ? { opening } : {}),
     }
     this.threads.set(t.id, t)
     appendThreadEvent(t.id, { type: 'process', state: 'starting' })
@@ -312,13 +350,26 @@ class Host implements AgentHost {
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
+    if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
     if (isStopped(t)) return
-    markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
+    const live = markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
     t.state = 'running'
     appendThreadEvent(t.id, { type: 'process', state: 'running' })
     const model = modelEvent(opened.configOptions)
     if (model) appendThreadEvent(t.id, model)
+    this.hook(() => this.lifecycle.started?.(live ?? row, t.startedBy))
+  }
+
+  /**
+   * Trust the session's own hooks (codex-acp): Codex runs a hook only once its
+   * hash is trusted, and the adapter has no flag that skips the check, so
+   * runcastle's generated guards and status line would otherwise never fire.
+   */
+  private async trustHooks(conn: acp.ClientConnection, cwd: string): Promise<void> {
+    const listed = await conn.agent.request<{ hooks?: CodexHook[] }>(CODEX_HOOKS_LIST, { cwd })
+    const hooks = (listed?.hooks ?? []).filter((h) => h.trustStatus !== 'trusted').map(({ key, currentHash }) => ({ key, currentHash }))
+    if (hooks.length) await conn.agent.request(CODEX_HOOKS_TRUST, { cwd, hooks })
   }
 
   private async failStart(t: Thread, err: unknown): Promise<void> {
@@ -326,14 +377,30 @@ class Host implements AgentHost {
     this.detach(t)
     await t.proc?.kill().catch(() => {})
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: `The agent could not start: ${errorText(err)}` })
-    markSessionEnded(this.ctx, t.id)
+    this.ended(t, 'crashed')
   }
 
   private crashed(t: Thread, stderr: string): void {
     if (t.state === 'stopped') return
     this.detach(t)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
-    markSessionEnded(this.ctx, t.id)
+    this.ended(t, 'crashed')
+  }
+
+  /** The row's process is over: mark it so, and let the lifecycle react. */
+  private ended(t: Thread, reason: StopReason): void {
+    const row = markSessionEnded(this.ctx, t.id)
+    if (row) this.hook(() => this.lifecycle.stopped?.(row, reason, t.startedBy))
+  }
+
+  /** Run a lifecycle hook; one that throws is logged, never the thread's failure. */
+  private hook<T>(fn: () => T): T | undefined {
+    try {
+      return fn()
+    } catch (err) {
+      console.error('thread lifecycle hook failed', err)
+      return undefined
+    }
   }
 
   /** Forget the thread's process: no more events from it, no asks left waiting. */
@@ -379,9 +446,15 @@ class Host implements AgentHost {
     t.turn = turn
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
+    // The opening rides after the prompt's own words, so a human's message
+    // still reads as the human's (the UserPromptSubmit hook looks at its start).
+    const [first, ...rest] = item.blocks
+    const prompt: acp.ContentBlock[] =
+      t.opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${t.opening}` }, ...rest] : item.blocks
+    t.opening = undefined
     let end: Extract<ThreadEventBody, { type: 'turn_ended' }>
     try {
-      const res = await t.conn!.agent.request(acp.methods.agent.session.prompt, { sessionId: t.sessionId!, prompt: item.blocks })
+      const res = await t.conn!.agent.request(acp.methods.agent.session.prompt, { sessionId: t.sessionId!, prompt })
       const reason = TurnEnd.safeParse(res.stopReason)
       end = { type: 'turn_ended', reason: reason.success ? reason.data : 'end_turn' }
     } catch (err) {
@@ -394,6 +467,8 @@ class Host implements AgentHost {
     t.turn = null
     appendThreadEvent(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
+    const row = getSessionRow(this.ctx, t.id)
+    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source))
     this.pump(t)
   }
 
@@ -494,7 +569,7 @@ type GlobalWithHost = typeof globalThis & { [HOST_KEY]?: AgentHost }
 /** The process-wide host, pinned on `globalThis` so a `bun --hot` reload keeps its processes. */
 export function processAgentHost(ctx: AppCtx): AgentHost {
   const g = globalThis as GlobalWithHost
-  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx })
+  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx, lifecycle: threadLifecycle(ctx) })
   return g[HOST_KEY]
 }
 

@@ -110,7 +110,7 @@ describe('ConversationList', () => {
         conversations={conversations}
         pending={pending}
         busy={false}
-        onResume={() => {}}
+        onOpen={() => {}}
         onView={() => {}}
       />,
     )
@@ -119,11 +119,12 @@ describe('ConversationList', () => {
     const html = render([conversation()])
     expect(html).toContain('Read the audit handoff and turn it into features')
     expect(html).toContain('3h')
-    expect(html).toContain('Reopen')
+    expect(html).toContain('aria-label="Open"')
+    expect(html).not.toContain('Reopen')
   })
 
-  // Reopening is the deliberate act; the row's own job is to open the transcript.
-  it('keeps Reopen out of the way until the row is hovered or focused', () => {
+  // Opening is the deliberate act; the row's own job is to open the transcript.
+  it('keeps Open out of the way until the row is hovered or focused', () => {
     const html = render([conversation()])
     expect(html).toContain('opacity-0')
     expect(html).toContain('group-hover/row:opacity-100')
@@ -159,10 +160,9 @@ describe('ConversationList', () => {
     expect(render([conversation()])).not.toContain('title="live"')
   })
 
-  it('offers no Reopen on a conversation the agent never picked up', () => {
-    expect(buttonTag(render([conversation({ resumable: false })]), 'Reopen')).toContain(
-      'disabled=""',
-    )
+  // A thread opens with no agent behind it (chat-as-web-components decision 7).
+  it('opens even a conversation the agent never picked up', () => {
+    expect(buttonTag(render([conversation({ resumable: false })]), 'Open')).not.toContain('disabled=""')
   })
 
   // An EmptyState, never a box: a title and one hint pointing at the door above.

@@ -591,6 +591,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
       },
       envScrub: [],
       sessionMeta: {},
+      trustHooks: true,
     }
   },
 

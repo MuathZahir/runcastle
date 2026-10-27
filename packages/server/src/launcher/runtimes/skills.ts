@@ -137,24 +137,6 @@ export function selfPlanKickoffFor(runtime: AgentRuntime): string {
 }
 
 /**
- * The opening of a `relay` run's prompt, spelled for `runtime`
- * (`whole-cuts-plan-themselves` decision 16): the orchestrator's message to the
- * feature's lead, applied headless by the feature skill's change-handling
- * rules, with the record saying who decided.
- */
-export function relayKickoffFor(runtime: AgentRuntime, message: string): string {
-  return (
-    'Proceed with your task: no human is present and nobody will reply to you. The message below ' +
-    `is from the project's orchestrator, not the human. Invoke ${skillRef(runtime, FEATURE_SKILL)} ` +
-    'and apply it by its change-handling rules: every decision it changes keeps or gains ' +
-    'its **Assumed.** line and adds **Changed by the orchestrator:** <why>, unless the message ' +
-    "says it relays the human's own answer, in which case remove both marks from that decision. " +
-    'Redraw the preview, reconcile the spec and the tickets, and do not wait for anyone. ' +
-    `The orchestrator's message: ${message}`
-  )
-}
-
-/**
  * The per-kind kickoff line typed into a freshly-live session so no session
  * starts dead. Each line names the same opening skill its appended system prompt
  * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief

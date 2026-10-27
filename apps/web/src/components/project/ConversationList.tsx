@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { IconArrowRight, IconChevronDown, IconMessage, IconRefresh, IconSearch } from '../../icons'
+import { IconArrowRight, IconChevronDown, IconMessage, IconSearch } from '../../icons'
 import { Button, EmptyState, IconButton, List, ListRow, PageSection, StatusDot, TextField } from '../../ui'
 import type { ProjectConversation } from '../../lib/api'
 import { conversationTitle } from '../../lib/conversation-title'
@@ -16,9 +16,9 @@ const FILTER_AT = 8
  *
  * A row is a title, when it was, and whether it is still open — nothing else.
  * The row itself opens the transcript, which is the thing a returning human
- * actually wants from a list of past chats; reopening one is the deliberate act,
- * so it is an icon button that appears on hover or focus rather than a second
- * permanent control competing with the title beside it.
+ * actually wants from a list of past chats; opening one as its thread is the
+ * deliberate act, so it is an icon button that appears on hover or focus rather
+ * than a second permanent control competing with the title beside it.
  *
  * Titles are the first thing typed, so they are cleaned for display
  * (`conversationTitle`): pasted markup and terminal escapes are not a name.
@@ -27,7 +27,6 @@ export function ConversationList({
   conversations,
   pending,
   busy,
-  onResume,
   onOpen,
   onView,
 }: {
@@ -35,8 +34,7 @@ export function ConversationList({
   /** Still fetching for the first time — distinct from "there are none". */
   pending: boolean
   busy: boolean
-  onResume: (sessionId: string) => void
-  onOpen?: (sessionId: string) => void
+  onOpen: (sessionId: string) => void
   onView: (conversation: ProjectConversation) => void
 }) {
   const [query, setQuery] = useState('')
@@ -99,18 +97,15 @@ export function ConversationList({
                 onClick={() => onView(c)}
                 actionsOverlay
                 actions={
-                  // A conversation Claude Code never picked up has nothing to
-                  // resume — reopening it would silently be a new chat, so it
-                  // does not offer.
+                  // Every chat opens as its thread at once (chat-as-web-components
+                  // decision 7); a message picks a finished one back up.
                   <IconButton
                     size="sm"
-                    label={
-                      c.resumable ? (live ? 'Open' : 'Reopen') : 'Reopen — this one never got started'
-                    }
-                    aria-label={live ? 'Open' : 'Reopen'}
-                    icon={live ? <IconArrowRight /> : <IconRefresh />}
-                    disabled={busy || !c.resumable}
-                    onClick={() => (live ? onOpen?.(c.id) : onResume(c.id))}
+                    label="Open"
+                    aria-label="Open"
+                    icon={<IconArrowRight />}
+                    disabled={busy}
+                    onClick={() => onOpen(c.id)}
                   />
                 }
               />

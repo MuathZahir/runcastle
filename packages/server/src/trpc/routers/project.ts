@@ -4,12 +4,7 @@ import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
-import {
-  autoResumeProjectChat,
-  type AutoResumeResult,
-  launchPrepareSession,
-  launchProjectSession,
-} from '../../launcher/launcher'
+import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { conversationTranscript, listProjectConversations } from '../../services/conversations'
 import {
@@ -130,9 +125,6 @@ export const projectRouter = router({
    *
    * `purpose: 'triage'` is the Notes card's "Triage N notes" door: it briefs the
    * new conversation to work the project's open notes, and never resumes.
-   *
-   * `auto` is opening the page: it only ever resumes `resumeSessionId`, and a
-   * refusal comes back as `autoSkipped` rather than as an error.
    */
   talkToProject: publicProcedure
     .input(
@@ -141,12 +133,9 @@ export const projectRouter = router({
         fresh: z.boolean().optional(),
         resumeSessionId: z.string().optional(),
         purpose: z.literal('triage').optional(),
-        auto: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input: { auto, ...input } }): Promise<AutoResumeResult> =>
-      auto ? autoResumeProjectChat(ctx, input) : launchProjectSession(ctx, input),
-    ),
+    .mutation(({ ctx, input }) => launchProjectSession(ctx, input)),
 
   /** The live project conversation for this project, if one is open. */
   projectSession: publicProcedure

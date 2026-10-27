@@ -6,7 +6,6 @@ import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead }
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { forgetUntouched } from '../launcher/untouched'
 import {
   getSessionRow,
   markAgentWorking,
@@ -17,15 +16,9 @@ import {
 import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
-import { isLiveLeadSession, leadDeliveryFor } from '../services/lead-delivery'
+import { isLeadSession } from '../services/lead-delivery'
 import { isRuncastlePrompt } from '../services/lead-prompt'
 import { markHumanMessage } from '../services/lead-status'
-import {
-  hasOrchestratorLines,
-  leadMessageKey,
-  releaseOrchestratorWaiter,
-  waitForOrchestratorLines,
-} from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, listRunsByFeature, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
@@ -55,51 +48,6 @@ hooks.use('*', async (c, next) => {
   }
 })
 
-/** How long the orchestrator's message waiter is held before it polls again. */
-export const ORCHESTRATOR_WAIT_HOLD_MS = 25_000
-
-/**
- * The orchestrator's message waiter (`whole-cuts-plan-themselves` decision 20):
- * the long-poll its `asyncRewake` hook makes in the hook client's
- * `wait-messages` mode. Registering supersedes the session's older waiter, and
- * only the newest is ever handed lines (see `orchestrator-messages.ts`).
- *
- * A feature's lead with a terminal waits here too, for its feature's messages
- * (`the-feature-lead-runs-rounds` decision 12, see `lead-delivery.ts`). A
- * session that is gone, ended, or neither orchestrating nor a lead with a
- * terminal is answered `ended`, so its waiter exits instead of polling forever.
- */
-hooks.get('/orchestrator-messages', async (c) => {
-  try {
-    const sessionId = c.req.query('sessionId')
-    const waiter = c.req.query('waiter')
-    if (!sessionId || !waiter) return c.json({ status: 'ended' })
-    const ctx = await getRuntimeCtx()
-    const session = getSessionRow(ctx, sessionId)
-    const key = session && session.status !== 'ended' ? waiterKeyOf(session) : null
-    if (!session || !key) return c.json({ status: 'ended' })
-    const answer = await waitForOrchestratorLines(key, waiter, ORCHESTRATOR_WAIT_HOLD_MS)
-    if (answer.status === 'lines' && session.featureId) {
-      emit(ctx, session.featureId, {
-        type: 'lead.woke',
-        message: 'the agent took its messages at its turn end',
-        data: { sessionId, route: 'waiter', lines: answer.lines.length },
-      })
-    }
-    return c.json(answer)
-  } catch (err) {
-    console.error('orchestrator message waiter failed', err)
-    return c.json({ status: 'empty' })
-  }
-})
-
-/** The message-store key a session's waiter waits on, or null for a session that has none. */
-function waiterKeyOf(session: SessionRow): string | null {
-  if (session.kind === 'project') return session.id
-  if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
-  return null
-}
-
 interface HookBody {
   event?: string
   sessionId?: string
@@ -123,12 +71,7 @@ hooks.post('/:event', async (c) => {
     // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
     // the per-scope handler for its injected context.
     if (event === 'user-prompt' || event === 'stop') checkInFromTurn(ctx, session, body.payload)
-    if (event === 'user-prompt') {
-      markAgentWorking(ctx, sessionId)
-      // Any prompt, tagged runcastle's or the human's, keeps an auto-resumed
-      // chat up: it has started a turn, so leaving it must not end it.
-      forgetUntouched(sessionId)
-    }
+    if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
       // The turn that just ended may have committed a conflict's merge, and the
@@ -164,13 +107,10 @@ hooks.post('/:event', async (c) => {
     if (!feature) return c.json({})
 
     switch (event) {
-      case 'session-start': {
-        const answer = handleSessionStart(ctx, sessionId, feature, body.payload)
-        kickLeadAtStart(ctx, sessionId)
-        return c.json(answer)
-      }
+      case 'session-start':
+        return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt':
-        if (isLiveLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
+        if (isLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature, session))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
@@ -189,7 +129,7 @@ hooks.post('/:event', async (c) => {
 
 /**
  * A `SessionStart` that threw left its session unchecked-in: the row stays
- * `launching`, and a headless wake's messages stay held against it. Say so on
+ * `launching`. Say so on
  * the timeline, best effort — the failure may be the database itself — and
  * name the backstop: the agent's first turn hook checks it in
  * ({@link checkInFromTurn}).
@@ -252,8 +192,8 @@ function handleSessionStart(
  * `session_id` and `transcript_path` too, so it backs up `SessionStart`: a
  * session whose start hook never arrived (it timed out client-side on a slow
  * server moment) is checked in here, and an id a missed `/clear` start left
- * stale is brought current. Without it the row keeps no id, and the next resume
- * of the conversation (the lead's headless wake) has nothing to `--resume`. An
+ * stale is brought current. Without it the row keeps no id, and the next start
+ * of the thread's process has no conversation to load. An
  * ended row stays ended; a row that already holds this id is left alone.
  */
 function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<string, unknown> | undefined): void {
@@ -269,7 +209,6 @@ function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<strin
     message: 'session live (checked in by its first turn — its start hook never arrived)',
     data: { sessionId: session.id, ccSessionId, transcriptPath, source: null },
   })
-  kickLeadAtStart(ctx, session.id)
 }
 
 // --- project-scoped (`prepare` / `project`) session hooks --------------------
@@ -413,28 +352,14 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
 
 /**
  * A lead's turn starts (`the-feature-lead-runs-rounds` decision 12, spec
- * "Stopping"). Its waiter is let go, lines kept, so a message arriving now waits
- * for the turn's end, where the Stop hook starts the next waiter. And a prompt
- * without runcastle's tag is one the human typed: it stamps the feature's
- * last-human-message mark. A payload with no prompt text says nothing about who
- * wrote it, so it stamps nothing.
+ * "Stopping"). A prompt without runcastle's tag is one the human typed — into
+ * the thread's composer, which sends it as it was written — so it stamps the
+ * feature's last-human-message mark. A payload with no prompt text says
+ * nothing about who wrote it, so it stamps nothing.
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
-  releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
   if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
-}
-
-/**
- * A lead's session started: messages that queued while it was launching go now.
- * On Claude Code its own waiter starts with this hook and takes them; Codex has
- * a conversation id to `codex queue` to only from this point.
- */
-function kickLeadAtStart(ctx: AppCtx, sessionId: string): void {
-  const session = getSessionRow(ctx, sessionId)
-  if (!session?.featureId || !isLiveLeadSession(session)) return
-  const key = leadMessageKey(session.featureId)
-  if (hasOrchestratorLines(key)) leadDeliveryFor(session).kick(session, key)
 }
 
 async function handleSessionEnd(

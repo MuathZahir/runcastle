@@ -154,12 +154,16 @@ export function ProjectWorkspace({
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
   useEffect(() => {
-    if (newChatRequest > 0 && session) {
+    if (newChatRequest <= 0) return
+    if (session) {
       setFront(null)
       setShowOpenNotice(true)
       setNoticePurpose(undefined)
-      onConsumeNewChatRequest?.()
+    } else {
+      // With none open, a new chat is an empty thread its first message starts.
+      setFront(NEW_CHAT)
     }
+    onConsumeNewChatRequest?.()
   }, [newChatRequest, onConsumeNewChatRequest, session])
   // Capture's View: the inbox is the panel's Notes; the card scrolls itself in.
   useEffect(() => {
@@ -255,7 +259,6 @@ export function ProjectWorkspace({
           pending={talk.conversationsPending}
           busy={talk.starting}
           // Every chat opens as its thread at once; a message picks a finished one back up.
-          onResume={setFront}
           onOpen={setFront}
           onView={(c: ProjectConversation) => setFront(c.id)}
         />

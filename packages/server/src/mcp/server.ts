@@ -1002,8 +1002,9 @@ export function toolStartDesignServer(
   input: { command?: string },
 ): Promise<DesignServerInfo> {
   const featureId = requireChatFeatureId(session)
-  // A headless run owns the server it starts, so its end stops it (designs-wait-for-you decision 3).
-  return startDesignServer(ctx, featureId, input.command, session.headless ? { sessionId: session.id } : {})
+  // An unattended run owns the server it starts, so its end stops it (designs-wait-for-you decision 3).
+  const unattended = session.headless || session.purpose === 'self-plan'
+  return startDesignServer(ctx, featureId, input.command, unattended ? { sessionId: session.id } : {})
 }
 
 /** The views the human's panel can show (decision 8). */

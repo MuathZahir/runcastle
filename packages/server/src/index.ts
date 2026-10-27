@@ -23,7 +23,6 @@ import threadsApp from './routes/threads'
 import { mountWebAppIfBuilt } from './routes/web'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
-import { startLeadWaker } from './services/lead-delivery'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -171,13 +170,9 @@ export async function startServer(): Promise<void> {
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
 
-  // Type a line into a live orchestrator's terminal when something ends on one
-  // of its features (`whole-cuts-plan-themselves` decision 11).
+  // Tell the orchestrator's thread when something ends on one of its features
+  // (`whole-cuts-plan-themselves` decision 11).
   startOrchestratorNotifier(ctx)
-
-  // Resume a feature's lead headless when a message reaches it with no terminal
-  // open (`the-feature-lead-runs-rounds` decision 12).
-  startLeadWaker(ctx)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

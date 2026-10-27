@@ -103,7 +103,6 @@ describe('the resting list', () => {
         conversations={[openConversation]}
         pending={false}
         busy={false}
-        onResume={() => {}}
         onOpen={() => {}}
         onView={(conversation) => {
           viewed = conversation

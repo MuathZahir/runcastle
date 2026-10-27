@@ -418,11 +418,11 @@ export function designServerStatus(ctx: AppCtx, featureId: string): DesignServer
  * decision 3), so it never takes down one the human is looking at.
  */
 export function sessionEndStopsServer(
-  session: Pick<SessionRow, 'id' | 'kind' | 'headless' | 'featureId'>,
+  session: Pick<SessionRow, 'id' | 'kind' | 'headless' | 'featureId' | 'purpose'>,
   startedBy: string | undefined,
 ): boolean {
   if (session.kind !== 'chat' || !session.featureId) return false
-  return !session.headless || startedBy === session.id
+  return !(session.headless || session.purpose === 'self-plan') || startedBy === session.id
 }
 
 /** The stop rule for a chat session ending: {@link sessionEndStopsServer}. */

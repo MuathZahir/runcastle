@@ -454,6 +454,16 @@ describe('a finished project chat', () => {
     expect(chatInFront()?.dataset.thread).toBe('new')
     expect(api.start).not.toHaveBeenCalled()
   })
+
+  // The project page's New door (ProjectShell) asks through `newChatRequest`.
+  it('opens the New door as an empty thread too, nothing launched', () => {
+    const api = talk()
+    const consumed = vi.fn()
+    render(<ProjectWorkspace projectId="proj_1" talk={api} newChatRequest={1} onConsumeNewChatRequest={consumed} />)
+    expect(chatInFront()?.dataset.thread).toBe('new')
+    expect(api.start).not.toHaveBeenCalled()
+    expect(consumed).toHaveBeenCalled()
+  })
 })
 
 /** design-mode decision 11: the project page is chat-first, in the feature page's pieces. */

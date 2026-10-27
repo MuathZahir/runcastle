@@ -542,28 +542,11 @@ export function Workspace({
   }
 
   /**
-   * Resume the feature's one conversation, or start the first one (decisions 8
-   * and 12).
+   * The bar's constant Chat door: it lands on the feature's main thread
+   * (one-chat-layout-everywhere decision 5). Opening a thread launches nothing
+   * (chat-as-web-components decision 7): its first message starts the agent.
    */
-  const launchChat = () => {
-    launch.mutate({ featureId, kind: 'chat' })
-  }
-
-  /**
-   * The bar's constant Chat door: it starts or resumes the conversation and
-   * lands on the chat (one-chat-layout-everywhere decision 5).
-   *
-   * A session that is already up is not re-launched on the way in — a
-   * self-planning run included, which is an ordinary thread to open and watch
-   * (chat-as-web-components decision 6). The server would answer a chat launch
-   * with that same session (decision 12), but it would also send a fresh state
-   * header (decision 13), which is for a human arriving at a conversation they
-   * had lost sight of.
-   */
-  const openChat = () => {
-    if (liveSession) landOnChat()
-    else launchChat()
-  }
+  const openChat = () => landOnChat()
 
   /** Start this feature's drive on a scenario, or on the blank app with `null`. */
   const startDrive = (scenario: string | null) =>
@@ -994,7 +977,6 @@ export function Workspace({
                   hidden={chatHidden}
                   start={async () => {
                     const res = await startChat.mutateAsync({ featureId, kind: 'chat' })
-                    if ('autoSkipped' in res) throw new Error(res.autoSkipped)
                     return res.sessionId
                   }}
                   onView={(target) => {

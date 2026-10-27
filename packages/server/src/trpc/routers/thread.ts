@@ -1,6 +1,9 @@
 import { AskAnswer, Effort, type ModelChoice, type ThreadEntry, type ThreadEvent, type ThreadView, type UsageReport } from '@runcastle/core'
 import * as z from 'zod'
 import { NotImplementedError } from '../../errors'
+import { createProjectThread, createSideThread, kickoffFor } from '../../launcher/launcher'
+import { getFeatureRow, requireProjectById } from '../../services/repo'
+import { hasThreadLog } from '../../threads/log'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
 import { agentHost } from '../../threads/types'
 import { publicProcedure, router } from '../context'
@@ -67,8 +70,13 @@ export const threadRouter = router({
         fast: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input }): Promise<{ promptId: string }> => {
+    .mutation(async ({ ctx, input }): Promise<{ promptId: string }> => {
       const { threadId: id, text, images, model, effort, fast } = input
+      const row = threadRow(ctx, id)
+      // A thread opened empty (New thread) is briefed before the human's first words.
+      if (!row.ccSessionId && !hasThreadLog(id)) {
+        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row) }, { source: 'runcastle' })
+      }
       return agentHost(ctx).prompt(
         id,
         { text, ...(images ? { images } : {}) },
@@ -92,8 +100,14 @@ export const threadRouter = router({
       return { ok: true }
     }),
 
-  /** New thread: a side thread on a feature (ticket 1), a fresh chat on a project (ticket 4). Nothing starts until its first message. */
-  new: publicProcedure.input(scope).mutation((): { threadId: string } => todo('1')),
+  /** New thread: a side thread on a feature, a fresh chat on a project. Nothing starts until its first message. */
+  new: publicProcedure.input(scope).mutation(async ({ ctx, input }): Promise<{ threadId: string }> => {
+    const row =
+      'featureId' in input
+        ? await createSideThread(ctx, getFeatureRow(ctx, input.featureId))
+        : await createProjectThread(ctx, requireProjectById(ctx, input.projectId))
+    return { threadId: row.id }
+  }),
 
   // ---- controls (ticket 5) ----
 

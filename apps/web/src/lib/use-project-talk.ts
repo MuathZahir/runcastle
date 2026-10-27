@@ -117,7 +117,6 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     },
     begin: async () => {
       const res = await fresh.mutateAsync({ projectId, fresh: true })
-      if ('autoSkipped' in res) throw new Error(res.autoSkipped)
       return res.sessionId
     },
     starting: launch.isPending || end.isPending,

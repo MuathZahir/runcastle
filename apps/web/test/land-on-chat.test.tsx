@@ -190,6 +190,15 @@ describe('every launch site lands', () => {
     ])
   })
 
+  // chat-as-web-components decision 7: a thread opens with no agent behind it,
+  // so the bar's Chat door lands on the main thread and launches nothing.
+  it('opens the main thread from the Chat door without launching', () => {
+    const source = readFileSync(join(SRC, 'components/Workspace.tsx'), 'utf8')
+    const door = /const openChat = ([^\n]*)/.exec(source)?.[1] ?? ''
+    expect(door).toContain('landOnChat()')
+    expect(door).not.toMatch(/launch|mutate/)
+  })
+
   it('calls the land-on-chat operation in every module that launches a feature session', () => {
     const forgetful = files(SRC)
       .filter((f) => {

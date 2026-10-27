@@ -222,14 +222,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     }
   })
 
-  // The New door (decisions.md #12): open the project workspace and start a
-  // FRESH conversation in it — intake for anything that deserves talking about.
-  // `talk.start` is the new-chat contract, so a live conversation is left alone
-  // and the workspace's list is what you land on instead.
+  // The New door (decisions.md #12): open the project workspace on a FRESH
+  // conversation — an empty thread its first message starts, as the New chat
+  // card opens one. A live conversation is left alone and the workspace's
+  // list is what you land on instead.
   const newChat = () => {
     selectProject()
-    if (talk.session) setNewChatRequest((request) => request + 1)
-    else talk.start()
+    setNewChatRequest((request) => request + 1)
   }
 
   // Global ⌘K / Ctrl-K → command palette, ⌘/Ctrl+J → jot a note.

@@ -113,6 +113,12 @@ export interface AcpLaunchSpec {
    * settings' default mode, so the launch's posture is applied this way.
    */
   sessionMode?: string
+  /**
+   * Trust the session's hooks through codex-acp's `_codex/hooks/trust` once
+   * the session is open: Codex runs no hook it has not trusted, and its ACP
+   * adapter has no `--dangerously-bypass-hook-trust`.
+   */
+  trustHooks?: boolean
 }
 
 export interface AgentRuntimeAdapter {
