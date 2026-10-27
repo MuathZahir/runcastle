@@ -270,6 +270,38 @@ export const ONE_QUESTION: Ask = {
   questions: [PAGE_SIZE],
 }
 
+/** An MCP server's form: one of each field the dock draws. */
+export const MCP_FORM: Ask = {
+  kind: 'form',
+  id: 'f1',
+  server: 'linear',
+  message: 'Where should the export bug be filed?',
+  fields: [
+    {
+      key: 'team',
+      type: 'enum',
+      title: 'Team',
+      required: true,
+      options: [
+        { value: 'web', label: 'Web' },
+        { value: 'platform', label: 'Platform' },
+      ],
+    },
+    { key: 'reporter', type: 'string', title: 'Reporter', format: 'email', description: 'Who hears back when it is fixed' },
+    { key: 'estimate', type: 'number', title: 'Estimate (points)', integer: true, default: 2 },
+    { key: 'urgent', type: 'boolean', title: 'Urgent' },
+  ],
+}
+
+/** An MCP server's page to open: a sign-in. */
+export const MCP_LINK: Ask = {
+  kind: 'link',
+  id: 'l1',
+  server: 'linear',
+  message: 'Sign in to Linear so the agent can file issues.',
+  url: 'https://linear.app/oauth/authorize?client_id=runcastle&scope=issues:create',
+}
+
 const IDLE: ThreadItem[] = [
   ...HISTORY,
   {
@@ -357,6 +389,8 @@ export type Moment =
   | 'edit-approval'
   | 'question'
   | 'one-question'
+  | 'mcp-form'
+  | 'mcp-link'
   | 'idle'
   | 'composing'
   | 'mention'
@@ -390,6 +424,8 @@ export const MOMENTS: MomentSample[] = [
   { key: 'edit-approval', label: 'Edit approval', items: ASKING, state: 'waiting', ask: EDIT_APPROVAL, context: CTX, thread: 'main' },
   { key: 'question', label: 'Questions', items: HISTORY.slice(0, 3), state: 'waiting', ask: QUESTIONS, context: CTX, thread: 'main' },
   { key: 'one-question', label: 'One question', items: HISTORY.slice(0, 3), state: 'waiting', ask: ONE_QUESTION, context: CTX, thread: 'main' },
+  { key: 'mcp-form', label: 'MCP form', items: HISTORY.slice(0, 3), state: 'waiting', ask: MCP_FORM, context: CTX, thread: 'main' },
+  { key: 'mcp-link', label: 'MCP link', items: HISTORY.slice(0, 3), state: 'waiting', ask: MCP_LINK, context: CTX, thread: 'main' },
   { key: 'idle', label: 'Idle', items: IDLE, state: 'idle', context: CTX, suggestion: 'Commit this and update the spec', thread: 'main' },
   { key: 'composing', label: 'Crop + /', items: IDLE, state: 'idle', draft: '/', attachments: [CROP], context: CTX, thread: 'main' },
   { key: 'mention', label: '@ file', items: IDLE, state: 'idle', draft: 'Look at @note', context: CTX, thread: 'main' },

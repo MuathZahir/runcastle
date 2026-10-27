@@ -17,7 +17,7 @@ import type { Ask, Attachment, BackgroundTask, ContextUsage, Effort, PlanEntry, 
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
 import { ContextMeter, ModelPicker, PlanStrip } from '../src/components/chat/thread/ComposerParts'
-import { ApprovalDock, QuestionDock } from '../src/components/chat/thread/AskDock'
+import { ApprovalDock, FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
 import { ThreadSwitcher } from '../src/components/chat/thread/ThreadSwitcher'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { COMMANDS, FILES, LIMITS, MODELS, MOMENTS, NOW, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
@@ -212,6 +212,14 @@ function useThread(moment: MomentSample, goNew: () => void) {
     reply(`Recorded: ${Object.values(answers).join('; ')}. I added them to the spec.`)
   }
 
+  /** An MCP server's form or link, answered (or declined) with one line. */
+  const settleMcp = (what: string, denied = false) => {
+    if (ask?.kind !== 'form' && ask?.kind !== 'link') return
+    setAsk(undefined)
+    setItems((xs) => [...xs, { kind: 'answered', id: nextId(), what, answer: ask.message, ...(denied ? { denied } : {}) }])
+    reply(denied ? 'Fine — I will leave Linear alone and note the bug in the spec instead.' : 'Filed. The issue links back to this thread.')
+  }
+
   const edit = (id: string, text: string) => {
     setItems((xs) => [...xs.slice(0, xs.findIndex((x) => x.id === id)), { kind: 'user', id: nextId(), text }])
     reply('Starting over from your edited message: the export now keeps headings, lists and code blocks.')
@@ -224,7 +232,7 @@ function useThread(moment: MomentSample, goNew: () => void) {
 
   return {
     items, state, ask, plan, tasks, setTasks, context, since, draft, setDraft, attachments, setAttachments, suggestion,
-    model, setModel, effort, setEffort, send, stop, approve, answer, edit, attach, lastSent, branch: goNew,
+    model, setModel, effort, setEffort, send, stop, approve, answer, settleMcp, edit, attach, lastSent, branch: goNew,
     compact: () => {
       setDraft('/compact')
     },
@@ -236,8 +244,26 @@ function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void
   const footer = t.ask ? (
     t.ask.kind === 'approval' ? (
       <ApprovalDock key={t.ask.id} call={t.ask.call} onAnswer={t.approve} />
-    ) : (
+    ) : t.ask.kind === 'question' ? (
       <QuestionDock key={t.ask.id} questions={t.ask.questions} onAnswer={t.answer} />
+    ) : t.ask.kind === 'form' ? (
+      <FormDock
+        key={t.ask.id}
+        {...(t.ask.server ? { server: t.ask.server } : {})}
+        message={t.ask.message}
+        fields={t.ask.fields}
+        onSubmit={() => t.settleMcp('Submitted')}
+        onDecline={() => t.settleMcp('Declined', true)}
+      />
+    ) : (
+      <LinkDock
+        key={t.ask.id}
+        {...(t.ask.server ? { server: t.ask.server } : {})}
+        message={t.ask.message}
+        url={t.ask.url}
+        onDone={() => t.settleMcp('Done')}
+        onDecline={() => t.settleMcp('Declined', true)}
+      />
     )
   ) : (
     <Composer
