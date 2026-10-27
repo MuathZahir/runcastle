@@ -8,16 +8,19 @@ import { sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { renderProjectPrompt } from '../src/launcher/artifacts'
-import { ptyRegistry, type PtyEntry } from '../src/pty/registry'
 import { emit, emitProject, runAsActor } from '../src/services/events'
 import {
+  ORCHESTRATOR_GATHER_MS,
   orchestratorCatchUp,
   orchestratorLineFor,
   startOrchestratorNotifier,
   type NotifyState,
 } from '../src/services/orchestrator-notify'
-import { takeOrchestratorLines, waitForOrchestratorLines } from '../src/services/orchestrator-messages'
 import { openProject } from '../src/services/projects'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
+import { promptsOf } from './support/thread-launch'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
@@ -169,22 +172,22 @@ describe('orchestratorLineFor — end events', () => {
 describe('orchestratorLineFor — act events', () => {
   const cases: [string, EventRow, NotifyState, string][] = [
     [
-      'the human opening a chat',
-      event('session.launched', { sessionId: 's' }),
+      'the human’s message starting a chat',
+      event('session.process_started', { sessionId: 's', source: 'human' }),
       { ...followed, session: chat },
-      '[runcastle] export-csv the human opened a chat session on it; it is busy until that session ends.',
+      '[runcastle] export-csv the human is talking to its chat thread; it is busy until that conversation goes quiet.',
     ],
     [
       'the human clicking Plan it yourself',
-      event('session.launched', { sessionId: 's' }),
-      { ...followed, session: { ...chat, purpose: 'self-plan', headless: true } },
+      event('session.launching', { sessionId: 's', purpose: 'self-plan' }),
+      { ...followed, session: { ...chat, purpose: 'self-plan' } },
       '[runcastle] export-csv the human had it plan itself. Wait for the run to end.',
     ],
     [
-      'the human’s session ending',
-      event('session.pty_exited', { sessionId: 's' }),
+      'the human’s conversation going quiet',
+      event('session.process_stopped', { sessionId: 's', reason: 'idle', startedBy: 'human' }),
       { ...followed, session: chat },
-      `[runcastle] export-csv the human's chat session on it ended; it is free again. Read it with get_feature_context({ slug: "export-csv" }).`,
+      `[runcastle] export-csv the human's chat conversation on it went quiet; it is free again. Read it with get_feature_context({ slug: "export-csv" }).`,
     ],
     [
       'a test drive starting',
@@ -213,9 +216,15 @@ describe('orchestratorLineFor — act events', () => {
     expect(orchestratorLineFor(e, { ...state, ...notFollowed })).toBeNull()
   })
 
-  it('leaves a headless run’s exit to its own end event', () => {
-    const e = event('session.pty_exited', { sessionId: 's' })
-    expect(orchestratorLineFor(e, { ...followed, session: { ...chat, headless: true } })).toBeNull()
+  it('says nothing of a thread runcastle started, a side thread, or a self-planning run’s stop', () => {
+    const started = (source: string) => event('session.process_started', { sessionId: 's', source })
+    const stopped = (startedBy: string) => event('session.process_stopped', { sessionId: 's', startedBy })
+    expect(orchestratorLineFor(started('runcastle'), { ...followed, session: chat })).toBeNull()
+    expect(orchestratorLineFor(stopped('runcastle'), { ...followed, session: chat })).toBeNull()
+    expect(orchestratorLineFor(started('human'), { ...followed, session: { ...chat, kind: 'side' } })).toBeNull()
+    // A self-planning run's end is its own END event.
+    expect(orchestratorLineFor(stopped('human'), { ...followed, session: { ...chat, purpose: 'self-plan' } })).toBeNull()
+    expect(orchestratorLineFor(event('session.launching', { sessionId: 's' }), { ...followed, session: chat })).toBeNull()
   })
 
   it('says nothing for a cleared waiting reason or the ready reason the ready line covers', () => {
@@ -268,6 +277,8 @@ describe('the notifier and the catch-up', () => {
   let opened: Project
   let restoreDataDir: () => void
   let stopNotifier: () => void
+  let fake: FakeAcp
+  let host: AgentHost
 
   beforeEach(async () => {
     restoreDataDir = withTempDataDir()
@@ -276,9 +287,14 @@ describe('the notifier and the catch-up', () => {
     opened = await openProject(ctx, repoPath)
     projectId = opened.id
     stopNotifier = startOrchestratorNotifier(ctx)
+    fake = createFakeAcp()
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH })
+    setAgentHostForTests(host)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await host.stopAll('shutdown')
+    setAgentHostForTests(undefined)
     stopNotifier()
     vi.restoreAllMocks()
     restoreDataDir()
@@ -299,61 +315,48 @@ describe('the notifier and the catch-up', () => {
     return feature
   }
 
-  /** Stand a terminal up for a session and record what is typed into it. */
-  function terminalFor(sessionId: string): string[] {
-    const typed: string[] = []
-    const entry = {
-      sessionId,
-      exited: false,
-      pty: { write: (data: string) => typed.push(data) },
-    } as unknown as PtyEntry
-    vi.spyOn(ptyRegistry(), 'get').mockImplementation((id) => (id === sessionId ? entry : undefined))
-    return typed
-  }
-
   function project(): Project {
     return opened
   }
 
-  it('hands a followed feature’s end event to the live orchestrator’s waiter, typing nothing', async () => {
+  /** The lines each runcastle prompt said into the thread, one prompt per entry. */
+  async function promptLines(id: string, prompts: number): Promise<string[][]> {
+    await vi.waitFor(() => expect(promptsOf(id)).toHaveLength(prompts))
+    return promptsOf(id).map((p) => {
+      expect(p.source).toBe('runcastle')
+      return p.text.split('\n')
+    })
+  }
+
+  it('says a followed feature’s end event into the orchestrator’s thread, starting it', async () => {
     const id = projectSession()
-    const typed = terminalFor(id)
     const feature = followedFeature('export-csv')
-    const answer = waitForOrchestratorLines(id, 'w1', 5000)
 
     emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
 
-    expect(await answer).toEqual({
-      status: 'lines',
-      lines: [
-        '[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).',
-      ],
-    })
-    expect(typed).toEqual([])
+    expect(await promptLines(id, 1)).toEqual([
+      ['[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).'],
+    ])
+    expect(host.isRunning(id)).toBe(true)
   })
 
-  it('hands two events ending inside 350 ms over as one message with two separate lines', async () => {
+  it('says two events ending together as one prompt with two separate lines', async () => {
     const id = projectSession()
-    const typed = terminalFor(id)
     const feature = followedFeature('snake-core')
 
-    // No waiter is up mid-turn: the lines wait together for the next one.
     emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
     emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '5/5 tickets done' } })
 
-    expect(await waitForOrchestratorLines(id, 'w1', 5000)).toEqual({
-      status: 'lines',
-      lines: [
+    expect(await promptLines(id, 1)).toEqual([
+      [
         '[runcastle] snake-core finished planning. Read it with get_feature_context({ slug: "snake-core" }).',
         '[runcastle] snake-core round finished (5/5 tickets done). Read it with list_tickets({ slug: "snake-core" }).',
       ],
-    })
-    expect(typed).toEqual([])
+    ])
   })
 
-  it('stays quiet about a feature it does not follow, and about acts and merges it took itself', () => {
+  it('stays quiet about a feature it does not follow, and about acts and merges it took itself', async () => {
     const id = projectSession()
-    const typed = terminalFor(id)
     const human = seedFeature(ctx, projectId, { slug: 'human-one' })
     const mine = followedFeature('mine')
 
@@ -362,54 +365,50 @@ describe('the notifier and the catch-up', () => {
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' }))
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } }))
 
-    expect(takeOrchestratorLines(id)).toEqual([])
-    expect(typed).toEqual([])
+    await new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))
+    expect(promptsOf(id)).toEqual([])
   })
 
-  it('follows a feature the orchestrator only messaged, and stops once it has shipped', () => {
+  it('follows a feature the orchestrator only messaged, and stops once it has shipped', async () => {
     const id = projectSession()
     const touched = seedFeature(ctx, projectId, { slug: 'touched' })
-    runAsActor('orchestrator', () => emit(ctx, touched.id, { type: 'lead.message_pending', message: 'x' }))
+    runAsActor('orchestrator', () => emit(ctx, touched.id, { type: 'lead.message_queued', message: 'x' }))
     const done = followedFeature('done', { status: 'shipped' })
 
     emit(ctx, touched.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
     emit(ctx, done.id, { type: 'testdrive.dev_failed', message: 'boom' })
 
-    expect(takeOrchestratorLines(id)).toEqual([
-      `[runcastle] touched merge conflicted in 1 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "touched" }).`,
+    expect(await promptLines(id, 1)).toEqual([
+      [
+        `[runcastle] touched merge conflicted in 1 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "touched" }).`,
+      ],
     ])
   })
 
-  it('sends nothing when no project session is live', () => {
-    const id = projectSession()
-    markSessionEnded(ctx, id)
+  it('tells the newest project chat, whether or not its process runs', async () => {
+    const older = projectSession()
+    const newest = projectSession()
+    markSessionEnded(ctx, newest)
     const feature = followedFeature()
 
     emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
 
-    expect(takeOrchestratorLines(id)).toEqual([])
+    expect(await promptLines(newest, 1)).toHaveLength(1)
+    expect(promptsOf(older)).toEqual([])
   })
 
-  it('drops an ended orchestrator’s lines and answers its waiter ended', async () => {
-    const id = projectSession()
+  it('says nothing when the project has no chat to tell', async () => {
     const feature = followedFeature()
-    emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
-
-    markSessionEnded(ctx, id)
-
-    expect(takeOrchestratorLines(id)).toEqual([])
-    const late = waitForOrchestratorLines(id, 'w1', 5000)
-    markSessionEnded(ctx, id)
-    expect(await late).toEqual({ status: 'ended' })
+    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    await new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))
+    expect(fake.processes).toEqual([])
   })
 
   it('never lets a failure reach the service that emitted', () => {
     projectSession()
-    vi.spyOn(ptyRegistry(), 'get').mockImplementation(() => {
-      throw new Error('terminal gone')
-    })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const feature = followedFeature()
+    ctx.db.delete(sessions).run()
 
     expect(() => emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })).not.toThrow()
   })
