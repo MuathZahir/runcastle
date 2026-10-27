@@ -28,6 +28,8 @@ const testDrive = vi.fn()
 const runScenario = vi.fn()
 const openScenarioChat = vi.fn()
 const threadNew = vi.fn()
+const threadRename = vi.fn()
+const threadExport = vi.fn((_input: unknown) => ({ markdown: '# Audit the journal\n' }))
 /** What `thread.list` answers for the project. */
 let threads: ThreadEntry[] = []
 let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
@@ -63,10 +65,13 @@ vi.mock('../src/trpc', () => {
         project: { projectSession: { invalidate }, conversations: { invalidate } },
         projectNotes: { invalidate },
         feature: { driveInfo: { invalidate } },
-        thread: { list: { invalidate } },
+        thread: { list: { invalidate }, export: { fetch: async (input: unknown) => threadExport(input) } },
       }),
       thread: {
         list: { useQuery: () => ({ data: threads }) },
+        rename: {
+          useMutation: () => ({ isPending: false, mutate: (input: { threadId: string; title: string }) => threadRename(input) }),
+        },
         new: {
           useMutation: (opts: { onSuccess: (r: { threadId: string }) => void }) => ({
             isPending: false,
@@ -514,6 +519,51 @@ describe('a live project chat', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
+  })
+
+  it('renames the chat in front from its switcher: Enter saves through thread.rename, Escape cancels', () => {
+    threads = [entry('sess_1', 'Audit the journal', 2_000)]
+    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    const field = screen.getByRole('textbox', { name: 'Thread name' }) as HTMLInputElement
+    expect(field.value).toBe('Audit the journal')
+    fireEvent.keyDown(field, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
+    expect(threadRename).not.toHaveBeenCalled()
+
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    const again = screen.getByRole('textbox', { name: 'Thread name' })
+    fireEvent.change(again, { target: { value: 'Journal audit' } })
+    fireEvent.submit(again.closest('form')!)
+    expect(threadRename).toHaveBeenCalledWith({ threadId: 'sess_1', title: 'Journal audit' })
+    expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
+  })
+
+  it('exports the chat in front as a downloaded Markdown file named by its title', async () => {
+    threads = [entry('sess_1', 'Audit the journal', 2_000)]
+    URL.createObjectURL = vi.fn(() => 'blob:md')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export as Markdown' }))
+    await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
+    expect(threadExport).toHaveBeenCalledWith({ threadId: 'sess_1' })
+    const link = click.mock.contexts[0] as HTMLAnchorElement
+    expect(link.download).toBe('Audit the journal.md')
+    expect(link.href).toBe('blob:md')
+    click.mockRestore()
+  })
+
+  it('offers no Rename or Export for a new chat that has no thread yet', () => {
+    const api = talk()
+    mount(api)
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
+    openMenu(threadSwitcher())
+    expect(screen.queryByRole('menuitem', { name: 'Rename…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Export as Markdown' })).toBeNull()
   })
 
   it('has one header row, and no End session in its switcher', () => {

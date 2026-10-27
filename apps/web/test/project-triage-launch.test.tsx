@@ -33,6 +33,7 @@ vi.mock('../src/trpc', () => {
       thread: {
         list: { useQuery: query([]) },
         new: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+        rename: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       },
       project: {
         list: { useQuery: query([{ id: 'proj_1', name: 'acme' }]) },

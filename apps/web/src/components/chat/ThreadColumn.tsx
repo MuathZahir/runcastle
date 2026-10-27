@@ -109,6 +109,7 @@ export function ThreadColumn({
             effort={t.effort}
             onModel={t.chooseModel}
             onEffort={t.chooseEffort}
+            {...(t.fastOffered ? { fast: t.fast, onFast: t.chooseFast } : {})}
           />
         )
       }
@@ -143,7 +144,7 @@ export function ThreadColumn({
                       context={view.context}
                       limits={t.usage?.limits ?? []}
                       {...(t.usage?.plan ? { plan: t.usage.plan } : {})}
-                      onCompact={() => void t.send('/compact')}
+                      onCompact={t.compact}
                     />
                   )}
                 </div>

@@ -21,9 +21,10 @@ const EFFORTS: { id: Effort; label: string }[] = [
 ]
 
 /**
- * The model and effort the NEXT message runs on. Both runtimes take a model
- * change mid-conversation, so each message can go to a different model; the
- * thread starts on the one runcastle resolved for its kind.
+ * The model and effort (and fast mode, where the runtime offers it) the NEXT
+ * message runs on. Both runtimes take a model change mid-conversation, so each
+ * message can go to a different model; the thread starts on the one runcastle
+ * resolved for its kind.
  */
 export function ModelPicker({
   runtime,
@@ -32,6 +33,8 @@ export function ModelPicker({
   effort,
   onModel,
   onEffort,
+  fast = false,
+  onFast,
 }: {
   runtime: 'claude-code' | 'codex'
   models: ModelChoice[]
@@ -39,6 +42,9 @@ export function ModelPicker({
   effort: Effort
   onModel: (id: string) => void
   onEffort: (e: Effort) => void
+  fast?: boolean
+  /** Toggle fast mode; absent where the runtime offers none, and the row with it. */
+  onFast?: (on: boolean) => void
 }) {
   const Glyph = runtime === 'codex' ? IconCodex : IconClaude
   const current = models.find((m) => m.id === model)
@@ -91,6 +97,19 @@ export function ModelPicker({
             </button>
           ))}
         </div>
+        {onFast && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              role="menuitemcheckbox"
+              aria-checked={fast}
+              icon={fast ? <IconCheck /> : <span className="size-4 shrink-0" />}
+              onSelect={() => onFast(!fast)}
+            >
+              Fast mode
+            </DropdownMenuItem>
+          </>
+        )}
         <p className="m-0 px-2 pt-1 pb-1.5 text-xs text-text-tertiary">Applies from your next message.</p>
       </DropdownMenuContent>
     </DropdownMenu>

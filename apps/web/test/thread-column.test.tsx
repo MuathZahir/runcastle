@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEvent } from '@runcastle/core'
 import { fakeTrpc } from './fake-trpc'
+import { openMenu } from './floating'
 
 /**
  * The chat column for one thread (chat-as-web-components decisions 7, 8): the
@@ -153,6 +154,59 @@ describe('ThreadColumn', () => {
     await waitFor(() => expect(api.inputs('thread.files')).toHaveLength(1))
     expect(screen.queryByRole('listbox', { name: 'Files' })).toBeNull()
     expect(toasts).toEqual([])
+  })
+
+  const ON_SONNET: ThreadEvent[] = [
+    { i: 0, at, type: 'model', model: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+    { i: 1, at, type: 'usage', context: { used: 40_000, size: 200_000 } },
+    ...HISTORY.map((e) => ({ ...e, i: e.i + 2 })),
+  ]
+
+  it('offers a Fast mode row only where the model the thread runs on has it, and sends fast with the next message', async () => {
+    const plain = server(ON_SONNET, { 'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
+    const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: plain.Wrapper })
+    await waitFor(() => expect(plain.inputs('thread.models')).toHaveLength(1))
+    openMenu(await screen.findByRole('button', { name: 'Model' }))
+    expect(screen.getByRole('menuitemradio', { name: /Sonnet 5.5/ })).toBeTruthy()
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'Fast mode' })).toBeNull()
+    unmount()
+
+    const api = server(ON_SONNET, {
+      'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', fast: true }],
+      'thread.setModel': () => ({ ok: true }),
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(api.inputs('thread.models')).toHaveLength(1))
+    openMenu(await screen.findByRole('button', { name: 'Model' }))
+    const row = await screen.findByRole('menuitemcheckbox', { name: 'Fast mode' })
+    expect(row.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(row)
+    await waitFor(() => expect(api.inputs('thread.setModel')).toEqual([{ threadId: 'th1', model: 'claude-sonnet-5-5', fast: true }]))
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Quickly now' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th1', text: 'Quickly now', fast: true }]))
+  })
+
+  it('compacts through thread.compact from the context meter, with no message of the human’s', async () => {
+    const api = server(ON_SONNET, { 'thread.compact': () => ({ ok: true }) })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    fireEvent.click(await screen.findByRole('button', { name: 'Context 20% used' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Compact now' }))
+    await waitFor(() => expect(api.inputs('thread.compact')).toEqual([{ threadId: 'th1' }]))
+    expect(api.inputs('thread.send')).toEqual([])
+    expect(screen.queryByText('/compact')).toBeNull()
+  })
+
+  it('says why Compact is refused while the agent works', async () => {
+    const api = server(ON_SONNET, {
+      'thread.compact': () => {
+        throw new Error('the agent is working: compact once its turn ends')
+      },
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    fireEvent.click(await screen.findByRole('button', { name: 'Context 20% used' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Compact now' }))
+    await waitFor(() => expect(toasts).toEqual(['the agent is working: compact once its turn ends']))
   })
 
   it('sends edit and branch for the message they are on, and says nothing while they are refused', async () => {

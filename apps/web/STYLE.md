@@ -330,7 +330,8 @@ chats, the project's chats and the preparation chat — is a thread rendered by
 `thread` API by `src/lib/use-thread.ts`, which folds the thread's log with core's
 `foldThread` and reads only what follows its cursor on a `thread` live signal.
 Wiring connects those components; it never restyles them. The header's
-`ThreadSwitcher` lists every thread of the page. xterm (`TerminalView`) is left
+`ThreadSwitcher` lists every thread of the page, and renames or exports the one in
+front through `useThreadMenu`. xterm (`TerminalView`) is left
 only for program output: the design server, the drive's dev pane and the
 Settings AFK terminals. No phase body holds a terminal.
 

@@ -187,10 +187,11 @@ export function useThread({
   }, [])
 
   // ---- the model the next message runs on ----
-  const [choice, setChoice] = useState<{ threadId: string | null; model?: string; effort?: Effort }>({ threadId })
+  const [choice, setChoice] = useState<{ threadId: string | null; model?: string; effort?: Effort; fast?: boolean }>({ threadId })
   const chosen = choice.threadId === threadId ? choice : { threadId }
   const model = chosen.model ?? folded.model?.id
   const effort: Effort = chosen.effort ?? folded.model?.effort ?? 'high'
+  const fast = chosen.fast ?? folded.model?.fast ?? false
   const modelsQ = trpc.thread.models.useQuery({ threadId: id }, { enabled })
   // While the runtime's list cannot be read, the picker still names the model the thread is on.
   const models: ModelChoice[] = modelsQ.data?.length
@@ -198,20 +199,31 @@ export function useThread({
     : folded.model
       ? [{ id: folded.model.id, label: folded.model.label }]
       : []
-  // A refused change is quiet: the choice rides the next message instead.
-  const setModelM = trpc.thread.setModel.useMutation({ onError: () => undefined })
-  const choose = (next: { model?: string; effort?: Effort }) => {
+  // A refused change is quiet: the choice rides the next message instead. A
+  // model the session moved to may offer fast mode where the last did not.
+  const setModelM = trpc.thread.setModel.useMutation({
+    onSuccess: () => void utils.thread.models.invalidate({ threadId: id }),
+    onError: () => undefined,
+  })
+  const choose = (next: { model?: string; effort?: Effort; fast?: boolean }) => {
     const merged = { ...chosen, ...next, threadId }
     setChoice(merged)
     const to = merged.model ?? folded.model?.id
-    if (threadId && to) setModelM.mutate({ threadId, model: to, ...(merged.effort ? { effort: merged.effort } : {}) })
+    if (threadId && to) {
+      setModelM.mutate({
+        threadId,
+        model: to,
+        ...(merged.effort ? { effort: merged.effort } : {}),
+        ...(merged.fast !== undefined ? { fast: merged.fast } : {}),
+      })
+    }
   }
 
   const sendM = trpc.thread.send.useMutation()
-  /** Send the composer's message, or `command` (Compact now's `/compact`) leaving the composer as it is. */
-  const send = async (command?: string): Promise<void> => {
-    const words = command ?? text.trim()
-    const sent = command ? [] : attachments
+  /** Send the composer's message. */
+  const send = async (): Promise<void> => {
+    const words = text.trim()
+    const sent = attachments
     if (!words && sent.length === 0) return
     const local: Pending = {
       localId: `local${++localSeq}`,
@@ -221,12 +233,11 @@ export function useThread({
       after: cursor ?? -1,
     }
     setPending((ps) => [...ps, local])
-    if (!command) {
-      setDraft('')
-      setAttachments([])
-    }
+    setDraft('')
+    setAttachments([])
     const changed = chosen.model !== undefined && chosen.model !== folded.model?.id
     const effortChanged = chosen.effort !== undefined && chosen.effort !== folded.model?.effort
+    const fastChanged = chosen.fast !== undefined && chosen.fast !== (folded.model?.fast ?? false)
     try {
       const images = await Promise.all(
         sent.map(async (a) => ({ name: a.name, mimeType: a.file.type || 'image/png', data: await blobBase64(a.file) })),
@@ -245,16 +256,15 @@ export function useThread({
         ...(images.length ? { images } : {}),
         ...(changed && chosen.model ? { model: chosen.model } : {}),
         ...(effortChanged ? { effort } : {}),
+        ...(fastChanged ? { fast } : {}),
       })
       setPending((ps) => ps.map((p) => (p.localId === local.localId ? { ...p, promptId } : p)))
     } catch (e) {
       setPending((ps) => ps.filter((p) => p.localId !== local.localId))
-      if (!command) {
-        // Give the words back so nothing typed is lost.
-        setDraftState((d) => (d.text ? d : { at: d.at, text: words }))
-        writeDraft(draftAt, words)
-        setAttachments((as) => [...sent, ...as])
-      }
+      // Give the words back so nothing typed is lost.
+      setDraftState((d) => (d.text ? d : { at: d.at, text: words }))
+      writeDraft(draftAt, words)
+      setAttachments((as) => [...sent, ...as])
       toast.push(e instanceof Error ? e.message : 'the message could not be sent')
     }
   }
@@ -266,12 +276,13 @@ export function useThread({
   const onError = (e: { message: string }) => toast.push(e.message)
   const stopM = trpc.thread.stop.useMutation({ onError })
   const answerM = trpc.thread.answer.useMutation({ onError })
-  // The controls: a runtime that cannot rewind, branch or rename leaves the
-  // thread as it was, without a word.
+  // Refused while the agent works: the human is told so.
+  const compactM = trpc.thread.compact.useMutation({ onError })
+  // The controls: a runtime that cannot rewind or branch leaves the thread as
+  // it was, without a word.
   const quiet = { onError: () => undefined }
   const editM = trpc.thread.edit.useMutation(quiet)
   const branchM = trpc.thread.branch.useMutation(quiet)
-  const renameM = trpc.thread.rename.useMutation(quiet)
 
   // ---- controls whose reads may be refused: each degrades to nothing ----
   const usageQ = trpc.thread.usage.useQuery({ threadId: id }, { enabled })
@@ -298,6 +309,14 @@ export function useThread({
     effort,
     chooseModel: (next: string) => choose({ model: next }),
     chooseEffort: (next: Effort) => choose({ effort: next }),
+    /** Fast mode for the next message; offered only where the model the thread runs on has it. */
+    fast,
+    fastOffered: models.some((m) => m.id === model && m.fast),
+    chooseFast: (next: boolean) => choose({ fast: next }),
+    /** Compact the conversation (Compact now): no message of the human's, a divider when it is done. */
+    compact: () => {
+      if (threadId) compactM.mutate({ threadId })
+    },
     /** The account's limits and plan; none while that read is refused. */
     usage: usageQ.data,
     /** The worktree's files matching the `@` being typed; none while that read is refused. */
@@ -314,19 +333,49 @@ export function useThread({
         return undefined
       }
     },
-    rename: (title: string) => {
-      if (threadId) renameM.mutate({ threadId, title })
-    },
-    /** The thread as Markdown, for Copy / Save. */
-    exportMarkdown: async (): Promise<string | undefined> => {
-      if (!threadId) return undefined
-      try {
-        return (await utils.thread.export.fetch({ threadId })).markdown
-      } catch {
-        return undefined
-      }
-    },
   }
 }
 
 export type ThreadApi = ReturnType<typeof useThread>
+
+/** A Markdown file's name from a thread's title, without what file systems refuse. */
+export function markdownFileName(title: string): string {
+  const name = title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+  return `${name || 'Thread'}.md`
+}
+
+/**
+ * The thread switcher's rows for the thread in front, as its props: rename it
+ * (`thread.rename`), and export it (`thread.export`) as a downloaded
+ * `<title>.md`. Apart from `useThread`, since the switcher sits in the page
+ * header, away from the column. None for a thread that has not begun.
+ */
+export function useThreadMenu(threadId: string | null | undefined): {
+  onRename?: (title: string) => void
+  onExport?: (title: string) => void
+} {
+  const toast = useToast()
+  const utils = trpc.useUtils()
+  const renameM = trpc.thread.rename.useMutation({
+    onSuccess: () => void utils.thread.list.invalidate(),
+    onError: (e) => toast.push(e.message),
+  })
+  if (!threadId) return {}
+  const exportMarkdown = async (title: string): Promise<void> => {
+    try {
+      const { markdown } = await utils.thread.export.fetch({ threadId }, { staleTime: 0 })
+      const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = markdownFileName(title)
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : 'the thread could not be exported')
+    }
+  }
+  return {
+    onRename: (title) => renameM.mutate({ threadId, title }),
+    onExport: (title) => void exportMarkdown(title),
+  }
+}

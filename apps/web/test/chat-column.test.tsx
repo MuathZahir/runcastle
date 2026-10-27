@@ -33,6 +33,7 @@ const { useFeatureChatColumn } = await import('../src/components/chat/use-featur
 const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { mainChatInbox, putInInbox } = await import('../src/lib/composer-inbox')
+const { useThreadMenu } = await import('../src/lib/use-thread')
 
 const FAILED: DriveScenario = {
   file: '.runcastle/scenarios/checkout/expired-coupon.ts',
@@ -77,11 +78,12 @@ function server({ threads = [thread('th_main', 'Feature chat', 'main')], extra =
 /** The feature page's header switcher and column beside its drive panel, as the page assembles them. */
 function Page({ driveSessionId, scenario, sessions = [] }: { driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions'] }) {
   const column = useFeatureChatColumn({ featureId: 'feat_1', sessions, driveSessionId })
+  const threadMenu = useThreadMenu(column.inFront)
   const full = { ...fixture({ id: 'feat_1' }), sessions, tickets: [] } as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
       <header>
-        <ThreadSwitcher threads={column.threads} current={column.current} onPick={column.pick} onNew={column.newThread}>
+        <ThreadSwitcher threads={column.threads} current={column.current} onPick={column.pick} onNew={column.newThread} {...threadMenu}>
           {column.scenario.listed && column.inFront === column.scenario.sessionId && <ScenarioChatMenu chat={column.scenario} />}
         </ThreadSwitcher>
       </header>
@@ -173,6 +175,51 @@ describe('the feature page’s thread switcher', () => {
     expect(await within(switcher()).findByLabelText('Another thread is waiting for you')).toBeTruthy()
     pick('Asking')
     await waitFor(() => expect(within(switcher()).queryByLabelText('Another thread is waiting for you')).toBeNull())
+  })
+
+  it('renames the thread in front through thread.rename, and the list shows the new title', async () => {
+    const list = [thread('th_main', 'Feature chat', 'main')]
+    const api = server({
+      threads: list,
+      extra: {
+        'thread.list': () => list,
+        'thread.rename': ({ threadId, title }: { threadId: string; title: string }) => {
+          list[0] = { ...list[0], id: threadId, title }
+          return { ok: true }
+        },
+      },
+    })
+    render(<Page />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    menuAction('Rename…')
+    const field = screen.getByRole('textbox', { name: 'Thread name' })
+    fireEvent.change(field, { target: { value: 'Coupon expiry' } })
+    fireEvent.submit(field.closest('form')!)
+    await waitFor(() => expect(api.inputs('thread.rename')).toEqual([{ threadId: 'th_main', title: 'Coupon expiry' }]))
+    await waitFor(() => expect(switcher().textContent).toContain('Coupon expiry'))
+  })
+
+  it('exports the thread in front as a downloaded <title>.md from thread.export', async () => {
+    const api = server({ extra: { 'thread.export': () => ({ markdown: '# Feature chat\n' }) } })
+    URL.createObjectURL = vi.fn(() => 'blob:md')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<Page />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    menuAction('Export as Markdown')
+    await waitFor(() => expect(click).toHaveBeenCalledOnce())
+    expect(api.inputs('thread.export')).toEqual([{ threadId: 'th_main' }])
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('Feature chat.md')
+    click.mockRestore()
+  })
+
+  it('offers no Rename or Export for a feature chat nobody has started', async () => {
+    const api = server({ threads: [] })
+    render(<Page />, { wrapper: api.Wrapper })
+    openMenu(switcher())
+    expect(screen.getByRole('menuitem', { name: 'New thread' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'Rename…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Export as Markdown' })).toBeNull()
   })
 
   it('shows a feature chat nobody started as an empty thread, and its first Send starts it', async () => {
