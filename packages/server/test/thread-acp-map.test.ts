@@ -11,7 +11,9 @@ import {
   fileChanges,
   modelEvent,
   rfdSubagentMessage,
+  relativeToWorktree,
   toolCallOf,
+  withRelativePaths,
 } from '../src/threads/acp-map'
 
 /** ACP session updates → thread events (chat-as-web-components ticket 1), update by update. */
@@ -343,5 +345,26 @@ describe('AskUserQuestion over elicitation', () => {
       content: { question_0_custom: 'A5', question_1: ['Front', 'Back'], question_1_custom: 'Spine' },
     })
     expect(elicitationAnswer(questions, { 'Which page size?': 'Letter' })).toEqual({ action: 'accept', content: { question_0: 'Letter' } })
+  })
+})
+
+describe('paths as the thread shows them', () => {
+  it('says paths under the worktree relative to it, in tool rows, approvals and the changes card', () => {
+    const wt = '/home/me/.runcastle/worktrees/feat'
+    expect(withRelativePaths(wt, { type: 'tool', call: { id: 'c', title: `Read ${wt}/README.md (1 - 5)`, diff: { path: `${wt}/src/a.ts`, lines: [] } } })).toEqual({
+      type: 'tool',
+      call: { id: 'c', title: 'Read README.md (1 - 5)', diff: { path: 'src/a.ts', lines: [] } },
+    })
+    const approval = withRelativePaths(wt, { type: 'ask', ask: { kind: 'approval', id: 'a', call: { id: 'c', kind: 'edit', status: 'pending', title: `Edit ${wt}/b.ts` } } })
+    expect(approval).toMatchObject({ ask: { call: { title: 'Edit b.ts' } } })
+    const ended = withRelativePaths(wt, { type: 'turn_ended', reason: 'end_turn', files: [{ path: `${wt}/src/deep/c.ts`, added: 1, removed: 0, lines: [] }] })
+    expect(ended).toMatchObject({ files: [{ path: 'src/deep/c.ts' }] })
+  })
+
+  it('reads a Windows worktree in either separator and drive case, and leaves other paths alone', () => {
+    const wt = 'C:\\Users\\me\\wt'
+    expect(relativeToWorktree(wt, 'Read c:\\Users\\me\\wt\\src\\a.ts')).toBe('Read src\\a.ts')
+    expect(relativeToWorktree(wt, 'cat C:/Users/me/wt/b.md')).toBe('cat b.md')
+    expect(relativeToWorktree('/wt', 'ls /other/wt/x /wtx/y /wt/z')).toBe('ls /other/wt/x /wtx/y z')
   })
 })

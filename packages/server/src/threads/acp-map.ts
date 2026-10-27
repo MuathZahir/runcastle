@@ -135,6 +135,49 @@ export function fileChanges(diffs: readonly ToolDiff[]): FileChange[] {
   return [...byPath.values()]
 }
 
+/**
+ * `text` with every path under `worktree` in it said relative to the worktree
+ * ("Read /home/me/wt/src/a.ts" → "Read src/a.ts"), in either separator, with a
+ * Windows drive letter in either case. A path is only cut where one starts.
+ */
+export function relativeToWorktree(worktree: string, text: string): string {
+  const root = worktree.replace(/[\\/]+$/, '')
+  if (!root) return text
+  const escaped = root
+    .split(/[\\/]/)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[\\\\/]')
+  const sameCase = /^[A-Za-z]:/.test(root) ? 'gi' : 'g'
+  return text.replace(new RegExp(`(?<![\\w.\\-\\\\/])${escaped}[\\\\/]+`, sameCase), '')
+}
+
+/** A tool call with the paths in its row worktree-relative. */
+function relativeCall<T extends Partial<ToolCall>>(worktree: string, call: T): T {
+  return {
+    ...call,
+    ...(call.title !== undefined ? { title: relativeToWorktree(worktree, call.title) } : {}),
+    ...(call.diff ? { diff: { ...call.diff, path: relativeToWorktree(worktree, call.diff.path) } } : {}),
+  }
+}
+
+/**
+ * The event as the thread shows it: tool rows, approvals and the changes card
+ * name files relative to the thread's worktree, never by absolute path. Applied
+ * when the log is read, so threads logged before this read the same.
+ */
+export function withRelativePaths<E extends ThreadEventBody>(worktree: string, e: E): E {
+  switch (e.type) {
+    case 'tool':
+      return { ...e, call: relativeCall(worktree, e.call) }
+    case 'ask':
+      return e.ask.kind === 'approval' ? { ...e, ask: { ...e.ask, call: relativeCall(worktree, e.ask.call) } } : e
+    case 'turn_ended':
+      return e.files ? { ...e, files: e.files.map((f) => ({ ...f, path: relativeToWorktree(worktree, f.path) })) } : e
+    default:
+      return e
+  }
+}
+
 /** The model (and effort, fast mode) a session runs on, from its config options, as a `model` event. */
 export function modelEvent(options: readonly acp.SessionConfigOption[] | null | undefined): ThreadEventBody | null {
   const config = currentConfig(options)

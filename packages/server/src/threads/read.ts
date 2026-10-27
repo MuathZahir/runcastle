@@ -12,6 +12,7 @@ import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
+import { withRelativePaths } from './acp-map'
 import { hasThreadLog, readThreadEvents, threadLogPath } from './log'
 import { NEW_CHAT_NAME, threadName } from './naming'
 import { agentHost } from './types'
@@ -66,7 +67,7 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
 /** The thread's events after `after`: its log, or its transcript's turns when it has no log. */
 export function threadEvents(ctx: AppCtx, threadId: string, after?: number): ThreadEvent[] {
   const row = threadRow(ctx, threadId)
-  if (hasThreadLog(threadId)) return readThreadEvents(threadId, after)
+  if (hasThreadLog(threadId)) return readThreadEvents(threadId, after).map((e) => withRelativePaths(row.worktreePath, e))
   const events = transcriptEvents(ctx, row)
   return after === undefined ? events : events.filter((e) => e.i > after)
 }
