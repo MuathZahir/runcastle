@@ -7,8 +7,9 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { handlePtyExit } from '../src/launcher/launcher'
-import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import type { StopReason } from '../src/threads/types'
 import mcpApp, { toolsForAudience } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { devSpawnTarget, drivePaneId, startDevPane, stopDevPane } from '../src/pty/dev-pane'
@@ -109,6 +110,11 @@ const stoppedReasons = (): unknown[] =>
     .filter((e) => e.type === 'design.server_stopped')
     .map((e) => (e.data as { reason: string }).reason)
 
+/** A thread's process stopping, as the agent host reports it to the lifecycle. */
+function processStopped(sessionId: string, reason: StopReason = 'crashed'): void {
+  threadLifecycle(ctx).stopped?.(markSessionEnded(ctx, sessionId)!, reason, 'human')
+}
+
 async function waitFor(fn: () => boolean, ms = 5000): Promise<void> {
   const end = Date.now() + ms
   while (!fn()) {
@@ -135,17 +141,20 @@ describe('design port helpers', () => {
 
 describe('which session ends stop the design server', () => {
   const chat = { id: 'ses_chat', kind: 'chat' as const, headless: false, featureId: 'feat_1' }
-  const run = { id: 'ses_run', kind: 'chat' as const, headless: true, featureId: 'feat_1' }
+  const run = { id: 'ses_run', kind: 'chat' as const, headless: false, purpose: 'self-plan' as const, featureId: 'feat_1' }
+  const legacy = { ...run, headless: true, purpose: undefined }
 
   it('the human’s feature chat always stops it', () => {
     expect(sessionEndStopsServer(chat, undefined)).toBe(true)
     expect(sessionEndStopsServer(chat, 'ses_run')).toBe(true)
   })
 
-  it('a headless run stops only the server it started and still owns', () => {
-    expect(sessionEndStopsServer(run, 'ses_run')).toBe(true)
-    expect(sessionEndStopsServer(run, undefined)).toBe(false)
-    expect(sessionEndStopsServer(run, 'ses_other')).toBe(false)
+  it('an unattended run stops only the server it started and still owns — a self-plan, or a headless row from before threads', () => {
+    for (const unattended of [run, legacy]) {
+      expect(sessionEndStopsServer(unattended, 'ses_run')).toBe(true)
+      expect(sessionEndStopsServer(unattended, undefined)).toBe(false)
+      expect(sessionEndStopsServer(unattended, 'ses_other')).toBe(false)
+    }
   })
 
   it('a session of another kind never does', () => {
@@ -248,45 +257,57 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     markSessionLive(ctx, session.id)
     await startDesignServer(ctx, feature.id, FAKE_DEV)
 
-    handlePtyExit(ctx, feature, getSessionRow(ctx, session.id)!, {}, 0)
+    processStopped(session.id)
 
     await waitFor(() => stoppedReasons().length > 0)
     expect(stoppedReasons()).toEqual(['session-ended'])
   }, 15000)
 
-  it('keeps running when a headless run of the feature that did not start it ends', async () => {
-    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+  // The human never sees an idle stop, so it must not take their design view away.
+  it('keeps running when the feature’s chat process is stopped for idling', async () => {
+    const session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree })
+    markSessionLive(ctx, session.id)
     await startDesignServer(ctx, feature.id, FAKE_DEV)
 
-    handlePtyExit(ctx, feature, getSessionRow(ctx, run.id)!, {}, 0)
+    processStopped(session.id, 'idle')
 
     expect(designServerStatus(ctx, feature.id).running).toBe(true)
     expect(stoppedReasons()).toEqual([])
   }, 15000)
 
-  it('stops when the headless run that started it ends', async () => {
-    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+  it('keeps running when an unattended run of the feature that did not start it ends', async () => {
+    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, purpose: 'self-plan' })
+    await startDesignServer(ctx, feature.id, FAKE_DEV)
+
+    processStopped(run.id)
+
+    expect(designServerStatus(ctx, feature.id).running).toBe(true)
+    expect(stoppedReasons()).toEqual([])
+  }, 15000)
+
+  it('stops when the unattended run that started it ends', async () => {
+    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, purpose: 'self-plan' })
     await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: run.id })
 
-    handlePtyExit(ctx, feature, getSessionRow(ctx, run.id)!, {}, 0)
+    processStopped(run.id)
 
     await waitFor(() => stoppedReasons().length > 0)
     expect(stoppedReasons()).toEqual(['session-ended'])
     expect(ptyRegistry().has(designPaneId(feature.id))).toBe(false)
   }, 15000)
 
-  it('keeps running past the headless run that started it once the human has opened it', async () => {
-    const viaHeartbeat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+  it('keeps running past the unattended run that started it once the human has opened it', async () => {
+    const viaHeartbeat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, purpose: 'self-plan' })
     await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: viaHeartbeat.id })
     heartbeatDesignServer(feature.id)
-    handlePtyExit(ctx, feature, getSessionRow(ctx, viaHeartbeat.id)!, {}, 0)
+    processStopped(viaHeartbeat.id)
     expect(designServerStatus(ctx, feature.id).running).toBe(true)
 
     await stopDesignServer(ctx, feature.id, 'stopped')
-    const viaWebStart = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+    const viaWebStart = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, purpose: 'self-plan' })
     await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: viaWebStart.id })
     await startDesignServer(ctx, feature.id)
-    handlePtyExit(ctx, feature, getSessionRow(ctx, viaWebStart.id)!, {}, 0)
+    processStopped(viaWebStart.id)
 
     expect(designServerStatus(ctx, feature.id).running).toBe(true)
     expect(stoppedReasons()).toEqual(['stopped'])

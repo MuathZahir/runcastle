@@ -327,9 +327,12 @@ export async function launchSession(
   }
 
   const project = projectForFeature(ctx, feature)
+  let prior = input.fresh ? null : newestThread(ctx, { featureId: feature.id }, 'chat')
+  const model = resolveModelEntry('chat', rosterConfig(ctx), project)
+  // Before anything is created: a runtime that cannot run refuses the launch.
+  assertRuntimeReady(prior?.runtime ?? model.runtime, opts)
   const worktreePath = await ensureFeatureWorktree(ctx, project, feature)
 
-  let prior = input.fresh ? null : newestThread(ctx, { featureId: feature.id }, 'chat')
   // A conversation whose transcript is gone cannot come back, so the chat starts from the docs.
   const gone = prior?.ccSessionId && !hasThreadLog(prior.id) ? resumeGoneReason(prior, worktreePath) : undefined
   if (prior && gone) {
@@ -339,11 +342,10 @@ export async function launchSession(
       data: { sessionId: prior.id, resumeSessionId: prior.ccSessionId, reason: gone },
     })
     prior = null
+    assertRuntimeReady(model.runtime, opts)
   }
 
-  const model = prior ? null : resolveModelEntry('chat', rosterConfig(ctx), project)
-  assertRuntimeReady(prior?.runtime ?? model?.runtime ?? DEFAULT_RUNTIME, opts)
-  const row: SessionRow = prior ?? newChatRow(ctx, feature, worktreePath, model as ModelEntry, input)
+  const row: SessionRow = prior ?? newChatRow(ctx, feature, worktreePath, model, input)
   if (prior && input.purpose) setThreadPurpose(ctx, row.id, input.purpose, input.purposeData ?? null)
   const thread = getSessionRow(ctx, row.id) as SessionRow
   const runtime = thread.runtime ?? DEFAULT_RUNTIME

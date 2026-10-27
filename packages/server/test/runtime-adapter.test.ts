@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentRuntime } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { launchSession } from '../src/launcher/launcher'
@@ -25,6 +25,9 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { createAgentHost } from '../src/threads/host'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
+import { acpLaunchOf } from './support/thread-launch'
 
 /**
  * The AgentRuntime seam, from the launcher's side: which adapter a launch picks,
@@ -85,7 +88,11 @@ describe('runtime dispatch at launch', () => {
   }
 
   it('picks the adapter named by the resolved model entry’s runtime', async () => {
-    registerRuntimeAdapter(stubAdapter('codex'))
+    registerRuntimeAdapter(
+      stubAdapter('codex', {
+        acpLaunch: async () => ({ files: [], command: 'stub-agent', args: ['--acp'], env: {}, envScrub: [], sessionMeta: {} }),
+      }),
+    )
     useModel('gpt-5.6-sol', 'codex')
 
     const project = seedProject(ctx, repoPath)
@@ -100,18 +107,18 @@ describe('runtime dispatch at launch', () => {
     )
     cleanup.push(sessionDir(sessionId))
 
-    // The rendered smoke command is the stub's, not `claude` with claude flags.
-    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
-    expect((launched?.data as { command?: string }).command).toBe('stub-agent --stub ok')
+    // The thread's launch is the stub's, not `claude` with claude options.
+    const spec = await acpLaunchOf(ctx, sessionId)
+    expect([spec.command, ...spec.args]).toEqual(['stub-agent', '--acp'])
   })
 
   /**
-   * The `spawn:false` smoke path on the REAL Codex adapter (SPEC §11). A launch
-   * configured through a synthetic home rather than through flags is only half
-   * described by its argv, so the rendered command carries `CODEX_HOME` too —
-   * without it the line reads as a session pointed at the human's own config.
+   * The real Codex adapter's ACP launch (ADR-0015). A launch configured through
+   * a synthetic home rather than through flags is only half described by its
+   * argv, so its env carries `CODEX_HOME` — without it the session would be
+   * pointed at the human's own config.
    */
-  it('renders the whole codex command, synthetic home included, without spawning', async () => {
+  it('describes the whole codex launch, synthetic home included, without spawning', async () => {
     useModel('gpt-5.6-sol', 'codex')
 
     const project = seedProject(ctx, repoPath)
@@ -126,83 +133,46 @@ describe('runtime dispatch at launch', () => {
     )
     cleanup.push(sessionDir(sessionId))
 
-    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
-    const command = String((launched?.data as { command?: string }).command)
-    expect(command).toContain(`CODEX_HOME=${codexHomeDir(sessionId)}`)
-    expect(command).toContain(`RUNCASTLE_SESSION_ID=${sessionId}`)
-    expect(command).toContain('codex --dangerously-bypass-hook-trust')
+    const spec = await acpLaunchOf(ctx, sessionId)
+    expect(spec.env.CODEX_HOME).toBe(codexHomeDir(sessionId))
+    expect(spec.env.RUNCASTLE_SESSION_ID).toBe(sessionId)
+    expect(spec.args.join(' ')).toMatch(/codex-acp/)
     expect(existsSync(join(codexHomeDir(sessionId), 'config.toml'))).toBe(true)
   })
 
   /**
-   * `codex resume <id>` across a relaunch, on the id the SessionStart hook
-   * captured. This is the whole reason reopening a terminal after runcastle
-   * restarts continues the conversation instead of starting cold from the docs.
+   * The conversation id the SessionStart hook (or the host) recorded is the one
+   * a reopened thread loads. This is the whole reason reopening a chat after
+   * runcastle restarts continues the conversation instead of starting cold.
    */
-  it('resumes a Codex conversation on relaunch, using the id SessionStart recorded', async () => {
-    useModel('gpt-5.6-sol', 'codex')
+  for (const [runtime, model] of [['codex', 'gpt-5.6-sol'], ['claude-code', 'claude-sonnet-5']] as const) {
+    it(`loads exactly the ${runtime} conversation id recorded for the thread`, async () => {
+      useModel(model, runtime)
 
-    const project = seedProject(ctx, repoPath)
-    const feature = seedFeature(ctx, project.id, { slug: 'codex-resume' })
-    await createFeatureBranch(project, 'codex-resume', 'main')
-    cleanup.push(worktreeDir(project.id, 'codex-resume'))
+      const project = seedProject(ctx, repoPath)
+      const feature = seedFeature(ctx, project.id, { slug: `${runtime}-resume` })
+      await createFeatureBranch(project, `${runtime}-resume`, 'main')
+      cleanup.push(worktreeDir(project.id, `${runtime}-resume`))
 
-    const first = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'chat' },
-      { spawn: false },
-    )
-    cleanup.push(sessionDir(first.sessionId))
-    // what the SessionStart hook does with `payload.session_id`, then teardown
-    markSessionLive(ctx, first.sessionId, { ccSessionId: 'codex-rollout-7' })
-    markSessionEnded(ctx, first.sessionId)
+      const first = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+      cleanup.push(sessionDir(first.sessionId))
+      // what the SessionStart hook does with `payload.session_id`, then teardown
+      markSessionLive(ctx, first.sessionId, { ccSessionId: 'hook-recorded-id' })
+      markSessionEnded(ctx, first.sessionId)
 
-    const second = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'chat' },
-      { spawn: false },
-    )
-    cleanup.push(sessionDir(second.sessionId))
+      const second = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+      expect(second.sessionId).toBe(first.sessionId)
 
-    const launched = listAfter(ctx, feature.id, 0)
-      .filter((e) => e.type === 'session.launched')
-      .at(-1)
-    expect(String((launched?.data as { command?: string }).command)).toContain(
-      'codex resume codex-rollout-7',
-    )
-  })
-
-  it('passes Claude exactly the conversation id recorded by SessionStart', async () => {
-    registerRuntimeAdapter({ ...claudeRuntime, checkReady: () => ({ ok: true }) })
-    useModel('claude-sonnet-5', 'claude-code')
-
-    const project = seedProject(ctx, repoPath)
-    const feature = seedFeature(ctx, project.id, { slug: 'claude-resume' })
-    await createFeatureBranch(project, 'claude-resume', 'main')
-    cleanup.push(worktreeDir(project.id, 'claude-resume'))
-
-    const first = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'chat' },
-      { spawn: false },
-    )
-    cleanup.push(sessionDir(first.sessionId))
-    markSessionLive(ctx, first.sessionId, { ccSessionId: 'hook-recorded-claude-id' })
-    markSessionEnded(ctx, first.sessionId)
-
-    const second = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'chat' },
-      { spawn: false },
-    )
-    cleanup.push(sessionDir(second.sessionId))
-
-    const launched = listAfter(ctx, feature.id, 0)
-      .filter((event) => event.type === 'session.launched')
-      .at(-1)
-    const command = String((launched?.data as { command?: string }).command)
-    expect(command).toContain('claude --resume hook-recorded-claude-id')
-  })
+      const fake = createFakeAcp()
+      const host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH })
+      await host.prompt(second.sessionId, { text: 'go on' }, { source: 'human' })
+      await vi.waitFor(() => expect(fake.last()?.received.some((r) => r.method === 'session/load')).toBe(true))
+      expect((fake.last().received.find((r) => r.method === 'session/load')?.params as { sessionId: string }).sessionId).toBe(
+        'hook-recorded-id',
+      )
+      await host.stopAll('shutdown')
+    })
+  }
 
   it('refuses a launch whose runtime is not ready, naming the doctor fix', async () => {
     registerRuntimeAdapter(
@@ -236,9 +206,10 @@ describe('runtime dispatch at launch', () => {
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'unwired' })
 
-    await expect(
-      launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),
-    ).rejects.toThrow(/no agent runtime is wired up for gemini/)
+    await expect(launchSession(ctx, { featureId: feature.id, kind: 'chat' })).rejects.toThrow(
+      /no agent runtime is wired up for gemini/,
+    )
+    expect(ctx.db.select().from(sessions).all()).toHaveLength(0)
   })
 
   it('stamps the resolved model and runtime on the session row and its event', async () => {
