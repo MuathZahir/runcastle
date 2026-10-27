@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
-import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView, UsageReport } from './chat-thread'
+import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
 import { useLivePoll } from './live'
 import { useToast } from './toast'
 
@@ -266,9 +266,12 @@ export function useThread({
   const onError = (e: { message: string }) => toast.push(e.message)
   const stopM = trpc.thread.stop.useMutation({ onError })
   const answerM = trpc.thread.answer.useMutation({ onError })
-  const editM = trpc.thread.edit.useMutation({ onError })
-  const branchM = trpc.thread.branch.useMutation({ onError })
-  const renameM = trpc.thread.rename.useMutation({ onError })
+  // The controls: a runtime that cannot rewind, branch or rename leaves the
+  // thread as it was, without a word.
+  const quiet = { onError: () => undefined }
+  const editM = trpc.thread.edit.useMutation(quiet)
+  const branchM = trpc.thread.branch.useMutation(quiet)
+  const renameM = trpc.thread.rename.useMutation(quiet)
 
   // ---- controls whose reads may be refused: each degrades to nothing ----
   const usageQ = trpc.thread.usage.useQuery({ threadId: id }, { enabled })
@@ -277,8 +280,6 @@ export function useThread({
 
   return {
     view,
-    /** Still waiting on the first read of a started thread. */
-    loading: enabled && !log && !viewQ.data && (viewQ.isLoading || eventsQ.isLoading),
     draft: text,
     setDraft,
     attachments: attachments as Attachment[],
@@ -297,7 +298,8 @@ export function useThread({
     effort,
     chooseModel: (next: string) => choose({ model: next }),
     chooseEffort: (next: Effort) => choose({ effort: next }),
-    usage: usageQ.data as UsageReport | undefined,
+    /** The account's limits and plan; none while that read is refused. */
+    usage: usageQ.data,
     /** The worktree's files matching the `@` being typed; none while that read is refused. */
     files: filesQ.data ?? [],
     edit: (promptId: string, next: string, undoFiles: boolean) => {

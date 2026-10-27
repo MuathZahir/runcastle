@@ -168,7 +168,6 @@ const talk = (over: Partial<ProjectTalkApi> = {}): ProjectTalkApi => ({
   start: vi.fn(),
   triage: vi.fn(),
   replace: vi.fn(),
-  resume: vi.fn(),
   begin: vi.fn(),
   starting: false,
   ...over,
@@ -438,7 +437,6 @@ describe('a finished project chat', () => {
     expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
     expect(screen.queryByRole('button', { name: /Resume|Reopen/ })).toBeNull()
-    expect(api.resume).not.toHaveBeenCalled()
   })
 
   it('steps back to the project page from its crumb', () => {

@@ -40,8 +40,6 @@ export interface ProjectTalkApi {
    * opens a triage chat rather than a plain one.
    */
   replace: (purpose?: ProjectTalkPurpose) => void
-  /** Reopen a specific past conversation; no-op while one is open. */
-  resume: (sessionId: string) => void
   /**
    * Start a fresh conversation for the first message of a new, empty thread
    * (chat-as-web-components decision 7); answers with its thread. The thread
@@ -116,9 +114,6 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
         replacing.current = purpose
         end.mutate({ sessionId: session.id })
       }
-    },
-    resume: (sessionId) => {
-      if (canLaunch()) launch.mutate({ projectId, resumeSessionId: sessionId })
     },
     begin: async () => {
       const res = await fresh.mutateAsync({ projectId, fresh: true })

@@ -200,7 +200,7 @@ export function ProjectWorkspace({
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   const switcher = inFront && (
     <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={() => create.mutate({ projectId })}>
-      {scenarioInFront && scenarioChat.listed && <ScenarioChatMenu chat={scenarioChat} />}
+      {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
     </ThreadSwitcher>
   )
 

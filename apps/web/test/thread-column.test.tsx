@@ -155,6 +155,19 @@ describe('ThreadColumn', () => {
     expect(toasts).toEqual([])
   })
 
+  it('sends edit and branch for the message they are on, and says nothing while they are refused', async () => {
+    const api = server(HISTORY)
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Lined up — it had its own margin.')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Branch into a new thread from here' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Edit and rewind to here' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rewind and send' }))
+    await waitFor(() => expect(api.inputs('thread.edit')).toEqual([{ threadId: 'th1', promptId: 'p1', text: 'Make the export button line up', undoFiles: true }]))
+    // Branching from the answer branches from the message it answered.
+    expect(api.inputs('thread.branch')).toEqual([{ threadId: 'th1', promptId: 'p1' }])
+    expect(toasts).toEqual([])
+  })
+
   it('takes a crop waiting in its inbox as an image chip and focuses the composer', async () => {
     const api = server(HISTORY)
     URL.createObjectURL = vi.fn(() => 'blob:crop')
