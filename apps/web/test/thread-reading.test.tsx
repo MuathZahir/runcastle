@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ThreadItem, ToolCall } from '../src/lib/chat-thread'
+import type { ThreadEntry, ThreadItem, ToolCall } from '../src/lib/chat-thread'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { PlanStrip } from '../src/components/chat/thread/ComposerParts'
 import { ChangesCard, WorkBlock } from '../src/components/chat/thread/Work'
+import { ThreadSwitcher } from '../src/components/chat/thread/ThreadSwitcher'
+import { openMenu } from './floating'
 
 /**
  * What the human reads in a thread (chat-as-web-components ticket 17): no
@@ -71,6 +73,22 @@ describe('the background strip', () => {
     expect(screen.getByText('running 0s')).toBeTruthy()
     act(() => vi.advanceTimersByTime(45_000))
     expect(screen.getByText('running 45s')).toBeTruthy()
+  })
+})
+
+describe('the header thread list', () => {
+  it('marks each thread working, waiting or idle as the project page list does', () => {
+    const at = Date.now()
+    const entry = (id: string, state: ThreadEntry['state']): ThreadEntry => ({ id, title: `Thread ${id}`, role: 'project', state, updatedAt: at, runtime: 'claude-code' })
+    render(<ThreadSwitcher threads={[entry('a', 'working'), entry('b', 'waiting'), entry('c', 'idle')]} current="c" onPick={() => {}} onNew={() => {}} now={at} />)
+    openMenu(screen.getByRole('button', { name: 'Thread' }))
+    const row = (id: string) => screen.getByRole('menuitemradio', { name: new RegExp(`Thread ${id}`) })
+    expect(row('a').textContent).toContain('working')
+    expect(row('a').querySelector('[data-progress]')).not.toBeNull()
+    expect(row('b').textContent).toContain('waiting for you')
+    expect(row('b').innerHTML).toContain('bg-warning')
+    expect(row('c').textContent).toContain('now')
+    expect(row('c').querySelector('[data-progress]')).toBeNull()
   })
 })
 

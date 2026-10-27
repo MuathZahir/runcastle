@@ -29,6 +29,7 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'Project' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },
+    thread: { list: { useQuery: () => ({ data: [] }) } },
   },
 }))
 
@@ -64,7 +65,6 @@ describe('Sidebar delete navigation', () => {
           nav={nav}
           view="feature"
           selectedFeatureId="feat_deleted"
-          talk={{ state: 'none' } as never}
           onSelect={onSelect}
           onSelectProject={onSelectProject}
           onNewChat={() => {}}

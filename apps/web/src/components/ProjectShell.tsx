@@ -319,7 +319,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             nav={nav}
             view={view}
             selectedFeatureId={ws.selectedFeatureId}
-            talk={talk}
             onSelect={openFeature}
             onSelectProject={ws.selectProject}
             onNewChat={newChat}

@@ -32,6 +32,7 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'runcastle' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: count.value }) } },
+    thread: { list: { useQuery: () => ({ data: [] }) } },
   },
 }))
 
@@ -60,7 +61,6 @@ function rail() {
         nav={nav}
         view="feature"
         selectedFeatureId={null}
-        talk={{ state: 'none' } as never}
         onSelect={() => {}}
         onSelectProject={() => {}}
         onNewChat={() => {}}

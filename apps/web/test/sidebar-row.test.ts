@@ -192,8 +192,8 @@ describe('the Orchestrator card', () => {
   const card = (waiting: boolean) =>
     renderToStaticMarkup(
       createElement(OrchestratorCard, {
-        status: 'Waiting on you · 2 notes',
-        waiting,
+        status: 'Waiting for you · 2 notes',
+        state: waiting ? 'waiting' : 'idle',
         active: false,
         onOpen: () => undefined,
         actions: [],
@@ -202,7 +202,7 @@ describe('the Orchestrator card', () => {
 
   it('names itself and says what it holds', () => {
     expect(card(false)).toContain('Orchestrator')
-    expect(card(false)).toContain('Waiting on you · 2 notes')
+    expect(card(false)).toContain('Waiting for you · 2 notes')
   })
 
   it('dots amber only while the chat waits on you', () => {
