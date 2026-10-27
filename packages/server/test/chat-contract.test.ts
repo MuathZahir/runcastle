@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { newId, type Feature } from '@runcastle/core'
@@ -10,11 +10,11 @@ import type { AppCtx } from '../src/db/types'
 import { chatKickoffHeader, launchSession } from '../src/launcher/launcher'
 import { runs } from '../src/db/schema'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
-import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 
 describe('chat contract', () => {
   it('registers the settled union toolset', () => {
@@ -142,25 +142,21 @@ describe('every chat opens on the feature skill', () => {
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
-    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
-    return {
-      prompt: readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8'),
-      command: String((launched?.data as { command?: string }).command),
-    }
+    return { prompt: await briefOf(ctx, sessionId), kickoff: kickoffOf(sessionId), launch: await acpLaunchOf(ctx, sessionId) }
   }
 
   it('briefs and kicks off a fresh feature and a grilled one alike, on the feature skill', async () => {
     for (const [slug, docs] of [['fresh-chat', []], ['grilled-chat', ['decisions.md', 'spec.md']]] as const) {
       const feature = await planningFeature(slug, [...docs])
 
-      const { prompt, command } = await chatBriefing(feature)
+      const { prompt, kickoff, launch } = await chatBriefing(feature)
 
       expect(prompt).toContain('Invoke the `/runcastle:feature` skill')
       expect(prompt).not.toMatch(/runcastle:(ideate|revisit|lead)/)
-      expect(command).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
-      expect(command).toContain('Feature status: Talking with you;')
+      expect(kickoff).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
+      expect(kickoff).toContain('Feature status: Talking with you;')
       // every chat on a feature runs without permission prompts
-      expect(command).toContain('--permission-mode bypassPermissions')
+      expect(launch.sessionMode).toBe('bypassPermissions')
     }
   })
 })
