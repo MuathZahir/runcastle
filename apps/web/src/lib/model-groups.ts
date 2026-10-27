@@ -9,7 +9,7 @@ import type { ModelChoice } from './chat-thread'
  */
 
 export interface ModelGroup {
-  /** "Opus", "Sonnet"; "GPT", "GPT Mini" on Codex. */
+  /** "Opus", "Sonnet"; "GPT-5" on Codex. */
   family: string
   /** The family's newest version (each of its variants, a 1M one beside it). */
   latest: ModelChoice[]
@@ -22,15 +22,17 @@ const FAMILY_ORDER = ['Fable', 'Opus', 'Sonnet', 'Haiku']
 
 const VERSION = /^\d+(?:\.\d+)*$/
 
-/** A label's family and version: "Opus 4.8" → Opus, [4, 8]; "5.6 Sol" → GPT Sol, [5, 6]. */
+/**
+ * A label's family and version: "Opus 4.8" → Opus, [4, 8]. Codex names its
+ * models by version alone ("5.6 Sol", "5.5 Mini"), so a GPT generation is the
+ * family: "5.6 Sol" → GPT-5, [5, 6].
+ */
 export function modelFamily(label: string): { family: string; version: number[] } {
   const words = label.split(/\s+/).filter(Boolean)
   const at = words.findIndex((w) => VERSION.test(w))
   if (at < 0) return { family: words[0] ?? label, version: [] }
   const version = words[at].split('.').map(Number)
-  if (at > 0) return { family: words.slice(0, at).join(' '), version }
-  const rest = words.slice(at + 1).filter((w) => !w.startsWith('('))
-  return { family: ['GPT', ...rest].join(' '), version }
+  return { family: at > 0 ? words.slice(0, at).join(' ') : `GPT-${version[0]}`, version }
 }
 
 /** Newer first. */

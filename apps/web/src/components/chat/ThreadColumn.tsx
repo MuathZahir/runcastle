@@ -37,7 +37,7 @@ export function ThreadColumn({
   children,
 }: {
   threadId: string | null
-  /** The thread's runtime; else the one its models say. */
+  /** The thread's runtime, until its models (which know it, unstarted or not) say. */
   runtime?: ThreadEntry['runtime']
   start?: () => Promise<string>
   /** Where `start` starts it, so the model controls show before the first message. */
@@ -62,7 +62,7 @@ export function ThreadColumn({
   const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}) })
   const root = useRef<HTMLElement>(null)
   const { view } = t
-  const onRuntime = runtime ?? t.runtime ?? 'claude-code'
+  const onRuntime = t.runtime ?? runtime ?? 'claude-code'
 
   // A crop from the design pane: its images join the next message, and the
   // composer takes focus so the human writes it there.

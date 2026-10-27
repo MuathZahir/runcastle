@@ -92,20 +92,31 @@ describe('the model picker', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
-  it('groups Codex models by their GPT family', () => {
+  it('groups Codex models by GPT generation, the newest version’s variants in view', () => {
     controls({
       runtime: 'codex',
       model: 'gpt-5.5',
       models: [
+        { id: 'gpt-5.4', label: '5.4' },
         { id: 'gpt-5.5', label: '5.5' },
         { id: 'gpt-5.5-mini', label: '5.5 Mini' },
-        { id: 'gpt-5.4', label: '5.4' },
+        { id: 'gpt-5.3-codex', label: '5.3 Codex' },
       ],
     })
     openPicker()
-    expect(screen.getAllByRole('group').map((g) => within(g).getAllByRole('option').map((o) => o.textContent))).toEqual([['5.5'], ['5.5 Mini']])
-    expect(screen.getByText('GPT Mini')).toBeTruthy()
-    expect(screen.getByRole('option', { name: /Older models/ })).toBeTruthy()
+    const group = screen.getByRole('group', { name: 'GPT-5' })
+    expect(within(group).getAllByRole('option').map((o) => o.textContent)).toEqual(['5.5', '5.5 Mini'])
+    fireEvent.click(screen.getByRole('option', { name: /Older models/ }))
+    expect(within(screen.getByRole('group', { name: 'Older models' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['5.4', '5.3 Codex'])
+  })
+
+  it('keeps the search focused when the older models unfold', () => {
+    controls()
+    openPicker()
+    const search = screen.getByLabelText('Search models')
+    search.focus()
+    fireEvent.mouseDown(screen.getByRole('option', { name: /Older models/ }))
+    expect(document.activeElement).toBe(search)
   })
 })
 
