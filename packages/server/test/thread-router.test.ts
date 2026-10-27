@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ThreadEvent } from '@runcastle/core'
+import type { ThreadEvent, ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { readThreadEvents, type AgentHost } from '../src/threads/types'
+import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
@@ -145,6 +145,37 @@ describe('thread router', () => {
     expect(list[0]).toMatchObject({ title: 'Fix the login page', state: 'idle', runtime: 'claude-code' })
     expect(list[0]).not.toHaveProperty('readOnlyTranscript')
     expect(await caller.thread.list({ projectId })).toEqual([])
+  })
+
+  // decision 14: a thread is named by what it is about, never by its kind.
+  it('names each thread by its rename, its generated title, its first message, or New chat', async () => {
+    const thread = (log: ThreadEventBody[]): string => {
+      const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+      for (const body of log) appendThreadEvent(row.id, body)
+      return row.id
+    }
+    const briefing: ThreadEventBody = { type: 'prompt', id: 'k', text: 'You are the project session…', source: 'runcastle' }
+    const empty = thread([])
+    const firstMessage = thread([
+      briefing,
+      { type: 'title', title: 'Runcastle project session' },
+      { type: 'prompt', id: 'p', text: 'A notes  inbox\nfor the project', source: 'human' },
+    ])
+    const generated = thread([
+      briefing,
+      { type: 'prompt', id: 'p', text: 'add dark mode', source: 'human' },
+      { type: 'title', title: 'Dark mode for the app' },
+    ])
+    const renamed = thread([{ type: 'prompt', id: 'p', text: 'whatever', source: 'human' }])
+    await caller.thread.rename({ threadId: renamed, title: 'Journal audit' })
+
+    const names = Object.fromEntries((await caller.thread.list({ projectId })).map((t) => [t.id, t.title]))
+    expect(names).toEqual({
+      [empty]: 'New chat',
+      [firstMessage]: 'A notes inbox for the project',
+      [generated]: 'Dark mode for the app',
+      [renamed]: 'Journal audit',
+    })
   })
 
   it('reads a terminal-era conversation back from its transcript, listed once with readOnlyTranscript', async () => {
