@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
 import { promptIdFor, useThread } from '../../lib/use-thread'
-import { ApprovalDock, QuestionDock } from './thread/AskDock'
+import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
 import { Composer } from './thread/Composer'
 import { ContextMeter, ModelPicker, PlanStrip } from './thread/ComposerParts'
@@ -75,6 +75,7 @@ export function ThreadColumn({
   }, [inbox, attach])
 
   const ask = view.ask
+  const decline = () => ask && t.answer(ask, { kind: 'decline' })
   const footer = ask ? (
     ask.kind === 'approval' ? (
       <ApprovalDock
@@ -82,8 +83,26 @@ export function ThreadColumn({
         call={ask.call}
         onAnswer={(choice, instead) => t.answer(ask, { kind: 'approval', choice, ...(instead ? { instead } : {}) })}
       />
-    ) : (
+    ) : ask.kind === 'question' ? (
       <QuestionDock key={ask.id} questions={ask.questions} onAnswer={(answers) => t.answer(ask, { kind: 'question', answers })} />
+    ) : ask.kind === 'form' ? (
+      <FormDock
+        key={ask.id}
+        {...(ask.server ? { server: ask.server } : {})}
+        message={ask.message}
+        fields={ask.fields}
+        onSubmit={(values) => t.answer(ask, { kind: 'form', values })}
+        onDecline={decline}
+      />
+    ) : (
+      <LinkDock
+        key={ask.id}
+        {...(ask.server ? { server: ask.server } : {})}
+        message={ask.message}
+        url={ask.url}
+        onDone={() => t.answer(ask, { kind: 'link', done: true })}
+        onDecline={decline}
+      />
     )
   ) : (
     <Composer
@@ -110,6 +129,7 @@ export function ThreadColumn({
             effort={t.effort}
             onModel={t.chooseModel}
             onEffort={t.chooseEffort}
+            {...(t.fastOffered ? { fast: t.fast, onFast: t.chooseFast } : {})}
           />
         )
       }
@@ -144,7 +164,7 @@ export function ThreadColumn({
                       context={view.context}
                       limits={t.usage?.limits ?? []}
                       {...(t.usage?.plan ? { plan: t.usage.plan } : {})}
-                      onCompact={() => void t.send('/compact')}
+                      onCompact={t.compact}
                     />
                   )}
                 </div>

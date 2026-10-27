@@ -46,6 +46,7 @@ import {
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { useThreadMenu } from '../lib/use-thread'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -287,6 +288,8 @@ export function Workspace({
     sessions: q.data?.sessions ?? [],
     driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
+  // The switcher's Rename and Export, for a thread in front that has begun.
+  const threadMenu = useThreadMenu(column.inFront)
 
   // Settles once the refetches land, for a mutation that must stay pending
   // until the page shows what it caused.
@@ -932,7 +935,13 @@ export function Workspace({
             )}
             {!isDraft && (
               <span className="mr-1 flex min-w-0">
-                <ThreadSwitcher threads={column.threads} current={column.current} onPick={column.pick} onNew={column.newThread}>
+                <ThreadSwitcher
+                  threads={column.threads}
+                  current={column.current}
+                  onPick={column.pick}
+                  onNew={column.newThread}
+                  {...threadMenu}
+                >
                   {column.scenario.listed && column.inFront === column.scenario.sessionId && (
                     <ScenarioChatMenu chat={column.scenario} />
                   )}

@@ -10,6 +10,7 @@ import { Button, Page, PageHeader, PageTopbar } from '../ui'
 import { scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { conversationTitle } from '../lib/conversation-title'
 import { useToast } from '../lib/toast'
+import { useThreadMenu } from '../lib/use-thread'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn } from './chat/ThreadColumn'
@@ -131,6 +132,8 @@ export function ProjectWorkspace({
       : [],
   )
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
+  // A new chat has no thread to rename or export until its first message.
+  const threadMenu = useThreadMenu(inFront === NEW_CHAT ? null : inFront)
   const create = trpc.thread.new.useMutation({
     onSuccess: ({ threadId }) => {
       setFront(threadId)
@@ -203,7 +206,7 @@ export function ProjectWorkspace({
   // The switcher's menu speaks for the chat in front: the scenario chat's close.
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   const switcher = inFront && (
-    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={() => create.mutate({ projectId })}>
+    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={() => create.mutate({ projectId })} {...threadMenu}>
       {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
     </ThreadSwitcher>
   )

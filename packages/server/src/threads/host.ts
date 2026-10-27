@@ -62,6 +62,7 @@ import {
   toolDiffs,
   type ToolDiff,
 } from './acp-map'
+import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
@@ -191,8 +192,18 @@ function inRfdForm(stream: acp.Stream): acp.Stream {
 /** The adapter's steering extension (`InitializeResponse._meta.steering`). */
 const STEER_METHOD = '_session/steering'
 
+/**
+ * The compaction command. Both adapters take it as a prompt: claude-agent-acp
+ * hands it to Claude Code as its slash command, codex-acp runs it as its own
+ * `compact` command (`thread/compact/start`).
+ */
+const COMPACT_COMMAND = '/compact'
+
 /** What a self-planning run's asks are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
+
+/** Each ask's kind, said in a refused answer's error. */
+const ASK_NOUN: Record<Ask['kind'], string> = { approval: 'an approval', question: 'a question', form: 'a form', link: 'a link' }
 
 /** The adapter as a child process speaking ACP on its stdio. */
 export const spawnAdapter: AgentTransport = (spec, row) => {
@@ -223,6 +234,8 @@ interface Queued {
   images?: Attachment[]
   blocks: acp.ContentBlock[]
   source: PromptOptions['source']
+  /** A command (Compact now): logged so the fold knows a turn is coming, never shown as a message. */
+  hidden?: boolean
   /** Already in the log (a human's words show at once); runcastle's are logged when sent. */
   logged: boolean
 }
@@ -239,7 +252,12 @@ interface Thread {
   /** The running turn, with the file changes its tool calls reported, by call. */
   turn: { diffs: Map<string, ToolDiff[]> } | null
   queue: Queued[]
-  ask?: { ask: Ask; settle: (answer: AskAnswer | 'cancelled') => void }
+  ask?: {
+    ask: Ask
+    settle: (answer: AskAnswer | 'cancelled') => void
+    /** A link ask's elicitation, which the agent may report finished on its own (`elicitation/complete`). */
+    elicitationId?: string
+  }
   idle?: ReturnType<typeof setTimeout>
   map: (update: acp.SessionUpdate, from?: string) => ThreadEventBody[]
   /** The background commands the agent runs now, as last logged. */
@@ -343,11 +361,18 @@ class Host implements AgentHost {
     const t = this.threads.get(threadId)
     const open = t?.ask
     if (!t || !open || open.ask.id !== askId) throw new GateError(`ask ${askId} is not open on this thread`)
-    if (open.ask.kind !== answer.kind) throw new GateError(`ask ${askId} is ${open.ask.kind === 'approval' ? 'an approval' : 'a question'}`)
+    const declinable = open.ask.kind === 'form' || open.ask.kind === 'link'
+    if (open.ask.kind !== answer.kind && !(answer.kind === 'decline' && declinable)) throw new GateError(`ask ${askId} is ${ASK_NOUN[open.ask.kind]}`)
     let lines: Extract<ThreadEventBody, { type: 'ask_resolved' }>['lines']
     if (open.ask.kind === 'approval' && answer.kind === 'approval') {
       const what = { allow: 'Allowed', always: 'Always allowed', deny: 'Denied' }[answer.choice]
       lines = [{ what, answer: open.ask.call.title, ...(answer.choice === 'deny' ? { denied: true } : {}) }]
+    } else if ((open.ask.kind === 'form' || open.ask.kind === 'link') && answer.kind === 'decline') {
+      lines = [{ what: 'Declined', answer: open.ask.message, denied: true }]
+    } else if (open.ask.kind === 'form' && answer.kind === 'form') {
+      lines = formLines(open.ask, answer.values)
+    } else if (open.ask.kind === 'link') {
+      lines = [{ what: 'Done', answer: open.ask.message }]
     } else {
       const answers = answer.kind === 'question' ? answer.answers : {}
       lines = open.ask.kind === 'question' ? open.ask.questions.map((q) => ({ what: `${q.header}:`, answer: answers[q.question] ?? '' })) : []
@@ -360,6 +385,22 @@ class Host implements AgentHost {
       this.logPrompt(t.id, item)
       this.enqueue(t, item)
     }
+  }
+
+  async compact(threadId: string): Promise<void> {
+    const row = this.row(threadId)
+    const t = this.threads.get(threadId)
+    if (t?.turn || t?.ask || t?.queue.length) throw new GateError('the agent is working: compact once its turn ends')
+    const item: Queued = {
+      id: newId('prompt'),
+      text: COMPACT_COMMAND,
+      blocks: [{ type: 'text', text: COMPACT_COMMAND }],
+      source: 'runcastle',
+      hidden: true,
+      logged: false,
+    }
+    this.logPrompt(threadId, item)
+    this.enqueue(t ?? this.start(row, 'runcastle'), item)
   }
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
@@ -573,6 +614,7 @@ class Host implements AgentHost {
       .onNotification(CLAUDE_SDK_MESSAGE_METHOD, (raw: unknown) => raw as { message?: unknown }, ({ params }) => this.onSdkMessage(t, params.message))
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.onPermission(t, params))
       .onRequest(acp.methods.client.elicitation.create, ({ params }) => this.onElicitation(t, params))
+      .onNotification(acp.methods.client.elicitation.complete, ({ params }) => this.onElicitationComplete(t, params.elicitationId))
       .onNotification(AUTH_STATUS_METHOD, (raw: unknown) => raw as { authStatus?: unknown }, ({ params }) => {
         if (params.authStatus !== undefined) this.authStatus.set(row.runtime ?? DEFAULT_RUNTIME, params.authStatus)
       })
@@ -581,8 +623,15 @@ class Host implements AgentHost {
     const init = await conn.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // The agent uses its own tools on its own disk; runcastle is not an editor.
+      // `session.compaction` asks both adapters for `compaction_update`, the thread's "Conversation compacted".
       // Subagents run as child sessions the thread nests under their rows.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} }, subagents: {} },
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+        elicitation: { form: {}, url: {} },
+        session: { compaction: {} },
+        subagents: {},
+      },
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
@@ -697,6 +746,7 @@ class Host implements AgentHost {
       ...(item.images ? { images: item.images } : {}),
       source: item.source,
       ...(steered ? { steered: true } : {}),
+      ...(item.hidden ? { hidden: true } : {}),
     })
     item.logged = true
   }
@@ -723,10 +773,12 @@ class Host implements AgentHost {
     appendThreadEvent(t.id, { type: 'turn_started' })
     // The opening rides after the prompt's own words, so a human's message
     // still reads as the human's (the UserPromptSubmit hook looks at its start).
+    // A command is never given it: the opening would become the command's argument.
     const [first, ...rest] = item.blocks
+    const opening = item.hidden ? undefined : t.opening
     const prompt: acp.ContentBlock[] =
-      t.opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${t.opening}` }, ...rest] : item.blocks
-    t.opening = undefined
+      opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${opening}` }, ...rest] : item.blocks
+    if (!item.hidden) t.opening = undefined
     let end: Extract<ThreadEventBody, { type: 'turn_ended' }>
     try {
       const res = await t.conn!.agent.request(acp.methods.agent.session.prompt, { sessionId: t.sessionId!, prompt })
@@ -822,16 +874,38 @@ class Host implements AgentHost {
   }
 
   private async onElicitation(t: Thread, req: acp.CreateElicitationRequest): Promise<acp.CreateElicitationResponse> {
-    const questions = elicitationQuestions(req)
-    // Only AskUserQuestion has a place in the thread; other forms get the SDK's own default.
-    if (!questions) return { action: 'decline' }
     if (this.unattended(t)) {
       appendThreadEvent(t.id, { type: 'ask_resolved', id: newId('ask'), lines: [UNATTENDED_LINE] })
       return { action: 'decline' }
     }
-    const answer = await this.openAsk(t, { kind: 'question', id: newId('ask'), questions })
-    if (answer === 'cancelled' || answer.kind !== 'question') return { action: 'cancel' }
-    return elicitationAnswer(questions, answer.answers)
+    const questions = elicitationQuestions(req)
+    if (questions) {
+      const answer = await this.openAsk(t, { kind: 'question', id: newId('ask'), questions })
+      if (answer === 'cancelled' || answer.kind !== 'question') return { action: 'cancel' }
+      return elicitationAnswer(questions, answer.answers)
+    }
+    // An MCP server's own form or link.
+    const ask = elicitationAsk(req, newId('ask'))
+    if ('unsupported' in ask) {
+      appendThreadEvent(t.id, { type: 'ask_resolved', id: newId('ask'), lines: [unsupportedLine(req, ask.unsupported)] })
+      return { action: 'decline' }
+    }
+    const pending = this.openAsk(t, ask)
+    if (t.ask && ask.kind === 'link') t.ask.elicitationId = (req as acp.ElicitationUrlMode).elicitationId
+    const answer = await pending
+    if (answer === 'cancelled') return { action: 'cancel' }
+    if (answer.kind === 'form' && ask.kind === 'form') return { action: 'accept', content: formContent(ask, answer.values) }
+    if (answer.kind === 'link') return { action: 'accept' }
+    return { action: 'decline' }
+  }
+
+  /** The page a link ask opened was finished on the server's side (a sign-in completed): the dock goes. */
+  private onElicitationComplete(t: Thread, elicitationId: string): void {
+    const open = t.ask
+    if (open?.ask.kind !== 'link' || open.elicitationId !== elicitationId) return
+    appendThreadEvent(t.id, { type: 'ask_resolved', id: open.ask.id, lines: [{ what: 'Done', answer: open.ask.message }] })
+    markAgentWorking(this.ctx, t.id)
+    this.settleAsk(t, { kind: 'link', done: true })
   }
 
   /** Log the ask, tell the sidebar the agent waits, and hold until it is answered or withdrawn. */

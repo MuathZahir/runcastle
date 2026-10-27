@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEvent } from '@runcastle/core'
 import { fakeTrpc } from './fake-trpc'
+import { openMenu } from './floating'
 
 /**
  * The chat column for one thread (chat-as-web-components decisions 7, 8): the
@@ -141,6 +142,78 @@ describe('ThreadColumn', () => {
     expect(screen.queryByRole('button', { name: 'Stop this command' })).toBeNull()
   })
 
+  const asking = (ask: Extract<ThreadEvent, { type: 'ask' }>['ask']): ThreadEvent[] => [
+    ...HISTORY,
+    prompt(4, 'p2', 'File the bug in Linear'),
+    { i: 5, at, type: 'turn_started' },
+    { i: 6, at, type: 'ask', ask },
+  ]
+  const FORM = {
+    kind: 'form' as const,
+    id: 'ask2',
+    server: 'linear',
+    message: 'Where should the issue go?',
+    fields: [
+      { key: 'team', type: 'enum' as const, title: 'Team', options: [{ value: 'eng', label: 'Engineering' }, { value: 'ops', label: 'Operations' }] },
+      { key: 'email', type: 'string' as const, title: 'Reporter', format: 'email' as const, required: true },
+      { key: 'points', type: 'number' as const, title: 'Points', integer: true, default: 3 },
+      { key: 'urgent', type: 'boolean' as const, title: 'Urgent' },
+    ],
+  }
+
+  it('docks an MCP server’s form with its fields, holds a missing required field, and submits its values', async () => {
+    const api = server(asking(FORM))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Where should the issue go?')
+    expect(screen.getByText('linear asks')).toBeTruthy()
+    expect(screen.queryByLabelText('Message')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Required')
+    expect(api.inputs('thread.answer')).toEqual([])
+
+    fireEvent.click(screen.getByRole('radio', { name: /Operations/ }))
+    fireEvent.change(screen.getByLabelText(/Reporter/), { target: { value: 'sam@example.com' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Urgent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    await waitFor(() =>
+      expect(api.inputs('thread.answer')).toEqual([
+        { threadId: 'th1', askId: 'ask2', answer: { kind: 'form', values: { team: 'ops', email: 'sam@example.com', points: 3, urgent: true } } },
+      ]),
+    )
+  })
+
+  it('declines an MCP server’s form on Decline, and on Esc', async () => {
+    const api = server(asking(FORM))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Where should the issue go?')
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }))
+    fireEvent.keyDown(screen.getByRole('form', { name: 'An MCP server asks' }), { key: 'Escape' })
+    await waitFor(() => expect(api.inputs('thread.answer')).toHaveLength(2))
+    expect(api.inputs('thread.answer')).toEqual([
+      { threadId: 'th1', askId: 'ask2', answer: { kind: 'decline' } },
+      { threadId: 'th1', askId: 'ask2', answer: { kind: 'decline' } },
+    ])
+  })
+
+  it('docks an MCP server’s link to open, with Done and Decline', async () => {
+    const api = server(asking({ kind: 'link', id: 'ask3', message: 'Sign in to Linear', url: 'https://linear.app/oauth?x=1' }))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Sign in to Linear')
+    expect(screen.getByText('An MCP server asks')).toBeTruthy()
+    const link = screen.getByRole('link', { name: /linear\.app\/oauth/ })
+    expect(link.getAttribute('href')).toBe('https://linear.app/oauth?x=1')
+    expect(link.getAttribute('target')).toBe('_blank')
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.keyDown(screen.getByRole('group', { name: 'An MCP server asks' }), { key: 'Escape' })
+    await waitFor(() =>
+      expect(api.inputs('thread.answer')).toEqual([
+        { threadId: 'th1', askId: 'ask3', answer: { kind: 'link', done: true } },
+        { threadId: 'th1', askId: 'ask3', answer: { kind: 'decline' } },
+      ]),
+    )
+  })
+
   it('keeps each thread’s draft, and ↑ brings back the last message', async () => {
     const api = server(HISTORY)
     const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
@@ -168,6 +241,59 @@ describe('ThreadColumn', () => {
     await waitFor(() => expect(api.inputs('thread.files')).toHaveLength(1))
     expect(screen.queryByRole('listbox', { name: 'Files' })).toBeNull()
     expect(toasts).toEqual([])
+  })
+
+  const ON_SONNET: ThreadEvent[] = [
+    { i: 0, at, type: 'model', model: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+    { i: 1, at, type: 'usage', context: { used: 40_000, size: 200_000 } },
+    ...HISTORY.map((e) => ({ ...e, i: e.i + 2 })),
+  ]
+
+  it('offers a Fast mode row only where the model the thread runs on has it, and sends fast with the next message', async () => {
+    const plain = server(ON_SONNET, { 'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
+    const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: plain.Wrapper })
+    await waitFor(() => expect(plain.inputs('thread.models')).toHaveLength(1))
+    openMenu(await screen.findByRole('button', { name: 'Model' }))
+    expect(screen.getByRole('menuitemradio', { name: /Sonnet 5.5/ })).toBeTruthy()
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'Fast mode' })).toBeNull()
+    unmount()
+
+    const api = server(ON_SONNET, {
+      'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', fast: true }],
+      'thread.setModel': () => ({ ok: true }),
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(api.inputs('thread.models')).toHaveLength(1))
+    openMenu(await screen.findByRole('button', { name: 'Model' }))
+    const row = await screen.findByRole('menuitemcheckbox', { name: 'Fast mode' })
+    expect(row.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(row)
+    await waitFor(() => expect(api.inputs('thread.setModel')).toEqual([{ threadId: 'th1', model: 'claude-sonnet-5-5', fast: true }]))
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Quickly now' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th1', text: 'Quickly now', fast: true }]))
+  })
+
+  it('compacts through thread.compact from the context meter, with no message of the human’s', async () => {
+    const api = server(ON_SONNET, { 'thread.compact': () => ({ ok: true }) })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    fireEvent.click(await screen.findByRole('button', { name: 'Context 20% used' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Compact now' }))
+    await waitFor(() => expect(api.inputs('thread.compact')).toEqual([{ threadId: 'th1' }]))
+    expect(api.inputs('thread.send')).toEqual([])
+    expect(screen.queryByText('/compact')).toBeNull()
+  })
+
+  it('says why Compact is refused while the agent works', async () => {
+    const api = server(ON_SONNET, {
+      'thread.compact': () => {
+        throw new Error('the agent is working: compact once its turn ends')
+      },
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    fireEvent.click(await screen.findByRole('button', { name: 'Context 20% used' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Compact now' }))
+    await waitFor(() => expect(toasts).toEqual(['the agent is working: compact once its turn ends']))
   })
 
   it('sends edit and branch for the message they are on, and says nothing while they are refused', async () => {

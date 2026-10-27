@@ -105,7 +105,7 @@ describe('model, effort and fast mode', () => {
     const id = chat()
     await converse(id, 'Hello')
     expect(await caller.thread.models({ threadId: id })).toEqual([
-      { id: 'claude-opus-5-5', label: 'Opus 5.5' },
+      { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true },
       { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
     ])
     expect(await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5-5', effort: 'max', fast: true })).toEqual({ ok: true })
@@ -173,7 +173,85 @@ describe('model, effort and fast mode', () => {
     const id = chat()
     const models = await caller.thread.models({ threadId: id })
     expect(models.length).toBeGreaterThan(0)
+    expect(models.some((m) => m.fast)).toBe(false)
     expect(fake.processes).toHaveLength(0)
+  })
+
+  it('says fast mode is offered on the model the session runs on only when the runtime offers it', async () => {
+    setup({ model: { id: 'gpt-5.5', label: '5.5' }, models: [{ id: 'gpt-5.5-mini', label: '5.5 Mini' }], options: 'codex' })
+    const codex = chat({ runtime: 'codex' })
+    await converse(codex, 'Hello')
+    expect(await caller.thread.models({ threadId: codex })).toEqual([
+      { id: 'gpt-5.5', label: '5.5', fast: true },
+      { id: 'gpt-5.5-mini', label: '5.5 Mini' },
+    ])
+    setup({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
+    const plain = chat()
+    await converse(plain, 'Hello')
+    expect((await caller.thread.models({ threadId: plain })).some((m) => m.fast)).toBe(false)
+  })
+})
+
+describe('compact', () => {
+  /** A turn that compacts on the compaction command the way both adapters report it, and answers anything else. */
+  function compactOnCommand(): void {
+    fake.script.turn = async (t) => {
+      const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
+      if (said !== '/compact') return void (await t.say('Done.'))
+      await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp1', status: 'in_progress' } as never)
+      await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp1', status: 'completed' } as never)
+    }
+  }
+
+  for (const runtime of ['claude-code', 'codex'] as const) {
+    it(`sends ${runtime}'s compaction command with no message of the human's, and shows the divider`, async () => {
+      setup()
+      compactOnCommand()
+      const id = chat({ runtime })
+      await converse(id, 'Hello')
+      expect(await caller.thread.compact({ threadId: id })).toEqual({ ok: true })
+      const events = await logUntil(id, turnsEnded(2))
+      expect(received('session/prompt').at(-1)).toMatchObject({ prompt: [{ type: 'text', text: '/compact' }] })
+      expect(events.find((e) => e.type === 'prompt' && e.text === '/compact')).toMatchObject({ source: 'runcastle', hidden: true })
+      const view = foldThread(events)
+      expect(view.items.map((i) => (i.kind === 'user' ? `user:${i.text}` : i.kind))).toEqual(['user:Hello', 'agent', 'compacted'])
+      expect(view.state).toBe('idle')
+      // Both adapters send `compaction_update` only to a client that says it takes them.
+      expect(received('initialize')[0]).toMatchObject({ clientCapabilities: { session: { compaction: {} } } })
+    })
+  }
+
+  it('starts a stopped agent to compact; the resumed chat’s opening waits for the next message rather than riding on the command', async () => {
+    setup()
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: { opening: () => '[state]' } })
+    setAgentHostForTests(host)
+    compactOnCommand()
+    const id = chat()
+    await caller.thread.compact({ threadId: id })
+    await logUntil(id, turnsEnded(1))
+    await caller.thread.send({ threadId: id, text: 'Hello' })
+    await logUntil(id, turnsEnded(2))
+    expect(fake.processes).toHaveLength(1)
+    expect(received('session/prompt').map((p) => p.prompt)).toEqual([
+      [{ type: 'text', text: '/compact' }],
+      [{ type: 'text', text: 'Hello\n\n[state]' }],
+    ])
+  })
+
+  it('is refused while a turn runs', async () => {
+    setup()
+    const id = chat()
+    let finish = () => {}
+    fake.script.turn = async (t) => {
+      await t.say('Working')
+      await new Promise<void>((r) => (finish = r))
+    }
+    await caller.thread.send({ threadId: id, text: 'Long job' })
+    await logUntil(id, (events) => events.some((e) => e.type === 'agent_text'))
+    await expect(caller.thread.compact({ threadId: id })).rejects.toThrow(/working/)
+    finish()
+    await logUntil(id, turnsEnded(1))
+    expect(received('session/prompt')).toHaveLength(1)
   })
 })
 

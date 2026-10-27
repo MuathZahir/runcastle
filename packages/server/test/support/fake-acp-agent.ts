@@ -41,6 +41,10 @@ export interface FakeTurn {
   permission(toolCall: acp.ToolCallUpdate): Promise<acp.RequestPermissionResponse>
   /** Ask AskUserQuestion's questions as claude-agent-acp's form elicitation, and wait for the answer. */
   ask(questions: FakeQuestion[]): Promise<acp.CreateElicitationResponse>
+  /** Send any elicitation (an MCP server's form or URL) and wait for the answer. */
+  elicit(request: acp.CreateElicitationRequest): Promise<acp.CreateElicitationResponse>
+  /** Say a URL elicitation finished on the server's side. */
+  completeElicitation(elicitationId: string): Promise<void>
   /** Resolves when the client cancels this turn. */
   cancelled: Promise<void>
   /** The next prompt steered into this turn. */
@@ -236,6 +240,8 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         permission: (toolCall) =>
           client.request(acp.methods.client.session.requestPermission, { sessionId: params.sessionId, toolCall, options: PERMISSION_OPTIONS }),
         ask: (questions) => client.request(acp.methods.client.elicitation.create, questionForm(params.sessionId, 'ask-tool', questions)),
+        elicit: (request) => client.request(acp.methods.client.elicitation.create, request),
+        completeElicitation: (elicitationId) => client.notify(acp.methods.client.elicitation.complete, { elicitationId }),
         cancelled: cancelled.promise,
         nextSteer: () =>
           steers.length

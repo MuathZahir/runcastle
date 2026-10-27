@@ -166,6 +166,38 @@ describe('foldThread', () => {
     expect(kinds(answered.items)).toEqual(['user', 'agent', 'answered', 'agent'])
   })
 
+  it("an MCP server's form or link waits like any ask, and its answer folds to lines", () => {
+    const form: ThreadEventBody = {
+      type: 'ask',
+      ask: {
+        kind: 'form',
+        id: 'f1',
+        server: 'linear',
+        message: 'Which team?',
+        fields: [
+          { key: 'team', type: 'enum', title: 'Team', required: true, options: [{ value: 'eng', label: 'Engineering' }] },
+          { key: 'notify', type: 'boolean', title: 'Notify', default: false },
+        ],
+      },
+    }
+    const asking = log(prompt('p1'), { type: 'turn_started' }, form)
+    const waiting = foldThread(asking)
+    expect(waiting.state).toBe('waiting')
+    expect(waiting.ask).toMatchObject({ kind: 'form', id: 'f1', server: 'linear' })
+    expect(ThreadEvent.safeParse(asking[2]).success).toBe(true)
+
+    const filled = foldThread([...asking, { i: 3, at: 3000, type: 'ask_resolved', id: 'f1', lines: [{ what: 'Team:', answer: 'Engineering' }] }])
+    expect(filled.ask).toBeUndefined()
+    expect(filled.items.at(-1)).toMatchObject({ kind: 'answered', what: 'Team:', answer: 'Engineering' })
+
+    const link: ThreadEventBody = { type: 'ask', ask: { kind: 'link', id: 'l1', message: 'Sign in to Linear', url: 'https://linear.app/oauth' } }
+    const opened = log(prompt('p1'), { type: 'turn_started' }, link)
+    expect(foldThread(opened).ask).toEqual({ kind: 'link', id: 'l1', message: 'Sign in to Linear', url: 'https://linear.app/oauth' })
+    const declined = foldThread([...opened, { i: 3, at: 3000, type: 'ask_resolved', id: 'l1', lines: [{ what: 'Declined', answer: 'Sign in to Linear', denied: true }] }])
+    expect(declined.state).toBe('working')
+    expect(declined.items.at(-1)).toMatchObject({ kind: 'answered', denied: true })
+  })
+
   it('a stopped turn says so and fails the call in flight', () => {
     const v = foldThread(
       log(
@@ -248,6 +280,17 @@ describe('foldThread', () => {
     const v = foldThread(events)
     expect(v.items.map((x) => (x.kind === 'user' || x.kind === 'agent' ? x.text : x.kind))).toEqual(['first', 'one', 'second, edited'])
     expect(v.cursor).toBe(9)
+  })
+
+  it('a hidden command prompt shows no message; its turn still runs and ends in the compaction divider', () => {
+    const working = foldThread(log(prompt('p0', 'Hello'), prompt('c1', '/compact', { source: 'runcastle', hidden: true }), { type: 'turn_started' }))
+    expect(working.items.map((x) => (x.kind === 'user' ? x.text : x.kind))).toEqual(['Hello'])
+    expect(working.state).toBe('working')
+    const done = foldThread(
+      log(prompt('c1', '/compact', { source: 'runcastle', hidden: true }), { type: 'turn_started' }, { type: 'compacted' }, { type: 'turn_ended', reason: 'end_turn' }),
+    )
+    expect(kinds(done.items)).toEqual(['compacted'])
+    expect(done.state).toBe('idle')
   })
 
   it('compaction, titles and commands carry through', () => {
