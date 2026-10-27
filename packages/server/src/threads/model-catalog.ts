@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { AgentRuntime, ModelChoice, ModelEntry, ThreadModels } from '@runcastle/core'
+import { modelFamily, type AgentRuntime, type Effort, type ModelChoice, type ModelEntry, type ThreadModels } from '@runcastle/core'
 import { modelCatalogPath } from '@runcastle/core/paths'
 import type { ModelCatalog } from './controls'
 
@@ -58,12 +58,39 @@ export function rosterLabel(id: string, runtime: AgentRuntime): string {
 }
 
 /** Two names for one model: compared without case, spaces or punctuation. */
-const key = (label: string) => label.toLowerCase().replace(/[^a-z0-9]/g, '')
+export const labelKey = (label: string) => label.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 /** The catalog entry a roster id names: by id, else by the label the adapter gives it. */
 function entryFor(models: readonly ModelChoice[], id: string, runtime: AgentRuntime): ModelChoice | undefined {
-  const label = key(rosterLabel(id, runtime))
-  return models.find((m) => m.id === id) ?? models.find((m) => key(m.label) === label)
+  const label = labelKey(rosterLabel(id, runtime))
+  return models.find((m) => m.id === id) ?? models.find((m) => labelKey(m.label) === label)
+}
+
+/**
+ * The effort levels each runtime's models take, for a model no session has run
+ * on yet nor any of its family: Claude Code's levels, and Codex's that
+ * runcastle offers (its `minimal` and `xhigh` are not).
+ */
+const RUNTIME_EFFORTS: Record<AgentRuntime, Effort[]> = {
+  'claude-code': ['low', 'medium', 'high', 'max'],
+  codex: ['low', 'medium', 'high'],
+}
+
+/**
+ * Every model with the effort levels and fast mode it offers, said or not: a
+ * session's options describe only the model it runs on, so a model none has
+ * run on takes what a session said of its family ("Sonnet 4.6" what one said
+ * of "Sonnet 5.5"), else its runtime's levels.
+ */
+function withKnownControls(models: readonly ModelChoice[], runtime: AgentRuntime): ModelChoice[] {
+  const family = (m: ModelChoice) => modelFamily(m.label).family
+  const said = new Map<string, ModelChoice>()
+  for (const m of models) if (m.efforts && !said.has(family(m))) said.set(family(m), m)
+  return models.map((m) => {
+    if (m.efforts) return m
+    const kin = said.get(family(m))
+    return { ...m, efforts: kin?.efforts ?? RUNTIME_EFFORTS[runtime], ...(kin?.fast ? { fast: true } : {}) }
+  })
 }
 
 /** The roster's models for a runtime in the catalog's shape: adapter-style labels, one entry per model. */
@@ -111,5 +138,10 @@ function catalogModel(catalog: ModelCatalog, named: string | null | undefined, r
 /** What the composer's model controls offer a thread on `runtime` that is on, or would start on, `named`. */
 export function threadModels(runtime: AgentRuntime, roster: readonly ModelEntry[], named: string | null | undefined): ThreadModels {
   const catalog = modelCatalog(runtime, roster)
-  return { runtime, models: catalog.models, current: catalogModel(catalog, named, runtime) }
+  return { runtime, models: withKnownControls(catalog.models, runtime), current: catalogModel(catalog, named, runtime) }
+}
+
+/** The catalog's entry for the model `named` names (its id, or a roster id), so a thread logs the id and label its picker offers. */
+export function catalogEntry(runtime: AgentRuntime, roster: readonly ModelEntry[], named: string): ModelChoice | undefined {
+  return entryFor(modelCatalog(runtime, roster).models, named, runtime)
 }

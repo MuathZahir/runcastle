@@ -161,8 +161,28 @@ export interface ModelChoice {
   note?: string
   /** The runtime offers fast mode on this model (Claude's `fast`, Codex's `fast-mode` option). */
   fast?: boolean
-  /** The effort levels the model takes, once a session on it has said; absent while unknown. */
+  /**
+   * The effort levels the model takes: as a session on it said, else as one on
+   * a model of its family said, else its runtime's known levels.
+   */
   efforts?: Effort[]
+  /** The level a session on this model starts on when nobody picks one, once a session on it has said. */
+  defaultEffort?: Effort
+}
+
+const VERSION = /^\d+(?:\.\d+)*$/
+
+/**
+ * A model label's family and version: "Opus 4.8" → Opus, [4, 8]. Codex names
+ * its models by version alone ("5.6 Sol", "5.5 Mini"), so a GPT generation is
+ * the family: "5.6 Sol" → GPT-5, [5, 6].
+ */
+export function modelFamily(label: string): { family: string; version: number[] } {
+  const words = label.split(/\s+/).filter(Boolean)
+  const at = words.findIndex((w) => VERSION.test(w))
+  if (at < 0) return { family: words[0] ?? label, version: [] }
+  const version = words[at].split('.').map(Number)
+  return { family: at > 0 ? words.slice(0, at).join(' ') : `GPT-${version[0]}`, version }
 }
 
 /** What the composer's model controls offer a thread: its runtime's one catalog, and the model it is on. */

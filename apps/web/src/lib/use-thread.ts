@@ -3,6 +3,7 @@ import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
 import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
 import { useLivePoll } from './live'
+import { effortShown } from './model-groups'
 import { useToast } from './toast'
 
 /**
@@ -198,19 +199,27 @@ export function useThread({
   const [choice, setChoice] = useState<{ threadId: string | null; model?: string; effort?: Effort; fast?: boolean }>({ threadId })
   const chosen = choice.threadId === threadId ? choice : { threadId }
   const modelsQ = trpc.thread.models.useQuery(threadId ? { threadId } : (startsAs ?? { threadId: '' }), { enabled: enabled || !!startsAs })
-  const model = chosen.model ?? folded.model?.id ?? modelsQ.data?.current ?? undefined
   // While the runtime's list cannot be read, the picker still names the model the thread is on.
   const models: ModelChoice[] = modelsQ.data?.models.length
     ? modelsQ.data.models
     : folded.model
       ? [{ id: folded.model.id, label: folded.model.label }]
       : []
-  const effort = chosen.effort ?? folded.model?.effort
+  // Only an id the list offers is shown: the server's `current` names the
+  // model in the list's own ids when the one held is not among them.
+  const offered = (m: string | undefined) => (m !== undefined && models.some((x) => x.id === m) ? m : undefined)
+  const model = offered(chosen.model) ?? offered(folded.model?.id) ?? modelsQ.data?.current ?? chosen.model ?? folded.model?.id ?? undefined
+  const on = models.find((m) => m.id === model)
+  const effort = effortShown(on, chosen.effort ?? folded.model?.effort)
   const fast = chosen.fast ?? folded.model?.fast ?? false
   // A refused change is quiet: the choice rides the next message instead. A
   // model the session moved to may offer fast mode where the last did not.
+  // An accepted one is the server's to name from then on, in its list's ids.
   const setModelM = trpc.thread.setModel.useMutation({
-    onSuccess: () => void utils.thread.models.invalidate({ threadId: id }),
+    onSuccess: (_, input) => {
+      setChoice((c) => (c.threadId === input.threadId && c.model === input.model ? { ...c, model: undefined } : c))
+      void utils.thread.models.invalidate({ threadId: input.threadId })
+    },
     onError: () => undefined,
   })
   const choose = (next: { model?: string; effort?: Effort; fast?: boolean }) => {
@@ -246,9 +255,12 @@ export function useThread({
     setPending((ps) => [...ps, local])
     setDraft('')
     setAttachments([])
-    const changed = chosen.model !== undefined && chosen.model !== folded.model?.id
-    const effortChanged = chosen.effort !== undefined && chosen.effort !== folded.model?.effort
-    const fastChanged = chosen.fast !== undefined && chosen.fast !== (folded.model?.fast ?? false)
+    // A thread that has not run yet starts on exactly what the composer shows;
+    // one that has gets only what changed.
+    const begun = !!folded.model
+    const changed = begun ? chosen.model !== undefined && chosen.model !== folded.model?.id : model !== undefined
+    const effortChanged = begun ? chosen.effort !== undefined && chosen.effort !== folded.model?.effort : effort !== undefined
+    const fastChanged = begun ? chosen.fast !== undefined && chosen.fast !== (folded.model?.fast ?? false) : !!on?.fast
     try {
       const images = await Promise.all(
         sent.map(async (a) => ({ name: a.name, mimeType: a.file.type || 'image/png', data: await blobBase64(a.file) })),
@@ -265,8 +277,8 @@ export function useThread({
         threadId: to,
         text: words,
         ...(images.length ? { images } : {}),
-        ...(changed && chosen.model ? { model: chosen.model } : {}),
-        ...(effortChanged ? { effort: chosen.effort } : {}),
+        ...(changed && model ? { model } : {}),
+        ...(effortChanged && effort ? { effort } : {}),
         ...(fastChanged ? { fast } : {}),
       })
       setPending((ps) => ps.map((p) => (p.localId === local.localId ? { ...p, promptId } : p)))
@@ -319,7 +331,7 @@ export function useThread({
     runtime: modelsQ.data?.runtime,
     models,
     model,
-    /** The effort held for the thread: chosen, else the one it runs on; absent while neither is known. */
+    /** The effort the next message runs on: chosen, else the one the thread runs or starts on; absent for a model with no levels. */
     effort,
     chooseModel: (next: string) => choose({ model: next }),
     chooseEffort: (next: Effort) => choose({ effort: next }),

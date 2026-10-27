@@ -68,7 +68,7 @@ import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
-import { readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
+import { catalogEntry, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import { runtimeMayName } from './naming'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 
@@ -426,11 +426,13 @@ class Host implements AgentHost {
 
   /**
    * On a session that is open, the change goes to the agent now and the model
-   * it then reports is logged. Otherwise the choice is logged as made and goes
-   * to the agent when its session next opens.
+   * it then reports is logged. Otherwise the choice goes to the agent when its
+   * session next opens; a thread that has run before logs it as made, while
+   * one that never has just starts on it, with no divider before its first
+   * message.
    */
   async setConfig(threadId: string, choice: ConfigChoice): Promise<void> {
-    this.row(threadId)
+    const row = this.row(threadId)
     const t = this.threads.get(threadId)
     if (t?.conn && t.sessionId && t.configOptions) {
       await this.applyConfig(t, choice)
@@ -440,11 +442,12 @@ class Host implements AgentHost {
     }
     this.pendingConfig.set(threadId, { ...this.pendingConfig.get(threadId), ...choice })
     const now = foldThread(readThreadEvents(threadId)).model
-    const model = choice.model ?? now?.id
-    if (!model) return
-    const label = model === now?.id ? now.label : (this.models(threadId).models.find((m) => m.id === model)?.label ?? model)
-    const effort = choice.effort ?? now?.effort
-    const fast = choice.fast ?? now?.fast
+    if (!now) return
+    const entry = choice.model === undefined ? undefined : catalogEntry(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), choice.model)
+    const model = entry?.id ?? choice.model ?? now.id
+    const label = model === now.id ? now.label : (entry?.label ?? model)
+    const effort = choice.effort ?? now.effort
+    const fast = choice.fast ?? now.fast
     appendThreadEvent(threadId, { type: 'model', model, label, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) })
   }
 
@@ -532,8 +535,9 @@ class Host implements AgentHost {
   /** The runtime's one catalog (kept from its sessions, else the roster), and the model the thread is on or would start on. */
   models(threadId: string): ThreadModels {
     const row = this.row(threadId)
+    const chosen = this.pendingConfig.get(threadId)?.model
     const logged = foldThread(readThreadEvents(threadId)).model?.id
-    return threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), logged ?? row.model)
+    return threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), chosen ?? logged ?? row.model)
   }
 
   /** What of the message's model, effort and fast mode differs from what the thread runs on; null when nothing does. */
@@ -559,12 +563,12 @@ class Host implements AgentHost {
     }
   }
 
-  /** A session's options are its config, and what its runtime's catalog learns from. */
-  private noteOptions(t: Thread, options: acp.SessionConfigOption[] | null | undefined): void {
+  /** A session's options are its config, and what its runtime's catalog learns from; `opened`, as the session opened them. */
+  private noteOptions(t: Thread, options: acp.SessionConfigOption[] | null | undefined, opened = false): void {
     if (!options) return
     t.configOptions = options
     const runtime = getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME
-    const catalog = catalogFromOptions(readModelCatalog(runtime), options)
+    const catalog = catalogFromOptions(readModelCatalog(runtime), options, opened)
     if (catalog) writeModelCatalog(runtime, catalog)
   }
 
@@ -665,7 +669,7 @@ class Host implements AgentHost {
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
-    this.noteOptions(t, opened.configOptions)
+    this.noteOptions(t, opened.configOptions, true)
     const chosen = this.pendingConfig.get(t.id)
     this.pendingConfig.delete(t.id)
     if (chosen) await this.applyConfig(t, chosen)

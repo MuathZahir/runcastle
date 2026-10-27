@@ -1,4 +1,4 @@
-import type { ModelChoice } from './chat-thread'
+import { modelFamily, type Effort, type ModelChoice } from './chat-thread'
 
 /**
  * The composer's model list, arranged (chat-as-web-components decision 13):
@@ -20,19 +20,16 @@ export interface ModelGroup {
 /** Claude's families, most capable first; any other family follows in the order the runtime lists it. */
 const FAMILY_ORDER = ['Fable', 'Opus', 'Sonnet', 'Haiku']
 
-const VERSION = /^\d+(?:\.\d+)*$/
-
 /**
- * A label's family and version: "Opus 4.8" → Opus, [4, 8]. Codex names its
- * models by version alone ("5.6 Sol", "5.5 Mini"), so a GPT generation is the
- * family: "5.6 Sol" → GPT-5, [5, 6].
+ * The effort `model` runs the next message on: the level held, where the model
+ * takes it; else the one a session on it starts on; else the runtime's
+ * recommended Medium, or the model's first level. None for a model that takes
+ * no levels.
  */
-export function modelFamily(label: string): { family: string; version: number[] } {
-  const words = label.split(/\s+/).filter(Boolean)
-  const at = words.findIndex((w) => VERSION.test(w))
-  if (at < 0) return { family: words[0] ?? label, version: [] }
-  const version = words[at].split('.').map(Number)
-  return { family: at > 0 ? words.slice(0, at).join(' ') : `GPT-${version[0]}`, version }
+export function effortShown(model: ModelChoice | undefined, held: Effort | undefined): Effort | undefined {
+  const efforts = model?.efforts ?? []
+  for (const level of [held, model?.defaultEffort, 'medium' as const]) if (level && efforts.includes(level)) return level
+  return efforts[0]
 }
 
 /** Newer first. */
