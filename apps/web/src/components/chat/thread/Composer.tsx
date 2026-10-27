@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent, ReactNode } from 'react'
+import { rankNames, rankPaths } from '@runcastle/core'
 import type { Attachment, SlashCommand, ThreadState } from '../../../lib/chat-thread'
 import { IconDoc, IconPaperclip, IconSend, IconStop, IconX } from '../../../icons'
 import { BARE_BUTTON, IconButton, Kbd, cx } from '../../../ui'
@@ -69,9 +70,9 @@ export function Composer({
   const slash = /^\/(\S*)$/.exec(value)
   const at = /(?:^|\s)@(\S*)$/.exec(value)
   const suggest: Suggest | null = slash
-    ? { kind: 'command', query: slash[1], items: commands.filter((c) => c.name.toLowerCase().includes(slash[1].toLowerCase())) }
+    ? { kind: 'command', query: slash[1], items: rankNames(commands, (c) => c.name, slash[1]) }
     : at
-      ? { kind: 'file', query: at[1], items: files.filter((f) => f.toLowerCase().includes(at[1].toLowerCase())).slice(0, 8) }
+      ? { kind: 'file', query: at[1], items: rankPaths(files, at[1], 8) }
       : null
   const listing = !!suggest && suggest.items.length > 0
   const count = suggest?.items.length ?? 0

@@ -499,20 +499,37 @@ describe('usage', () => {
 })
 
 describe('files, titles, suggestions, export', () => {
-  it("fuzzy-matches the worktree's tracked files, shortest first", async () => {
+  it("ranks the worktree's tracked and untracked files like a fuzzy finder, leaving ignored ones out", async () => {
     const repo = tmpRepo()
     temps.push(repo)
-    for (const path of ['src/threads/controls.ts', 'src/threads/host.ts', 'README.md', 'docs/control-plane.md', 'untracked.ts']) {
+    const write = (path: string) => {
       mkdirSync(join(repo, path, '..'), { recursive: true })
       writeFileSync(join(repo, path), '')
     }
+    for (const path of ['src/threads/controls.ts', 'src/threads/host.ts', 'README.md', 'docs/control-plane.md', 'hostile/a.md', 'src/components/ThreadSwitcher.tsx']) write(path)
+    for (const path of ['untracked.ts', '.gitignore', 'dist/bundle.js']) write(path)
+    writeFileSync(join(repo, '.gitignore'), 'dist/\n')
     execFileSync('git', ['init', '-q'], { cwd: repo })
-    execFileSync('git', ['add', 'src', 'README.md', 'docs'], { cwd: repo })
+    execFileSync('git', ['add', 'src', 'README.md', 'docs', 'hostile'], { cwd: repo })
     const id = chat({ worktreePath: repo })
-    expect(await caller.thread.files({ threadId: id, query: 'thcon' })).toEqual(['src/threads/controls.ts'])
-    expect(await caller.thread.files({ threadId: id, query: 'CONTROL' })).toEqual(['docs/control-plane.md', 'src/threads/controls.ts'])
-    expect(await caller.thread.files({ threadId: id, query: '', limit: 2 })).toEqual(['README.md', 'src/threads/host.ts'])
-    expect(await caller.thread.files({ threadId: id, query: 'untracked' })).toEqual([])
+    // A file name's match first, however long the path; at the same rank the shorter path.
+    expect(await caller.thread.files({ threadId: id, query: 'host' })).toEqual(['src/threads/host.ts', 'hostile/a.md', 'src/threads/controls.ts'])
+    expect(await caller.thread.files({ threadId: id, query: 'control' })).toEqual(['docs/control-plane.md', 'src/threads/controls.ts'])
+    // Word starts: ThreadSwitcher's T and S.
+    expect(await caller.thread.files({ threadId: id, query: 'thsw' })).toEqual(['src/components/ThreadSwitcher.tsx'])
+    expect(await caller.thread.files({ threadId: id, query: '', limit: 2 })).toEqual(['README.md', '.gitignore'])
+    expect(await caller.thread.files({ threadId: id, query: 'untracked' })).toEqual(['untracked.ts'])
+    expect(await caller.thread.files({ threadId: id, query: 'bundle' })).toEqual([])
+
+    // A file the agent writes in a turn is there once the turn ends.
+    setup({
+      turn: async () => {
+        write('src/threads/naming.ts')
+      },
+    })
+    expect(await caller.thread.files({ threadId: id, query: 'naming' })).toEqual([])
+    await converse(id, 'Add naming')
+    expect(await caller.thread.files({ threadId: id, query: 'naming' })).toEqual(['src/threads/naming.ts'])
   })
 
   it('renames a thread, and keeps the name over a title the runtime generates later', async () => {

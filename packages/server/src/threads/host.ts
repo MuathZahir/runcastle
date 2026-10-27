@@ -63,6 +63,7 @@ import {
   type ToolDiff,
 } from './acp-map'
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
+import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
@@ -803,6 +804,8 @@ class Host implements AgentHost {
     appendThreadEvent(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     const row = getSessionRow(this.ctx, t.id)
+    // The turn may have written files: the composer's `@` lists them afresh.
+    if (row) forgetWorktreeFiles(row.worktreePath)
     if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source))
     this.pump(t)
   }

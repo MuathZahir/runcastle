@@ -171,29 +171,6 @@ export function forkAtMeta(messageId: string): Record<string, unknown> {
 
 // ---- @ files ----
 
-/**
- * The paths matching `query` for `@`: every character of the query in order
- * (case-insensitive), the shortest path first; all paths, shortest first, for
- * an empty query.
- */
-export function fuzzyFiles(paths: readonly string[], query: string, limit: number): string[] {
-  const q = query.toLowerCase()
-  const matches = (path: string): boolean => {
-    const p = path.toLowerCase()
-    let at = 0
-    for (const ch of q) {
-      at = p.indexOf(ch, at)
-      if (at < 0) return false
-      at++
-    }
-    return true
-  }
-  return paths
-    .filter(matches)
-    .sort((a, b) => a.length - b.length || a.localeCompare(b))
-    .slice(0, limit)
-}
-
 // ---- export ----
 
 /** "45s", "3m 43s", "1h 5m". */
