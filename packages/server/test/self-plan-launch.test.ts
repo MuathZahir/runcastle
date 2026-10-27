@@ -235,6 +235,8 @@ describe('a self-planning run', () => {
       const [ended] = selfPlanEnded(f.id)
       expect(ended?.message).toBe('planning finished')
       expect(ended?.data).toEqual({ sessionId, complete: true })
+      // The run is over: the thread is the lead's ordinary chat from here on.
+      expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
     })
 
     it('says planning stopped short otherwise', async () => {

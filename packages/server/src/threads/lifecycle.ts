@@ -1,7 +1,7 @@
 import { DEFAULT_RUNTIME, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { chatKickoffHeader } from '../launcher/launcher'
-import { landProjectSession } from '../launcher/sessions'
+import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
 import { stopDesignServerForSession } from '../services/design'
 import { startDocsWatch } from '../services/docs-watch'
 import { emitForSession } from '../services/events'
@@ -46,6 +46,8 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
         message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
         data: { sessionId: row.id, complete },
       })
+      // The run is over: the thread is the lead's ordinary chat again, and asks reach the human.
+      setThreadPurpose(ctx, row.id, null)
     },
 
     stopped(row, reason, startedBy) {

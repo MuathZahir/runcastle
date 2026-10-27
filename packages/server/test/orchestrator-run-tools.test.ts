@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Feature, SessionRow } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -17,6 +17,11 @@ import { openProject } from '../src/services/projects'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
+import { promptsOf } from './support/thread-launch'
 
 /**
  * `send_to_feature` (`whole-cuts-plan-themselves`, `the-feature-lead-runs-rounds`,
@@ -36,11 +41,12 @@ async function gitRepo(): Promise<string> {
   return dir
 }
 
-describe('the orchestrator’s headless-run tools', () => {
+describe('the orchestrator’s tools on a feature’s lead', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
   let restoreDataDir: () => void
+  let host: AgentHost
   const cleanup: string[] = []
 
   beforeEach(async () => {
@@ -49,9 +55,15 @@ describe('the orchestrator’s headless-run tools', () => {
     repoPath = await gitRepo()
     projectId = (await openProject(ctx, repoPath)).id
     setRuntimeCtx(ctx)
+    vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
+    host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
+    setAgentHostForTests(host)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await host.stopAll('shutdown')
+    setAgentHostForTests(undefined)
+    vi.restoreAllMocks()
     clearRuntimeCtx()
     for (const d of cleanup) rmSync(d, { recursive: true, force: true })
     cleanup.length = 0
@@ -79,7 +91,7 @@ describe('the orchestrator’s headless-run tools', () => {
    * as the human's would, through the one lead-delivery path, and counts as a
    * human message — whatever the feature's state, with no planning relay.
    */
-  it('send_to_feature reaches the feature’s lead as a human message whatever its state, launching nothing', async () => {
+  it('send_to_feature reaches the feature’s lead as a human message whatever its state, starting its chat', async () => {
     for (const phase of ['planning', 'building', 'review'] as const) {
       const f = await feature(`led-${phase}`, { phase })
       const result = await toolSendToFeature(ctx, orchestrator(), {
@@ -88,14 +100,17 @@ describe('the orchestrator’s headless-run tools', () => {
       })
 
       expect(result).toEqual({ deliveredToLead: true })
-      const events = listAfter(ctx, f.id, 0)
-      expect(events.some((e) => e.type === 'session.launched')).toBe(false)
-      const pending = events.find((e) => e.type === 'lead.message_pending')
-      expect(pending?.data).toEqual({
+      const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
+      expect(queued?.data).toMatchObject({
         source: 'human',
+        route: 'prompt',
         text: "From the project's orchestrator, not the human:\n\nThe empty state still says nothing.",
-        sessionId: null,
       })
+      const thread = (queued?.data as { sessionId: string }).sessionId
+      expect(getSessionRow(ctx, thread)?.kind).toBe('chat')
+      expect(promptsOf(thread).at(-1)?.text).toBe(
+        "[runcastle] From the project's orchestrator, not the human:\n\nThe empty state still says nothing.",
+      )
       expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toEqual(expect.any(Number))
     }
   })
@@ -103,8 +118,8 @@ describe('the orchestrator’s headless-run tools', () => {
   it('send_to_feature with relaysHuman marks the message as the human’s relayed answer', async () => {
     const f = await feature('relayed')
     await toolSendToFeature(ctx, orchestrator(), { slug: f.slug, message: 'Yes, go ahead.', relaysHuman: true })
-    const pending = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_pending')
-    expect((pending?.data as { text: string }).text).toBe(
+    const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
+    expect((queued?.data as { text: string }).text).toBe(
       "The human's own answer, relayed by the project's orchestrator:\n\nYes, go ahead.",
     )
   })
