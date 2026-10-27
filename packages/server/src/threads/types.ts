@@ -30,6 +30,12 @@ export interface PromptOptions {
    * an orchestrator line, a kickoff override), sent at once otherwise.
    */
   source: 'human' | 'runcastle'
+  /**
+   * Log the prompt but send nothing and start nothing: its text goes ahead of
+   * the thread's next prompt, of any source, as one prompt in one turn (a
+   * chat's opening held for the human's first message, decision 12).
+   */
+  hold?: boolean
   /** The model, effort and fast mode for this message, when they differ from the thread's. */
   model?: string
   effort?: Effort
