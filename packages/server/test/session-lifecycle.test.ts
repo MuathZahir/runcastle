@@ -16,7 +16,7 @@ import {
   getSessionRow,
   markSessionEnded,
   markSessionLive,
-  mostRecentResumableSession,
+  newestThread,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -78,7 +78,7 @@ describe('boot reconciliation — stale sessions', () => {
     expect(getSessionRow(ctx, launching.id)?.status).toBe('ended')
     expect(getSessionRow(ctx, live.id)?.status).toBe('ended')
     expect(activeSessionsForFeature(ctx, featureId)).toEqual([])
-    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.id).toBe(live.id)
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(live.id)
 
     // exactly one session.reconciled event per reconciled session
     const events = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.reconciled')
@@ -394,62 +394,51 @@ describe('markSessionEnded — when the conversation stopped', () => {
   })
 })
 
-describe('mostRecentResumableSession — the revisit resume target', () => {
-  it('narrows to chat when asked, ignoring newer conversations of other kinds', async () => {
+describe('newestThread — the thread a launch reopens', () => {
+  it('stays within its kind, however long ago that thread ran', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
-    const grill = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, grill.id, { ccSessionId: 'cc-grill' })
-    markSessionEnded(ctx, grill.id)
-    const qa = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: 'w' })
-    markSessionLive(ctx, qa.id, { ccSessionId: 'cc-qa' })
-    markSessionEnded(ctx, qa.id)
+    const chat = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
+    markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
+    markSessionEnded(ctx, chat.id)
+    const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: 'w' })
+    markSessionLive(ctx, fix.id, { ccSessionId: 'cc-fix' })
 
-    // unfiltered (the revisit target) = newest of any kind
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-qa')
-    // filtered = newest of that kind, however long ago it ran
-    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.ccSessionId).toBe('cc-grill')
-    expect(mostRecentResumableSession(ctx, featureId, 'prepare')).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')?.ccSessionId).toBe('cc-chat')
+    expect(newestThread(ctx, { featureId }, 'drive-fix')?.ccSessionId).toBe('cc-fix')
+    expect(newestThread(ctx, { featureId }, 'prepare')).toBeNull()
   })
 
-  it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {
+  it('picks the newest row holding a conversation, running or not, over newer stillborn rows', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
-    // oldest: ended with a cc id — the fallback candidate
     const s1 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s1.id, { ccSessionId: 'cc-oldest' })
     markSessionEnded(ctx, s1.id)
-
-    // newer: ended but never went live (no cc id) — not resumable
+    // newer: never went live and said nothing — no conversation
     const s2 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionEnded(ctx, s2.id)
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(s1.id)
 
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-oldest')
-
-    // newest: ended with a cc id — wins
+    // newest: running — a thread is reopened whatever its process does
     const s3 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, s3.id, { ccSessionId: 'cc-newest' })
-    markSessionEnded(ctx, s3.id)
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
-
-    // a LIVE session is never the resume target
-    const s4 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, s4.id, { ccSessionId: 'cc-live' })
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
+    markSessionLive(ctx, s3.id, { ccSessionId: 'cc-live' })
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(s3.id)
   })
 
-  it('returns null when the feature has no resumable conversation', async () => {
+  it('falls back to the newest row when none holds a conversation, and never crosses features', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
-    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')).toBeNull()
 
     const other = seedFeature(ctx, seedProject(ctx).id, { slug: 'other' }).id
     const s = createSessionRow(ctx, { featureId: other, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s.id, { ccSessionId: 'cc-other' })
-    markSessionEnded(ctx, s.id)
-    // another feature's conversation is never offered
-    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')).toBeNull()
+
+    const fresh = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(fresh.id)
   })
 })

@@ -13,8 +13,7 @@ import {
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
-  mostRecentResumableProjectSession,
-  mostRecentResumableSession,
+  newestThread,
 } from '../src/launcher/sessions'
 import { launchPrepareSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
@@ -106,7 +105,7 @@ describe('a prepare session is project-scoped', () => {
     prepareSession()
     prepareSession()
     expect(activeSessionsForFeature(ctx, FEATURE_ID)).toHaveLength(0)
-    expect(mostRecentResumableSession(ctx, FEATURE_ID)).toBeNull()
+    expect(newestThread(ctx, { featureId: FEATURE_ID }, 'prepare')).toBeNull()
 
     // …and a real feature session is still found alongside them.
     const f = featureSession()
@@ -119,16 +118,17 @@ describe('a prepare session is project-scoped', () => {
     expect(activeProjectSession(ctx, 'proj_other', 'prepare')).toBeNull()
   })
 
-  it('resumes the last ended conversation, not a live or feature one', () => {
+  it('reopens the newest thread holding a conversation, not a stillborn or feature one', () => {
     const ended = prepareSession()
     ctx.db
       .update(sessions)
       .set({ status: 'ended', ccSessionId: 'cc-1' })
       .where(eq(sessions.id, ended.id))
       .run()
-    prepareSession() // still launching — not resumable
+    prepareSession() // never went live and said nothing — no conversation to reopen
 
-    expect(mostRecentResumableProjectSession(ctx, PROJECT_ID, 'prepare')?.ccSessionId).toBe('cc-1')
+    expect(newestThread(ctx, { projectId: PROJECT_ID }, 'prepare')?.ccSessionId).toBe('cc-1')
+    expect(newestThread(ctx, { projectId: 'proj_other' }, 'prepare')).toBeNull()
   })
 })
 

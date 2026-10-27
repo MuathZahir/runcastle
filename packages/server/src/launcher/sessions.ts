@@ -23,6 +23,7 @@ import {
   type ProjectLandResult,
 } from '../services/git'
 import { getProjectById, rowToSession } from '../services/repo'
+import { hasThreadLog } from '../threads/log'
 import { runtimeAdapterFor } from './runtimes'
 import { prepareConfirmKickoffFor } from './runtimes/skills'
 
@@ -380,24 +381,19 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
 }
 
 /**
- * The newest thread of `kind` on a feature or a project, whatever its process
- * is doing (chat-as-web-components): a thread keeps one row for life, so the
- * launchers reopen this row rather than creating another.
+ * The thread of `kind` on a feature or a project that the launchers reopen,
+ * whatever its process is doing (chat-as-web-components): a thread keeps one
+ * row for life. It is the newest row holding a conversation (an agent-side id
+ * or a log) — a terminal-era feature has rows newer than its conversation that
+ * never went live — else the newest row.
  */
 export function newestThread(
   ctx: AppCtx,
   scope: { featureId: string } | { projectId: string },
   kind: SessionKind,
 ): SessionRow | null {
-  const owner = 'featureId' in scope ? eq(sessions.featureId, scope.featureId) : eq(sessions.projectId, scope.projectId)
-  const row = ctx.db
-    .select()
-    .from(sessions)
-    .where(and(owner, eq(sessions.kind, kind)))
-    .orderBy(desc(sql`rowid`))
-    .limit(1)
-    .get()
-  return row ? rowToSession(row) : null
+  const rows = 'featureId' in scope ? featureSessions(ctx, scope.featureId, [kind]) : projectSessions(ctx, scope.projectId, kind)
+  return rows.find((row) => row.ccSessionId || hasThreadLog(row.id)) ?? rows[0] ?? null
 }
 
 /** Record the errand a thread was (re)opened on, which its brief and guards read. */
@@ -408,42 +404,6 @@ export function setThreadPurpose(
   purposeData: MergeBranchPair | null = null,
 ): void {
   ctx.db.update(sessions).set({ purpose, purposeData }).where(eq(sessions.id, id)).run()
-}
-
-/**
- * The feature's most recently ENDED session that recorded a Claude Code session
- * id — the conversation a relaunched terminal `--resume`s. Live sessions are
- * excluded (the one-live-session guard refuses a second terminal while one
- * exists) and sessions that never went live have no cc id, so they can't match.
- * Ordered by the implicit sqlite `rowid` (insertion order — `sessions` has no
- * timestamp).
- *
- * `kind` narrows the search to conversations of that kind, which is what every
- * ordinary relaunch wants: reopening the grill must land back in the grill
- * conversation, not in whatever qa session happened to run afterwards. A
- * kind=revisit launch omits it deliberately — revisit means "resume the last
- * thing we talked about", whatever kind that was.
- */
-export function mostRecentResumableSession(
-  ctx: AppCtx,
-  featureId: string,
-  kind?: SessionKind,
-): SessionRow | null {
-  const row = ctx.db
-    .select()
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.featureId, featureId),
-        eq(sessions.status, 'ended'),
-        isNotNull(sessions.ccSessionId),
-        ...(kind ? [eq(sessions.kind, kind)] : []),
-      ),
-    )
-    .orderBy(desc(sql`rowid`))
-    .limit(1)
-    .get()
-  return row ? rowToSession(row) : null
 }
 
 /**
@@ -550,37 +510,6 @@ export function hasCompletedProjectSession(
       .limit(1)
       .get() !== undefined
   )
-}
-
-/**
- * The project-scoped twin of {@link mostRecentResumableSession}: the last ended
- * conversation of this kind for a project, so reopening a preparation terminal
- * continues it instead of making the human re-explain their database.
- *
- * Keyed on `project_id` rather than `feature_id`, which is the column a
- * project-scoped session actually has — the feature-keyed query would never
- * match one of these rows (NULL never equals anything), so it needs its own.
- */
-export function mostRecentResumableProjectSession(
-  ctx: AppCtx,
-  projectId: string,
-  kind: SessionKind,
-): SessionRow | null {
-  const row = ctx.db
-    .select()
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.projectId, projectId),
-        eq(sessions.kind, kind),
-        eq(sessions.status, 'ended'),
-        isNotNull(sessions.ccSessionId),
-      ),
-    )
-    .orderBy(desc(sql`rowid`))
-    .limit(1)
-    .get()
-  return row ? rowToSession(row) : null
 }
 
 // --- re-entry cap -----------------------------------------------------------
