@@ -8,23 +8,25 @@ import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
-import type { PtyEntry } from '../src/pty/registry'
-import { ptyRegistry } from '../src/pty/registry'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
+import { promptsOf } from './support/thread-launch'
 
 /**
- * `session.kickoff` is the record that a CLI was handed its briefing, and the
- * briefing rides the argv of a process — so the event belongs to the spawn, not
- * to the argv-building that precedes it. It used to be emitted the moment the
- * launch spec was written, which claimed a delivery for the `spawn:false` smoke
- * driver (no process at all) and for a PTY that failed to start.
+ * `session.kickoff` is the record that an agent was handed its briefing, and
+ * the briefing is the thread's first prompt (ADR-0015) — so the event belongs
+ * to the agent host taking the prompt, never to composing it. It is not
+ * claimed for the `spawn:false` smoke driver (no agent at all) nor for a
+ * prompt the host refused.
  */
-describe('session.kickoff — emitted at spawn, never before one', () => {
+describe('session.kickoff — emitted once the host took the prompt, never before', () => {
   let ctx: AppCtx
   let projectId: string
   let repoPath: string
@@ -49,6 +51,7 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
   })
 
   afterEach(() => {
+    setAgentHostForTests(undefined)
     vi.restoreAllMocks()
     stopAllDocsWatch()
     restoreDataDir()
@@ -70,40 +73,37 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     return feature
   }
 
-  /** Stub the readiness gate, and make the PTY either appear or refuse to. */
-  function stubSpawn(outcome: 'spawns' | 'fails'): void {
+  /** Put a fake agent behind the host, past the readiness gate. */
+  function fakeHost(): AgentHost {
     vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
-    const create = vi.spyOn(ptyRegistry(), 'create')
-    if (outcome === 'fails') {
-      create.mockImplementation(() => {
-        throw new Error('no conpty here')
-      })
-    } else {
-      create.mockReturnValue({ pty: { pid: 4512 } } as unknown as PtyEntry)
-    }
+    const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
+    setAgentHostForTests(host)
+    return host
   }
 
   function kickoffs(featureId: string): { data: Record<string, unknown> | null }[] {
     return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff')
   }
 
-  it('records the briefing once the CLI has it', async () => {
+  it('records the briefing once the agent host has taken it', async () => {
     const feature = await featureWithWorktree('spawned')
-    stubSpawn('spawns')
+    const host = fakeHost()
 
     const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
 
     expect(kickoffs(feature.id)).toHaveLength(1)
     const recorded = kickoffs(feature.id)[0]?.data
-    expect(recorded).toMatchObject({ sessionId, kind: 'chat', mechanism: 'argv' })
+    expect(recorded).toMatchObject({ sessionId, kind: 'chat', mechanism: 'prompt' })
     // what was recorded is the composed chat briefing: the opening this feature's
     // state calls for (nothing on disk yet, so ideation), then the state header
     expect(recorded?.line).toContain('/runcastle:feature')
     expect(recorded?.line).toContain('Feature status: Talking with you')
+    expect(promptsOf(sessionId)[0].text).toBe(recorded?.line)
+    await host.stopAll('shutdown')
   })
 
-  it('records nothing for a smoke launch, which spawns no CLI to brief', async () => {
+  it('records nothing for a smoke launch, which starts no agent to brief', async () => {
     const feature = await featureWithWorktree('smoke')
 
     const { sessionId } = await launchSession(
@@ -113,20 +113,22 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     )
     cleanup.push(sessionDir(sessionId))
 
-    const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
-    expect(types).toContain('session.launched')
+    expect(promptsOf(sessionId)).toHaveLength(1)
     expect(kickoffs(feature.id)).toHaveLength(0)
   })
 
-  it('records nothing when the terminal fails to spawn', async () => {
+  it('records nothing when the host refuses the prompt', async () => {
     const feature = await featureWithWorktree('stillborn')
-    stubSpawn('fails')
+    const host = fakeHost()
+    setAgentHostForTests({
+      ...host,
+      prompt: async () => {
+        throw new Error('no agent here')
+      },
+    })
 
-    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
-    cleanup.push(sessionDir(sessionId))
+    await expect(launchSession(ctx, { featureId: feature.id, kind: 'chat' })).rejects.toThrow('no agent here')
 
-    const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
-    expect(types).toContain('session.spawn_failed')
     expect(kickoffs(feature.id)).toHaveLength(0)
   })
 })

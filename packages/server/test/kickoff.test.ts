@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
-import { chatKickoffFor, relayKickoffFor, selfPlanKickoffFor, sideKickoffFor } from '../src/launcher/runtimes/skills'
+import { chatKickoffFor, selfPlanKickoffFor, sideKickoffFor } from '../src/launcher/runtimes/skills'
 import { kickoffLineFor } from '../src/launcher/sessions'
 import { promptMatchesKickoff } from '../src/services/conversations'
 
@@ -66,13 +66,6 @@ describe('kickoff registry + override', () => {
     for (const [runtime, feature] of [['claude-code', '/runcastle:feature'], ['codex', '$feature']] as const) {
       expect(chatKickoffFor(runtime)).toBe(`Proceed with your task: invoke ${feature} and continue this feature.`)
     }
-  })
-
-  it('relays the orchestrator by the feature skill, saying it is not the human', () => {
-    const line = relayKickoffFor('claude-code', 'drop the CSV export')
-    expect(line).toContain('Invoke /runcastle:feature')
-    expect(line).toContain("is from the project's orchestrator, not the human")
-    expect(line).toContain("The orchestrator's message: drop the CSV export")
   })
 
   it('keeps a side session off rounds, with no word of Go', () => {

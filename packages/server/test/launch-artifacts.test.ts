@@ -24,7 +24,6 @@ import {
   talkingToTheHumanSection,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { ptyExitMessage } from '../src/launcher/launcher'
 import type { AcpLaunchSpec, RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
 import {
   CC_NESTING_ENV,
@@ -207,7 +206,6 @@ describe('renderSettings', () => {
       'chat',
       '/opt/pack',
       undefined,
-      false,
       '/data/design-crops/feat_1',
     ).permissions.allow
     expect(allow.filter((rule) => /^(Read|Edit)\(/.test(rule))).toEqual([
@@ -372,49 +370,18 @@ describe('renderSettings', () => {
   })
 
   /**
-   * `whole-cuts-plan-themselves` decision 20: the orchestrator hears about its
-   * features through an `asyncRewake` hook that long-polls for its lines, never
-   * through keystrokes typed into its terminal. Every project session is the
-   * orchestrator (`one-orchestrator-no-mode`).
+   * ADR-0015: what runcastle says to a session later — the orchestrator's
+   * lines, a lead's wakes — is a prompt into its thread, so no session's
+   * settings carry a hook that waits for messages.
    */
-  it('gives a project session the asyncRewake message waiter on SessionStart and Stop', () => {
-    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
-    const waiter = {
-      type: 'command',
-      command: 'bun run "C:\\hooks\\hook-client.ts" wait-messages',
-      timeout: 86_400,
-      async: true,
-      asyncRewake: true,
-    }
-
-    for (const entry of s.hooks.SessionStart) {
-      expect(entry.hooks.map((h) => h.command)).toEqual([
-        'bun run "C:\\hooks\\hook-client.ts" session-start',
-        waiter.command,
-      ])
-      expect(entry.hooks[1]).toEqual(waiter)
-    }
-    expect(s.hooks.Stop[0].hooks).toEqual([s.hooks.Stop[0].hooks[0], waiter])
-    expect(s.hooks.UserPromptSubmit[0].hooks).toHaveLength(1)
-    expect(s.hooks.SessionEnd[0].hooks).toHaveLength(1)
-  })
-
-  /**
-   * `the-feature-lead-runs-rounds` decision 12: a feature's chat is its lead,
-   * woken by the same waiter at its turn end — but not a headless run, whose
-   * process exits at its turn end with whatever a waiter took.
-   */
-  it('gives a feature chat with a terminal the same waiter, and a headless chat none', () => {
-    const chat = renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack')
-    const project = renderSettings('C:\\hooks\\hook-client.ts', 'project')
-    const waiterOf = (s: typeof chat) => s.hooks.Stop[0].hooks.slice(1)
-    expect(waiterOf(chat)).toEqual(waiterOf(project))
-    expect(chat.hooks.SessionStart.every((e) => e.hooks[1]?.command.endsWith('wait-messages'))).toBe(true)
-
-    for (const purpose of [undefined, ...SessionPurpose.options]) {
-      const headless = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack', purpose, true))
-      expect(headless).not.toContain('wait-messages')
-      expect(headless).not.toContain('asyncRewake')
+  it('gives no session a message waiter', () => {
+    for (const kind of SessionKind.options) {
+      for (const purpose of [undefined, ...SessionPurpose.options]) {
+        const s = renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose)
+        expect(JSON.stringify(s)).not.toMatch(/wait-messages|asyncRewake|"async"/)
+        expect(s.hooks.Stop[0].hooks.map((h) => h.command)).toEqual(['bun run "C:\\hooks\\hook-client.ts" stop'])
+        for (const entry of s.hooks.SessionStart) expect(entry.hooks).toHaveLength(1)
+      }
     }
   })
 
@@ -431,19 +398,6 @@ describe('renderSettings', () => {
         expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
       }
     }
-  })
-})
-
-describe('ptyExitMessage', () => {
-  it('renders a numeric exit code verbatim', () => {
-    expect(ptyExitMessage(0)).toBe('terminal exited (code 0)')
-    expect(ptyExitMessage(137)).toBe('terminal exited (code 137)')
-  })
-
-  it('renders a missing code as "unknown", never the string "undefined"', () => {
-    expect(ptyExitMessage(undefined)).toBe('terminal exited (code unknown)')
-    expect(ptyExitMessage(null)).toBe('terminal exited (code unknown)')
-    expect(ptyExitMessage(undefined)).not.toContain('undefined')
   })
 })
 

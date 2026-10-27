@@ -224,7 +224,8 @@ function underway(row: SessionRow): boolean {
 /**
  * Say a launch's briefing into its thread as runcastle's prompt: queued behind
  * a running turn, sent at once otherwise, starting the agent when none runs.
- * With `spawn:false` the prompt is logged and nothing is started.
+ * `session.kickoff` records that the host took it. With `spawn:false` the
+ * prompt is logged and nothing is started, so nothing claims it was delivered.
  */
 async function sayToThread(
   ctx: AppCtx,
@@ -235,9 +236,9 @@ async function sayToThread(
 ): Promise<void> {
   if (opts.spawn === false) {
     appendThreadEvent(row.id, { type: 'prompt', id: newId('prompt'), text: line, source: 'runcastle' })
-  } else {
-    await agentHost(ctx).prompt(row.id, { text: line }, { source: 'runcastle' })
+    return
   }
+  await agentHost(ctx).prompt(row.id, { text: line }, { source: 'runcastle' })
   emitForSession(ctx, row, {
     type: 'session.kickoff',
     message,
