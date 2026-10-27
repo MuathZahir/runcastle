@@ -2,7 +2,7 @@ import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { resolveDraft } from './draft'
 export { upNextBasesDiffer } from './draft'
-import { resolveHeadlessRun } from './headless'
+import { resolveSelfPlan } from './self-plan'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
 
@@ -33,6 +33,6 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     }
   }
 
-  // A run with no terminal says so in every state, with Stop as its one control.
-  return resolveHeadlessRun(input) ?? PLAIN
+  // A self-planning run says so in every state, with Stop as its one control.
+  return resolveSelfPlan(input) ?? PLAIN
 }

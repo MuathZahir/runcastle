@@ -22,7 +22,6 @@ import { listScenarioPaths } from '../services/scenarios'
  */
 export async function acpLaunchFor(ctx: AppCtx, row: SessionRow): Promise<AcpLaunchSpec> {
   const runtime = runtimeAdapterFor(row.runtime ?? DEFAULT_RUNTIME)
-  if (!runtime.acpLaunch) throw new GateError(`${runtime.id} conversations do not run over ACP`)
   const ready = runtime.checkReady()
   if (!ready.ok) throw new GateError(`${ready.reason}. ${ready.doctorHint}`)
   return runtime.acpLaunch(await acpLaunchInput(ctx, row))

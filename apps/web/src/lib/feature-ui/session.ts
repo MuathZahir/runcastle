@@ -20,37 +20,11 @@ export function featureChat(sessions: FeatureFull['sessions']): FeatureFull['ses
 
 /**
  * A self-planning run (features-plan-themselves decision 9): the feature's chat
- * launched headless, with no terminal to attach and nobody to answer it. The
+ * launched unattended, with nobody to answer its asks. The
  * bar, the Chat tab and the Chat door all key on this one reading.
  */
 export function isSelfPlanRun(session: Pick<FeatureFull['sessions'][number], 'kind' | 'purpose'>): boolean {
   return session.kind === 'chat' && session.purpose === 'self-plan'
-}
-
-/**
- * A run on the feature with no terminal (whole-cuts-plan-themselves): a
- * self-planning run, the orchestrator's `relay`, or a lap planning itself. The
- * bar, the Chat tab and the Chat door key on this, so every headless purpose
- * reads as working with Stop. A self-planning row from before the server
- * recorded `headless` is one by definition.
- */
-export function isHeadlessRun(
-  session: Pick<FeatureFull['sessions'][number], 'kind' | 'purpose' | 'headless'>,
-): boolean {
-  return !!session.headless || isSelfPlanRun(session)
-}
-
-/**
- * The headless runs whose `session.run_ended` said they stopped before they were
- * finished — the server's own reading (a relay that exited non-zero, a lap with
- * no tickets), which the session row does not carry.
- */
-export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[]): string[] {
-  return events.flatMap((event) => {
-    if (event.type !== 'session.run_ended') return []
-    const data = event.data as { sessionId?: unknown; complete?: unknown } | undefined
-    return data?.complete === false && typeof data.sessionId === 'string' ? [data.sessionId] : []
-  })
 }
 
 // --- the shipped body's chat terminal ---------------------------------------
@@ -96,9 +70,9 @@ export function shippedAt(events: EventRow[]): number | null {
  * The one line a live session gets on Overview, in every state
  * (one-chat-layout-everywhere decision 7): "● Chat live", with Open
  * chat — which switches to the Chat tab, where every session kind lives — and
- * End session. An ended session says nothing, and neither does a headless run:
- * it is no chat to open, and the bar above already says it is working by itself
- * with Stop as its one control (features-plan-themselves decision 11).
+ * End session. An ended session says nothing, and neither does a self-planning
+ * run: the bar above already says it is working by itself with Stop as its one
+ * control (features-plan-themselves decision 11).
  */
 export interface LiveSessionLine {
   sessionId: string
@@ -108,7 +82,7 @@ export interface LiveSessionLine {
 
 export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
   const live = activeSession(sessions)
-  if (!live || isHeadlessRun(live)) return null
+  if (!live || isSelfPlanRun(live)) return null
   return { sessionId: live.id, text: `${sessionKindName(live)} live` }
 }
 

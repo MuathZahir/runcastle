@@ -50,7 +50,7 @@ export interface FeatureStatusInput {
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
   /**
-   * The feature's live session is a self-planning run (headless chat, purpose
+   * The feature's live session is a self-planning run (an unattended chat, purpose
    * `self-plan`), or Plan it yourself was just clicked and that run is launching.
    */
   selfPlanning: boolean
@@ -62,41 +62,26 @@ export interface FeatureStatusInput {
 
 /** The lead's wakes as the event log tells them. */
 export interface LeadWake {
-  /** When the newest message for the lead was queued, left pending, or woke it headless. */
+  /** When the newest message for the lead was queued. */
   pendingSince?: number
   /** The newest `lead.wake_failed`: when, and the process's exit code (null when unknown). */
   failed?: { at: number; exitCode: number | null }
-  /** When the session the newest headless wake started ended — the human's End session, or its own exit. */
-  endedAt?: number
 }
 
 /**
  * How long a message for the lead counts as the agent about to work: long
- * enough for a headless resume to spawn and check in, short enough that a wake
+ * enough for the chat to start and take it, short enough that a wake
  * that silently went nowhere stops reading as Working within a minute.
  */
 export const LEAD_WAKE_GRACE_MS = 60_000
 
-/** The events that put a message on its way to the lead (`services/lead-delivery.ts`). */
-const WAKE_EVENTS: ReadonlySet<string> = new Set(['lead.message_queued', 'lead.message_pending', 'lead.woken_headless'])
-
-/** The events that say a session is over: the human ended it, or its process exited. */
-const SESSION_END_EVENTS: ReadonlySet<string> = new Set(['session.ended', 'session.pty_exited'])
-
 /** Read the lead's latest wake and wake failure off a feature's event log, oldest first. */
 export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data'>[]): LeadWake {
   const wake: LeadWake = {}
-  let woken: string | undefined
   for (const e of events) {
-    const sessionId = (e.data as { sessionId?: unknown } | undefined)?.sessionId
-    if (WAKE_EVENTS.has(e.type)) {
+    // `lead.message_queued` puts a message on its way to the lead (`services/lead-delivery.ts`).
+    if (e.type === 'lead.message_queued') {
       wake.pendingSince = e.ts
-      if (e.type === 'lead.woken_headless' && typeof sessionId === 'string') {
-        woken = sessionId
-        delete wake.endedAt
-      }
-    } else if (SESSION_END_EVENTS.has(e.type) && woken !== undefined && sessionId === woken) {
-      wake.endedAt ??= e.ts
     } else if (e.type === LEAD_WAKE_FAILED) {
       const data = LeadWakeFailedData.safeParse(e.data)
       wake.failed = { at: e.ts, exitCode: data.success ? data.data.exitCode : null }
@@ -183,15 +168,12 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
-  // read as Working forever, and one that already failed, or whose session
-  // already ended, is not on its way: either ends the grace at once.
+  // read as Working forever, and one that already failed is not on its way:
+  // it ends the grace at once.
   const pendingSince = input.leadWake?.pendingSince
   const failed = input.leadWake?.failed
   const failedSinceWake = !!failed && failed.at >= (pendingSince ?? -Infinity)
-  const endedAt = input.leadWake?.endedAt
-  const endedSinceWake = endedAt !== undefined && endedAt >= (pendingSince ?? -Infinity)
-  const waking =
-    pendingSince !== undefined && !failedSinceWake && !endedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
+  const waking = pendingSince !== undefined && !failedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
@@ -208,7 +190,7 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
-  stopSelfPlan: { label: 'Stop', kind: 'stopHeadlessRun', danger: true },
+  stopSelfPlan: { label: 'Stop', kind: 'stopSelfPlan', danger: true },
   chat: CHAT_ACTION,
 }
 

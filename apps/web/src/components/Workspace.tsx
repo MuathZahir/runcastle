@@ -1,6 +1,5 @@
 import { useEffect, useReducer, useState, type ReactNode } from 'react'
 import type { RefObject } from 'react'
-import { isStoppableHeadlessRun } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -37,7 +36,6 @@ import {
   specDocPath,
   stampedReview,
   landedShare,
-  unfinishedRuns,
   unresolvedMergeConflict,
   upNextBasesDiffer,
   verificationState,
@@ -434,8 +432,8 @@ export function Workspace({
     onError: (e) => toast.push(e.message),
   })
   // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
-  // and launch as above, but the session is a headless run with no terminal, so
-  // neither lands on the chat — the plan is watched from the body.
+  // and launch as above, but the session is unattended, so neither lands on
+  // the chat — the plan is watched from the body.
   // It stays pending until the feature is refetched with the new run on it, so
   // the row reads Planning by itself from the click on, never idle in between.
   const launchSelfPlan = trpc.feature.launchSession.useMutation({
@@ -500,10 +498,7 @@ export function Workspace({
   const full = q.data
   const feature = full.feature
   const run = latestRun(full.runs)
-  const ns = nextStep(full, {
-    ...(draftBaseMissing ? { draftBaseMissing } : {}),
-    unfinishedRuns: unfinishedRuns(events),
-  })
+  const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
@@ -588,10 +583,10 @@ export function Workspace({
         if (isDraft) startSelfPlan.mutate({ featureId, baseBranch: effectiveDraftBase })
         else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
         break
-      // Stop is ending the run: it has no terminal to type into (decision 9).
-      // Only the run it was offered for — never a lead woken in its place.
-      case 'stopHeadlessRun':
-        if (liveSession && isStoppableHeadlessRun(liveSession)) void endLiveSession()
+      // Stop is ending the run: nobody is attending it (decision 9). Only the
+      // self-planning run it was offered for — never a lead woken in its place.
+      case 'stopSelfPlan':
+        if (liveSession && isSelfPlanRun(liveSession)) void endLiveSession()
         break
       // The click opens the confirmation; the dialog's Stop is what stops.
       case 'stopAgent':

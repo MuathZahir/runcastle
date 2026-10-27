@@ -8,10 +8,6 @@ import { processAgentHost } from './host'
  * conversation kind; its id IS the session row id. The host owns every running
  * agent connection (one ACP adapter child process per running thread); the log
  * is the thread's append-only record, folded by core's `foldThread`.
- *
- * The bodies below are sockets: ticket 1 fills the host and the log, ticket 5
- * fills the host's controls (`setConfig`, `fork`, `usage`). Replace, don't
- * redesign; a ticket that finds this contract wrong says so in its digest.
  */
 
 /** An image sent with a prompt, as the web uploads it. */

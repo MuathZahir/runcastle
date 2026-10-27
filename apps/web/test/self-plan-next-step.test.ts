@@ -85,72 +85,16 @@ describe('a self-planning run on the bar', () => {
     expect(ns.title).toBe('Planning itself')
     expect(ns.desc).toContain('open the thread to watch')
     expect(ns.busy).toBe(true)
-    expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
+    expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopSelfPlan' })
     expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('chat')
   })
-})
 
-/**
- * whole-cuts-plan-themselves ticket 2 — the orchestrator's headless runs read as
- * working with Stop, each in its own words, and as stopped short after one the
- * server said did not finish.
- */
-describe('the orchestrator’s headless runs on the bar', () => {
-  const relay = (over: Partial<Session> = {}): Session =>
-    session({ id: 'sess_relay', purpose: 'relay', headless: true, ccSessionId: 'cc-1', ...over })
-  const lapRun = (over: Partial<Session> = {}): Session =>
-    session({ id: 'sess_lap', purpose: 'start-lap', headless: true, ccSessionId: 'cc-1', ...over })
+  it('offers no Stop for any other live chat — only a self-planning run has one', () => {
+    for (const purpose of ['lead-wake', 'relay', 'start-lap'] as const) {
+      const ns = nextStep(started([session({ id: 'sess_other', status: 'live', purpose })]), {})
 
-  it('says a relay is working on the orchestrator’s change, with Stop only', () => {
-    const ns = nextStep(started([relay({ status: 'live' })]), {})
-
-    expect(ns.title).toBe('Working on a change the orchestrator sent back')
-    expect(ns.busy).toBe(true)
-    expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
-    expect(ns.secondary).toEqual([])
-  })
-
-  it('says more work is being planned, with Stop only', () => {
-    const ns = nextStep(started([lapRun({ status: 'launching' })]), {})
-
-    expect(ns.title).toBe('Planning more work itself')
-    expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
-    expect(ns.secondary).toEqual([])
-  })
-
-  it('offers no Stop for a lead woken headless — the status row’s Stop halts the lead', () => {
-    const wake = session({ id: 'sess_wake', status: 'live', purpose: 'lead-wake', headless: true })
-    const ns = nextStep(started([wake]), {})
-
-    expect(ns.title).not.toBe('Planning itself')
-    expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('stopHeadlessRun')
-  })
-
-  it('leaves an interactive start-lap chat to the plain step', () => {
-    const ns = nextStep(started([lapRun({ status: 'live', headless: false })]), {})
-
-    expect(ns.primary?.kind).not.toBe('stopHeadlessRun')
-  })
-
-  it('says a relay stopped short when the server said it did not finish', () => {
-    const sessions = [relay()]
-    const stopped = nextStep(started(sessions), { unfinishedRuns: ['sess_relay'] })
-
-    expect(stopped.kick).toBe('STOPPED')
-    expect(stopped.title).toBe('The orchestrator’s change stopped before it was finished')
-    expect(stopped.primary).toEqual({ label: 'Resume session', kind: 'chat' })
-
-    const finished = nextStep(started(sessions), { unfinishedRuns: [] })
-    expect(finished.kick).not.toBe('STOPPED')
-  })
-
-  it('says planning stopped short, until a newer chat of the lap exists', () => {
-    const stopped = nextStep(started([lapRun()]), { unfinishedRuns: ['sess_lap'] })
-    expect(stopped.title).toBe('Planning stopped before its tickets were ready')
-
-    const later = nextStep(started([lapRun(), session({ id: 'sess_2', ccSessionId: 'cc-2' })]), {
-      unfinishedRuns: ['sess_lap'],
-    })
-    expect(later.kick).not.toBe('STOPPED')
+      expect(ns.title).not.toBe('Planning itself')
+      expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('stopSelfPlan')
+    }
   })
 })

@@ -752,7 +752,13 @@ export async function createProjectThread(ctx: AppCtx, project: Project): Promis
         message: 'created runcastle: initial commit so branches can be cut',
       }),
   )
-  return createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath, model })
+  const row = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath, model })
+  emitProject(ctx, project.id, {
+    type: 'session.project_opened',
+    message: 'project chat opened',
+    data: { sessionId: row.id },
+  })
+  return row
 }
 
 /**

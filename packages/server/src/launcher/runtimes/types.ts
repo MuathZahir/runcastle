@@ -133,12 +133,11 @@ export interface AgentRuntimeAdapter {
   /** Write this session's artifacts and describe the launch they belong to. */
   writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec>
   /**
-   * Describe this session's launch over ACP (ADR-0015). Optional only while the
-   * round lands: ticket 1 fills Claude's, ticket 2 Codex's. `kickoffLine` and
+   * Describe this session's launch over ACP (ADR-0015). `kickoffLine` and
    * `headless` in the input are ignored here — over ACP the kickoff is the
    * thread's first prompt and nothing is headless.
    */
-  acpLaunch?(input: RuntimeLaunchInput): Promise<AcpLaunchSpec>
+  acpLaunch(input: RuntimeLaunchInput): Promise<AcpLaunchSpec>
   /** The line typed into a freshly-live session of `kind` to open it. */
   kickoffLine(kind: SessionKind): string
   /**

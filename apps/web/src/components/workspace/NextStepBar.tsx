@@ -26,7 +26,7 @@ export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   moveToBacklog: <IconInbox />,
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
-  stopHeadlessRun: <IconStop />,
+  stopSelfPlan: <IconStop />,
   stopAgent: <IconStop />,
   openBurnSettings: <IconSettings />,
   testDriveStart: <IconPlay />,

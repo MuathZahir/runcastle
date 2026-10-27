@@ -1,6 +1,5 @@
 import { AskAnswer, Effort, type ModelChoice, type ThreadEntry, type ThreadEvent, type ThreadView, type UsageReport } from '@runcastle/core'
 import * as z from 'zod'
-import { NotImplementedError } from '../../errors'
 import { createProjectThread, createSideThread, kickoffFor } from '../../launcher/launcher'
 import { setSessionTitle } from '../../launcher/sessions'
 import { getFeatureRow, requireProjectById } from '../../services/repo'
@@ -15,17 +14,7 @@ import { publicProcedure, router } from '../context'
  * Threads (chat-as-web-components; ADR-0015): every agent conversation, read
  * from runcastle's own log and driven through the agent host. A thread id is
  * its session row id.
- *
- * This is the contract the round builds against: the inputs and outputs are
- * final, the bodies are sockets. Ticket 1 fills the reads, `send`, `stop`,
- * `answer` and `new` for a feature; ticket 4 fills `new` for a project; ticket
- * 5 fills the controls. Replace a body, never its shape — the web is built
- * against it in the same round.
  */
-
-const todo = (ticket: string): never => {
-  throw new NotImplementedError(`chat-as-web-components ticket ${ticket}`)
-}
 
 const threadId = z.object({ threadId: z.string() })
 

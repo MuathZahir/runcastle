@@ -9,7 +9,8 @@ import { launchPrepareSession, launchSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { listAfter } from '../src/services/events'
+import { subscribeLive, type LiveSignal } from '../src/services/bus'
+import { getEventRow, listAfter } from '../src/services/events'
 import { createFeatureBranch, PROJECT_BRANCH } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { listSessionsByFeature } from '../src/services/repo'
@@ -262,6 +263,20 @@ describe('thread.new', () => {
     expect(getSessionRow(ctx, threadId)).toMatchObject({ kind: 'project', projectId: project.id })
     expect(fake.processes).toEqual([])
     expect((await caller().thread.list({ projectId: project.id })).map((t) => t.id)).toEqual([threadId])
+  })
+
+  it('announces a new project chat on the live stream so the project’s thread list refreshes', async () => {
+    fakeHost()
+    const signals: LiveSignal[] = []
+    const unsubscribe = subscribeLive((s) => signals.push(s))
+
+    const { threadId } = await caller().thread.new({ projectId: project.id })
+    unsubscribe()
+
+    const event = signals.find((s) => s.kind === 'event' && s.projectId === project.id && s.featureId === undefined)
+    expect(event).toBeDefined()
+    const row = event?.kind === 'event' ? getEventRow(ctx, event.eventId) : null
+    expect(row).toMatchObject({ type: 'session.project_opened', data: { sessionId: threadId } })
   })
 
   it('briefs an empty thread before the human’s first words, and only the first time', async () => {

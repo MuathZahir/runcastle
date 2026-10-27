@@ -12,7 +12,7 @@ export const ACTION_KINDS = [
   'moveToBacklog', // feature.setUpNext { upNext: false } — an up-next draft goes back to "not now"
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
-  'stopHeadlessRun', // feature.endSession on the live headless run (self-plan, relay)
+  'stopSelfPlan', // feature.endSession on the live self-planning run
   'stopAgent', // feature.stop — the status line's Stop: the round stops, nothing dispatches until the human replies
   'openBurnSettings', // opens Settings → Workers where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
