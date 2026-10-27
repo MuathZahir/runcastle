@@ -38,19 +38,13 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
 
     turnEnded(row, source) {
       // Only runcastle's prompt is the planning errand; what the human types into it after is a chat.
-      if (row.purpose !== 'self-plan' || source !== 'runcastle' || !row.featureId) return
-      // The plan is complete when the run ended its turn asking the human for the yes (`wait_for_you`).
-      const complete = getFeatureRow(ctx, row.featureId).waitingReason !== null
-      emitForSession(ctx, row, {
-        type: 'session.self_plan_ended',
-        message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
-        data: { sessionId: row.id, complete },
-      })
-      // The run is over: the thread is the lead's ordinary chat again, and asks reach the human.
-      setThreadPurpose(ctx, row.id, null)
+      if (source !== 'runcastle') return
+      endSelfPlan(ctx, row)
     },
 
     stopped(row, reason, startedBy) {
+      // A planning run stopped mid-turn (the human's Stop, a crash) is over too.
+      endSelfPlan(ctx, row)
       // A project conversation's commits land on the base branch when it stops (decision 18).
       landProjectSession(ctx, row)
       // An idle stop is invisible to the human, so it leaves the design server they may be looking at.
@@ -64,6 +58,23 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
       })
     },
   }
+}
+
+/**
+ * A self-planning run is over: say whether the plan is complete, and make the
+ * thread the lead's ordinary chat again, so asks reach the human. No-op for a
+ * thread with any other purpose.
+ */
+function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
+  if (row.purpose !== 'self-plan' || !row.featureId) return
+  // The plan is complete when the run ended its turn asking the human for the yes (`wait_for_you`).
+  const complete = getFeatureRow(ctx, row.featureId).waitingReason !== null
+  emitForSession(ctx, row, {
+    type: 'session.self_plan_ended',
+    message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
+    data: { sessionId: row.id, complete },
+  })
+  setThreadPurpose(ctx, row.id, null)
 }
 
 /** The feature state a resumed main chat is handed with its first prompt; nothing for a new conversation. */

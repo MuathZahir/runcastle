@@ -250,6 +250,21 @@ describe('a self-planning run', () => {
       expect(ended?.data).toEqual({ sessionId, complete: false })
     })
 
+    // Stopping a planning run mid-turn (Stop, archive, a crash) must not leave the
+    // lead's chat declining every approval and question from then on.
+    it('ends the run when its process stops mid-turn, so asks reach the human again', async () => {
+      const f = await feature('stopped')
+      fakeHost({ turn: () => new Promise(() => {}) })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+      await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_started'))
+
+      await host?.stop(sessionId, 'archived')
+
+      const [ended] = selfPlanEnded(f.id)
+      expect(ended?.data).toEqual({ sessionId, complete: false })
+      expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
+    })
+
     it('says nothing for a human’s turn, or a thread with any other purpose', async () => {
       const f = await feature('plain')
       fakeHost()
