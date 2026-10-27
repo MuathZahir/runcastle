@@ -328,6 +328,62 @@ describe('foldThread', () => {
     expect(done.state).toBe('idle')
   })
 
+  it('one compaction reported twice draws one divider, and the cost outlives a report without it', () => {
+    const v = foldThread(
+      log(
+        prompt('c1', '/compact', { source: 'runcastle', hidden: true }),
+        { type: 'turn_started' },
+        { type: 'usage', context: { used: 90000, size: 200000, costUsd: 1.25 } },
+        { type: 'compacted' },
+        { type: 'compacted' },
+        { type: 'usage', context: { used: 8000, size: 200000 } },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(kinds(v.items)).toEqual(['compacted'])
+    expect(v.context).toEqual({ used: 8000, size: 200000, costUsd: 1.25 })
+    const again = foldThread(log(prompt('c1', '/compact', { hidden: true }), { type: 'compacted' }, prompt('c2', '/compact', { hidden: true }), { type: 'compacted' }))
+    expect(kinds(again.items)).toEqual(['compacted', 'compacted'])
+  })
+
+  it('words logged after a turn ended, with no turn around them, settle: the thread is not working', () => {
+    const v = foldThread(
+      log(
+        prompt('p1', 'Run the tests in the background'),
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        { type: 'agent_text', messageId: 'm1', text: 'Started them.' },
+        { type: 'turn_ended', reason: 'end_turn' },
+        { type: 'tasks', tasks: [] },
+        { type: 'agent_text', messageId: 'm2', text: 'The tests passed.' },
+        { type: 'usage', context: { used: 1000, size: 200000 } },
+      ),
+    )
+    expect(v.state).toBe('idle')
+    expect(v.turnStartedAt).toBeUndefined()
+    expect(v.items.at(-1)).toMatchObject({ kind: 'agent', text: 'The tests passed.' })
+  })
+
+  it('a turn the agent started by itself works until it ends', () => {
+    const events = log(
+      prompt('p1'),
+      { type: 'process', state: 'running' },
+      { type: 'turn_started' },
+      { type: 'turn_ended', reason: 'end_turn' },
+      { type: 'turn_started', source: 'agent' },
+      { type: 'agent_text', messageId: 'm2', text: 'The build finished.' },
+    )
+    expect(foldThread(events).state).toBe('working')
+    const settled = foldThread([...events, { i: 6, at: 6000, type: 'turn_ended', reason: 'end_turn' }])
+    expect(settled.state).toBe('idle')
+    expect(settled.items.at(-1)).toMatchObject({ kind: 'agent', text: 'The build finished.' })
+  })
+
+  it('a notice is a quiet line of its own', () => {
+    const v = foldThread(log(prompt('p1'), { type: 'notice', text: 'Started a new conversation' }))
+    expect(v.items.at(-1)).toEqual({ kind: 'notice', id: 'notice:1', text: 'Started a new conversation' })
+  })
+
   it('compaction, titles and commands carry through', () => {
     const v = foldThread(
       log({ type: 'compacted' }, { type: 'title', title: 'PDF export' }, { type: 'commands', commands: [{ name: 'compact', description: 'x' }] }),

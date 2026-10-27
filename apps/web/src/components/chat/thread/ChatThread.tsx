@@ -185,6 +185,8 @@ function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageAc
       )
     case 'error':
       return <ThreadError>{item.message}</ThreadError>
+    case 'notice':
+      return <Divider>{item.text}</Divider>
   }
 }
 
