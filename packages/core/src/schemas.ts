@@ -804,13 +804,14 @@ export const EventRow = z.object({
 })
 export type EventRow = z.infer<typeof EventRow>
 
-/** A headless lead wake that never got going, or died in its one turn. */
+/** A message to the lead that could not reach its chat (once: a headless wake that died). */
 export const LEAD_WAKE_FAILED = 'lead.wake_failed'
 
 /**
  * `lead.wake_failed`'s data: the process's exit code (null when it never
- * spawned or the code is unknown) and the last lines of its output, bounded —
- * what the status line shows instead of claiming the agent is working.
+ * spawned or the code is unknown) and the reason or the last lines of its
+ * output, bounded — what the status line shows instead of claiming the agent
+ * is working.
  */
 export const LeadWakeFailedData = z.object({
   sessionId: z.string().optional(),

@@ -56,7 +56,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     const reason = err instanceof Error ? err.message : String(err)
     const at = Date.now()
     failures.set(feature.id, { reason, at, since: failures.get(feature.id)?.since ?? at })
-    const data: LeadWakeFailedData = { exitCode: null, tail: reason, messages: lines.length }
+    const data: LeadWakeFailedData & LeadMessage = { exitCode: null, tail: reason, messages: lines.length, ...msg }
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
   }
 }
