@@ -15,6 +15,7 @@ import {
   type AskAnswer,
   type Attachment,
   type BackgroundTask,
+  type FileChange,
   type SessionRow,
   type ThreadEvent,
   type ThreadEventBody,
@@ -60,6 +61,7 @@ import {
   rfdSubagentMessage,
   toolCallOf,
   toolDiffs,
+  wentIdle,
   type ToolDiff,
 } from './acp-map'
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
@@ -69,6 +71,7 @@ import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
+import { snapshotWorktree, worktreeChanges, worktreeRelative, type WorktreeSnapshot } from './worktree-changes'
 
 /**
  * The agent host (chat-as-web-components; ADR-0015): owns every running agent
@@ -109,6 +112,8 @@ export interface AgentHostDeps {
   readUsage?: (runtime: AgentRuntime) => Promise<unknown>
   /** How Claude Code's file checkpoints are rewound; see `side-channels.ts`. */
   rewindFiles?: (input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>
+  /** How long a turn the agent started by itself may go quiet before it counts as over, on a runtime that does not say. */
+  selfTurnQuietMs?: number
 }
 
 /**
@@ -119,6 +124,8 @@ export interface AgentHostDeps {
 export interface ThreadLifecycle {
   /** Text sent after the first prompt of a newly started process (a resumed main chat's fresh state header). */
   opening?(row: SessionRow): string | undefined
+  /** The briefing a new conversation of the row's kind opens with, for a thread whose conversation had to start over. */
+  briefing?(row: SessionRow): string | undefined
   /** The process runs; `source` is who sent the prompt that started it. */
   started?(row: SessionRow, source: PromptOptions['source']): void
   /** A turn ended; `source` is who sent the prompt it answered. */
@@ -180,11 +187,28 @@ function writePendingFork(threadId: string, fork: PendingFork): void {
 /** Decision 7: an idle agent process is stopped quietly after half an hour. */
 export const IDLE_STOP_MS = 30 * 60_000
 
+/**
+ * How long a turn the agent started by itself (Claude Code answering a finished
+ * background command) may go quiet before it is over, on a runtime with no
+ * signal for its end. Claude's own signal is its session going idle.
+ */
+export const SELF_TURN_QUIET_MS = 30_000
+
+/** What the thread says when the conversation on record is gone and a new one starts in its place. */
+const LOST_CONVERSATION = 'Started a new conversation — the earlier one could not be found'
+
+/** What the lead hears ahead of its next prompt after the human stopped its self-planning run. */
+const PLANNING_STOPPED =
+  '[runcastle] The human stopped your self-planning run before it finished: planning was stopped by the human, so the plan may be incomplete.'
+
 /** How much of a crashed adapter's stderr the thread keeps as its error. */
 const STDERR_TAIL = 2000
 
 /** Updates a `session/load` replays from history, which the log already holds. */
 const REPLAYED = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan', 'subagent_update'])
+
+/** Updates that are the agent doing a turn's work: with no turn running, the agent started one itself. */
+const TURN_OUTPUT = new Set(['agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan', 'subagent_update'])
 
 /** The adapter's messages as the ACP client reads them: subagents in the RFD's form ({@link rfdSubagentMessage}). */
 function inRfdForm(stream: acp.Stream): acp.Stream {
@@ -242,6 +266,18 @@ interface Queued {
   logged: boolean
 }
 
+/** The running turn. */
+interface Turn {
+  /** The file changes its tool calls reported, by call. */
+  diffs: Map<string, ToolDiff[]>
+  /** The worktree as the turn started, to find what else (a shell command) changed in it. */
+  snapshot: Promise<WorktreeSnapshot | null>
+  /** Started by the agent with no prompt (see `Host.selfTurn`). */
+  self?: boolean
+  /** A self-started turn on a runtime with no end signal ends when this fires. */
+  quiet?: ReturnType<typeof setTimeout>
+}
+
 interface Thread {
   id: string
   state: 'starting' | 'running' | 'stopped'
@@ -251,8 +287,7 @@ interface Thread {
   steering: boolean
   /** Replaying history in `session/load`: those updates are not logged again. */
   loading: boolean
-  /** The running turn, with the file changes its tool calls reported, by call. */
-  turn: { diffs: Map<string, ToolDiff[]> } | null
+  turn: Turn | null
   queue: Queued[]
   ask?: {
     ask: Ask
@@ -284,6 +319,16 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/**
+ * A `session/load` refused because the conversation is not on disk any more:
+ * ACP's resource-not-found (claude-agent-acp's "Resource not found: <id>"), or
+ * an adapter that says so in words.
+ */
+function conversationGone(err: unknown): boolean {
+  if (err instanceof acp.RequestError && err.code === -32002) return true
+  return /not found|no (such )?(conversation|session|thread|rollout)/i.test(errorText(err))
+}
+
 /** The tail of a crashed process's stderr, said as the thread's error. */
 function crashText(stderr: string): string {
   const lines = stderr.trim().split(/\r?\n/).slice(-8).join('\n').trim()
@@ -299,6 +344,7 @@ class Host implements AgentHost {
   private readonly lifecycle: ThreadLifecycle
   private readonly readUsage: (runtime: AgentRuntime) => Promise<unknown>
   private readonly rewindFiles: NonNullable<AgentHostDeps['rewindFiles']>
+  private readonly selfTurnQuietMs: number
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -313,6 +359,7 @@ class Host implements AgentHost {
     this.lifecycle = deps.lifecycle ?? {}
     this.readUsage = deps.readUsage ?? readUsageOf
     this.rewindFiles = deps.rewindFiles ?? rewindClaudeFiles
+    this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -355,6 +402,8 @@ class Host implements AgentHost {
     // ACP: a cancelled turn's open permission request is answered `cancelled`.
     this.settleAsk(t, 'cancelled')
     await t.conn.agent.notify(acp.methods.agent.session.cancel, { sessionId: t.sessionId })
+    // No prompt of runcastle's answers for a turn the agent started: it ends here.
+    if (t.turn?.self) await this.endSelfTurn(t, t.turn, 'cancelled')
   }
 
   async answer(threadId: string, askId: string, answer: AskAnswer): Promise<void> {
@@ -406,8 +455,21 @@ class Host implements AgentHost {
   async stop(threadId: string, reason: StopReason): Promise<void> {
     const t = this.threads.get(threadId)
     if (!t) return
+    const turn = t.turn
+    // Read before the stop's lifecycle makes the thread the lead's ordinary chat again.
+    const planning = turn !== null && this.unattended(t)
     this.detach(t)
     await t.proc?.kill().catch(() => {})
+    if (turn) {
+      // The turn is over, and says so: "Stopped by you", with what it changed by then.
+      if (turn.quiet) clearTimeout(turn.quiet)
+      const files = await this.turnFiles(t, turn)
+      appendThreadEvent(t.id, { type: 'turn_ended', reason: 'cancelled', ...(files.length ? { files } : {}) })
+    }
+    if (planning && reason === 'archived') {
+      const pending = readPendingFork(t.id)
+      writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_STOPPED}\n\n${pending.preface}` : PLANNING_STOPPED })
+    }
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     this.ended(t, reason)
   }
@@ -648,11 +710,15 @@ class Host implements AgentHost {
       // Known before the replay, so a replayed subagent's updates read as not the thread's own.
       t.sessionId = row.ccSessionId
       t.loading = true
+      let loaded: acp.LoadSessionResponse | null = null
       try {
-        opened = await conn.agent.request(acp.methods.agent.session.load, { ...session, sessionId: row.ccSessionId })
+        loaded = await conn.agent.request(acp.methods.agent.session.load, { ...session, sessionId: row.ccSessionId })
+      } catch (err) {
+        if (!conversationGone(err)) throw err
       } finally {
         t.loading = false
       }
+      opened = loaded ?? (await this.startOver(t, conn, session, row))
     } else {
       const created = await conn.agent.request(acp.methods.agent.session.new, session)
       t.sessionId = created.sessionId
@@ -676,6 +742,22 @@ class Host implements AgentHost {
     const model = modelEvent(t.configOptions)
     if (model) appendThreadEvent(t.id, model)
     this.hook(() => this.lifecycle.started?.(live ?? row, t.startedBy))
+  }
+
+  /**
+   * The conversation on record is gone (its transcript deleted, its CLI
+   * reinstalled): start a new one in its place, briefed as a new conversation
+   * of the thread's kind is — the briefing rides with the prompt that started
+   * the process, as one prompt (decision 12) — and say so in the thread.
+   */
+  private async startOver(t: Thread, conn: acp.ClientConnection, session: acp.NewSessionRequest, row: SessionRow): Promise<acp.NewSessionResponse> {
+    const created = await conn.agent.request(acp.methods.agent.session.new, session)
+    t.sessionId = created.sessionId
+    const briefing = this.hook(() => this.lifecycle.briefing?.(row))
+    if (briefing) t.opening = briefing
+    else delete t.opening
+    appendThreadEvent(t.id, { type: 'notice', text: LOST_CONVERSATION })
+    return created
   }
 
   /**
@@ -774,10 +856,12 @@ class Host implements AgentHost {
 
   private async runTurn(t: Thread, item: Queued): Promise<void> {
     if (t.idle) clearTimeout(t.idle)
-    const turn = { diffs: new Map<string, ToolDiff[]>() }
+    const turn = this.newTurn(t)
     t.turn = turn
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
+    // Taken before the agent hears the prompt, so nothing it does is in it.
+    await turn.snapshot
     // The opening rides after the prompt's own words, so a human's message
     // still reads as the human's (the UserPromptSubmit hook looks at its start).
     // A command is never given it: the opening would become the command's argument.
@@ -797,12 +881,73 @@ class Host implements AgentHost {
       end = { type: 'turn_ended', reason: 'error', error: errorText(err) }
     }
     if (t.state === 'stopped') return
-    const files = fileChanges([...turn.diffs.values()].flat())
+    const files = await this.turnFiles(t, turn)
+    if (isStopped(t)) return
     t.turn = null
     appendThreadEvent(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     const row = getSessionRow(this.ctx, t.id)
     if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source))
+    this.pump(t)
+  }
+
+  private newTurn(t: Thread): Turn {
+    const cwd = getSessionRow(this.ctx, t.id)?.worktreePath ?? ''
+    return { diffs: new Map(), snapshot: snapshotWorktree(cwd).catch(() => null) }
+  }
+
+  /**
+   * What the turn changed: every file whose content moved in the worktree since
+   * the turn began (a shell command's writes too), and the edit tools' diffs
+   * for any file git does not see; paths relative to the worktree.
+   */
+  private async turnFiles(t: Thread, turn: Turn): Promise<FileChange[]> {
+    const snap = await turn.snapshot
+    const root = snap?.root ?? getSessionRow(this.ctx, t.id)?.worktreePath ?? ''
+    const worktree = snap ? await worktreeChanges(snap).catch((): ToolDiff[] => []) : []
+    const seen = new Set(worktree.map((d) => d.path))
+    const edits = [...turn.diffs.values()].flat().map((d) => ({ ...d, path: worktreeRelative(root, d.path) }))
+    return fileChanges([...worktree, ...edits.filter((d) => !seen.has(d.path))])
+  }
+
+  /**
+   * Agent output with no turn running: the agent started a turn by itself
+   * (Claude Code answering a background command that finished). It is wrapped
+   * in a turn like any other, ended by Claude's session going idle
+   * ({@link onSdkMessage}) or, on a runtime that has no such signal, by going
+   * quiet for {@link SELF_TURN_QUIET_MS}.
+   */
+  private selfTurn(t: Thread): Turn {
+    if (t.idle) clearTimeout(t.idle)
+    const turn: Turn = { ...this.newTurn(t), self: true }
+    t.turn = turn
+    markAgentWorking(this.ctx, t.id)
+    appendThreadEvent(t.id, { type: 'turn_started', source: 'agent' })
+    return turn
+  }
+
+  /** Push a quiet-ended self-started turn's end back: the agent still says things. */
+  private stillTalking(t: Thread, turn: Turn): void {
+    if (!turn.self || this.saysWhenIdle(t)) return
+    if (turn.quiet) clearTimeout(turn.quiet)
+    turn.quiet = setTimeout(() => void this.endSelfTurn(t, turn, 'end_turn'), this.selfTurnQuietMs)
+    turn.quiet.unref?.()
+  }
+
+  /** Claude reports its session going idle (forwarded SDK `session_state_changed`). */
+  private saysWhenIdle(t: Thread): boolean {
+    return (getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
+  }
+
+  private async endSelfTurn(t: Thread, turn: Turn, reason: 'end_turn' | 'cancelled'): Promise<void> {
+    if (t.turn !== turn) return
+    if (turn.quiet) clearTimeout(turn.quiet)
+    const files = await this.turnFiles(t, turn)
+    // Ended meanwhile: by the stop that closed it, or by another end signal.
+    if (isStopped(t) || t.turn !== turn) return
+    t.turn = null
+    appendThreadEvent(t.id, { type: 'turn_ended', reason, ...(files.length ? { files } : {}) })
+    markAwaitingInput(this.ctx, t.id)
     this.pump(t)
   }
 
@@ -833,6 +978,10 @@ class Host implements AgentHost {
 
   private onUpdate(t: Thread, sessionId: string, update: acp.SessionUpdate): void {
     if (t.state === 'stopped' || (t.loading && REPLAYED.has(update.sessionUpdate))) return
+    if (TURN_OUTPUT.has(update.sessionUpdate) && t.state === 'running' && !t.loading) {
+      const turn = t.turn ?? this.selfTurn(t)
+      this.stillTalking(t, turn)
+    }
     // A subagent's file changes are the turn's too.
     if (t.turn && (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update')) {
       const diffs = toolDiffs(update.content)
@@ -851,9 +1000,14 @@ class Host implements AgentHost {
     }
   }
 
-  /** A Claude session's forwarded SDK message: the background commands it runs, when they change. */
+  /**
+   * A Claude session's forwarded SDK message: the background commands it runs,
+   * when they change, and its session going idle, which ends a turn it started
+   * by itself.
+   */
   private onSdkMessage(t: Thread, message: unknown): void {
     if (t.state === 'stopped') return
+    if (t.turn?.self && wentIdle(message)) return void this.endSelfTurn(t, t.turn, 'end_turn')
     const tasks = backgroundTasks(message, t.tasks, Date.now())
     if (!tasks) return
     t.tasks = tasks

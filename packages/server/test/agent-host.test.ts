@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { foldThread, type ThreadEvent, type ThreadItem } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
@@ -7,7 +11,7 @@ import { createAgentHost } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
-import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeScript } from './support/fake-acp-agent'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeScript, type FakeTurn } from './support/fake-acp-agent'
 
 /**
  * The agent host (chat-as-web-components ticket 1) against an in-process fake
@@ -131,7 +135,7 @@ describe('a turn', () => {
     expect(work.steps.map((s) => s.kind)).toEqual(['thought', 'tools'])
     expect(work.steps[1]).toMatchObject({ calls: [{ id: 'r1', status: 'completed' }, { id: 'e1', kind: 'edit', status: 'completed' }] })
     expect(view.items[2]).toMatchObject({ kind: 'agent', text: 'All done.', model: 'Opus 5.5' })
-    expect(view.items[3]).toMatchObject({ kind: 'changes', files: [{ path: '/wt/src/a.ts', added: 1, removed: 1 }] })
+    expect(view.items[3]).toMatchObject({ kind: 'changes', files: [{ path: 'src/a.ts', added: 1, removed: 1 }] })
     expect(view.context).toEqual({ used: 12000, size: 200000, costUsd: 0.5 })
     expect(view.state).toBe('idle')
     expect(view.process).toBe('running')
@@ -627,5 +631,156 @@ describe("an MCP server's forms and links", () => {
     expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({
       lines: [{ what: 'Declined', answer: 'Pick labels — runcastle cannot show this form: its field "labels" is not a plain value', denied: true }],
     })
+  })
+})
+
+describe('a thread always shows what is happening', () => {
+  const quietly = { type: 'system', subtype: 'session_state_changed', state: 'idle' }
+
+  it('wraps a turn Claude starts by itself in turn events, and settles it when the session goes idle', async () => {
+    let later!: FakeTurn
+    setup({
+      turn: async (t) => {
+        later = t
+        await t.say('Started the build in the background.')
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Build it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+
+    await later.update({ sessionUpdate: 'tool_call', toolCallId: 'bg1', title: 'Read build.log', kind: 'read', status: 'completed' })
+    await later.say('The build finished.', 'm-self')
+    const working = await logUntil(id, (e) => e.some((x) => x.type === 'agent_text' && x.text === 'The build finished.'))
+    expect(working.filter((e) => e.type === 'turn_started').at(-1)).toMatchObject({ source: 'agent' })
+    expect(foldThread(working).state).toBe('working')
+    expect(getSessionRow(ctx, id)!.awaitingInput).toBe(false)
+
+    await later.sdkMessage(quietly)
+    const events = await logUntil(id, turnsEnded(2))
+    expect(events.at(-1)).toMatchObject({ type: 'turn_ended', reason: 'end_turn' })
+    const view = foldThread(events)
+    expect(view.state).toBe('idle')
+    expect(view.items.at(-1)).toMatchObject({ kind: 'agent', text: 'The build finished.' })
+    expect(getSessionRow(ctx, id)!.awaitingInput).toBe(true)
+  })
+
+  it('a runcastle prompt sent during a self-started turn waits for its end', async () => {
+    let later!: FakeTurn
+    setup({ turn: async (t) => void (later ??= t) })
+    const id = thread()
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await later.say('A background command finished.')
+    await logUntil(id, (e) => e.filter((x) => x.type === 'turn_started').length === 2)
+    await host.prompt(id, { text: 'Round ended' }, { source: 'runcastle' })
+    expect(prompts()).toHaveLength(1)
+    await later.sdkMessage(quietly)
+    await logUntil(id, turnsEnded(3))
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Hi', 'Round ended'])
+  })
+
+  it('ends a self-started turn on a runtime with no end signal once it goes quiet', async () => {
+    let later!: FakeTurn
+    fake = createFakeAcp({ turn: async (t) => void (later = t) })
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, selfTurnQuietMs: 50 })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.5', runtime: 'codex' } }).id
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await later.say('Your tests passed.')
+    const events = await logUntil(id, turnsEnded(2))
+    expect(foldThread(events).state).toBe('idle')
+  })
+
+  it('starts a new conversation when the one on record cannot be loaded: briefed again with the message, in one prompt, and says so', async () => {
+    fake = createFakeAcp({ gone: true })
+    host = createAgentHost({
+      ctx,
+      transport: fake.transport,
+      launch: FAKE_LAUNCH,
+      idleMs: IDLE_MS,
+      lifecycle: { opening: () => 'STATE', briefing: () => 'BRIEFING' },
+    })
+    const id = thread({ ccSessionId: 'cc-gone' })
+    await host.prompt(id, { text: 'Hello again' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(methods()).toEqual(['initialize', 'session/load', 'session/new', 'session/set_mode', 'session/prompt'])
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Hello again\n\nBRIEFING'])
+    expect(getSessionRow(ctx, id)!.ccSessionId).toBe('acp-session-1')
+    const view = foldThread(events)
+    expect(view.items.map((i) => i.kind)).toEqual(['user', 'notice', 'agent'])
+    expect(view.items[1]).toMatchObject({ text: 'Started a new conversation — the earlier one could not be found' })
+
+    // The next start loads the new conversation.
+    await host.stop(id, 'idle')
+    fake.script.gone = false
+    await host.prompt(id, { text: 'And now?' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2))
+    expect(fake.last().received[1]).toMatchObject({ method: 'session/load', params: { sessionId: 'acp-session-1' } })
+  })
+
+  it('stopping a self-planning run closes its turn as stopped, and the next prompt says planning was stopped by the human', async () => {
+    setup({ turn: (t) => (t.prompt[0].type === 'text' && t.prompt[0].text === 'Plan yourself' ? new Promise(() => {}) : t.say('Understood.')) })
+    const id = thread({ purpose: 'self-plan' })
+    await host.prompt(id, { text: 'Plan yourself' }, { source: 'runcastle' })
+    await logUntil(id, has('turn_started'))
+    await host.stop(id, 'archived')
+    const stopped = readThreadEvents(id)
+    expect(stopped.slice(-2)).toMatchObject([
+      { type: 'turn_ended', reason: 'cancelled' },
+      { type: 'process', state: 'stopped' },
+    ])
+    expect(foldThread(stopped).items.at(-1)).toMatchObject({ kind: 'stopped' })
+
+    await host.prompt(id, { text: 'What now?' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2))
+    const said = prompts().at(-1)!.prompt[0].text!
+    expect(said).toMatch(/^\[runcastle\] The human stopped your self-planning run/)
+    expect(said).toMatch(/planning was stopped by the human/)
+    expect(said.endsWith('\n\nWhat now?')).toBe(true)
+  })
+
+  it('puts files changed by shell commands in the turn’s changes, relative to the worktree, beside the edit tools’ diffs', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'runcastle-turn-files-'))
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: dir })
+      git('init', '-q')
+      git('config', 'user.email', 't@example.com')
+      git('config', 'user.name', 'T')
+      writeFileSync(join(dir, 'README.md'), '# Probe\n')
+      writeFileSync(join(dir, 'untouched.txt'), 'one\n')
+      git('add', '.')
+      git('commit', '-qm', 'init')
+      // Dirty before the turn and left alone by it: not the turn's.
+      writeFileSync(join(dir, 'untouched.txt'), 'one\ntwo\n')
+      setup({
+        turn: async (t) => {
+          writeFileSync(join(dir, 'README.md'), '# Probe\nA line from the shell\n')
+          mkdirSync(join(dir, 'notes'))
+          writeFileSync(join(dir, 'notes', 'probe.txt'), 'probe\n')
+          await t.update({ sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'echo >> README.md', kind: 'execute', status: 'completed' })
+          await t.update({
+            sessionUpdate: 'tool_call',
+            toolCallId: 'e1',
+            title: 'Edit src/a.ts',
+            kind: 'edit',
+            status: 'completed',
+            content: [{ type: 'diff', path: join(dir, 'src', 'a.ts'), oldText: 'const a = 1\n', newText: 'const a = 2\n' }],
+          })
+          await t.say('Done.')
+        },
+      })
+      const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: dir }).id
+      await host.prompt(id, { text: 'Probe' }, { source: 'human' })
+      const events = await logUntil(id, turnsEnded(1))
+      const end = events.find((e) => e.type === 'turn_ended')
+      expect(end?.type === 'turn_ended' && end.files?.map((f) => [f.path, f.added, f.removed])).toEqual([
+        ['README.md', 1, 0],
+        ['notes/probe.txt', 1, 0],
+        ['src/a.ts', 1, 1],
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
