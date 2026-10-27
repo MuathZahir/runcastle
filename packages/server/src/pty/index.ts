@@ -4,7 +4,7 @@
  * - `checkPtyInstall` / `assertPtyInstalled` — install-completeness check for the
  *   node-pty native binary (issue #39), consumed by doctor / first-run.
  * - `ptyRegistry` — process-wide live-PTY registry keyed by session id.
- * - `endSession` — kill + mark-ended service backing `feature.endSession`.
+ * - `endSession` — stop-the-thread + mark-ended service backing `feature.endSession`.
  * - `tryUpgradeTerminal` / `terminalWebSocket` — Bun WS wiring for index.ts.
  */
 export {

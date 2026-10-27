@@ -94,7 +94,7 @@ export const toolStartFeature = orchestratorTool(
   },
 )
 
-/** Have a feature plan itself: its headless self-planning run, as Plan it yourself launches it. */
+/** Have a feature plan itself: its unattended self-planning run, as Plan it yourself launches it. */
 export const toolPlanFeature = orchestratorTool(
   async (
     ctx: AppCtx,
@@ -112,7 +112,7 @@ export const toolPlanFeature = orchestratorTool(
   },
 )
 
-/** End the feature's live headless run, as its Stop button does. */
+/** End the feature's running self-planning run, as its Stop button does. */
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
     const feature = requireProjectFeature(ctx, session, input.slug)
@@ -275,9 +275,8 @@ export function registerOrchestratorTools(
     {
       title: 'Have a feature plan itself',
       description:
-        'Launch a feature’s self-planning run, as Plan it yourself does: headless, no terminal. ' +
-        'Refused on a draft or a shipped feature, or while another session is up on it. You are ' +
-        'told in your terminal when it ends.',
+        'Launch a feature’s self-planning run, as Plan it yourself does: its chat, unattended. ' +
+        'Refused on a draft or a shipped feature. You are told in this chat when it ends.',
       inputSchema: { slug: SlugInput },
     },
     toolPlanFeature,
@@ -286,10 +285,8 @@ export function registerOrchestratorTools(
   acting(
     'stop_feature_run',
     {
-      title: 'Stop a feature’s headless run',
-      description:
-        'End the headless run going on a feature (self-planning or a relay), as ' +
-        'its Stop button does.',
+      title: 'Stop a feature’s self-planning run',
+      description: 'End the self-planning run going on a feature, as its Stop button does.',
       inputSchema: { slug: SlugInput },
     },
     toolStopFeatureRun,
