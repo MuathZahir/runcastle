@@ -181,17 +181,7 @@ export const IDLE_STOP_MS = 30 * 60_000
 const STDERR_TAIL = 2000
 
 /** Updates a `session/load` replays from history, which the log already holds. */
-const REPLAYED = new Set([
-  'user_message_chunk',
-  'agent_message_chunk',
-  'agent_thought_chunk',
-  'tool_call',
-  'tool_call_update',
-  'plan',
-  'subagent_update',
-  'subagent_spawned',
-  'subagent_state_update',
-])
+const REPLAYED = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan', 'subagent_update'])
 
 /** The adapter's messages as the ACP client reads them: subagents in the RFD's form ({@link rfdSubagentMessage}). */
 function inRfdForm(stream: acp.Stream): acp.Stream {
