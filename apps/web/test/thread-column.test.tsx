@@ -126,6 +126,21 @@ describe('ThreadColumn', () => {
     )
   })
 
+  it('shows a subagent’s row and a background command on the strip, with no Stop since no runtime lets runcastle stop one', async () => {
+    const api = server([
+      ...HISTORY,
+      prompt(4, 'p2', 'Find the auth code and start the dev server'),
+      { i: 5, at, type: 'turn_started' },
+      { i: 6, at, type: 'subagent', id: 'child-1', title: 'Find the auth code', status: 'in_progress' },
+      { i: 7, at, type: 'tool', call: { id: 'g1', kind: 'search', title: 'grep auth', status: 'completed' }, parentId: 'child-1' },
+      { i: 8, at, type: 'tasks', tasks: [{ id: 'b1', title: 'bun run dev', startedAt: at }] },
+    ])
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    expect(await screen.findByText('Find the auth code')).toBeTruthy()
+    expect(await screen.findByText('bun run dev')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Stop this command' })).toBeNull()
+  })
+
   it('keeps each thread’s draft, and ↑ brings back the last message', async () => {
     const api = server(HISTORY)
     const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })

@@ -99,6 +99,7 @@ export function ThreadColumn({
       onStop={t.stop}
       onRecall={t.recall}
       {...(view.suggestion ? { suggestion: view.suggestion } : {})}
+      // No onStopTask: both adapters keep stopping a background command for JetBrains AIR clients.
       top={<PlanStrip plan={view.plan} tasks={view.tasks} />}
       footer={
         t.model && (
