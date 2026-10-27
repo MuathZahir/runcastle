@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ThreadEntry, ThreadState } from '../../../lib/chat-thread'
 import { IconCheck, IconChevronDown, IconPlus } from '../../../icons'
 import { Spinner, StatusDot, cx } from '../../../ui'
@@ -48,12 +49,15 @@ export function ThreadSwitcher({
   onPick,
   onNew,
   now,
+  children,
 }: {
   threads: readonly ThreadEntry[]
   current: string
   onPick: (id: string) => void
   onNew: () => void
   now?: number
+  /** Rows about the thread in front, after New thread (closing a scenario errand). */
+  children?: ReactNode
 }) {
   const shown = threads.find((t) => t.id === current)
   const waitingElsewhere = threads.some((t) => t.state === 'waiting' && t.id !== current)
@@ -73,6 +77,7 @@ export function ThreadSwitcher({
         <DropdownMenuItem icon={<IconPlus />} onSelect={onNew}>
           New thread
         </DropdownMenuItem>
+        {children}
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Threads</DropdownMenuLabel>
         {sorted.map((t) => (

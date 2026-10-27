@@ -216,7 +216,8 @@ export function PlanStrip({
 }: {
   plan: PlanEntry[]
   tasks: BackgroundTask[]
-  onStopTask: (id: string) => void
+  /** Stop one background command; absent, a command shows without its Stop. */
+  onStopTask?: (id: string) => void
   /** The clock the running times are read against. */
   now?: number
 }) {
@@ -263,7 +264,7 @@ export function PlanStrip({
           <IconTerminal size={13} className="shrink-0 text-icon" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{t.title}</span>
           <span className="shrink-0 text-xs tabular-nums text-text-tertiary">running {duration(Math.max(0, Math.round((now - t.startedAt) / 1000)))}</span>
-          <IconButton label="Stop this command" icon={<IconStop size={12} />} size="sm" onClick={() => onStopTask(t.id)} />
+          {onStopTask && <IconButton label="Stop this command" icon={<IconStop size={12} />} size="sm" onClick={() => onStopTask(t.id)} />}
         </div>
       ))}
     </div>
