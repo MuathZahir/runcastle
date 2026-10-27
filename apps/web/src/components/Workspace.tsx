@@ -28,7 +28,6 @@ import {
   deferredScope,
   dependencyCandidates,
   freshness,
-  isHeadlessRun,
   isSelfPlanRun,
   lastTestDriveAt,
   latestRun,
@@ -46,7 +45,6 @@ import {
   type DraftBaseMissing,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
-import { useFeatureAutoResume } from '../lib/use-auto-resume'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -62,11 +60,9 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
-import { ScenarioChatContext, ScenarioChatView } from './chat/ScenarioChat'
-import { SideSessionsView } from './chat/SideSessions'
-import { FeatureSessionSwitcher } from './chat/FeatureSessionSwitcher'
+import { ScenarioChatContext, ScenarioChatMenu } from './chat/ScenarioChat'
+import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
-import { FEATURE_CHAT } from '../lib/chat-sessions'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { HeaderAction } from './workspace/HeaderAction'
 import { usePanelShow } from './workspace/use-panel-show'
@@ -283,9 +279,9 @@ export function Workspace({
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
-  // The chat column (decision 9): the feature chat, the drive errand's
-  // scenario chat, which an errand's open brings to the front, and the
-  // feature's side sessions (several-sessions-per-feature decision 10).
+  // The chat column (chat-as-web-components decision 7): every thread of the
+  // feature, one in front — the drive errand's scenario chat comes to the
+  // front when an errand opens it.
   const column = useFeatureChatColumn({
     featureId,
     sessions: q.data?.sessions ?? [],
@@ -317,6 +313,9 @@ export function Workspace({
     landOnChat()
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
+  // The main chat's first message starts it (chat-as-web-components decision
+  // 7). Already on the chat, so nothing lands; the thread says why it failed.
+  const startChat = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: () => undefined })
   // Stop, the status row's primary while a round runs (decision 23).
   const [confirmStop, setConfirmStop] = useState(false)
   const stopAgent = trpc.feature.stop.useMutation({
@@ -468,8 +467,6 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // Opening the feature resumes its ended chat by itself.
-  const { autoResuming } = useFeatureAutoResume(featureId, q.data, q.dataUpdatedAt)
 
   if (q.isLoading) {
     return (
@@ -546,7 +543,7 @@ export function Workspace({
 
   /**
    * Resume the feature's one conversation, or start the first one (decisions 8
-   * and 12) — the chat's own Resume / Start button.
+   * and 12).
    */
   const launchChat = () => {
     launch.mutate({ featureId, kind: 'chat' })
@@ -556,23 +553,15 @@ export function Workspace({
    * The bar's constant Chat door: it starts or resumes the conversation and
    * lands on the chat (one-chat-layout-everywhere decision 5).
    *
-   * A session that is already up is not re-launched on the way in — the chat
-   * hosts whichever one is live (decision 9). The server would answer a chat
-   * launch with that same session (decision 12), but it would also write a fresh
-   * state header into its terminal on every click (decision 13), which is for a
-   * human arriving at a conversation they had lost sight of.
+   * A session that is already up is not re-launched on the way in — a
+   * self-planning run included, which is an ordinary thread to open and watch
+   * (chat-as-web-components decision 6). The server would answer a chat launch
+   * with that same session (decision 12), but it would also send a fresh state
+   * header (decision 13), which is for a human arriving at a conversation they
+   * had lost sight of.
    */
   const openChat = () => {
-    // A headless run has no terminal to land on, and the server refuses a chat
-    // beside it — say so rather than land on a chat with nothing to answer.
-    if (liveSession && isHeadlessRun(liveSession))
-      toast.push(
-        isSelfPlanRun(liveSession)
-          ? 'This feature is planning itself — stop the run to open the chat.'
-          : 'This feature is working by itself — stop the run to open the chat.',
-        'info',
-      )
-    else if (liveSession) landOnChat()
+    if (liveSession) landOnChat()
     else launchChat()
   }
 
@@ -960,11 +949,11 @@ export function Workspace({
             )}
             {!isDraft && (
               <span className="mr-1 flex min-w-0">
-                <FeatureSessionSwitcher
-                  column={column}
-                  featureId={featureId}
-                  {...(liveSession ? { liveSessionId: liveSession.id } : {})}
-                />
+                <ThreadSwitcher threads={column.threads} current={column.current} onPick={column.pick} onNew={column.newThread}>
+                  {column.scenario.listed && column.inFront === column.scenario.sessionId && (
+                    <ScenarioChatMenu chat={column.scenario} />
+                  )}
+                </ThreadSwitcher>
               </span>
             )}
             {headerRow.action && (
@@ -995,29 +984,23 @@ export function Workspace({
           <ScenarioChatContext.Provider value={column.scenario}>
             <PanelSplit
               chat={
-                // The same elements whatever the panel does: xterm keeps its
-                // buffer. The switcher picks which is in front; the column is
+                // The switcher picks which thread is in front; the column is
                 // hidden only while the panel has the whole row.
-                <>
-                  <FeatureChat
-                    full={full}
-                    events={events}
-                    alerts={chatAlerts}
-                    hidden={chatHidden || column.inFront !== FEATURE_CHAT}
-                    launching={launch.isPending}
-                    launchError={launch.error?.message}
-                    autoResuming={autoResuming}
-                    onLaunch={launchChat}
-                    onView={(target) => {
-                      if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
-                    }}
-                  />
-                  <ScenarioChatView
-                    chat={column.scenario}
-                    hidden={chatHidden || column.inFront !== column.scenario.sessionId}
-                  />
-                  <SideSessionsView sides={column.sides} inFront={column.inFront} hidden={chatHidden} />
-                </>
+                <FeatureChat
+                  full={full}
+                  column={column}
+                  events={events}
+                  alerts={chatAlerts}
+                  hidden={chatHidden}
+                  start={async () => {
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat' })
+                    if ('autoSkipped' in res) throw new Error(res.autoSkipped)
+                    return res.sessionId
+                  }}
+                  onView={(target) => {
+                    if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
+                  }}
+                />
               }
               panel={
                 shown && (

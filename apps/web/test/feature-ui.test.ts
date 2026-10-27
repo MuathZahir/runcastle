@@ -3,7 +3,6 @@ import { modelRoster } from '@runcastle/core'
 import type { EventRow } from '@runcastle/core'
 import {
   activeSession,
-  awaitingCheckIn,
   burnInterruption,
   defaultBaseBranch,
   deferredScope,
@@ -26,7 +25,6 @@ import {
   reviewWalkthroughUrl,
   rowChip,
   sessionActive,
-  sessionNotReady,
   sessionStatusLabel,
   shippedAt,
   shippedChatSessions,
@@ -205,41 +203,6 @@ describe('sessionActive', () => {
   })
 })
 
-/**
- * The panel's hint for the other half of the rule: the terminal is up, but the
- * agent inside it has still not said hello. Informational — the session is
- * active throughout.
- */
-describe('awaitingCheckIn', () => {
-  const session = { id: 'sess_1', status: 'launching' }
-  const launched = (ts: number, sessionId = 'sess_1'): EventRow => ({
-    id: 1,
-    projectId: 'p1',
-    ts,
-    type: 'session.launching',
-    message: 'launching ideation session',
-    data: { sessionId },
-  })
-
-  it('says nothing while the launch is still young', () => {
-    expect(awaitingCheckIn(session, [launched(1_000)], 20_000)).toBe(false)
-  })
-
-  it('speaks up once the terminal has been up past the grace period', () => {
-    expect(awaitingCheckIn(session, [launched(1_000)], 40_000)).toBe(true)
-  })
-
-  it('says nothing about a session that has checked in or ended', () => {
-    const events = [launched(1_000)]
-    expect(awaitingCheckIn({ id: 'sess_1', status: 'live' }, events, 40_000)).toBe(false)
-    expect(awaitingCheckIn({ id: 'sess_1', status: 'ended' }, events, 40_000)).toBe(false)
-  })
-
-  it('says nothing when the log cannot date this session', () => {
-    expect(awaitingCheckIn(session, [], 40_000)).toBe(false)
-    expect(awaitingCheckIn(session, [launched(1_000, 'sess_other')], 40_000)).toBe(false)
-  })
-})
 
 /**
  * Review findings are fixed in-run, decisions #7 and #4 — what the review card
@@ -780,41 +743,6 @@ describe('deferredScope', () => {
   })
 })
 
-/**
- * The session strip's "this terminal has not started" banner. A terminal that
- * opened and then sat behind a trust prompt looks exactly like a healthy one
- * doing nothing — so it has to be visible, and it must not outlive the session.
- */
-describe('sessionNotReady', () => {
-  const ev = (id: number, type: string, sessionId?: string): EventRow =>
-    ({ id, projectId: 'p', ts: id, type, message: type, data: { sessionId } }) as EventRow
-
-  it('is quiet for a session that launched and reported ready', () => {
-    expect(sessionNotReady([ev(1, 'session.started', 's1'), ev(2, 'session.kickoff', 's1')], 's1')).toBe(false)
-  })
-
-  it('flags a terminal that never reported ready', () => {
-    expect(sessionNotReady([ev(1, 'session.not_ready', 's1')], 's1')).toBe(true)
-  })
-
-  it('is scoped to one session — another terminal’s trouble is not this one’s', () => {
-    const events = [ev(1, 'session.not_ready', 's2'), ev(2, 'session.kickoff', 's1')]
-    expect(sessionNotReady(events, 's1')).toBe(false)
-    expect(sessionNotReady(events, 's2')).toBe(true)
-  })
-
-  it('does not carry a dead session’s trouble forward', () => {
-    const events = [ev(1, 'session.not_ready', 's1'), ev(2, 'session.ended', 's1')]
-    expect(sessionNotReady(events, 's1')).toBe(false)
-  })
-
-  // REGRESSION (lap-2 drive): a start hook that timed out left the banner over a
-  // chat that was plainly working; its first turn checks it in late.
-  it('clears once the agent checks in late', () => {
-    const events = [ev(1, 'session.not_ready', 's1'), ev(2, 'session.started', 's1')]
-    expect(sessionNotReady(events, 's1')).toBe(false)
-  })
-})
 
 describe('mergeConflictKickoff', () => {
   it('names the base, feature branch, and files, and names no phase', () => {

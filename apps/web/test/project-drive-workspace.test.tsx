@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectNote, ScenarioEntry } from '@runcastle/core'
+import type { ProjectNote, ScenarioEntry, ThreadEntry } from '@runcastle/core'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 import { openMenu } from './floating'
@@ -27,6 +27,9 @@ let testDriveResult: { ok: boolean; deniedReason?: string } = { ok: true }
 const testDrive = vi.fn()
 const runScenario = vi.fn()
 const openScenarioChat = vi.fn()
+const threadNew = vi.fn()
+/** What `thread.list` answers for the project. */
+let threads: ThreadEntry[] = []
 let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
   runnerConfigured: false,
   scenarios: [],
@@ -60,7 +63,20 @@ vi.mock('../src/trpc', () => {
         project: { projectSession: { invalidate }, conversations: { invalidate } },
         projectNotes: { invalidate },
         feature: { driveInfo: { invalidate } },
+        thread: { list: { invalidate } },
       }),
+      thread: {
+        list: { useQuery: () => ({ data: threads }) },
+        new: {
+          useMutation: (opts: { onSuccess: (r: { threadId: string }) => void }) => ({
+            isPending: false,
+            mutate: (input: unknown) => {
+              threadNew(input)
+              opts.onSuccess({ threadId: 'th_new' })
+            },
+          }),
+        },
+      },
       project: {
         list: { useQuery: () => ({ data: [project] }) },
         branches: { useQuery: () => ({ data: { current: 'main', detected: 'main', branches: [] } }) },
@@ -131,6 +147,12 @@ vi.mock('../src/lib/use-session-branch', () => ({
 }))
 // The terminal is a websocket client; its mount is not what is under test.
 vi.mock('../src/components/TerminalView', () => ({ TerminalView: () => null }))
+// The thread itself is ThreadColumn's own test; here it names which thread is in front.
+vi.mock('../src/components/chat/ThreadColumn', () => ({
+  ThreadColumn: ({ label, threadId }: { label?: string; threadId: string | null }) => (
+    <section aria-label={label} data-thread-column="" data-thread={threadId ?? 'new'} />
+  ),
+}))
 vi.mock('../src/lib/project-notes', () => ({
   uploadProjectNoteScreenshot: vi.fn(),
   isNoteHotkey: () => false,
@@ -147,8 +169,7 @@ const talk = (over: Partial<ProjectTalkApi> = {}): ProjectTalkApi => ({
   triage: vi.fn(),
   replace: vi.fn(),
   resume: vi.fn(),
-  autoResume: vi.fn(),
-  autoResuming: null,
+  begin: vi.fn(),
   starting: false,
   ...over,
 })
@@ -183,6 +204,7 @@ beforeEach(() => {
     devCommand: 'bun run dev',
   }
   notes = [note('already reported', 1_000)]
+  threads = []
 })
 afterEach(() => {
   cleanup()
@@ -377,77 +399,79 @@ describe('driving from the project page', () => {
   })
 })
 
+const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
+  id,
+  title,
+  role: 'project',
+  state: 'idle',
+  updatedAt,
+  runtime: 'claude-code',
+})
+
+/** The chat in front of the column: its region, and which thread it shows. */
+const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Project chat' })
+const threadSwitcher = (): HTMLElement => screen.getByRole('button', { name: 'Thread' })
+
 /**
- * An ended project chat is ChatView at rest, as a feature's ended Chat tab is
- * (one-chat-layout-everywhere decision 6) — not a read-back page of its own.
+ * A finished project chat is a thread like any other (chat-as-web-components
+ * decision 7): it opens at once, with no Resume and nothing to end.
  */
-describe('an ended project chat', () => {
-  const ended = (over: Partial<ProjectConversation> = {}): ProjectConversation => ({
+describe('a finished project chat', () => {
+  const ended = {
     id: 'sess_old',
-    title: null,
+    title: '',
     createdAt: 1_000,
     status: 'ended',
     resumable: true,
-    ...over,
-  }) as ProjectConversation
+  } as ProjectConversation
 
-  it('opens as the shared chat surface: the strip, the transcript, Resume at the bottom', () => {
-    const api = talk({ conversations: [ended()] })
+  it('opens as its thread from the list, named in the header’s switcher, with no Resume or End session', () => {
+    threads = [entry('sess_old', 'Untitled chat')]
+    const api = talk({ conversations: [ended] })
     mount(api)
     fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
 
-    const chat = screen.getByRole('region', { name: 'Project chat' })
-    expect(chat.hasAttribute('data-chat-view')).toBe(true)
-    // the header's switcher reads the chat in front
-    const switcher = screen.getByRole('button', { name: 'Chat session' })
-    expect(switcher.closest('header')).toBeTruthy()
-    expect(switcher.textContent).toContain('Untitled chat')
-    expect(within(chat).getByText('plan the audit')).toBeTruthy()
-    // nothing live: no dot, nothing to end, and no page-level Reopen
-    expect(switcher.querySelector('[aria-label="Live"]')).toBeNull()
-    openMenu(switcher)
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(threadSwitcher().closest('header')).toBeTruthy()
+    expect(threadSwitcher().textContent).toContain('Untitled chat')
+    openMenu(threadSwitcher())
     expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
-    expect(screen.queryByRole('button', { name: 'Reopen' })).toBeNull()
-    expect(screen.queryByText(/^Started /)).toBeNull()
-
-    fireEvent.click(within(chat).getByRole('button', { name: 'Resume the conversation' }))
-    expect(api.resume).toHaveBeenCalledWith('sess_old')
-  })
-
-  it('offers no Resume on a chat the agent never picked up', () => {
-    mount(talk({ conversations: [ended({ resumable: false })] }))
-    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
-
-    const chat = screen.getByRole('region', { name: 'Project chat' })
-    expect(within(chat).getByText('plan the audit')).toBeTruthy()
-    expect(within(chat).queryByRole('button', { name: 'Resume the conversation' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Resume|Reopen/ })).toBeNull()
+    expect(api.resume).not.toHaveBeenCalled()
   })
 
   it('steps back to the project page from its crumb', () => {
-    mount(talk({ conversations: [ended()] }))
+    mount(talk({ conversations: [ended] }))
     fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
     fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     expect(restShown()).toBe(true)
+    expect(chatInFront()).toBeNull()
+  })
+
+  it('opens New chat as an empty thread, nothing launched until its first message', () => {
+    const api = talk()
+    mount(api)
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
+    expect(chatInFront()?.dataset.thread).toBe('new')
+    expect(api.start).not.toHaveBeenCalled()
   })
 })
 
 /** design-mode decision 11: the project page is chat-first, in the feature page's pieces. */
 describe('a live project chat', () => {
-  const older = {
-    id: 'sess_old',
-    title: 'An older idea',
+  const liveRow = {
+    id: 'sess_1',
+    title: 'Audit the journal',
     createdAt: 1_000,
-    status: 'ended',
+    status: 'live',
     resumable: true,
   } as ProjectConversation
-  const liveRow = { ...older, id: 'sess_1', title: 'Audit the journal', status: 'live' } as ProjectConversation
 
   it('fills the chat column, with the drive opening beside it in the panel', () => {
     slot = LIVE
     mount(talk({ session: liveChat, conversations: [liveRow] }))
-    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
-    expect(shown(chat)).toBe(true)
+    expect(chatInFront()?.dataset.thread).toBe('sess_1')
     expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
 
@@ -456,49 +480,39 @@ describe('a live project chat', () => {
     // side by side: the drive in the panel, the chat still in its column
     expect(shown(drive)).toBe(true)
     expect(drive.closest('[data-panel]')).toBeTruthy()
-    expect(shown(chat)).toBe(true)
+    expect(chatInFront()).toBeTruthy()
     expect(screen.getByRole('separator', { name: 'Resize the panel' })).toBeTruthy()
     expect(testDrive).not.toHaveBeenCalled()
 
-    // the project crumb steps back to the chat list; the terminal stays mounted
+    // the project crumb steps back to the chat list
     fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     expect(restShown()).toBe(true)
-    expect(shown(chat)).toBe(false)
-    expect(document.querySelector('[data-live-chat]')).toBe(chat)
+    expect(chatInFront()).toBeNull()
   })
 
-  it('lists the past chats in its switcher, an ended one opening its transcript', () => {
-    mount(talk({ session: liveChat, conversations: [liveRow, older] }))
-    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
-    const switcher = () => screen.getByRole('button', { name: 'Chat session' })
-    expect(switcher().textContent).toContain('Audit the journal')
+  it('lists every chat of the project in its switcher, each opening its thread, and New thread selects a new one', () => {
+    threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
+    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    expect(threadSwitcher().textContent).toContain('Audit the journal')
 
-    openMenu(switcher())
-    // a past chat carries its age, as the resting list shows it
-    const options = screen.getAllByRole('menuitemradio').map((o) => o.textContent)
-    expect(options[0]).toBe('Audit the journal')
-    expect(options[1]).toMatch(/^An older idea · \d+d$/)
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /^An older idea/ }))
+    openMenu(threadSwitcher())
+    const options = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
+    expect(options[0]).toContain('Audit the journal')
+    expect(options[1]).toContain('An older idea')
+    fireEvent.click(screen.getAllByRole('menuitemradio')[1])
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
 
-    // the transcript reads back; the live terminal is hidden, not unmounted
-    expect(screen.getByText('plan the audit')).toBeTruthy()
-    expect(shown(chat)).toBe(false)
-    expect(document.querySelector('[data-live-chat]')).toBe(chat)
-
-    openMenu(switcher())
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Audit the journal' }))
-    expect(shown(chat)).toBe(true)
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
+    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
+    expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
 
-  it('has one header row, its switcher’s menu holding the landing branch and End session', () => {
+  it('has one header row, and no End session in its switcher', () => {
     mount(talk({ session: liveChat, conversations: [liveRow] }))
     expect([...document.querySelectorAll('header')].filter(shown)).toHaveLength(1)
-    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
-    expect(chat.textContent).not.toContain('lands on')
-    openMenu(screen.getByRole('button', { name: 'Chat session' }))
-    const menu = screen.getByRole('menu')
-    expect(menu.textContent).toContain('Lands on main')
-    expect(within(menu).getByRole('menuitem', { name: 'End session' })).toBeTruthy()
+    openMenu(threadSwitcher())
+    expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
   })
 
   it('opens the panel toggle at the Notes while no drive is up, counting the open ones', () => {
@@ -512,14 +526,13 @@ describe('a live project chat', () => {
 
   it('starts the project test drive from the topbar without leaving the chat', () => {
     const { rerender } = mount(talk({ session: liveChat, conversations: [liveRow] }))
-    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
     expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
     rerender()
 
     // the drive opens in the panel beside the chat, which stays in front
     expect(document.querySelector('[data-project-drive]')!.closest('[data-panel]')).toBeTruthy()
-    expect(shown(chat)).toBe(true)
+    expect(chatInFront()).toBeTruthy()
     expect(restShown()).toBe(false)
     // once it is up, the panel toggle is the way to it
     expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { Button, IconButton, StatusLabel, TextArea, cx } from '../../ui'
 import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
 import { trpc } from '../../trpc'
+import { mainChatInbox, putInInbox } from '../../lib/composer-inbox'
 import { useToast } from '../../lib/toast'
 import {
   cropRect,
@@ -59,8 +60,8 @@ function nextStreamFrame(video: HTMLVideoElement): Promise<void> {
 /**
  * Where a capture lands: a feature drive writes the feature's test note, a
  * project drive writes a project note (project-level-test-drive decision 1),
- * and the design view sends it into the feature's live chat as a request
- * (design-mode decision 4) — never a note.
+ * and the design view puts it in the feature chat's composer as an image
+ * (chat-as-web-components decision 5) — never a note.
  */
 type CaptureTarget =
   | { featureId: string; projectId?: undefined; sendTo?: 'note' | 'chat' }
@@ -91,16 +92,6 @@ const CAPTURE_COPY = {
     failed: 'the selection could not be sent',
   },
 } as const
-
-/** The PNG as base64, the shape `design.sendCrop` takes it in. */
-async function pngBase64(png: Blob): Promise<string> {
-  const bytes = new Uint8Array(await png.arrayBuffer())
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  }
-  return btoa(binary)
-}
 
 /**
  * The screen width the frame lays out at, and the pane it is scaled into
@@ -290,6 +281,13 @@ export function DrivePanel({
       toast.push('the selected region could not be turned into a picture')
       return
     }
+    if (target.sendTo === 'chat') {
+      // A request to the agent: the crop goes straight into the main chat's
+      // composer as an image, and the human writes the message there
+      // (chat-as-web-components decision 5).
+      putInInbox(mainChatInbox(target.featureId), [new File([png], 'selection.png', { type: 'image/png' })])
+      return
+    }
     setText('')
     setShot({ png, preview: URL.createObjectURL(png) })
   }
@@ -331,16 +329,6 @@ export function DrivePanel({
     // overlay takes, decision 24c).
     const noteText = text.trim() || 'Screenshot from the test drive'
     try {
-      if (target.sendTo === 'chat') {
-        // A request to the agent: the picture alone is a whole message.
-        await utils.client.design.sendCrop.mutate({
-          featureId: target.featureId,
-          png: await pngBase64(shot.png),
-          text: text.trim(),
-        })
-        discard()
-        return
-      }
       let saved: { uploadError?: string }
       if (target.projectId !== undefined) {
         const projectId = target.projectId
