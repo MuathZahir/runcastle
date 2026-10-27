@@ -127,6 +127,78 @@ describe('ThreadColumn', () => {
     )
   })
 
+  const asking = (ask: Extract<ThreadEvent, { type: 'ask' }>['ask']): ThreadEvent[] => [
+    ...HISTORY,
+    prompt(4, 'p2', 'File the bug in Linear'),
+    { i: 5, at, type: 'turn_started' },
+    { i: 6, at, type: 'ask', ask },
+  ]
+  const FORM = {
+    kind: 'form' as const,
+    id: 'ask2',
+    server: 'linear',
+    message: 'Where should the issue go?',
+    fields: [
+      { key: 'team', type: 'enum' as const, title: 'Team', options: [{ value: 'eng', label: 'Engineering' }, { value: 'ops', label: 'Operations' }] },
+      { key: 'email', type: 'string' as const, title: 'Reporter', format: 'email' as const, required: true },
+      { key: 'points', type: 'number' as const, title: 'Points', integer: true, default: 3 },
+      { key: 'urgent', type: 'boolean' as const, title: 'Urgent' },
+    ],
+  }
+
+  it('docks an MCP server’s form with its fields, holds a missing required field, and submits its values', async () => {
+    const api = server(asking(FORM))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Where should the issue go?')
+    expect(screen.getByText('linear asks')).toBeTruthy()
+    expect(screen.queryByLabelText('Message')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Required')
+    expect(api.inputs('thread.answer')).toEqual([])
+
+    fireEvent.click(screen.getByRole('radio', { name: /Operations/ }))
+    fireEvent.change(screen.getByLabelText(/Reporter/), { target: { value: 'sam@example.com' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Urgent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    await waitFor(() =>
+      expect(api.inputs('thread.answer')).toEqual([
+        { threadId: 'th1', askId: 'ask2', answer: { kind: 'form', values: { team: 'ops', email: 'sam@example.com', points: 3, urgent: true } } },
+      ]),
+    )
+  })
+
+  it('declines an MCP server’s form on Decline, and on Esc', async () => {
+    const api = server(asking(FORM))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Where should the issue go?')
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }))
+    fireEvent.keyDown(screen.getByRole('form', { name: 'An MCP server asks' }), { key: 'Escape' })
+    await waitFor(() => expect(api.inputs('thread.answer')).toHaveLength(2))
+    expect(api.inputs('thread.answer')).toEqual([
+      { threadId: 'th1', askId: 'ask2', answer: { kind: 'decline' } },
+      { threadId: 'th1', askId: 'ask2', answer: { kind: 'decline' } },
+    ])
+  })
+
+  it('docks an MCP server’s link to open, with Done and Decline', async () => {
+    const api = server(asking({ kind: 'link', id: 'ask3', message: 'Sign in to Linear', url: 'https://linear.app/oauth?x=1' }))
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await screen.findByText('Sign in to Linear')
+    expect(screen.getByText('An MCP server asks')).toBeTruthy()
+    const link = screen.getByRole('link', { name: /linear\.app\/oauth/ })
+    expect(link.getAttribute('href')).toBe('https://linear.app/oauth?x=1')
+    expect(link.getAttribute('target')).toBe('_blank')
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.keyDown(screen.getByRole('group', { name: 'An MCP server asks' }), { key: 'Escape' })
+    await waitFor(() =>
+      expect(api.inputs('thread.answer')).toEqual([
+        { threadId: 'th1', askId: 'ask3', answer: { kind: 'link', done: true } },
+        { threadId: 'th1', askId: 'ask3', answer: { kind: 'decline' } },
+      ]),
+    )
+  })
+
   it('keeps each thread’s draft, and ↑ brings back the last message', async () => {
     const api = server(HISTORY)
     const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })

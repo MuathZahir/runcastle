@@ -13,6 +13,8 @@ export type {
   DiffLine,
   Effort,
   FileChange,
+  FormField,
+  FormValues,
   ModelChoice,
   PlanEntry,
   Question,

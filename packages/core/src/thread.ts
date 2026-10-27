@@ -67,10 +67,45 @@ export const Question = z.object({
 })
 export type Question = z.infer<typeof Question>
 
+/** What every field of an MCP server's form carries, whatever it holds. */
+const FormFieldBase = {
+  /** The key its value is sent back under. */
+  key: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+}
+
+/**
+ * One field of a form an MCP server asks the human to fill (an ACP form
+ * elicitation): only the flat primitives MCP allows, each its own control.
+ */
+export const FormField = z.discriminatedUnion('type', [
+  z.object({ ...FormFieldBase, type: z.literal('string'), format: z.enum(['email', 'uri', 'date']).optional(), default: z.string().optional() }),
+  z.object({ ...FormFieldBase, type: z.literal('number'), integer: z.boolean().optional(), default: z.number().optional() }),
+  z.object({ ...FormFieldBase, type: z.literal('boolean'), default: z.boolean().optional() }),
+  /** A single choice; `value` is what is sent, `label` what is shown. */
+  z.object({
+    ...FormFieldBase,
+    type: z.literal('enum'),
+    options: z.array(z.object({ value: z.string(), label: z.string() })),
+    default: z.string().optional(),
+  }),
+])
+export type FormField = z.infer<typeof FormField>
+
+/** A filled form, keyed by each field's `key`. */
+export const FormValues = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+export type FormValues = z.infer<typeof FormValues>
+
 /** What the agent waits on the human for, docked where the composer is. */
 export const Ask = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('approval'), id: z.string(), call: ToolCall }),
   z.object({ kind: z.literal('question'), id: z.string(), questions: z.array(Question) }),
+  /** An MCP server asks the human to fill a form. */
+  z.object({ kind: z.literal('form'), id: z.string(), server: z.string().optional(), message: z.string(), fields: z.array(FormField) }),
+  /** An MCP server asks the human to open a page (a sign-in, a consent) and say when they are done. */
+  z.object({ kind: z.literal('link'), id: z.string(), server: z.string().optional(), message: z.string(), url: z.string() }),
 ])
 export type Ask = z.infer<typeof Ask>
 
@@ -84,6 +119,10 @@ export const AskAnswer = z.discriminatedUnion('kind', [
   }),
   /** Keyed by each question's `question` text, as Claude's AskUserQuestion answers are. */
   z.object({ kind: z.literal('question'), answers: z.record(z.string(), z.string()) }),
+  z.object({ kind: z.literal('form'), values: FormValues }),
+  z.object({ kind: z.literal('link'), done: z.literal(true) }),
+  /** Refusing a form or a link. */
+  z.object({ kind: z.literal('decline') }),
 ])
 export type AskAnswer = z.infer<typeof AskAnswer>
 
@@ -193,7 +232,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /**
    * An ask answered — by the human, by the host on an unattended thread, or
    * withdrawn by the agent. `lines` is what the thread keeps of it, one per
-   * question (or one for an approval): "Allowed  bun add …", "Page size: A4".
+   * question or form field filled (or one for an approval, a link, a decline):
+   * "Allowed  bun add …", "Page size: A4".
    */
   z.object({
     type: z.literal('ask_resolved'),
