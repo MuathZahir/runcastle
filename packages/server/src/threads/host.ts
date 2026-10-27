@@ -366,11 +366,16 @@ class Host implements AgentHost {
    * Trust the session's own hooks (codex-acp): Codex runs a hook only once its
    * hash is trusted, and the adapter has no flag that skips the check, so
    * runcastle's generated guards and status line would otherwise never fire.
+   * A CLI that cannot list its hooks still runs the conversation; it is logged.
    */
   private async trustHooks(conn: acp.ClientConnection, cwd: string): Promise<void> {
-    const listed = await conn.agent.request<{ hooks?: CodexHook[] }>(CODEX_HOOKS_LIST, { cwd })
-    const hooks = (listed?.hooks ?? []).filter((h) => h.trustStatus !== 'trusted').map(({ key, currentHash }) => ({ key, currentHash }))
-    if (hooks.length) await conn.agent.request(CODEX_HOOKS_TRUST, { cwd, hooks })
+    try {
+      const listed = await conn.agent.request<{ hooks?: CodexHook[] }>(CODEX_HOOKS_LIST, { cwd })
+      const hooks = (listed?.hooks ?? []).filter((h) => h.trustStatus !== 'trusted').map(({ key, currentHash }) => ({ key, currentHash }))
+      if (hooks.length) await conn.agent.request(CODEX_HOOKS_TRUST, { cwd, hooks })
+    } catch (err) {
+      console.error(`could not trust the Codex hooks in ${cwd}`, err)
+    }
   }
 
   private async failStart(t: Thread, err: unknown): Promise<void> {
