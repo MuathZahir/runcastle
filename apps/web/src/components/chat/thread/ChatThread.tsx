@@ -77,6 +77,20 @@ export function ChatThread({
     if (el && atBottom) el.scrollTop = el.scrollHeight
   }, [items, state, atBottom, footH])
 
+  // An image grows the thread when it loads, after the scroll above: a thread
+  // read at its foot stays at its foot. `load` does not bubble, so it is caught on the way down.
+  const stick = useRef(atBottom)
+  stick.current = atBottom
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const onLoad = () => {
+      if (stick.current) el.scrollTop = el.scrollHeight
+    }
+    el.addEventListener('load', onLoad, true)
+    return () => el.removeEventListener('load', onLoad, true)
+  }, [])
+
   const onScroll = () => {
     const el = scroller.current
     if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 32)
@@ -344,8 +358,12 @@ function AgentMessage({ item, actions }: { item: Extract<ThreadItem, { kind: 'ag
   )
 }
 
+/** The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`); the line already says who spoke. */
+const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/
+
 /** Runcastle's own message to the agent (Go, a round's end): one quiet line, not your bubble. */
-function RuncastleLine({ text }: { text: string }) {
+function RuncastleLine({ text: tagged }: { text: string }) {
+  const text = tagged.replace(RUNCASTLE_TAG, '')
   return (
     <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary">
       <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-accent-text ring-1 ring-inset ring-[color-mix(in_oklab,var(--color-accent)_28%,transparent)]">

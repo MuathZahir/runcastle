@@ -43,6 +43,48 @@ const KIND_VERB: Record<ToolKind, [done: string, doing: string]> = {
   other: ['Used', 'Using'],
 }
 
+/**
+ * The verbs an ACP title can open with ("Read README.md", "Edit src/a.ts",
+ * "Fetch https://…"), each said past or in flight. A title that opens with one
+ * says its own verb, so the kind's is not put in front of it.
+ */
+const TITLE_VERB: Record<string, [done: string, doing: string]> = {
+  Read: ['Read', 'Reading'],
+  Write: ['Wrote', 'Writing'],
+  Edit: ['Edited', 'Editing'],
+  Delete: ['Deleted', 'Deleting'],
+  Move: ['Moved', 'Moving'],
+  Fetch: ['Fetched', 'Fetching'],
+  Search: ['Searched', 'Searching'],
+  Run: ['Ran', 'Running'],
+}
+
+/** Titles that already read as a sentence (claude-agent-acp's skill, task and plan rows): shown as they are. */
+const SENTENCE_TITLE = /^(Load skill|Create task|Update task|List tasks|Get task|Approve Plan|Exited Plan Mode|Asking for|Preparing file|Edit notebook|Terminal)\b/
+
+/** "get_feature_context" → "get feature context". */
+const inWords = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
+
+/**
+ * What a call's row says: one verb, then what it acted on (in mono when that is
+ * a path or a command). An MCP tool reads "runcastle: get feature context", an
+ * internal tool by its name in words ("Used tool search"), never the raw name.
+ */
+export function callText(call: Pick<ToolCall, 'kind' | 'title'>, running: boolean): { verb?: string; target: string; mono: boolean } {
+  const tense = running ? 1 : 0
+  const mcp = /^mcp__(.+)__([^_].*)$/.exec(call.title)
+  if (mcp) return { target: `${inWords(mcp[1].replace(/^plugin_/, ''))}: ${inWords(mcp[2])}`, mono: false }
+  if (SENTENCE_TITLE.test(call.title)) return { target: call.title, mono: false }
+  const [first, ...rest] = call.title.split(' ')
+  const own = TITLE_VERB[first]
+  if (own) return { verb: own[tense], target: rest.join(' '), mono: true }
+  // An internal tool's raw name (ToolSearch): its words.
+  if (/^[A-Z][A-Za-z]+$/.test(call.title)) {
+    return { verb: KIND_VERB[call.kind][tense], target: call.title.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase(), mono: false }
+  }
+  return { verb: KIND_VERB[call.kind][tense], target: call.title, mono: true }
+}
+
 export function duration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   const m = Math.floor(seconds / 60)
@@ -186,6 +228,7 @@ function CallRow({ call }: { call: ToolCall }) {
   const hasDetail = !!call.output || !!call.diff
   const added = call.diff?.lines.filter((l) => l.op === '+').length ?? 0
   const removed = call.diff?.lines.filter((l) => l.op === '-').length ?? 0
+  const text = callText(call, running)
   const row = (
     <>
       {running ? (
@@ -195,12 +238,20 @@ function CallRow({ call }: { call: ToolCall }) {
       ) : (
         <Icon size={14} className="shrink-0 text-icon" />
       )}
-      <span className={cx('shrink-0 text-sm', running ? 'text-shimmer' : failed ? 'text-danger-text' : 'text-text-tertiary')}>
-        {KIND_VERB[call.kind][running ? 1 : 0]}
-      </span>
-      <span className={cx('min-w-0 truncate font-mono text-xs', failed ? 'text-danger-text' : 'text-text-secondary')}>
-        {call.title}
-      </span>
+      {text.verb && (
+        <span className={cx('shrink-0 text-sm', running ? 'text-shimmer' : failed ? 'text-danger-text' : 'text-text-tertiary')}>{text.verb}</span>
+      )}
+      {text.target && (
+        <span
+          className={cx(
+            'min-w-0 truncate',
+            text.mono ? 'font-mono text-xs' : 'text-sm',
+            failed ? 'text-danger-text' : text.verb ? 'text-text-secondary' : running ? 'text-shimmer' : 'text-text-tertiary',
+          )}
+        >
+          {text.target}
+        </span>
+      )}
       {call.diff && <Delta added={added} removed={removed} />}
       {hasDetail && (
         <IconChevronRight
@@ -275,6 +326,21 @@ export function DiffView({ lines }: { lines: DiffLine[] }) {
   )
 }
 
+/** A path that, short of room, gives up its folders from the left and keeps the file name whole. */
+function FilePath({ path }: { path: string }) {
+  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1
+  return (
+    <span title={path} className="flex min-w-0 flex-1 font-mono text-xs">
+      {cut > 0 && (
+        <span className="min-w-0 truncate text-text-tertiary [direction:rtl]">
+          <bdi>{path.slice(0, cut)}</bdi>
+        </span>
+      )}
+      <span className="shrink-0 text-text-secondary">{path.slice(cut)}</span>
+    </span>
+  )
+}
+
 /**
  * What a turn changed, under its final words: "2 changed files +29 −12", each
  * file a row that opens to its diff. The one card in a settled turn, because
@@ -318,7 +384,7 @@ export function ChangesCard({ files }: { files: FileChange[] }) {
                 )}
               >
                 <IconDoc size={14} className="shrink-0 text-icon" />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{f.path}</span>
+                <FilePath path={f.path} />
                 <Delta added={f.added} removed={f.removed} />
               </button>
               {file === f.path && (

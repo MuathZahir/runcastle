@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BackgroundTask, ContextUsage, Effort, ModelChoice, PlanEntry, UsageLimit } from '../../../lib/chat-thread'
 import { groupModels, modelFamily } from '../../../lib/model-groups'
 import {
@@ -294,16 +294,22 @@ export function PlanStrip({
   plan,
   tasks,
   onStopTask,
-  now = Date.now(),
 }: {
   plan: PlanEntry[]
   tasks: BackgroundTask[]
   /** Stop one background command; absent, a command shows without its Stop. */
   onStopTask?: (id: string) => void
-  /** The clock the running times are read against. */
-  now?: number
 }) {
   const [open, setOpen] = useState(false)
+  // A command's running time ticks each second while any runs.
+  const [now, setNow] = useState(() => Date.now())
+  const ticking = tasks.length > 0
+  useEffect(() => {
+    if (!ticking) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [ticking])
   const done = plan.filter((p) => p.status === 'completed').length
   const current = plan.find((p) => p.status === 'in_progress')
   if (plan.length === 0 && tasks.length === 0) return null
