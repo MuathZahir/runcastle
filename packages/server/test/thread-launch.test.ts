@@ -5,7 +5,7 @@ import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { launchPrepareSession, launchSession } from '../src/launcher/launcher'
+import { launchPrepareSession, launchProjectSession, launchSession, type LaunchSessionOptions } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
@@ -15,14 +15,14 @@ import { createFeatureBranch, PROJECT_BRANCH } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { listSessionsByFeature } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { appendThreadEvent, type AgentHost } from '../src/threads/types'
+import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeScript } from './support/fake-acp-agent'
-import { acpLaunchOf, briefOf, kickoffOf, promptsOf } from './support/thread-launch'
+import { acpLaunchOf, briefOf, kickoffOf, promptsOf, sentPrompts } from './support/thread-launch'
 
 /**
  * Every conversation is a thread (chat-as-web-components; ADR-0015): a launch
@@ -296,6 +296,49 @@ describe('thread.new', () => {
     const projectSaid = promptsOf(orchestrator)
     expect(projectSaid.map((p) => p.source)).toEqual(['runcastle', 'human'])
     expect(projectSaid[0].text).toMatch(/\/runcastle:/)
+  })
+
+  it('sends an empty thread’s briefing and the human’s first words as one prompt in one turn', async () => {
+    const fake = fakeHost()
+    const { threadId } = await caller().thread.new({ projectId: project.id })
+
+    await caller().thread.send({ threadId, text: 'Hello' })
+
+    await vi.waitFor(() => expect(readThreadEvents(threadId).some((e) => e.type === 'turn_ended')).toBe(true))
+    const [briefing] = promptsOf(threadId)
+    expect(sentPrompts(fake)).toEqual([`${briefing.text}\n\nHello`])
+    expect(readThreadEvents(threadId).filter((e) => e.type === 'turn_started')).toHaveLength(1)
+  })
+})
+
+describe('a launch’s opening held for the human’s first message', () => {
+  /** Launch, then send the human's first words as the web does on a never-started thread's first Send. */
+  async function startOnFirstSend(launch: (opts: LaunchSessionOptions) => Promise<{ sessionId: string }>): Promise<{ id: string; fake: FakeAcp }> {
+    const fake = fakeHost()
+    const { sessionId } = await launch({ holdOpening: true })
+    expect(fake.processes).toEqual([])
+    expect(promptsOf(sessionId).map((p) => p.source)).toEqual(['runcastle'])
+    await caller().thread.send({ threadId: sessionId, text: 'Hello' })
+    await vi.waitFor(() => expect(readThreadEvents(sessionId).some((e) => e.type === 'turn_ended')).toBe(true))
+    return { id: sessionId, fake }
+  }
+
+  it.each([
+    ['the feature’s main chat', async (opts: LaunchSessionOptions) => launchSession(ctx, { featureId: (await feature()).id, kind: 'chat' }, opts)],
+    ['a new project chat', (opts: LaunchSessionOptions) => launchProjectSession(ctx, { projectId: project.id, fresh: true }, opts)],
+    ['the preparation chat', (opts: LaunchSessionOptions) => launchPrepareSession(ctx, { projectId: project.id }, opts)],
+  ])('%s sends its opening and the first message as one prompt in one turn', async (_, launch) => {
+    const { id, fake } = await startOnFirstSend(launch)
+    const [opening, hello] = promptsOf(id)
+    expect([opening.source, hello.source]).toEqual(['runcastle', 'human'])
+    expect(sentPrompts(fake)).toEqual([`${opening.text}\n\nHello`])
+    expect(readThreadEvents(id).filter((e) => e.type === 'turn_started')).toHaveLength(1)
+  })
+
+  it('without the flag, a launch sends its opening at once', async () => {
+    const fake = fakeHost()
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id, fresh: true })
+    await vi.waitFor(() => expect(sentPrompts(fake)).toEqual([promptsOf(sessionId)[0].text]))
   })
 })
 

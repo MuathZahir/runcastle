@@ -77,6 +77,8 @@ export const featureRouter = router({
   // `purpose` + `purposeData` say what the session was opened to DO, which the
   // briefing alone could not: both conflict-resolve sites mark their session
   // `resolve-conflict` and name the merge, so the edit guard can let it write.
+  // `holdOpening` keeps the opening for the human's first message, which the
+  // web sends next: one prompt, one answer (chat-as-web-components decision 12).
   launchSession: publicProcedure
     .input(
       z.object({
@@ -85,9 +87,10 @@ export const featureRouter = router({
         kickoffLine: z.string().min(1).optional(),
         purpose: SessionPurpose.optional(),
         purposeData: MergeBranchPair.optional(),
+        holdOpening: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input }) => launchSession(ctx, input)),
+    .mutation(({ ctx, input: { holdOpening, ...input } }) => launchSession(ctx, input, { holdOpening })),
 
   // "Fix drive" — the one click that turns a failed drive into an agent already
   // holding the failure (multi-service decision 9). Its own door rather than a

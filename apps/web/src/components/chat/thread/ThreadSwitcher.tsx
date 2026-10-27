@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ThreadEntry, ThreadState } from '../../../lib/chat-thread'
+import type { ThreadEntry } from '../../../lib/chat-thread'
 import { IconCheck, IconChevronDown, IconDoc, IconPencil, IconPlus } from '../../../icons'
-import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, Spinner, StatusDot, TextField, cx } from '../../../ui'
+import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, StatusDot, TextField, cx } from '../../../ui'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,22 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../ui/dropdown-menu'
 import { SELECT_GHOST } from '../../../ui/select'
-
-/** "now", "4m", "3h", "2d". */
-export function ago(at: number, now = Date.now()): string {
-  const m = Math.round((now - at) / 60_000)
-  if (m < 1) return 'now'
-  if (m < 60) return `${m}m`
-  const h = Math.round(m / 60)
-  return h < 24 ? `${h}h` : `${Math.round(h / 24)}d`
-}
-
-/** A thread's state as its mark: a spinner while it works, a dot while it waits on you, nothing idle. */
-function StateMark({ state }: { state: ThreadState }) {
-  if (state === 'working') return <Spinner size="sm" />
-  if (state === 'waiting') return <StatusDot tone="warning" label="Waiting for you" />
-  return null
-}
+import { ThreadStateMark, threadStateWords } from './ThreadState'
 
 const ROLE_LABEL: Record<ThreadEntry['role'], string> = {
   main: 'Feature chat',
@@ -77,7 +62,7 @@ export function ThreadSwitcher({
           aria-label="Thread"
           className={cx(SELECT_GHOST, 'inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-sm font-medium text-text')}
         >
-          {shown && <StateMark state={shown.state} />}
+          {shown && <ThreadStateMark state={shown.state} />}
           <span className="min-w-0 truncate">{shown?.title}</span>
           {waitingElsewhere && <StatusDot tone="warning" label="Another thread is waiting for you" />}
           <IconChevronDown size={14} className="shrink-0 text-icon" />
@@ -116,10 +101,10 @@ export function ThreadSwitcher({
               <span className="flex min-w-0 flex-1 flex-col py-0.5">
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate">{t.title}</span>
-                  <StateMark state={t.state} />
+                  <ThreadStateMark state={t.state} />
                 </span>
                 <span className="text-xs text-text-tertiary">
-                  {ROLE_LABEL[t.role]} · {t.state === 'waiting' ? 'waiting for you' : t.state === 'working' ? 'working' : ago(t.updatedAt, now)}
+                  {ROLE_LABEL[t.role]} · {threadStateWords(t.state, t.updatedAt, now)}
                 </span>
               </span>
             </DropdownMenuItem>

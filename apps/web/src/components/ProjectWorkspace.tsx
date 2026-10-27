@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
-import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
-import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
+import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
 import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { Button, Page, PageHeader, PageTopbar } from '../ui'
-import { scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
-import { conversationTitle } from '../lib/conversation-title'
+import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
 import { useThreadMenu } from '../lib/use-thread'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
@@ -44,11 +42,8 @@ import { useProjectDrive } from '../lib/use-project-drive'
  * A list, not a thread, is the resting state (decision 5). A chat in front
  * fills the column as a thread (chat-as-web-components decision 7), and its
  * switcher lists every chat of the project, each opening at once; the project
- * crumb steps back to the list.
+ * crumb steps back to the list. Any number of chats run at once (decision 14).
  */
-
-/** What is in front for a new chat that has not been started: an empty thread. */
-const NEW_CHAT = 'new-chat'
 
 export function ProjectWorkspace({
   projectId,
@@ -94,27 +89,22 @@ export function ProjectWorkspace({
     withOwnSection: false,
     runnerConfigured: (scenariosQ.data?.runnerConfigured ?? false) && !!project?.devCommand?.trim(),
   })
-  const session = talk.session
-  // What is in front of the chat column: `undefined` follows the live chat (the
-  // resting list when there is none), `null` is the list, an id is that entry.
-  const [front, setFront] = useState<string | null | undefined>(session && newChatRequest > 0 ? null : undefined)
+  // What is in front of the chat column: `undefined` follows the newest running
+  // chat (the resting list when none runs), `null` is the list, an id is that thread.
+  const [front, setFront] = useState<string | null | undefined>(undefined)
   // The same key the Notes card reads, so knowing whether to offer it is free.
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
-  // What the pending open/replace choice is FOR. A Triage click on a project
-  // that already has a chat open raises the same notice New chat does, and
-  // "End it and start new" has to open the chat the human asked for.
-  const [noticePurpose, setNoticePurpose] = useState<ProjectTalkPurpose | undefined>(undefined)
   // The drive's scenario errands open their chat in this column too.
   const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
   const toast = useToast()
-  // The thread a new chat became on its first message.
-  const [begun, setBegun] = useState<string | null>(null)
 
   // Every chat of the project, finished ones included (chat-as-web-components
-  // decision 7); invalidated by every `thread` live signal (lib/live.ts).
-  const listed = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? []
-  const fallback = session?.id ?? null
+  // decision 7) — the resting list and the switcher both read it, so both show
+  // the same names and states (decision 14). Invalidated by every `thread`
+  // live signal (lib/live.ts).
+  const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
+  const listed = listQ.data ?? []
+  const fallback = talk.session?.id ?? null
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
   const inFront = front === undefined || closedErrand ? fallback : front
   const resting = inFront === null
@@ -123,17 +113,17 @@ export function ProjectWorkspace({
     listed,
     inFront
       ? [
-          inFront === NEW_CHAT
-            ? standIn(NEW_CHAT, 'New chat', 'project')
-            : inFront === scenarioChat.sessionId
-              ? standIn(inFront, scenarioChatLabel(scenarioChat.errand), 'scenario')
-              : standIn(inFront, conversationTitle(talk.conversations.find((c) => c.id === inFront)?.title), 'project'),
+          inFront === scenarioChat.sessionId
+            ? standIn(inFront, scenarioChatLabel(scenarioChat.errand), 'scenario')
+            : standIn(inFront, NEW_CHAT_NAME, 'project'),
         ]
       : [],
   )
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
-  // A new chat has no thread to rename or export until its first message.
-  const threadMenu = useThreadMenu(inFront === NEW_CHAT ? null : inFront)
+  const threadMenu = useThreadMenu(inFront)
+  // Every new-chat door — New chat, the shell's New, the switcher's New thread —
+  // opens an empty thread, whatever else is running (decision 14); its first
+  // message starts it.
   const create = trpc.thread.new.useMutation({
     onSuccess: ({ threadId }) => {
       setFront(threadId)
@@ -141,6 +131,9 @@ export function ProjectWorkspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  const newChat = (): void => create.mutate({ projectId })
+  const newChatRef = useRef(newChat)
+  newChatRef.current = newChat
 
   const projectName = project?.name ?? 'This project'
   const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
@@ -158,26 +151,13 @@ export function ProjectWorkspace({
 
   useEffect(() => {
     if (newChatRequest <= 0) return
-    if (session) {
-      setFront(null)
-      setShowOpenNotice(true)
-      setNoticePurpose(undefined)
-    } else {
-      // With none open, a new chat is an empty thread its first message starts.
-      setFront(NEW_CHAT)
-    }
+    newChatRef.current()
     onConsumeNewChatRequest?.()
-  }, [newChatRequest, onConsumeNewChatRequest, session])
+  }, [newChatRequest, onConsumeNewChatRequest])
   // Capture's View: the inbox is the panel's Notes; the card scrolls itself in.
   useEffect(() => {
     if (inboxRequest > 0) setPicked('details')
   }, [inboxRequest])
-  useEffect(() => {
-    if (!session) {
-      setShowOpenNotice(false)
-      setNoticePurpose(undefined)
-    }
-  }, [session])
   // The titlebar's pill: the drive, from wherever in the project.
   useEffect(() => {
     if (driveRequest > 0) {
@@ -199,14 +179,12 @@ export function ProjectWorkspace({
   // starts the blank app, as the card's main click does.
   const startDrive = (scenario: string | null = null): void =>
     projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
-  // The live chat in front of the column.
-  const showChat = (): void => setFront(undefined)
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
   // The switcher's menu speaks for the chat in front: the scenario chat's close.
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   const switcher = inFront && (
-    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={() => create.mutate({ projectId })} {...threadMenu}>
+    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={newChat} {...threadMenu}>
       {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
     </ThreadSwitcher>
   )
@@ -222,28 +200,7 @@ export function ProjectWorkspace({
           ]}
         />
         <div className="mt-8">
-          <NewChatCard
-            landing={landing}
-            // With none open, a new chat is an empty thread its first message starts.
-            onStart={session ? talk.start : () => setFront(NEW_CHAT)}
-            starting={talk.starting}
-            openSession={
-              session && showOpenNotice
-                ? {
-                    onOpen: () => {
-                      setShowOpenNotice(false)
-                      setNoticePurpose(undefined)
-                      showChat()
-                    },
-                    onReplace: () => {
-                      setShowOpenNotice(false)
-                      talk.replace(noticePurpose)
-                      showChat()
-                    },
-                  }
-                : undefined
-            }
-          />
+          <NewChatCard landing={landing} onStart={newChat} starting={create.isPending} />
           <TestDriveCard
             card={driveCard}
             branch={drive?.branch ?? (branchesQ.data?.current || null)}
@@ -257,14 +214,7 @@ export function ProjectWorkspace({
             onReturn={() => openView('drive')}
           />
         </div>
-        <ConversationList
-          conversations={talk.conversations}
-          pending={talk.conversationsPending}
-          busy={talk.starting}
-          // Every chat opens as its thread at once; a message picks a finished one back up.
-          onOpen={setFront}
-          onView={(c: ProjectConversation) => setFront(c.id)}
-        />
+        <ConversationList threads={listed} pending={listQ.isPending} onOpen={setFront} />
       </Page>
     </div>
   )
@@ -291,20 +241,11 @@ export function ProjectWorkspace({
           <div className="px-6 py-5">
             <NotesCard
               projectId={projectId}
-              triaging={talk.starting}
+              triaging={talk.triaging}
               reveal={inboxRequest > 0}
               onRevealed={onConsumeInboxRequest}
-              onTriage={() => {
-                if (!session) {
-                  talk.triage()
-                  return
-                }
-                // One live chat per project, so the human chooses: carry on
-                // in the one that is open, or end it and triage in a fresh one.
-                setNoticePurpose('triage')
-                setShowOpenNotice(true)
-                setFront(null)
-              }}
+              // Its own new thread, beside any chat already running (decision 14).
+              onTriage={() => talk.triage(setFront)}
             />
           </div>
         )
@@ -369,18 +310,9 @@ export function ProjectWorkspace({
                   />
                 ) : (
                   <ProjectChat
-                    // A new chat keeps one column through its start, so its
-                    // first message stays on screen while the chat takes its id.
-                    key={inFront === NEW_CHAT || inFront === begun ? NEW_CHAT : inFront}
-                    projectId={projectId}
-                    threadId={inFront === NEW_CHAT ? null : inFront}
+                    key={inFront}
+                    threadId={inFront}
                     {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
-                    start={talk.begin}
-                    onStarted={(threadId) => {
-                      setBegun(threadId)
-                      setFront(threadId)
-                      void utils.thread.list.invalidate({ projectId })
-                    }}
                     onOpenThread={setFront}
                     {...(landing.value ? { landing: landing.value } : {})}
                   />

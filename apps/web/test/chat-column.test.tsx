@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveScenario, ThreadEntry, ThreadEvent } from '@runcastle/core'
@@ -64,7 +66,7 @@ function server({ threads = [thread('th_main', 'Feature chat', 'main')], extra =
     'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
     'thread.events': ({ threadId }: { threadId: string }) => ({ events: logOf(threadId) }),
     'thread.new': () => {
-      list.push(thread('th_side', 'Untitled', 'side'))
+      list.push(thread('th_side', 'New chat', 'side'))
       return { threadId: 'th_side' }
     },
     'thread.send': () => ({ promptId: 'p_sent' }),
@@ -161,6 +163,21 @@ describe('the feature page’s thread switcher', () => {
     expect(api.inputs('thread.new')).toEqual([{ featureId: 'feat_1' }])
   })
 
+  // decision 14: a new thread opens whatever else is running.
+  it('starts a side thread while the main chat works, and lists both with their names and states', async () => {
+    const api = server({ threads: [thread('th_main', 'Fix the login page', 'main', { state: 'working' })] })
+    render(<Page />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    menuAction('New thread')
+    expect(await within(column()).findByText('said in th_side')).toBeTruthy()
+
+    openMenu(switcher())
+    await waitFor(() => expect(screen.getAllByRole('menuitemradio')).toHaveLength(2))
+    const rows = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
+    expect(rows.find((r) => r.includes('Fix the login page'))).toContain('working')
+    expect(rows.find((r) => r.includes('New chat'))).toMatch(/Thread · \d+[mhd]$|Thread · now$/)
+  })
+
   it('offers no End session', async () => {
     const api = server()
     render(<Page />, { wrapper: api.Wrapper })
@@ -225,12 +242,21 @@ describe('the feature page’s thread switcher', () => {
   it('shows a feature chat nobody started as an empty thread, and its first Send starts it', async () => {
     const api = server({ threads: [] })
     render(<Page />, { wrapper: api.Wrapper })
-    expect(switcher().textContent).toContain('Feature chat')
+    // named "New chat" until something is said in it, never by its kind (decision 14)
+    expect(switcher().textContent).toContain('New chat')
+    expect(switcher().textContent).not.toContain('Feature chat')
     expect(within(column()).getByText('New thread')).toBeTruthy()
     fireEvent.change(within(column()).getByLabelText('Message'), { target: { value: 'Plan the export' } })
     fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_started', text: 'Plan the export' }]))
     expect(within(column()).getByText('Plan the export')).toBeTruthy()
+  })
+
+  // Decision 12. No test renders the whole feature page, so its `start` is read
+  // from source: the launch holds its opening for the first message.
+  it('starts the feature chat with its opening held for the first message', () => {
+    const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
+    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening: true \}\)/)
   })
 })
 

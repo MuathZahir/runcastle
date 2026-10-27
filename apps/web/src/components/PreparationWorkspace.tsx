@@ -161,7 +161,7 @@ export function PreparationWorkspace({
           key="prepare"
           label="Preparation chat"
           threadId={threadId}
-          start={async () => (await talk.mutateAsync({ projectId })).sessionId}
+          start={async () => (await talk.mutateAsync({ projectId, holdOpening: true })).sessionId}
           startsAs={{ projectId, kind: 'prepare' }}
           onStarted={(id) => {
             setStarted(id)

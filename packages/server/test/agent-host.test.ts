@@ -188,6 +188,49 @@ describe('a turn', () => {
     expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Start', 'Round ended'])
   })
 
+  it('a held prompt alone is logged and starts nothing', async () => {
+    setup()
+    const id = thread()
+    const { promptId } = await host.prompt(id, { text: 'Opening' }, { source: 'runcastle', hold: true })
+    expect(readThreadEvents(id)).toMatchObject([{ type: 'prompt', id: promptId, text: 'Opening', source: 'runcastle' }])
+    expect(fake.processes).toHaveLength(0)
+    expect(host.isRunning(id)).toBe(false)
+  })
+
+  it('sends a held prompt and the next one as one prompt in one turn; the thread shows both, then one answer', async () => {
+    setup()
+    const id = thread()
+    await host.prompt(id, { text: 'Opening' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'Hello', images: [{ name: 'a.png', mimeType: 'image/png', data: 'AAAA' }] }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(prompts()).toHaveLength(1)
+    expect(prompts()[0].prompt).toEqual([
+      { type: 'text', text: 'Opening\n\nHello' },
+      { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+    ])
+    expect(events.filter((e) => e.type === 'turn_started')).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'prompt')).toMatchObject([
+      { text: 'Opening', source: 'runcastle' },
+      { text: 'Hello', source: 'human' },
+    ])
+    const view = foldThread(events)
+    expect(view.items.map((i) => i.kind)).toEqual(['user', 'user', 'agent'])
+    expect(view.items[0]).toMatchObject({ text: 'Opening', from: 'runcastle' })
+    expect(view.items[1]).toMatchObject({ text: 'Hello' })
+    expect(view.items[1]).not.toHaveProperty('from')
+    expect(view.items.some((i) => i.kind === 'user' && i.starting)).toBe(false)
+  })
+
+  it("a held prompt still gets a resumed chat's opening header after the words", async () => {
+    fake = createFakeAcp()
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, lifecycle: { opening: () => 'STATE' } })
+    const id = thread()
+    await host.prompt(id, { text: 'Opening' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Opening\n\nHello\n\nSTATE'])
+  })
+
   it('cancels the running turn', async () => {
     setup({
       turn: async (t) => {

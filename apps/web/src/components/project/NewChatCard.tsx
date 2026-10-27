@@ -1,4 +1,4 @@
-import { IconMessage, IconPlus, IconRefresh, IconSparkle } from '../../icons'
+import { IconPlus, IconSparkle } from '../../icons'
 import { BranchMenu, Button } from '../../ui'
 import type { SessionBranchApi } from '../../lib/use-session-branch'
 import { ActionRow } from './ActionRow'
@@ -18,12 +18,11 @@ export function NewChatCard({
   landing,
   onStart,
   starting,
-  openSession,
 }: {
   landing: SessionBranchApi
+  /** Opens a new empty thread, whatever else is running (chat-as-web-components decision 14). */
   onStart: () => void
   starting: boolean
-  openSession?: { onOpen: () => void; onReplace: () => void }
 }) {
   return (
     <ActionRow
@@ -58,29 +57,6 @@ export function NewChatCard({
         </>
       }
       caption={landing.missing ? 'The landing branch is gone — pick another.' : undefined}
-    >
-      {openSession && (
-        // One live chat per project: the choice is made here, in place, rather
-        // than in a dialog. A line, not a box — the row is the frame.
-        <div
-          role="status"
-          className="mt-3 ml-12 flex flex-wrap items-center gap-2 animate-rise-in"
-        >
-          <span className="mr-auto text-sm text-text-secondary">A chat is already open.</span>
-          <Button variant="ghost" size="sm" icon={<IconMessage />} onClick={openSession.onOpen}>
-            Open it
-          </Button>
-          <Button
-            size="sm"
-            icon={<IconRefresh />}
-            loading={starting}
-            disabled={starting}
-            onClick={openSession.onReplace}
-          >
-            End it and start new
-          </Button>
-        </div>
-      )}
-    </ActionRow>
+    />
   )
 }

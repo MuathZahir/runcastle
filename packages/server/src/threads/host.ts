@@ -144,12 +144,13 @@ const AUTH_STATUS_METHOD = '_auth/status_update'
 
 /**
  * What a thread's next start, or its next prompt, does differently after an
- * edit or a branch. Kept on disk beside the log, since a branch may wait for
- * its first message across restarts.
+ * edit, a branch or a held prompt. Kept on disk beside the log, since a branch
+ * may wait for its first message across restarts.
  * - `open`: instead of loading the row's conversation, fork `from` at the agent
  *   message `messageId`, or (`fresh`) start a new conversation.
  * - `preface`: said to the agent ahead of the next prompt's words, when the
- *   conversation could not be forked where the thread now stands.
+ *   conversation could not be forked where the thread now stands, or when a
+ *   prompt was held for the next one (`PromptOptions.hold`).
  */
 interface PendingFork {
   open?: { from: string; messageId: string } | 'fresh'
@@ -316,6 +317,7 @@ class Host implements AgentHost {
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
+    if (opts.hold) return this.hold(threadId, input.text, opts.source)
     const change = this.configChange(threadId, opts)
     if (change) await this.setConfig(threadId, change)
     const images = (input.images ?? []).map((image) => saveThreadImage(threadId, image))
@@ -745,6 +747,15 @@ class Host implements AgentHost {
       ...(item.hidden ? { hidden: true } : {}),
     })
     item.logged = true
+  }
+
+  /** Log a held prompt and keep its text, on disk, as the preface of the thread's next prompt. */
+  private hold(threadId: string, text: string, source: PromptOptions['source']): { promptId: string } {
+    const item: Queued = { id: newId('prompt'), text, blocks: [], source, logged: false }
+    this.logPrompt(threadId, item)
+    const pending = readPendingFork(threadId)
+    writePendingFork(threadId, { ...pending, preface: pending.preface !== undefined ? `${pending.preface}\n\n${text}` : text })
+    return { promptId: item.id }
   }
 
   private enqueue(t: Thread, item: Queued): void {

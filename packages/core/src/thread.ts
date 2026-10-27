@@ -543,6 +543,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           ...(e.source === 'runcastle' ? { from: 'runcastle' as const } : {}),
         }
         if (view.process !== 'running' && !e.steered) {
+          // Only the latest prompt waits visibly: a held opening's next prompt takes its place.
+          if (startingPrompt) delete startingPrompt.starting
           item.starting = true
           startingPrompt = item
         }

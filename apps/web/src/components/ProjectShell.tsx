@@ -224,8 +224,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   // The New door (decisions.md #12): open the project workspace on a FRESH
   // conversation — an empty thread its first message starts, as the New chat
-  // card opens one. A live conversation is left alone and the workspace's
-  // list is what you land on instead.
+  // card opens one, whatever else is running (chat-as-web-components decision 14).
   const newChat = () => {
     selectProject()
     setNewChatRequest((request) => request + 1)

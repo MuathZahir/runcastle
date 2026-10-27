@@ -6,6 +6,7 @@ import { runtimeAdapterFor } from '../../src/launcher/runtimes'
 import type { AcpLaunchSpec } from '../../src/launcher/runtimes/types'
 import { acpLaunchInput } from '../../src/threads/launch'
 import { readThreadEvents } from '../../src/threads/types'
+import type { FakeAcp } from './fake-acp-agent'
 
 /**
  * Reading what a launch did to its thread (chat-as-web-components ticket 4):
@@ -23,6 +24,13 @@ export function promptsOf(threadId: string): Prompt[] {
 /** The thread's first prompt — a launch's kickoff — or '' when nothing was said. */
 export function kickoffOf(threadId: string): string {
   return promptsOf(threadId)[0]?.text ?? ''
+}
+
+/** The text of every `session/prompt` the fake agent received, in order. */
+export function sentPrompts(fake: FakeAcp): string[] {
+  return fake.processes.flatMap((p) =>
+    p.received.filter((r) => r.method === 'session/prompt').map((r) => (r.params as { prompt: { text?: string }[] }).prompt[0]?.text ?? ''),
+  )
 }
 
 /** The ACP launch of the thread's row, written to disk as its process start writes it. */
