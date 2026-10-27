@@ -320,12 +320,19 @@ the phase-body dispatch and the action switch; these moved out:
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
 | `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's view switcher, the folded strip, the topbar's view buttons, and `usePanel` (the size remembered per browser). The pure model is `lib/feature-ui/panel.ts`. |
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
-| `FeatureChat.tsx` | The page's chat: the feature's live session (any kind but a side session or the scenario chat, which have entries of their own) through `ChatView`, else its chat transcript with Resume / Start. |
+| `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice deck floating over it. A main chat nobody started is an empty thread whose first message starts it. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 
-Every chat surface — the project's chat and each feature's chat-first page — renders
-through `src/components/chat/ChatView.tsx` (the strip, the full-area terminal,
-the at-rest state). No phase body holds a terminal.
+Every agent conversation — each feature's chat, side threads, scenario and Fix-it
+chats, the project's chats and the preparation chat — is a thread rendered by
+`src/components/chat/ThreadColumn.tsx`: the approved components in
+`src/components/chat/thread/` (reference: `preview/chat.html`) wired to the
+`thread` API by `src/lib/use-thread.ts`, which folds the thread's log with core's
+`foldThread` and reads only what follows its cursor on a `thread` live signal.
+Wiring connects those components; it never restyles them. The header's
+`ThreadSwitcher` lists every thread of the page. xterm (`TerminalView`) is left
+only for program output: the design server, the drive's dev pane and the
+Settings AFK terminals. No phase body holds a terminal.
 
 ## Testing
 

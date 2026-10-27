@@ -83,7 +83,7 @@ describe('a self-planning run on the bar', () => {
 
     expect(ns.kick).toBe('PLANNING ITSELF')
     expect(ns.title).toBe('Planning itself')
-    expect(ns.desc).toContain('No terminal to watch')
+    expect(ns.desc).toContain('open the thread to watch')
     expect(ns.busy).toBe(true)
     expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
     expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('chat')
