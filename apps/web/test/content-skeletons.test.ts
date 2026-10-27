@@ -12,7 +12,6 @@ import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
 import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
 import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
-import { PreparationSkeleton } from '../src/components/PreparationWorkspace'
 import { TicketsSkeleton } from '../src/components/bodies/tickets/TicketsBody'
 
 /**
@@ -34,7 +33,6 @@ const SITES: Array<[string, string, string]> = [
   ['the project settings', settings(PROJECT_SKELETON), 'Loading settings…'],
   ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
   ['an artifact pane', renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' })), 'Loading spec.md…'],
-  ['preparation', render(PreparationSkeleton), 'Loading preparation…'],
   ['the tickets body', render(TicketsSkeleton), 'Loading tickets…'],
 ]
 
@@ -87,12 +85,6 @@ describe('the skeletons are shaped like their content', () => {
   it('an artifact pane: paragraphs of prose', () => {
     const html = renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' }))
     expect(count(html, 'paragraph')).toBe(2)
-  })
-
-  it('preparation: the call to action’s title and sentence', () => {
-    const html = render(PreparationSkeleton)
-    expect(count(html, 'title')).toBe(1)
-    expect(count(html, 'sentence')).toBe(1)
   })
 
   it('the tickets body: rows shaped like ticket rows', () => {

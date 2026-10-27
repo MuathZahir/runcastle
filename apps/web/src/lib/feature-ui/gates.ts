@@ -249,66 +249,6 @@ export function ticketDurations(events: readonly EventRow[]): Map<string, number
 }
 
 /**
- * How long a terminal may sit `launching` — spawned by the server, but with no
- * `SessionStart` check-in from Claude Code yet — before the panel says so.
- */
-export const CHECK_IN_GRACE_MS = 30_000
-
-/**
- * True when the session's terminal has been up past {@link CHECK_IN_GRACE_MS}
- * with the agent inside it still not checked in.
- *
- * Informational only. `launching` is a fully active state ({@link
- * sessionActive}) — the terminal is there and can be typed into — so this never
- * withholds anything; it is the panel's quiet explanation for why the strip
- * still reads "launching…", which is usually something on screen waiting on the
- * human (a trust prompt, a resume chooser).
- *
- * The age comes from the session's own `session.launching` event because the
- * session row carries no timestamp. No such event in the log means an age that
- * cannot be stated, and saying nothing beats guessing. `events` must be in id
- * order.
- */
-export function awaitingCheckIn(
-  session: { id: string; status: string },
-  events: EventRow[],
-  now: number = Date.now(),
-): boolean {
-  if (session.status !== 'launching') return false
-  const launched = events.find(
-    (e) =>
-      e.type === 'session.launching' &&
-      (e.data as { sessionId?: unknown } | null)?.sessionId === session.id,
-  )
-  return !!launched && now - launched.ts > CHECK_IN_GRACE_MS
-}
-
-/**
- * Whether a session's terminal spawned but the agent inside it never reported
- * `SessionStart` (`session.not_ready`), derived from the event feed so it
- * survives a reload, like the conflict card.
- *
- * The briefing a session opens with rides the agent's own argv, so there is
- * nothing to deliver or confirm afterwards — but a terminal held up by a trust
- * prompt or a login has not started on it, and used to be invisible: the
- * terminal looked healthy and simply did nothing.
- *
- * The agent checking in late (`session.started`, which a turn hook emits when
- * the start hook never arrived) or the session ending clears it; a later
- * `session.kickoff` cannot, because that event is emitted at spawn, before this
- * watchdog can fire. `events` must be in id order.
- */
-export function sessionNotReady(events: EventRow[], sessionId: string): boolean {
-  let notReady = false
-  for (const e of events) {
-    if ((e.data as { sessionId?: unknown } | null)?.sessionId !== sessionId) continue
-    if (e.type === 'session.not_ready') notReady = true
-    else if (e.type === 'session.started' || e.type === 'session.ended') notReady = false
-  }
-  return notReady
-}
-
-/**
  * Whether a session's terminal is running — the one question every surface that
  * asks "is a session up?" should ask, and the only place the statuses that mean
  * yes are named.

@@ -40,19 +40,12 @@ export interface ProjectTalkApi {
    * opens a triage chat rather than a plain one.
    */
   replace: (purpose?: ProjectTalkPurpose) => void
-  /** Reopen a specific past conversation; no-op while one is open. */
-  resume: (sessionId: string) => void
   /**
-   * Resume the conversation the page is showing, because it is showing it
-   * (`opening-a-feature-shows-its-chat-as-you-left-it` decision 3): resume only,
-   * and a refusal is quiet — no toast.
+   * Start a fresh conversation for the first message of a new, empty thread
+   * (chat-as-web-components decision 7); answers with its thread. The thread
+   * says why it was refused, so this raises no toast of its own.
    */
-  autoResume: (sessionId: string) => void
-  /**
-   * The conversation an automatic resume is bringing back — in flight, or its
-   * session still launching — or null.
-   */
-  autoResuming: string | null
+  begin: () => Promise<string>
   starting: boolean
 }
 
@@ -76,11 +69,11 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     // refused server-side; it lands as a toast rather than taking the shell down.
     onError: (e) => toast.push(e.message),
   })
-  const auto = trpc.project.talkToProject.useMutation({
-    // Pending until the page has the session row, so "Resuming…" never
-    // flickers back to the button in between.
-    onSuccess: () =>
-      Promise.all([utils.project.projectSession.invalidate(), utils.project.conversations.invalidate()]),
+  const fresh = trpc.project.talkToProject.useMutation({
+    onSuccess: () => {
+      void utils.project.projectSession.invalidate()
+      void utils.project.conversations.invalidate()
+    },
     onError: () => undefined,
   })
   // What the relaunch after an end is for. Held in a ref rather than passed
@@ -101,9 +94,7 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
   const state = projectSessionState(session)
   // Guarded on the polled state so the doors read as "open the conversation"
   // rather than erroring when one is already up.
-  const canLaunch = (): boolean => state === 'none' && !launch.isPending && !auto.isPending
-  const autoFrom = auto.variables?.resumeSessionId ?? null
-  const autoResuming = (auto.isPending || (auto.isSuccess && session?.status === 'launching')) ? autoFrom : null
+  const canLaunch = (): boolean => state === 'none' && !launch.isPending && !fresh.isPending
 
   return {
     session,
@@ -124,13 +115,11 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
         end.mutate({ sessionId: session.id })
       }
     },
-    resume: (sessionId) => {
-      if (canLaunch()) launch.mutate({ projectId, resumeSessionId: sessionId })
+    begin: async () => {
+      const res = await fresh.mutateAsync({ projectId, fresh: true })
+      if ('autoSkipped' in res) throw new Error(res.autoSkipped)
+      return res.sessionId
     },
-    autoResume: (sessionId) => {
-      if (canLaunch()) auto.mutate({ projectId, resumeSessionId: sessionId, auto: true })
-    },
-    autoResuming,
     starting: launch.isPending || end.isPending,
   }
 }

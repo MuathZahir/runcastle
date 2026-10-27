@@ -6,8 +6,9 @@ import type { NextStep } from './types'
 /**
  * The bar around a run on the feature with no terminal (features-plan-themselves
  * decision 11, whole-cuts-plan-themselves "The page"): while one is up, a working
- * bar whose one control is Stop — there is nothing to chat with, and a chat
- * launch is refused beside it — in whichever state the feature is in. A lead
+ * bar whose one control is Stop — its thread is an ordinary one to open and
+ * watch (chat-as-web-components decision 6) — in whichever state the feature
+ * is in. A lead
  * woken headless is not such a run: it took Go or a round's news, and a Stop
  * that ended it would drop that — the status row's Stop is how the lead halts.
  *
@@ -53,17 +54,17 @@ const WORKING: Record<'self-plan' | 'relay' | 'start-lap', Pick<NextStep, 'kick'
   'self-plan': {
     kick: 'PLANNING ITSELF',
     title: 'Planning itself',
-    desc: 'No terminal to watch; the plan appears below as it is written.',
+    desc: 'Planning by itself — open the thread to watch; the plan appears below as it is written.',
   },
   relay: {
     kick: 'WORKING',
     title: 'Working on a change the orchestrator sent back',
-    desc: 'No terminal to watch; the docs and tickets update as it works.',
+    desc: 'Working by itself — open the thread to watch; the docs and tickets update as it works.',
   },
   'start-lap': {
     kick: 'PLANNING ITSELF',
     title: 'Planning more work itself',
-    desc: 'No terminal to watch; the new tickets appear below as they are written.',
+    desc: 'Planning by itself — open the thread to watch; the new tickets appear below as they are written.',
   },
 }
 

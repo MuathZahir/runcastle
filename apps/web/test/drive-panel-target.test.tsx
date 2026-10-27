@@ -20,9 +20,6 @@ const projectAdd = vi.fn(async (input: { projectId: string; text: string }) => (
   id: 'pnote_1',
   ...input,
 }))
-const sendCrop = vi.fn(async (input: { featureId: string; png: string; text: string }) => ({
-  path: `/data/design-crops/${input.featureId}/1.png`,
-}))
 const invalidateNotes = vi.fn()
 const invalidateProjectNotes = vi.fn()
 const uploadScreenshot = vi.fn(async () => {})
@@ -33,7 +30,7 @@ vi.mock('../src/trpc', () => ({
     useUtils: () => ({
       notes: { list: { invalidate: invalidateNotes } },
       projectNotes: { invalidate: invalidateProjectNotes },
-      client: { projectNotes: { add: { mutate: projectAdd } }, design: { sendCrop: { mutate: sendCrop } } },
+      client: { projectNotes: { add: { mutate: projectAdd } } },
     }),
     notes: { add: { useMutation: () => ({ mutateAsync: featureAdd }) } },
   },
@@ -44,6 +41,7 @@ vi.mock('../src/lib/reviews', () => ({ uploadScreenshot }))
 vi.mock('../src/lib/project-notes', () => ({ uploadProjectNoteScreenshot }))
 
 const { DrivePanel } = await import('../src/components/review/DrivePanel')
+const { mainChatInbox, subscribeInbox, takeFromInbox } = await import('../src/lib/composer-inbox')
 
 const stream = { getVideoTracks: () => [], getTracks: () => [] }
 
@@ -80,11 +78,8 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-/** Select area, drag a region, then save the note with the given words. */
-async function captureAndSave(
-  text = '',
-  { ask = 'what’s wrong here?', send = 'Save note' }: { ask?: string; send?: string } = {},
-): Promise<void> {
+/** Select area and drag a region. */
+async function selectArea(): Promise<void> {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select area' }))
   })
@@ -92,10 +87,15 @@ async function captureAndSave(
   fireEvent.pointerDown(shade, { clientX: 10, clientY: 10, pointerId: 1 })
   fireEvent.pointerMove(shade, { clientX: 200, clientY: 150, pointerId: 1 })
   fireEvent.pointerUp(shade, { clientX: 200, clientY: 150, pointerId: 1 })
-  const box = await screen.findByLabelText(ask, {}, { timeout: 2000 })
+}
+
+/** Select area, drag a region, then save the note with the given words. */
+async function captureAndSave(text = ''): Promise<void> {
+  await selectArea()
+  const box = await screen.findByLabelText('what’s wrong here?', {}, { timeout: 2000 })
   if (text) fireEvent.change(box, { target: { value: text } })
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: send }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
   })
 }
 
@@ -202,28 +202,22 @@ describe('DrivePanel capture target', () => {
     expect(uploadScreenshot).toHaveBeenCalledWith('note_1', expect.any(Blob))
     expect(invalidateNotes).toHaveBeenCalledWith({ featureId: 'feat_1' })
     expect(projectAdd).not.toHaveBeenCalled()
-    expect(sendCrop).not.toHaveBeenCalled()
+
   })
 
-  it('sends the crop and the words into the live chat from the design view, writing no note', async () => {
+  // chat-as-web-components decision 5: the human writes the message in the composer.
+  it('puts the crop into the main chat’s composer from the design view, with no popover, note or send', async () => {
+    const delivered: File[][] = []
+    const unsubscribe = subscribeInbox(mainChatInbox('feat_1'), () => delivered.push(takeFromInbox(mainChatInbox('feat_1'))))
     render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
-    await captureAndSave('make this quieter', { ask: 'what should change?', send: 'Send to chat' })
+    await selectArea()
 
-    // The stubbed canvas hands back the bytes "png".
-    await waitFor(() =>
-      expect(sendCrop).toHaveBeenCalledWith({ featureId: 'feat_1', png: btoa('png'), text: 'make this quieter' }),
-    )
+    await waitFor(() => expect(delivered).toHaveLength(1))
+    unsubscribe()
+    expect(delivered[0].map((f) => [f.name, f.type])).toEqual([['selection.png', 'image/png']])
+    expect(await delivered[0][0].text()).toBe('png')
+    expect(screen.queryByLabelText('what should change?')).toBeNull()
     expect(featureAdd).not.toHaveBeenCalled()
     expect(uploadScreenshot).not.toHaveBeenCalled()
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Send to chat' })).toBeNull())
-  })
-
-  it('toasts the server’s reason and keeps the crop when the chat is not running', async () => {
-    sendCrop.mockRejectedValueOnce(new Error('the chat is not running — open it, then select again'))
-    render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
-    await captureAndSave('', { ask: 'what should change?', send: 'Send to chat' })
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('the chat is not running — open it, then select again'))
-    expect(screen.getByRole('button', { name: 'Send to chat' })).toBeTruthy()
   })
 })

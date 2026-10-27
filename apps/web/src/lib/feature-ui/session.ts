@@ -5,12 +5,12 @@ import { activeSession } from './gates'
 // --- the Chat tab -------------------------------------------------------------
 
 /**
- * The feature's one conversation, as the Chat tab reads it back when nothing is
- * live (one-chat-layout-everywhere decision 5): the chat that is up, or — with
- * none up — the newest chat row, whose transcript is what Resume picks up.
+ * The feature's one conversation by its session rows (one-chat-layout-everywhere
+ * decision 5): the chat that is up, or — with none up — the newest chat row.
+ * The chat column falls back on it for the main chat's thread while the thread
+ * list cannot be read.
  *
- * `undefined` is a feature nobody has talked to yet, which the tab answers with
- * Start rather than an empty transcript.
+ * `undefined` is a feature nobody has talked to yet: an empty thread.
  */
 export function featureChat(sessions: FeatureFull['sessions']): FeatureFull['sessions'][number] | undefined {
   const chats = sessions.filter((s) => s.kind === 'chat')
@@ -51,14 +51,6 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
     const data = event.data as { sessionId?: unknown; complete?: unknown } | undefined
     return data?.complete === false && typeof data.sessionId === 'string' ? [data.sessionId] : []
   })
-}
-
-/**
- * The switcher's name for whichever session holds the feature chat's slot
- * (decision 9): "Feature chat", "Drive fix".
- */
-export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind'>): string {
-  return session.kind === 'chat' ? 'Feature chat' : sessionKindName(session)
 }
 
 // --- the shipped body's chat terminal ---------------------------------------

@@ -118,6 +118,19 @@ describe('useLiveSync resync', () => {
     expect(paths).toContain('projectNotes.invalidate')
   })
 
+  it('answers a thread signal with that thread’s reads and the thread lists, nothing else', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Harness />
+      </QueryClientProvider>,
+    )
+    const source = StubEventSource.last
+    if (!source) throw new Error('the hook opened no EventSource')
+    act(() => source.emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' })))
+
+    expect([...recorded.paths].sort()).toEqual(['thread.events.invalidate', 'thread.list.invalidate', 'thread.view.invalidate'])
+  })
+
   it('still leaves the doctor report off the list — it shells out to probe the machine', () => {
     const paths = signalOneEvent()
 

@@ -28,7 +28,12 @@ vi.mock('../src/trpc', () => {
       useUtils: () => ({
         project: { projectSession: { invalidate }, conversations: { invalidate } },
         projectNotes: { invalidate },
+        thread: { list: { invalidate } },
       }),
+      thread: {
+        list: { useQuery: query([]) },
+        new: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      },
       project: {
         list: { useQuery: query([{ id: 'proj_1', name: 'acme' }]) },
         branches: { useQuery: query({ current: 'main', detected: 'main', branches: ['main'] }) },
@@ -60,6 +65,12 @@ vi.mock('../src/trpc', () => {
   }
 })
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
+// The thread itself is ThreadColumn's own test; here it only has to be there.
+vi.mock('../src/components/chat/ThreadColumn', () => ({
+  ThreadColumn: ({ label, threadId }: { label?: string; threadId: string | null }) => (
+    <section aria-label={label} data-thread-column="" data-thread={threadId ?? 'new'} />
+  ),
+}))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 vi.mock('../src/lib/use-session-branch', () => ({
   useSessionBranch: () => ({
@@ -143,9 +154,7 @@ describe('the project workspace at rest', () => {
     start: vi.fn(),
     triage: vi.fn(),
     replace: vi.fn(),
-    resume: vi.fn(),
-    autoResume: vi.fn(),
-    autoResuming: null,
+    begin: vi.fn(),
     starting: false,
     ...over,
   })
@@ -210,7 +219,7 @@ describe('the project workspace at rest', () => {
       // the panel is named for its view, the card inside it for itself
       const card = screen.getAllByRole('region', { name: 'Notes' }).at(-1)!
       expect(card.closest('[hidden]')).toBeNull()
-      expect(document.querySelector('[data-live-chat]')?.closest('[hidden], .hidden')).toBeNull()
+      expect(document.querySelector('[data-thread-column]')?.closest('[hidden], .hidden')).toBeNull()
       expect(scroll.mock.contexts).toContain(card)
       expect(consumed).toHaveBeenCalled()
     } finally {
