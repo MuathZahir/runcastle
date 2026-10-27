@@ -1,11 +1,16 @@
+import type { AcpSessionUpdate, SubagentSpawnedUpdate, SubagentStateUpdate } from '@agentclientprotocol/claude-agent-acp/dist/acp-subagents.js'
+import type { SDKBackgroundTasksChangedMessage } from '@anthropic-ai/claude-agent-sdk'
+import { foldThread, type ThreadEvent } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
+  backgroundTasks,
   createUpdateMapper,
   diffLines,
   elicitationAnswer,
   elicitationQuestions,
   fileChanges,
   modelEvent,
+  rfdSubagentMessage,
   toolCallOf,
 } from '../src/threads/acp-map'
 
@@ -117,6 +122,143 @@ describe('createUpdateMapper', () => {
       { type: 'suggestion', text: null },
     ])
     expect(map({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'echo' } })).toEqual([])
+  })
+})
+
+describe('subagents', () => {
+  it("maps claude-agent-acp's RFD-form subagent and nests its session's calls under it", () => {
+    const map = mapper()
+    expect(
+      map({
+        sessionUpdate: 'subagent_update',
+        sessionId: 'child-1',
+        title: 'Explore',
+        description: 'Find the auth code',
+        capabilities: { cancel: {} },
+        state: { state: 'running' },
+      }),
+    ).toEqual([{ type: 'subagent', id: 'child-1', title: 'Find the auth code', status: 'in_progress' }])
+    expect(map({ sessionUpdate: 'tool_call', toolCallId: 'g1', title: 'grep auth', kind: 'search', status: 'in_progress' }, 'child-1')).toEqual([
+      { type: 'tool', call: { id: 'g1', kind: 'search', title: 'grep auth', status: 'in_progress' }, parentId: 'child-1' },
+    ])
+    expect(map({ sessionUpdate: 'tool_call_update', toolCallId: 'g1', status: 'completed' }, 'child-1')).toEqual([
+      { type: 'tool', call: { id: 'g1', status: 'completed' }, parentId: 'child-1' },
+    ])
+    // The subagent's own words and model stay out of the thread.
+    expect(map({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Found it' } }, 'child-1')).toEqual([])
+    expect(map({ sessionUpdate: 'subagent_update', sessionId: 'child-1', state: { state: 'idle', stopReason: 'end_turn' } })).toEqual([
+      { type: 'subagent', id: 'child-1', status: 'completed' },
+    ])
+    expect(map({ sessionUpdate: 'subagent_update', sessionId: 'child-2', state: { state: 'idle', stopReason: 'cancelled' } })).toEqual([
+      { type: 'subagent', id: 'child-2', status: 'failed' },
+    ])
+  })
+
+  it("rewrites codex-acp's draft-form subagent messages into the RFD's, and leaves the rest alone", () => {
+    const update = (u: AcpSessionUpdate) => ({ jsonrpc: '2.0' as const, method: 'session/update', params: { sessionId: 'root', update: u } })
+    const spawned: SubagentSpawnedUpdate = { sessionUpdate: 'subagent_spawned', subagentSessionId: 'thr-9', name: 'explorer', task: 'Map every route in the router and…', capabilities: {} }
+    expect(rfdSubagentMessage(update(spawned))).toEqual(
+      update({ sessionUpdate: 'subagent_update', sessionId: 'thr-9', title: 'explorer', state: { state: 'running' } }),
+    )
+    const ends: [SubagentStateUpdate['state'], unknown][] = [
+      ['completed', { state: 'idle', stopReason: 'end_turn' }],
+      ['cancelled', { state: 'idle', stopReason: 'cancelled' }],
+      ['failed', { state: 'idle', stopReason: 'error' }],
+      ['disconnected', { state: 'unknown' }],
+    ]
+    for (const [state, rfd] of ends) {
+      expect(rfdSubagentMessage(update({ sessionUpdate: 'subagent_state_update', subagentSessionId: 'thr-9', state }))).toEqual(
+        update({ sessionUpdate: 'subagent_update', sessionId: 'thr-9', state: rfd as never }),
+      )
+    }
+    const chunk = update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } })
+    expect(rfdSubagentMessage(chunk)).toBe(chunk)
+    const response = { jsonrpc: '2.0' as const, id: 1, result: {} }
+    expect(rfdSubagentMessage(response)).toBe(response)
+  })
+
+  it('maps a rewritten Codex subagent, its calls and its end', () => {
+    const map = mapper()
+    expect(map({ sessionUpdate: 'subagent_update', sessionId: 'thr-9', title: 'explorer', state: { state: 'running' } })).toEqual([
+      { type: 'subagent', id: 'thr-9', title: 'explorer', status: 'in_progress' },
+    ])
+    expect(map({ sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'rg router', kind: 'execute', status: 'in_progress' }, 'thr-9')).toEqual([
+      { type: 'tool', call: { id: 'x1', kind: 'execute', title: 'rg router', status: 'in_progress' }, parentId: 'thr-9' },
+    ])
+    expect(map({ sessionUpdate: 'subagent_update', sessionId: 'thr-9', state: { state: 'idle', stopReason: 'error' } })).toEqual([
+      { type: 'subagent', id: 'thr-9', status: 'failed' },
+    ])
+  })
+
+  it("nests a subagent's subagent under the one the turn delegated to, and drops sessions nobody announced", () => {
+    const map = mapper()
+    map({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Plan' })
+    expect(map({ sessionUpdate: 'subagent_update', sessionId: 'grandchild', title: 'Explore' }, 'child-1')).toEqual([])
+    expect(map({ sessionUpdate: 'tool_call', toolCallId: 'r1', title: 'Read a.ts', kind: 'read', status: 'completed' }, 'grandchild')).toEqual([
+      { type: 'tool', call: { id: 'r1', kind: 'read', title: 'Read a.ts', status: 'completed' }, parentId: 'child-1' },
+    ])
+    expect(map({ sessionUpdate: 'tool_call', toolCallId: 'r2', title: 'Read b.ts', kind: 'read', status: 'completed' }, 'stranger')).toEqual([])
+  })
+
+  it('folds into one subagent segment holding its calls', () => {
+    const map = mapper()
+    const bodies = [
+      { type: 'turn_started' as const },
+      ...map({ sessionUpdate: 'subagent_update', sessionId: 'child-1', description: 'Find the auth code', state: { state: 'running' } }),
+      ...map({ sessionUpdate: 'tool_call', toolCallId: 'g1', title: 'grep auth', kind: 'search', status: 'completed' }, 'child-1'),
+      ...map({ sessionUpdate: 'subagent_update', sessionId: 'child-1', state: { state: 'idle', stopReason: 'end_turn' } }),
+      ...map({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'It is in auth.ts.' } }),
+    ]
+    const view = foldThread(bodies.map((b, i) => ({ ...b, i, at: 1000 * i }) as ThreadEvent))
+    expect(view.items[0]).toMatchObject({
+      kind: 'work',
+      steps: [
+        { kind: 'subagent', id: 'child-1', title: 'Find the auth code', status: 'completed', calls: [{ id: 'g1', title: 'grep auth', status: 'completed' }] },
+      ],
+    })
+    expect(view.items[1]).toMatchObject({ kind: 'agent', text: 'It is in auth.ts.' })
+  })
+})
+
+describe('background commands', () => {
+  const changed = (tasks: (SDKBackgroundTasksChangedMessage['tasks'][number] & { subagent_type?: string })[]): SDKBackgroundTasksChangedMessage => ({
+    type: 'system',
+    subtype: 'background_tasks_changed',
+    tasks,
+    uuid: '00000000-0000-0000-0000-000000000000',
+    session_id: 'cc-1',
+  })
+
+  it("lists Claude's live background commands, not its subagents, monitors or housekeeping", () => {
+    expect(
+      backgroundTasks(
+        changed([
+          { task_id: 'b1', task_type: 'local_bash', description: 'bun run dev' },
+          { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' },
+          { task_id: 'm1', task_type: 'local_monitor', description: 'watch the log' },
+          { task_id: 'h1', task_type: 'local_bash', description: 'index', ambient: true },
+        ]),
+        [],
+        500,
+      ),
+    ).toEqual([{ id: 'b1', title: 'bun run dev', startedAt: 500 }])
+  })
+
+  it('keeps when a listed command started, drops one that finished, and says nothing when nothing changed', () => {
+    const listed = [{ id: 'b1', title: 'bun run dev', startedAt: 500 }]
+    expect(backgroundTasks(changed([{ task_id: 'b1', task_type: 'local_bash', description: 'bun run dev' }]), listed, 900)).toBeNull()
+    expect(
+      backgroundTasks(
+        changed([
+          { task_id: 'b1', task_type: 'local_bash', description: 'bun run dev' },
+          { task_id: 'b2', task_type: 'local_bash', description: 'bun test --watch' },
+        ]),
+        listed,
+        900,
+      ),
+    ).toEqual([listed[0], { id: 'b2', title: 'bun test --watch', startedAt: 900 }])
+    expect(backgroundTasks(changed([]), listed, 900)).toEqual([])
+    expect(backgroundTasks({ type: 'system', subtype: 'task_started', task_id: 'b3' }, listed, 900)).toBeNull()
   })
 })
 

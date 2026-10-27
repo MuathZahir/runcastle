@@ -14,6 +14,7 @@ import {
   type Ask,
   type AskAnswer,
   type Attachment,
+  type BackgroundTask,
   type ModelChoice,
   type SessionRow,
   type ThreadEvent,
@@ -49,11 +50,14 @@ import {
 import { readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
 import { claudeUsageReport, codexUsageReport } from './usage'
 import {
+  backgroundTasks,
+  CLAUDE_SDK_MESSAGE_METHOD,
   createUpdateMapper,
   elicitationAnswer,
   elicitationQuestions,
   fileChanges,
   modelEvent,
+  rfdSubagentMessage,
   toolCallOf,
   toolDiffs,
   type ToolDiff,
@@ -177,7 +181,22 @@ export const IDLE_STOP_MS = 30 * 60_000
 const STDERR_TAIL = 2000
 
 /** Updates a `session/load` replays from history, which the log already holds. */
-const REPLAYED = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan'])
+const REPLAYED = new Set([
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+  'subagent_update',
+  'subagent_spawned',
+  'subagent_state_update',
+])
+
+/** The adapter's messages as the ACP client reads them: subagents in the RFD's form ({@link rfdSubagentMessage}). */
+function inRfdForm(stream: acp.Stream): acp.Stream {
+  return { writable: stream.writable, readable: stream.readable.pipeThrough(new TransformStream({ transform: (m, out) => out.enqueue(rfdSubagentMessage(m)) })) }
+}
 
 /** The adapter's steering extension (`InitializeResponse._meta.steering`). */
 const STEER_METHOD = '_session/steering'
@@ -232,7 +251,9 @@ interface Thread {
   queue: Queued[]
   ask?: { ask: Ask; settle: (answer: AskAnswer | 'cancelled') => void }
   idle?: ReturnType<typeof setTimeout>
-  map: (update: acp.SessionUpdate) => ThreadEventBody[]
+  map: (update: acp.SessionUpdate, from?: string) => ThreadEventBody[]
+  /** The background commands the agent runs now, as last logged. */
+  tasks: BackgroundTask[]
   /** Who sent the prompt that started this process. */
   startedBy: PromptOptions['source']
   /** The lifecycle's opening, sent with the first prompt and then forgotten. */
@@ -536,6 +557,7 @@ class Host implements AgentHost {
       turn: null,
       queue: [],
       map: createUpdateMapper((prefix) => `${prefix}_${row.id}_${Date.now().toString(36)}_${++n}`),
+      tasks: [],
       startedBy,
       ...(opening ? { opening } : {}),
     }
@@ -557,18 +579,20 @@ class Host implements AgentHost {
     if (t.state === 'stopped') return void (await proc.kill().catch(() => {}))
     const app = acp
       .client({ name: 'runcastle' })
-      .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.update))
+      .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.sessionId, params.update))
+      .onNotification(CLAUDE_SDK_MESSAGE_METHOD, (raw: unknown) => raw as { message?: unknown }, ({ params }) => this.onSdkMessage(t, params.message))
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.onPermission(t, params))
       .onRequest(acp.methods.client.elicitation.create, ({ params }) => this.onElicitation(t, params))
       .onNotification(AUTH_STATUS_METHOD, (raw: unknown) => raw as { authStatus?: unknown }, ({ params }) => {
         if (params.authStatus !== undefined) this.authStatus.set(row.runtime ?? DEFAULT_RUNTIME, params.authStatus)
       })
-    const conn = proc.target instanceof acp.AgentApp ? app.connect(proc.target) : app.connect(proc.target)
+    const conn = proc.target instanceof acp.AgentApp ? app.connect(proc.target) : app.connect(inRfdForm(proc.target))
     t.conn = conn
     const init = await conn.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // The agent uses its own tools on its own disk; runcastle is not an editor.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} } },
+      // Subagents run as child sessions the thread nests under their rows.
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} }, subagents: {} },
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
@@ -584,13 +608,14 @@ class Host implements AgentHost {
       t.sessionId = forked.sessionId
       opened = forked
     } else if (row.ccSessionId && !fork) {
+      // Known before the replay, so a replayed subagent's updates read as not the thread's own.
+      t.sessionId = row.ccSessionId
       t.loading = true
       try {
         opened = await conn.agent.request(acp.methods.agent.session.load, { ...session, sessionId: row.ccSessionId })
       } finally {
         t.loading = false
       }
-      t.sessionId = row.ccSessionId
     } else {
       const created = await conn.agent.request(acp.methods.agent.session.new, session)
       t.sessionId = created.sessionId
@@ -757,15 +782,17 @@ class Host implements AgentHost {
 
   // ---- what the agent says and asks ----
 
-  private onUpdate(t: Thread, update: acp.SessionUpdate): void {
+  private onUpdate(t: Thread, sessionId: string, update: acp.SessionUpdate): void {
     if (t.state === 'stopped' || (t.loading && REPLAYED.has(update.sessionUpdate))) return
+    // A subagent's file changes are the turn's too.
     if (t.turn && (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update')) {
       const diffs = toolDiffs(update.content)
       if (update.status === 'failed') t.turn.diffs.delete(update.toolCallId)
       else if (diffs.length) t.turn.diffs.set(update.toolCallId, diffs)
     }
-    if (update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
-    for (const body of t.map(update)) {
+    const own = !t.sessionId || sessionId === t.sessionId
+    if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
+    for (const body of t.map(update, own ? undefined : sessionId)) {
       if (body.type === 'title') {
         // The runtime's generated title names a thread nobody named; a name the human gave stays.
         if (getSessionRow(this.ctx, t.id)?.title) continue
@@ -773,6 +800,15 @@ class Host implements AgentHost {
       }
       appendThreadEvent(t.id, body)
     }
+  }
+
+  /** A Claude session's forwarded SDK message: the background commands it runs, when they change. */
+  private onSdkMessage(t: Thread, message: unknown): void {
+    if (t.state === 'stopped') return
+    const tasks = backgroundTasks(message, t.tasks, Date.now())
+    if (!tasks) return
+    t.tasks = tasks
+    appendThreadEvent(t.id, { type: 'tasks', tasks })
   }
 
   private unattended(t: Thread): boolean {

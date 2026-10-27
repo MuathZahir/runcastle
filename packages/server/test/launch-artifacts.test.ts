@@ -1088,18 +1088,20 @@ describe('claudeRuntime.acpLaunch', () => {
     expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
   })
 
-  it('carries the model, the permission mode, the briefing files, prompt suggestions and file checkpoints in the session _meta', async () => {
+  it('carries the model, the permission mode, the briefing files, prompt suggestions, file checkpoints and the background task set in the session _meta', async () => {
     const spec = await acpSpec()
     const dir = sessionDir('sess_acp_chat')
     expect(spec.files).toEqual([join(dir, 'system-prompt.md'), join(dir, 'settings.json'), join(dir, 'mcp.json')])
     for (const file of spec.files) expect(existsSync(file)).toBe(true)
     expect(spec.sessionMeta).toEqual({
       claudeCode: {
+        emitRawSDKMessages: [{ type: 'system', subtype: 'background_tasks_changed' }],
         options: {
           model: 'claude-sonnet-5',
           permissionMode: 'acceptEdits',
           promptSuggestions: true,
           enableFileCheckpointing: true,
+          perTaskStopAffordance: false,
           extraArgs: {
             settings: join(dir, 'settings.json'),
             'mcp-config': join(dir, 'mcp.json'),

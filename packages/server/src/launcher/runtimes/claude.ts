@@ -280,6 +280,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
       envScrub: CC_NESTING_ENV,
       sessionMeta: {
         claudeCode: {
+          // The live background task set, forwarded as `_claude/sdkMessage`, which
+          // the strip over the composer lists (see threads/acp-map.ts).
+          emitRawSDKMessages: [{ type: 'system', subtype: 'background_tasks_changed' }],
           options: {
             model: input.model,
             permissionMode,
@@ -287,6 +290,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
             promptSuggestions: true,
             // Claude Code's file checkpoints, which an edit with "undo file changes" rewinds.
             enableFileCheckpointing: true,
+            // Stop ends background subagents too. The adapter turns this on for a
+            // client that takes subagent sessions, expecting it to stop each one.
+            perTaskStopAffordance: false,
             extraArgs: {
               settings: files.settingsPath,
               'mcp-config': files.mcpConfigPath,

@@ -1,5 +1,7 @@
+import type { AcpSessionUpdate, SubagentState } from '@agentclientprotocol/claude-agent-acp/dist/acp-subagents.js'
 import type * as acp from '@agentclientprotocol/sdk/unstable'
-import type { DiffLine, FileChange, Question, ThreadEventBody, ToolCall, ToolKind } from '@runcastle/core'
+import type { SDKBackgroundTasksChangedMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { BackgroundTask, DiffLine, FileChange, Question, ThreadEventBody, ToolCall, ToolKind, ToolStatus } from '@runcastle/core'
 import { currentConfig } from './controls'
 
 /**
@@ -139,18 +141,107 @@ export function modelEvent(options: readonly acp.SessionConfigOption[] | null | 
   return config ? { type: 'model', ...config } : null
 }
 
+/** A subagent's state (`subagent_update.state`), as a tool status. */
+function subagentStatus(state: acp.StateUpdate | null | undefined): ToolStatus | undefined {
+  if (!state) return undefined
+  if (state.state === 'running' || state.state === 'requires_action') return 'in_progress'
+  if (state.state !== 'idle') return undefined
+  const stopReason = (state as { stopReason?: unknown }).stopReason
+  return stopReason === undefined || stopReason === null || stopReason === 'end_turn' ? 'completed' : 'failed'
+}
+
+/** The draft form's end of a subagent, as the RFD's state. */
+function rfdState(state: SubagentState): acp.StateUpdate {
+  switch (state) {
+    case 'completed':
+      return { state: 'idle', stopReason: 'end_turn' }
+    case 'cancelled':
+      return { state: 'idle', stopReason: 'cancelled' }
+    case 'failed':
+      return { state: 'idle', stopReason: 'error' }
+    default:
+      // `disconnected`: the subagent can no longer be observed.
+      return { state: 'unknown' }
+  }
+}
+
 /**
- * Maps one thread's `session/update`s to thread events. Stateful only in the
- * ids it hands out: a chunk with no `messageId` joins the run of chunks before
- * it, and any other update ends that run.
+ * codex-acp announces subagents in the subagents RFD's earlier draft
+ * (`subagent_spawned`, `subagent_state_update`, as claude-agent-acp types
+ * them), which the ACP SDK's client rejects before any handler sees it. This
+ * rewrites one message from the adapter into the RFD's `subagent_update`, and
+ * passes every other message through untouched. The spawn's `task` is the
+ * subagent's whole prompt, so only its `name` becomes the title.
  */
-export function createUpdateMapper(newId: (prefix: string) => string): (update: acp.SessionUpdate) => ThreadEventBody[] {
+export function rfdSubagentMessage<M extends object>(message: M): M {
+  const m = message as { method?: unknown; params?: { sessionId?: unknown; update?: AcpSessionUpdate } }
+  const update = m.method === 'session/update' ? m.params?.update : undefined
+  if (update?.sessionUpdate === 'subagent_spawned') {
+    const rfd: acp.SessionUpdate = { sessionUpdate: 'subagent_update', sessionId: update.subagentSessionId, title: update.name, state: { state: 'running' } }
+    return { ...message, params: { ...m.params, update: rfd } }
+  }
+  if (update?.sessionUpdate === 'subagent_state_update') {
+    const rfd: acp.SessionUpdate = { sessionUpdate: 'subagent_update', sessionId: update.subagentSessionId, state: rfdState(update.state) }
+    return { ...message, params: { ...m.params, update: rfd } }
+  }
+  return message
+}
+
+/**
+ * Maps one thread's `session/update`s to thread events. Stateful in the ids it
+ * hands out — a chunk with no `messageId` joins the run of chunks before it,
+ * and any other update ends that run — and in the subagents it has seen.
+ *
+ * Subagents (clientCapabilities.subagents): an adapter announces a subagent
+ * with `subagent_update` on its parent session (codex-acp's draft form is
+ * rewritten to it on the wire, {@link rfdSubagentMessage}) and then sends the
+ * subagent's own work under the subagent's session id. `from` is that session
+ * id, given for an update that did not come from the thread's own session. A
+ * subagent's tool calls nest under it (`parentId`); a subagent of a subagent
+ * nests under the one the turn delegated to; the rest of a subagent's session
+ * (its words, plan, usage) has no place in the thread, and neither has a
+ * session nobody announced.
+ */
+export function createUpdateMapper(newId: (prefix: string) => string): (update: acp.SessionUpdate, from?: string) => ThreadEventBody[] {
   let textRun: string | undefined
   let thoughtRun: string | undefined
-  return (update) => {
+  /** Each announced subagent session, to the subagent the thread shows its work under. */
+  const subagents = new Map<string, string>()
+
+  /** Note a subagent session, announced on the thread's own session or (`parent`) on a subagent's. */
+  const announced = (child: string, parent: string | undefined): void => {
+    const shownUnder = parent === undefined ? child : subagents.get(parent)
+    if (shownUnder !== undefined && !subagents.has(child)) subagents.set(child, shownUnder)
+  }
+
+  const fromSubagent = (update: acp.SessionUpdate, from: string): ThreadEventBody[] => {
+    const parentId = subagents.get(from)
+    if (parentId === undefined) return []
+    switch (update.sessionUpdate) {
+      case 'tool_call':
+      case 'tool_call_update':
+        return [{ type: 'tool', call: toolPatch(update), parentId }]
+      case 'subagent_update':
+        announced(update.sessionId, from)
+        return []
+      default:
+        return []
+    }
+  }
+
+  return (update, from) => {
+    if (from !== undefined) return fromSubagent(update, from)
     if (update.sessionUpdate !== 'agent_message_chunk') textRun = undefined
     if (update.sessionUpdate !== 'agent_thought_chunk') thoughtRun = undefined
     switch (update.sessionUpdate) {
+      case 'subagent_update': {
+        const id = update.sessionId
+        announced(id, undefined)
+        // claude-agent-acp's description is the delegated task ("Find the auth code"), its title the agent's role.
+        const title = update.description ?? update.title
+        const status = subagentStatus(update.state)
+        return [{ type: 'subagent', id, ...(title ? { title } : {}), ...(status ? { status } : {}) }]
+      }
       case 'agent_message_chunk': {
         if (update.content.type !== 'text') return []
         const messageId = update.messageId ?? (textRun ??= newId('msg'))
@@ -190,11 +281,39 @@ export function createUpdateMapper(newId: (prefix: string) => string): (update: 
       case 'compaction_update':
         return update.status === 'completed' ? [{ type: 'compacted' }] : []
       default:
-        // The prompts are logged as they are sent; modes, notices, subagent
-        // sessions and the rest have no place in the thread yet.
+        // The prompts are logged as they are sent; modes, notices, session
+        // messages and the rest have no place in the thread yet.
         return []
     }
   }
+}
+
+/**
+ * How claude-agent-acp forwards the Agent SDK's own messages that a session's
+ * `_meta.claudeCode.emitRawSDKMessages` names (the Claude runtime's `acpLaunch`).
+ */
+export const CLAUDE_SDK_MESSAGE_METHOD = '_claude/sdkMessage'
+
+/** Background work the strip does not list: subagents (their own rows), monitors (output for the model only), housekeeping. */
+function isBackgroundCommand(task: SDKBackgroundTasksChangedMessage['tasks'][number] & { subagent_type?: string }): boolean {
+  return task.task_type !== 'local_agent' && task.subagent_type === undefined && task.task_type !== 'local_monitor' && task.ambient !== true
+}
+
+/**
+ * The background commands a Claude session runs now, from a forwarded SDK
+ * message (`background_tasks_changed`, the whole live set each time it
+ * changes), or null when the message is not that or changes nothing. A task
+ * already listed keeps its `startedAt`; a new one started `now`.
+ */
+export function backgroundTasks(message: unknown, listed: readonly BackgroundTask[], now: number): BackgroundTask[] | null {
+  const m = message as Partial<SDKBackgroundTasksChangedMessage> | null
+  if (m?.type !== 'system' || m.subtype !== 'background_tasks_changed' || !Array.isArray(m.tasks)) return null
+  const tasks = m.tasks.filter(isBackgroundCommand).map((task): BackgroundTask => {
+    const known = listed.find((t) => t.id === task.task_id)
+    return { id: task.task_id, title: task.description, startedAt: known?.startedAt ?? now }
+  })
+  const same = tasks.length === listed.length && tasks.every((t, n) => t.id === listed[n].id && t.title === listed[n].title)
+  return same ? null : tasks
 }
 
 // ---- AskUserQuestion over elicitation ----

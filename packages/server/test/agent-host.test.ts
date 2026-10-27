@@ -347,3 +347,101 @@ describe('asks', () => {
     expect(declined[0]).toMatchObject({ lines: [{ what: 'Declined', answer: 'nobody is watching this run', denied: true }] })
   })
 })
+
+describe('subagents and background commands', () => {
+  const subagentSteps = (events: ThreadEvent[]) => {
+    const work = foldThread(events).items.find((i): i is Extract<ThreadItem, { kind: 'work' }> => i.kind === 'work')
+    return work?.steps.filter((s) => s.kind === 'subagent')
+  }
+
+  it('takes subagents as child sessions', async () => {
+    setup()
+    const id = thread()
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(fake.last().received[0].params).toMatchObject({ clientCapabilities: { subagents: {} } })
+  })
+
+  it("logs a Claude subagent (RFD form) with its session's calls under it, and folds it into one segment", async () => {
+    setup({
+      turn: async (t) => {
+        await t.send({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Explore', description: 'Find the auth code', capabilities: { cancel: {} }, state: { state: 'running' } })
+        await t.send({ sessionUpdate: 'tool_call', toolCallId: 'g1', title: 'grep auth', kind: 'search', status: 'in_progress' }, 'child-1')
+        await t.send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The subagent talking' } }, 'child-1')
+        await t.send({ sessionUpdate: 'config_option_update', configOptions: [] }, 'child-1')
+        await t.send({ sessionUpdate: 'tool_call_update', toolCallId: 'g1', status: 'completed' }, 'child-1')
+        await t.send({ sessionUpdate: 'subagent_update', sessionId: 'child-1', state: { state: 'idle', stopReason: 'end_turn' } })
+        await t.say('It is in auth.ts.')
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Where is auth?' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.filter((e) => e.type === 'subagent')).toMatchObject([
+      { id: 'child-1', title: 'Find the auth code', status: 'in_progress' },
+      { id: 'child-1', status: 'completed' },
+    ])
+    expect(events.filter((e) => e.type === 'tool')).toMatchObject([{ parentId: 'child-1' }, { parentId: 'child-1' }])
+    expect(subagentSteps(events)).toMatchObject([{ id: 'child-1', title: 'Find the auth code', status: 'completed', calls: [{ id: 'g1', title: 'grep auth', status: 'completed' }] }])
+    const view = foldThread(events)
+    expect(view.items.at(-1)).toMatchObject({ kind: 'agent', text: 'It is in auth.ts.' })
+    expect(view.items.some((i) => i.kind === 'agent' && i.text.includes('The subagent talking'))).toBe(false)
+    expect(view.model).toMatchObject({ id: 'claude-opus-5-5' })
+  })
+
+  it('logs a Codex subagent (the draft form, which the ACP client alone would reject) with its calls under it', async () => {
+    setup({
+      turn: async (t) => {
+        await t.send({ sessionUpdate: 'subagent_spawned', subagentSessionId: 'thr-9', name: 'explorer', task: 'Map the router', capabilities: {} })
+        await t.send({ sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'rg router', kind: 'execute', status: 'completed' }, 'thr-9')
+        await t.send({ sessionUpdate: 'subagent_state_update', subagentSessionId: 'thr-9', state: 'completed' })
+        await t.say('Mapped.')
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Map it' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(subagentSteps(events)).toMatchObject([{ id: 'thr-9', title: 'explorer', status: 'completed', calls: [{ id: 'x1', title: 'rg router' }] }])
+  })
+
+  it('does not log a replayed subagent again when a conversation loads', async () => {
+    setup({ replay: [{ sessionUpdate: 'subagent_update', sessionId: 'old-child', title: 'Explore', state: { state: 'idle', stopReason: 'end_turn' } }] })
+    const id = thread({ ccSessionId: 'cc-old' })
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.some((e) => e.type === 'subagent')).toBe(false)
+  })
+
+  it("lists Claude's background commands while they run and drops them when they finish", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const changed = (tasks: { task_id: string; task_type: string; description: string; subagent_type?: string }[]) => ({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks,
+      uuid: '00000000-0000-0000-0000-000000000000',
+      session_id: 'acp-session-1',
+    })
+    setup({
+      turn: async (t) => {
+        await t.sdkMessage(
+          changed([
+            { task_id: 'b1', task_type: 'local_bash', description: 'bun run dev' },
+            { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' },
+          ]),
+        )
+        await t.say('Started the dev server.')
+        await gate
+        await t.sdkMessage(changed([]))
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+    const running = await logUntil(id, has('tasks'))
+    expect(foldThread(running).tasks).toEqual([{ id: 'b1', title: 'bun run dev', startedAt: expect.any(Number) }])
+    release()
+    const done = await logUntil(id, turnsEnded(1))
+    expect(done.filter((e) => e.type === 'tasks')).toHaveLength(2)
+    expect(foldThread(done).tasks).toEqual([])
+  })
+})

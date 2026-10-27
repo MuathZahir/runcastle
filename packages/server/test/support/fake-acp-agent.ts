@@ -1,4 +1,5 @@
 import * as acp from '@agentclientprotocol/sdk/unstable'
+import type { AcpSessionUpdate } from '@agentclientprotocol/claude-agent-acp/dist/acp-subagents.js'
 import type { AgentProcess, AgentTransport } from '../../src/threads/host'
 
 /**
@@ -26,6 +27,13 @@ export interface FakeTurn {
   prompt: acp.ContentBlock[]
   /** Send any session update. */
   update(update: acp.SessionUpdate): Promise<void>
+  /**
+   * Send an update the adapters send beyond ACP's own (codex-acp's draft-form
+   * subagent updates), or one under another session: a subagent's.
+   */
+  send(update: AcpSessionUpdate, sessionId?: string): Promise<void>
+  /** Forward an Agent SDK message, as claude-agent-acp does for `emitRawSDKMessages`. */
+  sdkMessage(message: unknown): Promise<void>
   /** Send an agent message chunk. */
   say(text: string, messageId?: string): Promise<void>
   think(text: string): Promise<void>
@@ -221,6 +229,8 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         sessionId: params.sessionId,
         prompt: params.prompt,
         update,
+        send: (u, sessionId = params.sessionId) => client.notify(acp.methods.client.session.update, { sessionId, update: u as acp.SessionUpdate }),
+        sdkMessage: (message) => client.notify('_claude/sdkMessage', { sessionId: params.sessionId, message }),
         say: (text, messageId) => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text }, ...(messageId ? { messageId } : {}) }),
         think: (text) => update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } }),
         permission: (toolCall) =>
@@ -261,11 +271,15 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
       return { outcome: 'steered' }
     })
 
+  // Over a message stream, as the adapter's stdio is, so what the host does to the wire is tested too.
+  const toClient = new TransformStream<acp.AnyMessage, acp.AnyMessage>()
+  const toAgent = new TransformStream<acp.AnyMessage, acp.AnyMessage>()
+  app.connect({ writable: toClient.writable, readable: toAgent.readable })
   const proc: FakeProcess & AgentProcess = {
     app,
     received,
     killed: false,
-    target: app,
+    target: { writable: toAgent.writable, readable: toClient.readable },
     exited: exited.promise,
     kill: async () => {
       proc.killed = true
