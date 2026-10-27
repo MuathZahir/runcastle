@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { modelFamily, type BackgroundTask, type ContextUsage, type Effort, type ModelChoice, type PlanEntry, type UsageLimit } from '../../../lib/chat-thread'
-import { groupModels } from '../../../lib/model-groups'
+import { effortShown, groupModels } from '../../../lib/model-groups'
 import {
   IconCheck,
   IconChevronDown,
@@ -143,13 +143,12 @@ export function ModelControls({
   onFast: (on: boolean) => void
 }) {
   const on = models.find((m) => m.id === model)
-  const efforts = on?.efforts ?? []
-  // A model that does not take the level held shows the one its runtime recommends.
-  const shown = effort && efforts.includes(effort) ? effort : efforts.includes('medium') ? 'medium' : efforts[0]
+  // A model that does not take the level held shows the one it starts on.
+  const shown = effortShown(on, effort)
   return (
     <div className="flex min-w-0 items-center gap-0.5">
       <ModelPicker runtime={runtime} models={models} model={model} onModel={onModel} />
-      {shown && <EffortPicker efforts={efforts} effort={shown} onEffort={onEffort} />}
+      {shown && <EffortPicker efforts={on?.efforts ?? []} effort={shown} onEffort={onEffort} />}
       {on?.fast && <FastToggle fast={fast} onFast={onFast} />}
     </div>
   )

@@ -33,6 +33,9 @@ const HISTORY: ThreadEvent[] = [
   { i: 3, at: at + 4000, type: 'turn_ended', reason: 'end_turn' },
 ]
 
+/** A thread that ran on Opus, as its log names it in runcastle's roster id. */
+const ON_OPUS: ThreadEvent[] = [{ i: 0, at, type: 'model', model: 'claude-opus-5', label: 'Opus 5' }, ...HISTORY.map((e) => ({ ...e, i: e.i + 1 }))]
+
 /** A fake server holding one thread's log; `after` reads what follows the cursor. */
 function server(log: ThreadEvent[], extra: Record<string, (input: never) => unknown> = {}) {
   return fakeTrpc({
@@ -139,6 +142,44 @@ describe('ThreadColumn', () => {
     await waitFor(() =>
       expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Plan the export', model: 'claude-sonnet-5-5', effort: 'low' }]),
     )
+  })
+
+  it('sends a never-started chat’s first message on exactly the model, effort and fast mode it shows', async () => {
+    const api = server([], {
+      'thread.models': () => ({
+        runtime: 'claude-code',
+        models: [{ id: 'claude-opus-5', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high', fast: true }],
+        current: 'claude-opus-5',
+      }),
+    })
+    render(<ThreadColumn threadId={null} start={async () => 'th_new'} startsAs={{ projectId: 'p1', kind: 'project' }} />, { wrapper: api.Wrapper })
+    // The level a session on Opus starts on, not a guess.
+    expect((await screen.findByRole('combobox', { name: 'Effort' })).textContent).toContain('High')
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+    await waitFor(() =>
+      expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Hello', model: 'claude-opus-5', effort: 'high', fast: false }]),
+    )
+  })
+
+  it('names the model a switch moved to by its label once the list’s ids are the adapter’s own', async () => {
+    let switched = false
+    const api = server(ON_OPUS, {
+      'thread.models': () =>
+        switched
+          ? { runtime: 'claude-code', models: [{ id: 'opus', label: 'Opus 5' }, { id: 'haiku', label: 'Haiku 4.5' }], current: 'haiku' }
+          : { runtime: 'claude-code', models: [{ id: 'claude-opus-5', label: 'Opus 5' }, { id: 'claude-haiku-4-5', label: 'Haiku 4.5' }], current: 'claude-opus-5' },
+      'thread.setModel': () => {
+        switched = true
+        return { ok: true }
+      },
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    fireEvent.click(await screen.findByRole('button', { name: 'Model' }))
+    fireEvent.click(screen.getByRole('option', { name: /Haiku 4.5/ }))
+    await waitFor(() => expect(api.inputs('thread.setModel')).toEqual([{ threadId: 'th1', model: 'claude-haiku-4-5' }]))
+    await waitFor(() => expect(api.inputs('thread.models')).toHaveLength(2))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Model' }).textContent).toBe('Haiku 4.5'))
   })
 
   it('docks an approval in the composer’s place, and answering it calls thread.answer', async () => {
