@@ -54,6 +54,8 @@ export interface FakeScript {
   failSession?: string
   /** What a turn does. Default: says "Done." and ends the turn. */
   turn?: (turn: FakeTurn) => Promise<acp.StopReason | void>
+  /** Answer codex-acp's `_codex/hooks/list` with these hooks, and trust them on `_codex/hooks/trust`. */
+  codexHooks?: { key: string; currentHash: string; trustStatus?: string }[]
 }
 
 export interface FakeProcess {
@@ -194,6 +196,15 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
     .onNotification(acp.methods.agent.session.cancel, ({ params }) => {
       note('session/cancel', params)
       current?.cancel()
+    })
+    .onRequest('_codex/hooks/list', (raw: unknown) => raw as { cwd: string }, ({ params }) => {
+      note('_codex/hooks/list', params)
+      return { cwd: params.cwd, hooks: script.codexHooks ?? [] }
+    })
+    .onRequest('_codex/hooks/trust', (raw: unknown) => raw as { cwd: string; hooks: { key: string }[] }, ({ params }) => {
+      note('_codex/hooks/trust', params)
+      for (const hook of script.codexHooks ?? []) if (params.hooks.some((h) => h.key === hook.key)) hook.trustStatus = 'trusted'
+      return { trusted: true }
     })
     .onRequest('_session/steering', (raw: unknown) => raw as { sessionId: string; prompt: acp.ContentBlock[] }, ({ params }) => {
       note('_session/steering', params)
