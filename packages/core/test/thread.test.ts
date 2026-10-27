@@ -126,6 +126,26 @@ describe('foldThread', () => {
     expect(running.items[0]).not.toHaveProperty('starting')
   })
 
+  it("a held opening and the human's first message are runcastle's line, the human's bubble, then one answer", () => {
+    const opening = prompt('p1', 'Opening', { source: 'runcastle' })
+    const waiting = foldThread(log(opening, prompt('p2', 'Hello'), { type: 'process', state: 'starting' }))
+    expect(waiting.items).toMatchObject([{ id: 'p1', from: 'runcastle' }, { id: 'p2', starting: true }])
+    expect(waiting.items[0]).not.toHaveProperty('starting')
+    const answered = foldThread(
+      log(
+        opening,
+        prompt('p2', 'Hello'),
+        { type: 'process', state: 'starting' },
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        { type: 'agent_text', messageId: 'm1', text: 'Hi.' },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(kinds(answered.items)).toEqual(['user', 'user', 'agent'])
+    expect(answered.items.some((x) => x.kind === 'user' && x.starting)).toBe(false)
+  })
+
   it('a runcastle prompt is runcastle’s line, not the human’s', () => {
     const v = foldThread(log(prompt('p1', 'Round 1 finished', { source: 'runcastle' })))
     expect(v.items[0]).toMatchObject({ kind: 'user', from: 'runcastle' })

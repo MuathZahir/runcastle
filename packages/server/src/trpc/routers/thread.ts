@@ -65,9 +65,10 @@ export const threadRouter = router({
     .mutation(async ({ ctx, input }): Promise<{ promptId: string }> => {
       const { threadId: id, text, images, model, effort, fast } = input
       const row = threadRow(ctx, id)
-      // A thread opened empty (New thread) is briefed before the human's first words.
+      // A thread opened empty (New thread) is briefed ahead of the human's first
+      // words, in the same prompt, so the agent answers once (decision 12).
       if (!row.ccSessionId && !hasThreadLog(id)) {
-        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row) }, { source: 'runcastle' })
+        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row) }, { source: 'runcastle', hold: true })
       }
       return agentHost(ctx).prompt(
         id,

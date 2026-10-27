@@ -61,7 +61,7 @@ describe('the preparation workspace', () => {
 
     expect(await screen.findByText('The dev server is bun run dev')).toBeTruthy()
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_prep', text: 'The dev server is bun run dev' }]))
-    expect(api.inputs('project.talkToPrep')).toEqual([{ projectId: 'proj_1' }])
+    expect(api.inputs('project.talkToPrep')).toEqual([{ projectId: 'proj_1', holdOpening: true }])
   })
 })
 

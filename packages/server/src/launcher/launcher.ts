@@ -121,6 +121,12 @@ export interface LaunchSessionOptions {
    * Used by the scripted smoke (SPEC §11) and by tests.
    */
   spawn?: boolean
+  /**
+   * Hold the launch's opening for the human's first message instead of sending
+   * it (decision 12): it is logged, and goes to the agent ahead of that message
+   * as one prompt. Passed by the web when a thread starts on its first send.
+   */
+  holdOpening?: boolean
 }
 
 export interface LaunchSessionResult {
@@ -226,6 +232,7 @@ function underway(row: SessionRow): boolean {
  * a running turn, sent at once otherwise, starting the agent when none runs.
  * `session.kickoff` records that the host took it. With `spawn:false` the
  * prompt is logged and nothing is started, so nothing claims it was delivered.
+ * With `holdOpening` the host keeps it for the human's first message.
  */
 async function sayToThread(
   ctx: AppCtx,
@@ -238,11 +245,12 @@ async function sayToThread(
     appendThreadEvent(row.id, { type: 'prompt', id: newId('prompt'), text: line, source: 'runcastle' })
     return
   }
-  await agentHost(ctx).prompt(row.id, { text: line }, { source: 'runcastle' })
+  const hold = opts.holdOpening === true
+  await agentHost(ctx).prompt(row.id, { text: line }, { source: 'runcastle', ...(hold ? { hold } : {}) })
   emitForSession(ctx, row, {
     type: 'session.kickoff',
     message,
-    data: { sessionId: row.id, kind: row.kind, line, mechanism: 'prompt' },
+    data: { sessionId: row.id, kind: row.kind, line, mechanism: hold ? 'held' : 'prompt' },
   })
 }
 
