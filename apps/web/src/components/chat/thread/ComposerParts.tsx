@@ -1,119 +1,182 @@
 import { useState } from 'react'
 import type { BackgroundTask, ContextUsage, Effort, ModelChoice, PlanEntry, UsageLimit } from '../../../lib/chat-thread'
-import { IconCheck, IconChevronDown, IconChevronUp, IconClaude, IconCodex, IconDot, IconStop, IconTerminal } from '../../../icons'
+import { groupModels, modelFamily } from '../../../lib/model-groups'
+import {
+  IconCheck,
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconClaude,
+  IconCodex,
+  IconDot,
+  IconFlame,
+  IconStop,
+  IconTerminal,
+} from '../../../icons'
 import { BARE_BUTTON, Button, IconButton, Spinner, cx } from '../../../ui'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../../../ui/dropdown-menu'
+  Combobox,
+  ComboboxAction,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from '../../../ui/combobox'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select'
 import { duration } from './Work'
 
-const EFFORTS: { id: Effort; label: string }[] = [
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-  { id: 'max', label: 'Max' },
-]
+const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }
+
+/** The composer footer's chips: quiet until hovered or open. */
+const CHIP = cx(
+  BARE_BUTTON,
+  'flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm text-text-secondary',
+  'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text data-[state=open]:bg-surface-hover data-[state=open]:text-text',
+)
 
 /**
- * The model and effort (and fast mode, where the runtime offers it) the NEXT
- * message runs on. Both runtimes take a model change mid-conversation, so each
- * message can go to a different model; the thread starts on the one runcastle
- * resolved for its kind.
+ * The model the NEXT message runs on (decisions 9, 13). One list, the same
+ * before and after the agent starts: searchable (type to filter, arrows and
+ * Enter to pick, Esc to close), grouped by family with the newest of each in
+ * view and older versions folded away, the current model checked, each with
+ * its one-line description. The chip names the model alone; effort and fast
+ * mode are their own controls beside it.
  */
-export function ModelPicker({
+function ModelPicker({
   runtime,
   models,
   model,
-  effort,
   onModel,
+}: {
+  runtime: 'claude-code' | 'codex'
+  models: ModelChoice[]
+  model: string
+  onModel: (id: string) => void
+}) {
+  const Glyph = runtime === 'codex' ? IconCodex : IconClaude
+  const [query, setQuery] = useState('')
+  const [showOlder, setShowOlder] = useState(false)
+  const groups = groupModels(models)
+  const older = groups.flatMap((g) => g.older)
+  // A thread on an older model opens with it in view.
+  const olderOpen = showOlder || query !== '' || older.some((m) => m.id === model)
+  const row = (m: ModelChoice) => (
+    <ComboboxItem
+      key={m.id}
+      value={m.id}
+      keywords={[m.label, modelFamily(m.label).family]}
+      current={m.id === model}
+      onSelect={() => onModel(m.id)}
+    >
+      <span className="flex min-w-0 flex-col py-0.5">
+        <span className="truncate">{m.label}</span>
+        {m.note && <span className="truncate text-xs text-text-tertiary">{m.note}</span>}
+      </span>
+    </ComboboxItem>
+  )
+  return (
+    <Combobox
+      onOpenChange={(open) => {
+        if (open) return
+        setQuery('')
+        setShowOlder(false)
+      }}
+    >
+      <ComboboxTrigger aria-label="Model" className={CHIP}>
+        <Glyph size={14} className="shrink-0 text-icon" />
+        <span className="truncate">{models.find((m) => m.id === model)?.label ?? model}</span>
+        <IconChevronDown size={13} className="shrink-0 text-icon" />
+      </ComboboxTrigger>
+      <ComboboxContent side="top" align="start" className="w-80">
+        <ComboboxInput placeholder="Search models" aria-label="Search models" value={query} onValueChange={setQuery} />
+        <ComboboxList label="Models" className="max-h-80">
+          <ComboboxEmpty>No model matches.</ComboboxEmpty>
+          {groups.map((g) => (
+            <ComboboxGroup key={g.family} heading={g.family}>
+              {g.latest.map(row)}
+            </ComboboxGroup>
+          ))}
+          {older.length > 0 &&
+            (olderOpen ? (
+              <ComboboxGroup heading="Older models">{older.map(row)}</ComboboxGroup>
+            ) : (
+              <ComboboxAction value="Older models" onSelect={() => setShowOlder(true)}>
+                <IconChevronRight size={13} />
+                Older models
+                <span className="tabular-nums">{older.length}</span>
+              </ComboboxAction>
+            ))}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
+/**
+ * The composer footer's model controls: the model, then its effort and fast
+ * mode, each its own control and each shown only where the model has it. They
+ * work the same on a thread that has not started: the choice rides its first
+ * message.
+ */
+export function ModelControls({
+  runtime,
+  models,
+  model,
+  onModel,
+  effort,
   onEffort,
-  fast = false,
+  fast,
   onFast,
 }: {
   runtime: 'claude-code' | 'codex'
   models: ModelChoice[]
   model: string
-  effort: Effort
   onModel: (id: string) => void
+  /** The level held for the thread; absent until one is chosen or reported. */
+  effort: Effort | undefined
   onEffort: (e: Effort) => void
-  fast?: boolean
-  /** Toggle fast mode; absent where the runtime offers none, and the row with it. */
-  onFast?: (on: boolean) => void
+  fast: boolean
+  onFast: (on: boolean) => void
 }) {
-  const Glyph = runtime === 'codex' ? IconCodex : IconClaude
-  const current = models.find((m) => m.id === model)
+  const on = models.find((m) => m.id === model)
+  const efforts = on?.efforts ?? []
+  // A model that does not take the level held shows the one its runtime recommends.
+  const shown = effort && efforts.includes(effort) ? effort : efforts.includes('medium') ? 'medium' : efforts[0]
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label="Model"
-        className={cx(
-          BARE_BUTTON,
-          'flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm text-text-secondary',
-          'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text data-[state=open]:bg-surface-hover',
-        )}
-      >
-        <Glyph size={14} className="shrink-0 text-icon" />
-        <span className="truncate">{current?.label ?? model}</span>
-        <span className="text-text-tertiary">{EFFORTS.find((e) => e.id === effort)?.label}</span>
-        <IconChevronDown size={13} className="shrink-0 text-icon" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-72">
-        <DropdownMenuLabel>Model</DropdownMenuLabel>
-        {models.map((m) => (
-          <DropdownMenuItem
-            key={m.id}
-            role="menuitemradio"
-            aria-checked={m.id === model}
-            icon={m.id === model ? <IconCheck /> : <span className="size-4 shrink-0" />}
-            onSelect={() => onModel(m.id)}
-          >
-            <span className="flex min-w-0 flex-col">
-              <span>{m.label}</span>
-              {m.note && <span className="text-xs text-text-tertiary">{m.note}</span>}
-            </span>
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Effort</DropdownMenuLabel>
-        <div className="flex gap-0.5 px-1 pb-1">
-          {EFFORTS.map((e) => (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => onEffort(e.id)}
-              className={cx(
-                BARE_BUTTON,
-                'h-7 flex-1 cursor-pointer rounded-md text-xs transition-colors duration-(--dur-1) ease-app',
-                e.id === effort ? 'bg-surface-selected text-text' : 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary',
-              )}
-            >
-              {e.label}
-            </button>
-          ))}
-        </div>
-        {onFast && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              role="menuitemcheckbox"
-              aria-checked={fast}
-              icon={fast ? <IconCheck /> : <span className="size-4 shrink-0" />}
-              onSelect={() => onFast(!fast)}
-            >
-              Fast mode
-            </DropdownMenuItem>
-          </>
-        )}
-        <p className="m-0 px-2 pt-1 pb-1.5 text-xs text-text-tertiary">Applies from your next message.</p>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex min-w-0 items-center gap-0.5">
+      <ModelPicker runtime={runtime} models={models} model={model} onModel={onModel} />
+      {shown && <EffortPicker efforts={efforts} effort={shown} onEffort={onEffort} />}
+      {on?.fast && <FastToggle fast={fast} onFast={onFast} />}
+    </div>
   )
+}
+
+/** How hard the next message's model thinks: only the levels that model takes. */
+function EffortPicker({ efforts, effort, onEffort }: { efforts: Effort[]; effort: Effort; onEffort: (e: Effort) => void }) {
+  return (
+    <Select value={effort} onValueChange={(next) => onEffort(next as Effort)}>
+      <SelectTrigger aria-label="Effort" className={CHIP}>
+        <span className="text-text-tertiary">Effort</span>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent side="top" align="start">
+        {efforts.map((e) => (
+          <SelectItem key={e} value={e}>
+            {EFFORT_LABEL[e]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/** Fast mode for the next message, where the runtime offers it on the model. */
+function FastToggle({ fast, onFast }: { fast: boolean; onFast: (on: boolean) => void }) {
+  return <IconButton label="Fast mode" icon={<IconFlame size={14} />} active={fast} onClick={() => onFast(!fast)} />
 }
 
 function Ring({ percent, size = 16 }: { percent: number; size?: number }) {

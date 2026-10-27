@@ -55,7 +55,7 @@ export function FeatureChat({
       label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : 'Thread'}
       threadId={inFront}
       {...(entry ? { runtime: entry.runtime } : {})}
-      {...(isMain ? { start, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
+      {...(isMain ? { start, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
       draftKey={`feature:${full.feature.id}:main`}
       onOpenThread={column.pick}
       emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : SIDE_HINT}

@@ -3,6 +3,7 @@ import type {
   Attachment,
   BackgroundTask,
   ContextUsage,
+  Effort,
   FileChange,
   ModelChoice,
   PlanEntry,
@@ -67,11 +68,36 @@ export const FILES = [
   'package.json',
 ]
 
+const EVERY_EFFORT: Effort[] = ['low', 'medium', 'high', 'max']
+
+/** Claude Code's list as claude-agent-acp offers it (Default named as its model), with the operator's notes. */
 export const MODELS: ModelChoice[] = [
-  { id: 'claude-opus-5-5[1m]', label: 'Opus 5.5', note: '1M context · involved work and UI' },
-  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'Most everyday tasks' },
+  { id: 'claude-opus-5-5[1m]', label: 'Opus 5.5', note: '1M context · involved work and UI', efforts: EVERY_EFFORT, fast: true },
+  { id: 'claude-fable-5-1', label: 'Fable 5.1', note: 'The most capable, for the hardest problems', efforts: EVERY_EFFORT },
+  { id: 'claude-fable-5-1[1m]', label: 'Fable 5.1 (1M context)', note: 'Fable 5.1 with a 1M-token context', efforts: EVERY_EFFORT },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'Most everyday tasks', efforts: EVERY_EFFORT },
+  { id: 'claude-sonnet-5-5[1m]', label: 'Sonnet 5.5 (1M context)', note: 'Sonnet 5.5 with a 1M-token context', efforts: EVERY_EFFORT },
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5', note: 'Quick, mechanical work' },
-  { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+  { id: 'claude-fable-5', label: 'Fable 5', note: 'The previous Fable' },
+  { id: 'claude-opus-5', label: 'Opus 5', note: 'The previous Opus', efforts: EVERY_EFFORT },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-opus-4-6', label: 'Opus 4.6' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+]
+
+/** Codex's list as codex-acp offers it: `gpt-` ids, named without the prefix. */
+export const CODEX_MODELS: ModelChoice[] = [
+  { id: 'gpt-5.6-sol', label: '5.6 Sol', note: 'Frontier agentic coding model', efforts: ['low', 'medium', 'high'], fast: true },
+  { id: 'gpt-5.6-terra', label: '5.6 Terra', note: 'Balanced speed and depth', efforts: ['low', 'medium', 'high'] },
+  { id: 'gpt-5.6-luna', label: '5.6 Luna', note: 'Fast and inexpensive', efforts: ['low', 'medium'] },
+  { id: 'gpt-5.5', label: '5.5', note: 'The previous frontier model', efforts: ['low', 'medium', 'high'] },
+  { id: 'gpt-5.5-mini', label: '5.5 Mini', note: 'Small and quick' },
+  { id: 'gpt-5.4', label: '5.4' },
+  { id: 'gpt-5.4-mini', label: '5.4 Mini' },
+  { id: 'gpt-5.5-codex', label: '5.5 Codex', note: 'Tuned for long coding sessions', efforts: ['low', 'medium', 'high'] },
+  { id: 'gpt-5.3-codex', label: '5.3 Codex' },
 ]
 
 export const LIMITS: UsageLimit[] = [
@@ -397,6 +423,7 @@ export type Moment =
   | 'starting'
   | 'full'
   | 'new'
+  | 'codex'
   | 'terminal-era'
 
 export interface MomentSample {
@@ -414,6 +441,8 @@ export interface MomentSample {
   suggestion?: string
   /** The thread on show in the switcher. */
   thread: string
+  /** The thread's runtime, whose models the composer offers. Claude Code when absent. */
+  runtime?: 'codex'
 }
 
 const CTX: ContextUsage = { used: 61_400, size: 1_000_000, costUsd: 1.84 }
@@ -439,6 +468,7 @@ export const MOMENTS: MomentSample[] = [
     thread: 'main',
   },
   { key: 'new', label: 'New thread', items: [], state: 'idle', context: { used: 0, size: 1_000_000 }, thread: 'new' },
+  { key: 'codex', label: 'Codex thread', items: [], state: 'idle', context: { used: 0, size: 400_000 }, thread: 'new', runtime: 'codex' },
   { key: 'terminal-era', label: 'Terminal-era', items: TERMINAL_ERA, state: 'idle', context: CTX, thread: 'old' },
 ]
 

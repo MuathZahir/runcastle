@@ -71,6 +71,9 @@ export async function blobBase64(blob: Blob): Promise<string> {
   return btoa(binary)
 }
 
+/** Where a chat nobody has started would start: a feature's main chat, or a project's new chat or preparation chat. */
+export type ThreadStart = { featureId: string } | { projectId: string; kind: 'project' | 'prepare' }
+
 let localSeq = 0
 
 /** The prompt id a message's actions act on: the message itself, or the human's message the answer replied to. */
@@ -88,6 +91,7 @@ export function useThread({
   draftKey,
   start,
   onStarted,
+  startsAs,
 }: {
   /** The thread; null for one that has never started. */
   threadId: string | null
@@ -97,6 +101,8 @@ export function useThread({
   start?: () => Promise<string>
   /** The unstarted thread now has an id. */
   onStarted?: (threadId: string) => void
+  /** Where an unstarted thread would start, so its model controls show before its first message. */
+  startsAs?: ThreadStart
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -187,18 +193,20 @@ export function useThread({
   }, [])
 
   // ---- the model the next message runs on ----
+  // A chat nobody has started is asked about by where it would start, and its
+  // choice is kept here until the first Send carries it.
   const [choice, setChoice] = useState<{ threadId: string | null; model?: string; effort?: Effort; fast?: boolean }>({ threadId })
   const chosen = choice.threadId === threadId ? choice : { threadId }
-  const model = chosen.model ?? folded.model?.id
-  const effort: Effort = chosen.effort ?? folded.model?.effort ?? 'high'
-  const fast = chosen.fast ?? folded.model?.fast ?? false
-  const modelsQ = trpc.thread.models.useQuery({ threadId: id }, { enabled })
+  const modelsQ = trpc.thread.models.useQuery(threadId ? { threadId } : (startsAs ?? { threadId: '' }), { enabled: enabled || !!startsAs })
+  const model = chosen.model ?? folded.model?.id ?? modelsQ.data?.current ?? undefined
   // While the runtime's list cannot be read, the picker still names the model the thread is on.
   const models: ModelChoice[] = modelsQ.data?.models.length
     ? modelsQ.data.models
     : folded.model
       ? [{ id: folded.model.id, label: folded.model.label }]
       : []
+  const effort = chosen.effort ?? folded.model?.effort
+  const fast = chosen.fast ?? folded.model?.fast ?? false
   // A refused change is quiet: the choice rides the next message instead. A
   // model the session moved to may offer fast mode where the last did not.
   const setModelM = trpc.thread.setModel.useMutation({
@@ -207,8 +215,11 @@ export function useThread({
   })
   const choose = (next: { model?: string; effort?: Effort; fast?: boolean }) => {
     const merged = { ...chosen, ...next, threadId }
+    // An effort the newly chosen model does not take is not carried over to it.
+    const takes = models.find((m) => m.id === merged.model)?.efforts
+    if (next.model && merged.effort && takes && !takes.includes(merged.effort)) delete merged.effort
     setChoice(merged)
-    const to = merged.model ?? folded.model?.id
+    const to = merged.model ?? model
     if (threadId && to) {
       setModelM.mutate({
         threadId,
@@ -255,7 +266,7 @@ export function useThread({
         text: words,
         ...(images.length ? { images } : {}),
         ...(changed && chosen.model ? { model: chosen.model } : {}),
-        ...(effortChanged ? { effort } : {}),
+        ...(effortChanged ? { effort: chosen.effort } : {}),
         ...(fastChanged ? { fast } : {}),
       })
       setPending((ps) => ps.map((p) => (p.localId === local.localId ? { ...p, promptId } : p)))
@@ -304,14 +315,16 @@ export function useThread({
     answer: (ask: Ask, answer: AskAnswer) => {
       if (threadId) answerM.mutate({ threadId, askId: ask.id, answer })
     },
+    /** The runtime the thread is on, or would start on; unknown until the models are read. */
+    runtime: modelsQ.data?.runtime,
     models,
     model,
+    /** The effort held for the thread: chosen, else the one it runs on; absent while neither is known. */
     effort,
     chooseModel: (next: string) => choose({ model: next }),
     chooseEffort: (next: Effort) => choose({ effort: next }),
-    /** Fast mode for the next message; offered only where the model the thread runs on has it. */
+    /** Fast mode for the next message. */
     fast,
-    fastOffered: models.some((m) => m.id === model && m.fast),
     chooseFast: (next: boolean) => choose({ fast: next }),
     /** Compact the conversation (Compact now): no message of the human's, a divider when it is done. */
     compact: () => {

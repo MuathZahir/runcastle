@@ -33,6 +33,7 @@ export function ProjectChat({
       threadId={threadId}
       {...(runtime ? { runtime } : {})}
       start={start}
+      startsAs={{ projectId, kind: 'project' }}
       onStarted={onStarted}
       onOpenThread={onOpenThread}
       draftKey={`project:${projectId}:new`}

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEvent } from '@runcastle/core'
 import { fakeTrpc } from './fake-trpc'
-import { openMenu } from './floating'
+import { openMenu, pickOption } from './floating'
 
 /**
  * The chat column for one thread (chat-as-web-components decisions 7, 8): the
@@ -108,6 +108,37 @@ describe('ThreadColumn', () => {
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Let’s plan the export' }]))
     expect(start).toHaveBeenCalledOnce()
     expect(onStarted).toHaveBeenCalledWith('th_new')
+  })
+
+  it('shows the model controls on a never-started chat, on the model it would start on, and the first send carries the choice', async () => {
+    const api = server([], {
+      'thread.models': () => ({
+        runtime: 'claude-code',
+        models: [
+          { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['low', 'medium', 'high', 'max'] },
+          { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: ['low', 'medium', 'high'] },
+        ],
+        current: 'claude-opus-5-5',
+      }),
+    })
+    const start = vi.fn(async () => 'th_new')
+    render(<ThreadColumn threadId={null} start={start} startsAs={{ featureId: 'f1' }} draftKey="feature:f1:main" />, { wrapper: api.Wrapper })
+    const model = await screen.findByRole('button', { name: 'Model' })
+    expect(model.textContent).toBe('Opus 5.5')
+    expect(api.inputs('thread.models')).toEqual([{ featureId: 'f1' }])
+
+    fireEvent.click(model)
+    fireEvent.click(screen.getByRole('option', { name: /Sonnet 5.5/ }))
+    pickOption(screen.getByRole('combobox', { name: 'Effort' }), 'Low')
+    // Nothing is set on a thread that does not exist yet.
+    expect(api.inputs('thread.setModel')).toEqual([])
+    expect(start).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Plan the export' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+    await waitFor(() =>
+      expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Plan the export', model: 'claude-sonnet-5-5', effort: 'low' }]),
+    )
   })
 
   it('docks an approval in the composer’s place, and answering it calls thread.answer', async () => {
@@ -249,13 +280,12 @@ describe('ThreadColumn', () => {
     ...HISTORY.map((e) => ({ ...e, i: e.i + 2 })),
   ]
 
-  it('offers a Fast mode row only where the model the thread runs on has it, and sends fast with the next message', async () => {
+  it('offers fast mode only where the model the thread runs on has it, and sends fast with the next message', async () => {
     const plain = server(ON_SONNET, { 'thread.models': () => ({ runtime: 'claude-code', models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }], current: 'claude-sonnet-5-5' }) })
     const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: plain.Wrapper })
     await waitFor(() => expect(plain.inputs('thread.models')).toHaveLength(1))
-    openMenu(await screen.findByRole('button', { name: 'Model' }))
-    expect(screen.getByRole('menuitemradio', { name: /Sonnet 5.5/ })).toBeTruthy()
-    expect(screen.queryByRole('menuitemcheckbox', { name: 'Fast mode' })).toBeNull()
+    expect((await screen.findByRole('button', { name: 'Model' })).textContent).toBe('Sonnet 5.5')
+    expect(screen.queryByRole('button', { name: 'Fast mode' })).toBeNull()
     unmount()
 
     const api = server(ON_SONNET, {
@@ -263,11 +293,9 @@ describe('ThreadColumn', () => {
       'thread.setModel': () => ({ ok: true }),
     })
     render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(api.inputs('thread.models')).toHaveLength(1))
-    openMenu(await screen.findByRole('button', { name: 'Model' }))
-    const row = await screen.findByRole('menuitemcheckbox', { name: 'Fast mode' })
-    expect(row.getAttribute('aria-checked')).toBe('false')
-    fireEvent.click(row)
+    const toggle = await screen.findByRole('button', { name: 'Fast mode' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(toggle)
     await waitFor(() => expect(api.inputs('thread.setModel')).toEqual([{ threadId: 'th1', model: 'claude-sonnet-5-5', fast: true }]))
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Quickly now' } })
     fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })

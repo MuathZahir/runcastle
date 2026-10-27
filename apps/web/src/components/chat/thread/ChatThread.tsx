@@ -177,7 +177,12 @@ function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageAc
     case 'compacted':
       return <Divider>Conversation compacted — earlier turns are summarised for the agent</Divider>
     case 'model':
-      return <Divider>Now on {item.model}</Divider>
+      return (
+        <Divider>
+          Now on {item.model}
+          {item.effort && ` · ${item.effort.charAt(0).toUpperCase()}${item.effort.slice(1)} effort`}
+        </Divider>
+      )
     case 'error':
       return <ThreadError>{item.message}</ThreadError>
   }

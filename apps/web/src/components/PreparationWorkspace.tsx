@@ -162,6 +162,7 @@ export function PreparationWorkspace({
           label="Preparation chat"
           threadId={threadId}
           start={async () => (await talk.mutateAsync({ projectId })).sessionId}
+          startsAs={{ projectId, kind: 'prepare' }}
           onStarted={(id) => {
             setStarted(id)
             void utils.thread.list.invalidate({ projectId })

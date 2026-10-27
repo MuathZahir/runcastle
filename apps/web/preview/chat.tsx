@@ -16,11 +16,11 @@ import { applyStoredTheme, useTheme } from '../src/lib/theme'
 import type { Ask, Attachment, BackgroundTask, ContextUsage, Effort, PlanEntry, ThreadItem, ThreadState } from '../src/lib/chat-thread'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
-import { ContextMeter, ModelPicker, PlanStrip } from '../src/components/chat/thread/ComposerParts'
+import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
 import { ThreadSwitcher } from '../src/components/chat/thread/ThreadSwitcher'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
-import { COMMANDS, FILES, LIMITS, MODELS, MOMENTS, NOW, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
+import { CODEX_MODELS, COMMANDS, FILES, LIMITS, MODELS, MOMENTS, NOW, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
 
 /**
  * The chat column once it is web components, not a terminal
@@ -57,16 +57,18 @@ function useThread(moment: MomentSample, goNew: () => void) {
   const [draft, setDraft] = useState(moment.draft ?? '')
   const [attachments, setAttachments] = useState<Attachment[]>(moment.attachments ?? [])
   const [suggestion, setSuggestion] = useState(moment.suggestion)
+  const models = moment.runtime === 'codex' ? CODEX_MODELS : MODELS
   const [model, setModel] = useState(() => {
     const said = [...moment.items].reverse().find((x): x is Extract<ThreadItem, { kind: 'agent' }> => x.kind === 'agent' && !!x.model)?.model
-    return MODELS.find((m) => m.label === said)?.id ?? MODELS[0].id
+    return models.find((m) => m.label === said)?.id ?? models[0].id
   })
   const [effort, setEffort] = useState<Effort>('high')
+  const [fast, setFast] = useState(false)
   const lastModel = useRef(model)
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
-  const label = MODELS.find((m) => m.id === model)?.label
+  const label = models.find((m) => m.id === model)?.label
 
   const reply = (text: string) => {
     setState('working')
@@ -232,7 +234,7 @@ function useThread(moment: MomentSample, goNew: () => void) {
 
   return {
     items, state, ask, plan, tasks, setTasks, context, since, draft, setDraft, attachments, setAttachments, suggestion,
-    model, setModel, effort, setEffort, send, stop, approve, answer, settleMcp, edit, attach, lastSent, branch: goNew,
+    models, model, setModel, effort, setEffort, fast, setFast, send, stop, approve, answer, settleMcp, edit, attach, lastSent, branch: goNew,
     compact: () => {
       setDraft('/compact')
     },
@@ -282,7 +284,16 @@ function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void
       autoFocus={['composing', 'mention', 'new', 'idle'].includes(moment.key)}
       top={<PlanStrip plan={t.plan} tasks={t.tasks} onStopTask={(id) => t.setTasks((ts) => ts.filter((x) => x.id !== id))} />}
       footer={
-        <ModelPicker runtime="claude-code" models={MODELS} model={t.model} effort={t.effort} onModel={t.setModel} onEffort={t.setEffort} />
+        <ModelControls
+          runtime={moment.runtime ?? 'claude-code'}
+          models={t.models}
+          model={t.model}
+          onModel={t.setModel}
+          effort={t.effort}
+          onEffort={t.setEffort}
+          fast={t.fast}
+          onFast={t.setFast}
+        />
       }
     />
   )

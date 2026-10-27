@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
-import { promptIdFor, useThread } from '../../lib/use-thread'
+import { promptIdFor, useThread, type ThreadStart } from '../../lib/use-thread'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
 import { Composer } from './thread/Composer'
-import { ContextMeter, ModelPicker, PlanStrip } from './thread/ComposerParts'
+import { ContextMeter, ModelControls, PlanStrip } from './thread/ComposerParts'
 
 /**
  * One thread in the chat column (chat-as-web-components decisions 7, 8): the
@@ -23,8 +23,9 @@ import { ContextMeter, ModelPicker, PlanStrip } from './thread/ComposerParts'
  */
 export function ThreadColumn({
   threadId,
-  runtime = 'claude-code',
+  runtime,
   start,
+  startsAs,
   onStarted,
   onOpenThread,
   draftKey,
@@ -36,8 +37,11 @@ export function ThreadColumn({
   children,
 }: {
   threadId: string | null
+  /** The thread's runtime; else the one its models say. */
   runtime?: ThreadEntry['runtime']
   start?: () => Promise<string>
+  /** Where `start` starts it, so the model controls show before the first message. */
+  startsAs?: ThreadStart
   onStarted?: (threadId: string) => void
   /** Bring another thread to the front (a branch made from a message here). */
   onOpenThread?: (threadId: string) => void
@@ -55,9 +59,10 @@ export function ThreadColumn({
   /** What floats over the thread (the notice deck), clear of the composer. */
   children?: ReactNode
 }) {
-  const t = useThread({ threadId, draftKey, start, onStarted })
+  const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}) })
   const root = useRef<HTMLElement>(null)
   const { view } = t
+  const onRuntime = runtime ?? t.runtime ?? 'claude-code'
 
   // A crop from the design pane: its images join the next message, and the
   // composer takes focus so the human writes it there.
@@ -122,14 +127,15 @@ export function ThreadColumn({
       top={<PlanStrip plan={view.plan} tasks={view.tasks} />}
       footer={
         t.model && (
-          <ModelPicker
-            runtime={runtime}
+          <ModelControls
+            runtime={onRuntime}
             models={t.models}
             model={t.model}
-            effort={t.effort}
             onModel={t.chooseModel}
+            effort={t.effort}
             onEffort={t.chooseEffort}
-            {...(t.fastOffered ? { fast: t.fast, onFast: t.chooseFast } : {})}
+            fast={t.fast}
+            onFast={t.chooseFast}
           />
         )
       }
@@ -150,7 +156,7 @@ export function ThreadColumn({
           items={view.items}
           state={view.state}
           {...(view.turnStartedAt ? { workingSince: view.turnStartedAt } : {})}
-          actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: runtime === 'claude-code' }}
+          actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
           onDropImages={t.attach}
           emptyHint={emptyHint}
           footer={
