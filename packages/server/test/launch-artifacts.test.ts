@@ -1095,7 +1095,10 @@ describe('claudeRuntime.acpLaunch', () => {
     for (const file of spec.files) expect(existsSync(file)).toBe(true)
     expect(spec.sessionMeta).toEqual({
       claudeCode: {
-        emitRawSDKMessages: [{ type: 'system', subtype: 'background_tasks_changed' }],
+        emitRawSDKMessages: [
+          { type: 'system', subtype: 'background_tasks_changed' },
+          { type: 'system', subtype: 'session_state_changed' },
+        ],
         options: {
           model: 'claude-sonnet-5',
           permissionMode: 'acceptEdits',

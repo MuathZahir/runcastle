@@ -282,6 +282,9 @@ export function threadMarkdown(view: ThreadView, title: string): string {
       case 'error':
         under('Agent', `> Error: ${item.message}`)
         break
+      case 'notice':
+        under('Agent', `*${item.text}*`)
+        break
     }
   }
   return `${out.join('\n\n')}\n`

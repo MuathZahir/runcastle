@@ -280,9 +280,14 @@ export const claudeRuntime: AgentRuntimeAdapter = {
       envScrub: CC_NESTING_ENV,
       sessionMeta: {
         claudeCode: {
-          // The live background task set, forwarded as `_claude/sdkMessage`, which
-          // the strip over the composer lists (see threads/acp-map.ts).
-          emitRawSDKMessages: [{ type: 'system', subtype: 'background_tasks_changed' }],
+          // Forwarded as `_claude/sdkMessage`: the live background task set, which
+          // the strip over the composer lists (see threads/acp-map.ts), and the
+          // session going idle, which ends a turn Claude Code started by itself
+          // (see threads/host.ts) — ACP has no notification for either.
+          emitRawSDKMessages: [
+            { type: 'system', subtype: 'background_tasks_changed' },
+            { type: 'system', subtype: 'session_state_changed' },
+          ],
           options: {
             model: input.model,
             permissionMode,

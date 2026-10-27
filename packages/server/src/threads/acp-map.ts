@@ -359,6 +359,12 @@ export function backgroundTasks(message: unknown, listed: readonly BackgroundTas
   return same ? null : tasks
 }
 
+/** A forwarded SDK message saying the Claude session went idle (`session_state_changed`): no model turn runs. */
+export function wentIdle(message: unknown): boolean {
+  const m = message as { type?: unknown; subtype?: unknown; state?: unknown } | null
+  return m?.type === 'system' && m.subtype === 'session_state_changed' && m.state === 'idle'
+}
+
 // ---- AskUserQuestion over elicitation ----
 
 /** claude-agent-acp's field key for question `n`, and its free-text companion. */

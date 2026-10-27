@@ -1,6 +1,6 @@
 import { DEFAULT_RUNTIME, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { chatKickoffHeader } from '../launcher/launcher'
+import { chatKickoffHeader, kickoffFor } from '../launcher/launcher'
 import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
 import { stopDesignServerForSession } from '../services/design'
 import { startDocsWatch } from '../services/docs-watch'
@@ -16,6 +16,8 @@ import type { ThreadLifecycle } from './host'
  *
  * - a resumed main chat hears the feature's current state with the first
  *   prompt after its process starts (`one-chat-per-feature` decision 13);
+ * - a thread whose conversation could not be loaded is briefed again, as a
+ *   new conversation of its kind is;
  * - a feature conversation's docs are watched while it runs;
  * - a self-planning run says when its planning turn is over;
  * - a stopped project conversation lands its commits, as a closed terminal did.
@@ -26,6 +28,8 @@ import type { ThreadLifecycle } from './host'
 export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
   return {
     opening: (row) => resumeHeader(ctx, row),
+
+    briefing: (row) => kickoffFor(ctx, row),
 
     started(row, source) {
       if (row.featureId && (row.kind === 'chat' || row.kind === 'side')) startDocsWatch(ctx, getFeatureRow(ctx, row.featureId))

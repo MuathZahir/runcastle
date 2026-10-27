@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
@@ -12,7 +13,8 @@ import { useToast } from './toast'
  * `foldThread` — the same fold the server makes. A `{ kind: 'thread' }` live
  * signal invalidates this thread's `events` query, and the query only ever
  * asks for what comes after the last event already held, so a long thread is
- * read once and then a few events at a time.
+ * read once and then a few events at a time. A thread opened again reads what
+ * came after its held log at once, whatever its signals did meanwhile.
  *
  * Sending never waits: the message shows at once, and the server's own prompt
  * event takes its place when it arrives. A thread with no id yet (a feature's
@@ -43,6 +45,9 @@ interface Held {
   threadId: string | null
   log: ThreadEvent[] | null
 }
+
+/** Where a thread's log, as read so far, is kept between openings: a cache entry no query fetches. */
+const heldLogKey = (threadId: string) => ['runcastle.thread.log', threadId] as const
 
 const DRAFT_KEY = 'runcastle.thread.draft:'
 const AT_FILE = /(?:^|\s)@(\S*)$/
@@ -112,8 +117,13 @@ export function useThread({
   const enabled = !!threadId
 
   // ---- reading ----
+  // Each thread's whole log is also kept in the query cache, so a thread
+  // switched away from and back to (or a column remounted) picks up where it
+  // left off rather than from a stale first read.
+  const queryClient = useQueryClient()
   const [held, setHeld] = useState<Held>({ threadId, log: null })
-  const log = held.threadId === threadId ? held.log : null
+  const cachedLog = threadId ? (queryClient.getQueryData<ThreadEvent[]>(heldLogKey(threadId)) ?? null) : null
+  const log = held.threadId === threadId && held.log ? held.log : cachedLog
   const cursor = log?.length ? log[log.length - 1].i : undefined
 
   const viewQ = trpc.thread.view.useQuery({ threadId: id }, { enabled })
@@ -132,16 +142,26 @@ export function useThread({
   const got = eventsQ.data?.events
   useEffect(() => {
     if (!got || !threadId) return
-    const base = held.threadId === threadId ? (held.log ?? []) : []
+    const base = log ?? []
     const last = base.length ? base[base.length - 1].i : -1
     const fresh = got.filter((e) => e.i > last)
-    if (fresh.length === 0 && held.threadId === threadId && held.log) return
+    if (fresh.length === 0 && log) return
     const next = [...base, ...fresh]
+    queryClient.setQueryData(heldLogKey(threadId), next)
     // The read after the new cursor has nothing in it yet: say so, so moving
     // the cursor is not itself a fetch. A live signal invalidates it.
     if (next.length) utils.thread.events.setData({ threadId, after: next[next.length - 1].i }, { events: [] })
     setHeld({ threadId, log: next })
-  }, [got, threadId, held, utils])
+  }, [got, threadId, log, utils, queryClient])
+
+  // Opening a thread whose log is already held always reads what came after it:
+  // its live signals may have come while another thread was open.
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    if (!threadId || opened.current === threadId) return
+    opened.current = threadId
+    if (cursor !== undefined) void utils.thread.events.invalidate({ threadId, after: cursor })
+  }, [threadId, cursor, utils])
 
   const folded = useMemo((): ThreadView => {
     if (!threadId) return EMPTY_THREAD_VIEW

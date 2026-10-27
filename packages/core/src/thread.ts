@@ -235,7 +235,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     /** Why it stopped or failed to start, when that is not a normal idle stop. */
     error: z.string().optional(),
   }),
-  z.object({ type: z.literal('turn_started') }),
+  /** A turn begins: the answer to a prompt, or (`source: 'agent'`) one the agent started by itself, as Claude Code does when a background command it left running finishes. */
+  z.object({ type: z.literal('turn_started'), source: z.literal('agent').optional() }),
   z.object({
     type: z.literal('turn_ended'),
     reason: TurnEnd,
@@ -292,6 +293,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
+  /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
+  z.object({ type: z.literal('notice'), text: z.string() }),
 ])
 export type ThreadEventBody = z.infer<typeof ThreadEventBody>
 
@@ -340,6 +343,8 @@ export type ThreadItem =
   | { kind: 'model'; id: string; model: string; effort?: Effort }
   /** Something went wrong: a failed turn, an agent that would not start. */
   | { kind: 'error'; id: string; message: string }
+  /** A quiet line the thread says about itself. */
+  | { kind: 'notice'; id: string; text: string }
 
 /** Where a thread is, which is all the human is told about its process. */
 export type ThreadState = 'working' | 'waiting' | 'idle'
@@ -411,6 +416,8 @@ interface Turn {
   /** Every call by id, wherever it sits, for updates. */
   calls: Map<string, ToolCall>
   model?: string
+  /** Opened by a `turn_started`; one opened by output alone is no turn anything is known to be running. */
+  started: boolean
 }
 
 const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pending' }
@@ -430,7 +437,11 @@ const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pe
  *   turns them into narration.
  * - A prompt sent before the process ran shows `starting` until the process
  *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
- * - A model divider appears only when the model changes after one was set.
+ * - A thread is `working` only inside a turn a `turn_started` opened: words
+ *   logged after a turn's end (with no turn around them) fold as settled.
+ * - A model divider appears only when the model changes after one was set; a
+ *   compaction shows once however many times it is reported before the next
+ *   prompt; a usage report without a cost keeps the last one.
  * - The plan shows only while the thread is not idle; a suggestion clears on
  *   the next prompt.
  */
@@ -445,6 +456,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   let answerIndex = -1
   let ask: Ask | undefined
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
+  /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
+  let compactedSincePrompt = false
 
   /** Re-render the open turn's work and answer items in place. */
   const render = (live: boolean, endedAt?: number) => {
@@ -498,7 +511,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
 
   const openTurn = (e: ThreadEvent): Turn => {
     if (!turn) {
-      turn = { id: String(e.i), startedAt: e.at, segments: [], subagents: new Map(), calls: new Map(), model: view.model?.label }
+      turn = { id: String(e.i), startedAt: e.at, segments: [], subagents: new Map(), calls: new Map(), model: view.model?.label, started: e.type === 'turn_started' }
       workIndex = -1
       answerIndex = -1
       view.turnStartedAt = e.at
@@ -549,6 +562,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   for (const e of events) {
     switch (e.type) {
       case 'prompt': {
+        compactedSincePrompt = false
         if (e.hidden) {
           // No message to show; what the command's turn does still folds as a turn.
           if (turn) splitTurn(e)
@@ -670,9 +684,12 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           items.push({ kind: 'answered', id: `answered:${e.i}:${n}`, what: l.what, answer: l.answer, ...(l.denied ? { denied: true } : {}) }),
         )
         break
-      case 'usage':
-        view.context = e.context
+      case 'usage': {
+        // The thread's cost so far only grows: a report without it (one after a compaction) keeps the last.
+        const costUsd = e.context.costUsd ?? view.context?.costUsd
+        view.context = { ...e.context, ...(costUsd !== undefined ? { costUsd } : {}) }
         break
+      }
       case 'model': {
         const before = view.model
         if (before && before.id !== e.model) {
@@ -686,7 +703,11 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         view.commands = e.commands
         break
       case 'compacted':
-        items.push({ kind: 'compacted', id: `compacted:${e.i}` })
+        if (!compactedSincePrompt) items.push({ kind: 'compacted', id: `compacted:${e.i}` })
+        compactedSincePrompt = true
+        break
+      case 'notice':
+        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text })
         break
       case 'title':
         view.title = e.title
@@ -702,6 +723,14 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     }
   }
 
+  // Output no turn_started opened (words logged after a turn's end) is settled
+  // where it stands: nothing says a turn runs, so the thread is not working.
+  const loose = turn as Turn | null
+  if (loose && !loose.started) {
+    const open = ask
+    closeTurn(events[events.length - 1], 'end_turn')
+    ask = open
+  }
   view.ask = ask
   view.state = ask ? 'waiting' : turn ? 'working' : 'idle'
   if (view.state === 'idle') view.plan = []
