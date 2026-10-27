@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { foldThread, type AgentRuntime, type ThreadEvent } from '@runcastle/core'
+import { modelCatalogPath } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -34,6 +35,8 @@ beforeEach(async () => {
   caller = createCallerFactory(appRouter)(ctx)
   projectId = seedProject(ctx).id
   featureId = seedFeature(ctx, projectId).id
+  // Each runtime's model catalog outlives its sessions on disk; each test starts with none.
+  rmSync(dirname(modelCatalogPath('claude-code')), { recursive: true, force: true })
   setup()
 })
 
@@ -104,10 +107,14 @@ describe('model, effort and fast mode', () => {
     setup({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }], options: 'claude' })
     const id = chat()
     await converse(id, 'Hello')
-    expect(await caller.thread.models({ threadId: id })).toEqual([
-      { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true },
-      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
-    ])
+    expect(await caller.thread.models({ threadId: id })).toEqual({
+      runtime: 'claude-code',
+      models: [
+        { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true, efforts: ['low', 'medium', 'high', 'max'] },
+        { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+      ],
+      current: 'claude-opus-5-5',
+    })
     expect(await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5-5', effort: 'max', fast: true })).toEqual({ ok: true })
     expect(received('session/set_config_option')).toEqual([
       { sessionId: 'acp-session-1', configId: 'model', value: 'claude-sonnet-5-5' },
@@ -169,26 +176,108 @@ describe('model, effort and fast mode', () => {
     expect(said(id)).toEqual(['user:Hello', 'agent:Done.', 'model:Sonnet 5.5', 'user:Again', 'agent:Done.'])
   })
 
-  it("answers a never-started thread's models from runcastle's roster without starting an agent", async () => {
-    const id = chat()
-    const models = await caller.thread.models({ threadId: id })
-    expect(models.length).toBeGreaterThan(0)
-    expect(models.some((m) => m.fast)).toBe(false)
-    expect(fake.processes).toHaveLength(0)
-  })
-
   it('says fast mode is offered on the model the session runs on only when the runtime offers it', async () => {
     setup({ model: { id: 'gpt-5.5', label: '5.5' }, models: [{ id: 'gpt-5.5-mini', label: '5.5 Mini' }], options: 'codex' })
     const codex = chat({ runtime: 'codex' })
     await converse(codex, 'Hello')
-    expect(await caller.thread.models({ threadId: codex })).toEqual([
-      { id: 'gpt-5.5', label: '5.5', fast: true },
+    expect((await caller.thread.models({ threadId: codex })).models).toEqual([
+      // Codex's `xhigh` is no level runcastle offers.
+      { id: 'gpt-5.5', label: '5.5', fast: true, efforts: ['low', 'medium', 'high'] },
       { id: 'gpt-5.5-mini', label: '5.5 Mini' },
     ])
     setup({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
     const plain = chat()
     await converse(plain, 'Hello')
-    expect((await caller.thread.models({ threadId: plain })).some((m) => m.fast)).toBe(false)
+    expect((await caller.thread.models({ threadId: plain })).models.some((m) => m.fast)).toBe(false)
+  })
+})
+
+describe("a runtime's one model catalog", () => {
+  /** Claude's list as claude-agent-acp gives it: "Default (recommended)" first, describing the model it stands for. */
+  const CLAUDE: FakeScript = {
+    model: { id: 'default', label: 'Default (recommended)', description: 'Opus 5.5' },
+    models: [
+      { id: 'claude-opus-5-5', label: 'Opus 5.5', description: 'Most capable for complex work' },
+      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', description: 'Best for everyday tasks' },
+      { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+    ],
+    options: 'claude',
+  }
+  const OPUS = { id: 'claude-opus-5-5', label: 'Opus 5.5', note: 'Most capable for complex work', fast: true, efforts: ['low', 'medium', 'high', 'max'] }
+  const LIST = [OPUS, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'Best for everyday tasks' }, { id: 'claude-opus-4-8', label: 'Opus 4.8' }]
+
+  it('answers the same list, ids and labels before the agent starts, while it runs and after it stops', async () => {
+    setup(CLAUDE)
+    const id = chat()
+    await converse(id, 'Hello')
+    const running = await caller.thread.models({ threadId: id })
+    expect(running).toEqual({ runtime: 'claude-code', models: LIST, current: 'claude-opus-5-5' })
+    await host.stop(id, 'idle')
+    expect(await caller.thread.models({ threadId: id })).toEqual(running)
+
+    // A fresh server: nothing in memory, the catalog read from disk.
+    setup(CLAUDE)
+    const fresh = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
+    expect(await caller.thread.models({ threadId: fresh })).toEqual(running)
+    expect(await caller.thread.models({ featureId })).toEqual(running)
+    expect(fake.processes).toHaveLength(0)
+  })
+
+  it('names the model Default stands for, and never writes "Default (recommended)" in the thread', async () => {
+    setup(CLAUDE)
+    const id = chat()
+    await converse(id, 'Hello')
+    const models = await caller.thread.models({ threadId: id })
+    expect(models.models.map((m) => m.label)).not.toContain('Default (recommended)')
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'claude-opus-5-5', label: 'Opus 5.5' })
+    // Asking for the model Default already stands for changes nothing.
+    await caller.thread.send({ threadId: id, text: 'Same', model: 'claude-opus-5-5' })
+    await logUntil(id, turnsEnded(2))
+    expect(received('session/set_config_option')).toEqual([])
+    await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5-5' })
+    await caller.thread.setModel({ threadId: id, model: 'claude-opus-5-5' })
+    expect(said(id).filter((s) => s.startsWith('model:'))).toEqual(['model:Sonnet 5.5', 'model:Opus 5.5'])
+  })
+
+  it('learns each model’s effort levels from the sessions that ran on it', async () => {
+    setup(CLAUDE)
+    const id = chat()
+    await converse(id, 'Hello')
+    await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5-5' })
+    const { models } = await caller.thread.models({ threadId: id })
+    expect(models.find((m) => m.id === 'claude-sonnet-5-5')?.efforts).toEqual(['low', 'medium', 'high', 'max'])
+    expect(models.find((m) => m.id === 'claude-opus-5-5')?.efforts).toEqual(['low', 'medium', 'high', 'max'])
+    expect(models.find((m) => m.id === 'claude-opus-4-8')?.efforts).toBeUndefined()
+  })
+
+  it("maps runcastle's roster to adapter-style labels, once per model, before any session has reported", async () => {
+    ctx.config = {
+      ...ctx.config,
+      models: [
+        { id: 'claude-haiku-4-5-20251001', runtime: 'claude-code', note: 'quick lookups' },
+        { id: 'claude-opus-4-8', runtime: 'claude-code', note: 'opus 4.8 — UI work' },
+      ],
+    }
+    const id = chat()
+    const { models, current } = await caller.thread.models({ threadId: id })
+    const labels = models.map((m) => m.label)
+    expect(labels).toEqual(expect.arrayContaining(['Opus 5', 'Opus 5 (1M)', 'Opus 4.8', 'Haiku 4.5']))
+    expect(labels.filter((l) => l.startsWith('claude-'))).toEqual([])
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(models.find((m) => m.label === 'Haiku 4.5')).toMatchObject({ id: 'claude-haiku-4-5', note: 'quick lookups' })
+    expect(models.find((m) => m.label === 'Opus 4.8')?.note).toBe('opus 4.8 — UI work')
+    expect(models.map((m) => m.id)).toContain(current)
+    expect(fake.processes).toHaveLength(0)
+  })
+
+  it("keeps the operator's notes on the adapter's models once a session has reported", async () => {
+    ctx.config = { ...ctx.config, models: [{ id: 'claude-opus-4-8', runtime: 'claude-code', note: 'opus 4.8 — UI work' }] }
+    setup(CLAUDE)
+    const id = chat()
+    await converse(id, 'Hello')
+    const { models } = await caller.thread.models({ threadId: id })
+    expect(models.find((m) => m.id === 'claude-opus-4-8')?.note).toBe('opus 4.8 — UI work')
+    expect(models).toHaveLength(3)
   })
 })
 

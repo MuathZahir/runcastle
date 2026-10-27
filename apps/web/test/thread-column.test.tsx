@@ -250,7 +250,7 @@ describe('ThreadColumn', () => {
   ]
 
   it('offers a Fast mode row only where the model the thread runs on has it, and sends fast with the next message', async () => {
-    const plain = server(ON_SONNET, { 'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
+    const plain = server(ON_SONNET, { 'thread.models': () => ({ runtime: 'claude-code', models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }], current: 'claude-sonnet-5-5' }) })
     const { unmount } = render(<ThreadColumn threadId="th1" />, { wrapper: plain.Wrapper })
     await waitFor(() => expect(plain.inputs('thread.models')).toHaveLength(1))
     openMenu(await screen.findByRole('button', { name: 'Model' }))
@@ -259,7 +259,7 @@ describe('ThreadColumn', () => {
     unmount()
 
     const api = server(ON_SONNET, {
-      'thread.models': () => [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', fast: true }],
+      'thread.models': () => ({ runtime: 'claude-code', models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', fast: true }], current: 'claude-sonnet-5-5' }),
       'thread.setModel': () => ({ ok: true }),
     })
     render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })

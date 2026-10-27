@@ -194,8 +194,8 @@ export function useThread({
   const fast = chosen.fast ?? folded.model?.fast ?? false
   const modelsQ = trpc.thread.models.useQuery({ threadId: id }, { enabled })
   // While the runtime's list cannot be read, the picker still names the model the thread is on.
-  const models: ModelChoice[] = modelsQ.data?.length
-    ? modelsQ.data
+  const models: ModelChoice[] = modelsQ.data?.models.length
+    ? modelsQ.data.models
     : folded.model
       ? [{ id: folded.model.id, label: folded.model.label }]
       : []

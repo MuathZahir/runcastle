@@ -161,6 +161,16 @@ export interface ModelChoice {
   note?: string
   /** The runtime offers fast mode on this model (Claude's `fast`, Codex's `fast-mode` option). */
   fast?: boolean
+  /** The effort levels the model takes, once a session on it has said; absent while unknown. */
+  efforts?: Effort[]
+}
+
+/** What the composer's model controls offer a thread: its runtime's one catalog, and the model it is on. */
+export interface ThreadModels {
+  runtime: 'claude-code' | 'codex'
+  models: ModelChoice[]
+  /** The model the thread runs on, or would start on; null while its runtime offers none. */
+  current: string | null
 }
 
 /** One subscription limit (Claude's 5-hour and weekly windows, Codex's rate limits). */
@@ -306,8 +316,8 @@ export type ThreadItem =
   /** A turn stopped by the human (Stop or Esc). */
   | { kind: 'stopped'; id: string }
   | { kind: 'compacted'; id: string }
-  /** The model changed between two messages. */
-  | { kind: 'model'; id: string; model: string }
+  /** The model changed between two messages; `effort` when that changed with it. */
+  | { kind: 'model'; id: string; model: string; effort?: Effort }
   /** Something went wrong: a failed turn, an agent that would not start. */
   | { kind: 'error'; id: string; message: string }
 
@@ -643,7 +653,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       case 'model': {
         const before = view.model
-        if (before && before.id !== e.model) items.push({ kind: 'model', id: `model:${e.i}`, model: e.label })
+        if (before && before.id !== e.model) {
+          const effortChanged = !!before.effort && !!e.effort && before.effort !== e.effort
+          items.push({ kind: 'model', id: `model:${e.i}`, model: e.label, ...(effortChanged ? { effort: e.effort } : {}) })
+        }
         view.model = { id: e.model, label: e.label, ...(e.effort ? { effort: e.effort } : {}), ...(e.fast !== undefined ? { fast: e.fast } : {}) }
         break
       }

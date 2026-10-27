@@ -41,32 +41,73 @@ function fastOption(options: readonly acp.SessionConfigOption[] | null | undefin
   return options?.find((o) => o.id === 'fast' || o.id === 'fast-mode')
 }
 
-/** The model, effort and fast mode a session's options say it runs on. */
+/** claude-agent-acp's "Default (recommended)" entry, whose description names the model it stands for. */
+const DEFAULT_MODEL = 'default'
+
+/** The model Claude's `default` entry stands for: the entry its description names. */
+function defaultTarget(option: SelectOption): { value: string; name: string } | undefined {
+  const values = selectValues(option)
+  const named = values.find((c) => c.value === DEFAULT_MODEL)?.description
+  return named ? values.find((c) => c.value !== DEFAULT_MODEL && c.name === named) : undefined
+}
+
+/** The model, effort and fast mode a session's options say it runs on; `default` as the model it stands for. */
 export function currentConfig(options: readonly acp.SessionConfigOption[] | null | undefined): { model: string; label: string; effort?: Effort; fast?: boolean } | null {
   const model = modelOption(options)
   if (!model) return null
-  const label = selectValues(model).find((c) => c.value === model.currentValue)?.name ?? model.currentValue
+  const on = selectValues(model).find((c) => c.value === model.currentValue)
+  const running = model.currentValue === DEFAULT_MODEL ? (defaultTarget(model) ?? { value: DEFAULT_MODEL, name: on?.description || on?.name || DEFAULT_MODEL }) : on
   const effort = Effort.safeParse(effortOption(options)?.currentValue)
   const fast = fastOption(options)
   const fastOn = fast?.type === 'boolean' ? fast.currentValue : fast ? fast.currentValue === 'on' : undefined
-  return { model: model.currentValue, label, ...(effort.success ? { effort: effort.data } : {}), ...(fastOn !== undefined ? { fast: fastOn } : {}) }
+  return {
+    model: running?.value ?? model.currentValue,
+    label: running?.name ?? model.currentValue,
+    ...(effort.success ? { effort: effort.data } : {}),
+    ...(fastOn !== undefined ? { fast: fastOn } : {}),
+  }
+}
+
+/** A runtime's models as its adapter offers them, kept past any one session (see `model-catalog.ts`). */
+export interface ModelCatalog {
+  models: ModelChoice[]
+  /** The model the runtime starts on when nobody names one: what Claude's "Default (recommended)" stands for. */
+  defaultId?: string
 }
 
 /**
- * The models a session offers, for the composer's picker. The session's
- * options describe only the model it runs on, so only that one can say it
- * offers fast mode.
+ * `prev` brought up to date with what a session's options say. The list,
+ * labels and descriptions are the adapter's; Claude's `default` entry is not a
+ * model of its own but the one it names. A session's options describe only the
+ * model it runs on, so that model's effort levels and fast mode are learnt from
+ * them and every other model keeps what an earlier session taught.
  */
-export function modelChoices(options: readonly acp.SessionConfigOption[] | null | undefined): ModelChoice[] {
+export function catalogFromOptions(prev: ModelCatalog | null, options: readonly acp.SessionConfigOption[] | null | undefined): ModelCatalog | null {
   const model = modelOption(options)
-  if (!model) return []
+  const config = currentConfig(options)
+  if (!model || !config) return null
+  const target = defaultTarget(model)
+  const effort = effortOption(options)
+  const efforts = effort ? selectValues(effort).flatMap((c) => (Effort.safeParse(c.value).success ? [c.value as Effort] : [])) : []
   const fast = fastOption(options) !== undefined
-  return selectValues(model).map((c) => ({
-    id: c.value,
-    label: c.name,
-    ...(c.description ? { note: c.description } : {}),
-    ...(fast && c.value === model.currentValue ? { fast: true } : {}),
-  }))
+  const known = new Map((prev?.models ?? []).map((m) => [m.id, m]))
+  const models = selectValues(model)
+    .filter((c) => !(c.value === DEFAULT_MODEL && target))
+    .map((c): ModelChoice => {
+      const here = c.value === config.model
+      const was = known.get(c.value)
+      const modelEfforts = here ? efforts : was?.efforts
+      const isDefault = c.value === DEFAULT_MODEL
+      return {
+        id: c.value,
+        label: isDefault ? c.description || c.name : c.name,
+        ...(c.description && !isDefault ? { note: c.description } : {}),
+        ...((here ? fast : was?.fast) ? { fast: true } : {}),
+        ...(modelEfforts ? { efforts: modelEfforts } : {}),
+      }
+    })
+  const defaultId = target?.value ?? prev?.defaultId
+  return { models, ...(defaultId && models.some((m) => m.id === defaultId) ? { defaultId } : {}) }
 }
 
 /**
@@ -83,6 +124,8 @@ export function configRequests(
   const out: acp.SetSessionConfigOptionRequest[] = []
   const select = (option: SelectOption | undefined, value: string | undefined) => {
     if (!option || value === undefined || option.currentValue === value) return
+    // Already on it through Claude's `default`, which stands for it.
+    if (option.currentValue === DEFAULT_MODEL && defaultTarget(option)?.value === value) return
     if (selectValues(option).some((c) => c.value === value)) out.push({ sessionId, configId: option.id, value })
   }
   select(modelOption(options), choice.model)

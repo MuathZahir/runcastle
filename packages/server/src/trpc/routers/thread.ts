@@ -1,11 +1,23 @@
-import { AskAnswer, Effort, type ModelChoice, type ThreadEntry, type ThreadEvent, type ThreadView, type UsageReport } from '@runcastle/core'
+import {
+  AskAnswer,
+  Effort,
+  modelRoster,
+  resolveModelEntry,
+  type ThreadEntry,
+  type ThreadEvent,
+  type ThreadModels,
+  type ThreadView,
+  type UsageReport,
+} from '@runcastle/core'
 import * as z from 'zod'
 import { createProjectThread, createSideThread, kickoffFor } from '../../launcher/launcher'
 import { setSessionTitle } from '../../launcher/sessions'
-import { getFeatureRow, requireProjectById } from '../../services/repo'
+import { rosterConfig } from '../../services/model-discovery'
+import { getFeatureRow, projectForFeature, requireProjectById } from '../../services/repo'
 import { threadMarkdown } from '../../threads/controls'
 import { matchWorktreeFiles } from '../../threads/files'
 import { hasThreadLog } from '../../threads/log'
+import { threadModels } from '../../threads/model-catalog'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
 import { agentHost, appendThreadEvent } from '../../threads/types'
 import { publicProcedure, router } from '../context'
@@ -103,11 +115,27 @@ export const threadRouter = router({
 
   // ---- controls (ticket 5) ----
 
-  /** The models this thread's runtime offers, for the composer's picker. */
-  models: publicProcedure.input(threadId).query(({ ctx, input }): ModelChoice[] => {
-    threadRow(ctx, input.threadId)
-    return agentHost(ctx).models(input.threadId)
-  }),
+  /**
+   * The composer's model controls: the runtime's one catalog, the same list
+   * before, while and after its agent runs, and the model the thread is on. A
+   * chat nobody has started yet (a feature's main chat, a new project or
+   * preparation chat) is asked for by where it would start, and is on the
+   * model runcastle would start it on.
+   */
+  models: publicProcedure
+    .input(z.union([threadId, z.object({ featureId: z.string() }), z.object({ projectId: z.string(), kind: z.enum(['project', 'prepare']) })]))
+    .query(({ ctx, input }): ThreadModels => {
+      if ('threadId' in input) {
+        threadRow(ctx, input.threadId)
+        return agentHost(ctx).models(input.threadId)
+      }
+      const config = rosterConfig(ctx)
+      const start =
+        'featureId' in input
+          ? resolveModelEntry('chat', config, projectForFeature(ctx, getFeatureRow(ctx, input.featureId)))
+          : resolveModelEntry(input.kind, config, requireProjectById(ctx, input.projectId))
+      return threadModels(start.runtime, modelRoster(config), start.id)
+    }),
 
   /** Change the model, effort and fast mode the next message runs on. */
   setModel: publicProcedure

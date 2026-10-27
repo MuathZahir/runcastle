@@ -109,6 +109,15 @@ export function logsDir(): string {
   return join(dataDir(), 'logs')
 }
 
+/**
+ * The models a runtime's adapter last offered, kept so the composer's model
+ * picker reads the same list with no agent running:
+ * `~/.runcastle/model-catalog/<runtime>.json`.
+ */
+export function modelCatalogPath(runtime: string): string {
+  return join(dataDir(), 'model-catalog', `${runtime}.json`)
+}
+
 /** Launch artifacts for a Claude Code session: `~/.runcastle/sessions/<id>/`. */
 export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)

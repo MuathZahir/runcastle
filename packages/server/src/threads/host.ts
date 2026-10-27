@@ -15,10 +15,10 @@ import {
   type AskAnswer,
   type Attachment,
   type BackgroundTask,
-  type ModelChoice,
   type SessionRow,
   type ThreadEvent,
   type ThreadEventBody,
+  type ThreadModels,
   type UsageReport,
 } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
@@ -42,7 +42,7 @@ import {
   configRequests,
   forkAtMeta,
   lastAgentMessageId,
-  modelChoices,
+  catalogFromOptions,
   threadMarkdown,
   turnEndIndex,
   type ConfigChoice,
@@ -67,6 +67,7 @@ import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
+import { readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 
 /**
@@ -297,9 +298,6 @@ class Host implements AgentHost {
   private readonly lifecycle: ThreadLifecycle
   private readonly readUsage: (runtime: AgentRuntime) => Promise<unknown>
   private readonly rewindFiles: NonNullable<AgentHostDeps['rewindFiles']>
-  /** Each thread's last config options, kept past its process for the model picker; and each runtime's. */
-  private readonly options = new Map<string, acp.SessionConfigOption[]>()
-  private readonly runtimeOptions = new Map<AgentRuntime, acp.SessionConfigOption[]>()
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -440,7 +438,7 @@ class Host implements AgentHost {
     const now = foldThread(readThreadEvents(threadId)).model
     const model = choice.model ?? now?.id
     if (!model) return
-    const label = model === now?.id ? now.label : (this.models(threadId).find((m) => m.id === model)?.label ?? model)
+    const label = model === now?.id ? now.label : (this.models(threadId).models.find((m) => m.id === model)?.label ?? model)
     const effort = choice.effort ?? now?.effort
     const fast = choice.fast ?? now?.fast
     appendThreadEvent(threadId, { type: 'model', model, label, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) })
@@ -527,14 +525,11 @@ class Host implements AgentHost {
     }
   }
 
-  /** The session's models; else the last its runtime reported here; else runcastle's roster for the runtime. */
-  models(threadId: string): ModelChoice[] {
-    const runtime = this.row(threadId).runtime ?? DEFAULT_RUNTIME
-    const known = modelChoices(this.threads.get(threadId)?.configOptions ?? this.options.get(threadId) ?? this.runtimeOptions.get(runtime))
-    if (known.length) return known
-    return modelRoster(rosterConfig(this.ctx))
-      .filter((m) => m.runtime === runtime)
-      .map((m) => ({ id: m.id, label: m.id, ...(m.note ? { note: m.note } : {}) }))
+  /** The runtime's one catalog (kept from its sessions, else the roster), and the model the thread is on or would start on. */
+  models(threadId: string): ThreadModels {
+    const row = this.row(threadId)
+    const logged = foldThread(readThreadEvents(threadId)).model?.id
+    return threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), logged ?? row.model)
   }
 
   /** What of the message's model, effort and fast mode differs from what the thread runs on; null when nothing does. */
@@ -560,12 +555,13 @@ class Host implements AgentHost {
     }
   }
 
+  /** A session's options are its config, and what its runtime's catalog learns from. */
   private noteOptions(t: Thread, options: acp.SessionConfigOption[] | null | undefined): void {
     if (!options) return
     t.configOptions = options
-    this.options.set(t.id, options)
     const runtime = getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME
-    this.runtimeOptions.set(runtime, options)
+    const catalog = catalogFromOptions(readModelCatalog(runtime), options)
+    if (catalog) writeModelCatalog(runtime, catalog)
   }
 
   // ---- the process ----

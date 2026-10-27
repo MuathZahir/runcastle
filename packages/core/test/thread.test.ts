@@ -246,6 +246,21 @@ describe('foldThread', () => {
     expect(v.model).toEqual({ id: 'sonnet', label: 'Sonnet 5.5' })
   })
 
+  it('a model divider names the effort when it changed with the model', () => {
+    const v = foldThread(
+      log(
+        { type: 'model', model: 'opus', label: 'Opus 5.5', effort: 'high' },
+        prompt('p1'),
+        { type: 'model', model: 'sonnet', label: 'Sonnet 5.5', effort: 'low' },
+        { type: 'model', model: 'opus', label: 'Opus 5.5', effort: 'low' },
+      ),
+    )
+    expect(v.items.filter((i) => i.kind === 'model')).toEqual([
+      { kind: 'model', id: 'model:2', model: 'Sonnet 5.5', effort: 'low' },
+      { kind: 'model', id: 'model:3', model: 'Opus 5.5' },
+    ])
+  })
+
   it('each answer names the model that wrote it', () => {
     const v = foldThread(
       log({ type: 'model', model: 'opus', label: 'Opus 5.5' }, prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'Hi' }),

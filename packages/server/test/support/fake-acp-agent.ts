@@ -57,9 +57,9 @@ export interface FakeScript {
   /** The id `session/new` answers with. */
   sessionId?: string
   /** The model config option's current value. Default `claude-opus-5-5` ("Opus 5.5"). */
-  model?: { id: string; label: string }
+  model?: { id: string; label: string; description?: string }
   /** More models the model option offers, beside `model`. */
-  models?: { id: string; label: string }[]
+  models?: { id: string; label: string; description?: string }[]
   /**
    * Offer effort and fast mode the way an adapter does: Claude's `effort` and
    * `fast` (a boolean when `fastBoolean`), or Codex's `reasoning_effort` and
@@ -165,7 +165,7 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         category: 'model',
         type: 'select' as const,
         currentValue: model.id,
-        options: [model, ...(script.models ?? [])].map((m) => ({ value: m.id, name: m.label })),
+        options: [model, ...(script.models ?? [])].map((m) => ({ value: m.id, name: m.label, ...(m.description ? { description: m.description } : {}) })),
       },
       ...extra,
     ],
