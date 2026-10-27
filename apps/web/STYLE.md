@@ -157,7 +157,7 @@ the dialog around it.
 | `Popover` | An anchored panel — and the Combobox's foundation. | `PopoverContent` pads `p-1`; pass your own for prose. |
 | `DropdownMenu` | A menu of **actions**, not a value picker. | `DropdownMenuItem` takes `icon`, `kbd`, `tone="danger"`; plus `DropdownMenuLabel`, `DropdownMenuSeparator`. |
 | `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge. Two trigger looks: `SELECT_FIELD` (a form field) and `SELECT_GHOST` (quiet, inline in a row or bar — the ticket model, the run history). `SelectValue` truncates (Radix drops its `className`, so the primitive wraps it). Pass `font-mono` on `SelectContent` for model ids. |
-| `Combobox` | A single-select whose list is long enough to want searching. | `ComboboxItem current` marks the held value. |
+| `Combobox` | A single-select whose list is long enough to want searching. | `ComboboxItem current` marks the held value. `ComboboxAction` is a quiet row that acts on the list (unfold "Older models") without closing it or taking the search's focus. |
 | `Tooltip` | A label after 400ms hover, or on focus. `TooltipProvider` is mounted once in `main.tsx` (a stray tooltip brings its own). | `label`, `kbd`, `side`. Every `IconButton` has one. |
 
 ### Catalogue

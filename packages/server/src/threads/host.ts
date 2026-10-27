@@ -39,10 +39,10 @@ import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
 import { runcastleVersion } from '../version'
 import {
+  catalogFromOptions,
   configRequests,
   forkAtMeta,
   lastAgentMessageId,
-  catalogFromOptions,
   threadMarkdown,
   turnEndIndex,
   type ConfigChoice,
