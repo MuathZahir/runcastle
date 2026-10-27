@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import type { Question, ToolCall } from '../../../lib/chat-thread'
-import { IconArrowLeft, IconArrowRight, IconCheck, IconShield, IconSparkle } from '../../../icons'
-import { BARE_BUTTON, Button, Kbd, cx } from '../../../ui'
+import type { FormField, FormValues, Question, ToolCall } from '../../../lib/chat-thread'
+import { IconArrowLeft, IconArrowRight, IconCheck, IconCube, IconExternalLink, IconShield, IconSparkle } from '../../../icons'
+import { BARE_BUTTON, Button, Checkbox, Field, Kbd, LINK, TextField, cx } from '../../../ui'
 import { DiffView } from './Work'
 
 /**
  * What the agent waits on the human for, docked where the composer is
  * (decision 4, revisited): the eye is already there, and the thread above
- * stays readable while answering. Both docks are lists of numbered choices,
- * as in Claude Code: a digit picks, Enter goes on, and the last choice always
- * takes your own words.
+ * stays readable while answering. The agent's own docks are lists of numbered
+ * choices, as in Claude Code: a digit picks, Enter goes on, and the last
+ * choice always takes your own words. An MCP server's form or link docks the
+ * same way, with Decline beside its answer and Esc to decline.
  */
 
 export const DOCK =
@@ -362,6 +363,222 @@ export function ApprovalDock({
       >
         <Button variant="ghost" size="sm" onClick={() => onAnswer('deny', instead || undefined)}>
           Deny
+        </Button>
+      </DockFooter>
+    </div>
+  )
+}
+
+/** The head of an MCP server's dock: which server asks, then what it says. */
+function ServerAsks({ server, icon, message }: { server?: string; icon: ReactNode; message: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-4 pt-3">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary">
+        {icon}
+        {server ?? 'An MCP server'} asks
+      </span>
+      <span className="text-base text-text">{message}</span>
+    </div>
+  )
+}
+
+/** A form field's value while it is filled: numbers stay text until sent. */
+type Draft = Record<string, string | boolean>
+
+const draftOf = (fields: FormField[]): Draft =>
+  Object.fromEntries(
+    fields.map((f) => [f.key, f.type === 'boolean' ? (f.default ?? false) : f.default === undefined ? '' : String(f.default)]),
+  )
+
+/** The field's problem, if it has one: a required one left empty, or a number that is not one. */
+function problemOf(f: FormField, v: string | boolean): string | undefined {
+  if (typeof v === 'boolean') return undefined
+  if (!v.trim()) return f.required ? 'Required' : undefined
+  if (f.type === 'number' && (!Number.isFinite(Number(v)) || (f.integer && !Number.isInteger(Number(v))))) return f.integer ? 'A whole number' : 'A number'
+  return undefined
+}
+
+const INPUT_TYPE = { email: 'email', uri: 'url', date: 'date' } as const
+
+/**
+ * An MCP server asks for a form (an ACP form elicitation): its fields as
+ * simple controls — text, a number, a yes/no, one choice of several — then
+ * Submit, or Decline. Required fields are checked before it goes.
+ */
+export function FormDock({
+  server,
+  message,
+  fields,
+  onSubmit,
+  onDecline,
+}: {
+  server?: string
+  message: string
+  fields: FormField[]
+  onSubmit: (values: FormValues) => void
+  onDecline: () => void
+}) {
+  const [draft, setDraft] = useState<Draft>(() => draftOf(fields))
+  const [checked, setChecked] = useState(false)
+  const box = useRef<HTMLFormElement>(null)
+  useEffect(() => box.current?.focus(), [])
+  const set = (key: string, v: string | boolean) => setDraft((d) => ({ ...d, [key]: v }))
+
+  const submit = () => {
+    setChecked(true)
+    if (fields.some((f) => problemOf(f, draft[f.key]))) return
+    const values: FormValues = {}
+    for (const f of fields) {
+      const v = draft[f.key]
+      if (typeof v === 'boolean') values[f.key] = v
+      else if (v.trim()) values[f.key] = f.type === 'number' ? Number(v) : v
+    }
+    onSubmit(values)
+  }
+
+  const control = (f: FormField, invalid: boolean) => {
+    const v = draft[f.key]
+    switch (f.type) {
+      case 'boolean':
+        return <Checkbox size="md" checked={v === true} onChange={(on) => set(f.key, on)} label={f.title} />
+      case 'enum':
+        return (
+          <div role="radiogroup" aria-label={f.title} className="-mx-2.5 flex flex-col gap-0.5">
+            {f.options.map((o, i) => (
+              <Choice key={o.value} n={i + 1} on={v === o.value} label={o.label} onPick={() => set(f.key, o.value)} />
+            ))}
+          </div>
+        )
+      default:
+        return (
+          <TextField
+            type={f.type === 'number' ? 'number' : f.format ? INPUT_TYPE[f.format] : 'text'}
+            {...(f.type === 'number' && f.integer ? { step: 1 } : {})}
+            value={typeof v === 'string' ? v : ''}
+            onChange={(e) => set(f.key, e.target.value)}
+            invalid={invalid}
+            required={f.required}
+          />
+        )
+    }
+  }
+
+  return (
+    <form
+      ref={box}
+      tabIndex={-1}
+      noValidate
+      aria-label="An MCP server asks"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onDecline()
+      }}
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+      className={cx(DOCK, 'outline-none')}
+    >
+      <ServerAsks server={server} icon={<IconCube size={12} className="text-icon" />} message={message} />
+      <div className="flex max-h-80 flex-col gap-3 overflow-y-auto px-4 pt-3 pb-3">
+        {fields.map((f) => {
+          const problem = checked ? problemOf(f, draft[f.key]) : undefined
+          return f.type === 'boolean' ? (
+            <div key={f.key} className="flex flex-col gap-1">
+              {control(f, false)}
+              {f.description && <span className="text-xs text-text-tertiary">{f.description}</span>}
+            </div>
+          ) : (
+            <Field
+              key={f.key}
+              label={
+                <>
+                  {f.title}
+                  {f.required && <span className="text-text-tertiary"> · required</span>}
+                </>
+              }
+              {...(f.description ? { help: f.description } : {})}
+              {...(problem ? { error: problem } : {})}
+            >
+              {control(f, problem !== undefined)}
+            </Field>
+          )
+        })}
+      </div>
+      <DockFooter
+        left={
+          <>
+            <Kbd>Enter</Kbd> to submit · <Kbd>Esc</Kbd> to decline
+          </>
+        }
+      >
+        <Button variant="ghost" size="sm" onClick={onDecline}>
+          Decline
+        </Button>
+        <Button type="submit" variant="primary" size="sm" icon={<IconCheck />}>
+          Submit
+        </Button>
+      </DockFooter>
+    </form>
+  )
+}
+
+/**
+ * An MCP server asks the human to open a page (an ACP URL elicitation: a
+ * sign-in, a consent) and say when it is done — Done, or Decline.
+ */
+export function LinkDock({
+  server,
+  message,
+  url,
+  onDone,
+  onDecline,
+}: {
+  server?: string
+  message: string
+  url: string
+  onDone: () => void
+  onDecline: () => void
+}) {
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => box.current?.focus(), [])
+  return (
+    <div
+      ref={box}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onDecline()
+      }}
+      role="group"
+      aria-label="An MCP server asks"
+      className={cx(DOCK, 'outline-none')}
+    >
+      <ServerAsks server={server} icon={<IconCube size={12} className="text-icon" />} message={message} />
+      <div className="px-4 pt-2 pb-3">
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className={cx(
+            LINK,
+            'flex min-w-0 items-center gap-2 rounded-md bg-surface-inset px-3 py-2 font-mono text-xs ring-1 ring-inset ring-border-subtle',
+          )}
+        >
+          <IconExternalLink size={13} className="shrink-0" />
+          <span className="min-w-0 truncate">{url}</span>
+        </a>
+      </div>
+      <DockFooter
+        left={
+          <>
+            Open it, then say when you are done · <Kbd>Esc</Kbd> to decline
+          </>
+        }
+      >
+        <Button variant="ghost" size="sm" onClick={onDecline}>
+          Decline
+        </Button>
+        <Button variant="primary" size="sm" icon={<IconCheck />} onClick={onDone}>
+          Done
         </Button>
       </DockFooter>
     </div>

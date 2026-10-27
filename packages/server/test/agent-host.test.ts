@@ -71,7 +71,7 @@ describe('starting a thread', () => {
     expect(events[0]).toMatchObject({ type: 'prompt', id: promptId, text: 'Hello', source: 'human' })
     expect(events[3]).toMatchObject({ model: 'claude-opus-5-5', label: 'Opus 5.5' })
     expect(methods()).toEqual(['initialize', 'session/new', 'session/set_mode', 'session/prompt'])
-    expect(fake.last().received[0].params).toMatchObject({ clientCapabilities: { terminal: false, elicitation: { form: {} } } })
+    expect(fake.last().received[0].params).toMatchObject({ clientCapabilities: { terminal: false, elicitation: { form: {}, url: {} } } })
     const row = getSessionRow(ctx, id)!
     expect(row.ccSessionId).toBe('acp-session-1')
     expect(row.status).toBe('live')
@@ -345,5 +345,146 @@ describe('asks', () => {
     const declined = events.filter((e) => e.type === 'ask_resolved')
     expect(declined).toHaveLength(2)
     expect(declined[0]).toMatchObject({ lines: [{ what: 'Declined', answer: 'nobody is watching this run', denied: true }] })
+  })
+})
+
+describe("an MCP server's forms and links", () => {
+  const FORM = {
+    mode: 'form' as const,
+    message: 'Where should the issue go?',
+    requestedSchema: {
+      type: 'object' as const,
+      properties: {
+        team: { type: 'string' as const, title: 'Team', oneOf: [{ const: 'eng', title: 'Engineering' }, { const: 'ops', title: 'Operations' }] },
+        email: { type: 'string' as const, title: 'Reporter', format: 'email', description: 'Who hears back' },
+        points: { type: 'integer' as const, title: 'Points', default: 3 },
+        urgent: { type: 'boolean' as const },
+      },
+      required: ['team', 'email'],
+    },
+  }
+  const LINK = { mode: 'url' as const, message: 'Sign in to Linear', url: 'https://linear.app/oauth', elicitationId: 'el-1' }
+
+  /** A thread whose turn sends `request` and keeps what came back. */
+  async function eliciting(request: Record<string, unknown>, opts: { purpose?: 'self-plan' } = {}) {
+    const got: { response?: unknown } = {}
+    setup({
+      turn: async (t) => {
+        got.response = await t.elicit({ sessionId: t.sessionId, ...request } as Parameters<typeof t.elicit>[0])
+      },
+    })
+    const id = thread(opts)
+    await host.prompt(id, { text: 'File it' }, { source: 'human' })
+    return { id, got }
+  }
+
+  it('docks a form with fields from its schema; submitting sends its values back', async () => {
+    const { id, got } = await eliciting(FORM)
+    const view = foldThread(await logUntil(id, has('ask')))
+    expect(view.state).toBe('waiting')
+    expect(view.ask).toEqual({
+      kind: 'form',
+      id: view.ask!.id,
+      message: 'Where should the issue go?',
+      fields: [
+        { key: 'team', type: 'enum', title: 'Team', required: true, options: [{ value: 'eng', label: 'Engineering' }, { value: 'ops', label: 'Operations' }] },
+        { key: 'email', type: 'string', title: 'Reporter', description: 'Who hears back', required: true, format: 'email' },
+        { key: 'points', type: 'number', title: 'Points', integer: true, default: 3 },
+        { key: 'urgent', type: 'boolean', title: 'urgent' },
+      ],
+    })
+    await host.answer(id, view.ask!.id, { kind: 'form', values: { team: 'eng', email: 'a@b.co', points: 5, urgent: true, stray: 'x' } })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(got.response).toEqual({ action: 'accept', content: { team: 'eng', email: 'a@b.co', points: 5, urgent: true } })
+    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({
+      lines: [
+        { what: 'Team:', answer: 'Engineering' },
+        { what: 'Reporter:', answer: 'a@b.co' },
+        { what: 'Points:', answer: '5' },
+        { what: 'urgent:', answer: 'Yes' },
+      ],
+    })
+  })
+
+  it('declines a form the human declines', async () => {
+    const { id, got } = await eliciting(FORM)
+    const view = foldThread(await logUntil(id, has('ask')))
+    await host.answer(id, view.ask!.id, { kind: 'decline' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(got.response).toEqual({ action: 'decline' })
+    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Declined', answer: 'Where should the issue go?', denied: true }] })
+  })
+
+  it('docks a link to open; Done accepts it and Decline declines it', async () => {
+    for (const [answer, action, what] of [
+      [{ kind: 'link', done: true }, 'accept', 'Done'],
+      [{ kind: 'decline' }, 'decline', 'Declined'],
+    ] as const) {
+      const { id, got } = await eliciting(LINK)
+      const view = foldThread(await logUntil(id, has('ask')))
+      expect(view.ask).toEqual({ kind: 'link', id: view.ask!.id, message: 'Sign in to Linear', url: 'https://linear.app/oauth' })
+      await host.answer(id, view.ask!.id, answer)
+      const events = await logUntil(id, turnsEnded(1))
+      expect(got.response).toEqual({ action })
+      expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what, answer: 'Sign in to Linear' }] })
+      await host.stopAll('shutdown')
+    }
+  })
+
+  it('takes a link down when the agent says its page was finished', async () => {
+    setup({
+      turn: async (t) => {
+        const pending = t.elicit({ sessionId: t.sessionId, ...LINK })
+        await new Promise((r) => setTimeout(r, 20))
+        await t.completeElicitation('el-1')
+        await pending
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Sign in' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Done', answer: 'Sign in to Linear' }] })
+    expect(foldThread(events).ask).toBeUndefined()
+  })
+
+  it('refuses a decline for an approval or a question', async () => {
+    setup({ turn: async (t) => void (await t.permission({ toolCallId: 'b1', title: 'x' })) })
+    const id = thread()
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    const view = foldThread(await logUntil(id, has('ask')))
+    await expect(host.answer(id, view.ask!.id, { kind: 'decline' })).rejects.toBeInstanceOf(GateError)
+  })
+
+  it('declines a form and a link at once on an unattended thread', async () => {
+    const seen: unknown[] = []
+    setup({
+      turn: async (t) => {
+        seen.push(await t.elicit({ sessionId: t.sessionId, ...FORM }))
+        seen.push(await t.elicit({ sessionId: t.sessionId, ...LINK }))
+      },
+    })
+    const id = thread({ purpose: 'self-plan' })
+    await host.prompt(id, { text: 'Plan yourself' }, { source: 'runcastle' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(seen).toEqual([{ action: 'decline' }, { action: 'decline' }])
+    expect(events.some((e) => e.type === 'ask')).toBe(false)
+    expect(events.filter((e) => e.type === 'ask_resolved').map((e) => e.type === 'ask_resolved' && e.lines)).toEqual([
+      [{ what: 'Declined', answer: 'nobody is watching this run', denied: true }],
+      [{ what: 'Declined', answer: 'nobody is watching this run', denied: true }],
+    ])
+  })
+
+  it('declines a form whose schema the dock cannot show, with a line saying so', async () => {
+    const { id, got } = await eliciting({
+      mode: 'form',
+      message: 'Pick labels',
+      requestedSchema: { type: 'object', properties: { labels: { type: 'array', items: { type: 'string', enum: ['bug', 'ux'] } } } },
+    })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(got.response).toEqual({ action: 'decline' })
+    expect(events.some((e) => e.type === 'ask')).toBe(false)
+    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({
+      lines: [{ what: 'Declined', answer: 'Pick labels — runcastle cannot show this form: its field "labels" is not a plain value', denied: true }],
+    })
   })
 })
