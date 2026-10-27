@@ -70,6 +70,59 @@ describe('ThreadColumn', () => {
     expect(api.inputs('thread.events')).toEqual([{ threadId: 'th1' }, { threadId: 'th1', after: 3 }])
   })
 
+  describe('a thread switched away from mid-turn and back', () => {
+    const OTHER: ThreadEvent[] = [prompt(0, 'q1', 'Rename the export menu'), { i: 1, at, type: 'turn_started' }, said(2, 'Renamed.'), { i: 3, at, type: 'turn_ended', reason: 'end_turn' }]
+    const MID_TURN: ThreadEvent[] = [prompt(0, 'p1', 'Line up the export button'), { i: 1, at, type: 'process', state: 'running' }, { i: 2, at, type: 'turn_started' }]
+    const ANSWERED: ThreadEvent[] = [said(3, 'Lined up.'), { i: 4, at: at + 4000, type: 'turn_ended', reason: 'end_turn' }]
+
+    function twoThreads() {
+      const logs: Record<string, ThreadEvent[]> = { th1: [...MID_TURN], th2: [...OTHER] }
+      const api = fakeTrpc({
+        'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
+        'thread.events': ({ threadId, after }: { threadId: string; after?: number }) => ({
+          events: logs[threadId].filter((e) => after === undefined || e.i > after),
+        }),
+      })
+      return { api, logs }
+    }
+
+    it('shows where the thread is now when reopened, with no live signal to say so', async () => {
+      const { api, logs } = twoThreads()
+      const view = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      await screen.findByText('Line up the export button')
+      view.rerender(<ThreadColumn threadId="th2" />)
+      await screen.findByText('Renamed.')
+      logs.th1.push(...ANSWERED)
+      view.rerender(<ThreadColumn threadId="th1" />)
+      expect(await screen.findByText('Lined up.')).toBeTruthy()
+      expect(api.inputs('thread.events')).toContainEqual({ threadId: 'th1', after: 2 })
+    })
+
+    it('takes a live signal of a thread that is not open, and shows it on return', async () => {
+      const { api, logs } = twoThreads()
+      const view = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      await screen.findByText('Line up the export button')
+      view.rerender(<ThreadColumn threadId="th2" />)
+      await screen.findByText('Renamed.')
+      logs.th1.push(...ANSWERED)
+      // What `useLiveSync` does on `{ kind: 'thread', threadId: 'th1' }` while th2 is open.
+      await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'events'], { input: { threadId: 'th1' } }] }))
+      view.rerender(<ThreadColumn threadId="th1" />)
+      expect(await screen.findByText('Lined up.')).toBeTruthy()
+      expect(screen.queryByText('Working')).toBeNull()
+    })
+
+    it('a column mounted afresh on a thread read before picks up past its cursor', async () => {
+      const { api, logs } = twoThreads()
+      const first = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      await screen.findByText('Line up the export button')
+      first.unmount()
+      logs.th1.push(...ANSWERED)
+      render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      expect(await screen.findByText('Lined up.')).toBeTruthy()
+    })
+  })
+
   it('shows a sent message at once, and lets the server’s prompt take its place', async () => {
     const log = [...HISTORY]
     let release = () => {}
