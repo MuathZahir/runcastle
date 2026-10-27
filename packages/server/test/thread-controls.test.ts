@@ -110,8 +110,9 @@ describe('model, effort and fast mode', () => {
     expect(await caller.thread.models({ threadId: id })).toEqual({
       runtime: 'claude-code',
       models: [
-        { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true, efforts: ['low', 'medium', 'high', 'max'] },
-        { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+        { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true, efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' },
+        // No session ran on Sonnet: it takes the levels Claude Code offers.
+        { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: ['low', 'medium', 'high', 'max'] },
       ],
       current: 'claude-opus-5-5',
     })
@@ -182,13 +183,123 @@ describe('model, effort and fast mode', () => {
     await converse(codex, 'Hello')
     expect((await caller.thread.models({ threadId: codex })).models).toEqual([
       // Codex's `xhigh` is no level runcastle offers.
-      { id: 'gpt-5.5', label: '5.5', fast: true, efforts: ['low', 'medium', 'high'] },
-      { id: 'gpt-5.5-mini', label: '5.5 Mini' },
+      { id: 'gpt-5.5', label: '5.5', fast: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+      // No session ran on it: it takes what one said of its GPT generation.
+      { id: 'gpt-5.5-mini', label: '5.5 Mini', fast: true, efforts: ['low', 'medium', 'high'] },
     ])
     setup({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }] })
     const plain = chat()
     await converse(plain, 'Hello')
     expect((await caller.thread.models({ threadId: plain })).models.some((m) => m.fast)).toBe(false)
+  })
+})
+
+describe('the model the composer shows is the one the agent runs on', () => {
+  /**
+   * Claude Code's list as claude-agent-acp gives it: its values are aliases,
+   * not runcastle's roster ids, and "Default (recommended)" stands for Opus.
+   */
+  const ALIASES: FakeScript = {
+    model: { id: 'default', label: 'Default (recommended)', description: 'Opus 5' },
+    models: [
+      { id: 'opus', label: 'Opus 5' },
+      { id: 'sonnet', label: 'Sonnet 5' },
+      { id: 'haiku', label: 'Haiku 4.5' },
+    ],
+    options: 'claude',
+  }
+
+  /** A project chat nobody has talked to yet, as `thread.new` opens it. */
+  const unstarted = () => createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' }).id
+  const dividers = (id: string) => foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'model')
+
+  it('runs the first message on the model, effort and fast mode picked before it, its opening held into the same prompt', async () => {
+    setup(ALIASES)
+    const id = unstarted()
+    // The picker before any session has run offers runcastle's roster ids.
+    expect((await caller.thread.models({ threadId: id })).models.map((m) => m.id)).toContain('claude-sonnet-5')
+
+    await caller.thread.send({ threadId: id, text: 'Hello', model: 'claude-sonnet-5', effort: 'low', fast: true })
+    await logUntil(id, turnsEnded(1))
+
+    expect(methods()).toEqual(['initialize', 'session/new', 'session/set_mode', 'session/set_config_option', 'session/set_config_option', 'session/set_config_option', 'session/prompt'])
+    expect(received('session/set_config_option').map((p) => [p.configId, p.value])).toEqual([
+      ['model', 'sonnet'],
+      ['effort', 'low'],
+      ['fast', 'on'],
+    ])
+    expect(received('session/prompt')).toHaveLength(1)
+    const view = foldThread(readThreadEvents(id))
+    expect(view.model).toEqual({ id: 'sonnet', label: 'Sonnet 5', effort: 'low', fast: true })
+    expect(view.items.filter((i) => i.kind === 'agent').map((i) => i.kind === 'agent' && i.model)).toEqual(['Sonnet 5'])
+    expect(dividers(id)).toEqual([])
+  })
+
+  it('starts on a choice made in the picker before the first message, with no divider until the thread has started', async () => {
+    setup(ALIASES)
+    const id = unstarted()
+    await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5' })
+    await caller.thread.setModel({ threadId: id, model: 'claude-haiku-4-5', effort: 'max' })
+
+    expect(readThreadEvents(id)).toEqual([])
+    expect((await caller.thread.models({ threadId: id })).current).toBe('claude-haiku-4-5')
+    await caller.thread.send({ threadId: id, text: 'Hello' })
+    await logUntil(id, turnsEnded(1))
+
+    expect(received('session/set_config_option').map((p) => [p.configId, p.value])).toEqual([
+      ['model', 'haiku'],
+      ['effort', 'max'],
+    ])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'haiku', label: 'Haiku 4.5', effort: 'max' })
+    expect(dividers(id)).toEqual([])
+  })
+
+  it("switches mid-thread with the adapter's own value, says 'Now on' the label, and the picker names it", async () => {
+    setup(ALIASES)
+    const id = chat()
+    await converse(id, 'Hello')
+    // A picker read before the session reported still holds the roster's id.
+    await caller.thread.setModel({ threadId: id, model: 'claude-haiku-4-5' })
+
+    expect(received('session/set_config_option')).toEqual([{ sessionId: 'acp-session-1', configId: 'model', value: 'haiku' }])
+    expect(readThreadEvents(id).at(-1)).toMatchObject({ type: 'model', model: 'haiku', label: 'Haiku 4.5' })
+    const { models, current } = await caller.thread.models({ threadId: id })
+    expect(models.find((m) => m.id === current)?.label).toBe('Haiku 4.5')
+    await caller.thread.send({ threadId: id, text: 'Again' })
+    await logUntil(id, turnsEnded(2))
+    expect(said(id)).toEqual(['user:Hello', 'agent:Done.', 'model:Haiku 4.5', 'user:Again', 'agent:Done.'])
+    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'agent').map((i) => i.kind === 'agent' && i.model)).toEqual(['Opus 5', 'Haiku 4.5'])
+  })
+
+  it('logs a switch made while a started thread is idle under the id and label its picker offers', async () => {
+    setup(ALIASES)
+    const id = chat()
+    await converse(id, 'Hello')
+    await host.stop(id, 'idle')
+    await caller.thread.setModel({ threadId: id, model: 'claude-haiku-4-5' })
+
+    expect(readThreadEvents(id).at(-1)).toMatchObject({ type: 'model', model: 'haiku', label: 'Haiku 4.5' })
+    await caller.thread.send({ threadId: id, text: 'Again' })
+    await logUntil(id, turnsEnded(2))
+    expect(received('session/set_config_option').map((p) => p.value)).toEqual(['haiku'])
+  })
+
+  it('knows, before a thread starts, the effort each model starts on and the efforts every model takes', async () => {
+    setup(ALIASES)
+    await converse(chat(), 'Hello')
+    const id = unstarted()
+    const { models, current } = await caller.thread.models({ threadId: id })
+
+    // The session opened on Opus at High, and said Opus's levels.
+    expect(models.find((m) => m.id === current)).toMatchObject({ label: 'Opus 5', defaultEffort: 'high', efforts: ['low', 'medium', 'high', 'max'], fast: true })
+    // No session ran on Sonnet or Haiku: they take the levels Claude Code offers.
+    for (const label of ['Sonnet 5', 'Haiku 4.5']) expect(models.find((m) => m.label === label)?.efforts).toEqual(['low', 'medium', 'high', 'max'])
+
+    // Sending the effort shown asks nothing of the agent: it starts on it.
+    await caller.thread.send({ threadId: id, text: 'Hello', model: current!, effort: 'high', fast: false })
+    await logUntil(id, turnsEnded(1))
+    expect(fake.last().received.filter((r) => r.method === 'session/set_config_option')).toEqual([])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ effort: 'high' })
   })
 })
 
@@ -203,8 +314,13 @@ describe("a runtime's one model catalog", () => {
     ],
     options: 'claude',
   }
-  const OPUS = { id: 'claude-opus-5-5', label: 'Opus 5.5', note: 'Most capable for complex work', fast: true, efforts: ['low', 'medium', 'high', 'max'] }
-  const LIST = [OPUS, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'Best for everyday tasks' }, { id: 'claude-opus-4-8', label: 'Opus 4.8' }]
+  const EFFORTS = ['low', 'medium', 'high', 'max']
+  const OPUS = { id: 'claude-opus-5-5', label: 'Opus 5.5', note: 'Most capable for complex work', fast: true, efforts: EFFORTS, defaultEffort: 'high' }
+  const LIST = [
+    OPUS,
+    { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'Best for everyday tasks', efforts: EFFORTS },
+    { id: 'claude-opus-4-8', label: 'Opus 4.8', efforts: EFFORTS, fast: true },
+  ]
 
   it('answers the same list, ids and labels before the agent starts, while it runs and after it stops', async () => {
     setup(CLAUDE)
@@ -247,7 +363,8 @@ describe("a runtime's one model catalog", () => {
     const { models } = await caller.thread.models({ threadId: id })
     expect(models.find((m) => m.id === 'claude-sonnet-5-5')?.efforts).toEqual(['low', 'medium', 'high', 'max'])
     expect(models.find((m) => m.id === 'claude-opus-5-5')?.efforts).toEqual(['low', 'medium', 'high', 'max'])
-    expect(models.find((m) => m.id === 'claude-opus-4-8')?.efforts).toBeUndefined()
+    // No session ran on Opus 4.8: it takes what one said of Opus.
+    expect(models.find((m) => m.id === 'claude-opus-4-8')).toMatchObject({ efforts: ['low', 'medium', 'high', 'max'], fast: true })
   })
 
   it("maps runcastle's roster to adapter-style labels, once per model, before any session has reported", async () => {

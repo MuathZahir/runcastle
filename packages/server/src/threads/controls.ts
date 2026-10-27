@@ -1,5 +1,6 @@
 import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { Effort, type ModelChoice, type ThreadEvent, type ThreadView, type ToolKind, type WorkStep } from '@runcastle/core'
+import { labelKey, rosterLabel } from './model-catalog'
 
 /**
  * The thread controls' pure parts (chat-as-web-components ticket 5): reading
@@ -80,9 +81,15 @@ export interface ModelCatalog {
  * labels and descriptions are the adapter's; Claude's `default` entry is not a
  * model of its own but the one it names. A session's options describe only the
  * model it runs on, so that model's effort levels and fast mode are learnt from
- * them and every other model keeps what an earlier session taught.
+ * them and every other model keeps what an earlier session taught. Options a
+ * session `opened` with, before anybody picked anything, also say the effort
+ * that model starts on.
  */
-export function catalogFromOptions(prev: ModelCatalog | null, options: readonly acp.SessionConfigOption[] | null | undefined): ModelCatalog | null {
+export function catalogFromOptions(
+  prev: ModelCatalog | null,
+  options: readonly acp.SessionConfigOption[] | null | undefined,
+  opened = false,
+): ModelCatalog | null {
   const model = modelOption(options)
   const config = currentConfig(options)
   if (!model || !config) return null
@@ -97,6 +104,7 @@ export function catalogFromOptions(prev: ModelCatalog | null, options: readonly 
       const here = c.value === config.model
       const was = known.get(c.value)
       const modelEfforts = here ? efforts : was?.efforts
+      const defaultEffort = here && opened ? config.effort : was?.defaultEffort
       const isDefault = c.value === DEFAULT_MODEL
       return {
         id: c.value,
@@ -104,10 +112,25 @@ export function catalogFromOptions(prev: ModelCatalog | null, options: readonly 
         ...(c.description && !isDefault ? { note: c.description } : {}),
         ...((here ? fast : was?.fast) ? { fast: true } : {}),
         ...(modelEfforts ? { efforts: modelEfforts } : {}),
+        ...(defaultEffort ? { defaultEffort } : {}),
       }
     })
   const defaultId = target?.value ?? prev?.defaultId
   return { models, ...(defaultId && models.some((m) => m.id === defaultId) ? { defaultId } : {}) }
+}
+
+/**
+ * The model option's own value for the model `id` names: `id` itself when the
+ * option offers it, else the entry named as that model. The picker may hold
+ * runcastle's roster ids (`claude-haiku-5-5`) while the adapter's values are
+ * its own (Claude Code's aliases, `haiku`), so a roster id is matched by the
+ * label its adapter gives the model ("Haiku 5.5"). Undefined when no entry is.
+ */
+export function modelValue(option: SelectOption, id: string): string | undefined {
+  const values = selectValues(option)
+  if (values.some((c) => c.value === id)) return id
+  const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(labelKey))
+  return values.find((c) => c.value !== DEFAULT_MODEL && names.has(labelKey(c.name)))?.value
 }
 
 /**
@@ -128,7 +151,8 @@ export function configRequests(
     if (option.currentValue === DEFAULT_MODEL && defaultTarget(option)?.value === value) return
     if (selectValues(option).some((c) => c.value === value)) out.push({ sessionId, configId: option.id, value })
   }
-  select(modelOption(options), choice.model)
+  const model = modelOption(options)
+  select(model, model && choice.model !== undefined ? modelValue(model, choice.model) : undefined)
   select(effortOption(options), choice.effort)
   const fast = fastOption(options)
   if (fast && choice.fast !== undefined) {

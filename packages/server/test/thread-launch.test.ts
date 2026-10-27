@@ -8,11 +8,13 @@ import type { AppCtx } from '../src/db/types'
 import { launchPrepareSession, launchProjectSession, launchSession, type LaunchSessionOptions } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
+import { codexRuntime } from '../src/launcher/runtimes/codex'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { subscribeLive, type LiveSignal } from '../src/services/bus'
 import { getEventRow, listAfter } from '../src/services/events'
 import { createFeatureBranch, PROJECT_BRANCH } from '../src/services/git'
 import { openProject } from '../src/services/projects'
+import { updateSettings } from '../src/services/settings'
 import { listSessionsByFeature } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -277,6 +279,38 @@ describe('thread.new', () => {
     expect(event).toBeDefined()
     const row = event?.kind === 'event' ? getEventRow(ctx, event.eventId) : null
     expect(row).toMatchObject({ type: 'session.project_opened', data: { sessionId: threadId } })
+  })
+
+  it('starts a new chat on the runtime of its configured default model, Codex included, with that runtime’s models', async () => {
+    ctx.config = { ...ctx.config, model: 'gpt-5.6-terra' }
+    const fake = fakeHost({ model: { id: 'gpt-5.6-terra', label: '5.6 Terra' } })
+    vi.spyOn(codexRuntime, 'checkReady').mockReturnValue({ ok: true })
+    const f = await feature()
+    const threads = [
+      (await caller().thread.new({ projectId: project.id })).threadId,
+      (await caller().thread.new({ featureId: f.id })).threadId,
+      (await launchPrepareSession(ctx, { projectId: project.id }, { holdOpening: true })).sessionId,
+    ]
+
+    for (const threadId of threads) {
+      expect(getSessionRow(ctx, threadId)).toMatchObject({ runtime: 'codex', model: 'gpt-5.6-terra' })
+      const { runtime, models, current } = await caller().thread.models({ threadId })
+      expect(runtime).toBe('codex')
+      expect(models.map((m) => m.id)).toEqual(expect.arrayContaining(['gpt-5.6-sol', 'gpt-5.6-terra']))
+      expect(models.some((m) => m.id.startsWith('claude-'))).toBe(false)
+      expect(current).toBe('gpt-5.6-terra')
+      expect((await acpLaunchOf(ctx, threadId)).env.CODEX_HOME).toBeTruthy()
+    }
+    expect((await caller().thread.models({ projectId: project.id, kind: 'project' })).runtime).toBe('codex')
+    expect((await caller().thread.models({ featureId: f.id })).runtime).toBe('codex')
+    expect(fake.processes).toEqual([])
+
+    // The project's own default beats the global one.
+    ctx.config = { ...ctx.config, model: 'claude-sonnet-5' }
+    updateSettings(ctx, { projectId: project.id, key: 'model', value: 'gpt-5.6-terra' })
+    const own = (await caller().thread.new({ projectId: project.id })).threadId
+    expect(getSessionRow(ctx, own)).toMatchObject({ runtime: 'codex', model: 'gpt-5.6-terra' })
+    expect((await caller().thread.models({ threadId: own })).runtime).toBe('codex')
   })
 
   it('briefs an empty thread before the human’s first words, and only the first time', async () => {

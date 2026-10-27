@@ -1,4 +1,4 @@
-import type { ModelChoice } from './chat-thread'
+import { modelFamily, type ModelChoice } from './chat-thread'
 
 /**
  * The composer's model list, arranged (chat-as-web-components decision 13):
@@ -19,21 +19,6 @@ export interface ModelGroup {
 
 /** Claude's families, most capable first; any other family follows in the order the runtime lists it. */
 const FAMILY_ORDER = ['Fable', 'Opus', 'Sonnet', 'Haiku']
-
-const VERSION = /^\d+(?:\.\d+)*$/
-
-/**
- * A label's family and version: "Opus 4.8" → Opus, [4, 8]. Codex names its
- * models by version alone ("5.6 Sol", "5.5 Mini"), so a GPT generation is the
- * family: "5.6 Sol" → GPT-5, [5, 6].
- */
-export function modelFamily(label: string): { family: string; version: number[] } {
-  const words = label.split(/\s+/).filter(Boolean)
-  const at = words.findIndex((w) => VERSION.test(w))
-  if (at < 0) return { family: words[0] ?? label, version: [] }
-  const version = words[at].split('.').map(Number)
-  return { family: at > 0 ? words.slice(0, at).join(' ') : `GPT-${version[0]}`, version }
-}
 
 /** Newer first. */
 function byVersion(a: number[], b: number[]): number {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { BackgroundTask, ContextUsage, Effort, ModelChoice, PlanEntry, UsageLimit } from '../../../lib/chat-thread'
-import { groupModels, modelFamily } from '../../../lib/model-groups'
+import { modelFamily, type BackgroundTask, type ContextUsage, type Effort, type ModelChoice, type PlanEntry, type UsageLimit } from '../../../lib/chat-thread'
+import { groupModels } from '../../../lib/model-groups'
 import {
   IconCheck,
   IconChevronDown,
