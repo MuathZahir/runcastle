@@ -1,41 +1,41 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { AgentRuntime, Feature, SessionPurpose } from '@runcastle/core'
+import type { AgentRuntime, Feature, SessionPurpose, ThreadEvent } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { features } from '../src/db/schema'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { handlePtyExit, launchSession } from '../src/launcher/launcher'
-import {
-  activeSessionsForFeature,
-  createSessionRow,
-  getSessionRow,
-  markSessionEnded,
-  markSessionLive,
-} from '../src/launcher/sessions'
+import { launchSession } from '../src/launcher/launcher'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { setWaiting } from '../src/services/lead-status'
 import { featureDocPath } from '../src/services/feature-docs'
 import { createFeatureBranch } from '../src/services/git'
-import { getFeatureRow, projectForFeature } from '../src/services/repo'
+import { listSessionsByFeature, projectForFeature } from '../src/services/repo'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeScript } from './support/fake-acp-agent'
+import { briefOf, kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
- * "Plan it yourself" (`features-plan-themselves` decisions 3, 9, 11): the
- * feature's planning chat launched headless with the `self-plan` purpose —
- * what it renders, what it refuses, how it keeps the chat off a running plan,
- * and what its exit says about the plan.
+ * "Plan it yourself" (`features-plan-themselves` decisions 3, 9, 11;
+ * chat-as-web-components decision 6): the feature's main chat thread opened
+ * with the `self-plan` purpose — unattended, so the host declines what the
+ * agent asks — what it says and is briefed with, what it refuses, and what the
+ * end of its planning turn says about the plan.
  */
 
 describe('a self-planning run', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
+  let host: AgentHost | undefined
   const cleanup: string[] = []
 
   beforeEach(async () => {
@@ -50,7 +50,11 @@ describe('a self-planning run', () => {
     projectId = seedProject(ctx, repoPath).id
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await host?.stopAll('shutdown')
+    host = undefined
+    setAgentHostForTests(undefined)
+    vi.restoreAllMocks()
     for (const d of cleanup) rmSync(d, { recursive: true, force: true })
     cleanup.length = 0
   })
@@ -77,11 +81,18 @@ describe('a self-planning run', () => {
     return sessionId
   }
 
-  function launchedCommand(featureId: string, sessionId: string): string {
-    const launched = listAfter(ctx, featureId, 0).find(
-      (e) => e.type === 'session.launched' && e.data?.sessionId === sessionId,
-    )
-    return String(launched?.data?.command)
+  /** A fake agent behind the host, with the lifecycle, past the readiness gate. */
+  function fakeHost(script: FakeScript = {}): FakeAcp {
+    vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
+    const fake = createFakeAcp(script)
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    setAgentHostForTests(host)
+    return fake
+  }
+
+  async function logUntil(id: string, done: (events: ThreadEvent[]) => boolean): Promise<ThreadEvent[]> {
+    await vi.waitFor(() => expect(done(readThreadEvents(id))).toBe(true))
+    return readThreadEvents(id)
   }
 
   it('keeps its purpose on the session row', async () => {
@@ -95,7 +106,7 @@ describe('a self-planning run', () => {
     expect(getSessionRow(ctx, row.id)?.purpose).toBe('self-plan')
   })
 
-  it('launches Claude Code in print mode, briefed that no human is present', async () => {
+  it('opens the main chat thread on Claude Code, briefed that no human is present', async () => {
     useRuntime('claude-code')
     const f = await feature('claude-plan')
     const sessionId = await launch(f.id, 'self-plan')
@@ -106,54 +117,68 @@ describe('a self-planning run', () => {
     const launching = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.launching')
     expect(launching?.data?.purpose).toBe('self-plan')
 
-    const command = launchedCommand(f.id, sessionId)
-    expect(command).toContain('claude -p ')
-    expect(command).not.toContain('--resume')
-    expect(command).toContain('Proceed with your task: no human is present')
-    expect(command).toContain('/runcastle:feature')
-    expect(command).toContain('references/planning-alone.md')
+    const said = kickoffOf(sessionId)
+    expect(promptsOf(sessionId)[0].source).toBe('runcastle')
+    expect(said).toContain('Proceed with your task: no human is present')
+    expect(said).toContain('/runcastle:feature')
+    expect(said).toContain('references/planning-alone.md')
     // The feature-state part of the chat header still follows the opening.
     // No lap in it: the round count is the human-facing number (decision 16).
-    expect(command).toContain('Feature status: Talking with you; rounds run: 0;')
-    expect(command).not.toMatch(/\blap\b/i)
+    expect(said).toContain('Feature status: Talking with you; rounds run: 0;')
+    expect(said).not.toMatch(/\blap\b/i)
+    expect(await briefOf(ctx, sessionId)).toContain('## No human is present')
   })
 
-  it('launches Codex as `exec`, naming the skill its way', async () => {
+  it('names the skill its way on Codex', async () => {
     useRuntime('codex')
     const f = await feature('codex-plan')
     const sessionId = await launch(f.id, 'self-plan')
 
-    const command = launchedCommand(f.id, sessionId)
-    expect(command).toContain('codex exec --dangerously-bypass-hook-trust ')
-    expect(command).not.toContain(' resume ')
-    expect(command).toContain('no human is present')
-    expect(command).toContain('$feature')
-    expect(command).toContain('references/planning-alone.md')
+    const said = kickoffOf(sessionId)
+    expect(said).toContain('no human is present')
+    expect(said).toContain('$feature')
+    expect(said).toContain('references/planning-alone.md')
+    expect(await briefOf(ctx, sessionId)).toContain('## No human is present')
   })
 
-  it('never resumes an earlier conversation', async () => {
+  it('runs in the feature’s one main chat thread, marking it unattended', async () => {
     useRuntime('claude-code')
-    const f = await feature('fresh')
+    const f = await feature('reuse')
     const earlier = await launch(f.id)
     markSessionLive(ctx, earlier, { ccSessionId: 'cc-earlier' })
     markSessionEnded(ctx, earlier)
 
     const sessionId = await launch(f.id, 'self-plan')
-    expect(launchedCommand(f.id, sessionId)).not.toContain('--resume')
-    const types = listAfter(ctx, f.id, 0)
-      .filter((e) => e.data?.sessionId === sessionId)
-      .map((e) => e.type)
-    expect(types).not.toContain('session.resumed')
-    expect(types).not.toContain('session.resume_unavailable')
+
+    expect(sessionId).toBe(earlier)
+    expect(getSessionRow(ctx, sessionId)?.purpose).toBe('self-plan')
+    expect(promptsOf(sessionId).at(-1)?.text).toContain('no human is present')
+  })
+
+  it('declines what the agent asks, so nobody has to be there', async () => {
+    const fake = fakeHost({
+      turn: async (t) => {
+        await t.permission({ toolCallId: 'p1', title: 'rm -rf build' })
+        await t.ask([{ header: 'Scope', question: 'Which scope?', options: ['A', 'B'] }])
+      },
+    })
+    const f = await feature('unattended')
+    const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+    cleanup.push(sessionDir(sessionId))
+
+    const events = await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_ended'))
+    expect(events.filter((e) => e.type === 'ask')).toEqual([])
+    expect(events.filter((e) => e.type === 'ask_resolved')).toHaveLength(2)
+    expect(fake.last().received.some((r) => r.method === 'session/new')).toBe(true)
   })
 
   describe('is refused, leaving no session behind,', () => {
     async function expectRefused(f: Feature, reason: RegExp): Promise<void> {
-      const before = activeSessionsForFeature(ctx, f.id).map((s) => s.id)
+      const before = listSessionsByFeature(ctx, f.id).map((s) => s.id)
       const attempt = launch(f.id, 'self-plan')
       await expect(attempt).rejects.toBeInstanceOf(GateError)
       await expect(attempt).rejects.toThrow(reason)
-      expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual(before)
+      expect(listSessionsByFeature(ctx, f.id).map((s) => s.id)).toEqual(before)
     }
 
     it('when the feature is a draft', async () => {
@@ -178,71 +203,64 @@ describe('a self-planning run', () => {
     }
   })
 
-  describe('is still refused, leaving no session behind,', () => {
-    async function expectRefused(f: Feature, reason: RegExp): Promise<void> {
-      const before = activeSessionsForFeature(ctx, f.id).map((s) => s.id)
-      const attempt = launch(f.id, 'self-plan')
-      await expect(attempt).rejects.toBeInstanceOf(GateError)
-      await expect(attempt).rejects.toThrow(reason)
-      expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual(before)
-    }
-
-    it('when another session is up', async () => {
-      const f = await feature('busy')
-      createSessionRow(ctx, { featureId: f.id, kind: 'prepare', worktreePath: 'C:\\wt' })
-      await expectRefused(f, /only one terminal per feature/)
-    })
-  })
-
-  it('keeps every chat launch off a running plan', async () => {
+  // A running plan is an ordinary thread the human can open and type into (decision 6).
+  it('lets the Chat door open a running plan’s thread', async () => {
     const f = await feature('running')
     const run = await launch(f.id, 'self-plan')
-
-    for (const purpose of [undefined, 'start-lap', 'self-plan'] as const) {
-      const attempt = launch(f.id, purpose)
-      await expect(attempt).rejects.toBeInstanceOf(GateError)
-      await expect(attempt).rejects.toThrow(/planning itself — stop the run first/)
-    }
-    // Live as well as launching, and the run itself is untouched.
     markSessionLive(ctx, run, { ccSessionId: 'cc-run' })
-    await expect(launch(f.id)).rejects.toThrow(/stop the run first/)
-    expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual([run])
-    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.kickoff')).toBe(false)
+
+    expect(await launch(f.id)).toBe(run)
+    expect(listSessionsByFeature(ctx, f.id).map((s) => s.id)).toEqual([run])
   })
 
-  describe('on exit', () => {
+  it('refuses the retired relay and lead-wake runs', async () => {
+    const f = await feature('retired')
+    for (const purpose of ['relay', 'lead-wake'] as const) {
+      await expect(launch(f.id, purpose)).rejects.toThrow(/no longer exists/)
+    }
+    expect(listSessionsByFeature(ctx, f.id)).toEqual([])
+  })
+
+  describe('at its planning turn’s end', () => {
     function selfPlanEnded(featureId: string) {
       return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.self_plan_ended')
     }
 
     it('says the plan is complete when the run ended by asking the human for the yes', async () => {
       const f = await feature('done')
-      const run = await launch(f.id, 'self-plan')
-      setWaiting(ctx, f.id, 'Start round 1?')
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
 
-      handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
-
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
       const [ended] = selfPlanEnded(f.id)
       expect(ended?.message).toBe('planning finished')
-      expect(ended?.data).toEqual({ sessionId: run, complete: true, exitCode: 0 })
+      expect(ended?.data).toEqual({ sessionId, complete: true })
     })
 
     it('says planning stopped short otherwise', async () => {
       const f = await feature('short')
-      const run = await launch(f.id, 'self-plan')
+      fakeHost()
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
 
-      handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, run)!, {}, 1)
-
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
       const [ended] = selfPlanEnded(f.id)
       expect(ended?.message).toBe('planning stopped before the plan was complete')
-      expect(ended?.data).toEqual({ sessionId: run, complete: false, exitCode: 1 })
+      expect(ended?.data).toEqual({ sessionId, complete: false })
     })
 
-    it('says nothing for a session with any other purpose', async () => {
+    it('says nothing for a human’s turn, or a thread with any other purpose', async () => {
       const f = await feature('plain')
-      const chat = await launch(f.id)
-      handlePtyExit(ctx, f, getSessionRow(ctx, chat)!, {}, 0)
+      fakeHost()
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat' })
+      await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_ended'))
+
+      const g = await feature('typed-into')
+      const plan = createSessionRow(ctx, { featureId: g.id, kind: 'chat', purpose: 'self-plan', worktreePath: 'C:\\wt' })
+      await host?.prompt(plan.id, { text: 'how is it going?' }, { source: 'human' })
+      await logUntil(plan.id, (e) => e.some((x) => x.type === 'turn_ended'))
+
       expect(selfPlanEnded(f.id)).toEqual([])
+      expect(selfPlanEnded(g.id)).toEqual([])
     })
   })
 })

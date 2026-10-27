@@ -312,6 +312,10 @@ export async function launchSession(
     throw new GateError('a side session is opened by New side session, beside the main chat.')
   }
   if (input.kind !== 'chat') throw new GateError(`a ${input.kind} conversation is opened from its project`)
+  // Messages reach the lead as prompts into its chat now (`deliverToLead`); no run carries them.
+  if (input.purpose === 'relay' || input.purpose === 'lead-wake') {
+    throw new GateError(`a ${input.purpose} run no longer exists — send the message to the feature's chat instead`)
+  }
 
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
