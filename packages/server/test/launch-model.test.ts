@@ -8,15 +8,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { projects } from '../src/db/schema'
 import { launchSession } from '../src/launcher/launcher'
-import { listAfter } from '../src/services/events'
+import { getSessionRow } from '../src/launcher/sessions'
 import { createFeatureBranch } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { acpLaunchOf } from './support/thread-launch'
 
 /**
- * Per-step model resolution at launch (issue #48). A `spawn:false` launch still
- * renders the real `claude` argv into its `session.launched` event, so we can
- * observe the `--model` flag each session kind runs and prove the resolution
+ * Per-step model resolution at launch (issue #48). A `spawn:false` launch records
+ * the resolved model on its thread's row, and the thread's ACP launch runs it, so we can
+ * observe the model each session kind runs and prove the resolution
  * chain: the per-project override wins over `stepModels[kind]`, which wins over
  * the global default.
  */
@@ -64,11 +65,11 @@ describe('launch model resolution (#48)', () => {
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
-    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
-    const command = String((launched?.data as { command?: string })?.command ?? '')
-    const m = command.match(/--model (\S+)/)
-    if (!m) throw new Error(`no --model flag in launch command: ${command}`)
-    return m[1]
+    // The row records the model, and the thread's ACP launch runs it.
+    const spec = await acpLaunchOf(ctx, sessionId)
+    const model = (spec.sessionMeta.claudeCode as { options: { model: string } }).options.model
+    expect(getSessionRow(ctx, sessionId)?.model).toBe(model)
+    return model
   }
 
   it('falls back to the global default model', async () => {

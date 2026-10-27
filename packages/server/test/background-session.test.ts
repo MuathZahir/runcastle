@@ -1,17 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { handlePtyExit } from '../src/launcher/launcher'
 import { claudeRuntime, findBackgroundSessionIn } from '../src/launcher/runtimes/claude'
 import { codexRuntime } from '../src/launcher/runtimes/codex'
-import { createSessionRow } from '../src/launcher/sessions'
-import { listAfter } from '../src/services/events'
-import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * A Claude Code conversation that was sent to the background (left arrow, before
  * CLAUDE_CODE_DISABLE_AGENT_VIEW) is held by Claude Code's background supervisor,
- * and every `claude --resume` of it is refused. The resume failure must say so,
- * and name the way out, instead of calling the conversation "still resumable".
+ * and every `claude --resume` of it is refused. The Claude adapter's lookup
+ * finds the background session that holds a conversation.
  */
 
 const HELD = '3f2a9c71-5b0e-4d8a-9e21-7c4b6d0f1a23'
@@ -70,57 +65,3 @@ describe('finding the background session in a `claude agents --json` listing', (
   })
 })
 
-describe('a resume that dies before going live', () => {
-  async function diedResuming(listing: unknown | Error) {
-    const ctx = await makeTestCtx()
-    const feature = seedFeature(ctx, seedProject(ctx).id)
-    const session = createSessionRow(ctx, {
-      featureId: feature.id,
-      kind: 'chat',
-      worktreePath: 'C:\\wt',
-      model: { id: 'claude-opus-5-5', runtime: 'claude-code' },
-    })
-    await handlePtyExit(
-      ctx,
-      feature,
-      session,
-      {
-        resumeSessionId: HELD,
-        findBackgroundSession: async (id) => {
-          if (listing instanceof Error) throw listing
-          return findBackgroundSessionIn(listing, id)
-        },
-      },
-      1,
-    )
-    const failed = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.resume_failed')
-    expect(failed).toHaveLength(1)
-    return { failed: failed[0]!, sessionId: session.id }
-  }
-
-  it('held by a background session: says so and names attach, stop, relaunch', async () => {
-    const { failed, sessionId } = await diedResuming(LISTING)
-    expect(failed.message).toContain('running as a Claude Code background session (3f2a9c71)')
-    expect(failed.message).toContain('`claude attach 3f2a9c71`')
-    expect(failed.message).toContain('`claude stop 3f2a9c71` (stopping keeps the conversation)')
-    expect(failed.message).toContain('then relaunch')
-    expect(failed.message).not.toContain('still resumable')
-    expect(failed.data).toEqual({
-      sessionId,
-      resumeSessionId: HELD,
-      exitCode: 1,
-      backgroundSessionId: '3f2a9c71',
-    })
-  })
-
-  it('not held by one: the conversation is still resumable, as before', async () => {
-    const { failed, sessionId } = await diedResuming([LISTING[0]])
-    expect(failed.message).toContain('the previous conversation is still resumable')
-    expect(failed.data).toEqual({ sessionId, resumeSessionId: HELD, exitCode: 1 })
-  })
-
-  it('a listing that cannot be read still reports the failure', async () => {
-    const { failed } = await diedResuming(new Error('claude agents failed'))
-    expect(failed.message).toContain('the previous conversation is still resumable')
-  })
-})
