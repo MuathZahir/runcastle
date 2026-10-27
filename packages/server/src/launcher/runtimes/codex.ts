@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
@@ -20,6 +21,7 @@ import { PRE_TOOL_MATCHER } from '../install-guard'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
 import type {
+  AcpLaunchSpec,
   AgentRuntimeAdapter,
   RuntimeLaunchInput,
   RuntimeLaunchSpec,
@@ -549,53 +551,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
   },
 
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {
-    const home = codexHomeDir(input.session.id)
-    mkdirSync(home, { recursive: true })
-    carryResumeRollouts(input.resumeSourceSessionId, home)
-
-    const configPath = join(home, 'config.toml')
-    const hooksPath = join(home, 'hooks.json')
-    const agentsPath = join(home, 'AGENTS.md')
-
-    writeFileSync(
-      configPath,
-      renderCodexConfig({
-        session: input.session,
-        config: input.config,
-        model: input.model,
-        worktreePath: input.worktreePath,
-        ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
-        // 'runcastleOnly' is isolation by construction — a synthetic home the
-        // human's servers were never written into.
-        ...(input.config.sessionMcp === 'inherit'
-          ? { inheritedMcpServers: readInheritedMcpServers() }
-          : {}),
-      }),
-      'utf8',
-    )
-    writeFileSync(
-      hooksPath,
-      JSON.stringify(renderCodexHooks(hookClientPath(), input.session.kind), null, 2),
-      'utf8',
-    )
-    // The adapter names the runtime the briefing is rendered for, so the prompt's
-    // skill spelling can never disagree with the CLI that is about to read it.
-    writeFileSync(agentsPath, renderSessionPrompt({ ...input, runtime: this.id }), 'utf8')
-
-    const files = [configPath, hooksPath, agentsPath]
-
-    // Auth is borrowed, not managed: `checkReady` already refused a launch with
-    // no credentials, and the smoke path (which skips it) simply gets a home
-    // without them.
-    const auth = realCodexAuthFile()
-    if (existsSync(auth)) {
-      const copied = join(home, 'auth.json')
-      copyFileSync(auth, copied)
-      files.push(copied)
-    }
-
-    files.push(...writeCodexSkills(input.worktreePath, resolvePluginDir()))
-
+    const { home, files } = writeCodexHome(input)
     return {
       files,
       argv: buildCodexArgs({
@@ -612,7 +568,94 @@ export const codexRuntime: AgentRuntimeAdapter = {
     }
   },
 
+  /**
+   * codex-acp (ADR-0015) starts `$CODEX_PATH app-server` with its own env, so
+   * the synthetic per-session `CODEX_HOME` written above is the one the app
+   * server reads config, hooks, AGENTS.md and auth from — same files, same
+   * home, only the entry point differs. The kickoff is the thread's first
+   * prompt and nothing is headless, so neither is read; the model and approval
+   * policy stay in `config.toml`.
+   */
+  async acpLaunch(input: RuntimeLaunchInput): Promise<AcpLaunchSpec> {
+    const { home, files } = writeCodexHome(input)
+    return {
+      files,
+      command: process.execPath,
+      args: [codexAcpEntry()],
+      env: {
+        CODEX_HOME: home,
+        CODEX_PATH: this.resolveBinary(),
+        RUNCASTLE_SESSION_ID: input.session.id,
+        RUNCASTLE_SERVER_URL: input.serverUrl,
+        NO_BROWSER: '1',
+      },
+      envScrub: [],
+      sessionMeta: {},
+    }
+  },
+
   kickoffLine(kind: SessionKind): string {
     return KICKOFF_LINES[kind]
   },
+}
+
+/** codex-acp's executable entry (`dist/index.js`), run by the current Bun — it starts under Bun as it does under node. */
+function codexAcpEntry(): string {
+  return createRequire(import.meta.url).resolve('@agentclientprotocol/codex-acp')
+}
+
+/**
+ * Write the session's Codex home — config.toml, hooks.json, AGENTS.md, the auth
+ * copy, the carried rollouts — and the worktree's skills. Shared by the argv
+ * launch and the ACP launch: both run the same CLI against the same home.
+ */
+function writeCodexHome(input: RuntimeLaunchInput): { home: string; files: string[] } {
+  const home = codexHomeDir(input.session.id)
+  mkdirSync(home, { recursive: true })
+  carryResumeRollouts(input.resumeSourceSessionId, home)
+
+  const configPath = join(home, 'config.toml')
+  const hooksPath = join(home, 'hooks.json')
+  const agentsPath = join(home, 'AGENTS.md')
+
+  writeFileSync(
+    configPath,
+    renderCodexConfig({
+      session: input.session,
+      config: input.config,
+      model: input.model,
+      worktreePath: input.worktreePath,
+      ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
+      // 'runcastleOnly' is isolation by construction — a synthetic home the
+      // human's servers were never written into.
+      ...(input.config.sessionMcp === 'inherit'
+        ? { inheritedMcpServers: readInheritedMcpServers() }
+        : {}),
+    }),
+    'utf8',
+  )
+  writeFileSync(
+    hooksPath,
+    JSON.stringify(renderCodexHooks(hookClientPath(), input.session.kind), null, 2),
+    'utf8',
+  )
+  // The adapter names the runtime the briefing is rendered for, so the prompt's
+  // skill spelling can never disagree with the CLI that is about to read it.
+  writeFileSync(agentsPath, renderSessionPrompt({ ...input, runtime: 'codex' }), 'utf8')
+
+  const files = [configPath, hooksPath, agentsPath]
+
+  // Auth is borrowed, not managed: `checkReady` already refused a launch with
+  // no credentials, and the smoke path (which skips it) simply gets a home
+  // without them.
+  const auth = realCodexAuthFile()
+  if (existsSync(auth)) {
+    const copied = join(home, 'auth.json')
+    copyFileSync(auth, copied)
+    files.push(copied)
+  }
+
+  files.push(...writeCodexSkills(input.worktreePath, resolvePluginDir()))
+
+  return { home, files }
 }
