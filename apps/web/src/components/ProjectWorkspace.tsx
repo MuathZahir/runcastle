@@ -9,6 +9,7 @@ import { Button, Page, PageHeader, PageTopbar } from '../ui'
 import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
 import { useThreadMenu } from '../lib/use-thread'
+import { threadInUrl, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn } from './chat/ThreadColumn'
@@ -91,7 +92,8 @@ export function ProjectWorkspace({
   })
   // What is in front of the chat column: `undefined` follows the newest running
   // chat (the resting list when none runs), `null` is the list, an id is that thread.
-  const [front, setFront] = useState<string | null | undefined>(undefined)
+  // A reload reopens the thread the address names.
+  const [front, setFront] = useState<string | null | undefined>(() => threadInUrl() ?? undefined)
   // The same key the Notes card reads, so knowing whether to offer it is free.
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The drive's scenario errands open their chat in this column too.
@@ -107,6 +109,7 @@ export function ProjectWorkspace({
   const fallback = talk.session?.id ?? null
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
   const inFront = front === undefined || closedErrand ? fallback : front
+  useThreadInUrl(inFront)
   const resting = inFront === null
   // The switcher always names what is in front, before the list has it.
   const threads = withStandIns(

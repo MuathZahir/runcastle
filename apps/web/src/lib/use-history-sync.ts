@@ -34,6 +34,33 @@ export function replacePath(path: string): void {
   window.history.replaceState(null, '', path)
 }
 
+/** The query key the open chat thread rides under (`/p/x/f/slug?thread=sess_…`). */
+const THREAD_PARAM = 'thread'
+
+/** The chat thread the address names, so a reload reopens it; null where it names none. */
+export function threadInUrl(): string | null {
+  return typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(THREAD_PARAM)
+}
+
+/**
+ * Keep the open chat thread in the address (chat-as-web-components ticket 17),
+ * so a reload lands on it. Picking a thread is not navigating: the address is
+ * replaced, never pushed, so Back still leaves the page. Rendered under the
+ * page, the column's effects run before {@link useHistorySync} moves the
+ * address to a new page, so the write waits for that move and lands on the
+ * page it belongs to; a page whose column says nothing keeps a clean address.
+ */
+export function useThreadInUrl(threadId: string | null): void {
+  useEffect(() => {
+    const write = setTimeout(() => {
+      if (threadInUrl() === threadId) return
+      const search = threadId ? `?${new URLSearchParams({ [THREAD_PARAM]: threadId })}` : ''
+      window.history.replaceState(window.history.state, '', `${currentPath()}${search}`)
+    }, 0)
+    return () => clearTimeout(write)
+  }, [threadId])
+}
+
 /**
  * Keep the address bar and `location` in step, both ways.
  *

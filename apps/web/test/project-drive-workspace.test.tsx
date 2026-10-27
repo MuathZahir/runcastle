@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote, ScenarioEntry, ThreadEntry } from '@runcastle/core'
 import type { ProjectSession } from '../src/lib/api'
@@ -208,6 +208,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // The thread a test opened rides in the address; the next test starts clean.
+  window.history.replaceState(null, '', '/')
 })
 
 /** Is this element in a part of the body the human can see? */
@@ -549,6 +551,20 @@ describe('a live project chat', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
+  })
+
+  it('keeps the chat in front in the address, and a reload reopens it', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/chat')
+    threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
+    mount(talk({ session: liveChat }))
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getAllByRole('menuitemradio')[1])
+    await waitFor(() => expect(window.location.search).toBe('?thread=sess_old'))
+    expect(window.location.pathname).toBe('/p/proj_1/chat')
+
+    cleanup()
+    mount(talk({ session: liveChat }))
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
   })
 
   it('renames the chat in front from its switcher: Enter saves through thread.rename, Escape cancels', () => {

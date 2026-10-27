@@ -109,6 +109,7 @@ function Page({ driveSessionId, scenario, sessions = [] }: { driveSessionId?: st
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  window.history.replaceState(null, '', '/')
 })
 
 const switcher = (): HTMLElement => screen.getByRole('button', { name: 'Thread' })
@@ -152,6 +153,22 @@ describe('the feature page’s thread switcher', () => {
     pick('An old side thread')
     expect(await within(column()).findByText('said in th_old')).toBeTruthy()
     expect(within(column()).queryByText('said in th_main')).toBeNull()
+  })
+
+  it('keeps the picked thread in the address, and a reload reopens it', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/f/login')
+    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
+    render(<Page />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    await waitFor(() => expect(options()).toHaveLength(2))
+    pick('An old side thread')
+    await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
+    expect(window.location.pathname).toBe('/p/proj_1/f/login')
+
+    cleanup()
+    render(<Page />, { wrapper: server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] }).Wrapper })
+    expect(await within(column()).findByText('said in th_old')).toBeTruthy()
+    expect(switcher().textContent).toContain('An old side thread')
   })
 
   it('makes a side thread with New thread and selects it', async () => {
