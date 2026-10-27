@@ -106,6 +106,13 @@ export interface AcpLaunchSpec {
   envScrub: readonly string[]
   /** The `_meta` sent with `session/new` and `session/load`. */
   sessionMeta: Record<string, unknown>
+  /**
+   * The ACP session mode the session must run in, set with `session/set_mode`
+   * when `session/new` / `session/load` reports another. claude-agent-acp
+   * ignores a permission mode in its `_meta` options and starts in the
+   * settings' default mode, so the launch's posture is applied this way.
+   */
+  sessionMode?: string
 }
 
 export interface AgentRuntimeAdapter {

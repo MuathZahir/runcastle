@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import type { SessionKind } from '@runcastle/core'
 import { createSystemExec } from '../../doctor/system-exec'
 import { resolveTool } from '../../util/resolve-executable'
@@ -7,6 +8,7 @@ import { kickoffLinesFor } from './skills'
 import {
   assertHeadlessKickoff,
   assertKickoffArgv,
+  type AcpLaunchSpec,
   type AgentRuntimeAdapter,
   type BackgroundSession,
   type RuntimeLaunchInput,
@@ -171,6 +173,14 @@ async function listClaudeAgents(): Promise<unknown> {
   }
 }
 
+/**
+ * claude-agent-acp's bin entry, resolved from this package's dependencies. Run
+ * by `process.execPath`: the adapter declares node ≥ 22, and Bun runs it as is.
+ */
+function claudeAcpEntry(): string {
+  return createRequire(import.meta.url).resolve('@agentclientprotocol/claude-agent-acp/dist/index.js')
+}
+
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
 const CLAUDE_BIN = 'claude'
 
@@ -239,6 +249,51 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
       },
       envScrub: CC_NESTING_ENV,
+    }
+  },
+
+  /**
+   * The conversation over ACP (ADR-0015): claude-agent-acp, run by the Bun
+   * this server runs on, drives the human's own `claude`
+   * (`CLAUDE_CODE_EXECUTABLE`) with the same briefing files the terminal
+   * launch writes. The files reach the CLI as flags through the Agent SDK's
+   * `extraArgs` (a `null` value is a bare flag); the model through its own
+   * option; the permission mode as the session mode, since the adapter does not
+   * read one from its options.
+   */
+  async acpLaunch(input: RuntimeLaunchInput): Promise<AcpLaunchSpec> {
+    const pluginDir = resolvePluginDir()
+    const files = await writeSessionArtifacts({ ...input, runtime: this.id }, pluginDir)
+    const permissionMode = input.permissionMode ?? 'acceptEdits'
+    return {
+      files: [files.systemPromptPath, files.settingsPath, files.mcpConfigPath],
+      command: process.execPath,
+      args: [claudeAcpEntry()],
+      env: {
+        CLAUDE_CODE_EXECUTABLE: this.resolveBinary(),
+        RUNCASTLE_SESSION_ID: input.session.id,
+        RUNCASTLE_SERVER_URL: input.serverUrl,
+        // As in writeArtifacts: no agent view, so nothing moves the conversation
+        // under CC's background supervisor.
+        CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+      },
+      envScrub: CC_NESTING_ENV,
+      sessionMeta: {
+        claudeCode: {
+          options: {
+            model: input.model,
+            permissionMode,
+            extraArgs: {
+              settings: files.settingsPath,
+              'mcp-config': files.mcpConfigPath,
+              'plugin-dir': pluginDir,
+              'append-system-prompt-file': files.systemPromptPath,
+              ...(input.config.sessionMcp === 'runcastleOnly' ? { 'strict-mcp-config': null } : {}),
+            },
+          },
+        },
+      },
+      sessionMode: permissionMode,
     }
   },
 

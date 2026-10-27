@@ -25,7 +25,7 @@ import {
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
 import { ptyExitMessage } from '../src/launcher/launcher'
-import type { RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
+import type { AcpLaunchSpec, RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
 import {
   CC_NESTING_ENV,
   KICKOFF_LINES,
@@ -1087,6 +1087,81 @@ describe('claudeRuntime.writeArtifacts', () => {
     for (const kind of SessionKind.options) {
       expect(claudeRuntime.kickoffLine(kind)).toBe(KICKOFF_LINES[kind])
     }
+  })
+})
+
+/**
+ * The same session over ACP (chat-as-web-components; ADR-0015): the adapter
+ * process, the CLI it drives, and the briefing files riding the session `_meta`
+ * as the flags the terminal launch passes.
+ */
+describe('claudeRuntime.acpLaunch', () => {
+  const created: string[] = []
+  afterEach(() => {
+    for (const id of created) rmSync(sessionDir(id), { recursive: true, force: true })
+    created.length = 0
+  })
+
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
+
+  async function acpSpec(extra: Partial<RuntimeLaunchInput> = {}): Promise<AcpLaunchSpec> {
+    const sess = session({ id: 'sess_acp_chat', kind: 'chat' })
+    created.push(sess.id)
+    return claudeRuntime.acpLaunch!({
+      session: sess,
+      project,
+      config,
+      feature: feature(),
+      worktreePath: 'C:\\wt\\dark-mode',
+      serverUrl: 'http://localhost:4512',
+      model: 'claude-sonnet-5',
+      ...extra,
+    })
+  }
+
+  it('runs the claude-agent-acp entry against the installed claude, with runcastle env and the nesting scrub', async () => {
+    const spec = await acpSpec()
+    expect(spec.command).toBe(process.execPath)
+    expect(spec.args).toHaveLength(1)
+    expect(spec.args[0].replace(/\\/g, '/')).toMatch(/@agentclientprotocol\/claude-agent-acp\/dist\/index\.js$/)
+    expect(existsSync(spec.args[0])).toBe(true)
+    expect(spec.env).toEqual({
+      CLAUDE_CODE_EXECUTABLE: claudeRuntime.resolveBinary(),
+      RUNCASTLE_SESSION_ID: 'sess_acp_chat',
+      RUNCASTLE_SERVER_URL: 'http://localhost:4512',
+      CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+    })
+    expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
+  })
+
+  it('carries the model, the permission mode and the briefing files in the session _meta', async () => {
+    const spec = await acpSpec()
+    const dir = sessionDir('sess_acp_chat')
+    expect(spec.files).toEqual([join(dir, 'system-prompt.md'), join(dir, 'settings.json'), join(dir, 'mcp.json')])
+    for (const file of spec.files) expect(existsSync(file)).toBe(true)
+    expect(spec.sessionMeta).toEqual({
+      claudeCode: {
+        options: {
+          model: 'claude-sonnet-5',
+          permissionMode: 'acceptEdits',
+          extraArgs: {
+            settings: join(dir, 'settings.json'),
+            'mcp-config': join(dir, 'mcp.json'),
+            'plugin-dir': resolvePluginDir(),
+            'append-system-prompt-file': join(dir, 'system-prompt.md'),
+          },
+        },
+      },
+    })
+    expect(spec.sessionMode).toBe('acceptEdits')
+  })
+
+  it('takes the launch posture and the strict MCP setting', async () => {
+    const spec = await acpSpec({ permissionMode: 'bypassPermissions', config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }) })
+    const options = (spec.sessionMeta.claudeCode as { options: { permissionMode: string; extraArgs: Record<string, string | null> } }).options
+    expect(options.permissionMode).toBe('bypassPermissions')
+    expect(spec.sessionMode).toBe('bypassPermissions')
+    expect(options.extraArgs['strict-mcp-config']).toBeNull()
   })
 })
 
