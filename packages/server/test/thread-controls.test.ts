@@ -6,7 +6,7 @@ import { foldThread, type AgentRuntime, type ThreadEvent } from '@runcastle/core
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { readThreadEvents, type AgentHost } from '../src/threads/types'
+import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
@@ -54,9 +54,13 @@ function setup(script: FakeScript = {}): void {
 function chat(opts: { runtime?: AgentRuntime; worktreePath?: string; kind?: 'chat' | 'project' } = {}): string {
   const model = opts.runtime === 'codex' ? { model: { id: 'gpt-5.5', runtime: 'codex' as const } } : {}
   const worktreePath = opts.worktreePath ?? '/wt'
-  return opts.kind === 'project'
-    ? createSessionRow(ctx, { projectId, kind: 'project', worktreePath, ...model }).id
-    : createSessionRow(ctx, { featureId, kind: 'chat', worktreePath, ...model }).id
+  const id =
+    opts.kind === 'project'
+      ? createSessionRow(ctx, { projectId, kind: 'project', worktreePath, ...model }).id
+      : createSessionRow(ctx, { featureId, kind: 'chat', worktreePath, ...model }).id
+  // A thread already begun: the first send to an empty one sends its kind's kickoff first (ticket 4).
+  appendThreadEvent(id, { type: 'process', state: 'stopped' })
+  return id
 }
 
 async function logUntil(id: string, done: (events: ThreadEvent[]) => boolean): Promise<ThreadEvent[]> {
