@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
-import { IconArrowRight, IconChevronDown, IconMessage, IconSearch } from '../../icons'
-import { Button, EmptyState, IconButton, List, ListRow, PageSection, StatusDot, TextField } from '../../ui'
-import type { ProjectConversation } from '../../lib/api'
-import { conversationTitle } from '../../lib/conversation-title'
-import { relTime } from '../../lib/format'
+import { IconChevronDown, IconMessage, IconSearch } from '../../icons'
+import { Button, EmptyState, List, ListRow, PageSection, TextField } from '../../ui'
+import type { ThreadEntry } from '../../lib/chat-thread'
+import { ThreadStateMark, threadStateWords } from '../chat/thread/ThreadState'
 
 /** Rows shown before "Show all" — a page, not the whole history. */
 const PAGE = 10
@@ -11,47 +10,35 @@ const PAGE = 10
 const FILTER_AT = 8
 
 /**
- * Every conversation this project has had, newest first, the live one on top
- * (decisions.md #6).
+ * Every chat this project has had, newest activity first (decisions.md #6) —
+ * the same threads, names and states as the header's thread list
+ * (chat-as-web-components decision 14), both read from `thread.list`.
  *
- * A row is a title, when it was, and whether it is still open — nothing else.
- * The row itself opens the transcript, which is the thing a returning human
- * actually wants from a list of past chats; opening one as its thread is the
- * deliberate act, so it is an icon button that appears on hover or focus rather
- * than a second permanent control competing with the title beside it.
- *
- * Titles are the first thing typed, so they are cleaned for display
- * (`conversationTitle`): pasted markup and terminal escapes are not a name.
+ * A row is a name, and whether the chat is working, waiting for you, or how
+ * long it has been idle — nothing else. The row opens the chat as its thread at
+ * once (decision 7); a message picks a finished one back up.
  */
 export function ConversationList({
-  conversations,
+  threads,
   pending,
-  busy,
   onOpen,
-  onView,
+  now,
 }: {
-  conversations: ProjectConversation[]
+  threads: readonly ThreadEntry[]
   /** Still fetching for the first time — distinct from "there are none". */
   pending: boolean
-  busy: boolean
-  onOpen: (sessionId: string) => void
-  onView: (conversation: ProjectConversation) => void
+  onOpen: (threadId: string) => void
+  now?: number
 }) {
   const [query, setQuery] = useState('')
   const [all, setAll] = useState(false)
 
-  const sorted = useMemo(
-    () =>
-      [...conversations]
-        .sort((a, b) => Number(b.status !== 'ended') - Number(a.status !== 'ended'))
-        .map((c) => ({ c, title: conversationTitle(c.title) })),
-    [conversations],
-  )
+  const sorted = useMemo(() => [...threads].sort((a, b) => b.updatedAt - a.updatedAt), [threads])
 
   if (pending) return null
 
   const q = query.trim().toLowerCase()
-  const matching = q ? sorted.filter((r) => r.title.toLowerCase().includes(q)) : sorted
+  const matching = q ? sorted.filter((t) => t.title.toLowerCase().includes(q)) : sorted
   const shown = all || q ? matching : matching.slice(0, PAGE)
   const hidden = matching.length - shown.length
 
@@ -59,7 +46,7 @@ export function ConversationList({
     <PageSection
       title="Chats"
       action={
-        conversations.length > FILTER_AT ? (
+        threads.length > FILTER_AT ? (
           <TextField
             icon={<IconSearch />}
             placeholder="Filter"
@@ -74,7 +61,7 @@ export function ConversationList({
         ) : undefined
       }
     >
-      {conversations.length === 0 ? (
+      {threads.length === 0 ? (
         <EmptyState
           compact
           icon={<IconMessage />}
@@ -85,32 +72,16 @@ export function ConversationList({
         <EmptyState compact icon={<IconSearch />} title="No chat matches" hint={`Nothing titled “${query.trim()}”.`} />
       ) : (
         <List label="Chats">
-          {shown.map(({ c, title }, i) => {
-            const live = c.status !== 'ended'
-            return (
-              <ListRow
-                key={c.id}
-                index={i}
-                leading={live ? <StatusDot tone="live" label={c.status} /> : <IconMessage />}
-                title={title}
-                meta={c.createdAt === null ? undefined : relTime(c.createdAt)}
-                onClick={() => onView(c)}
-                actionsOverlay
-                actions={
-                  // Every chat opens as its thread at once (chat-as-web-components
-                  // decision 7); a message picks a finished one back up.
-                  <IconButton
-                    size="sm"
-                    label="Open"
-                    aria-label="Open"
-                    icon={<IconArrowRight />}
-                    disabled={busy}
-                    onClick={() => onOpen(c.id)}
-                  />
-                }
-              />
-            )
-          })}
+          {shown.map((t, i) => (
+            <ListRow
+              key={t.id}
+              index={i}
+              leading={t.state === 'idle' ? <IconMessage /> : <ThreadStateMark state={t.state} />}
+              title={t.title}
+              meta={threadStateWords(t.state, t.updatedAt, now)}
+              onClick={() => onOpen(t.id)}
+            />
+          ))}
         </List>
       )}
       {hidden > 0 && (

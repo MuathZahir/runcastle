@@ -1,23 +1,21 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 import type { ProjectSession } from '../src/lib/api'
 
 /**
  * The Triage door (decisions.md #6): the Notes card's button opens a project
- * chat briefed to triage the open notes, and the same open-it / replace-it
- * choice New chat offers stands in its way when a chat is already live.
+ * chat briefed to triage the open notes — its own new thread, beside any chat
+ * already running (chat-as-web-components decision 14).
  *
  * Tier 2: the assertions are the arguments a click sends to `talkToProject` and
- * the notice that appears in front of it — neither is a string the resting
- * markup carries.
+ * the thread it brings to the front — neither is a string the resting markup
+ * carries.
  */
 
 const launch = vi.fn()
-const endSession = vi.fn()
 const notes = vi.fn<() => ProjectNote[]>(() => [])
-let endOptions: { onSuccess?: () => void } = {}
 let session: ProjectSession | null = null
 
 vi.mock('../src/trpc', () => {
@@ -26,7 +24,7 @@ vi.mock('../src/trpc', () => {
   return {
     trpc: {
       useUtils: () => ({
-        project: { projectSession: { invalidate }, conversations: { invalidate } },
+        project: { projectSession: { invalidate } },
         projectNotes: { invalidate },
         thread: { list: { invalidate } },
       }),
@@ -40,7 +38,6 @@ vi.mock('../src/trpc', () => {
         branches: { useQuery: query({ current: 'main', detected: 'main', branches: ['main'] }) },
         testDrive: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
         projectSession: { useQuery: () => ({ data: session, isPending: false }) },
-        conversations: { useQuery: query([]) },
         talkToProject: { useMutation: () => ({ mutate: launch, isPending: false }) },
       },
       projectNotes: {
@@ -55,12 +52,7 @@ vi.mock('../src/trpc', () => {
         driveInfo: { useQuery: query(null) },
         driveScenarios: { useQuery: query({ runnerConfigured: false, scenarios: [] }) },
         // The map's drive doors, which this page answers but no test here asks.
-        endSession: {
-          useMutation: (opts: { onSuccess?: () => void }) => {
-            endOptions = opts
-            return { mutate: endSession, isPending: false }
-          },
-        },
+        endSession: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       },
     },
   }
@@ -114,49 +106,24 @@ afterEach(() => {
 })
 
 describe('useProjectTalk', () => {
-  it('opens a triage chat with the purpose on the wire', () => {
-    const { result } = renderHook(() => useProjectTalk('proj_1'))
-    result.current.triage()
-    expect(launch).toHaveBeenCalledWith({ projectId: 'proj_1', purpose: 'triage' })
-  })
-
-  /**
-   * Replacing from the Triage door has to open the chat the human asked for —
-   * the relaunch happens a render later, in `endSession`'s callback, with
-   * nothing of the click left to read unless the purpose is carried.
-   */
-  it('carries the purpose through an end-and-replace', () => {
+  // decision 14: beside any chat already running, so a live one changes nothing.
+  it('opens a triage chat with the purpose on the wire, and hands on its thread', () => {
     session = live
     const { result } = renderHook(() => useProjectTalk('proj_1'))
-
-    result.current.replace('triage')
-    expect(endSession).toHaveBeenCalledWith({ sessionId: 'sess_1' })
-    endOptions.onSuccess?.()
-    expect(launch).toHaveBeenCalledWith({
-      projectId: 'proj_1',
-      fresh: true,
-      purpose: 'triage',
-    })
-
-    // a plain New chat replacement is still plain
-    launch.mockClear()
-    result.current.replace()
-    endOptions.onSuccess?.()
-    expect(launch).toHaveBeenCalledWith({ projectId: 'proj_1', fresh: true })
+    const opened = vi.fn()
+    result.current.triage(opened)
+    expect(launch).toHaveBeenCalledWith({ projectId: 'proj_1', purpose: 'triage' }, expect.anything())
+    launch.mock.calls[0][1].onSuccess({ sessionId: 'sess_triage' })
+    expect(opened).toHaveBeenCalledWith('sess_triage')
   })
 })
 
 describe('the project workspace at rest', () => {
-  const talk = (over: Partial<ReturnType<typeof useProjectTalk>> = {}) => ({
+  const talk = (over: Partial<ReturnType<typeof useProjectTalk>> = {}): ReturnType<typeof useProjectTalk> => ({
     session: null,
-    state: 'none' as const,
-    conversations: [],
-    conversationsPending: false,
-    start: vi.fn(),
+    state: 'none',
     triage: vi.fn(),
-    replace: vi.fn(),
-    begin: vi.fn(),
-    starting: false,
+    triaging: false,
     ...over,
   })
 
@@ -187,19 +154,19 @@ describe('the project workspace at rest', () => {
     expect(api.triage).toHaveBeenCalledTimes(1)
   })
 
-  /** One live chat per project, so the Triage click asks before it replaces. */
-  it('offers the open / replace choice when a chat is already live', () => {
+  /** decision 14: no "end it and start new" — the triage chat runs beside the live one. */
+  it('opens its own new thread when a chat is already live, with no notice', () => {
     const api = talk({ session: live })
     render(<ProjectWorkspace projectId="proj_1" talk={api} />)
 
     // the live conversation owns the body; the inbox is a step back from it
     fireEvent.click(screen.getByRole('button', { name: 'acme' }))
     fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
-    expect(api.triage).not.toHaveBeenCalled()
-    expect(screen.getByRole('status').textContent).toContain('A chat is already open.')
+    expect(api.triage).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'End it and start new' }))
-    expect(api.replace).toHaveBeenCalledWith('triage')
+    act(() => vi.mocked(api.triage).mock.calls[0][0]('sess_triage'))
+    expect(document.querySelector<HTMLElement>('[data-thread-column]')?.dataset.thread).toBe('sess_triage')
   })
 
   /** Capture's View asks for the inbox; a live chat must not hide it. */

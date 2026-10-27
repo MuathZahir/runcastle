@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FeatureFull } from '../../lib/api'
-import { UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../../lib/chat-sessions'
+import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../../lib/chat-sessions'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { mainChatInbox, subscribeInbox } from '../../lib/composer-inbox'
 import { featureChat } from '../../lib/feature-ui'
@@ -67,13 +67,15 @@ export function useFeatureChatColumn({
     onError: (e) => toast.push(e.message),
   })
 
+  // A thread the list does not hold yet has nothing said in it: "New chat",
+  // never its kind (decision 14).
   const threads = withStandIns(listed, [
-    standIn(main ?? UNSTARTED_CHAT, 'Feature chat', 'main'),
+    standIn(main ?? UNSTARTED_CHAT, NEW_CHAT_NAME, 'main'),
     ...(inFront && inFront !== main
       ? [
           inFront === scenario.sessionId
             ? standIn(inFront, scenarioChatLabel(scenario.errand), 'scenario')
-            : standIn(inFront, 'New thread', 'side'),
+            : standIn(inFront, NEW_CHAT_NAME, 'side'),
         ]
       : []),
   ])

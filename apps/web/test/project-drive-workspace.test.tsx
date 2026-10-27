@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote, ScenarioEntry, ThreadEntry } from '@runcastle/core'
-import type { ProjectConversation, ProjectSession } from '../src/lib/api'
+import type { ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 import { openMenu } from './floating'
 
@@ -168,13 +168,8 @@ const { ProjectWorkspace } = await import('../src/components/ProjectWorkspace')
 const talk = (over: Partial<ProjectTalkApi> = {}): ProjectTalkApi => ({
   session: null,
   state: 'none',
-  conversations: [],
-  conversationsPending: false,
-  start: vi.fn(),
   triage: vi.fn(),
-  replace: vi.fn(),
-  begin: vi.fn(),
-  starting: false,
+  triaging: false,
   ...over,
 })
 
@@ -421,23 +416,14 @@ const threadSwitcher = (): HTMLElement => screen.getByRole('button', { name: 'Th
  * decision 7): it opens at once, with no Resume and nothing to end.
  */
 describe('a finished project chat', () => {
-  const ended = {
-    id: 'sess_old',
-    title: '',
-    createdAt: 1_000,
-    status: 'ended',
-    resumable: true,
-  } as ProjectConversation
-
   it('opens as its thread from the list, named in the header’s switcher, with no Resume or End session', () => {
-    threads = [entry('sess_old', 'Untitled chat')]
-    const api = talk({ conversations: [ended] })
-    mount(api)
-    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
+    threads = [entry('sess_old', 'Plan the audit')]
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Plan the audit/ }))
 
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
     expect(threadSwitcher().closest('header')).toBeTruthy()
-    expect(threadSwitcher().textContent).toContain('Untitled chat')
+    expect(threadSwitcher().textContent).toContain('Plan the audit')
     openMenu(threadSwitcher())
     expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
@@ -445,45 +431,89 @@ describe('a finished project chat', () => {
   })
 
   it('steps back to the project page from its crumb', () => {
-    mount(talk({ conversations: [ended] }))
-    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
+    threads = [entry('sess_old', 'Plan the audit')]
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Plan the audit/ }))
     fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     expect(restShown()).toBe(true)
     expect(chatInFront()).toBeNull()
   })
+})
 
-  it('opens New chat as an empty thread, nothing launched until its first message', () => {
-    const api = talk()
-    mount(api)
+/**
+ * chat-as-web-components decision 14: every new-chat door opens an empty new
+ * thread, whatever else is running — no "a chat is already open" notice.
+ */
+describe('New chat with a chat running', () => {
+  const running = (): void => {
+    threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
+  }
+
+  it('opens an empty new thread from the New chat row, with no notice', () => {
+    running()
+    mount(talk({ session: liveChat }))
+    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
-    expect(chatInFront()?.dataset.thread).toBe('new')
-    expect(api.start).not.toHaveBeenCalled()
+
+    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
+    expect(chatInFront()?.dataset.thread).toBe('th_new')
+    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
+    // named "New chat" until something is said in it, never by its kind
+    expect(threadSwitcher().textContent).toContain('New chat')
   })
 
-  // The project page's New door (ProjectShell) asks through `newChatRequest`.
-  it('opens the New door as an empty thread too, nothing launched', () => {
-    const api = talk()
+  // The project page's New door (ProjectShell, the sidebar's Create menu) asks through `newChatRequest`.
+  it('opens an empty new thread from the New door too', () => {
+    running()
     const consumed = vi.fn()
-    render(<ProjectWorkspace projectId="proj_1" talk={api} newChatRequest={1} onConsumeNewChatRequest={consumed} />)
-    expect(chatInFront()?.dataset.thread).toBe('new')
-    expect(api.start).not.toHaveBeenCalled()
+    render(<ProjectWorkspace projectId="proj_1" talk={talk({ session: liveChat })} newChatRequest={1} onConsumeNewChatRequest={consumed} />)
+    expect(threadNew).toHaveBeenCalledTimes(1)
+    expect(chatInFront()?.dataset.thread).toBe('th_new')
     expect(consumed).toHaveBeenCalled()
+  })
+
+  it('opens an empty new thread from the switcher’s New thread the same way', () => {
+    running()
+    mount(talk({ session: liveChat }))
+    openMenu(threadSwitcher())
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
+    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
+    expect(chatInFront()?.dataset.thread).toBe('th_new')
+  })
+
+  it('lists the same threads, names and states on the page as in the switcher', () => {
+    threads = [
+      { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
+      { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting' },
+      entry('sess_old', 'An older idea'),
+    ]
+    mount(talk({ session: liveChat }))
+    openMenu(threadSwitcher())
+    const inSwitcher = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
+    const onPage = [...document.querySelectorAll('[aria-label="Chats"] [data-list-row]')].map((row) => row.textContent ?? '')
+
+    expect(onPage).toHaveLength(3)
+    const expected = [
+      ['Audit the journal', 'working'],
+      ['Cut the export idea', 'waiting for you'],
+      ['An older idea', 'd'],
+    ]
+    expected.forEach(([name, state], i) => {
+      for (const row of [inSwitcher[i], onPage[i]]) {
+        expect(row).toContain(name)
+        expect(row).toContain(state)
+      }
+    })
   })
 })
 
 /** design-mode decision 11: the project page is chat-first, in the feature page's pieces. */
 describe('a live project chat', () => {
-  const liveRow = {
-    id: 'sess_1',
-    title: 'Audit the journal',
-    createdAt: 1_000,
-    status: 'live',
-    resumable: true,
-  } as ProjectConversation
-
   it('fills the chat column, with the drive opening beside it in the panel', () => {
     slot = LIVE
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     expect(chatInFront()?.dataset.thread).toBe('sess_1')
     expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
@@ -505,7 +535,7 @@ describe('a live project chat', () => {
 
   it('lists every chat of the project in its switcher, each opening its thread, and New thread selects a new one', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     expect(threadSwitcher().textContent).toContain('Audit the journal')
 
     openMenu(threadSwitcher())
@@ -523,7 +553,7 @@ describe('a live project chat', () => {
 
   it('renames the chat in front from its switcher: Enter saves through thread.rename, Escape cancels', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     openMenu(threadSwitcher())
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const field = screen.getByRole('textbox', { name: 'Thread name' }) as HTMLInputElement
@@ -546,7 +576,7 @@ describe('a live project chat', () => {
     URL.createObjectURL = vi.fn(() => 'blob:md')
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     openMenu(threadSwitcher())
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export as Markdown' }))
     await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
@@ -557,17 +587,8 @@ describe('a live project chat', () => {
     click.mockRestore()
   })
 
-  it('offers no Rename or Export for a new chat that has no thread yet', () => {
-    const api = talk()
-    mount(api)
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
-    openMenu(threadSwitcher())
-    expect(screen.queryByRole('menuitem', { name: 'Rename…' })).toBeNull()
-    expect(screen.queryByRole('menuitem', { name: 'Export as Markdown' })).toBeNull()
-  })
-
   it('has one header row, and no End session in its switcher', () => {
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     expect([...document.querySelectorAll('header')].filter(shown)).toHaveLength(1)
     openMenu(threadSwitcher())
     expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
@@ -583,7 +604,7 @@ describe('a live project chat', () => {
   })
 
   it('starts the project test drive from the topbar without leaving the chat', () => {
-    const { rerender } = mount(talk({ session: liveChat, conversations: [liveRow] }))
+    const { rerender } = mount(talk({ session: liveChat }))
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
     expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
     rerender()
@@ -599,7 +620,7 @@ describe('a live project chat', () => {
 
   it('names the holder on a disabled topbar Test drive while another drive has the slot', () => {
     slot = { ...LIVE, projectDrive: undefined, projectId: undefined, holderLabel: 'a test drive of feature/streaks' }
-    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    mount(talk({ session: liveChat }))
     const button = screen.getByRole('button', { name: 'Test drive' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
     expect(button.title).toBe('A test drive of feature/streaks is running')

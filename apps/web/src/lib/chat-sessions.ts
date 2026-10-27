@@ -14,6 +14,9 @@ export function scenarioChatLabel(errand: ScenarioErrand): string {
   return `Scenario chat · ${errand.kind === 'fix' ? `Fix ${errand.name}` : 'New scenario'}`
 }
 
+/** What a thread with nothing said in it is called, as `thread.list` names it (decision 14). */
+export const NEW_CHAT_NAME = 'New chat'
+
 /** The switcher's id for a feature chat nobody has started yet: it has no thread id until its first message. */
 export const UNSTARTED_CHAT = 'unstarted'
 
