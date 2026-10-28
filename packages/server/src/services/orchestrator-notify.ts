@@ -2,20 +2,19 @@ import type { EventRow, Project, SessionRow, Ticket } from '@runcastle/core'
 import { type SQL, and, asc, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features, sessions, tickets } from '../db/schema'
-import { activeProjectSession, getSessionRow } from '../launcher/sessions'
+import { getSessionRow, newestThread } from '../launcher/sessions'
+import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { getEventRow } from './events'
-import { deliveryFor } from './orchestrator-delivery'
-import { queueOrchestratorLine } from './orchestrator-messages'
 import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
 /**
  * What the orchestrator hears about the features it follows
  * (`whole-cuts-plan-themselves` decisions 11, 13, 20; `one-orchestrator-no-mode`
- * decision 3): one `[runcastle]` line delivered into the live project session
- * (see `orchestrator-delivery.ts`), and a catch-up list in its briefing when the
- * human reopens it.
+ * decision 3): one `[runcastle]` line said into the project's newest thread as
+ * a runcastle prompt ({@link notifyOrchestrator}), and a catch-up list in the
+ * briefing of a new project conversation.
  *
  * A feature is FOLLOWED while it is not shipped and at least one of its events
  * carries `actor: 'orchestrator'` — one the orchestrator created, messaged,
@@ -35,7 +34,7 @@ import { getTicket } from './tickets'
  * | Event type                        | Kind | When                                        |
  * |-----------------------------------|------|---------------------------------------------|
  * | `session.self_plan_ended`         | end  | a self-planning run exited (`data.complete`) |
- * | `session.run_ended`               | end  | a headless run exited                       |
+ * | `session.run_ended`               | end  | a headless run exited (rows before threads) |
  * | `run.finished`                    | end  | a round finished or failed (`data.status`)  |
  * | `feature.waiting`                 | end  | the agent waits for the human (`data.why`)  |
  * | `feature.ready_declared`          | end  | the agent declared the work ready to test   |
@@ -44,8 +43,9 @@ import { getTicket } from './tickets'
  * | `feature.shipped`                 | end  | a merge landed                              |
  * | `merge.conflict`                  | end  | a merge conflicted                          |
  * | `testdrive.dev_failed`            | end  | a drive's dev server failed to start        |
- * | `session.launched`                | act  | a session with a terminal opened            |
- * | `session.pty_exited`              | act  | a session with a terminal ended             |
+ * | `session.launching`               | act  | a self-planning run was launched            |
+ * | `session.process_started`         | act  | the human's message started a thread        |
+ * | `session.process_stopped`         | act  | that thread's process stopped               |
  * | `testdrive.started` / `.stopped`  | act  | a test drive (not the review agent's)       |
  *
  * A merge is its landing or conflict above. Project-level events produce nothing.
@@ -173,16 +173,18 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
     }
     case 'testdrive.dev_failed':
       return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
-    case 'session.launched':
-      // A lead woken headless is runcastle delivering to it, not the human acting.
-      // A side session never makes the feature busy: it holds no terminal slot.
-      if (!session || session.purpose === 'lead-wake' || session.kind === 'side') return null
-      if (isHeadless(session)) return { kind: 'act', text: `the human had it plan itself. Wait for the run to end.` }
-      return { kind: 'act', text: `the human opened a ${session.kind} session on it; it is busy until that session ends.` }
-    case 'session.pty_exited':
-      // A headless run's end is its own END event above.
-      if (!session || isHeadless(session) || session.kind === 'side') return null
-      return { kind: 'act', text: `the human's ${session.kind} session on it ended; it is free again. ${context}` }
+    case 'session.launching':
+      // Plan it yourself is the human's act; its end is its own END event above.
+      if (!session || session.purpose !== 'self-plan') return null
+      return { kind: 'act', text: `the human had it plan itself. Wait for the run to end.` }
+    case 'session.process_started':
+      // A thread runcastle started (a wake, a kickoff) is runcastle delivering, not the human acting.
+      // A side thread never makes the feature busy.
+      if (!session || data.source !== 'human' || session.kind === 'side' || isHeadless(session)) return null
+      return { kind: 'act', text: `the human is talking to its ${session.kind} thread; it is busy until that conversation goes quiet.` }
+    case 'session.process_stopped':
+      if (!session || data.startedBy !== 'human' || session.kind === 'side' || isHeadless(session)) return null
+      return { kind: 'act', text: `the human's ${session.kind} conversation on it went quiet; it is free again. ${context}` }
     case 'testdrive.started':
       if (data.purpose === 'review') return null
       return { kind: 'act', text: `the human started a test drive of it.` }
@@ -244,20 +246,44 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
 }
 
 /**
- * Add the line for one event to the project's live orchestrator's pending
- * message and kick its runtime's delivery (decision 20). Best effort: nothing
- * is retried, and nothing here throws into the emitter.
+ * How long lines are gathered, from the first one, before they go: a burn's
+ * review ticket and the burn itself end ~20 ms apart, and two prompts would be
+ * two turns for what ended together.
+ */
+export const ORCHESTRATOR_GATHER_MS = 300
+
+/** Lines gathering per orchestrator thread, until their prompt goes. */
+const gathering = new Map<string, string[]>()
+
+/**
+ * Add the line for one event to what the project's orchestrator hears next
+ * (decision 20; chat-as-web-components decision 6): its newest project
+ * thread, as one runcastle prompt with a line per event, queued to the end of a
+ * running turn and starting the thread when no process runs. A project with no
+ * conversation yet has no orchestrator to tell; the catch-up briefs its first.
+ * Best effort: nothing is retried, and nothing here throws into the emitter.
  */
 function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
   try {
-    const orchestrator = activeProjectSession(ctx, projectId, 'project')
+    const orchestrator = newestThread(ctx, { projectId }, 'project')
     if (!orchestrator) return
     const event = getEventRow(ctx, eventId)
     if (!event) return
     const line = orchestratorLineFor(event, stateFor(ctx, event))
     if (!line) return
-    queueOrchestratorLine(orchestrator.id, line)
-    deliveryFor(orchestrator).kick(orchestrator)
+    const lines = gathering.get(orchestrator.id)
+    if (lines) {
+      lines.push(line)
+      return
+    }
+    gathering.set(orchestrator.id, [line])
+    setTimeout(() => {
+      const batch = gathering.get(orchestrator.id) ?? []
+      gathering.delete(orchestrator.id)
+      agentHost(ctx)
+        .prompt(orchestrator.id, { text: batch.join('\n') }, { source: 'runcastle' })
+        .catch((err) => console.error('orchestrator notifier failed', err))
+    }, ORCHESTRATOR_GATHER_MS).unref?.()
   } catch (err) {
     console.error('orchestrator notifier failed', err)
   }

@@ -8,17 +8,19 @@ import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
-import { handlePtyExit, launchSession } from '../src/launcher/launcher'
+import { launchSession } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
 import { createFeatureBranch, isAncestor } from '../src/services/git'
-import { getFeatureRow } from '../src/services/repo'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { createAgentHost } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 
 /**
  * The resolve-conflict exemption (decisions 1 + 5). "Resolve with agent" and
@@ -315,7 +317,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     })
   })
 
-  it('probes a codex resolve-conflict merge at PTY exit, not SessionEnd', async () => {
+  it('probes a codex resolve-conflict merge when its thread’s process stops, not at SessionEnd', async () => {
     landTheMerge()
     const id = createSessionRow(ctx, {
       featureId,
@@ -330,7 +332,10 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     expect(resolved()).toHaveLength(0)
     expect(getSessionRow(ctx, id)?.status).toBe('launching')
 
-    handlePtyExit(ctx, getFeatureRow(ctx, featureId), getSessionRow(ctx, id)!, {}, 0)
+    const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    await host.prompt(id, { text: 'resolve it' }, { source: 'runcastle' })
+    await vi.waitFor(() => expect(getSessionRow(ctx, id)?.status).toBe('live'))
+    await host.stop(id, 'idle')
     await vi.waitFor(() => expect(resolved()).toHaveLength(1))
     expect(getSessionRow(ctx, id)?.status).toBe('ended')
   })

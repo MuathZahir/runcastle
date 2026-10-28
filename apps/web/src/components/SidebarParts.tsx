@@ -3,6 +3,8 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
+import type { ThreadState } from '../lib/chat-thread'
+import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
   needsMe,
   progressState,
@@ -409,16 +411,16 @@ export function WorkingShelf({
  */
 export function OrchestratorCard({
   status,
-  waiting,
+  state,
   active,
   onOpen,
   actions,
   title,
 }: {
-  /** The second line: what it holds ("Waiting on you · 2 notes"). */
+  /** The second line: what it holds ("Waiting for you · 2 notes"). */
   status: string
-  /** The project conversation waits on you: the amber dot. */
-  waiting: boolean
+  /** Its chats' state, marked as every thread list marks it: a spinner working, the amber dot waiting. */
+  state: ThreadState
   active: boolean
   onOpen: () => void
   actions: FeatureAction[]
@@ -462,7 +464,7 @@ export function OrchestratorCard({
           </span>
         </span>
         <span className="flex items-center gap-2 transition-opacity duration-(--dur-1) group-hover/nav:opacity-0">
-          {waiting && <StatusDot tone="warning" />}
+          <ThreadStateMark state={state} />
           <IconChevronRight size={14} className="text-icon" />
         </span>
       </button>

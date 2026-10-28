@@ -68,6 +68,21 @@ describe('useHistorySync', () => {
     expect(window.history.length).toBe(before)
   })
 
+  it('keeps a loaded link’s open thread while squaring up its page, and leaves it behind on going elsewhere', () => {
+    window.history.replaceState(null, '', '/p/p1/f/alpha?thread=th_side')
+    render(<Harness start={{ kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'chat' }} />)
+    expect(`${path()}${window.location.search}`).toBe('/p/p1/f/alpha/chat?thread=th_side')
+
+    go('beta')
+    expect(`${path()}${window.location.search}`).toBe('/p/p1/f/beta')
+  })
+
+  it('drops the open thread when the load lands on another page than the address named', () => {
+    window.history.replaceState(null, '', '/p/p1/f/gone?thread=th_side')
+    render(<Harness start={{ kind: 'feature', projectId: 'p1', featureSlug: 'alpha' }} />)
+    expect(`${path()}${window.location.search}`).toBe('/p/p1/f/alpha')
+  })
+
   it('writes nothing at all while the location is still unknown', () => {
     render(<Harness />)
     expect(path()).toBe('/')

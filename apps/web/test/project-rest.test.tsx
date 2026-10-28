@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { TranscriptBubbles } from '../src/components/ConversationTranscript'
 import { ConversationList } from '../src/components/project/ConversationList'
 import { NewChatCard } from '../src/components/project/NewChatCard'
-import type { ProjectConversation } from '../src/lib/api'
+import type { ThreadEntry } from '../src/lib/chat-thread'
 import type { SessionBranchApi } from '../src/lib/use-session-branch'
 
 /**
@@ -40,12 +40,16 @@ const buttonTag = (html: string, label: string): string => {
   return html.slice(start, html.indexOf('>', start) + 1)
 }
 
-const conversation = (over: Partial<ProjectConversation> = {}): ProjectConversation => ({
+const NOW = 1_700_000_000_000
+const HOUR = 60 * 60 * 1000
+
+const chat = (over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   id: 'sess_1',
   title: 'Read the audit handoff and turn it into features',
-  createdAt: Date.now() - 3 * 60 * 60 * 1000,
-  status: 'ended',
-  resumable: true,
+  role: 'project',
+  state: 'idle',
+  updatedAt: NOW - 3 * HOUR,
+  runtime: 'claude-code',
   ...over,
 })
 
@@ -104,65 +108,42 @@ describe('NewChatCard', () => {
 })
 
 describe('ConversationList', () => {
-  const render = (conversations: ProjectConversation[], pending = false) =>
-    renderToStaticMarkup(
-      <ConversationList
-        conversations={conversations}
-        pending={pending}
-        busy={false}
-        onResume={() => {}}
-        onView={() => {}}
-      />,
-    )
+  const render = (threads: ThreadEntry[], pending = false) =>
+    renderToStaticMarkup(<ConversationList threads={threads} pending={pending} onOpen={() => {}} now={NOW} />)
 
-  it('shows a title, when it was, and the way back into it', () => {
-    const html = render([conversation()])
+  it('shows a name and how long the chat has been idle', () => {
+    const html = render([chat()])
     expect(html).toContain('Read the audit handoff and turn it into features')
-    expect(html).toContain('3h')
-    expect(html).toContain('Reopen')
+    expect(html).toContain('>3h<')
   })
 
-  // Reopening is the deliberate act; the row's own job is to open the transcript.
-  it('keeps Reopen out of the way until the row is hovered or focused', () => {
-    const html = render([conversation()])
-    expect(html).toContain('opacity-0')
-    expect(html).toContain('group-hover/row:opacity-100')
-    expect(html).toContain('group-focus-within/row:opacity-100')
-  })
-
-  // Titles are the first thing typed: pasted markup and escapes are not a name.
-  it('cleans raw pasted markup out of a title, and names an empty one', () => {
-    const html = render([
-      conversation({ id: 'a', title: '<pasted_content id="8dcd"> ## Problem: the image is stale' }),
-      conversation({ id: 'b', title: 'Untitled' }),
-    ])
-    expect(html).toContain('>Problem: the image is stale<')
-    expect(html).not.toContain('pasted_content')
-    expect(html).toContain('>Untitled chat<')
+  it('lists the newest activity first', () => {
+    const html = render([chat({ id: 'a', title: 'Older', updatedAt: NOW - 5 * HOUR }), chat({ id: 'b', title: 'Newer', updatedAt: NOW - HOUR })])
+    expect(html.indexOf('Newer')).toBeLessThan(html.indexOf('Older'))
   })
 
   it('pages a long history behind Show more, and offers a filter', () => {
-    const many = Array.from({ length: 14 }, (_, i) =>
-      conversation({ id: `s${i}`, title: `Chat number ${i}` }),
-    )
+    const many = Array.from({ length: 14 }, (_, i) => chat({ id: `s${i}`, title: `Chat number ${i}`, updatedAt: NOW - i * HOUR }))
     const html = render(many)
     expect(html).toContain('Chat number 9')
     expect(html).not.toContain('Chat number 10')
     expect(html).toContain('Show 4 more')
     expect(html).toContain('aria-label="Filter chats"')
-    expect(render([conversation()])).not.toContain('Filter chats')
+    expect(render([chat()])).not.toContain('Filter chats')
   })
 
-  it('marks a conversation that is still open', () => {
-    const open = render([conversation({ status: 'live' })])
-    expect(open).toContain('title="live"')
-    expect(render([conversation()])).not.toContain('title="live"')
-  })
-
-  it('offers no Reopen on a conversation the agent never picked up', () => {
-    expect(buttonTag(render([conversation({ resumable: false })]), 'Reopen')).toContain(
-      'disabled=""',
-    )
+  // decision 14: the same marks and words as the header's thread list, never a bare dot.
+  it('says whether each chat is working, waiting for you, or idle', () => {
+    const html = render([
+      chat({ id: 'w', title: 'Busy one', state: 'working' }),
+      chat({ id: 'q', title: 'Asking one', state: 'waiting' }),
+      chat({ id: 'i', title: 'Quiet one' }),
+    ])
+    expect(html).toContain('>working<')
+    expect(html).toContain('>waiting for you<')
+    expect(html).toContain('title="Waiting for you"')
+    expect(html).toContain('>3h<')
+    expect(html).not.toContain('title="live"')
   })
 
   // An EmptyState, never a box: a title and one hint pointing at the door above.

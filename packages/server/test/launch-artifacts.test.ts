@@ -24,8 +24,7 @@ import {
   talkingToTheHumanSection,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { ptyExitMessage } from '../src/launcher/launcher'
-import type { RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
+import type { AcpLaunchSpec, RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
 import {
   CC_NESTING_ENV,
   KICKOFF_LINES,
@@ -207,7 +206,6 @@ describe('renderSettings', () => {
       'chat',
       '/opt/pack',
       undefined,
-      false,
       '/data/design-crops/feat_1',
     ).permissions.allow
     expect(allow.filter((rule) => /^(Read|Edit)\(/.test(rule))).toEqual([
@@ -372,49 +370,18 @@ describe('renderSettings', () => {
   })
 
   /**
-   * `whole-cuts-plan-themselves` decision 20: the orchestrator hears about its
-   * features through an `asyncRewake` hook that long-polls for its lines, never
-   * through keystrokes typed into its terminal. Every project session is the
-   * orchestrator (`one-orchestrator-no-mode`).
+   * ADR-0015: what runcastle says to a session later — the orchestrator's
+   * lines, a lead's wakes — is a prompt into its thread, so no session's
+   * settings carry a hook that waits for messages.
    */
-  it('gives a project session the asyncRewake message waiter on SessionStart and Stop', () => {
-    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
-    const waiter = {
-      type: 'command',
-      command: 'bun run "C:\\hooks\\hook-client.ts" wait-messages',
-      timeout: 86_400,
-      async: true,
-      asyncRewake: true,
-    }
-
-    for (const entry of s.hooks.SessionStart) {
-      expect(entry.hooks.map((h) => h.command)).toEqual([
-        'bun run "C:\\hooks\\hook-client.ts" session-start',
-        waiter.command,
-      ])
-      expect(entry.hooks[1]).toEqual(waiter)
-    }
-    expect(s.hooks.Stop[0].hooks).toEqual([s.hooks.Stop[0].hooks[0], waiter])
-    expect(s.hooks.UserPromptSubmit[0].hooks).toHaveLength(1)
-    expect(s.hooks.SessionEnd[0].hooks).toHaveLength(1)
-  })
-
-  /**
-   * `the-feature-lead-runs-rounds` decision 12: a feature's chat is its lead,
-   * woken by the same waiter at its turn end — but not a headless run, whose
-   * process exits at its turn end with whatever a waiter took.
-   */
-  it('gives a feature chat with a terminal the same waiter, and a headless chat none', () => {
-    const chat = renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack')
-    const project = renderSettings('C:\\hooks\\hook-client.ts', 'project')
-    const waiterOf = (s: typeof chat) => s.hooks.Stop[0].hooks.slice(1)
-    expect(waiterOf(chat)).toEqual(waiterOf(project))
-    expect(chat.hooks.SessionStart.every((e) => e.hooks[1]?.command.endsWith('wait-messages'))).toBe(true)
-
-    for (const purpose of [undefined, ...SessionPurpose.options]) {
-      const headless = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack', purpose, true))
-      expect(headless).not.toContain('wait-messages')
-      expect(headless).not.toContain('asyncRewake')
+  it('gives no session a message waiter', () => {
+    for (const kind of SessionKind.options) {
+      for (const purpose of [undefined, ...SessionPurpose.options]) {
+        const s = renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose)
+        expect(JSON.stringify(s)).not.toMatch(/wait-messages|asyncRewake|"async"/)
+        expect(s.hooks.Stop[0].hooks.map((h) => h.command)).toEqual(['bun run "C:\\hooks\\hook-client.ts" stop'])
+        for (const entry of s.hooks.SessionStart) expect(entry.hooks).toHaveLength(1)
+      }
     }
   })
 
@@ -431,19 +398,6 @@ describe('renderSettings', () => {
         expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
       }
     }
-  })
-})
-
-describe('ptyExitMessage', () => {
-  it('renders a numeric exit code verbatim', () => {
-    expect(ptyExitMessage(0)).toBe('terminal exited (code 0)')
-    expect(ptyExitMessage(137)).toBe('terminal exited (code 137)')
-  })
-
-  it('renders a missing code as "unknown", never the string "undefined"', () => {
-    expect(ptyExitMessage(undefined)).toBe('terminal exited (code unknown)')
-    expect(ptyExitMessage(null)).toBe('terminal exited (code unknown)')
-    expect(ptyExitMessage(undefined)).not.toContain('undefined')
   })
 })
 
@@ -1087,6 +1041,88 @@ describe('claudeRuntime.writeArtifacts', () => {
     for (const kind of SessionKind.options) {
       expect(claudeRuntime.kickoffLine(kind)).toBe(KICKOFF_LINES[kind])
     }
+  })
+})
+
+/**
+ * The same session over ACP (chat-as-web-components; ADR-0015): the adapter
+ * process, the CLI it drives, and the briefing files riding the session `_meta`
+ * as the flags the terminal launch passes.
+ */
+describe('claudeRuntime.acpLaunch', () => {
+  const created: string[] = []
+  afterEach(() => {
+    for (const id of created) rmSync(sessionDir(id), { recursive: true, force: true })
+    created.length = 0
+  })
+
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
+
+  async function acpSpec(extra: Partial<RuntimeLaunchInput> = {}): Promise<AcpLaunchSpec> {
+    const sess = session({ id: 'sess_acp_chat', kind: 'chat' })
+    created.push(sess.id)
+    return claudeRuntime.acpLaunch!({
+      session: sess,
+      project,
+      config,
+      feature: feature(),
+      worktreePath: 'C:\\wt\\dark-mode',
+      serverUrl: 'http://localhost:4512',
+      model: 'claude-sonnet-5',
+      ...extra,
+    })
+  }
+
+  it('runs the claude-agent-acp entry against the installed claude, with runcastle env and the nesting scrub', async () => {
+    const spec = await acpSpec()
+    expect(spec.command).toBe(process.execPath)
+    expect(spec.args).toHaveLength(1)
+    expect(spec.args[0].replace(/\\/g, '/')).toMatch(/@agentclientprotocol\/claude-agent-acp\/dist\/index\.js$/)
+    expect(existsSync(spec.args[0])).toBe(true)
+    expect(spec.env).toEqual({
+      CLAUDE_CODE_EXECUTABLE: claudeRuntime.resolveBinary(),
+      RUNCASTLE_SESSION_ID: 'sess_acp_chat',
+      RUNCASTLE_SERVER_URL: 'http://localhost:4512',
+      CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+    })
+    expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
+  })
+
+  it('carries the model, the permission mode, the briefing files, prompt suggestions, file checkpoints and the background task set in the session _meta', async () => {
+    const spec = await acpSpec()
+    const dir = sessionDir('sess_acp_chat')
+    expect(spec.files).toEqual([join(dir, 'system-prompt.md'), join(dir, 'settings.json'), join(dir, 'mcp.json')])
+    for (const file of spec.files) expect(existsSync(file)).toBe(true)
+    expect(spec.sessionMeta).toEqual({
+      claudeCode: {
+        emitRawSDKMessages: [
+          { type: 'system', subtype: 'background_tasks_changed' },
+          { type: 'system', subtype: 'session_state_changed' },
+        ],
+        options: {
+          model: 'claude-sonnet-5',
+          permissionMode: 'acceptEdits',
+          promptSuggestions: true,
+          enableFileCheckpointing: true,
+          perTaskStopAffordance: false,
+          extraArgs: {
+            settings: join(dir, 'settings.json'),
+            'mcp-config': join(dir, 'mcp.json'),
+            'plugin-dir': resolvePluginDir(),
+            'append-system-prompt-file': join(dir, 'system-prompt.md'),
+          },
+        },
+      },
+    })
+    expect(spec.sessionMode).toBe('acceptEdits')
+  })
+
+  it('takes the launch posture and the strict MCP setting', async () => {
+    const spec = await acpSpec({ permissionMode: 'bypassPermissions', config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }) })
+    const options = (spec.sessionMeta.claudeCode as { options: { permissionMode: string; extraArgs: Record<string, string | null> } }).options
+    expect(options.permissionMode).toBe('bypassPermissions')
+    expect(spec.sessionMode).toBe('bypassPermissions')
+    expect(options.extraArgs['strict-mcp-config']).toBeNull()
   })
 })
 

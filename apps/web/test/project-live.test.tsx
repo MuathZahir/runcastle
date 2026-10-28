@@ -1,152 +1,75 @@
 // @vitest-environment happy-dom
-import { useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ThreadEntry } from '@runcastle/core'
+import { fakeTrpc } from './fake-trpc'
 
-vi.mock('../src/trpc', () => ({
-  trpc: {
-    feature: { endSession: { useMutation: () => ({ mutate: () => undefined, isPending: false }) } },
-    useUtils: () => ({}),
-  },
-}))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
-vi.mock('../src/components/TerminalView', () => ({
-  TerminalView: () => <div data-testid="terminal">terminal</div>,
+vi.mock('../src/lib/live', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/live')>()),
+  useLivePoll: () => false,
 }))
 
-import { ConversationList } from '../src/components/project/ConversationList'
-import { ProjectChat } from '../src/components/project/ProjectChat'
-import { NewChatCard } from '../src/components/project/NewChatCard'
-import type { ProjectConversation, ProjectSession } from '../src/lib/api'
-import type { SessionBranchApi } from '../src/lib/use-session-branch'
+const { ConversationList } = await import('../src/components/project/ConversationList')
+const { ProjectChat } = await import('../src/components/project/ProjectChat')
 
-const session = {
-  id: 'session-row-id',
-  ccSessionId: 'f5b41d9e-rest-of-id',
-  status: 'live',
-} as NonNullable<ProjectSession>
+const at = 1_700_000_000_000
 
-const openConversation = {
-  id: session.id,
-  title: 'Untitled',
-  createdAt: 1,
-  status: 'live',
-  resumable: true,
-} as ProjectConversation
-
-const endedConversation = {
-  ...openConversation,
-  id: 'older',
-  title: 'An older idea',
-  status: 'ended',
-} as ProjectConversation
-
-const landing: SessionBranchApi = {
-  value: 'main',
-  branches: ['main'],
-  detected: 'main',
-  missing: false,
-  picking: false,
-  pick: () => {},
+/** The project's server: one chat with history, and a new empty one. */
+function server() {
+  return fakeTrpc({
+    'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
+    'thread.events': ({ threadId }: { threadId: string }) => ({
+      events:
+        threadId === 'th_old'
+          ? [
+              { i: 0, at, type: 'prompt', id: 'p1', text: 'Cut the notes idea into features', source: 'human' },
+              { i: 1, at, type: 'agent_text', messageId: 'm1', text: 'Three features: capture, triage, export.' },
+            ]
+          : [],
+    }),
+    'thread.send': () => ({ promptId: 'p_new' }),
+  })
 }
 
-describe('live project chat', () => {
+describe('a project chat', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('opens at once as its thread, finished or not, with the landing branch under the composer and no End session', async () => {
+    const api = server()
+    render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing="main" />, { wrapper: api.Wrapper })
+
+    const chat = screen.getByRole('region', { name: 'Project chat' })
+    expect(await screen.findByText('Three features: capture, triage, export.')).toBeTruthy()
+    expect(chat.textContent).toContain('Lands on main')
+    expect(screen.getByLabelText('Message')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /End session|Resume/ })).toBeNull()
+  })
+
+  it('sends the first message of a new, empty chat to its own thread', async () => {
+    const api = server()
+    render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing="main" />, { wrapper: api.Wrapper })
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'A notes inbox for the project' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+
+    expect(await screen.findByText('A notes inbox for the project')).toBeTruthy()
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'A notes inbox for the project' }]))
+  })
+})
+
+describe('the resting list', () => {
   afterEach(cleanup)
 
-  it('renders the live chat edge to edge, with no header row of its own', () => {
-    render(<ProjectChat session={session} hidden={false} onEnded={() => {}} />)
+  it('opens a chat as its thread from its row', () => {
+    const opened: string[] = []
+    const chat: ThreadEntry = { id: 'th_1', title: 'New chat', role: 'project', state: 'working', updatedAt: at, runtime: 'claude-code' }
+    render(<ConversationList threads={[chat]} pending={false} onOpen={(id) => opened.push(id)} />)
 
-    // The surface every chat shares (ChatView); its switcher, landing branch
-    // and End session are the page header's (design-mode decision 12).
-    const chat = screen.getByRole('region', { name: 'Project chat' })
-    expect(chat.querySelector('[data-testid="terminal"]')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'End session' })).toBeNull()
-    expect(chat.textContent).not.toContain('lands on')
-  })
-
-  it('goes back to the list and opens the mounted terminal without launching', () => {
-    let launches = 0
-    function Harness() {
-      const [list, setList] = useState(false)
-      return (
-        <>
-          <button type="button" onClick={() => setList(true)}>
-            Project
-          </button>
-          <ProjectChat session={session} hidden={list} onEnded={() => {}} />
-          {list && (
-            <>
-              <NewChatCard
-                landing={landing}
-                onStart={() => launches++}
-                starting={false}
-              />
-              <ConversationList
-                conversations={[endedConversation, openConversation]}
-                pending={false}
-                busy={false}
-                onResume={() => launches++}
-                onOpen={() => setList(false)}
-                onView={() => {}}
-              />
-            </>
-          )}
-        </>
-      )
-    }
-    render(<Harness />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Project' }))
-    const open = screen.getByRole('button', { name: 'Open' })
-    const terminal = screen.getByTestId('terminal')
-    expect(terminal).toBeTruthy()
-    expect(terminal.closest('[data-live-chat]')?.classList.contains('hidden')).toBe(true)
-    expect(screen.getByText('Talk it through')).toBeTruthy()
-    expect(screen.queryByText('A chat is already open.')).toBeNull()
-
-    fireEvent.click(open)
-    expect(launches).toBe(0)
-    expect(terminal.closest('[data-live-chat]')?.classList.contains('hidden')).toBe(false)
-    expect(screen.queryByText('An older idea')).toBeNull()
-  })
-
-  it('keeps the open conversation transcript reachable from its title', () => {
-    let viewed: ProjectConversation | null = null
-    render(
-      <ConversationList
-        conversations={[openConversation]}
-        pending={false}
-        busy={false}
-        onResume={() => {}}
-        onOpen={() => {}}
-        onView={(conversation) => {
-          viewed = conversation
-        }}
-      />,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
-    expect(viewed).toBe(openConversation)
-  })
-
-  it('offers both inline choices when New finds a chat open', () => {
-    let opened = 0
-    let replaced = 0
-    render(
-      <NewChatCard
-        landing={landing}
-        onStart={() => {}}
-        starting={false}
-        openSession={{ onOpen: () => opened++, onReplace: () => replaced++ }}
-      />,
-    )
-
-    expect(screen.getByRole('status').textContent).toContain('A chat is already open.')
-    expect(screen.getByText('Talk it through')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'landing on main' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Open it' }))
-    fireEvent.click(screen.getByRole('button', { name: 'End it and start new' }))
-    expect({ opened, replaced }).toEqual({ opened: 1, replaced: 1 })
+    fireEvent.click(screen.getByRole('button', { name: /New chat/ }))
+    expect(opened).toEqual(['th_1'])
   })
 })

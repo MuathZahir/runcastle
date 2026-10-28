@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
-import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
-import { useAutoResumeOnce } from '../lib/use-auto-resume'
-import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
+import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
 import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { Button, Page, PageHeader, PageTopbar } from '../ui'
-import { projectChatEntries, scenarioChatLabel, type ChatSessionEntry } from '../lib/chat-sessions'
+import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
+import { useToast } from '../lib/toast'
+import { useThreadMenu } from '../lib/use-thread'
+import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
-import { ScenarioChatContext, ScenarioChatMenu, ScenarioChatView, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
-import { EndSessionItem } from './EndSessionButton'
-import { SessionSwitcher } from './chat/SessionSwitcher'
+import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
+import { ThreadColumn, ThreadOpening } from './chat/ThreadColumn'
+import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
@@ -39,11 +40,12 @@ import { useProjectDrive } from '../lib/use-project-drive'
  * rows, and the list of chats. The chat's own greeting says what it knows; the
  * landing branch lives in a menu beside the button it argues (decisions.md #3).
  *
- * A list, not a terminal, is the resting state (decision 5). Only one chat runs
- * at a time — the launcher's rule — so a live conversation fills the column,
- * and its switcher lists the past ones, each opening its read-only transcript;
- * the project crumb steps back to the list.
+ * A list, not a thread, is the resting state (decision 5). A chat in front
+ * fills the column as a thread (chat-as-web-components decision 7), and its
+ * switcher lists every chat of the project, each opening at once; the project
+ * crumb steps back to the list. Any number of chats run at once (decision 14).
  */
+
 export function ProjectWorkspace({
   projectId,
   talk,
@@ -88,34 +90,64 @@ export function ProjectWorkspace({
     withOwnSection: false,
     runnerConfigured: (scenariosQ.data?.runnerConfigured ?? false) && !!project?.devCommand?.trim(),
   })
-  const session = talk.session
-  // What is in front of the chat column: `undefined` follows the live chat (the
-  // resting list when there is none), `null` is the list, an id is that entry.
-  const [front, setFront] = useState<string | null | undefined>(session && newChatRequest > 0 ? null : undefined)
+  // What is in front of the chat column: `undefined` follows the newest running
+  // chat (the resting list when none runs), `null` is the list, an id is that thread.
+  // Every chat of the project, finished ones included (chat-as-web-components
+  // decision 7) — the resting list and the switcher both read it, so both show
+  // the same names and states (decision 14). Invalidated by every `thread`
+  // live signal (lib/live.ts).
+  const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
+  const listed = listQ.data ?? []
+  const fallback = talk.session?.id ?? null
+  // A reload or a pasted link opens the chat the address names — when it is this project's.
+  const {
+    front,
+    pick: setFront,
+    pending,
+  } = useAddressedThread<null | undefined>(
+    undefined,
+    listQ.data
+      ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id)
+      : null,
+  )
   // The same key the Notes card reads, so knowing whether to offer it is free.
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
-  // What the pending open/replace choice is FOR. A Triage click on a project
-  // that already has a chat open raises the same notice New chat does, and
-  // "End it and start new" has to open the chat the human asked for.
-  const [noticePurpose, setNoticePurpose] = useState<ProjectTalkPurpose | undefined>(undefined)
   // The drive's scenario errands open their chat in this column too.
   const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
+  const toast = useToast()
 
-  const entries: ChatSessionEntry[] = [
-    ...projectChatEntries({ liveId: session?.id ?? null, conversations: talk.conversations }),
-    ...(scenarioChat.listed && scenarioChat.sessionId
-      ? [{ id: scenarioChat.sessionId, label: scenarioChatLabel(scenarioChat.errand), live: true }]
-      : []),
-  ]
-  const fallback = session?.id ?? null
-  const inFront =
-    front === undefined ? fallback : front === null ? null : entries.some((e) => e.id === front) ? front : fallback
-  const reading =
-    inFront && inFront !== session?.id && inFront !== scenarioChat.sessionId
-      ? (talk.conversations.find((c) => c.id === inFront) ?? null)
-      : null
-  const resting = inFront === null
+  const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
+  // While the address's chat is pending, nothing is in front and the list is not shown either.
+  const opening = pending !== null
+  const inFront = opening ? null : front === undefined || closedErrand ? fallback : front
+  useThreadInUrl(opening ? undefined : inFront)
+  const resting = inFront === null && !opening
+  // The switcher always names what is in front, before the list has it.
+  const threads = withStandIns(
+    listed,
+    inFront
+      ? [
+          inFront === scenarioChat.sessionId
+            ? standIn(inFront, scenarioChatLabel(scenarioChat.errand), 'scenario')
+            : standIn(inFront, NEW_CHAT_NAME, 'project'),
+        ]
+      : [],
+  )
+  const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
+  const threadMenu = useThreadMenu(inFront)
+  // Every new-chat door — New chat, the shell's New, the switcher's New thread —
+  // opens an empty thread, whatever else is running (decision 14); its first
+  // message starts it.
+  const create = trpc.thread.new.useMutation({
+    onSuccess: ({ threadId }) => {
+      setFront(threadId)
+      void utils.thread.list.invalidate({ projectId })
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  const newChat = (): void => create.mutate({ projectId })
+  const newChatRef = useRef(newChat)
+  newChatRef.current = newChat
 
   const projectName = project?.name ?? 'This project'
   const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
@@ -132,23 +164,14 @@ export function ProjectWorkspace({
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
   useEffect(() => {
-    if (newChatRequest > 0 && session) {
-      setFront(null)
-      setShowOpenNotice(true)
-      setNoticePurpose(undefined)
-      onConsumeNewChatRequest?.()
-    }
-  }, [newChatRequest, onConsumeNewChatRequest, session])
+    if (newChatRequest <= 0) return
+    newChatRef.current()
+    onConsumeNewChatRequest?.()
+  }, [newChatRequest, onConsumeNewChatRequest])
   // Capture's View: the inbox is the panel's Notes; the card scrolls itself in.
   useEffect(() => {
     if (inboxRequest > 0) setPicked('details')
   }, [inboxRequest])
-  useEffect(() => {
-    if (!session) {
-      setShowOpenNotice(false)
-      setNoticePurpose(undefined)
-    }
-  }, [session])
   // The titlebar's pill: the drive, from wherever in the project.
   useEffect(() => {
     if (driveRequest > 0) {
@@ -170,54 +193,14 @@ export function ProjectWorkspace({
   // starts the blank app, as the card's main click does.
   const startDrive = (scenario: string | null = null): void =>
     projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
-  // The live chat in front of the column.
-  const showChat = (): void => setFront(undefined)
-  // Reopening leaves the read-back chat behind: what comes back is the terminal.
-  const reopen = (sessionId: string): void => {
-    talk.resume(sessionId)
-    showChat()
-  }
-
-  // Showing an ended conversation resumes it by itself (decision 3), once per
-  // visit to it; the read-back stays in front until the session is live.
-  useAutoResumeOnce({
-    visit: projectId,
-    resumable: !session && reading?.resumable ? reading.id : null,
-    resume: talk.autoResume,
-  })
-  const autoResumed = useRef<string | null>(null)
-  if (talk.autoResuming) autoResumed.current = talk.autoResuming
-  useEffect(() => {
-    if (session?.status === 'live' && front && front === autoResumed.current) setFront(undefined)
-  }, [session?.status, front])
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
-  const refreshProjectChat = (): void => {
-    void utils.project.projectSession.invalidate()
-    void utils.project.conversations.invalidate()
-  }
-  // The switcher's menu speaks for the chat in front: the live chat's landing
-  // branch and End session, or the scenario chat's errand, close and End session.
-  const liveInFront = !!session && inFront === session.id
+  // The switcher's menu speaks for the chat in front: the scenario chat's close.
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   const switcher = inFront && (
-    <SessionSwitcher
-      entries={entries}
-      current={inFront}
-      onPick={setFront}
-      hint={
-        scenarioInFront
-          ? scenarioErrandHint(scenarioChat.errand)
-          : liveInFront && landing.value
-            ? `Lands on ${landing.value}`
-            : undefined
-      }
-    >
-      {liveInFront && (
-        <EndSessionItem sessionId={session.id} onEnded={refreshProjectChat} />
-      )}
+    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={newChat} {...threadMenu}>
       {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
-    </SessionSwitcher>
+    </ThreadSwitcher>
   )
 
   const restPage = (
@@ -231,27 +214,7 @@ export function ProjectWorkspace({
           ]}
         />
         <div className="mt-8">
-          <NewChatCard
-            landing={landing}
-            onStart={talk.start}
-            starting={talk.starting}
-            openSession={
-              session && showOpenNotice
-                ? {
-                    onOpen: () => {
-                      setShowOpenNotice(false)
-                      setNoticePurpose(undefined)
-                      showChat()
-                    },
-                    onReplace: () => {
-                      setShowOpenNotice(false)
-                      talk.replace(noticePurpose)
-                      showChat()
-                    },
-                  }
-                : undefined
-            }
-          />
+          <NewChatCard landing={landing} onStart={newChat} starting={create.isPending} />
           <TestDriveCard
             card={driveCard}
             branch={drive?.branch ?? (branchesQ.data?.current || null)}
@@ -265,16 +228,7 @@ export function ProjectWorkspace({
             onReturn={() => openView('drive')}
           />
         </div>
-        <ConversationList
-          conversations={talk.conversations}
-          pending={talk.conversationsPending}
-          busy={talk.starting}
-          onResume={reopen}
-          onOpen={showChat}
-          // The live conversation is the one live chat, so reading it
-          // is opening it; only an ended one is read back.
-          onView={(c: ProjectConversation) => (c.status === 'ended' ? setFront(c.id) : showChat())}
-        />
+        <ConversationList threads={listed} pending={listQ.isPending} onOpen={setFront} />
       </Page>
     </div>
   )
@@ -301,20 +255,11 @@ export function ProjectWorkspace({
           <div className="px-6 py-5">
             <NotesCard
               projectId={projectId}
-              triaging={talk.starting}
+              triaging={talk.triaging}
               reveal={inboxRequest > 0}
               onRevealed={onConsumeInboxRequest}
-              onTriage={() => {
-                if (!session) {
-                  talk.triage()
-                  return
-                }
-                // One live chat per project, so the human chooses: carry on
-                // in the one that is open, or end it and triage in a fresh one.
-                setNoticePurpose('triage')
-                setShowOpenNotice(true)
-                setFront(null)
-              }}
+              // Its own new thread, beside any chat already running (decision 14).
+              onTriage={() => talk.triage(setFront)}
             />
           </div>
         )
@@ -365,31 +310,28 @@ export function ProjectWorkspace({
       <ScenarioChatContext.Provider value={scenarioChat}>
         <PanelSplit
           chat={
-            // Every live terminal stays mounted whatever is in front, so
-            // xterm keeps its buffer and socket.
+            // One thread in front, or the resting list; the switcher picks.
             <>
               {restPage}
-              {reading && (
-                // An ended chat is the project chat at rest — the same ChatView
-                // a feature's ended chat shows, never a page of its own.
-                <ProjectChat
-                  key={reading.id}
-                  session={null}
-                  transcriptId={reading.id}
-                  onResume={reading.resumable ? () => reopen(reading.id) : undefined}
-                  resuming={talk.starting}
-                  autoResuming={talk.autoResuming === reading.id}
-                  hidden={chatHidden}
-                />
-              )}
-              {session && (
-                <ProjectChat
-                  session={session}
-                  hidden={chatHidden || inFront !== session.id}
-                  onEnded={refreshProjectChat}
-                />
-              )}
-              <ScenarioChatView chat={scenarioChat} hidden={chatHidden || inFront !== scenarioChat.sessionId} />
+              {opening && !chatHidden && <ThreadOpening />}
+              {inFront && !chatHidden &&
+                (scenarioInFront ? (
+                  <ThreadColumn
+                    key={inFront}
+                    label="Scenario chat"
+                    threadId={inFront}
+                    onOpenThread={setFront}
+                    emptyHint={scenarioErrandHint(scenarioChat.errand)}
+                  />
+                ) : (
+                  <ProjectChat
+                    key={inFront}
+                    threadId={inFront}
+                    {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
+                    onOpenThread={setFront}
+                    {...(landing.value ? { landing: landing.value } : {})}
+                  />
+                ))}
             </>
           }
           panel={

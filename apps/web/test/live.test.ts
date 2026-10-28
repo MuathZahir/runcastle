@@ -93,7 +93,7 @@ function makeEventHost() {
 const globals = globalThis as unknown as Record<string, unknown>
 let windowStub: ReturnType<typeof makeEventHost>
 let documentStub: ReturnType<typeof makeEventHost>
-let handlers: { resyncAll: ReturnType<typeof vi.fn>; resyncTranscript: ReturnType<typeof vi.fn> }
+let handlers: { resyncAll: ReturnType<typeof vi.fn>; resyncTranscript: ReturnType<typeof vi.fn>; resyncThread: ReturnType<typeof vi.fn> }
 let stop: () => void
 
 /** The source the client is currently listening to. */
@@ -115,7 +115,7 @@ beforeEach(() => {
   globals.EventSource = StubEventSource
   globals.window = windowStub
   globals.document = documentStub
-  handlers = { resyncAll: vi.fn(), resyncTranscript: vi.fn() }
+  handlers = { resyncAll: vi.fn(), resyncTranscript: vi.fn(), resyncThread: vi.fn() }
   stop = () => {}
 })
 
@@ -242,6 +242,17 @@ describe('startLiveSync', () => {
     current().emit('live', JSON.stringify({ kind: 'transcript', ticketId: 't1' }))
 
     expect(handlers.resyncTranscript).toHaveBeenCalledTimes(1)
+    expect(handlers.resyncAll).not.toHaveBeenCalled()
+  })
+
+  it('routes a thread signal to that thread’s resync only, never the full one', () => {
+    start()
+    current().emit('ready')
+    handlers.resyncAll.mockClear()
+
+    current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' }))
+
+    expect(handlers.resyncThread).toHaveBeenCalledExactlyOnceWith('th1')
     expect(handlers.resyncAll).not.toHaveBeenCalled()
   })
 

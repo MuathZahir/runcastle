@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ThreadEntry } from '@runcastle/core'
 import type { FeatureListItem, PrepView } from '../src/lib/api'
 import type { DriveState } from '../src/lib/workspace'
 import { listItem } from './fixtures'
@@ -20,6 +21,7 @@ const data = vi.hoisted(() => ({
   features: [] as FeatureListItem[],
   prep: undefined as unknown,
   notes: 0,
+  threads: [] as ThreadEntry[],
   archive: vi.fn(),
   unarchive: vi.fn(),
   stop: vi.fn(),
@@ -43,8 +45,19 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: data.notes }) } },
+    thread: { list: { useQuery: () => ({ data: data.threads }) } },
   },
 }))
+
+let n = 0
+const thread = (state: ThreadEntry['state'], updatedAt = 0): ThreadEntry => ({
+  id: `th_${++n}`,
+  title: 'New chat',
+  role: 'project',
+  state,
+  updatedAt,
+  runtime: 'claude-code',
+})
 
 const { Sidebar } = await import('../src/components/Sidebar')
 const { ToastProvider } = await import('../src/lib/toast')
@@ -66,7 +79,6 @@ const nav = {
 function rail(
   over: {
     view?: 'feature' | 'project' | 'prepare'
-    talk?: unknown
     driving?: DriveState | null
     onOpenCmdk?: () => void
     onOpenPreparation?: () => void
@@ -79,7 +91,6 @@ function rail(
         nav={nav}
         view={over.view ?? 'feature'}
         selectedFeatureId={null}
-        talk={(over.talk ?? { state: 'none', session: null }) as never}
         onSelect={vi.fn()}
         onSelectProject={vi.fn()}
         onNewChat={() => {}}
@@ -110,6 +121,7 @@ afterEach(() => {
   data.features = []
   data.prep = PREPARED
   data.notes = 0
+  data.threads = []
   localStorage.clear()
   vi.clearAllMocks()
 })
@@ -142,20 +154,24 @@ describe('the Orchestrator card', () => {
     expect(orchestrator().getAttribute('aria-current')).toBeNull()
   })
 
-  it('says what the project chat is doing', () => {
+  // Its state is its chats' (decision 14), as the project page's list and the switcher show them.
+  it("says what the project's chats are doing, an empty new one not starting anything", () => {
+    data.threads = [thread('idle'), thread('idle')]
     rail()
     expect(orchestrator().textContent).toContain('Plan, cut and ask')
+    expect(orchestrator().querySelector('[data-progress]')).toBeNull()
     cleanup()
-    rail({ talk: { state: 'live', session: { awaitingInput: false } } })
-    expect(orchestrator().textContent).toContain('Chat open')
-    cleanup()
-    rail({ talk: { state: 'launching', session: { awaitingInput: false } } })
-    expect(orchestrator().textContent).toContain('Starting chat…')
+    data.threads = [thread('idle'), thread('working')]
+    rail()
+    expect(orchestrator().textContent).toContain('Working')
+    expect(orchestrator().querySelector('[data-progress]')).not.toBeNull()
+    expect(orchestrator().innerHTML).not.toContain('bg-warning')
   })
 
-  it('waits amber while the chat waits on you', () => {
-    rail({ talk: { state: 'live', session: { awaitingInput: true } } })
-    expect(orchestrator().textContent).toContain('Waiting on you')
+  it('waits amber while any of its chats waits on you, not only the newest', () => {
+    data.threads = [thread('working', 2), thread('waiting', 1)]
+    rail()
+    expect(orchestrator().textContent).toContain('Waiting for you')
     expect(orchestrator().innerHTML).toContain('bg-warning')
   })
 

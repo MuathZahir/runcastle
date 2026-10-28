@@ -200,6 +200,28 @@ export function ComboboxGroup({
  */
 const ITEM = cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'justify-between gap-3 aria-[current=true]:font-medium')
 
+/**
+ * A row that acts on the list rather than picking from it — "Older models"
+ * unfolding more rows. The arrows and Enter reach it like any row, and the
+ * picker stays open, the focus stays in the search, and its words are quieter
+ * than the values around it.
+ */
+export function ComboboxAction({
+  className,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<typeof CommandItem>) {
+  return (
+    <CommandItem
+      className={cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, className)}
+      onMouseDown={(event) => event.preventDefault()}
+      {...props}
+    >
+      <span className="flex min-w-0 items-center gap-2 text-text-tertiary">{children}</span>
+    </CommandItem>
+  )
+}
+
 export function ComboboxItem({
   className,
   children,

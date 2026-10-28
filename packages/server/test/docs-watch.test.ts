@@ -6,13 +6,14 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { handlePtyExit, launchSession } from '../src/launcher/launcher'
+import { launchSession } from '../src/launcher/launcher'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
-import { getSessionRow, markSessionEnded } from '../src/launcher/sessions'
-import type { PtyEntry } from '../src/pty/registry'
-import { ptyRegistry } from '../src/pty/registry'
+import { markSessionEnded } from '../src/launcher/sessions'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import type { AgentHost } from '../src/threads/types'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { createFeatureBranch } from '../src/services/git'
-import { getFeatureRow } from '../src/services/repo'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import {
   DOCS_WATCH_DEBOUNCE_MS,
@@ -190,6 +191,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
   let projectId: string
   let repoPath: string
   let restoreDataDir: () => void
+  let host: AgentHost | undefined
   const cleanup: string[] = []
 
   beforeEach(async () => {
@@ -211,7 +213,10 @@ describe('docs watcher lifecycle — bound to the session', () => {
     projectId = seedProject(ctx, repoPath).id
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await host?.stopAll('shutdown')
+    host = undefined
+    setAgentHostForTests(undefined)
     vi.restoreAllMocks()
     stopAllDocsWatch()
     restoreDataDir()
@@ -238,42 +243,37 @@ describe('docs watcher lifecycle — bound to the session', () => {
   }
 
   /**
-   * Let the terminal "spawn" without starting a real Claude Code process.
-   *
-   * Both halves are needed. The watcher starts inside the branch that creates
-   * the PTY, so these tests cannot take the `spawn:false` door the other session
-   * tests use — and the real spawn path runs the runtime-readiness gate first,
-   * which fails wherever the `claude` CLI is not installed. Stubbing readiness
-   * keeps this file about the watcher's lifetime rather than about what happens
-   * to be on the machine's PATH; `claudeRuntime.checkReady` has its own coverage
-   * in launch-artifacts.test.ts.
+   * A fake agent behind the host, past the readiness gate, with the
+   * lifecycle that starts the watcher when a thread's process runs. Stubbing
+   * readiness keeps this file about the watcher's lifetime rather than about
+   * what happens to be on the machine's PATH.
    */
-  function stubSpawn(): void {
+  function fakeHost(): AgentHost {
     vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
-    vi.spyOn(ptyRegistry(), 'create').mockReturnValue({
-      pty: { pid: 4512 },
-    } as unknown as PtyEntry)
+    host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    setAgentHostForTests(host)
+    return host
   }
 
-  it('starts on spawn and stops when the PTY exits', async () => {
-    const feature = await featureWithWorktree('pty-exit')
-    stubSpawn()
+  it('starts when the chat’s process runs and stops when it stops', async () => {
+    const feature = await featureWithWorktree('process-stop')
+    fakeHost()
 
     const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
-    expect(docsWatchCount()).toBe(1)
+    await vi.waitFor(() => expect(docsWatchCount()).toBe(1))
 
-    handlePtyExit(ctx, getFeatureRow(ctx, feature.id), getSessionRow(ctx, sessionId)!, {}, 0)
+    await host?.stop(sessionId, 'idle')
     expect(docsWatchCount()).toBe(0)
   })
 
-  it('stops on the marked-ended path (Stop hook, boot reconciliation)', async () => {
+  it('stops on the marked-ended path (SessionEnd hook, boot reconciliation)', async () => {
     const feature = await featureWithWorktree('marked-ended')
-    stubSpawn()
+    fakeHost()
 
     const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
-    expect(docsWatchCount()).toBe(1)
+    await vi.waitFor(() => expect(docsWatchCount()).toBe(1))
 
     markSessionEnded(ctx, sessionId)
     expect(docsWatchCount()).toBe(0)

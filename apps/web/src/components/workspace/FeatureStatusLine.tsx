@@ -26,8 +26,9 @@ export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
   return (
     <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary" role="status">
       <StatusDot tone={STATUS_TONE[status.kind]} />
-      <span className="shrink-0 text-text-secondary">{status.label}</span>
-      {status.why && <span className="min-w-0 truncate">· {status.why}</span>}
+      {/* Squeezed, the reason gives way first, then the label truncates: the line never draws past its box. */}
+      <span className="min-w-0 truncate text-text-secondary">{status.label}</span>
+      {status.why && <span className="min-w-0 shrink-[100] truncate">· {status.why}</span>}
     </p>
   )
 }

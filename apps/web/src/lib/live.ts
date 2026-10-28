@@ -35,6 +35,7 @@ type LiveSignal =
   | { kind: 'event'; projectId: string; featureId?: string; eventId: number }
   | { kind: 'transcript'; ticketId: string }
   | { kind: 'turn'; sessionId: string }
+  | { kind: 'thread'; threadId: string }
 
 export type LiveStatus = 'connecting' | 'live' | 'offline'
 
@@ -143,6 +144,12 @@ export interface LiveSyncHandlers {
   resyncAll: () => void | Promise<unknown>
   /** The agent transcript only. */
   resyncTranscript: () => void
+  /**
+   * One thread's log grew (chat-as-web-components): its reads and the thread
+   * lists only — a streaming answer signals many times a second, and a full
+   * resync per chunk would refetch the whole app with it.
+   */
+  resyncThread: (threadId: string) => void
 }
 
 /**
@@ -234,6 +241,7 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
         return
       }
       if (signal.kind === 'transcript') handlers.resyncTranscript()
+      else if (signal.kind === 'thread') handlers.resyncThread(signal.threadId)
       else resyncAll()
     }
 
@@ -342,6 +350,9 @@ export function useLiveSync(): LiveStatus {
       // waiting on the human (`session.*` events and the `turn` signal) has to
       // move its row and its dot at push speed.
       refetches.push(u.feature.sessions.invalidate())
+      // The thread list (the header switcher, the project page's chats): a
+      // thread opened by `thread.new` or a launch is a `session.*` event.
+      refetches.push(u.thread.list.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
       // the Scenario menu and the Test drive picker have no poll of their own —
@@ -415,7 +426,20 @@ export function useLiveSync(): LiveStatus {
       void utilsRef.current.run.agentTranscript.invalidate()
     }
 
-    return startLiveSync({ resyncAll: invalidateDbBacked, resyncTranscript: invalidateTranscript })
+    // Partial inputs: `events` is keyed by its cursor too, and every cursor of
+    // this thread is invalidated — only the one on screen is active to refetch.
+    const invalidateThread = (threadId: string): void => {
+      const u = utilsRef.current
+      void u.thread.events.invalidate({ threadId })
+      void u.thread.view.invalidate({ threadId })
+      void u.thread.list.invalidate()
+    }
+
+    return startLiveSync({
+      resyncAll: invalidateDbBacked,
+      resyncTranscript: invalidateTranscript,
+      resyncThread: invalidateThread,
+    })
   }, [])
 
   return status

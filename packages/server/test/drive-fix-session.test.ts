@@ -30,6 +30,7 @@ import { getProjectById } from '../src/services/repo'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
+import { acpLaunchOf, briefOf, promptsOf } from './support/thread-launch'
 
 /**
  * The drive-fix session (multi-service decision 9): the one click between a
@@ -107,21 +108,19 @@ describe('launching a drive-fix session', () => {
    * re-theorised the same failure with no memory of the two fixes it had
    * already tried.
    */
-  it('resumes the previous drive-fix conversation instead of re-theorising cold', async () => {
+  it('reopens the previous drive-fix thread instead of re-theorising cold, and says the errand into it', async () => {
     await failedDrive()
     const first = await launched()
     markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-fix-1' })
     markSessionEnded(ctx, first.sessionId)
 
-    await launched()
-    const cmd = String(
-      (
-        listAfter(ctx, feature.id, 0)
-          .filter((e) => e.type === 'session.launched')
-          .at(-1)?.data as { command?: string }
-      )?.command ?? '',
-    )
-    expect(cmd).toContain('--resume cc-fix-1')
+    const again = await launched()
+
+    expect(again).toEqual({ sessionId: first.sessionId, resumed: true })
+    expect(getSessionRow(ctx, first.sessionId)?.ccSessionId).toBe('cc-fix-1')
+    // Every click is an errand: each says the drive-fix kickoff as runcastle's prompt.
+    expect(promptsOf(first.sessionId).map((p) => p.source)).toEqual(['runcastle', 'runcastle'])
+    expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'session.resumed')).toBe(true)
   })
 
   it('runs host-side in the real checkout, scoped to the feature whose drive failed', async () => {
@@ -155,10 +154,10 @@ describe('launching a drive-fix session', () => {
     expect(guard('.gitignore')).toBeNull()
     expect(guard('src/index.ts')?.reason).toContain('drive machinery')
     // The guard is a hook, not a sentence in the briefing — it has to be
-    // registered in the settings this launch wrote.
-    const settings = JSON.parse(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')) as {
-      hooks: Record<string, unknown>
-    }
+    // registered in the settings the thread's process starts with.
+    const spec = await acpLaunchOf(ctx, sessionId)
+    const settingsPath = spec.files.find((f) => f.endsWith('settings.json')) as string
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { hooks: Record<string, unknown> }
     expect(settings.hooks.PreToolUse).toBeDefined()
   })
 
@@ -174,7 +173,7 @@ describe('launching a drive-fix session', () => {
 
     await testDrive(ctx, project, feature, 'start')
     const { sessionId } = await launched()
-    const prompt = readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8')
+    const prompt = await briefOf(ctx, sessionId)
 
     expect(prompt).toContain('exit 3')
     expect(prompt).toContain('compose.yml')
@@ -201,11 +200,22 @@ describe('launching a drive-fix session', () => {
     await expect(launched()).rejects.toThrow(/no failed drive/)
   })
 
-  it('counts as the feature’s one terminal', async () => {
+  // One main chat thread per feature; a Fix-it thread runs beside it.
+  it('opens beside the feature’s main chat', async () => {
     await failedDrive()
-    createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' })
+    const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' })
+    markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
 
-    await expect(launched()).rejects.toThrow(/only one terminal per feature/)
+    const { sessionId } = await launched()
+    expect(getSessionRow(ctx, sessionId)?.kind).toBe('drive-fix')
+  })
+
+  it('cannot start its process once the drive no longer fails', async () => {
+    await failedDrive()
+    const { sessionId } = await launched()
+    await testDrive(ctx, project, feature, 'stop')
+
+    await expect(acpLaunchOf(ctx, sessionId)).rejects.toThrow(/no failed drive/)
   })
 
   it('is not reachable through the ordinary talk-session door', async () => {

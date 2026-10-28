@@ -17,7 +17,7 @@ import {
   type AppLocation,
   type FeatureView,
 } from '../lib/routes'
-import { currentPath, useHistorySync } from '../lib/use-history-sync'
+import { AddressSettled, currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
@@ -222,14 +222,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     }
   })
 
-  // The New door (decisions.md #12): open the project workspace and start a
-  // FRESH conversation in it — intake for anything that deserves talking about.
-  // `talk.start` is the new-chat contract, so a live conversation is left alone
-  // and the workspace's list is what you land on instead.
+  // The New door (decisions.md #12): open the project workspace on a FRESH
+  // conversation — an empty thread its first message starts, as the New chat
+  // card opens one, whatever else is running (chat-as-web-components decision 14).
   const newChat = () => {
     selectProject()
-    if (talk.session) setNewChatRequest((request) => request + 1)
-    else talk.start()
+    setNewChatRequest((request) => request + 1)
   }
 
   // Global ⌘K / Ctrl-K → command palette, ⌘/Ctrl+J → jot a note.
@@ -321,7 +319,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             nav={nav}
             view={view}
             selectedFeatureId={ws.selectedFeatureId}
-            talk={talk}
             onSelect={openFeature}
             onSelectProject={ws.selectProject}
             onNewChat={newChat}
@@ -340,7 +337,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         {/* The view fills the panel. The feature's details are not mounted
             here: they are one of the feature page's panel views, and the
             palette's toggle switches the same `featureView` the page does. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">{body}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">
+          {/* Until the landing, the page shown is the stored one, not the
+              address's: it leaves the address's thread for the page it names. */}
+          <AddressSettled.Provider value={landed}>{body}</AddressSettled.Provider>
+        </div>
       </Frame>
 
       <CommandPalette

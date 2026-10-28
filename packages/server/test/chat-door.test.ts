@@ -7,34 +7,35 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
-import {
-  activeSessionsForFeature,
-  createSessionRow,
-  markSessionLive,
-} from '../src/launcher/sessions'
-import type { PtyEntry } from '../src/pty/registry'
-import { ptyRegistry } from '../src/pty/registry'
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { listSessionsByFeature } from '../src/services/repo'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import type { AgentHost } from '../src/threads/types'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
+import { promptsOf } from './support/thread-launch'
 
 /**
- * The Chat door on a chat that is already up (`one-chat-per-feature`
- * decision 12). The door is constant in all four states and never disabled, so
- * the one thing it must never do is throw: clicking it a second time answers
- * with the conversation that is already live rather than with the one-terminal
- * refusal. The guard itself survives — nothing spawns a second time, and a live
- * session of any other kind still refuses.
+ * The Chat door on a chat that is already open (`one-chat-per-feature`
+ * decision 12; chat-as-web-components decision 7). The door is constant in
+ * all four states and never disabled, so the one thing it must never do is
+ * throw: clicking it again answers with the feature's one main-chat thread.
+ * Nothing is created a second time, and a briefing the door brings is said
+ * into that thread.
  */
-describe('the Chat door on a live chat', () => {
+describe('the Chat door on an open chat', () => {
   let ctx: AppCtx
   let projectId: string
   let repoPath: string
   let restoreDataDir: () => void
+  let host: AgentHost | undefined
   const cleanup: string[] = []
 
   beforeEach(async () => {
@@ -54,7 +55,9 @@ describe('the Chat door on a live chat', () => {
     projectId = seedProject(ctx, repoPath).id
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await host?.stopAll('shutdown')
+    setAgentHostForTests(undefined)
     vi.restoreAllMocks()
     stopAllDocsWatch()
     restoreDataDir()
@@ -88,25 +91,29 @@ describe('the Chat door on a live chat', () => {
     return sessionId
   }
 
-  /** Stand a terminal up for a live session and record what is typed into it. */
-  function terminalFor(sessionId: string): string[] {
-    const typed: string[] = []
-    const entry = {
-      sessionId,
-      exited: false,
-      pty: { write: (data: string) => typed.push(data) },
-    } as unknown as PtyEntry
-    vi.spyOn(ptyRegistry(), 'get').mockImplementation((id) =>
-      id === sessionId ? entry : undefined,
+  /** A fake agent behind the host, with the lifecycle's fresh state header, past the readiness gate. */
+  function fakeHost(): { host: AgentHost; fake: FakeAcp } {
+    vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
+    const fake = createFakeAcp()
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    setAgentHostForTests(host)
+    return { host, fake }
+  }
+
+  /** The text of each `session/prompt` the agent received. */
+  function sentToAgent(fake: FakeAcp): string[] {
+    return fake.processes.flatMap((p) =>
+      p.received
+        .filter((r) => r.method === 'session/prompt')
+        .map((r) => ((r.params as { prompt: { text?: string }[] }).prompt[0]?.text ?? '')),
     )
-    return typed
   }
 
   function kickoffs(featureId: string): { data: Record<string, unknown> | null }[] {
     return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff')
   }
 
-  it('answers with the live conversation instead of refusing a second one', async () => {
+  it('answers with the main thread instead of opening a second one', async () => {
     const feature = await featureIn('planning', 'live-chat')
     const first = await openChat(feature)
 
@@ -120,7 +127,7 @@ describe('the Chat door on a live chat', () => {
     expect(listSessionsByFeature(ctx, feature.id).map((s) => s.id)).toEqual([first])
   })
 
-  it('answers the same way from review, where no terminal renders', async () => {
+  it('answers the same way from review', async () => {
     const feature = await featureIn('review', 'review-chat')
     const first = await openChat(feature)
 
@@ -131,10 +138,11 @@ describe('the Chat door on a live chat', () => {
     )
 
     expect(again.sessionId).toBe(first)
-    expect(activeSessionsForFeature(ctx, feature.id).map((s) => s.id)).toEqual([first])
+    expect(listSessionsByFeature(ctx, feature.id).map((s) => s.id)).toEqual([first])
   })
 
-  it('still refuses when a session of another kind holds the terminal', async () => {
+  // One main chat thread per feature; other threads run beside it.
+  it('opens the main chat beside a Fix-it thread', async () => {
     const feature = await featureIn('planning', 'drive-fix-chat')
     const driveFix = createSessionRow(ctx, {
       featureId: feature.id,
@@ -143,67 +151,56 @@ describe('the Chat door on a live chat', () => {
     })
     markSessionLive(ctx, driveFix.id, { ccSessionId: 'cc-drive-fix' })
 
-    await expect(
-      launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),
-    ).rejects.toThrow(/already live/i)
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+    cleanup.push(sessionDir(sessionId))
+
+    expect(sessionId).not.toBe(driveFix.id)
   })
 
   /**
    * Decision 13: a purpose-specific briefing rides the conversation it is
-   * headed for. Answering with the live chat used to answer with ONLY the live
-   * chat — resolve-conflict, stop-drive-and-iterate and a lap briefing all
-   * foregrounded the terminal and dropped the reason the human opened it.
+   * headed for — resolve-conflict, stop-drive-and-iterate and a lap briefing
+   * each say the reason the human opened it, queued to a running turn's end.
    */
-  it('delivers a purpose-specific briefing into the live conversation', async () => {
+  it('says a purpose-specific briefing into the running conversation, with the feature’s state', async () => {
     const feature = await featureIn('review', 'briefed-chat')
     const first = await openChat(feature)
-    const typed = terminalFor(first)
+    const { host, fake } = fakeHost()
+    await host.prompt(first, { text: 'hello' }, { source: 'human' })
 
-    vi.useFakeTimers()
-    let again: { sessionId: string }
-    try {
-      again = await launchSession(
-        ctx,
-        { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' },
-        { spawn: false },
-      )
-      vi.runAllTimers()
-    } finally {
-      vi.useRealTimers()
-    }
+    const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' })
 
     expect(again.sessionId).toBe(first)
-    expect(typed).toEqual(['[runcastle] OVERRIDE', '\r'])
+    // Queued behind the running turn, it is logged as it is sent.
+    await vi.waitFor(() => expect(sentToAgent(fake)).toHaveLength(2))
+    const said = promptsOf(first).map((p) => p.text)
+    expect(said.at(-1)?.startsWith('[runcastle] OVERRIDE ')).toBe(true)
+    expect(said.at(-1)).toContain('Feature status:')
     expect(kickoffs(feature.id).at(-1)?.data).toMatchObject({
       sessionId: first,
       kind: 'chat',
-      line: 'OVERRIDE',
-      mechanism: 'pty',
+      line: said.at(-1),
+      mechanism: 'prompt',
     })
   })
 
-  it('reports a purpose-specific briefing that has no live terminal', async () => {
-    const feature = await featureIn('review', 'missing-terminal-chat')
-    await openChat(feature)
-    const kickoffsBefore = kickoffs(feature.id)
+  it('starts an idle conversation with the briefing, the host handing it the fresh state', async () => {
+    const feature = await featureIn('review', 'idle-chat')
+    const first = await openChat(feature)
+    const { fake } = fakeHost()
 
-    await expect(
-      launchSession(
-        ctx,
-        { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' },
-        { spawn: false },
-      ),
-    ).rejects.toThrow(/terminal.*not available/i)
+    await launchSession(ctx, { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' })
 
-    expect(kickoffs(feature.id)).toEqual(kickoffsBefore)
+    expect(promptsOf(first).at(-1)?.text).toBe('[runcastle] OVERRIDE')
+    await vi.waitFor(() => expect(sentToAgent(fake)).toHaveLength(1))
+    expect(sentToAgent(fake)[0]).toMatch(/^\[runcastle\] OVERRIDE\n\n.*Feature status:/s)
   })
 
-  // Start lap retired with laps: a `start-lap` launch is a plain Chat open, so
-  // a live chat is the answer — no relaunch, nothing typed.
-  it('answers a start-lap launch with the live chat, as a plain open', async () => {
+  // Start lap retired with laps: a `start-lap` launch is a plain Chat open.
+  it('says nothing for a start-lap launch, as a plain open', async () => {
     const feature = await featureIn('review', 'start-lap-chat')
     const first = await openChat(feature)
-    const typed = terminalFor(first)
+    const before = promptsOf(first).length
 
     const again = await launchSession(
       ctx,
@@ -212,18 +209,18 @@ describe('the Chat door on a live chat', () => {
     )
 
     expect(again.sessionId).toBe(first)
-    expect(typed).toEqual([])
+    expect(promptsOf(first)).toHaveLength(before)
   })
 
-  it('types nothing into a conversation the door merely returns to', async () => {
+  it('says nothing into a conversation the door merely returns to', async () => {
     const feature = await featureIn('shipped', 'quiet-chat')
     const first = await openChat(feature)
-    const typed = terminalFor(first)
+    const before = promptsOf(first).length
 
     const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
 
     expect(again.sessionId).toBe(first)
-    expect(typed).toEqual([])
+    expect(promptsOf(first)).toHaveLength(before)
     expect(kickoffs(feature.id)).toEqual([])
   })
 })

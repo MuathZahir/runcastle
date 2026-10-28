@@ -17,7 +17,6 @@ import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
-import { WAIT_MESSAGES_MODE } from './hook-client'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
 import {
@@ -757,7 +756,7 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
       ? ['## What the human asked for', brief.description, '']
       : [
           '## What the human asked for',
-          'Nothing yet. **First ask the human what state they want to land in**, then write it.',
+          'Their messages say. When none says it yet, **first ask the human what state they want to land in**, then write it.',
           '',
         ]
 
@@ -992,18 +991,7 @@ interface CommandHook {
   type: 'command'
   command: string
   timeout: number
-  /** Runs in the background and wakes Claude when it exits 2 (implies `async`). */
-  async?: true
-  asyncRewake?: true
 }
-
-/**
- * The orchestrator's message waiter hook's timeout, in seconds. An async hook
- * still gets the 10-minute default when none is set, and an orchestrator idles
- * far longer than that waiting on a burn — a waiter killed at ten minutes would
- * leave nothing listening until its next turn end. A day outlasts any wait.
- */
-const MESSAGE_WAITER_TIMEOUT_S = 86_400
 
 export interface SessionSettings {
   permissions: { allow: string[]; deny: string[] }
@@ -1254,25 +1242,15 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - Timeouts (seconds): SessionStart 20 (room for the hook client's retries — it
  *   records the conversation id a resume needs), UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
- * - A `project` session — the orchestrator — also gets the message waiter on
- *   SessionStart and Stop: an `asyncRewake` hook running the hook client's
- *   `wait-messages` mode, which long-polls for the orchestrator's pending
- *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
- *   or mid-turn (`whole-cuts-plan-themselves` decision 20). A fresh waiter starts
- *   at every session start and turn end; the server answers only the newest.
- *   A feature's chat with a terminal — its lead — gets the same waiter for the
- *   lead's messages (`the-feature-lead-runs-rounds` decision 12); the server
- *   lets it go when a turn starts, so they arrive at the turn's end. A headless
- *   run gets none: its process exits at its turn end, taking a waiter's lines
- *   with it, so its messages wait for the next resume instead.
- *   Every other session's settings carry no trace of it.
+ * - What runcastle says to a session later (the orchestrator's lines, the
+ *   lead's wakes) is a prompt into its thread (ADR-0015), so no hook waits
+ *   for messages.
  */
 export function renderSettings(
   hookClient: string,
   kind?: SessionKind,
   skillPackDir?: string,
   purpose?: SessionPurpose,
-  headless = false,
   cropsDir?: string,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
@@ -1280,18 +1258,6 @@ export function renderSettings(
     command: `bun run "${hookClient}" ${event}`,
     timeout: event === 'session-start' ? 20 : event === 'session-end' ? 10 : 5,
   })
-  const waiter: CommandHook[] =
-    kind === 'project' || (kind === 'chat' && !headless)
-      ? [
-          {
-            type: 'command',
-            command: `bun run "${hookClient}" ${WAIT_MESSAGES_MODE}`,
-            timeout: MESSAGE_WAITER_TIMEOUT_S,
-            async: true,
-            asyncRewake: true,
-          },
-        ]
-      : []
   return {
     permissions: {
       allow: [
@@ -1307,10 +1273,10 @@ export function renderSettings(
     hooks: {
       SessionStart: SESSION_START_SOURCES.map((source) => ({
         matcher: source,
-        hooks: [cmd('session-start'), ...waiter],
+        hooks: [cmd('session-start')],
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
-      Stop: [{ hooks: [cmd('stop'), ...waiter] }],
+      Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
         ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
@@ -1454,7 +1420,6 @@ export async function writeSessionArtifacts(
         session.kind,
         pluginDir,
         session.purpose,
-        session.headless,
         session.kind === 'chat' && session.featureId ? designCropsDir(session.featureId) : undefined,
       ),
       null,

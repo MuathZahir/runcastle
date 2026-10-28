@@ -77,7 +77,7 @@ Plan it yourself must show that it is running. Observed 2026-10-19 on a freshly 
 - archive and delete (`services/features.ts:1326`, `:1398`). The feature lived on afterwards, so neither applies.
 - the orchestrator's `stop_feature_run` (`mcp/orchestrator-tools.ts:171`). It refuses a feature the orchestrator does not own, so it rules out a human's feature.
 
-That leaves the web's `feature.endSession`. The only caller with no terminal involved is the headless Stop: `stopHeadlessRun` → `endLiveSession` (`apps/web/src/components/Workspace.tsx:717`, `:641`).
+That leaves the web's `feature.endSession`. The only caller with no terminal involved is the headless Stop: `stopSelfPlan` → `endLiveSession` (`apps/web/src/components/Workspace.tsx:717`, `:641`).
 
 The most likely story, which I could not confirm without the transcript:
 - `resolveHeadlessRun` offers Stop for any live headless chat. `leadActions` keeps Go as the primary and moves that Stop into the row's "⋯" menu, the same menu where "Plan it yourself" had been. The click carries no confirmation and nothing on the row said a run was going (that is ticket 1).
@@ -87,7 +87,7 @@ The most likely story, which I could not confirm without the transcript:
 **The fix.** A new core predicate, `isStoppableHeadlessRun`, accepts self-plan, relay and headless lap runs and never `lead-wake`. Three places now use it:
 - `toolStopFeatureRun`
 - the web's `resolveHeadlessRun`, so a lead wake no longer shows "Planning itself" or a Stop
-- the `stopHeadlessRun` dispatch in `Workspace.tsx`
+- the `stopSelfPlan` dispatch in `Workspace.tsx`
 
 The human halts the lead with the status row's Stop (`feature.stop`), and the Chat tab's explicit End session still works. Test: `orchestrator-acting-tools.test.ts`, "a lead message while it plans itself…".
 

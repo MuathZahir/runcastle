@@ -222,13 +222,13 @@ describe('a side session’s name', () => {
     expect(getSessionRow(ctx, id)?.title).toBeUndefined()
   })
 
-  it('is cached on the conversation’s earliest row, so it outlives its transcript', async () => {
+  it('is cached on the thread’s one row, so it outlives its transcript', async () => {
     const f = await feature('cached')
     const first = await side(f.id, 'cc-cached')
     const path = giveTranscript(first, [entry('user', SIDE_KICKOFF_TURN), entry('user', 'write the drive scenario')])
     markSessionEnded(ctx, first)
-    const reopened = await side(f.id, 'cc-cached', first)
-    giveTranscript(reopened, [entry('user', 'and another one')])
+    // A reopen is the same thread: no second row to name.
+    expect(await side(f.id, 'cc-cached', first)).toBe(first)
 
     expect((await caller().feature.sessions({ featureId: f.id }))[0].title).toBe('write the drive scenario')
     expect(getSessionRow(ctx, first)?.title).toBe('write the drive scenario')

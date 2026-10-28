@@ -52,6 +52,7 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
+import { leadAwaitsHuman } from '../threads/read'
 import {
   getTicket,
   isPendingTicket,
@@ -99,6 +100,8 @@ export interface FeatureListItem extends Feature {
    * anyone's attention.
    */
   liveSession: LiveSessionState | null
+  /** The lead replied, or asks, and the human has not answered (`leadAwaitsHuman`, decision 15). */
+  leadAwaitsHuman: boolean
   /**
    * When this feature last did anything — its newest event's `ts`, falling back
    * to `createdAt` when it has no events yet. The sidebar row's relative stamp
@@ -126,6 +129,8 @@ export interface FeatureFull {
   blocks: BlockRef[]
   /** See {@link FeatureListItem.upNextProblem}. */
   upNextProblem: string | null
+  /** See {@link FeatureListItem.leadAwaitsHuman}: the header reads the sidebar's answer. */
+  leadAwaitsHuman: boolean
 }
 
 export interface CreateFeatureInput {
@@ -442,6 +447,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     upNextProblem: feature.upNext && feature.status === 'draft'
       ? (upNextProblems(ctx, feature.projectId).get(id) ?? null)
       : null,
+    leadAwaitsHuman: leadAwaitsHuman(ctx, id),
   }
 }
 
@@ -473,6 +479,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       ticketCounts: counts,
       activeRun: hasActiveRun(ctx, feature.id),
       liveSession: liveSessionOf(ctx, feature.id),
+      leadAwaitsHuman: leadAwaitsHuman(ctx, feature.id),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],

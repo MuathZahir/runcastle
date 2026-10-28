@@ -1,6 +1,6 @@
 # ADR-0009: A session's opening briefing rides the launch, never the keyboard
 
-- **Status:** accepted (2026-07-27)
+- **Status:** accepted (2026-07-27); superseded for conversations by ADR-0015
 - **Amended:** 2026-09-15 — the briefing is handed to the CLI as its positional
   initial prompt at spawn instead of typed into a live terminal; the delivery
   receipt, the retry loop, the undelivered event and its one-click re-send are

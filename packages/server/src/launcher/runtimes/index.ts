@@ -5,6 +5,7 @@ import { codexRuntime } from './codex'
 import type { AgentRuntimeAdapter } from './types'
 
 export type {
+  AcpLaunchSpec,
   AgentRuntimeAdapter,
   BackgroundSession,
   RuntimeLaunchInput,

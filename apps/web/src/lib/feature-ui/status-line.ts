@@ -5,6 +5,7 @@ import {
   type Feature,
   type ReadyDeclaration,
   type RoundSummary,
+  type ThreadEntry,
 } from '@runcastle/core'
 import { CHAT_ACTION } from './next-step/chat'
 import type { ActionKind, NextAction, NextStep } from './next-step/types'
@@ -47,10 +48,21 @@ export interface FeatureStatusInput {
   declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'createdAt'>[]
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
+  /**
+   * `agentWorking` is the main chat's own thread state, as the thread list and
+   * the sidebar read it. It is then the whole truth: a wake starts that chat,
+   * so its log already says whether it works, and a wake earns no grace.
+   */
+  agentStateKnown?: boolean
+  /**
+   * The lead replied, or asks, and the human has not answered: the feature's
+   * `leadAwaitsHuman`, the same flag that files it under Needs you in the sidebar.
+   */
+  leadAwaitsHuman: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
   /**
-   * The feature's live session is a self-planning run (headless chat, purpose
+   * The feature's live session is a self-planning run (an unattended chat, purpose
    * `self-plan`), or Plan it yourself was just clicked and that run is launching.
    */
   selfPlanning: boolean
@@ -62,41 +74,39 @@ export interface FeatureStatusInput {
 
 /** The lead's wakes as the event log tells them. */
 export interface LeadWake {
-  /** When the newest message for the lead was queued, left pending, or woke it headless. */
+  /** When the newest message for the lead was queued. */
   pendingSince?: number
   /** The newest `lead.wake_failed`: when, and the process's exit code (null when unknown). */
   failed?: { at: number; exitCode: number | null }
-  /** When the session the newest headless wake started ended — the human's End session, or its own exit. */
-  endedAt?: number
 }
 
 /**
  * How long a message for the lead counts as the agent about to work: long
- * enough for a headless resume to spawn and check in, short enough that a wake
+ * enough for the chat to start and take it, short enough that a wake
  * that silently went nowhere stops reading as Working within a minute.
  */
 export const LEAD_WAKE_GRACE_MS = 60_000
 
-/** The events that put a message on its way to the lead (`services/lead-delivery.ts`). */
-const WAKE_EVENTS: ReadonlySet<string> = new Set(['lead.message_queued', 'lead.message_pending', 'lead.woken_headless'])
-
-/** The events that say a session is over: the human ended it, or its process exited. */
-const SESSION_END_EVENTS: ReadonlySet<string> = new Set(['session.ended', 'session.pty_exited'])
+/**
+ * {@link FeatureStatusInput.agentWorking}: the main chat's own thread state,
+ * which every `thread` live signal refreshes, so a turn's end (a lead wake's
+ * too) leaves Working at once; the session row's turn bit only until the
+ * thread list holds the main chat.
+ */
+export function mainChatWorking(
+  mainState: ThreadEntry['state'] | undefined,
+  session: { awaitingInput: boolean } | undefined,
+): boolean {
+  return mainState !== undefined ? mainState === 'working' : !!session && !session.awaitingInput
+}
 
 /** Read the lead's latest wake and wake failure off a feature's event log, oldest first. */
 export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data'>[]): LeadWake {
   const wake: LeadWake = {}
-  let woken: string | undefined
   for (const e of events) {
-    const sessionId = (e.data as { sessionId?: unknown } | undefined)?.sessionId
-    if (WAKE_EVENTS.has(e.type)) {
+    // `lead.message_queued` puts a message on its way to the lead (`services/lead-delivery.ts`).
+    if (e.type === 'lead.message_queued') {
       wake.pendingSince = e.ts
-      if (e.type === 'lead.woken_headless' && typeof sessionId === 'string') {
-        woken = sessionId
-        delete wake.endedAt
-      }
-    } else if (SESSION_END_EVENTS.has(e.type) && woken !== undefined && sessionId === woken) {
-      wake.endedAt ??= e.ts
     } else if (e.type === LEAD_WAKE_FAILED) {
       const data = LeadWakeFailedData.safeParse(e.data)
       wake.failed = { at: e.ts, exitCode: data.success ? data.data.exitCode : null }
@@ -107,6 +117,9 @@ export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data
 
 /** The reason an idle agent waits on after the human stopped its round. */
 export const STOPPED = 'stopped'
+
+/** The reason the feature waits on after a self-planning run stopped short: the chat picks it up with the lead. */
+export const PLANNING_STOPPED = 'planning stopped'
 
 /** The line for a feature with nothing running and nothing asked. */
 export const TALKING = 'Talking with you'
@@ -132,9 +145,8 @@ export function wakeFailedWhy(exitCode: number | null): string {
  *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
  * - Waiting for you · the agent's run failed — the newest `lead.wake_failed` is
  *   newer than the last round and the last wake.
- * - Waiting for you · stopped / round N failed / round N done — the last round
- *   returned and the agent's turn is over: nothing is running and nothing will
- *   be dispatched until the human replies.
+ * - Waiting for you — the lead replied, or asks, and the human has not answered
+ *   (`leadAwaitsHuman`, the sidebar's Needs you).
  * - Talking with you — otherwise: nothing running and nothing asked.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
@@ -179,27 +191,32 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
     }
   }
 
-  if (feature.waitingReason) return { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
+  if (feature.waitingReason) {
+    const waiting: FeatureStatus = { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
+    return feature.waitingReason === PLANNING_STOPPED ? { ...waiting, primary: 'chat' } : waiting
+  }
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
-  // read as Working forever, and one that already failed, or whose session
-  // already ended, is not on its way: either ends the grace at once.
+  // read as Working forever, and one that already failed is not on its way:
+  // it ends the grace at once.
   const pendingSince = input.leadWake?.pendingSince
   const failed = input.leadWake?.failed
   const failedSinceWake = !!failed && failed.at >= (pendingSince ?? -Infinity)
-  const endedAt = input.leadWake?.endedAt
-  const endedSinceWake = endedAt !== undefined && endedAt >= (pendingSince ?? -Infinity)
   const waking =
-    pendingSince !== undefined && !failedSinceWake && !endedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
+    !input.agentStateKnown &&
+    pendingSince !== undefined &&
+    !failedSinceWake &&
+    input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
     return { kind: 'waiting', label: 'Waiting for you', why: wakeFailedWhy(failed.exitCode), primary: 'chat' }
   }
-  // Nothing runs and nothing is asked: the sidebar files this under In progress,
-  // so the header must not claim the feature waits on the human. A stopped round
-  // already says so through the waiting reason Stop sets.
+  // After the lead's reply the next move is the human's (chat-as-web-components
+  // decision 15): the sidebar reads the same flag into Needs you.
+  if (input.leadAwaitsHuman) return { kind: 'waiting', label: 'Waiting for you' }
+  // Nothing runs and nothing is asked: the sidebar files this under In progress.
   return { kind: 'talking', label: TALKING }
 }
 
@@ -208,7 +225,7 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
-  stopSelfPlan: { label: 'Stop', kind: 'stopHeadlessRun', danger: true },
+  stopSelfPlan: { label: 'Stop', kind: 'stopSelfPlan', danger: true },
   chat: CHAT_ACTION,
 }
 

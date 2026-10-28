@@ -5,7 +5,7 @@ import type { Feature, Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { launchSession } from '../src/launcher/launcher'
@@ -24,7 +24,10 @@ import {
   testDrive,
 } from '../src/services/git'
 import { featureLandingQueue } from '../src/services/landing-queue'
-import { deliverToLead, type LeadLauncher, wakeLeadHeadless } from '../src/services/lead-delivery'
+import { deliverToLead } from '../src/services/lead-delivery'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { startRun } from '../src/workflows/runner'
 import { workflowRegistry } from '../src/workflows/registry'
 import { useDataDir } from './helpers/data-dir'
@@ -76,6 +79,7 @@ describe('the chat beside a burn', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     restoreDataDir()
     while (tmpDirs.length) {
       const dir = tmpDirs.pop()
@@ -324,14 +328,16 @@ describe('the chat beside a burn', () => {
       return (await wt.revparse(['HEAD'])).trim()
     }
 
-    const launchNoSpawn: LeadLauncher = (c, input) => launchSession(c, input, { spawn: false })
-
-    it('wakes a closed lead headless mid-drive with the notes, and lands its commits when the drive stops', async () => {
+    it('starts a closed lead mid-drive with the notes, and lands its commits when the drive stops', async () => {
+      vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
+      const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
+      setAgentHostForTests(host)
       expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
       await deliverToLead(ctx, feature, { text: 'Notes from the drive: the button is off', source: 'human' })
+      await host.stopAll('shutdown')
+      setAgentHostForTests(undefined)
 
-      expect(await wakeLeadHeadless(ctx, feature.id, launchNoSpawn)).not.toBeNull()
-      expect(typesOf('lead.')).toContain('lead.woken_headless')
+      expect(typesOf('lead.')).toContain('lead.message_queued')
       expect(typesOf('lead.')).not.toContain('lead.wake_failed')
       // It works in the worktree the drive detached; nothing lands under the drive.
       expect((await simpleGit(talkWt).revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe('HEAD')

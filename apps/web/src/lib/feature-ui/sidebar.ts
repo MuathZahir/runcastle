@@ -7,7 +7,7 @@ import { blockerList, blockers, upNextHint } from './dependencies'
 const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState(f, f.dependsOn)
 
 /**
- * Why a feature needs me: its chat stopped for my `input`, it is `waiting`
+ * Why a feature needs me: its lead replied or asks, awaiting my `input`, it is `waiting`
  * with a reason — the agent's own words, 'stopped', or 'ready to test' — or it
  * is an Up next draft that is `stuck` and cannot start by itself.
  */
@@ -50,10 +50,11 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
   if (f.activeRun) return null // a round running: shown as working, not a needs-me dot
   // An agent mid-turn is working, whatever reason it left earlier.
   if (f.liveSession && !f.liveSession.awaitingInput) return null
-  // The reason outranks the bare "chat is waiting": an agent that declared ready
-  // or asked a question ends its turn, so its chat is awaiting input too.
+  // The reason outranks the bare "lead replied": an agent that declared ready
+  // or asked a question ends its turn, so its chat waits on the human too.
   if (f.waitingReason) return { kind: 'waiting', label: f.waitingReason }
-  if (f.liveSession?.awaitingInput) return { kind: 'input', label: 'the chat is waiting on you' }
+  // The header reads the same flag (chat-as-web-components decision 15).
+  if (f.leadAwaitsHuman) return { kind: 'input', label: 'the lead waits on your answer' }
   return null
 }
 
@@ -201,9 +202,9 @@ export interface TriageGroup {
  * match wins. Archived wins over everything: an archived feature carries no
  * needs-me / working state, it only sits in the archived lane.
  *
- * Both lanes read the same live session (decisions §3): `needsMe` has already
- * claimed one whose agent has stopped for an answer, so any session left here
- * is one with an agent mid-turn — which is Agent working, not In progress.
+ * `needsMe` has already claimed a feature whose lead replied or asks
+ * (`leadAwaitsHuman`), so a session left here is Agent working while its agent
+ * is mid-turn, and In progress once it is not.
  */
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'

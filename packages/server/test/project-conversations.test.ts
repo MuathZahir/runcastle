@@ -24,6 +24,7 @@ import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedProject } from './helpers/fixtures'
+import { kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * The project chat as a conversation LIST (decision 5). What is worth pinning is
@@ -206,11 +207,8 @@ describe('the project conversation list', () => {
   it('collapses the rows of one Claude Code conversation into a single row', async () => {
     const first = await launch('cc-same')
     endSession(ctx, first.sessionId)
-    const reopened = await launchProjectSession(
-      ctx,
-      { projectId: project.id, resumeSessionId: first.sessionId },
-      { spawn: false },
-    )
+    // A terminal-era conversation continued on a row of its own at each relaunch.
+    const reopened = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     giveCcId(reopened.sessionId, 'cc-same')
 
     const list = await caller().project.conversations({ projectId: project.id })
@@ -628,13 +626,6 @@ describe('opening a project conversation', () => {
     cleanup.length = 0
   })
 
-  function launchCommand(): string {
-    const launched = listByProject(ctx, project.id)
-      .filter((e) => e.type === 'session.launched')
-      .at(-1)
-    return String((launched?.data as { command?: string })?.command ?? '')
-  }
-
   function endWithCcId(sessionId: string, ccSessionId: string): void {
     endSession(ctx, sessionId)
     ctx.db.update(sessions).set({ ccSessionId }).where(eq(sessions.id, sessionId)).run()
@@ -648,64 +639,65 @@ describe('opening a project conversation', () => {
     const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endWithCcId(first.sessionId, 'cc-project-1')
 
-    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const second = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    expect(launchCommand()).not.toContain('--resume')
+    expect(second.sessionId).not.toBe(first.sessionId)
     expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resumed')
   })
 
-  it('resumes the conversation it is pointed at, not the most recent one', async () => {
+  it('reopens the conversation it is pointed at, not the most recent one', async () => {
     const older = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endWithCcId(older.sessionId, 'cc-older')
     const newer = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endWithCcId(newer.sessionId, 'cc-newer')
 
-    await launchProjectSession(
+    const opened = await launchProjectSession(
       ctx,
       { projectId: project.id, resumeSessionId: older.sessionId },
       { spawn: false },
     )
 
-    expect(launchCommand()).toContain('--resume cc-older')
+    expect(opened).toEqual({ sessionId: older.sessionId, resumed: true })
+    expect(promptsOf(older.sessionId)).toHaveLength(1)
     expect(listByProject(ctx, project.id).map((e) => e.type)).toContain('session.resumed')
   })
 
-  it('starts fresh, and says so, when the chosen conversation never reached Claude Code', async () => {
+  // A thread opens whether or not an agent ever took it (chat-as-web-components decision 7).
+  it('reopens a conversation that never reached the agent as its thread', async () => {
     const never = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endSession(ctx, never.sessionId)
 
-    await launchProjectSession(
+    const opened = await launchProjectSession(
       ctx,
       { projectId: project.id, resumeSessionId: never.sessionId },
       { spawn: false },
     )
 
-    expect(launchCommand()).not.toContain('--resume')
-    expect(listByProject(ctx, project.id).map((e) => e.type)).toContain(
-      'session.resume_unavailable',
+    expect(opened.sessionId).toBe(never.sessionId)
+  })
+
+  it('starts a new one, and says so, when the id names no conversation of this project', async () => {
+    const opened = await launchProjectSession(
+      ctx,
+      { projectId: project.id, resumeSessionId: 'sess_elsewhere' },
+      { spawn: false },
     )
+
+    expect(kickoffOf(opened.sessionId)).toContain('/runcastle:project')
+    expect(listByProject(ctx, project.id).map((e) => e.type)).toContain('session.resume_unavailable')
   })
 
   it('lets `fresh` overrule a conversation id, so New chat can never resume', async () => {
     const prior = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endWithCcId(prior.sessionId, 'cc-prior')
 
-    await launchProjectSession(
+    const opened = await launchProjectSession(
       ctx,
       { projectId: project.id, fresh: true, resumeSessionId: prior.sessionId },
       { spawn: false },
     )
 
-    expect(launchCommand()).not.toContain('--resume')
-  })
-
-  /** Many stored conversations, still one terminal (the launcher's rule stands). */
-  it('still refuses a second live conversation', async () => {
-    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-
-    await expect(
-      launchProjectSession(ctx, { projectId: project.id }, { spawn: false }),
-    ).rejects.toThrow(/already open/i)
+    expect(opened.sessionId).not.toBe(prior.sessionId)
   })
 
   it('takes the whole contract over tRPC', async () => {

@@ -13,8 +13,7 @@ import {
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
-  mostRecentResumableProjectSession,
-  mostRecentResumableSession,
+  newestThread,
 } from '../src/launcher/sessions'
 import { launchPrepareSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
@@ -28,6 +27,7 @@ import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
+import { kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * The project-scoped `prepare` session: a conversation that belongs to a project
@@ -105,7 +105,7 @@ describe('a prepare session is project-scoped', () => {
     prepareSession()
     prepareSession()
     expect(activeSessionsForFeature(ctx, FEATURE_ID)).toHaveLength(0)
-    expect(mostRecentResumableSession(ctx, FEATURE_ID)).toBeNull()
+    expect(newestThread(ctx, { featureId: FEATURE_ID }, 'prepare')).toBeNull()
 
     // …and a real feature session is still found alongside them.
     const f = featureSession()
@@ -118,16 +118,17 @@ describe('a prepare session is project-scoped', () => {
     expect(activeProjectSession(ctx, 'proj_other', 'prepare')).toBeNull()
   })
 
-  it('resumes the last ended conversation, not a live or feature one', () => {
+  it('reopens the newest thread holding a conversation, not a stillborn or feature one', () => {
     const ended = prepareSession()
     ctx.db
       .update(sessions)
       .set({ status: 'ended', ccSessionId: 'cc-1' })
       .where(eq(sessions.id, ended.id))
       .run()
-    prepareSession() // still launching — not resumable
+    prepareSession() // never went live and said nothing — no conversation to reopen
 
-    expect(mostRecentResumableProjectSession(ctx, PROJECT_ID, 'prepare')?.ccSessionId).toBe('cc-1')
+    expect(newestThread(ctx, { projectId: PROJECT_ID }, 'prepare')?.ccSessionId).toBe('cc-1')
+    expect(newestThread(ctx, { projectId: 'proj_other' }, 'prepare')).toBeNull()
   })
 })
 
@@ -616,8 +617,8 @@ describe('the preparation edit guard', () => {
  * already believes every conclusion the new run exists to re-measure, so the
  * prepared screen's "Start fresh" has to actually drop the resume.
  *
- * Asserted at the launch-input seam (`spawn: false` writes the argv it WOULD
- * have spawned to the timeline) — no terminal is ever started here.
+ * Asserted at the launch seam with `spawn: false`, which logs the briefing it
+ * says as the thread's prompt — no agent is ever started here.
  */
 describe('launching a preparation, fresh or resumed', () => {
   const cleanup: string[] = []
@@ -635,42 +636,32 @@ describe('launching a preparation, fresh or resumed', () => {
     cleanup.length = 0
   })
 
-  /** The argv of the most recent launch (a relaunch appends a second event). */
-  function launchCommand(): string {
-    const launched = ctx.db
-      .select()
-      .from(events)
-      .all()
-      .filter((e) => e.type === 'session.launched')
-      .at(-1)
-    return String((launched?.data as { command?: string })?.command ?? '')
-  }
-
-  /** An ended conversation with a cc id — the only kind that can be resumed. */
-  function endedConversation(ccSessionId: string): void {
+  /** An ended conversation with a cc id, as the preparation thread's one row. */
+  function endedConversation(ccSessionId: string): string {
     const s = prepareSession()
     ctx.db
       .update(sessions)
       .set({ status: 'ended', ccSessionId })
       .where(eq(sessions.id, s.id))
       .run()
+    return s.id
   }
 
-  it('picks the last conversation back up by default', async () => {
-    endedConversation('cc-prep-1')
+  it('picks the last conversation back up by default, as the same thread', async () => {
+    const prior = endedConversation('cc-prep-1')
 
-    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+    const launched = await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
 
-    expect(launchCommand()).toContain('--resume cc-prep-1')
+    expect(launched).toEqual({ sessionId: prior, resumed: true })
     expect(ctx.db.select().from(events).all().map((e) => e.type)).toContain('session.resumed')
   })
 
   it('does not send a kickoff to a resumed preparation', async () => {
-    endedConversation('cc-prep-1')
+    const prior = endedConversation('cc-prep-1')
 
     await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
 
-    expect(launchCommand()).not.toContain('Proceed with your task')
+    expect(promptsOf(prior)).toEqual([])
   })
 
   /**
@@ -682,19 +673,20 @@ describe('launching a preparation, fresh or resumed', () => {
     for (const key of PREPARED_KEYS) {
       recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
     }
-    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+    const { sessionId } = await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
 
-    expect(launchCommand()).toContain(PREPARE_CONFIRM_KICKOFF)
+    expect(kickoffOf(sessionId)).toContain(PREPARE_CONFIRM_KICKOFF)
     expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
     expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
   })
 
-  it('starts over when asked, leaving the old conversation behind', async () => {
-    endedConversation('cc-prep-1')
+  it('starts over when asked, in a new thread, leaving the old conversation behind', async () => {
+    const prior = endedConversation('cc-prep-1')
 
-    await launchPrepareSession(ctx, { projectId: PROJECT_ID, fresh: true }, { spawn: false })
+    const { sessionId } = await launchPrepareSession(ctx, { projectId: PROJECT_ID, fresh: true }, { spawn: false })
 
-    expect(launchCommand()).not.toContain('--resume')
+    expect(sessionId).not.toBe(prior)
+    expect(kickoffOf(sessionId)).toContain('Proceed with your task')
     const types = ctx.db.select().from(events).all().map((e) => e.type)
     expect(types).not.toContain('session.resumed')
     // …and the choice is visible on the timeline, which otherwise reads exactly

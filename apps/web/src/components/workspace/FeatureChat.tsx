@@ -2,79 +2,68 @@ import type { ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget } from '../../lib/chat-notices'
-import { activeSession, featureChat, isHeadlessRun, isSelfPlanRun } from '../../lib/feature-ui'
-import { ChatView } from '../chat/ChatView'
+import { mainChatInbox } from '../../lib/composer-inbox'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
-import { SessionNotices } from '../chat/SessionNotices'
+import { scenarioErrandHint } from '../chat/ScenarioChat'
+import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
+import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
+
+const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it.'
+const SIDE_HINT = 'A fresh conversation on this feature, beside the feature chat. It knows the feature, its docs and its tickets.'
 
 /**
- * The feature chat in the chat column (one-chat-layout-everywhere decisions 1, 5, 9): the
- * feature's live session — whatever its kind; one terminal per feature means at
- * most one — full-area through `ChatView`. With nothing live it reads back the
- * feature's chat transcript over Resume, or offers Start on a feature nobody has
- * talked to. Showing the tab never launches anything: `onLaunch` is the one
- * explicit click that does. The notice deck floats over it while it is in
- * front (decisions 3, 4, 10). Its switcher and End session are the page
- * header's (design-mode decision 12).
+ * The feature page's chat column (chat-as-web-components decisions 3, 7): the
+ * thread in front — the main chat, a side thread or a scenario chat — through
+ * `ThreadColumn`. Opening it never launches anything; a main chat nobody has
+ * started is an empty thread whose first message starts it (`start`, the
+ * feature's chat launch). The notice deck floats over it while it is in view.
+ * Its thread list is the page header's (`ThreadSwitcher`).
  */
 export function FeatureChat({
   full,
+  column,
   events,
   alerts,
   hidden,
-  launching,
-  launchError,
-  autoResuming = false,
-  onLaunch,
+  start,
   onView,
 }: {
   full: FeatureFull
+  column: FeatureChatColumn
   /** The feature's event log, which feeds the notice deck over the chat. */
   events: readonly EventRow[]
   /** The page's dismissible notices, at the top of the column (a failed resume, a drive's prerequisites). */
   alerts?: ReactNode
+  /** The panel has the whole row. */
   hidden: boolean
-  launching: boolean
-  /** Why the last Resume or Start was refused (a talk worktree that cannot be made). */
-  launchError?: string
-  /** Opening the feature is resuming its chat by itself: the ended transcript stays up until it is live. */
-  autoResuming?: boolean
-  /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
-  onLaunch: () => void
+  /** Start the feature's main chat; answers with its thread. */
+  start: () => Promise<string>
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
 }) {
-  const live = activeSession(full.sessions)
-  // While resuming, the new row has no transcript yet: read back the one it continues.
-  const chat = autoResuming
-    ? full.sessions.findLast((s) => s.kind === 'chat' && s.status === 'ended')
-    : featureChat(full.sessions)
-  const notices = (alerts || live) && (
-    <>
-      {alerts}
-      {live && <SessionNotices featureId={full.feature.id} session={live} />}
-    </>
-  )
+  const { inFront, main, scenario } = column
+  const isMain = inFront === main
+  const isScenario = inFront !== null && inFront === scenario.sessionId
+  const entry = column.threads.find((t) => t.id === column.current)
+  if (hidden) return null
+  if (column.pending) return <ThreadOpening label="Thread" />
   return (
-    <ChatView
-      label="Agent"
-      session={live ?? null}
-      notices={notices}
-      headless={
-        live && isHeadlessRun(live)
-          ? isSelfPlanRun(live)
-            ? 'This feature is planning itself. There is no terminal to watch; the plan appears in the body as it is written.'
-            : 'This feature is working by itself. There is no terminal to watch; its docs and tickets update in the body as it works.'
-          : undefined
-      }
-      transcriptId={chat?.id}
-      onLaunch={onLaunch}
-      launching={launching}
-      launchError={launchError}
-      autoResuming={autoResuming}
-      hidden={hidden}
+    <ThreadColumn
+      // A fresh column per thread: its draft, attachments and scroll are its
+      // own. The main chat keeps one through its start, so the first message
+      // stays on screen while the chat it started takes its id.
+      key={isMain ? 'main' : inFront}
+      label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : 'Thread'}
+      threadId={inFront}
+      {...(entry ? { runtime: entry.runtime } : {})}
+      {...(isMain ? { start, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
+      draftKey={`feature:${full.feature.id}:main`}
+      onOpenThread={column.pick}
+      emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : SIDE_HINT}
+      {...(isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
+      notices={alerts}
     >
-      <FeatureNoticeDeck events={events} tickets={full.tickets} active={!hidden} onView={onView} />
-    </ChatView>
+      <FeatureNoticeDeck events={events} tickets={full.tickets} active onView={onView} />
+    </ThreadColumn>
   )
 }

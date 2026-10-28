@@ -1,8 +1,16 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { ProjectFinding } from '../src/lib/api'
-import { EstablishedFrame, PrepCallToAction } from '../src/components/PreparationWorkspace'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { PrepView, ProjectFinding } from '../src/lib/api'
+import { fakeTrpc } from './fake-trpc'
+
+vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
+vi.mock('../src/lib/live', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/live')>()),
+  useLivePoll: () => false,
+}))
+
+const { EstablishedFrame, PrepAside, PreparationWorkspace, prepHint } = await import('../src/components/PreparationWorkspace')
 
 const finding = (overrides: Partial<ProjectFinding> = {}): ProjectFinding =>
   ({
@@ -14,75 +22,63 @@ const finding = (overrides: Partial<ProjectFinding> = {}): ProjectFinding =>
     ...overrides,
   }) as ProjectFinding
 
-describe('PreparationWorkspace resting states', () => {
+/** The project's server with no preparation chat yet. */
+function server(view: Partial<PrepView>) {
+  return fakeTrpc({
+    'project.list': () => [{ id: 'proj_1', name: 'Demo' }],
+    'project.prep': () => ({ prepared: false, preparedAt: null, pendingKeys: [], findings: [], ...view }),
+    'project.prepSession': () => null,
+    'project.talkToPrep': () => ({ sessionId: 'th_prep' }),
+    'thread.list': () => [],
+    'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
+    'thread.events': () => ({ events: [] }),
+    'thread.send': () => ({ promptId: 'p1' }),
+  })
+}
+
+describe('the preparation workspace', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('is the preparation thread, empty with its composer before anyone started it — no Start, Resume or End session', async () => {
+    const api = server({ pendingKeys: ['setupCommand'] })
+    render(<PreparationWorkspace projectId="proj_1" />, { wrapper: api.Wrapper })
+
+    expect(screen.getByRole('region', { name: 'Preparation chat' })).toBeTruthy()
+    expect(screen.getByLabelText('Message')).toBeTruthy()
+    expect(await screen.findByText('1 to establish')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Start preparation|Resume|Start fresh|End session/ })).toBeNull()
+  })
+
+  it('starts the preparation chat through talkToPrep on the first Send, then sends the message to it', async () => {
+    const api = server({})
+    render(<PreparationWorkspace projectId="proj_1" />, { wrapper: api.Wrapper })
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'The dev server is bun run dev' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+
+    expect(await screen.findByText('The dev server is bun run dev')).toBeTruthy()
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_prep', text: 'The dev server is bun run dev' }]))
+    expect(api.inputs('project.talkToPrep')).toEqual([{ projectId: 'proj_1', holdOpening: true }])
+  })
+})
+
+describe('PrepAside', () => {
   afterEach(cleanup)
 
-  it('puts prepared actions before the established evidence', () => {
-    const { container } = render(
-      <PrepCallToAction
-        prepared
-        preparedAt={Date.now()}
-        pending={[]}
-        findings={[finding()]}
-        staleCount={1}
-        starting={false}
-        onStart={() => {}}
-        onStartFresh={() => {}}
-      />,
-    )
-
-    const text = container.textContent ?? ''
-    expect(text.indexOf('Re-prepare this project')).toBeLessThan(text.indexOf('Prepared '))
-    expect(text.indexOf('Prepared ')).toBeLessThan(text.indexOf('Resume'))
-    expect(text.indexOf('Resume')).toBeLessThan(text.indexOf('Established'))
-  })
-
-  it('uses one sentence to explain each launch state', () => {
-    const props = {
-      preparedAt: null,
-      pending: [] as string[],
-      findings: [] as ProjectFinding[],
-      staleCount: 0,
-      starting: false,
-      onStart: () => {},
-      onStartFresh: () => {},
-    }
-    const { rerender } = render(<PrepCallToAction {...props} prepared={false} />)
-    expect(
-      screen.getByText(
-        "Opens a terminal session here with an agent in your own checkout — it runs this repo's commands, records the answers, and asks you the ones only you know.",
-      ),
-    ).toBeTruthy()
-
-    rerender(<PrepCallToAction {...props} prepared />)
-    const explainer = screen.getByText(
-      'Resume continues your last preparation conversation; Start fresh opens one that has never seen it — values you typed by hand are never overwritten.',
-    )
-    // a caption under the actions, not a second paragraph of body copy
-    expect(explainer.className).toContain('text-xs')
-    expect(explainer.className).toContain('text-text-tertiary')
-  })
-
-  it('offers exactly one primary in each state', () => {
-    const props = {
-      preparedAt: Date.now(),
-      pending: ['setupCommand'],
-      findings: [] as ProjectFinding[],
-      staleCount: 0,
-      starting: false,
-      onStart: () => {},
-      onStartFresh: () => {},
-    }
-    const { container, rerender } = render(<PrepCallToAction {...props} prepared={false} />)
-    expect(container.querySelectorAll('[data-variant="primary"]')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Start preparation' }).dataset.variant).toBe('primary')
+  it('lists what is still open as rows, then what is established', () => {
+    const { container } = render(<PrepAside pending={['setupCommand']} findings={[finding()]} staleCount={0} />)
     // what is still open is a list of rows, not a cloud of pills
     expect(screen.getByText('Setup').closest('[data-list-row]')).toBeTruthy()
+    const text = container.textContent ?? ''
+    expect(text.indexOf('Setup')).toBeLessThan(text.indexOf('Verify'))
+  })
 
-    rerender(<PrepCallToAction {...props} prepared />)
-    expect(container.querySelectorAll('[data-variant="primary"]')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Resume' }).dataset.variant).toBe('primary')
-    expect(screen.getByRole('button', { name: 'Start fresh' }).dataset.variant).toBe('secondary')
+  it('says in the empty thread what preparation does, in each state', () => {
+    expect(prepHint(false)).toContain('asks you the ones only you know')
+    expect(prepHint(true)).toContain('values you typed by hand are never overwritten')
   })
 })
 

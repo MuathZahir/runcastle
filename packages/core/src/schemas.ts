@@ -98,17 +98,16 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * so the launcher treats such a launch as a plain chat open; the value stays so
  * old rows and the web keep reading.
  *
- * `self-plan` — the feature's planning session launched by "Plan it yourself"
- * (`features-plan-themselves` decision 9): headless, with no human present, it
- * plans the feature through preview, spec and tickets in one run. The briefing,
- * the page and the exit handling key on it; a live one refuses every chat launch.
+ * `self-plan` — the feature's main chat thread opened by "Plan it yourself"
+ * (`features-plan-themselves` decision 9; chat-as-web-components decision 6):
+ * unattended, with no human present — the agent host declines its asks — it
+ * plans the feature through preview, spec and tickets in one turn. The
+ * briefing and the page key on it; it is cleared when that turn ends.
  *
- * `relay` — a headless run that resumes a feature's planning conversation with
- * a message from the orchestrator as its prompt.
- *
- * `lead-wake` — a headless run that resumes a feature's chat (its lead) with
- * runcastle's pending messages as its prompt, because no terminal of it was open
- * to take them (`the-feature-lead-runs-rounds` decision 12).
+ * `relay` and `lead-wake` — historical: headless runs that carried the
+ * orchestrator's or runcastle's messages to a feature's chat. Messages are
+ * prompts into the chat thread now (ADR-0015); the values stay so old rows keep
+ * reading.
  *
  * `scenario-setup` — a `scenario` session launched while the driven branch had
  * no `.runcastle/scenarios/` yet (drive-scenarios decision 5). Decided once at
@@ -804,13 +803,14 @@ export const EventRow = z.object({
 })
 export type EventRow = z.infer<typeof EventRow>
 
-/** A headless lead wake that never got going, or died in its one turn. */
+/** A message to the lead that could not reach its chat (once: a headless wake that died). */
 export const LEAD_WAKE_FAILED = 'lead.wake_failed'
 
 /**
  * `lead.wake_failed`'s data: the process's exit code (null when it never
- * spawned or the code is unknown) and the last lines of its output, bounded —
- * what the status line shows instead of claiming the agent is working.
+ * spawned or the code is unknown) and the reason or the last lines of its
+ * output, bounded — what the status line shows instead of claiming the agent
+ * is working.
  */
 export const LeadWakeFailedData = z.object({
   sessionId: z.string().optional(),

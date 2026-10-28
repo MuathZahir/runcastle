@@ -91,9 +91,14 @@ function eventsOf(ctx: AppCtx, featureId: string, type: string): EventRow[] {
   return listAfter(ctx, featureId, 0).filter((e) => e.type === type)
 }
 
-/** Messages the lead was sent (no live terminal in tests, so each is recorded pending). */
+/**
+ * Messages the lead was sent. These features have no checkout to open a chat
+ * in, so each is recorded as kept for the agent (`lead.wake_failed`), text and all.
+ */
 function leadMessages(ctx: AppCtx, featureId: string): string[] {
-  return eventsOf(ctx, featureId, 'lead.message_pending').map((e) => (e.data as { text: string }).text)
+  return listAfter(ctx, featureId, 0)
+    .filter((e) => e.type === 'lead.message_queued' || e.type === 'lead.wake_failed')
+    .map((e) => (e.data as { text: string }).text)
 }
 
 describe('the feature lead runs rounds', () => {

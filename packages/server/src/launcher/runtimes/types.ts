@@ -85,6 +85,42 @@ export interface RuntimeLaunchSpec {
   envScrub: readonly string[]
 }
 
+/**
+ * A conversation's launch over ACP (chat-as-web-components; ADR-0015),
+ * completely described and not yet spawned: the runtime's ACP adapter as a
+ * child process speaking ACP on stdio, and the `_meta` its `session/new` /
+ * `session/load` carries. The briefing files are the same ones
+ * {@link AgentRuntimeAdapter.writeArtifacts} writes; only how they reach the
+ * CLI differs (Claude: through `_meta.claudeCode.options`; Codex: its
+ * per-session `CODEX_HOME`).
+ */
+export interface AcpLaunchSpec {
+  /** Absolute paths of every artifact file written for this session. */
+  files: readonly string[]
+  /** The adapter program and its argv (e.g. the resolved `claude-agent-acp` entry run by node or bun). */
+  command: string
+  args: string[]
+  /** Env vars to set over the inherited process env (`CLAUDE_CODE_EXECUTABLE`, `CODEX_PATH`, `CODEX_HOME`, `RUNCASTLE_SESSION_ID`…). */
+  env: Record<string, string>
+  /** Env var names to DELETE from the inherited process env. */
+  envScrub: readonly string[]
+  /** The `_meta` sent with `session/new` and `session/load`. */
+  sessionMeta: Record<string, unknown>
+  /**
+   * The ACP session mode the session must run in, set with `session/set_mode`
+   * when `session/new` / `session/load` reports another. claude-agent-acp
+   * ignores a permission mode in its `_meta` options and starts in the
+   * settings' default mode, so the launch's posture is applied this way.
+   */
+  sessionMode?: string
+  /**
+   * Trust the session's hooks through codex-acp's `_codex/hooks/trust` once
+   * the session is open: Codex runs no hook it has not trusted, and its ACP
+   * adapter has no `--dangerously-bypass-hook-trust`.
+   */
+  trustHooks?: boolean
+}
+
 export interface AgentRuntimeAdapter {
   /** The runtime this adapter launches — the `runtime` of every model that selects it. */
   readonly id: AgentRuntime
@@ -96,6 +132,12 @@ export interface AgentRuntimeAdapter {
   checkReady(): RuntimeReadiness
   /** Write this session's artifacts and describe the launch they belong to. */
   writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec>
+  /**
+   * Describe this session's launch over ACP (ADR-0015). `kickoffLine` and
+   * `headless` in the input are ignored here — over ACP the kickoff is the
+   * thread's first prompt and nothing is headless.
+   */
+  acpLaunch(input: RuntimeLaunchInput): Promise<AcpLaunchSpec>
   /** The line typed into a freshly-live session of `kind` to open it. */
   kickoffLine(kind: SessionKind): string
   /**

@@ -13,15 +13,9 @@ import { DEFAULT_RUNTIME, newId } from '@runcastle/core'
 import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
-import { ptyRegistry } from '../pty/registry'
 import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
-import { emitForSession, emitProject } from '../services/events'
-import {
-  endOrchestratorMessages,
-  leadMessageKey,
-  releaseOrchestratorWaiter,
-} from '../services/orchestrator-messages'
+import { emitProject } from '../services/events'
 import {
   landProjectBranch,
   PROJECT_BRANCH,
@@ -29,6 +23,7 @@ import {
   type ProjectLandResult,
 } from '../services/git'
 import { getProjectById, rowToSession } from '../services/repo'
+import { hasThreadLog } from '../threads/log'
 import { runtimeAdapterFor } from './runtimes'
 import { prepareConfirmKickoffFor } from './runtimes/skills'
 
@@ -59,8 +54,6 @@ export type CreateSessionInput = {
    * why a default is not stamped in its place.
    */
   model?: ModelEntry
-  /** The session runs with no terminal (a self-plan or relay run). */
-  headless?: boolean
   /** A `side` session's main-chat row at open time (see the db schema). */
   openedBeside?: string
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
@@ -82,7 +75,8 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       worktreePath: input.worktreePath,
       model: input.model?.id ?? null,
       runtime: input.model?.runtime ?? null,
-      headless: input.headless ?? false,
+      // Nothing runs headless any more (ADR-0015); the column stays for old rows.
+      headless: false,
       // Named lazily from the transcript once there is one (see
       // `services/conversations.ts`) — a row born a millisecond ago has
       // nothing to be called yet.
@@ -186,16 +180,6 @@ export function markSessionLive(
 }
 
 /**
- * How long after spawning a terminal we wait for `SessionStart` before telling
- * the human something is wrong. The hook fires within a second or two of a
- * healthy launch, so silence past this means the session is blocked on
- * something only they can see (a dialog waiting for an answer, a login prompt),
- * or the hook itself is broken. Either way the agent inside has not started on
- * the briefing it was launched with, so we say so.
- */
-export const SESSION_READY_TIMEOUT_MS = 25_000
-
-/**
  * The kickoff line for a session: an explicit override wins, else the per-kind
  * default of the runtime the session runs on — the skill invocation is spelled
  * differently per runtime, so the line comes from the adapter and never from a
@@ -217,16 +201,13 @@ export function kickoffLineFor(
  */
 export const PREPARE_CONFIRM_KICKOFF = prepareConfirmKickoffFor(DEFAULT_RUNTIME)
 
-/** What a launch is going to type into its terminal, and what that implies. */
+/** What a launch is going to say to its thread, and what that implies. */
 export interface KickoffPlan {
-  /** The briefing to type; absent means the per-kind default line. */
+  /** The briefing to send; absent means the per-kind default line. */
   line?: string
   /**
-   * The briefing IS this session's opening move (a merge-conflict
-   * hand-off) rather than a nudge to carry on. Such a launch must be FRESH: a
-   * `--resume` shows Claude Code's "start from a summary?" chooser, which eats
-   * the very keystrokes carrying the briefing (F2), and even when it survives, a
-   * restored transcript argues with an instruction that means to start over.
+   * The caller brought a briefing of its own (a merge-conflict hand-off), so
+   * the launch speaks even when it reopens a conversation already under way.
    */
   explicit: boolean
 }
@@ -243,54 +224,14 @@ export function planKickoff(input: { kind: SessionKind; kickoffLine?: string }):
   return { line, explicit: true }
 }
 
-/** Is this session's terminal still running? False once it has exited or gone. */
-function ptyAlive(sessionId: string): boolean {
-  const entry = ptyRegistry().get(sessionId)
-  return !!entry && !entry.exited
-}
-
 /**
- * Watchdog armed when a terminal spawns: if the agent has not reported
- * `SessionStart` by {@link SESSION_READY_TIMEOUT_MS}, the session is stuck on
- * something only the human can see (a trust prompt, a login, an update notice),
- * and the briefing it was launched with is sitting behind that. We say so rather
- * than touching the terminal: whatever is on screen is a question for them.
- *
- * The callback runs on a bare timer, where a throw is uncaught and takes the
- * whole server down — so a failed read or write (a locked database) is logged
- * and dropped here: the warning is best effort, the server is not.
+ * Session ids whose landing is in flight. A project thread ended from the UI
+ * runs BOTH end paths — `endSession` stops its process, whose stop then lands
+ * too — and two concurrent merges of the same branch is not a race worth
+ * having. An id is let go when its landing settles: a thread keeps its row for
+ * life, so each time its process stops it lands what it wrote since.
  */
-export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void {
-  const timer = setTimeout(() => {
-    try {
-      warnIfNotReady(ctx, session)
-    } catch (err) {
-      console.error(`session-ready watchdog failed for ${session.id}`, err)
-    }
-  }, SESSION_READY_TIMEOUT_MS)
-  timer.unref?.()
-}
-
-function warnIfNotReady(ctx: AppCtx, session: SessionRow): void {
-  const row = getSessionRow(ctx, session.id)
-  if (!row || row.status !== 'launching') return
-  if (!ptyAlive(session.id)) return
-  emitForSession(ctx, session, {
-    type: 'session.not_ready',
-    message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
-    data: { sessionId: session.id, kind: session.kind },
-  })
-}
-
-/**
- * Session ids whose landing has already been kicked off. A project terminal
- * closed from the UI runs BOTH end paths — `endSession` kills the PTY, whose
- * exit then reaches `handlePtyExit` — and two concurrent merges of the same
- * branch is not a race worth having. Ids are kept for the life of the process:
- * an ended session never lands twice, and the set grows by one entry per closed
- * project terminal.
- */
-const landedProjectSessions = new Set<string>()
+const landingProjectSessions = new Set<string>()
 
 /**
  * Landings still in flight. Kicking one off is deliberately fire-and-forget (see
@@ -334,8 +275,8 @@ export async function awaitProjectLandings(): Promise<void> {
  */
 export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   if (session.kind !== 'project' || !session.projectId) return
-  if (landedProjectSessions.has(session.id)) return
-  landedProjectSessions.add(session.id)
+  if (landingProjectSessions.has(session.id)) return
+  landingProjectSessions.add(session.id)
   const project = getProjectById(ctx, session.projectId)
   if (!project) return
 
@@ -364,7 +305,10 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
     (e: unknown) => landFailed(null, e),
   )
   inFlightLandings.add(landing)
-  void landing.finally(() => inFlightLandings.delete(landing))
+  void landing.finally(() => {
+    inFlightLandings.delete(landing)
+    landingProjectSessions.delete(session.id)
+  })
 }
 
 /**
@@ -412,23 +356,6 @@ export function reportProjectLanding(
   }
 }
 
-/**
- * Sessions someone asked to end (`endSession`), noted before the kill so the
- * exit it causes is read as asked for, not as a crash: a lead wake the human
- * ended is not a `lead.wake_failed`. Taken once, by whoever reads the exit.
- */
-const requestedEnds = new Set<string>()
-
-/** Note that ending this session was asked for; call before killing it. */
-export function noteRequestedEnd(id: string): void {
-  requestedEnds.add(id)
-}
-
-/** Whether ending this session was asked for — and forget it, so it is read once. */
-export function takeRequestedEnd(id: string): boolean {
-  return requestedEnds.delete(id)
-}
-
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)
@@ -439,62 +366,44 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // exit, the Stop hook, boot reconciliation — so this is the one place it must
   // happen.
   if (existing.featureId) stopDocsWatch(existing.featureId)
-  // An orchestrator's message waiter is answered `ended`, and lines it never
-  // heard are dropped: the catch-up briefing carries them to its next launch.
-  endOrchestratorMessages(id)
-  // A lead's waiter goes with its session, but its feature's messages stay: the
-  // lead waker resumes the conversation headless with them. Only on the first
-  // ending: by a repeat one, the feature's next chat may own the waiter.
-  if (existing.kind === 'chat' && existing.featureId && existing.status !== 'ended') {
-    releaseOrchestratorWaiter(leadMessageKey(existing.featureId), 'ended')
-  }
   // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
-  // recorded fact rather than the row's age wearing an end-time label. Those
-  // same three end paths can each fire on a row that is already ended (a Stop
-  // hook arriving after the PTY exit, say), and re-stamping would walk the time
-  // forward every time — so the first ending stands.
+  // recorded fact rather than the row's age wearing an end-time label. The end
+  // paths can each fire on a row that is already ended (a SessionEnd hook
+  // arriving after the host's stop, say), and re-stamping would walk the time
+  // forward every time — so only a row that was running is stamped. A thread
+  // keeps its row for life, so each of its process's stops is stamped anew.
   ctx.db
     .update(sessions)
-    .set({ status: 'ended', ...(existing.endedAt === undefined ? { endedAt: Date.now() } : {}) })
+    .set({ status: 'ended', ...(existing.status !== 'ended' || existing.endedAt === undefined ? { endedAt: Date.now() } : {}) })
     .where(eq(sessions.id, id))
     .run()
   return getSessionRow(ctx, id)
 }
 
 /**
- * The feature's most recently ENDED session that recorded a Claude Code session
- * id — the conversation a relaunched terminal `--resume`s. Live sessions are
- * excluded (the one-live-session guard refuses a second terminal while one
- * exists) and sessions that never went live have no cc id, so they can't match.
- * Ordered by the implicit sqlite `rowid` (insertion order — `sessions` has no
- * timestamp).
- *
- * `kind` narrows the search to conversations of that kind, which is what every
- * ordinary relaunch wants: reopening the grill must land back in the grill
- * conversation, not in whatever qa session happened to run afterwards. A
- * kind=revisit launch omits it deliberately — revisit means "resume the last
- * thing we talked about", whatever kind that was.
+ * The thread of `kind` on a feature or a project that the launchers reopen,
+ * whatever its process is doing (chat-as-web-components): a thread keeps one
+ * row for life. It is the newest row holding a conversation (an agent-side id
+ * or a log) — a terminal-era feature has rows newer than its conversation that
+ * never went live — else the newest row.
  */
-export function mostRecentResumableSession(
+export function newestThread(
   ctx: AppCtx,
-  featureId: string,
-  kind?: SessionKind,
+  scope: { featureId: string } | { projectId: string },
+  kind: SessionKind,
 ): SessionRow | null {
-  const row = ctx.db
-    .select()
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.featureId, featureId),
-        eq(sessions.status, 'ended'),
-        isNotNull(sessions.ccSessionId),
-        ...(kind ? [eq(sessions.kind, kind)] : []),
-      ),
-    )
-    .orderBy(desc(sql`rowid`))
-    .limit(1)
-    .get()
-  return row ? rowToSession(row) : null
+  const rows = 'featureId' in scope ? featureSessions(ctx, scope.featureId, [kind]) : projectSessions(ctx, scope.projectId, kind)
+  return rows.find((row) => row.ccSessionId || hasThreadLog(row.id)) ?? rows[0] ?? null
+}
+
+/** Record the errand a thread was (re)opened on, which its brief and guards read. */
+export function setThreadPurpose(
+  ctx: AppCtx,
+  id: string,
+  purpose: SessionPurpose | null,
+  purposeData: MergeBranchPair | null = null,
+): void {
+  ctx.db.update(sessions).set({ purpose, purposeData }).where(eq(sessions.id, id)).run()
 }
 
 /**
@@ -568,6 +477,11 @@ export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
   ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()
 }
 
+/** Point a thread's row at the model it next starts on (see `followSettings` in `threads/host.ts`). */
+export function setSessionModel(ctx: AppCtx, id: string, model: string): void {
+  ctx.db.update(sessions).set({ model }).where(eq(sessions.id, id)).run()
+}
+
 /**
  * Forget a cached name, putting the row back to deriving one on every read.
  * The list clears the titles it can tell were derived by an older, worse
@@ -601,37 +515,6 @@ export function hasCompletedProjectSession(
       .limit(1)
       .get() !== undefined
   )
-}
-
-/**
- * The project-scoped twin of {@link mostRecentResumableSession}: the last ended
- * conversation of this kind for a project, so reopening a preparation terminal
- * continues it instead of making the human re-explain their database.
- *
- * Keyed on `project_id` rather than `feature_id`, which is the column a
- * project-scoped session actually has — the feature-keyed query would never
- * match one of these rows (NULL never equals anything), so it needs its own.
- */
-export function mostRecentResumableProjectSession(
-  ctx: AppCtx,
-  projectId: string,
-  kind: SessionKind,
-): SessionRow | null {
-  const row = ctx.db
-    .select()
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.projectId, projectId),
-        eq(sessions.kind, kind),
-        eq(sessions.status, 'ended'),
-        isNotNull(sessions.ccSessionId),
-      ),
-    )
-    .orderBy(desc(sql`rowid`))
-    .limit(1)
-    .get()
-  return row ? rowToSession(row) : null
 }
 
 // --- re-entry cap -----------------------------------------------------------

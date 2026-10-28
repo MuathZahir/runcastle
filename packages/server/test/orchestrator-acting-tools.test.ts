@@ -36,7 +36,8 @@ import {
 import { listAfter } from '../src/services/events'
 import { featureDocPath } from '../src/services/feature-docs'
 import { deliverToLead } from '../src/services/lead-delivery'
-import { leadMessageKey, takeOrchestratorLines } from '../src/services/orchestrator-messages'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import {
   __resetTestDriveState,
   activeTestDriveFeatureId,
@@ -212,34 +213,28 @@ describe('the orchestrator’s acting tools', () => {
     ).toMatch(/is shipped/)
   })
 
-  it('a lead message while it plans itself, then stop_feature_run: the woken lead is never ended', async () => {
+  it('a lead message while it plans itself goes into the plan’s thread, and stop_feature_run ends only the plan', async () => {
     const session = orchestrator()
     const f = await started('mid-plan')
     const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'mid-plan' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
     markSessionLive(ctx, sessionId, { ccSessionId: 'cc-plan' })
+    const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
+    setAgentHostForTests(host)
+    try {
+      await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Go given', source: 'runcastle' })
+      const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
+      expect(queued?.data).toMatchObject({ sessionId })
 
-    await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Go given', source: 'runcastle' })
-    expect(getSessionRow(ctx, sessionId)?.status).toBe('live')
-    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
-    expect(types).toContain('lead.message_pending')
-    expect(types).not.toContain('session.ended')
-
-    // The plan ran out; runcastle woke the lead headless with Go.
-    toolStopFeatureRun(ctx, session, { slug: 'mid-plan' })
-    const wake = createSessionRow(ctx, {
-      featureId: f.id,
-      kind: 'chat',
-      purpose: 'lead-wake',
-      worktreePath: repoPath,
-      headless: true,
-    })
-    markSessionLive(ctx, wake.id, { ccSessionId: 'cc-plan' })
-    expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'mid-plan' }))).toMatch(
-      /no headless run going/,
-    )
-    expect(getSessionRow(ctx, wake.id)?.status).toBe('live')
-    takeOrchestratorLines(leadMessageKey(f.id))
+      toolStopFeatureRun(ctx, session, { slug: 'mid-plan' })
+      expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
+      // The thread stays: the next message starts it again.
+      await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Round 1 returned', source: 'runcastle' })
+      expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.message_queued').at(-1)?.data).toMatchObject({ sessionId })
+    } finally {
+      await host.stopAll('shutdown')
+      setAgentHostForTests(undefined)
+    }
   })
 
   it('stop_feature_run leaves a human’s interactive session alone', async () => {

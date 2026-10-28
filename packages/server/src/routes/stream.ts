@@ -40,7 +40,9 @@ export const HEARTBEAT_MS = 25_000
  * *something* changed, not how many times.
  */
 function dedupeKey(s: LiveSignal): string {
-  return s.kind === 'transcript' ? `transcript:${s.ticketId}` : 'event'
+  if (s.kind === 'transcript') return `transcript:${s.ticketId}`
+  if (s.kind === 'thread') return `thread:${s.threadId}`
+  return 'event'
 }
 
 stream.get('/', (c) =>

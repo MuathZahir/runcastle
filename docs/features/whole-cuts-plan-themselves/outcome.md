@@ -102,7 +102,7 @@ Features start planning with nobody on the page, so a cut made by the project se
   - `isHeadlessRun` (true when `headless` is set, or for a self-plan row) and `unfinishedRuns(events)` are in lib/feature-ui/session.ts.
   - New `next-step/headless.ts` (`resolveHeadlessRun`) runs before every state's resolver. It shows the working bar with Stop for each purpose, in its own words. After a relay or lap whose `run_ended` said `complete:false`, it shows a stopped-short bar (planning and review only).
   - The self-plan working bar moved there unchanged. Its stopped-short bar stays in planning.ts.
-  - The action kind `stopSelfPlan` was renamed to `stopHeadlessRun`.
+  - The action kind `stopSelfPlan` was renamed to `stopSelfPlan`.
   - FeatureChat and the Workspace Chat door refuse for any headless run.
 
 **Deviations and surprises**

@@ -47,12 +47,14 @@ export const FLOATING_SURFACE =
  * is. Radix marks that row `data-highlighted`; cmdk marks it
  * `data-selected=true` — both are covered so every list lights the same way.
  * Icons inside take the `icon` colour; a trailing `Kbd` pushes itself right
- * with `ml-auto`.
+ * with `ml-auto`. A disabled row: Radix writes `data-disabled=""` only on one;
+ * cmdk writes `data-disabled` on every row, `"true"` or `"false"`, so only
+ * the attribute's value can say.
  */
 export const FLOATING_ITEM =
   'flex min-h-7.5 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm ' +
   'transition-colors duration-(--dur-1) ease-app select-none [&_svg]:shrink-0 ' +
-  'data-disabled:cursor-not-allowed data-disabled:opacity-50 ' +
+  "data-[disabled='']:cursor-not-allowed data-[disabled='']:opacity-50 " +
   'data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50'
 
 /**

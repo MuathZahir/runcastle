@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SessionPurpose } from '@runcastle/core'
@@ -18,29 +18,29 @@ import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { briefOf, kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
- * A launch that carries an explicit briefing must open a FRESH conversation
- * (F2). `--resume` puts Claude Code's "start from a summary?" chooser on screen
- * at exactly the moment the kickoff is typed blind into the PTY, so the briefing
- * answers the dialog instead of arriving — and a restored transcript would argue
- * with it even when it survives.
+ * A chat launch rides the feature's one conversation (`one-chat-per-feature`
+ * decision 13): an explicit briefing is said into the resumed thread, ahead of
+ * the feature's fresh state, and a plain open of a conversation under way says
+ * nothing at all — the thread just opens.
  *
- * Observed at the two seams the launch actually crosses: the plan (pure), and a
- * `spawn:false` launch, which renders the real `claude` argv into its
- * `session.launched` event and writes the real prompt artifact to disk.
+ * Observed at the seams the launch crosses: the plan (pure), and a
+ * `spawn:false` launch, which logs its briefing as the thread's prompt; the
+ * brief is what the thread's process would be started with.
  */
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 }
 
 describe('planKickoff', () => {
-  it('treats a caller-supplied briefing as the opening move (fresh, no resume)', () => {
+  it('treats a caller-supplied briefing as one the launch must say', () => {
     const plan = planKickoff({ kind: 'chat', kickoffLine: 'Resolve the merge conflict.' })
     expect(plan).toEqual({ line: 'Resolve the merge conflict.', explicit: true })
   })
 
-  it('leaves an ordinary launch alone — no line, resume as before', () => {
+  it('leaves an ordinary launch alone — no line of its own', () => {
     expect(planKickoff({ kind: 'chat' })).toEqual({ explicit: false })
   })
 })
@@ -65,11 +65,11 @@ describe('launchSession — briefings', () => {
     cleanup.length = 0
   })
 
-  /** A feature with a real branch + worktree, and one ended resumable session. */
+  /** A feature with a real branch + worktree, and its main chat's conversation on record. */
   async function seedResumable(
     slug: string,
     overrides: Parameters<typeof seedFeature>[2] = {},
-  ): Promise<{ featureId: string }> {
+  ): Promise<{ featureId: string; priorId: string }> {
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug, ...overrides })
     await createFeatureBranch(project, slug, 'main')
@@ -81,22 +81,17 @@ describe('launchSession — briefings', () => {
     })
     markSessionLive(ctx, prior.id, { ccSessionId: 'cc-prior' })
     markSessionEnded(ctx, prior.id)
-    return { featureId: feature.id }
+    return { featureId: feature.id, priorId: prior.id }
   }
 
-  /** The `claude` argv a `spawn:false` launch rendered, and its prompt artifact. */
+  /** What a `spawn:false` launch said into its thread, and the brief its process would start with. */
   async function launchAndRead(
     featureId: string,
     input: { kind: 'chat'; kickoffLine?: string; purpose?: SessionPurpose },
-  ): Promise<{ sessionId: string; command: string; prompt: string }> {
+  ): Promise<{ sessionId: string; said: string; prompt: string }> {
     const { sessionId } = await launchSession(ctx, { featureId, ...input }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
-    const launched = listAfter(ctx, featureId, 0).find((e) => e.type === 'session.launched')
-    return {
-      sessionId,
-      command: String((launched?.data as { command?: string })?.command ?? ''),
-      prompt: readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8'),
-    }
+    return { sessionId, said: kickoffOf(sessionId), prompt: await briefOf(ctx, sessionId) }
   }
 
   /**
@@ -105,41 +100,40 @@ describe('launchSession — briefings', () => {
    * purpose opens the chat as any plain open does — as the feature's lead.
    */
   it('opens a start-lap launch at review as a plain chat: the lead, no lap framing', async () => {
-    const { featureId } = await seedResumable('start-lap-retired', {})
+    const { featureId, priorId } = await seedResumable('start-lap-retired', {})
     const plain = await launchAndRead(featureId, { kind: 'chat', purpose: 'start-lap' })
 
-    expect(plain.command).toContain('--resume cc-prior')
-    expect(plain.command).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
-    expect(plain.command).not.toContain('FROM REVIEW')
+    expect(plain.sessionId).toBe(priorId)
+    // A plain open of a conversation under way says nothing.
+    expect(plain.said).toBe('')
     expect(plain.prompt).toContain("You are this feature's **lead**")
     expect(plain.prompt).not.toContain('This is lap')
   })
 
   it('delivers a chat kickoff override into the resumed conversation', async () => {
     const briefing = 'Resolve the merge conflict on the feature branch.'
-    const { featureId } = await seedResumable('with-briefing', {})
-    const { command } = await launchAndRead(featureId, {
+    const { featureId, priorId } = await seedResumable('with-briefing', {})
+    const { sessionId, said } = await launchAndRead(featureId, {
       kind: 'chat',
       kickoffLine: briefing,
     })
 
-    expect(command).toContain('--resume cc-prior')
-    expect(command).toContain(briefing)
-    expect(command).toContain('Feature status:')
+    expect(sessionId).toBe(priorId)
+    expect(said.startsWith(`[runcastle] ${briefing}`)).toBe(true)
+    expect(said).toContain('Feature status:')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
     expect(events.map((e) => e.type)).not.toContain('session.resume_skipped')
   })
 
-  it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
-    const { featureId } = await seedResumable('no-briefing', {})
-    const { command } = await launchAndRead(featureId, { kind: 'chat' })
+  it('still reopens the last conversation for a launch with no briefing, saying nothing', async () => {
+    const { featureId, priorId } = await seedResumable('no-briefing', {})
+    const { sessionId } = await launchSession(ctx, { featureId, kind: 'chat' }, { spawn: false })
 
-    expect(command).toContain('--resume cc-prior')
-    // a plain resume says nothing: the conversation comes back as it was left
+    expect(sessionId).toBe(priorId)
+    // a plain open says nothing: the conversation comes back as it was left
     // (`opening-a-feature-shows-its-chat-as-you-left-it` decision 1)
-    expect(command).not.toContain('Feature status:')
-    expect(command).not.toContain('FROM REVIEW')
+    expect(promptsOf(sessionId)).toEqual([])
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
   })

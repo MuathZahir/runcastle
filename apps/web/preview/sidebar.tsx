@@ -100,8 +100,8 @@ function Design({ features, sample }: { features: FeatureListItem[]; sample: Sam
       </div>
       <div className="mt-3">
         <OrchestratorCard
-          status={busy ? 'Waiting on you · 2 notes' : 'Plan, cut and ask'}
-          waiting={busy}
+          status={busy ? 'Waiting for you · 2 notes' : 'Plan, cut and ask'}
+          state={busy ? 'waiting' : 'idle'}
           active={false}
           onOpen={noop}
           actions={[{ key: 'reprepare', label: 'Re-prepare the project', onSelect: noop }]}

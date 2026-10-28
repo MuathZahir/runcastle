@@ -9,7 +9,7 @@ import { listItem } from './fixtures'
  */
 
 const ready = listItem({ id: 'ready', waitingReason: 'ready to test' })
-const asking = listItem({ id: 'asking', liveSession: { status: 'live', awaitingInput: true } })
+const asking = listItem({ id: 'asking', liveSession: { status: 'live', awaitingInput: true }, leadAwaitsHuman: true })
 const failed = listItem({
   id: 'failed',
   ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },

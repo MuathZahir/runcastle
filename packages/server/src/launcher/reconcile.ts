@@ -1,40 +1,38 @@
-import type { SessionRow } from '@runcastle/core'
-import { inArray } from 'drizzle-orm'
+import { foldThread, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
-import { ptyRegistry } from '../pty/registry'
 import { emitForSession } from '../services/events'
 import { rowToSession } from '../services/repo'
+import { hasThreadLog } from '../threads/log'
+import { agentHost, appendThreadEvent, readThreadEvents } from '../threads/types'
 import { markSessionEnded } from './sessions'
 
 /**
- * Boot reconciliation (E2E finding, severity 1). The PTY registry is in-memory,
- * so after a cold server start every `launching`/`live` session row is stale by
- * definition — its process (if it ever had one) died with the old server. Left
- * alone, those rows wedge the one-live-session guard forever.
+ * Boot reconciliation (E2E finding, severity 1). Agent processes are children
+ * of the server, so after a cold start every `launching`/`live` session row is
+ * stale by definition — its process died with the old server. Each is marked
+ * `ended` with ONE `session.reconciled` event; to the human its thread is
+ * simply idle, and its next prompt starts it again.
  *
- * For each stale session this mirrors the manual `endSession` path
- * (`pty/end-session.ts`) minus the PTY kill (there is nothing to kill) and with
- * an honest event type: mark the row `ended` and emit ONE `session.reconciled`
- * event per session.
+ * A thread's log cut off mid-turn (or mid-ask) by the restart would still fold
+ * as working or waiting, so its log is closed with a `process stopped` event
+ * marked `restarted`, and it folds idle, its cut-off turn saying the restart
+ * interrupted it rather than "Stopped by you".
  *
- * `bun --hot` safety: the registry survives hot reloads on `globalThis`, so a
- * session whose PTY is genuinely still running is skipped — reconciliation only
- * ends sessions with no living process behind them.
+ * `bun --hot` safety: the agent host survives hot reloads on `globalThis`, so a
+ * thread whose process is genuinely still running is skipped.
  */
 export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
-  const stale = ctx.db
-    .select()
-    .from(sessions)
-    .where(inArray(sessions.status, ['launching', 'live']))
-    .all()
-    .map(rowToSession)
+  const host = agentHost(ctx)
+  const rows = ctx.db.select().from(sessions).all().map(rowToSession)
 
   const reconciled: SessionRow[] = []
-  for (const session of stale) {
-    const entry = ptyRegistry().get(session.id)
-    if (entry && !entry.exited) continue // genuinely live across a hot reload
-
+  for (const session of rows) {
+    if (host.isRunning(session.id)) continue
+    if (hasThreadLog(session.id) && foldThread(readThreadEvents(session.id)).state !== 'idle') {
+      appendThreadEvent(session.id, { type: 'process', state: 'stopped', restarted: true })
+    }
+    if (session.status !== 'launching' && session.status !== 'live') continue
     markSessionEnded(ctx, session.id)
     emitForSession(ctx, session, {
       type: 'session.reconciled',

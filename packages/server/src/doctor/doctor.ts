@@ -22,6 +22,7 @@ import {
   type AgentRuntime,
 } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
+import { isOlderVersion, minimumCliVersion } from './adapter-requirements'
 import {
   type HostAgentVersions,
   parseAgentCliVersion,
@@ -126,6 +127,8 @@ export interface DoctorEnv {
    * `error` rather than `info`. Defaults to the historical single runtime.
    */
   runtimes?: readonly AgentRuntime[]
+  /** The oldest CLI version the pinned chat adapter needs; defaults to reading the installed adapter packages. */
+  minimumCliVersion?: (runtime: AgentRuntime) => string | null
   /** Injected file-existence check for the auth-file fallback; defaults to real fs. */
   fileExists?: (path: string) => boolean
   /**
@@ -486,6 +489,40 @@ export async function runtimeProbes(
     await runtimeAuthProbe(spec, deps.exec, deps.env, fileExists, deps.severity),
     ...(afkKeyProbe ? [afkKeyProbe] : []),
   ]
+}
+
+/**
+ * The installed CLI is new enough for the pinned ACP adapter that drives it
+ * (ADR-0015). `undefined` — no row — when there is nothing to compare: the CLI
+ * is missing (the binary row already says so, as today), prints no readable
+ * version, or the adapter's floor could not be read.
+ */
+export async function adapterVersionProbe(
+  spec: RuntimeSpec,
+  exec: ExecFn,
+  minimum: string | null,
+  severity: ProbeSeverity,
+): Promise<ProbeResult | undefined> {
+  if (!minimum) return undefined
+  const out = await exec(spec.bin, ['--version'])
+  const installed = out.ok && out.code === 0 ? parseAgentCliVersion(out.stdout) : null
+  if (!installed) return undefined
+  const base = {
+    id: `${spec.ids.binary}-adapter-version`,
+    label: `${spec.label} version (chat adapter)`,
+    tier: 2 as const,
+    severity,
+    runtime: spec.runtime,
+  }
+  if (isOlderVersion(installed, minimum)) {
+    return {
+      ...base,
+      status: 'stale',
+      detail: `${spec.label} ${installed} is older than ${minimum}, which the chat adapter needs`,
+      fix: `Update ${spec.label} to ${minimum} or newer (${spec.runtime === 'codex' ? '`npm i -g @openai/codex@latest`' : '`claude update`'}, or however you installed it).`,
+    }
+  }
+  return { ...base, status: 'ok', detail: `${spec.label} ${installed} (the chat adapter needs ${minimum} or newer)` }
 }
 
 /**
@@ -931,6 +968,13 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
         severity: required.has(runtime) ? 'error' : 'info',
       })),
     )
+    const versionRow = await adapterVersionProbe(
+      RUNTIME_SPECS[runtime],
+      exec,
+      (env.minimumCliVersion ?? minimumCliVersion)(runtime),
+      required.has(runtime) ? 'error' : 'info',
+    )
+    if (versionRow) results.push(versionRow)
   }
   const containerRuntime = await containerRuntimeProbe(exec)
   results.push(

@@ -80,15 +80,18 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
  * skill — the role is the whole briefing, and the side session's first move is
  * the human's ask. The fixed first sentence is what `promptMatchesKickoff`
  * recognises, so it must stay ahead of anything feature-specific.
+ *
+ * `held` is the form that rides ahead of the human's first message in one
+ * prompt (decision 12): the ask is already there, so there is nothing to wait for.
  */
-export function sideKickoffFor(): string {
+export function sideKickoffFor(held = false): string {
   return (
     'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
     'chat, and you do not carry on the main chat\'s task. You may do anything the main chat does — ' +
     'read, write the spec and decisions, emit and edit tickets, resolve findings, park drafts, ' +
     'edit code — except run rounds: the main chat alone dispatches, stops and declares ready. ' +
     'The folder is shared with the main chat, so stage only your own files (`git add <paths>`, ' +
-    'never `-A`). Wait for the human\'s ask.'
+    `never \`-A\`).${held ? '' : " Wait for the human's ask."}`
   )
 }
 
@@ -133,24 +136,6 @@ export function selfPlanKickoffFor(runtime: AgentRuntime): string {
     `${skillRef(runtime, FEATURE_SKILL)} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
     'by yourself in this one run: plan it, design its screens where it adds or reshapes them, ' +
     "do not build it, and end by asking for the human's yes."
-  )
-}
-
-/**
- * The opening of a `relay` run's prompt, spelled for `runtime`
- * (`whole-cuts-plan-themselves` decision 16): the orchestrator's message to the
- * feature's lead, applied headless by the feature skill's change-handling
- * rules, with the record saying who decided.
- */
-export function relayKickoffFor(runtime: AgentRuntime, message: string): string {
-  return (
-    'Proceed with your task: no human is present and nobody will reply to you. The message below ' +
-    `is from the project's orchestrator, not the human. Invoke ${skillRef(runtime, FEATURE_SKILL)} ` +
-    'and apply it by its change-handling rules: every decision it changes keeps or gains ' +
-    'its **Assumed.** line and adds **Changed by the orchestrator:** <why>, unless the message ' +
-    "says it relays the human's own answer, in which case remove both marks from that decision. " +
-    'Redraw the preview, reconcile the spec and the tickets, and do not wait for anyone. ' +
-    `The orchestrator's message: ${message}`
   )
 }
 

@@ -178,10 +178,6 @@ describe('every launch site lands', () => {
   // The mutations that open a feature session. The project chat and
   // preparation launch through other routers, and have no Chat tab to land on.
   const LAUNCH = /trpc\.feature\.(launchSession|fixDrive)\.useMutation/
-  // Opening a feature resumes its chat by itself, from the chat column, without
-  // moving the page (`opening-a-feature-shows-its-chat-as-you-left-it`): the one
-  // launch that must NOT land.
-  const AUTO_RESUME = 'lib/use-auto-resume.ts'
   const rel = (f: string): string => relative(SRC, f).split('\\').join('/')
 
   it('finds the launch sites it guards', () => {
@@ -190,9 +186,17 @@ describe('every launch site lands', () => {
       'components/Workspace.tsx',
       'components/bodies/RunBody.tsx',
       'components/review/drive-parts.tsx',
-      AUTO_RESUME,
       'lib/use-resolve-conflict.ts',
     ])
+  })
+
+  // chat-as-web-components decision 7: a thread opens with no agent behind it,
+  // so the bar's Chat door lands on the main thread and launches nothing.
+  it('opens the main thread from the Chat door without launching', () => {
+    const source = readFileSync(join(SRC, 'components/Workspace.tsx'), 'utf8')
+    const door = /const openChat = ([^\n]*)/.exec(source)?.[1] ?? ''
+    expect(door).toContain('landOnChat()')
+    expect(door).not.toMatch(/launch|mutate/)
   })
 
   it('calls the land-on-chat operation in every module that launches a feature session', () => {
@@ -202,6 +206,6 @@ describe('every launch site lands', () => {
         return LAUNCH.test(source) && !/useLandOnChat\(/.test(source)
       })
       .map(rel)
-    expect(forgetful).toEqual([AUTO_RESUME])
+    expect(forgetful).toEqual([])
   })
 })

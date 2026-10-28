@@ -566,6 +566,27 @@ export function IconImage(p: IconProps) {
   )
 }
 
+/** Attach a file to a message. */
+export function IconPaperclip(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12.5 7.5 7.75 12.25a2.75 2.75 0 0 1-3.9-3.9l5.3-5.3a1.85 1.85 0 0 1 2.6 2.6l-5.15 5.15a.9.9 0 0 1-1.3-1.3L9.75 5" />
+    </svg>
+  )
+}
+
+/** Copy, rewind, branch: a message's own actions. */
+export function IconBranchFrom(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="4.5" cy="3.5" r="1.5" />
+      <circle cx="4.5" cy="12.5" r="1.5" />
+      <circle cx="11.5" cy="6" r="1.5" />
+      <path d="M4.5 5v6M11.5 7.5c0 2-2 2.5-4 3l-1.6.6" />
+    </svg>
+  )
+}
+
 /** The freehand drawing tool. */
 export function IconPen(p: IconProps) {
   return (

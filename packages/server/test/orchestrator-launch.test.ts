@@ -18,11 +18,12 @@ import { emit, listByProject, runAsActor } from '../src/services/events'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 
 /**
  * The orchestrating launch (`one-orchestrator-no-mode` decision 1): every
  * project session — fresh, resumed or triage — opens as the orchestrator:
- * prompts off, the message waiter, the orchestrating briefing and its catch-up.
+ * prompts off, the orchestrating briefing and its catch-up.
  * No session row carries an `orchestrate` purpose any more.
  */
 
@@ -68,22 +69,13 @@ describe('the project session launch is the orchestrator', () => {
     ctx.config = { ...ctx.config, model: id, models: [{ id, runtime }] }
   }
 
-  function launchCommand(): string {
-    const launched = listByProject(ctx, project.id)
-      .filter((e) => e.type === 'session.launched')
-      .at(-1)
-    return String((launched?.data as { command?: string })?.command ?? '')
+  /** The settings file the thread's process starts with. */
+  async function settingsOf(sessionId: string): Promise<string> {
+    const spec = await acpLaunchOf(ctx, sessionId)
+    return readFileSync(spec.files.find((f) => f.endsWith('settings.json')) as string, 'utf8')
   }
 
-  function claudePrompt(sessionId: string): string {
-    return readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8')
-  }
-
-  function claudeSettings(sessionId: string): string {
-    return readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')
-  }
-
-  /** A first session that ended `ago` ms back, with a conversation a resume can pick up. */
+  /** A first session that ended `ago` ms back, with a conversation a reopen can pick up. */
   async function endedSession(ago = 10_000): Promise<string> {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     endSession(ctx, sessionId)
@@ -96,14 +88,14 @@ describe('the project session launch is the orchestrator', () => {
     return sessionId
   }
 
-  it('launches Claude Code as the orchestrator with prompts off and the message waiter', async () => {
+  it('launches Claude Code as the orchestrator with prompts off, and no message waiter', async () => {
     useRuntime('claude-code')
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
     expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
-    expect(launchCommand()).toContain('--permission-mode bypassPermissions')
-    expect(claudeSettings(sessionId)).toContain('wait-messages')
-    const prompt = claudePrompt(sessionId)
+    expect((await acpLaunchOf(ctx, sessionId)).sessionMode).toBe('bypassPermissions')
+    expect(await settingsOf(sessionId)).not.toContain('wait-messages')
+    const prompt = await briefOf(ctx, sessionId)
     expect(prompt).toContain('## Orchestrating')
     expect(prompt).toContain('/runcastle:project')
     expect(prompt).toContain('Nothing has happened on the features you follow since you were last live.')
@@ -113,7 +105,7 @@ describe('the project session launch is the orchestrator', () => {
     useRuntime('codex')
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    const home = codexHomeDir(sessionId)
+    const home = (await acpLaunchOf(ctx, sessionId)).env.CODEX_HOME
     const toml = readFileSync(join(home, 'config.toml'), 'utf8')
     expect(toml).toContain('approval_policy = "never"')
     expect(toml).toContain('sandbox_mode = "danger-full-access"')
@@ -122,23 +114,18 @@ describe('the project session launch is the orchestrator', () => {
     expect(prompt).toContain('$project')
   })
 
-  it('resumes as the orchestrator, with the catch-up of its followed features', async () => {
+  it('catches a new conversation up on its followed features; a reopened one heard them as they happened', async () => {
     useRuntime('claude-code')
     const prior = await endedSession()
     const followed = seedFeature(ctx, project.id, { slug: 'mine' })
     runAsActor('orchestrator', () => emit(ctx, followed.id, { type: 'feature.created', message: 'created' }))
     emit(ctx, followed.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
 
-    const { sessionId } = await launchProjectSession(
-      ctx,
-      { projectId: project.id, resumeSessionId: prior },
-      { spawn: false },
-    )
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    expect(launchCommand()).toContain('--resume cc-prior')
-    expect(launchCommand()).toContain('--permission-mode bypassPermissions')
-    expect(claudeSettings(sessionId)).toContain('wait-messages')
-    expect(claudePrompt(sessionId)).toContain('### Since you were last live\n- mine merge conflicted in 1 file(s).')
+    expect(await briefOf(ctx, sessionId)).toContain('### Since you were last live\n- mine merge conflicted in 1 file(s).')
+    expect((await acpLaunchOf(ctx, sessionId)).sessionMode).toBe('bypassPermissions')
+    expect(await briefOf(ctx, prior)).not.toContain('- mine merge conflicted')
   })
 
   it('opens a triage launch as the orchestrator too, keeping its errand', async () => {
@@ -150,10 +137,10 @@ describe('the project session launch is the orchestrator', () => {
     )
 
     expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
-    const home = codexHomeDir(sessionId)
+    const home = (await acpLaunchOf(ctx, sessionId)).env.CODEX_HOME
     expect(readFileSync(join(home, 'config.toml'), 'utf8')).toContain('approval_policy = "never"')
     expect(readFileSync(join(home, 'AGENTS.md'), 'utf8')).toContain('## Orchestrating')
-    expect(launchCommand()).toContain('list_project_notes')
+    expect(kickoffOf(sessionId)).toContain('list_project_notes')
   })
 })
 

@@ -18,8 +18,8 @@ afterEach(cleanup)
 const selfPlanBar: NextStep = {
   kick: 'PLANNING ITSELF',
   title: 'Planning itself',
-  desc: 'No terminal to watch; the plan appears below as it is written.',
-  primary: { label: 'Stop', kind: 'stopHeadlessRun' },
+  desc: 'Planning by itself — open the thread to watch; the plan appears below as it is written.',
+  primary: { label: 'Stop', kind: 'stopSelfPlan' },
   secondary: [],
   busy: true,
 }
@@ -33,6 +33,7 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
     rounds: [],
     declarations: [],
     agentWorking: false,
+    leadAwaitsHuman: false,
     driving: false,
     selfPlanning,
     now: 0,
@@ -55,7 +56,7 @@ describe('the header while the feature plans itself', () => {
     expect(screen.getByRole('status').textContent).toContain('Planning by itself')
 
     fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }))
-    expect(onAction).toHaveBeenCalledWith('stopHeadlessRun')
+    expect(onAction).toHaveBeenCalledWith('stopSelfPlan')
   })
 
   it('reads Talking with you once the run has ended, with no Go and no button', () => {

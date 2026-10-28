@@ -1,6 +1,5 @@
 import { useEffect, useReducer, useState, type ReactNode } from 'react'
 import type { RefObject } from 'react'
-import { isStoppableHeadlessRun } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -28,7 +27,6 @@ import {
   deferredScope,
   dependencyCandidates,
   freshness,
-  isHeadlessRun,
   isSelfPlanRun,
   lastTestDriveAt,
   latestRun,
@@ -38,7 +36,6 @@ import {
   specDocPath,
   stampedReview,
   landedShare,
-  unfinishedRuns,
   unresolvedMergeConflict,
   upNextBasesDiffer,
   verificationState,
@@ -46,8 +43,8 @@ import {
   type DraftBaseMissing,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
-import { useFeatureAutoResume } from '../lib/use-auto-resume'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { useThreadMenu } from '../lib/use-thread'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -62,11 +59,9 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
-import { ScenarioChatContext, ScenarioChatView } from './chat/ScenarioChat'
-import { SideSessionsView } from './chat/SideSessions'
-import { FeatureSessionSwitcher } from './chat/FeatureSessionSwitcher'
+import { ScenarioChatContext, ScenarioChatMenu } from './chat/ScenarioChat'
+import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
-import { FEATURE_CHAT } from '../lib/chat-sessions'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { HeaderAction } from './workspace/HeaderAction'
 import { usePanelShow } from './workspace/use-panel-show'
@@ -81,6 +76,7 @@ import {
   LEAD_WAKE_GRACE_MS,
   headerActions,
   leadWakeOf,
+  mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
@@ -283,14 +279,16 @@ export function Workspace({
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
-  // The chat column (decision 9): the feature chat, the drive errand's
-  // scenario chat, which an errand's open brings to the front, and the
-  // feature's side sessions (several-sessions-per-feature decision 10).
+  // The chat column (chat-as-web-components decision 7): every thread of the
+  // feature, one in front — the drive errand's scenario chat comes to the
+  // front when an errand opens it.
   const column = useFeatureChatColumn({
     featureId,
     sessions: q.data?.sessions ?? [],
     driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
+  // The switcher's Rename and Export, for a thread in front that has begun.
+  const threadMenu = useThreadMenu(column.inFront)
 
   // Settles once the refetches land, for a mutation that must stay pending
   // until the page shows what it caused.
@@ -317,6 +315,9 @@ export function Workspace({
     landOnChat()
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
+  // The main chat's first message starts it (chat-as-web-components decision
+  // 7). Already on the chat, so nothing lands; the thread says why it failed.
+  const startChat = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: () => undefined })
   // Stop, the status row's primary while a round runs (decision 23).
   const [confirmStop, setConfirmStop] = useState(false)
   const stopAgent = trpc.feature.stop.useMutation({
@@ -432,8 +433,8 @@ export function Workspace({
     onError: (e) => toast.push(e.message),
   })
   // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
-  // and launch as above, but the session is a headless run with no terminal, so
-  // neither lands on the chat — the plan is watched from the body.
+  // and launch as above, but the session is unattended, so neither lands on
+  // the chat — the plan is watched from the body.
   // It stays pending until the feature is refetched with the new run on it, so
   // the row reads Planning by itself from the click on, never idle in between.
   const launchSelfPlan = trpc.feature.launchSession.useMutation({
@@ -468,8 +469,6 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // Opening the feature resumes its ended chat by itself.
-  const { autoResuming } = useFeatureAutoResume(featureId, q.data, q.dataUpdatedAt)
 
   if (q.isLoading) {
     return (
@@ -500,10 +499,7 @@ export function Workspace({
   const full = q.data
   const feature = full.feature
   const run = latestRun(full.runs)
-  const ns = nextStep(full, {
-    ...(draftBaseMissing ? { draftBaseMissing } : {}),
-    unfinishedRuns: unfinishedRuns(events),
-  })
+  const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
@@ -545,36 +541,11 @@ export function Workspace({
   }
 
   /**
-   * Resume the feature's one conversation, or start the first one (decisions 8
-   * and 12) — the chat's own Resume / Start button.
+   * The bar's constant Chat door: it lands on the feature's main thread
+   * (one-chat-layout-everywhere decision 5). Opening a thread launches nothing
+   * (chat-as-web-components decision 7): its first message starts the agent.
    */
-  const launchChat = () => {
-    launch.mutate({ featureId, kind: 'chat' })
-  }
-
-  /**
-   * The bar's constant Chat door: it starts or resumes the conversation and
-   * lands on the chat (one-chat-layout-everywhere decision 5).
-   *
-   * A session that is already up is not re-launched on the way in — the chat
-   * hosts whichever one is live (decision 9). The server would answer a chat
-   * launch with that same session (decision 12), but it would also write a fresh
-   * state header into its terminal on every click (decision 13), which is for a
-   * human arriving at a conversation they had lost sight of.
-   */
-  const openChat = () => {
-    // A headless run has no terminal to land on, and the server refuses a chat
-    // beside it — say so rather than land on a chat with nothing to answer.
-    if (liveSession && isHeadlessRun(liveSession))
-      toast.push(
-        isSelfPlanRun(liveSession)
-          ? 'This feature is planning itself — stop the run to open the chat.'
-          : 'This feature is working by itself — stop the run to open the chat.',
-        'info',
-      )
-    else if (liveSession) landOnChat()
-    else launchChat()
-  }
+  const openChat = () => landOnChat()
 
   /** Start this feature's drive on a scenario, or on the blank app with `null`. */
   const startDrive = (scenario: string | null) =>
@@ -613,10 +584,10 @@ export function Workspace({
         if (isDraft) startSelfPlan.mutate({ featureId, baseBranch: effectiveDraftBase })
         else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
         break
-      // Stop is ending the run: it has no terminal to type into (decision 9).
-      // Only the run it was offered for — never a lead woken in its place.
-      case 'stopHeadlessRun':
-        if (liveSession && isStoppableHeadlessRun(liveSession)) void endLiveSession()
+      // Stop is ending the run: nobody is attending it (decision 9). Only the
+      // self-planning run it was offered for — never a lead woken in its place.
+      case 'stopSelfPlan':
+        if (liveSession && isSelfPlanRun(liveSession)) void endLiveSession()
         break
       // The click opens the confirmation; the dialog's Stop is what stops.
       case 'stopAgent':
@@ -760,7 +731,9 @@ export function Workspace({
         feature,
         rounds: roundsQ.data ?? [],
         declarations: declarationsQ.data ?? [],
-        agentWorking: !!liveSession && !liveSession.awaitingInput,
+        agentWorking: mainChatWorking(column.mainState, liveSession),
+        agentStateKnown: column.mainState !== undefined,
+        leadAwaitsHuman: full.leadAwaitsHuman,
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.
@@ -959,12 +932,21 @@ export function Workspace({
               </StatusLabel>
             )}
             {!isDraft && (
-              <span className="mr-1 flex min-w-0">
-                <FeatureSessionSwitcher
-                  column={column}
-                  featureId={featureId}
-                  {...(liveSession ? { liveSessionId: liveSession.id } : {})}
-                />
+              // The actions keep their width, so the switcher's is capped: a
+              // thread named by a long first message truncates instead of
+              // pushing over the status (900px leaves it ~144px).
+              <span className="mr-1 flex max-w-[clamp(6rem,16vw,18rem)] min-w-0">
+                <ThreadSwitcher
+                  threads={column.threads}
+                  current={column.current}
+                  onPick={column.pick}
+                  onNew={column.newThread}
+                  {...threadMenu}
+                >
+                  {column.scenario.listed && column.inFront === column.scenario.sessionId && (
+                    <ScenarioChatMenu chat={column.scenario} />
+                  )}
+                </ThreadSwitcher>
               </span>
             )}
             {headerRow.action && (
@@ -995,29 +977,23 @@ export function Workspace({
           <ScenarioChatContext.Provider value={column.scenario}>
             <PanelSplit
               chat={
-                // The same elements whatever the panel does: xterm keeps its
-                // buffer. The switcher picks which is in front; the column is
+                // The switcher picks which thread is in front; the column is
                 // hidden only while the panel has the whole row.
-                <>
-                  <FeatureChat
-                    full={full}
-                    events={events}
-                    alerts={chatAlerts}
-                    hidden={chatHidden || column.inFront !== FEATURE_CHAT}
-                    launching={launch.isPending}
-                    launchError={launch.error?.message}
-                    autoResuming={autoResuming}
-                    onLaunch={launchChat}
-                    onView={(target) => {
-                      if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
-                    }}
-                  />
-                  <ScenarioChatView
-                    chat={column.scenario}
-                    hidden={chatHidden || column.inFront !== column.scenario.sessionId}
-                  />
-                  <SideSessionsView sides={column.sides} inFront={column.inFront} hidden={chatHidden} />
-                </>
+                <FeatureChat
+                  full={full}
+                  column={column}
+                  events={events}
+                  alerts={chatAlerts}
+                  hidden={chatHidden}
+                  start={async () => {
+                    // The opening waits for the message that started it: one prompt, one answer.
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening: true })
+                    return res.sessionId
+                  }}
+                  onView={(target) => {
+                    if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
+                  }}
+                />
               }
               panel={
                 shown && (

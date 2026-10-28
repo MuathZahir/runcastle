@@ -20,6 +20,8 @@ const input = (over: {
   rounds?: FeatureStatusInput['rounds']
   declarations?: FeatureStatusInput['declarations']
   agentWorking?: boolean
+  agentStateKnown?: boolean
+  leadAwaitsHuman?: boolean
   driving?: boolean
   selfPlanning?: boolean
   leadWake?: FeatureStatusInput['leadWake']
@@ -29,6 +31,8 @@ const input = (over: {
   rounds: over.rounds ?? [],
   declarations: over.declarations ?? [],
   agentWorking: over.agentWorking ?? false,
+  ...(over.agentStateKnown ? { agentStateKnown: true } : {}),
+  leadAwaitsHuman: over.leadAwaitsHuman ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
@@ -46,6 +50,26 @@ const declaration = (scenario: string, createdAt: number) => ({ scenario, create
 describe('featureStatus', () => {
   it('reads Talking with you with nothing running and nothing asked, and offers no button', () => {
     expect(featureStatus(input({}))).toEqual({ kind: 'talking', label: 'Talking with you' })
+  })
+
+  it('reads Waiting for you once the lead replied and the human has not answered (decision 15)', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, agentStateKnown: true }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+    })
+  })
+
+  it('lets an explicit waiting reason speak over the bare reply', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, feature: { waitingReason: 'stopped' } }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'stopped',
+    })
+  })
+
+  it('reads Working, not waiting, while a round runs or the lead is mid-turn', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, rounds: [round(2, 'running', 10)] })).label).toBe('Working · Round 2')
+    expect(featureStatus(input({ leadAwaitsHuman: true, agentWorking: true })).kind).toBe('working')
   })
 
   it('reads Planning by itself while a self-planning run is live, with its Stop', () => {
@@ -105,6 +129,12 @@ describe('featureStatus', () => {
     })
   })
 
+  it('a wake inside its grace reads what the main chat’s own thread state says, once the thread list holds it', () => {
+    const woken = { leadWake: { pendingSince: 1_000 }, now: 1_000 + 5_000, agentStateKnown: true }
+    expect(featureStatus(input({ ...woken, agentWorking: false })).kind).toBe('talking')
+    expect(featureStatus(input({ ...woken, agentWorking: true })).kind).toBe('working')
+  })
+
   it('the agent mid-turn reads Working with no round and no wake at all', () => {
     expect(featureStatus(input({ agentWorking: true }))).toEqual({ kind: 'working', label: 'Working' })
   })
@@ -124,20 +154,19 @@ describe('featureStatus', () => {
     )
   })
 
+  it('a self-planning run stopped short reads planning stopped, with the Chat door to pick it up with the lead', () => {
+    expect(featureStatus(input({ feature: { waitingReason: 'planning stopped' } }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'planning stopped',
+      primary: 'chat',
+    })
+  })
+
   it('a wake that already failed ends its grace at once: the failure shows, not Working', () => {
     expect(
       featureStatus(input({ leadWake: { pendingSince: 1_000, failed: { at: 5_000, exitCode: null } }, now: 6_000 })),
     ).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'the agent’s run failed', primary: 'chat' })
-  })
-
-  it('a woken session that already ended ends its grace at once', () => {
-    expect(featureStatus(input({ leadWake: { pendingSince: 1_000, endedAt: 20_000 }, now: 21_000 })).kind).toBe(
-      'talking',
-    )
-    // A message sent after that end opens a fresh grace.
-    expect(featureStatus(input({ leadWake: { pendingSince: 30_000, endedAt: 20_000 }, now: 31_000 })).kind).toBe(
-      'working',
-    )
   })
 
   it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
@@ -266,34 +295,15 @@ describe('leadWakeOf', () => {
   it('reads the newest wake and the newest wake failure off the event log', () => {
     expect(
       leadWakeOf([
-        { type: 'lead.message_pending', ts: 10, data: {} },
+        { type: 'lead.message_queued', ts: 10, data: {} },
         { type: 'lead.wake_failed', ts: 12, data: { exitCode: null, tail: 'refused', messages: 1 } },
-        { type: 'lead.woken_headless', ts: 20, data: {} },
+        { type: 'lead.message_queued', ts: 20, data: {} },
         { type: 'lead.wake_failed', ts: 25, data: { sessionId: 's', exitCode: 1, tail: 'boom', messages: 1 } },
         { type: 'session.ended', ts: 30, data: {} },
       ]),
     ).toEqual({ pendingSince: 20, failed: { at: 25, exitCode: 1 } })
     expect(leadWakeOf([{ type: 'lead.message_queued', ts: 7, data: {} }])).toEqual({ pendingSince: 7 })
     expect(leadWakeOf([])).toEqual({})
-  })
-
-  it('reads when the session the newest headless wake started ended, and only that session', () => {
-    expect(
-      leadWakeOf([
-        { type: 'lead.woken_headless', ts: 20, data: { sessionId: 'lead' } },
-        { type: 'session.ended', ts: 25, data: { sessionId: 'other' } },
-        { type: 'session.ended', ts: 30, data: { sessionId: 'lead', killed: true } },
-        { type: 'session.pty_exited', ts: 31, data: { sessionId: 'lead', exitCode: 1 } },
-      ]),
-    ).toEqual({ pendingSince: 20, endedAt: 30 })
-    // A newer headless wake starts over.
-    expect(
-      leadWakeOf([
-        { type: 'lead.woken_headless', ts: 20, data: { sessionId: 'a' } },
-        { type: 'session.pty_exited', ts: 30, data: { sessionId: 'a', exitCode: 0 } },
-        { type: 'lead.woken_headless', ts: 40, data: { sessionId: 'b' } },
-      ]),
-    ).toEqual({ pendingSince: 40 })
   })
 })
 
@@ -373,10 +383,10 @@ describe('the action row beside the status line', () => {
 
   it('offers the self-planning run’s Stop as the primary', () => {
     const out = leadActions(
-      ns({ primary: { label: 'Stop', kind: 'stopHeadlessRun' } }),
+      ns({ primary: { label: 'Stop', kind: 'stopSelfPlan' } }),
       featureStatus(input({ selfPlanning: true })),
     )
-    expect(out.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun', danger: true })
+    expect(out.primary).toEqual({ label: 'Stop', kind: 'stopSelfPlan', danger: true })
   })
 
   it('offers the Chat door as the primary once the agent’s run failed', () => {

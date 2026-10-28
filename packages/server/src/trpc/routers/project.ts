@@ -4,12 +4,7 @@ import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
-import {
-  autoResumeProjectChat,
-  type AutoResumeResult,
-  launchPrepareSession,
-  launchProjectSession,
-} from '../../launcher/launcher'
+import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { conversationTranscript, listProjectConversations } from '../../services/conversations'
 import {
@@ -108,9 +103,9 @@ export const projectRouter = router({
    * transcript already believes it answered.
    */
   talkToPrep: publicProcedure
-    .input(z.object({ projectId: z.string(), fresh: z.boolean().optional() }))
+    .input(z.object({ projectId: z.string(), fresh: z.boolean().optional(), holdOpening: z.boolean().optional() }))
     .mutation(({ ctx, input }) =>
-      launchPrepareSession(ctx, { projectId: input.projectId, fresh: input.fresh }),
+      launchPrepareSession(ctx, { projectId: input.projectId, fresh: input.fresh }, { holdOpening: input.holdOpening }),
     ),
 
   /** The live preparation conversation for this project, if one is open. */
@@ -131,8 +126,9 @@ export const projectRouter = router({
    * `purpose: 'triage'` is the Notes card's "Triage N notes" door: it briefs the
    * new conversation to work the project's open notes, and never resumes.
    *
-   * `auto` is opening the page: it only ever resumes `resumeSessionId`, and a
-   * refusal comes back as `autoSkipped` rather than as an error.
+   * `holdOpening` (here and on `talkToPrep`) keeps the opening for the human's
+   * first message, which the web sends next: one prompt, one answer
+   * (chat-as-web-components decision 12).
    */
   talkToProject: publicProcedure
     .input(
@@ -141,12 +137,10 @@ export const projectRouter = router({
         fresh: z.boolean().optional(),
         resumeSessionId: z.string().optional(),
         purpose: z.literal('triage').optional(),
-        auto: z.boolean().optional(),
+        holdOpening: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input: { auto, ...input } }): Promise<AutoResumeResult> =>
-      auto ? autoResumeProjectChat(ctx, input) : launchProjectSession(ctx, input),
-    ),
+    .mutation(({ ctx, input: { holdOpening, ...input } }) => launchProjectSession(ctx, input, { holdOpening })),
 
   /** The live project conversation for this project, if one is open. */
   projectSession: publicProcedure

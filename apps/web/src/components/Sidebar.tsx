@@ -6,7 +6,7 @@ import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { sidebarLanes } from '../lib/feature-ui'
-import { prepRailRow, type ProjectSessionState, type WorkspaceView } from '../lib/project-workspace'
+import { prepRailRow, type WorkspaceView } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
 import { isStale } from '../lib/prep-findings'
 import { useLivePoll, useLiveStatus } from '../lib/live'
@@ -18,7 +18,7 @@ import { useDesktopNotifications } from '../lib/use-notifications'
 import { useTheme } from '../lib/theme'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import type { ProjectTalkApi } from '../lib/use-project-talk'
+import type { ThreadState } from '../lib/chat-thread'
 import {
   IconArchive,
   IconClock,
@@ -72,7 +72,6 @@ export interface SidebarProps {
   /** Which surface owns the panel — decides which nav row is current. */
   view: WorkspaceView
   selectedFeatureId: string | null
-  talk: ProjectTalkApi
   onSelect: (featureId: string | null) => void
   /** The project home (its conversations, notes and drive). */
   onSelectProject: () => void
@@ -101,11 +100,21 @@ function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
   return [...features].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
 }
 
-/** The Orchestrator card's second line while the project chat is not waiting on you. */
-const TALK_WORDS: Record<ProjectSessionState, string> = {
-  live: 'Chat open',
-  launching: 'Starting chat…',
-  none: 'Plan, cut and ask',
+/** The Orchestrator card's second line: its chats' state, in the words every thread list uses. */
+const CHATS_WORDS: Record<ThreadState, string> = {
+  waiting: 'Waiting for you',
+  working: 'Working',
+  idle: 'Plan, cut and ask',
+}
+
+/**
+ * The project's chats as one state (decision 14): waiting if any waits on you,
+ * else working if any works, else idle. An empty new thread is idle — nothing
+ * starts until something is sent.
+ */
+function chatsState(threads: readonly { state: ThreadState }[]): ThreadState {
+  if (threads.some((t) => t.state === 'waiting')) return 'waiting'
+  return threads.some((t) => t.state === 'working') ? 'working' : 'idle'
 }
 
 /**
@@ -140,7 +149,6 @@ export function Sidebar(props: SidebarProps) {
     nav,
     view,
     selectedFeatureId,
-    talk,
     onSelect,
     onSelectProject,
     onNewChat,
@@ -172,6 +180,8 @@ export function Sidebar(props: SidebarProps) {
   // No interval of its own: every write to the pile emits a project event, and
   // the stream invalidates this key with the rest (lib/live.ts).
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
+  // Same query key the project page's chat list polls.
+  const chats = chatsState(trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? [])
   const features = list.data ?? []
   const { inbox, lanes } = sidebarLanes(features)
   const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
@@ -265,9 +275,6 @@ export function Sidebar(props: SidebarProps) {
     />
   )
 
-  // The project chat stopped for an answer: the same turn state a feature's
-  // live session carries (decisions §3).
-  const talkWaiting = talk.state === 'live' && !!talk.session?.awaitingInput
   const notesWords = openNotes > 0 ? ` · ${openNotes} note${openNotes === 1 ? '' : 's'}` : ''
   const orchestratorActions: FeatureAction[] =
     prepRow?.variant === 'done'
@@ -308,8 +315,8 @@ export function Sidebar(props: SidebarProps) {
             lane. It says what the chat holds — the open notes (project-notes
             decisions #10) — and waits amber while the chat waits on you. */}
         <OrchestratorCard
-          status={`${talkWaiting ? 'Waiting on you' : TALK_WORDS[talk.state]}${notesWords}`}
-          waiting={talkWaiting}
+          status={`${CHATS_WORDS[chats]}${notesWords}`}
+          state={chats}
           active={view === 'project'}
           onOpen={onSelectProject}
           actions={orchestratorActions}

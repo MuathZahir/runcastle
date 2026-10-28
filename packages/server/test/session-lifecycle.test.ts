@@ -8,7 +8,7 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
-import { handlePtyExit, launchSession } from '../src/launcher/launcher'
+import { launchSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import {
   activeSessionsForFeature,
@@ -16,23 +16,26 @@ import {
   getSessionRow,
   markSessionEnded,
   markSessionLive,
-  mostRecentResumableSession,
+  newestThread,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
-import { getFeatureRow } from '../src/services/repo'
+import { createAgentHost } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { readThreadEvents } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
+import { kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * E2E-findings coverage (session lifecycle):
  *  - boot reconciliation: stale launching/live sessions → ended, one
  *    `session.reconciled` event each;
- *  - the one-live-session guard reads session ROWS: a live chat answers the
- *    Chat door instead of opening a second terminal, and an active run parks
- *    the talk worktree rather than refusing the terminal;
- *  - a resume attempt that dies before going live emits
- *    `session.resume_failed` and leaves the good conversation resumable.
+ *  - one main-chat thread per feature: a second Chat click lands in the same
+ *    thread, and an active run parks the talk worktree rather than refusing it;
+ *  - a conversation that fails to load says so on its thread and stays the one
+ *    its next prompt resumes.
  */
 
 async function initRepo(dir: string): Promise<void> {
@@ -75,7 +78,7 @@ describe('boot reconciliation — stale sessions', () => {
     expect(getSessionRow(ctx, launching.id)?.status).toBe('ended')
     expect(getSessionRow(ctx, live.id)?.status).toBe('ended')
     expect(activeSessionsForFeature(ctx, featureId)).toEqual([])
-    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.id).toBe(live.id)
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(live.id)
 
     // exactly one session.reconciled event per reconciled session
     const events = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.reconciled')
@@ -103,7 +106,7 @@ describe('boot reconciliation — stale sessions', () => {
   })
 })
 
-describe('one-live-session guard — sessions and runs', () => {
+describe('one main chat thread — threads and runs', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -145,7 +148,7 @@ describe('one-live-session guard — sessions and runs', () => {
     expect(head.startsWith('runcastle/chat/')).toBe(true)
   })
 
-  it('keeps exactly one live session: a second Chat click lands in the live one', async () => {
+  it('keeps exactly one main chat thread: a second Chat click lands in it', async () => {
     const f = await feature('sneaky')
     const first = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(first.sessionId))
@@ -157,7 +160,7 @@ describe('one-live-session guard — sessions and runs', () => {
   })
 })
 
-describe('failed resume — events + the resume target survives', () => {
+describe('a conversation that will not load keeps its thread', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -176,85 +179,40 @@ describe('failed resume — events + the resume target survives', () => {
     cleanup.length = 0
   })
 
-  async function feature(slug: string) {
-    const f = seedFeature(ctx, projectId, { slug })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
-    cleanup.push(worktreeDir(projectId, slug))
-    return f
-  }
-
-  async function launchChat(featureId: string): Promise<string> {
-    const { sessionId } = await launchSession(ctx, { featureId, kind: 'chat' }, { spawn: false })
+  it('says why on the thread, ends the row, and keeps the conversation the one to resume', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'preserve' })
+    await createFeatureBranch({ id: projectId, name: 't', repoPath }, f.slug, 'main')
+    cleanup.push(worktreeDir(projectId, f.slug))
+    const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
-    return sessionId
-  }
-
-  it('a resume attempt that dies before live emits session.resume_failed and the good conversation stays the target', async () => {
-    const f = await feature('preserve')
-
-    // session 1: went live with a cc id, then its terminal exited
-    const first = await launchChat(f.id)
-    markSessionLive(ctx, first, { ccSessionId: 'cc-good' })
-    handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, first)!, {}, 0)
-
-    // session 2: a resume attempt that dies BEFORE the session-start hook
-    const second = await launchChat(f.id)
-    const secondRow = getSessionRow(ctx, second)!
-    expect(secondRow.status).toBe('launching')
-    handlePtyExit(ctx, getFeatureRow(ctx, f.id), secondRow, { resumeSessionId: 'cc-good' }, 1)
-
-    // a third launch still targets the good conversation
-    const third = await launchChat(f.id)
-    const launched = listAfter(ctx, f.id, 0).find(
-      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === third,
-    )
-    expect(String(launched?.data?.command)).toContain('--resume cc-good')
-
-    // and the failure was announced distinctly (the UI toasts on exactly this)
-    const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resume_failed')
-    expect(failed?.message).toContain('resume failed for chat')
-    expect(failed?.data).toEqual({ sessionId: second, resumeSessionId: 'cc-good', exitCode: 1 })
-  })
-
-  it('a normal (non-resume) pty exit emits no session.resume_failed', async () => {
-    const f = await feature('normal')
-    const sessionId = await launchChat(f.id)
-    handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, sessionId)!, {}, 1)
-
-    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_failed')).toBe(false)
-  })
-})
-
-describe('codex PTY exit owns session teardown', () => {
-  it('ends the row and emits session.pty_exited', async () => {
-    const ctx = await makeTestCtx()
-    const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id)
-    const session = createSessionRow(ctx, {
-      featureId: feature.id,
-      kind: 'chat',
-      worktreePath: 'C:\\wt',
-      model: { id: 'gpt-5', runtime: 'codex' },
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-good' })
+    markSessionEnded(ctx, sessionId)
+    const host = createAgentHost({
+      ctx,
+      transport: createFakeAcp({ failSession: 'No conversation found' }).transport,
+      launch: FAKE_LAUNCH,
     })
-    markSessionLive(ctx, session.id, { ccSessionId: 'codex-thread' })
 
-    handlePtyExit(ctx, feature, session, {}, 0)
+    await host.prompt(sessionId, { text: 'are you there?' }, { source: 'human' })
 
-    expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
-    const exited = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.pty_exited')
-    expect(exited).toHaveLength(1)
-    expect(exited[0]?.data).toEqual({ sessionId: session.id, exitCode: 0 })
+    await vi.waitFor(() =>
+      expect(readThreadEvents(sessionId).at(-1)).toMatchObject({ type: 'process', state: 'stopped' }),
+    )
+    expect(JSON.stringify(readThreadEvents(sessionId).at(-1))).toContain('No conversation found')
+    expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'ended', ccSessionId: 'cc-good' })
+    // the next launch reopens the same thread, its conversation still the one to load
+    expect((await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })).sessionId).toBe(sessionId)
   })
 })
 
 /**
- * Reopening a terminal resumes ITS OWN conversation, at every phase. A session is
- * a real `claude` process in a server-owned PTY, so quitting runcastle kills it
- * and boot reconciliation ends the row — but the transcript survives on disk and
- * the row kept its `ccSessionId`, so the next terminal of that kind `--resume`s
- * it instead of starting cold from the docs.
+ * Reopening a conversation picks ITS OWN thread back up, at every phase. A
+ * thread is a row for life: quitting runcastle stops its process and boot
+ * reconciliation ends the row — but the row kept its `ccSessionId` and its
+ * log, so the next launch reopens it, and its next prompt loads the
+ * conversation instead of starting cold from the docs.
  */
-describe('relaunching a terminal resumes its own conversation', () => {
+describe('relaunching a chat reopens its own thread', () => {
   let ctx: AppCtx
   let projectId: string
   let repoPath: string
@@ -305,87 +263,47 @@ describe('relaunching a terminal resumes its own conversation', () => {
     }
   }
 
-  /** The `claude` argv recorded on this session's `session.launched` event. */
-  function commandFor(featureId: string, sessionId: string): string {
-    const launched = listAfter(ctx, featureId, 0).find(
-      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === sessionId,
-    )
-    return String(launched?.data?.command ?? '')
-  }
-
-  it('the FIRST grill launch starts fresh — no --resume, no session.resumed', async () => {
+  it('the FIRST chat launch starts fresh — briefed, no session.resumed', async () => {
     const f = await feature('first')
     const id = await launch(f.id, 'chat')
 
-    expect(commandFor(f.id, id)).not.toContain('--resume')
+    expect(kickoffOf(id)).toContain('Call get_feature_context for the full picture.')
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resumed')).toBe(false)
     // and no "unavailable" noise either — a first launch has nothing to resume
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_unavailable')).toBe(false)
   })
 
-  it('reopening the grill after the server killed it resumes the same conversation', async () => {
-    const f = await feature('reopen')
-    const first = await launch(f.id, 'chat')
-    markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
+  for (const runtime of ['claude-code', 'codex'] as const) {
+    it(`reopening the chat after the server stopped it reopens the same thread on ${runtime}`, async () => {
+      if (runtime === 'codex') useCodexRuntime()
+      const f = await feature(`reopen-${runtime}`)
+      const first = await launch(f.id, 'chat')
+      markSessionLive(ctx, first, { ccSessionId: 'cc-chat' })
 
-    // runcastle quits: the PTY dies with it and boot reconciliation ends the row
-    reconcileStaleSessions(ctx)
-    expect(getSessionRow(ctx, first)?.status).toBe('ended')
+      // runcastle quits: the process dies with it and boot reconciliation ends the row
+      reconcileStaleSessions(ctx)
+      expect(getSessionRow(ctx, first)?.status).toBe('ended')
 
-    const second = await launch(f.id, 'chat')
-    expect(commandFor(f.id, second)).toContain('--resume cc-grill')
-    const resumed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resumed')
-    expect((resumed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-grill')
-  })
-
-  it('announces a Codex relaunch that has no recorded conversation and still starts fresh', async () => {
-    useCodexRuntime()
-    const f = await feature('codex-unavailable')
-    const first = await launch(f.id, 'chat')
-    reconcileStaleSessions(ctx)
-
-    const second = await launch(f.id, 'chat')
-
-    expect(commandFor(f.id, second)).not.toContain('resume')
-    const notes = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.resume_unavailable')
-    expect(notes).toHaveLength(1)
-    expect(notes[0]).toMatchObject({
-      message: 'no resumable conversation was recorded — starting a fresh session',
-      data: { sessionId: second },
+      expect(await launch(f.id, 'chat')).toBe(first)
+      const resumed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resumed')
+      expect((resumed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-chat')
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_unavailable')).toBe(false)
+      // A plain reopen says nothing more than the first launch did.
+      expect(promptsOf(first)).toHaveLength(1)
     })
-    expect(getSessionRow(ctx, first)?.ccSessionId).toBeFalsy()
-  })
+  }
 
-  it('resumes a recorded Codex conversation without an unavailable note', async () => {
-    useCodexRuntime()
-    const f = await feature('codex-resume')
-    const first = await launch(f.id, 'chat')
-    markSessionLive(ctx, first, { ccSessionId: '01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf' })
+  it('reopens a thread whose conversation the agent never took, with nothing said again', async () => {
+    const f = await feature('stillborn')
+    const dead = await launch(f.id, 'chat') // never reaches `live` → no cc id
     reconcileStaleSessions(ctx)
+    expect(getSessionRow(ctx, dead)?.ccSessionId).toBeFalsy()
 
-    const second = await launch(f.id, 'chat')
-    const command = commandFor(f.id, second)
-    expect(command).toContain('resume 01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf')
-    expect(command).toContain('--dangerously-bypass-hook-trust')
-    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
-    expect(types).toContain('session.resumed')
-    expect(types).not.toContain('session.resume_unavailable')
+    expect(await launch(f.id, 'chat')).toBe(dead)
+    expect(promptsOf(dead)).toHaveLength(1)
   })
 
-  it('announces a Claude chat relaunch with no recorded conversation', async () => {
-    const f = await feature('claude-unavailable')
-    await launch(f.id, 'chat')
-    reconcileStaleSessions(ctx)
-
-    const second = await launch(f.id, 'chat')
-
-    expect(commandFor(f.id, second)).not.toContain('--resume')
-    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).toContain(
-      'session.resume_unavailable',
-    )
-  })
-
-  it('a chat override rides the resumed Codex conversation with fresh state', async () => {
+  it('a chat override rides the reopened Codex thread with fresh state', async () => {
     useCodexRuntime()
     const f = await feature('codex-explicit')
     const first = await launch(f.id, 'chat')
@@ -397,56 +315,43 @@ describe('relaunching a terminal resumes its own conversation', () => {
       { featureId: f.id, kind: 'chat', kickoffLine: 'Start this explicit task.' },
       { spawn: false },
     )
-    cleanup.push(sessionDir(sessionId))
 
-    const command = commandFor(f.id, sessionId)
-    expect(command).toContain('resume codex-prior')
-    expect(command).toContain('Start this explicit task.')
-    expect(command).toContain('Feature status:')
+    expect(sessionId).toBe(first)
+    const said = promptsOf(first).at(-1)?.text ?? ''
+    expect(said).toContain('Start this explicit task.')
+    expect(said).toContain('Feature status:')
     const eventTypes = listAfter(ctx, f.id, 0).map((e) => e.type)
     expect(eventTypes).not.toContain('session.resume_skipped')
     expect(eventTypes).not.toContain('session.resume_unavailable')
   })
 
-  it('resumes the newest chat conversation', async () => {
-    const f = await feature('bykind')
-    const grill = await launch(f.id, 'chat')
-    markSessionLive(ctx, grill, { ccSessionId: 'cc-grill' })
+  it('reopens the newest chat thread', async () => {
+    const f = await feature('newest')
+    const older = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: worktreeDir(projectId, f.slug) })
+    markSessionLive(ctx, older.id, { ccSessionId: 'cc-older' })
+    const newer = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: worktreeDir(projectId, f.slug) })
+    markSessionLive(ctx, newer.id, { ccSessionId: 'cc-newer' })
     reconcileStaleSessions(ctx)
 
-    // A later chat replaces the earlier row as the one transcript's resume seed.
-    const qa = await launch(f.id, 'chat')
-    markSessionLive(ctx, qa, { ccSessionId: 'cc-qa' })
-    reconcileStaleSessions(ctx)
-
-    // Reopening chat lands in the newest chat conversation.
-    const backToGrill = await launch(f.id, 'chat')
-    expect(commandFor(f.id, backToGrill)).toContain('--resume cc-qa')
+    expect(await launch(f.id, 'chat')).toBe(newer.id)
   })
 
-  it('a session that died before going live is never a resume target', async () => {
-    const f = await feature('stillborn')
-    const dead = await launch(f.id, 'chat') // never reaches `live` → no cc id
-    reconcileStaleSessions(ctx)
-    expect(getSessionRow(ctx, dead)?.ccSessionId).toBeFalsy()
-
-    const next = await launch(f.id, 'chat')
-    expect(commandFor(f.id, next)).not.toContain('--resume')
-  })
-
-  it('briefs a fresh chat, and resumes a plain chat with no kickoff at all', async () => {
-    const f = await feature('kickoff')
+  it('loads the reopened conversation on its next prompt, handing it the fresh state', async () => {
+    const f = await feature('loads')
     const first = await launch(f.id, 'chat')
-    markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
+    markSessionLive(ctx, first, { ccSessionId: 'cc-loaded' })
     reconcileStaleSessions(ctx)
+    const fake = createFakeAcp()
+    const host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
 
-    const second = await launch(f.id, 'chat')
+    await host.prompt(first, { text: 'where were we?' }, { source: 'human' })
+    await vi.waitFor(() => expect(fake.last()?.received.some((r) => r.method === 'session/prompt')).toBe(true))
 
-    expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
-    const command = commandFor(f.id, second)
-    expect(command).toContain('--resume cc-grill')
-    expect(command).not.toContain('Feature status:')
-    expect(command).not.toContain('[runcastle]')
+    const load = fake.last().received.find((r) => r.method === 'session/load')?.params as { sessionId: string }
+    expect(load.sessionId).toBe('cc-loaded')
+    const sent = fake.last().received.find((r) => r.method === 'session/prompt')?.params as { prompt: { text: string }[] }
+    expect(sent.prompt[0].text).toMatch(/^where were we\?\n\n.*Feature status:/s)
+    await host.stopAll('shutdown')
   })
 })
 
@@ -489,62 +394,51 @@ describe('markSessionEnded — when the conversation stopped', () => {
   })
 })
 
-describe('mostRecentResumableSession — the revisit resume target', () => {
-  it('narrows to chat when asked, ignoring newer conversations of other kinds', async () => {
+describe('newestThread — the thread a launch reopens', () => {
+  it('stays within its kind, however long ago that thread ran', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
-    const grill = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, grill.id, { ccSessionId: 'cc-grill' })
-    markSessionEnded(ctx, grill.id)
-    const qa = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: 'w' })
-    markSessionLive(ctx, qa.id, { ccSessionId: 'cc-qa' })
-    markSessionEnded(ctx, qa.id)
+    const chat = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
+    markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
+    markSessionEnded(ctx, chat.id)
+    const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: 'w' })
+    markSessionLive(ctx, fix.id, { ccSessionId: 'cc-fix' })
 
-    // unfiltered (the revisit target) = newest of any kind
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-qa')
-    // filtered = newest of that kind, however long ago it ran
-    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.ccSessionId).toBe('cc-grill')
-    expect(mostRecentResumableSession(ctx, featureId, 'prepare')).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')?.ccSessionId).toBe('cc-chat')
+    expect(newestThread(ctx, { featureId }, 'drive-fix')?.ccSessionId).toBe('cc-fix')
+    expect(newestThread(ctx, { featureId }, 'prepare')).toBeNull()
   })
 
-  it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {
+  it('picks the newest row holding a conversation, running or not, over newer stillborn rows', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
-    // oldest: ended with a cc id — the fallback candidate
     const s1 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s1.id, { ccSessionId: 'cc-oldest' })
     markSessionEnded(ctx, s1.id)
-
-    // newer: ended but never went live (no cc id) — not resumable
+    // newer: never went live and said nothing — no conversation
     const s2 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionEnded(ctx, s2.id)
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(s1.id)
 
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-oldest')
-
-    // newest: ended with a cc id — wins
+    // newest: running — a thread is reopened whatever its process does
     const s3 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, s3.id, { ccSessionId: 'cc-newest' })
-    markSessionEnded(ctx, s3.id)
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
-
-    // a LIVE session is never the resume target
-    const s4 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
-    markSessionLive(ctx, s4.id, { ccSessionId: 'cc-live' })
-    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
+    markSessionLive(ctx, s3.id, { ccSessionId: 'cc-live' })
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(s3.id)
   })
 
-  it('returns null when the feature has no resumable conversation', async () => {
+  it('falls back to the newest row when none holds a conversation, and never crosses features', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
-    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')).toBeNull()
 
     const other = seedFeature(ctx, seedProject(ctx).id, { slug: 'other' }).id
     const s = createSessionRow(ctx, { featureId: other, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s.id, { ccSessionId: 'cc-other' })
-    markSessionEnded(ctx, s.id)
-    // another feature's conversation is never offered
-    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'chat')).toBeNull()
+
+    const fresh = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
+    expect(newestThread(ctx, { featureId }, 'chat')?.id).toBe(fresh.id)
   })
 })

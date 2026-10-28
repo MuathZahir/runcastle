@@ -43,6 +43,7 @@ import { resolveBun } from './helpers/bun'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { briefOf, kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * The scenario session (drive-scenarios decision 8): ＋ New scenario / Fix it
@@ -178,8 +179,9 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
     return getSessionRow(ctx, id) as SessionRow
   }
 
-  function prompt(id: string): string {
-    return readFileSync(join(sessionDir(id), 'system-prompt.md'), 'utf8')
+  /** The brief the thread's process starts with: the drive's values and the setup block. */
+  function prompt(id: string): Promise<string> {
+    return briefOf(ctx, id)
   }
 
   describe('launching', () => {
@@ -205,8 +207,9 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       expect(activeDriveInfo(project.id)?.scenarioSessionId).toBe(sessionId)
       expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('scenario.chat_opened')
 
-      const text = prompt(sessionId)
-      expect(text).toContain('a buyer with a full cart')
+      // The human's ask is in the thread's first prompt, after its opening.
+      expect(kickoffOf(sessionId)).toContain('The human asked for a new scenario: a buyer with a full cart')
+      const text = await prompt(sessionId)
       expect(text).toContain('`DB_NAME` = `app_scn`')
       expect(text).toContain('`.runcastle/scenarios/_fixtures/buyer.ts`')
       expect(text).not.toContain('Setup mode')
@@ -225,24 +228,23 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
         `${JSON.stringify({ type: 'user', message: { content: 'we were building the cart page' } })}\n`,
       )
       markSessionLive(ctx, chat.id, { ccSessionId: 'cc-main', transcriptPath })
-      const write = vi.spyOn(runtimeAdapterFor('claude-code'), 'writeArtifacts')
 
-      await launch({ description: 'a buyer' })
+      const { sessionId } = await launch({ description: 'a buyer' })
 
-      const line = write.mock.calls.at(-1)?.[0].kickoffLine ?? ''
+      const line = kickoffOf(sessionId)
       expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
       expect(line).toContain('Feature status: Talking with you;')
       expect(line).toContain('Human: we were building the cart page')
       expect(line).toContain(transcriptPath)
     }, 30_000)
 
-    it('reopens the live scenario session of this drive instead of starting a second', async () => {
+    it('reopens the scenario thread of this drive instead of starting a second, whatever its process does', async () => {
       await driveUp()
       const first = await launch()
       expect((await launch()).sessionId).toBe(first.sessionId)
 
       markSessionEnded(ctx, first.sessionId)
-      expect((await launch()).sessionId).not.toBe(first.sessionId)
+      expect((await launch()).sessionId).toBe(first.sessionId)
     }, 30_000)
 
     it('starts in setup mode, decided at launch, when the branch has no scenarios yet', async () => {
@@ -250,53 +252,37 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       rmSync(join(repo, '.runcastle', 'scenarios'), { recursive: true, force: true })
       const { sessionId } = await launch({ description: 'signed in as an admin' })
       expect(session(sessionId).purpose).toBe('scenario-setup')
-      expect(prompt(sessionId)).toContain('Setup mode')
+      expect(await prompt(sessionId)).toContain('Setup mode')
     }, 30_000)
 
     it('briefs Fix it with the failed file, its reason and its output tail', async () => {
       await driveUp()
       await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
       const { sessionId } = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
-      const text = prompt(sessionId)
+      const text = kickoffOf(sessionId)
       expect(text).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
       expect(text).toContain('exited 2')
       expect(text).toContain('no such table')
     }, 30_000)
 
-    it('hands a live docked chat the failed file, its reason and its output tail on Fix it', async () => {
+    it('says the next ask into the docked thread — Fix it with its failure, or a new description', async () => {
       await driveUp()
       const first = await launch()
-      const typed: string[] = []
-      const entry = {
-        sessionId: first.sessionId,
-        exited: false,
-        pty: { write: (data: string) => typed.push(data) },
-      } as unknown as PtyEntry
-      const get = vi
-        .spyOn(ptyRegistry(), 'get')
-        .mockImplementation((id) => (id === first.sessionId ? entry : undefined))
-      try {
-        await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
-        const fixed = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
-        expect(fixed.sessionId).toBe(first.sessionId)
-        const line = typed[0] ?? ''
-        expect(line).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
-        expect(line).toContain('exited 2')
-        expect(line).toContain('no such table')
-        const kickoff = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.kickoff').at(-1)
-        expect(kickoff?.data).toMatchObject({ sessionId: first.sessionId, mechanism: 'pty', line })
 
-        await launch({ description: 'a buyer with an expired coupon' })
-        await waitFor(() => typed.some((t) => t.includes('a buyer with an expired coupon')))
-      } finally {
-        get.mockRestore()
-      }
-    }, 30_000)
+      await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
+      const fixed = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
+      expect(fixed.sessionId).toBe(first.sessionId)
+      const line = promptsOf(first.sessionId).at(-1)
+      expect(line?.source).toBe('runcastle')
+      expect(line?.text).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
+      expect(line?.text).toContain('exited 2')
+      expect(line?.text).toContain('no such table')
 
-    it('refuses to hand a live chat its ask when its terminal is gone', async () => {
-      await driveUp()
+      await launch({ description: 'a buyer with an expired coupon' })
+      expect(promptsOf(first.sessionId).at(-1)?.text).toContain('a buyer with an expired coupon')
+      // A plain reopen says nothing.
       await launch()
-      await expect(launch({ description: 'anything' })).rejects.toThrow(GateError)
+      expect(promptsOf(first.sessionId)).toHaveLength(3)
     }, 30_000)
 
     it.runIf(PTY)('opens a project-scoped session on a project drive', async () => {
@@ -311,10 +297,9 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       expect((await projectDrive(ctx, project, 'start')).ok).toBe(true)
       await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
 
-      const write = vi.spyOn(runtimeAdapterFor('claude-code'), 'writeArtifacts')
       const { sessionId } = await launch()
       // A project drive has no main chat to quote: the kickoff is the plain line.
-      expect(write.mock.calls.at(-1)?.[0].kickoffLine).toBe(kickoffLineFor('scenario', undefined, 'claude-code'))
+      expect(kickoffOf(sessionId)).toBe(kickoffLineFor('scenario', undefined, 'claude-code'))
       expect(session(sessionId)).toMatchObject({ kind: 'scenario', projectId: project.id })
       expect(session(sessionId).featureId ?? null).toBeNull()
       expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('scenario.chat_opened')
@@ -431,7 +416,7 @@ describe('the scenario briefing', () => {
 
   it('asks the human first when nothing was described, and briefs a fix with its failure', () => {
     expect(renderScenarioPrompt(brief({ description: undefined }))).toContain(
-      'First ask the human what state they want to land in',
+      'first ask the human what state they want to land in',
     )
     const fix = renderScenarioPrompt(
       brief({
