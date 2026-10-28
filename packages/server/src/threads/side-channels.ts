@@ -4,6 +4,7 @@ import { getSessionMessages, query, type SessionMessage } from '@anthropic-ai/cl
 import { claudeRuntime } from '../launcher/runtimes/claude'
 import { codexRuntime } from '../launcher/runtimes/codex'
 import { killProcessTree } from '../pty/kill-tree'
+import { spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
 import { runcastleVersion } from '../version'
 
 /**
@@ -47,20 +48,27 @@ export async function readClaudeUsage(): Promise<unknown> {
   }
 }
 
-/** The Codex app server's `account/rateLimits/read` response, as `codexUsageReport` reads it. */
-export function readCodexRateLimits(): Promise<unknown> {
-  const child = spawn(codexRuntime.resolveBinary(), ['app-server'], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+/**
+ * The Codex app server's `account/rateLimits/read` response, as `codexUsageReport` reads it.
+ * `codex` on Windows is npm's `codex.cmd` shim, which a plain spawn cannot run
+ * (codex-acp spawns it through cross-spawn for the same reason), so the app
+ * server starts through {@link spawnTargetFor}; `target` is injected in tests.
+ */
+export function readCodexRateLimits(target: SpawnTarget = spawnTargetFor(codexRuntime.resolveBinary(), ['app-server'])): Promise<unknown> {
+  const child = spawn(target.file, target.args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
   const send = (message: Record<string, unknown>) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)
   const read = new Promise<unknown>((resolve, reject) => {
     child.once('error', reject)
     child.once('exit', () => reject(new Error('the Codex app server exited')))
     createInterface({ input: child.stdout }).on('line', (line) => {
-      let message: { id?: number; result?: unknown; error?: { message?: string } }
+      let message: { id?: number; method?: string; result?: unknown; error?: { message?: string } }
       try {
         message = JSON.parse(line)
       } catch {
         return
       }
+      // The app server's own notifications and requests are not the answers waited on.
+      if (message.method !== undefined) return
       if (message.error) reject(new Error(message.error.message ?? 'the Codex app server refused'))
       else if (message.id === 0) send({ id: 1, method: 'account/rateLimits/read' })
       else if (message.id === 1) resolve(message.result)

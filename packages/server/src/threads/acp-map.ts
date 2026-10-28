@@ -101,11 +101,40 @@ function toolOutput(content: readonly acp.ToolCallContent[] | null | undefined):
   return texts.length ? texts.join('\n') : undefined
 }
 
+/** codex-acp's titles for a file change, whatever files it touches. */
+const CODEX_EDIT_TITLES = new Set(['Editing files', 'Edit files'])
+
+/** A codex-acp file change named by the files it touches ("Edit src/a.ts, src/b.ts"), when it says them. */
+function editTitle(call: acp.ToolCall | acp.ToolCallUpdate): string | undefined {
+  const paths = new Set([...toolDiffs(call.content).map((d) => d.path), ...(call.locations ?? []).map((l) => l.path)])
+  return paths.size ? `Edit ${[...paths].join(', ')}` : undefined
+}
+
+/**
+ * What a call printed since its last update, where codex-acp streams it: a
+ * command's output chunks in `_meta.terminal_output_delta` (`terminal_output`
+ * for a client that asked for Zed's form), an MCP tool's progress in
+ * `_meta.mcp_output_delta`, each `{ data }`. Never in `content`, so a Codex
+ * command reads as printing nothing without this.
+ */
+function streamedOutput(call: acp.ToolCall | acp.ToolCallUpdate): string | undefined {
+  const meta = call._meta as Record<string, { data?: unknown } | undefined> | null | undefined
+  const chunks = ['terminal_output_delta', 'terminal_output', 'mcp_output_delta'].map((key) => meta?.[key]?.data)
+  const text = chunks.filter((d): d is string => typeof d === 'string').join('')
+  return text || undefined
+}
+
+/** A `tool_call` or `tool_call_update` as a `tool` event, with any output it streamed. */
+function toolEvent(call: acp.ToolCall | acp.ToolCallUpdate, parentId?: string): ThreadEventBody {
+  const outputAppend = streamedOutput(call)
+  return { type: 'tool', call: toolPatch(call), ...(parentId !== undefined ? { parentId } : {}), ...(outputAppend ? { outputAppend } : {}) }
+}
+
 /** A `tool_call`, `tool_call_update` or a permission request's call, as a tool patch. */
 export function toolPatch(call: acp.ToolCall | acp.ToolCallUpdate): ToolPatch {
   const patch: ToolPatch = { id: call.toolCallId }
   if (call.kind) patch.kind = toolKind(call.kind)
-  if (call.title) patch.title = call.title
+  if (call.title) patch.title = (CODEX_EDIT_TITLES.has(call.title) && editTitle(call)) || call.title
   if (call.status) patch.status = call.status
   const output = toolOutput(call.content)
   if (output !== undefined) patch.output = output
@@ -263,7 +292,7 @@ export function createUpdateMapper(newId: (prefix: string) => string): (update: 
     switch (update.sessionUpdate) {
       case 'tool_call':
       case 'tool_call_update':
-        return [{ type: 'tool', call: toolPatch(update), parentId }]
+        return [toolEvent(update, parentId)]
       case 'subagent_update':
         announced(update.sessionId, from)
         return []
@@ -297,7 +326,7 @@ export function createUpdateMapper(newId: (prefix: string) => string): (update: 
       }
       case 'tool_call':
       case 'tool_call_update':
-        return [{ type: 'tool', call: toolPatch(update) }]
+        return [toolEvent(update)]
       case 'plan':
         return [{ type: 'plan', entries: update.entries.map((e) => ({ content: e.content, status: e.status })) }]
       case 'available_commands_update':

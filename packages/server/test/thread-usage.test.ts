@@ -1,4 +1,6 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { readCodexRateLimits } from '../src/threads/side-channels'
 import { claudeUsageReport, codexUsageReport, formatResets } from '../src/threads/usage'
 
 /** Local-time epoch seconds / ISO, so the expected clock text does not depend on the machine's zone. */
@@ -56,6 +58,20 @@ describe('codexUsageReport', () => {
     for (const bad of [undefined, null, 'x', 4, [], {}, { rateLimits: 'x' }, { rateLimits: { primary: { usedPercent: 'a' } } }]) {
       expect(codexUsageReport(bad)).toEqual({ limits: [] })
     }
+  })
+})
+
+describe("a Codex thread's usage limits", () => {
+  it('are read from the app server after its initialize handshake, past its own notifications, with the plan', async () => {
+    const appServer = { file: process.execPath, args: [join(import.meta.dirname, 'support', 'fake-codex-app-server.mjs')] }
+    const report = codexUsageReport(await readCodexRateLimits(appServer))
+    expect(report).toEqual({
+      limits: [
+        { label: 'Current 5-hour window', percent: 42, resets: expect.any(String) },
+        { label: 'This week', percent: 7, resets: expect.any(String) },
+      ],
+      plan: 'ChatGPT Pro',
+    })
   })
 })
 

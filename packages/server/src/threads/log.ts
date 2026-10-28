@@ -28,7 +28,7 @@ export function hasThreadLog(threadId: string): boolean {
  */
 export const CHUNK_COALESCE_MS = 100
 
-type Chunk = Extract<ThreadEvent, { type: 'agent_text' | 'thought' }>
+type Chunk = Extract<ThreadEvent, { type: 'agent_text' | 'thought' | 'tool' }>
 
 interface LogState {
   /** The index the next event gets. */
@@ -61,7 +61,17 @@ function stateFor(threadId: string): LogState {
 function chunkKey(body: ThreadEventBody): string | null {
   if (body.type === 'agent_text') return `text:${body.messageId}`
   if (body.type === 'thought') return `thought:${body.thoughtId}`
+  // A command's streamed output, and nothing else about its call.
+  if (body.type === 'tool' && body.outputAppend !== undefined && Object.keys(body.call).length === 1) {
+    return `output:${body.call.id}`
+  }
   return null
+}
+
+/** Join a chunk to the held one of the same key. */
+function joinChunk(held: Chunk, body: ThreadEventBody): void {
+  if (held.type === 'tool' && body.type === 'tool') held.outputAppend = (held.outputAppend ?? '') + (body.outputAppend ?? '')
+  else if (held.type !== 'tool' && (body.type === 'agent_text' || body.type === 'thought')) held.text += body.text
 }
 
 function write(threadId: string, event: ThreadEvent): void {
@@ -85,8 +95,9 @@ export function flushThreadLog(threadId: string): void {
  * Append one event to a thread's log and publish `{ kind: 'thread', threadId }`.
  * Assigns the next index and the timestamp.
  *
- * An `agent_text` or `thought` chunk is held for {@link CHUNK_COALESCE_MS}:
- * further chunks of the same message within that window join it, and it is
+ * An `agent_text` or `thought` chunk, or a command's streamed output, is held
+ * for {@link CHUNK_COALESCE_MS}: further chunks of the same message (or the same
+ * command) within that window join it, and it is
  * written when the window closes or when any other event arrives (which is
  * always written after it, so the log keeps arrival order). The event returned
  * for a held chunk is the joined one, and grows while the window is open.
@@ -96,7 +107,7 @@ export function appendThreadEvent(threadId: string, body: ThreadEventBody): Thre
   const key = chunkKey(body)
   const pending = state.pending
   if (key && pending && chunkKey(pending.event) === key && Date.now() - pending.event.at < CHUNK_COALESCE_MS) {
-    pending.event.text += (body as Chunk).text
+    joinChunk(pending.event, body)
     return pending.event
   }
   flushThreadLog(threadId)

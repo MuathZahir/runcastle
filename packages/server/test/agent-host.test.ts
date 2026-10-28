@@ -141,6 +141,38 @@ describe('a turn', () => {
     expect(view.process).toBe('running')
   })
 
+  it("shows a long Codex turn's live work: its reasoning, and its command's output as codex-acp streams it in _meta", async () => {
+    setup({
+      turn: async (t) => {
+        await t.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'rs_1', content: { type: 'text', text: '**Running the suite**' } })
+        await t.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'rs_1', content: { type: 'text', text: '\n\nIt takes a while.' } })
+        await t.update({
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_1',
+          title: 'bun run test',
+          kind: 'execute',
+          status: 'in_progress',
+          content: [{ type: 'terminal', terminalId: 'call_1' }],
+          _meta: { terminal_info: { cwd: '/wt', terminal_id: 'call_1' } },
+        })
+        await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', _meta: { terminal_output_delta: { data: ' ✓ a.test.ts\n', terminal_id: 'call_1' } } })
+        await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', _meta: { terminal_output_delta: { data: ' ✓ b.test.ts\n', terminal_id: 'call_1' } } })
+        await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', _meta: { terminal_exit: { exit_code: 0, signal: null, terminal_id: 'call_1' } } })
+        await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', status: 'completed' })
+        await t.say('Green.')
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Run the tests' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.filter((e) => e.type === 'tool').map((e) => (e.type === 'tool' ? e.outputAppend ?? '' : '')).join('')).toBe(' ✓ a.test.ts\n ✓ b.test.ts\n')
+    const work = foldThread(events).items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(work.steps).toMatchObject([
+      { kind: 'thought', text: '**Running the suite**\n\nIt takes a while.' },
+      { kind: 'tools', calls: [{ id: 'call_1', title: 'bun run test', status: 'completed', output: ' ✓ a.test.ts\n ✓ b.test.ts\n' }] },
+    ])
+  })
+
   it('steers a human prompt into the running turn', async () => {
     setup({
       turn: async (t) => {
