@@ -248,16 +248,12 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
   // The slot shares the isolated mode's post-commit hook (one builder feeds
   // both), so it inherits push-only syncing: the `reset --hard FETCH_HEAD`
   // above is the once-per-setup slot sync, not a per-commit cost.
-  it('installs a push-only post-commit hook that retries once and never resets the workspace', () => {
-    const hook = postCommitHookBody(script(), BRANCH)
+  it('installs a push-only post-commit hook that never resets the workspace', () => {
+    const hook = postCommitHookBody(script())
     expect(hook).not.toContain('reset')
-    expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
-    const push = `git push --quiet --force-with-lease origin HEAD:${BRANCH}`
-    expect(hook.split(push)).toHaveLength(3)
-    expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
-    expect(hook).toContain(
-      'echo "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2',
-    )
+    expect(hook).not.toContain(`git -C ${SANDBOX_WORKSPACE_PATH}`)
+    expect(hook).toContain(`git push --quiet --force-with-lease origin HEAD:refs/heads/${BRANCH}`)
+    expect(hook).toContain(`git push --quiet origin HEAD:refs/heads/${BRANCH}`)
     expect(hook.trimEnd().endsWith('exit 0')).toBe(true)
   })
 
@@ -513,7 +509,7 @@ describe.skipIf(!hostDateHasNanos)('buildSlotSetupCommand — driven for real', 
     expect(await simpleGit(workspace).revparse(['HEAD'])).toBe(await repo.revparse(['HEAD']))
   })
 
-  it('retries a failed push, then tells the agent once — without failing the commit', async () => {
+  it('tells the agent its commit did not sync — without failing the commit', async () => {
     await runSetup(1, BRANCH)
     const repo = simpleGit(slotRepo(1))
     await repo.addConfig('user.email', 'agent@runcastle.dev')
@@ -523,12 +519,12 @@ describe.skipIf(!hostDateHasNanos)('buildSlotSetupCommand — driven for real', 
     writeFileSync(join(slotRepo(1), 'WORK.md'), 'done\n')
     await repo.add('.')
 
-    // Git ignores a post-commit hook's exit status, so the commit still lands —
-    // and a later push of HEAD carries it, which is why the line says so.
+    // Git ignores a post-commit hook's exit status, so the commit still lands
+    // in the slot — and the agent is asked to push it once more, because the
+    // last commit has no later one to carry it.
     const { stderr } = await runCommand('git commit -m "ticket(2): work"', { cwd: slotRepo(1) })
-    expect(stderr).toContain(
-      'runcastle: commit sync failed (will retry on your next commit); do not re-commit',
-    )
+    expect(stderr).toContain('runcastle: commit sync failed')
+    expect(stderr).not.toContain('next commit')
     expect(await repo.log({ maxCount: 1 })).toMatchObject({
       latest: { message: 'ticket(2): work' },
     })

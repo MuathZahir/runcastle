@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A burn's last commit is never stranded in the sandbox preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;gap:6px;margin-top:8px}
+.step{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step .dot{margin-top:7px}
+.step p{color:var(--color-text-secondary)}
+.step b{font-weight:500;color:var(--color-text)}
+.end{border-left:2px solid var(--color-success)}
+.end.bad{border-left-color:var(--color-danger)}
+.case{margin-top:20px}
+[data-state]{display:none}
+[data-state].on{display:grid}
+.cmp{grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.cmp{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>A burn's last commit is never stranded in the sandbox</h1>
+  <p class="lede">A ticket whose agent finished and committed either lands its work, or fails saying its commits were stranded. Never again a silent &ldquo;agent made no commits&rdquo; while the work dies with the container.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/a-burn-s-last-commit-is-never-stranded-in-the-sandbox/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">No screen changes: this is what happens to a ticket's commits. Pick a case.</p>
+  <div class="seg" role="group" aria-label="Case" style="margin-top:12px">
+    <button aria-pressed="true" data-case="a">Branch deleted (the bug)</button>
+    <button aria-pressed="false" data-case="b">Push impossible</button>
+    <button aria-pressed="false" data-case="c">Last commit never reached the host</button>
+    <button aria-pressed="false" data-case="d">Resolver and retries</button>
+  </div>
+
+  <div class="case cmp on" data-state="a">
+    <div><h3>Today</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>Boot cleanup deletes the live, still-empty ticket branch.</p></div>
+      <div class="step"><i class="dot"></i><p>Agent commits. Lease push refused as <span class="mono">stale info</span>, twice.</p></div>
+      <div class="step"><i class="dot"></i><p>Hook says <span class="mono">will retry on your next commit</span>. There is none.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p><b>Ticket failed: agent made no commits.</b> The work is gone with the container.</p></div>
+    </div></div>
+    <div><h3>With this feature</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>Boot cleanup still deletes the branch (parked <a class="pin" data-d="5">5</a>).</p></div>
+      <div class="step"><i class="dot"></i><p>Agent commits. Lease push refused, so a <b>plain push</b> recreates the branch <a class="pin" data-d="1">1</a>.</p></div>
+      <div class="step end"><i class="dot ok"></i><p><b>Ticket done</b> and lands like any other.</p></div>
+    </div></div>
+  </div>
+
+  <div class="case cmp" data-state="b">
+    <div><h3>Today</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>Every push fails (host branch holds other commits, mount hiccup).</p></div>
+      <div class="step"><i class="dot"></i><p>Hook says <span class="mono">will retry on your next commit</span>; the agent stops.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p><b>Agent made no commits.</b> Work lost, and the reason with it.</p></div>
+    </div></div>
+    <div><h3>With this feature</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>Hook prints the push error and asks the agent to run <span class="mono">git push origin HEAD:refs/heads/&lt;branch&gt;</span> once more <a class="pin" data-d="10">10</a>.</p></div>
+      <div class="step end"><i class="dot ok"></i><p>The hand push works: the host branch has the last commit, <b>ticket lands</b>.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>It still fails: <b>failed: 2 commit(s) stranded in the sandbox: &lt;push error&gt;</b>. No rescue; Retry continues from what reached the host <a class="pin" data-d="9">9</a>.</p></div>
+    </div></div>
+  </div>
+
+  <div class="case cmp" data-state="c">
+    <div><h3>Today</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>Commits 1 and 2 sync; commit 3 does not.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p><b>Ticket done</b> with 2 of 3 commits. Part of the work lands silently.</p></div>
+    </div></div>
+    <div><h3>With this feature</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>The hook keeps a record of any commit not yet on the host; the burner checks the ticket branch holds it <a class="pin" data-d="7">7</a>.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p><b>Failed: 1 commit(s) stranded in the sandbox</b>, never a partial &ldquo;done&rdquo;.</p></div>
+    </div></div>
+  </div>
+
+  <div class="case cmp" data-state="d">
+    <div><h3>Conflict resolver</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>The resolver's merge syncs; its fix after the merge does not.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>The pass <b>fails by name</b> instead of landing without the fix <a class="pin" data-d="11">11</a>.</p></div>
+    </div></div>
+    <div><h3>A retried attempt</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>An attempt dies after its last commit failed to sync; the next attempt starts on the shorter host branch.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>The timeline line, the next agent's recovery notes and the final error all say <b>N commit(s) stranded</b> <a class="pin" data-d="11">11</a>.</p></div>
+    </div></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Boot cleanup never touches a live burn (backlog feature)</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Rescuing commits the sandbox could not push</li>
+      <li><i class="dot"></i>The burner prompt and verify-notes text</li>
+      <li><i class="dot"></i>Mounted and no-sandbox modes (no hook, unchanged)</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+<div class="flow">
+        <div class="step"><i class="dot live"></i><p><b>Sync hook</b> (shared by the isolated clone, the cache slot and the conflict resolver): record HEAD in the mounted workspace, lease push and one retry, then a plain push, all to <span class="mono">refs/heads/&lt;temp branch&gt;</span>. A push that succeeds deletes the record, so it only ever names unsynced work. On failure it appends the unsynced count and the error, and asks the agent to push once more. Always exits 0.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Burner</b>: reads the record before each worktree goes and checks the branch holds that commit, on the normal path, the worktree-teardown path, the resolver verdict and the retry path. Stranded beats &ldquo;done&rdquo; and &ldquo;no commits&rdquo;.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Tests</b>: a new real-git file that installs the hook in a real clone (runs on Windows too): deleted branch, detached HEAD, amend, squash and drop by rebase, no overwrite, hand push, resolver pass, retry notes. Shape tests updated.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Who builds it</b>: the lead, in this checkout. No tickets.</p></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['A refused sync push falls back to a plain push, never to an overwrite', 'It fixes the deleted-branch failure without ever discarding anything on the host; the lease stays the first try, so amends still sync.', 'assumed'],
+    ['A commit that still cannot sync is saved where the host can collect it', 'Superseded by 9: no rescue.', 'superseded'],
+    ['Work that cannot be recovered fails the ticket by name, and is kept on a branch', 'Superseded by 9: no rescue, so nothing to keep.', 'superseded'],
+    ['The hook tells the agent its work is safe, and not to push by hand', 'Superseded by 10: the agent is asked to push once more.', 'superseded'],
+    ['The boot cleanup that deleted the live branches is parked, not fixed here', 'The brief rules out restart recovery; a correct sweep needs to know which runs are alive, and that check is what failed in this bug.', 'assumed'],
+    ["The agent's next restart in the same run starts from the saved commits", 'Superseded by 9: nothing is saved.', 'superseded'],
+    ["The burner checks that the sandbox's last commit reached the host", 'Without it, a ticket whose last commit failed to sync lands only part of its work as done, or reads as no commits.', 'assumed'],
+    ['Retry after a stranded failure starts from the host branch, not the saved commits', 'Superseded by 9: Retry continues from the host branch, as for any failed ticket.', 'superseded'],
+    ['No rescue: a commit that cannot sync fails the ticket by name', 'With the plain-push fallback, what is left for a rescue to catch is rare; a named failure plus Retry covers it. Changed by the orchestrator.', 'orchestrator'],
+    ['The hook asks the agent to push once more before it finishes', 'With no rescue, one more plain push is the last chance the work has, and a plain push cannot overwrite. Changed by the orchestrator.', 'orchestrator'],
+    ['Every pass the hook runs in is checked, and a retry names what it lost', 'The resolver installs the same hook, and a retried attempt otherwise loses work without a word. Changed by the orchestrator after its review.', 'orchestrator']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [9, 'Rescue unpushed commits through a saved file the host collects (the original plan, decisions 2, 3 and 6).', 'Changed by the orchestrator: a stranded commit now fails the ticket and its last work is lost, though the plain push makes that rare.', 'orchestrator'],
+    [10, 'Tell the agent to carry on and leave the commit to the host.', 'Changed by the orchestrator along with 9. A hand push is safe because it cannot overwrite.', 'orchestrator'],
+    [5, 'Also fix the boot sweep here so it skips a branch a live burn still holds.', 'The sweep is the root cause and runs on every hot reload of the server. The challenger would fix it here.', 'challenged'],
+    [1, 'Refresh the lease and force-push, which also covers an amend after a failed sync.', 'Safe only if nothing else ever writes a ticket branch; the boot sweep showed something does.', 'challenged']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+  // the show's case toggle
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-case]')
+    if (!b) return
+    $$('[data-case]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    $$('[data-state]').forEach(function (x) { x.classList.toggle('on', x.dataset.state === b.dataset.case) })
+  })
+})()
+</script>
+</body>
+</html>
