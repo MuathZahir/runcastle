@@ -39,3 +39,13 @@ What the code actually does today (checked in the project session): the host doe
 ## Working agreement
 
 **Autonomous**, chosen by the human on 2026-10-28: the orchestrator carries this through to merged, merging when it judges right, no stops for test drives. The feature's own review before declaring ready is the check.
+
+## Added by the orchestrator, 2026-10-28
+
+## Added scope: the lead builds it itself by default (the human, 2026-10-28)
+
+The human: "I want … the feature chat to do the changes when it's a small feature. The burn agents are a tool that the feature agent can decide to use. But it doesn't have to use them. It can do the whole feature itself if it thinks it's small enough." And, when asked to send it: "don't overdo it, make sure that workers are still used when needed."
+
+This already exists in principle (the feature skill says "Small work you do yourself: a few files, a change that would not split into tickets…", shipped by `tickets-and-review-are-tools-not-phases`). The gap is the bar: "small" is defined so narrowly that a lead planning alone reaches for tickets by default. Reframe the feature skill's "Build it the cheapest good way" (and the matching lines in `references/tickets.md` / `references/planning-alone.md`) as judgement, not a rule: the lead weighs building it in its own window against handing it to workers. Workers earn their cost when the work splits into pieces that genuinely run in parallel, when it is too big for one context window alongside the conversation, or when it is long unattended work the human should not wait on in chat. Otherwise the lead builds it itself — including whole small features, not just leftovers. Keep it short; general judgement over "when X do Y" recipes. Do not tilt so far that big work gets done in the chat.
+
+Working agreement unchanged: autonomous.
