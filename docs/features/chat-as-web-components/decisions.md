@@ -68,3 +68,7 @@ Refines: 9.
 **Decision:** New chat on the project page and New thread in the header do the same thing: open an empty thread, whatever else is running. Any number of a project's chats can run at once; there is no "one chat open" notice or "end it and start new". Every thread in a list is named by its generated title or its first message, never by its kind.
 Refines: 7.
 **Why:** The human: "I can't create a new chat when one is running???" while the header's New thread did create one, leaving two threads both called "Runcastle project session".
+
+## 15. After the lead replies, the feature waits on the human, everywhere
+**Decision:** When the feature's lead ends a turn and the human has not answered it yet, the feature reads "Waiting for you" in the header and "Waiting on you" with the amber dot in the sidebar, whether or not the lead asked anything explicitly. One rule drives both places, so they never disagree.
+**Why:** The final review found the header saying "Talking with you" while the sidebar said "Waiting on you" for the same feature, because the sidebar read the thread's turn end and the header did not. The human chose the lead's recommendation: after any reply the next move is the human's, and the amber dot then shows a reply that came while they were elsewhere, like an unread chat. The cost is that a lead that only said "ok" still turns its feature amber until answered.
