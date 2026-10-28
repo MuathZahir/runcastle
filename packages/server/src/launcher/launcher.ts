@@ -16,7 +16,7 @@ import { DEFAULT_RUNTIME, newId, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
-import { chatKickoffFor, prepareConfirmKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, prepareConfirmKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor, sideKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
@@ -246,27 +246,41 @@ async function sayToThread(
     return
   }
   const hold = opts.holdOpening === true
-  await agentHost(ctx).prompt(row.id, { text: line }, { source: 'runcastle', ...(hold ? { hold } : {}) })
+  const text = hold ? heldOpening(line) : line
+  await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', ...(hold ? { hold } : {}) })
   emitForSession(ctx, row, {
     type: 'session.kickoff',
     message,
-    data: { sessionId: row.id, kind: row.kind, line, mechanism: hold ? 'held' : 'prompt' },
+    data: { sessionId: row.id, kind: row.kind, line: text, mechanism: hold ? 'held' : 'prompt' },
   })
+}
+
+/** How an opening held for the human's first message ends: that message follows it, in the same prompt (decision 12). */
+export const HELD_OPENING_END = "The human's message follows."
+
+/** An opening in the form that rides ahead of the human's first message. */
+export function heldOpening(line: string): string {
+  return `${line}\n\n${HELD_OPENING_END}`
 }
 
 /**
  * The briefing a new conversation of the row's kind opens with — what its
- * launcher says first, and what goes ahead of the human's first message in a
- * thread opened empty (New thread). Feature conversations are tagged as
- * runcastle's, as their launchers tag them.
+ * launcher says first, and (`held`) what goes ahead of the human's first
+ * message in a thread opened empty (New thread). Feature conversations are
+ * tagged as runcastle's, as their launchers tag them.
  */
-export function kickoffFor(ctx: AppCtx, row: SessionRow): string {
+export function kickoffFor(ctx: AppCtx, row: SessionRow, opts: { held?: boolean } = {}): string {
+  const line = openingLine(ctx, row, opts.held === true)
+  return opts.held ? heldOpening(line) : line
+}
+
+function openingLine(ctx: AppCtx, row: SessionRow, held: boolean): string {
   const runtime = row.runtime ?? DEFAULT_RUNTIME
   switch (row.kind) {
     case 'chat':
       return tagRuncastlePrompt(chatKickoffHeader(ctx, getFeatureRow(ctx, row.featureId as string), runtime))
     case 'side':
-      return tagRuncastlePrompt(sideKickoff(ctx, getFeatureRow(ctx, row.featureId as string), row.id, runtime))
+      return tagRuncastlePrompt(sideKickoff(ctx, getFeatureRow(ctx, row.featureId as string), row.id, runtime, held))
     case 'prepare': {
       const project = requireProjectById(ctx, row.projectId as string)
       const nothingLeft = keysToPrepare(ctx, project).length === 0
@@ -415,19 +429,20 @@ export interface LaunchSideSessionInput {
  * A new side session's opening prompt: its role (`sideKickoffFor`) followed by
  * the same feature-state header the chat kickoff carries. The one place a side
  * session's first message is composed, so what it is told about the main chat
- * grows here.
+ * grows here. `held`: the form that rides ahead of the human's first message.
  */
 export function sideKickoff(
   ctx: AppCtx,
   feature: Feature,
   sessionId: string,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
+  held = false,
 ): string {
   return mainChatContext(
     ctx,
     feature,
     sessionId,
-    chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', undefined, runtime)),
+    chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', held ? sideKickoffFor(true) : undefined, runtime)),
   )
 }
 

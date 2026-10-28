@@ -80,7 +80,7 @@ export const threadRouter = router({
       // A thread opened empty (New thread) is briefed ahead of the human's first
       // words, in the same prompt, so the agent answers once (decision 12).
       if (!row.ccSessionId && !hasThreadLog(id)) {
-        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row) }, { source: 'runcastle', hold: true })
+        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row, { held: true }) }, { source: 'runcastle', hold: true })
       }
       return agentHost(ctx).prompt(
         id,

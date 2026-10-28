@@ -343,6 +343,39 @@ describe('thread.new', () => {
     expect(sentPrompts(fake)).toEqual([`${briefing.text}\n\nHello`])
     expect(readThreadEvents(threadId).filter((e) => e.type === 'turn_started')).toHaveLength(1)
   })
+
+  // decision 12: a held opening and the ask are one prompt, so the opening says the ask follows rather than to wait for it.
+  it('tells a side thread the human’s message follows its opening, and names it by that message', async () => {
+    const fake = fakeHost({
+      turn: async (t) => {
+        await t.update({ sessionUpdate: 'session_info_update', title: 'Review probe side session' })
+        await t.say('Decision 4 keeps five things from the terminal.')
+      },
+    })
+    const f = await feature()
+    const side = (await caller().thread.new({ featureId: f.id })).threadId
+
+    await caller().thread.send({ threadId: side, text: 'what is decision 4?' })
+
+    await vi.waitFor(() => expect(readThreadEvents(side).some((e) => e.type === 'turn_ended')).toBe(true))
+    const [sent] = sentPrompts(fake)
+    expect(sent).toMatch(/^\[runcastle\] Proceed as a side session/)
+    expect(sent.endsWith("The human's message follows.\n\nwhat is decision 4?")).toBe(true)
+    expect(sent).not.toContain("Wait for the human's ask")
+    expect((await caller().thread.list({ featureId: f.id })).find((t) => t.id === side)?.title).toBe('what is decision 4?')
+  })
+
+  it('ends every held opening by saying the human’s message follows', async () => {
+    fakeHost()
+    const f = await feature()
+    const { sessionId: main } = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { holdOpening: true })
+    const { sessionId: orchestrator } = await launchProjectSession(ctx, { projectId: project.id }, { holdOpening: true })
+    const { sessionId: prepare } = await launchPrepareSession(ctx, { projectId: project.id }, { holdOpening: true })
+
+    for (const id of [main, orchestrator, prepare]) {
+      expect(promptsOf(id)).toEqual([expect.objectContaining({ source: 'runcastle', text: expect.stringMatching(/\n\nThe human's message follows\.$/) })])
+    }
+  })
 })
 
 describe('a launch’s opening held for the human’s first message', () => {
