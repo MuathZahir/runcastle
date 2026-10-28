@@ -1,5 +1,5 @@
 import { exec } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   SANDBOX_WORKSPACE_PATH,
   SYNC_RECORD_FILE,
+  buildRetryNotes,
   buildSyncHookScript,
+  judgeResolverPass,
   parseSyncRecord,
   strandedCommitsError,
 } from '../src/workflows/ticket-burner'
@@ -33,7 +35,9 @@ describe('the sandbox sync hook, under real git', () => {
   let clone: string
   let mount: string
 
-  const record = () => parseSyncRecord(readFileSync(join(mount, SYNC_RECORD_FILE), 'utf8'))
+  const recordFile = () => join(mount, SYNC_RECORD_FILE)
+  const record = () =>
+    existsSync(recordFile()) ? parseSyncRecord(readFileSync(recordFile(), 'utf8')) : undefined
   const hostTip = async () => (await simpleGit(host).raw(['rev-parse', '--verify', '--quiet', BRANCH])).trim()
   const cloneHead = async () => (await simpleGit(clone).revparse(['HEAD'])).trim()
 
@@ -81,11 +85,11 @@ describe('the sandbox sync hook, under real git', () => {
     for (const dir of [host, clone, mount]) rmSync(dir, { recursive: true, force: true })
   })
 
-  it('syncs a commit to the temp branch and records it', async () => {
+  it('syncs a commit to the temp branch and leaves no record of unsynced work', async () => {
     const stderr = await commit('work.md')
 
     expect(await hostTip()).toBe(await cloneHead())
-    expect(record()).toEqual({ head: await cloneHead() })
+    expect(existsSync(recordFile())).toBe(false)
     expect(stderr).not.toContain('runcastle: commit sync failed')
     expect(await strandedCommitsError(host, BRANCH, record())).toBeUndefined()
   })
@@ -121,6 +125,36 @@ describe('the sandbox sync hook, under real git', () => {
     expect(await strandedCommitsError(host, BRANCH, record())).toBeUndefined()
   })
 
+  // A rebase rewrites commits without a plain `git commit`; whatever the agent
+  // then force-pushes by hand must not read as stranded work.
+  it('follows a squash by rebase and a hand force-push without crying stranded', async () => {
+    await commit('a.md')
+    await commit('b.md')
+    await runCommand('git rebase -q -i HEAD~2', {
+      cwd: clone,
+      env: { ...process.env, GIT_SEQUENCE_EDITOR: "sed -i -e '2s/^pick/fixup/'" },
+    })
+    await runCommand(`git push -q -f origin HEAD:refs/heads/${BRANCH}`, { cwd: clone })
+
+    expect(await hostTip()).toBe(await cloneHead())
+    expect(await strandedCommitsError(host, BRANCH, record())).toBeUndefined()
+  }, 20_000)
+
+  // Dropping the last commit makes no new commit at all — the post-commit hook
+  // never fires, and only `post-rewrite` hears about it.
+  it('follows a rebase that only drops the last commit', async () => {
+    await commit('a.md')
+    await commit('b.md')
+    await runCommand('git rebase -q -i HEAD~2', {
+      cwd: clone,
+      env: { ...process.env, GIT_SEQUENCE_EDITOR: "sed -i -e '2s/^pick/drop/'" },
+    })
+    await runCommand(`git push -q -f origin HEAD:refs/heads/${BRANCH}`, { cwd: clone })
+
+    expect(await hostTip()).toBe(await cloneHead())
+    expect(await strandedCommitsError(host, BRANCH, record())).toBeUndefined()
+  }, 20_000)
+
   it('never overwrites host commits the sandbox lacks, and the ticket fails by name', async () => {
     writeFileSync(join(host, 'HOST.md'), 'host side\n')
     await simpleGit(host).add('.')
@@ -151,6 +185,65 @@ describe('the sandbox sync hook, under real git', () => {
 
     expect(await strandedCommitsError(host, BRANCH, record())).toBeUndefined()
   }, 20_000)
+
+  // The conflict resolver runs on the same hook. Its merge commit syncing used
+  // to be enough to land: the feature branch is then fully contained, so a fix
+  // committed after the merge that never left the sandbox landed missing.
+  describe('a conflict-resolver pass', () => {
+    const FEATURE = 'feature/stranded'
+    const GIVEN = 'runcastle/ticket/stranded/2-Given000'
+
+    /** The feature branch moves on; the resolver merges it in, resolving by hand. */
+    async function resolveMerge(): Promise<void> {
+      const h = simpleGit(host)
+      await h.raw(['branch', GIVEN])
+      await h.raw(['checkout', '-b', FEATURE])
+      writeFileSync(join(host, 'FEATURE.md'), 'sibling ticket\n')
+      await h.add('.')
+      await h.commit('sibling ticket')
+      await h.raw(['checkout', BRANCH])
+      await runCommand(`git fetch -q origin ${FEATURE}`, { cwd: clone })
+      await runCommand('git merge -q --no-ff --no-commit FETCH_HEAD', { cwd: clone })
+      await runCommand('git commit -q --no-edit', { cwd: clone })
+    }
+
+    const judge = () =>
+      judgeResolverPass({
+        repoPath: host,
+        featureBranch: FEATURE,
+        branch: GIVEN,
+        resolveBranch: BRANCH,
+        blocked: undefined,
+        syncRecord: record(),
+      })
+
+    it('lands when every commit reached the host', async () => {
+      await resolveMerge()
+      await commit('fix.md')
+
+      expect(await judge()).toEqual({ ok: true, branch: BRANCH })
+    })
+
+    it('fails by name when a fix after the merge never left the sandbox', async () => {
+      await resolveMerge()
+      expect(await hostTip()).toBe(await cloneHead()) // the merge itself synced
+      await simpleGit(clone).raw(['remote', 'set-url', '--push', 'origin', join(mount, 'no-such-repo')])
+      await commit('fix.md')
+
+      const pass = await judge()
+      expect(pass.ok).toBe(false)
+      expect(pass.branch).toBe(BRANCH) // the synced merge is still carried forward
+      expect(pass.error).toMatch(/^1 commit\(s\) stranded in the sandbox: /)
+    }, 20_000)
+  })
+})
+
+describe('buildRetryNotes after a stranded attempt', () => {
+  it('tells the next agent the work it does not have', () => {
+    const stranded = '1 commit(s) stranded in the sandbox: fatal: no remote'
+    expect(buildRetryNotes({ commitCount: 2, stranded })).toContain(`Some of its work is lost: ${stranded}`)
+    expect(buildRetryNotes({ commitCount: 2 })).not.toContain('work is lost')
+  })
 })
 
 describe('parseSyncRecord / strandedCommitsError', () => {

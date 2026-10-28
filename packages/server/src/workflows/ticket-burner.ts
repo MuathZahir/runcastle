@@ -1420,11 +1420,17 @@ export function resolveBurnWorkspaceMode(
 }
 
 /**
- * Where the sync hook records the agent's latest commit, in the mounted
- * workspace — the one place the container writes that the host can still read
- * after sandcastle removes it. Line 1 is HEAD, written before every push; when
- * every push failed, line 2 is how many commits were left unsynced (`?` when
- * the clone cannot tell) and line 3 the push's first error line.
+ * Where the sync hook records a commit that has not reached the host yet, in
+ * the mounted workspace — the one place the container writes that the host can
+ * still read after sandcastle removes it. Line 1 is HEAD, written before every
+ * push; when every push failed, line 2 is how many commits were left unsynced
+ * (`?` when the clone cannot tell) and line 3 the push's first error line.
+ *
+ * A push that succeeds DELETES the record, so it only ever names unsynced
+ * work. That is what keeps a history rewrite honest: a rebase that only drops
+ * commits fires no hook at all (no `post-commit`, and no `post-rewrite` either,
+ * since nothing was rewritten), and a record kept after a good push would go on
+ * naming the commit the agent threw away.
  */
 export const SYNC_RECORD_FILE = '.runcastle-sync'
 
@@ -1451,10 +1457,10 @@ export function buildSyncHookScript(tempBranch: string): string[] {
     'unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE',
     `rec=${SANDBOX_WORKSPACE_PATH}/${SYNC_RECORD_FILE}`,
     'git rev-parse HEAD > "$rec" 2>/dev/null',
-    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && exit 0`,
+    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && { rm -f "$rec"; exit 0; }`,
     'sleep 2',
-    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && exit 0`,
-    `out=$(git push --quiet origin HEAD:${ref} 2>&1) && exit 0`,
+    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && { rm -f "$rec"; exit 0; }`,
+    `out=$(git push --quiet origin HEAD:${ref} 2>&1) && { rm -f "$rec"; exit 0; }`,
     `{ git rev-list --count refs/remotes/origin/${tempBranch}..HEAD 2>/dev/null || echo '?'; printf '%s\\n' "$out" | grep . | head -n 1; } >> "$rec"`,
     `printf '%s\\n' "$out" >&2`,
     `echo "runcastle: commit sync failed: this commit has NOT reached the host, and no later commit is sure to carry it. Before you finish, run once more: git push origin HEAD:${ref}" >&2`,
@@ -1462,7 +1468,7 @@ export function buildSyncHookScript(tempBranch: string): string[] {
   ]
 }
 
-/** What the sync hook last recorded (see {@link SYNC_RECORD_FILE}). */
+/** A commit the sync hook had not pushed when it last ran (see {@link SYNC_RECORD_FILE}). */
 export interface SyncRecord {
   head: string
   /** Commits left unsynced when every push failed; `null` when the clone could not tell. */
@@ -1493,6 +1499,7 @@ export async function strandedCommitsError(
   tempBranch: string,
   record: SyncRecord | undefined,
 ): Promise<string | undefined> {
+  // Checked even though the record exists: the agent may have pushed by hand.
   if (!record || (await branchContains(repoPath, tempBranch, record.head))) return undefined
   const sha = record.head.slice(0, 8)
   if (record.unsynced === undefined) {
@@ -1551,9 +1558,9 @@ export async function strandedCommitsError(
  *    one that is behind, and still refuses to overwrite anything. When that
  *    fails too, the hook asks the agent to push once more and exits 0. It must
  *    NOT promise that a later commit heals it: the commit that matters most is
- *    the last, and nothing comes after it. Before pushing, the hook records the
- *    clone's HEAD in the mounted workspace ({@link SYNC_RECORD_FILE}), so the
- *    host can tell, after the container is gone, whether that commit arrived.
+ *    the last, and nothing comes after it. Until a push succeeds, the hook keeps
+ *    the clone's HEAD recorded in the mounted workspace ({@link SYNC_RECORD_FILE}),
+ *    so the host can tell, after the container is gone, that it never arrived.
  * 5. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
  *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
  *    preinstalled — only `corepack` is — and in real burns every agent
@@ -2885,6 +2892,12 @@ export function buildRetryNotes(input: {
    * iteration notes never see it — this carries the command across instead.
    */
   lastCommand?: LastCommandRecord
+  /**
+   * The dead attempt's last commit never left its sandbox (see
+   * {@link strandedCommitsError}) — said plainly, because the branch the new
+   * agent starts on is shorter than what the previous one finished.
+   */
+  stranded?: string
 }): string {
   const cause = input.error ? ` (${input.error})` : ''
   const commits =
@@ -2898,6 +2911,12 @@ export function buildRetryNotes(input: {
     `A previous agent working THIS SAME ticket was killed by a transient infrastructure error${cause} — not by anything it did wrong, and not by a human decision. You are picking up where it left off.`,
     '',
     commits,
+    ...(input.stranded
+      ? [
+          '',
+          `Some of its work is lost: ${input.stranded}. Those commits are NOT on your branch, so check the acceptance criteria against what is there and redo whatever is missing.`,
+        ]
+      : []),
     '',
     'Before doing anything else, run `git log --oneline -15` and `git status` to see what was already completed. Build on that work — do NOT revert or redo existing commits. Uncommitted changes from the previous attempt were lost; only commits survived. If the ticket turns out to be fully implemented already, verify the acceptance criteria and finish normally.',
     ...(interrupted ? ['', interrupted] : []),
@@ -3035,6 +3054,42 @@ export interface ResolveAttemptResult {
    */
   branch: string
   error?: string
+}
+
+/**
+ * Whether a finished resolver pass may land, read off git rather than off what
+ * the agent says. In order: a BLOCKED.md fails it; so does a last commit the
+ * sandbox never pushed — the merge commit may have synced and made the branch
+ * look done while a fix after it stayed behind — and so does a merge left
+ * incomplete (the feature branch not fully contained in the result). A failed
+ * pass still carries forward the tip holding the most work.
+ */
+export async function judgeResolverPass(input: {
+  repoPath: string
+  featureBranch: string
+  /** The branch the resolver was given. */
+  branch: string
+  resolveBranch: string
+  blocked: string | undefined
+  syncRecord: SyncRecord | undefined
+}): Promise<ResolveAttemptResult> {
+  const { repoPath, featureBranch, branch, resolveBranch } = input
+  const bestTip = async (): Promise<string> =>
+    (await branchCommitsAhead(repoPath, branch, resolveBranch)).length > 0 ? resolveBranch : branch
+  if (input.blocked !== undefined && input.blocked.trim().length > 0) {
+    return { ok: false, branch: await bestTip(), error: `resolver reported BLOCKED:\n${input.blocked.trim()}` }
+  }
+  const stranded = await strandedCommitsError(repoPath, resolveBranch, input.syncRecord)
+  if (stranded) return { ok: false, branch: await bestTip(), error: stranded }
+  const missing = await branchCommitsAhead(repoPath, resolveBranch, featureBranch)
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      branch: await bestTip(),
+      error: `resolver did not complete the merge — ${missing.length} commit(s) of ${featureBranch} are still missing from the branch`,
+    }
+  }
+  return { ok: true, branch: resolveBranch }
 }
 
 export interface LandDeps {
@@ -4829,6 +4884,7 @@ async function burnTicket(
     }
 
     let result: RunResult | undefined
+    let syncRecord: SyncRecord | undefined
     try {
       beginSetupSpan(resolveBranch)
       makeKillable(containerName)
@@ -4854,8 +4910,9 @@ async function burnTicket(
       })
       harvestTicketTokens(ctx, ticket, result.iterations, model.runtime)
     } catch (err) {
-      // Nothing reads a dead resolver's worktree — `result` never got assigned,
-      // so the BLOCKED.md read below cannot reach it either.
+      // Nothing else reads a dead resolver's worktree — `result` never got
+      // assigned, so the BLOCKED.md read below cannot reach it either.
+      syncRecord = readSyncRecord(resolveBranch)
       await discardWorktree(resolveBranch)
       if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
       const tip = await bestTip()
@@ -4877,24 +4934,17 @@ async function burnTicket(
     }
 
     const blocked = readAgentFile([result?.preservedWorktreePath, project.repoPath], 'BLOCKED.md')
+    if (result) syncRecord = readSyncRecord(resolveBranch)
     // Read out of the preserved worktree, so removal waits until now.
     await discardWorktree(resolveBranch)
-    if (blocked !== undefined && blocked.trim().length > 0) {
-      return {
-        ok: false,
-        branch: await bestTip(),
-        error: `resolver reported BLOCKED:\n${blocked.trim()}`,
-      }
-    }
-    const missing = await branchCommitsAhead(project.repoPath, resolveBranch, feature.branch)
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        branch: await bestTip(),
-        error: `resolver did not complete the merge — ${missing.length} commit(s) of ${feature.branch} are still missing from the branch`,
-      }
-    }
-    return { ok: true, branch: resolveBranch }
+    return judgeResolverPass({
+      repoPath: project.repoPath,
+      featureBranch: feature.branch,
+      branch: input.branch,
+      resolveBranch,
+      blocked,
+      syncRecord,
+    })
   }
 
   /**
@@ -5102,8 +5152,9 @@ async function burnTicket(
         break
       } catch (err) {
         await clearAttachmentsFor(tempBranch)
-        // The one agent file a failure path still needs (the teardown landing
-        // below), read out before the worktree goes.
+        // The one agent file the failure paths still need, read out before the
+        // worktree goes: a last commit that never left the sandbox must not
+        // land as done (teardown) or vanish under a retry without a word.
         const syncRecord = readSyncRecord(tempBranch)
         // Every failure path below either returns or `continue`s onto a fresh
         // temp branch, and none of them reads the worktree — so this attempt's
@@ -5119,6 +5170,7 @@ async function burnTicket(
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
         if (salvaged.length > 0) baseBranch = tempBranch
+        const stranded = await strandedCommitsError(project.repoPath, tempBranch, syncRecord)
 
         if (ticketAbort.signal.aborted) {
           if (salvaged.length > 0) preserveChain(tempBranch)
@@ -5133,7 +5185,6 @@ async function burnTicket(
         // rediscovering it, so land the chain and tidy up best-effort instead.
         if (isWorktreeTeardownError(err)) {
           const removed = await discardWorktree(tempBranch)
-          const stranded = await strandedCommitsError(project.repoPath, tempBranch, syncRecord)
           if (stranded) {
             if (salvaged.length > 0) preserveChain(tempBranch)
             return { status: 'failed', error: stranded }
@@ -5184,12 +5235,19 @@ async function burnTicket(
             error: headline,
             commitCount: salvaged.length,
             lastCommand: lastCommand.last(),
+            ...(stranded ? { stranded } : {}),
           })
           ctx.emitEvent({
             type: 'ticket.retrying',
-            message: `ticket ${ticket.seq} attempt ${attempt}/${maxAttempts} died (${headline}) — retrying${salvaged.length > 0 ? ` from ${salvaged.length} preserved commit(s)` : ''}`,
+            message: `ticket ${ticket.seq} attempt ${attempt}/${maxAttempts} died (${headline}) — retrying${salvaged.length > 0 ? ` from ${salvaged.length} preserved commit(s)` : ''}${stranded ? `; ${stranded}` : ''}`,
             ticketId: ticket.id,
-            data: { attempt, maxAttempts, error: msg, preservedCommits: salvaged.length },
+            data: {
+              attempt,
+              maxAttempts,
+              error: msg,
+              preservedCommits: salvaged.length,
+              ...(stranded ? { stranded } : {}),
+            },
           })
           appendTranscript(ticket.id, {
             kind: 'text',
@@ -5213,7 +5271,7 @@ async function burnTicket(
             runFatal: { runtime: model.runtime },
           }
         }
-        return { status: 'failed', error: msg }
+        return { status: 'failed', error: stranded ? `${msg} — ${stranded}` : msg }
       }
     }
 

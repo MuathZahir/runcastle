@@ -1879,7 +1879,9 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     expect(hook.split(lease)).toHaveLength(3)
     // then a plain push of the full ref — creates or fast-forwards, never forces
     expect(hook).toContain(`git push --quiet origin HEAD:refs/heads/${branch}`)
-    expect(hook).not.toMatch(/git push[^\n]*(--force |-f )/)
+    for (const push of hook.match(/git push[^&\n]*/g) ?? []) {
+      expect(push).not.toMatch(/ (--force|-f)( |$)/)
+    }
     // git ignores a post-commit hook's exit status, so the commit is safe
     // either way — but nothing promises a later commit will carry it
     expect(hook).not.toContain('next commit')
