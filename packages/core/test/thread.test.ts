@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { foldThread, liveEvents, ThreadEvent, type ThreadEventBody, type ThreadItem } from '../src/thread'
+import { foldThread, lastPickedModel, liveEvents, ThreadEvent, type ThreadEventBody, type ThreadItem } from '../src/thread'
 
 /** A log from bodies, one second apart unless an `at` is given. */
 function log(...bodies: Array<ThreadEventBody | [number, ThreadEventBody]>): ThreadEvent[] {
@@ -509,5 +509,21 @@ describe('foldThread', () => {
     const line = { i: 0, at: 1, type: 'prompt', id: 'p', text: 't', source: 'human' }
     expect(ThreadEvent.parse(line)).toEqual(line)
     expect(() => ThreadEvent.parse({ i: 0, at: 1, type: 'nope' })).toThrow()
+  })
+})
+
+describe('lastPickedModel', () => {
+  const opus = { type: 'model', model: 'opus', label: 'Opus 5' } as const
+  const sonnet = { type: 'model', model: 'sonnet', label: 'Sonnet 5', picked: true } as const
+  const running = { type: 'process', state: 'running' } as const
+
+  it('is the model the human last chose, before a start or while it runs', () => {
+    expect(lastPickedModel(log(prompt('p1'), sonnet, running, opus))).toMatchObject({ model: 'sonnet' })
+    expect(lastPickedModel(log(prompt('p1'), running, opus, { type: 'turn_started' }, sonnet))).toMatchObject({ model: 'sonnet' })
+  })
+
+  it('is never a model logged as its process came up, though round 13 marked some picked there', () => {
+    expect(lastPickedModel(log(prompt('p1'), { type: 'process', state: 'starting' }, running, sonnet))).toBeNull()
+    expect(lastPickedModel(log(prompt('p1'), running, opus))).toBeNull()
   })
 })

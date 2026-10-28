@@ -477,7 +477,7 @@ export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
   ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()
 }
 
-/** Point a thread's row at the model it next starts on (see `refreshThreadModel` in `launcher.ts`). */
+/** Point a thread's row at the model it next starts on (see `followSettings` in `threads/host.ts`). */
 export function setSessionModel(ctx: AppCtx, id: string, model: string): void {
   ctx.db.update(sessions).set({ model }).where(eq(sessions.id, id)).run()
 }

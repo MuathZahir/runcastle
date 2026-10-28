@@ -226,7 +226,7 @@ describe('ThreadColumn', () => {
     )
   })
 
-  it('sends a never-started chat’s first message on exactly the model, effort and fast mode it shows', async () => {
+  it('sends a message on untouched model controls with no model, effort or fast mode: the server resolves them', async () => {
     const api = server([], {
       'thread.models': () => ({
         runtime: 'claude-code',
@@ -239,9 +239,31 @@ describe('ThreadColumn', () => {
     expect((await screen.findByRole('combobox', { name: 'Effort' })).textContent).toContain('High')
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello' } })
     fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
-    await waitFor(() =>
-      expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Hello', model: 'claude-opus-5', effort: 'high', fast: false }]),
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'Hello' }]))
+  })
+
+  it('shows a stopped thread on the model and effort it will start on, not the ones its last run logged', async () => {
+    const api = server(
+      [
+        { i: 0, at, type: 'process', state: 'running' },
+        { i: 1, at, type: 'model', model: 'claude-opus-5', label: 'Opus 5', effort: 'max' },
+        { i: 2, at, type: 'process', state: 'stopped' },
+      ],
+      {
+        'thread.models': () => ({
+          runtime: 'claude-code',
+          models: [
+            { id: 'claude-opus-5', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'max'] },
+            { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: ['low', 'medium', 'high'] },
+          ],
+          current: 'claude-sonnet-5-5',
+          effort: 'low',
+        }),
+      },
     )
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Model' }).textContent).toBe('Sonnet 5.5'))
+    expect(screen.getByRole('combobox', { name: 'Effort' }).textContent).toContain('Low')
   })
 
   it('names the model a switch moved to by its label once the list’s ids are the adapter’s own', async () => {

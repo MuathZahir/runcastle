@@ -228,12 +228,21 @@ export function useThread({
       ? [{ id: folded.model.id, label: folded.model.label }]
       : []
   // Only an id the list offers is shown: the server's `current` names the
-  // model in the list's own ids when the one held is not among them.
+  // model in the list's own ids when the one held is not among them. A thread
+  // whose agent runs is on what its log last said; one that does not starts on
+  // what the server says (the human's pick, else what Settings resolve now),
+  // whatever its last run was on.
+  const running = folded.process === 'running'
   const offered = (m: string | undefined) => (m !== undefined && models.some((x) => x.id === m) ? m : undefined)
-  const model = offered(chosen.model) ?? offered(folded.model?.id) ?? modelsQ.data?.current ?? chosen.model ?? folded.model?.id ?? undefined
+  const model =
+    offered(chosen.model) ?? (running ? offered(folded.model?.id) : undefined) ?? modelsQ.data?.current ?? chosen.model ?? folded.model?.id ?? undefined
   const on = models.find((m) => m.id === model)
-  const effort = effortShown(on, chosen.effort ?? folded.model?.effort)
-  const fast = chosen.fast ?? folded.model?.fast ?? false
+  const effort = effortShown(on, chosen.effort ?? (running ? folded.model?.effort : modelsQ.data?.effort))
+  const fast = chosen.fast ?? (running ? folded.model?.fast : modelsQ.data?.fast) ?? false
+  // A start or a stop moves what the thread is on, and the catalog learns the effort a model starts on as a session opens.
+  useEffect(() => {
+    if (threadId) void utils.thread.models.invalidate({ threadId })
+  }, [threadId, folded.process, utils])
   // A refused change is quiet: the choice rides the next message instead. A
   // model the session moved to may offer fast mode where the last did not.
   // An accepted one is the server's to name from then on, in its list's ids.
@@ -277,12 +286,8 @@ export function useThread({
     setPending((ps) => [...ps, local])
     setDraft('')
     setAttachments([])
-    // A thread that has not run yet starts on exactly what the composer shows;
-    // one that has gets only what changed.
-    const begun = !!folded.model
-    const changed = begun ? chosen.model !== undefined && chosen.model !== folded.model?.id : model !== undefined
-    const effortChanged = begun ? chosen.effort !== undefined && chosen.effort !== folded.model?.effort : effort !== undefined
-    const fastChanged = begun ? chosen.fast !== undefined && chosen.fast !== (folded.model?.fast ?? false) : !!on?.fast
+    // Only what the human picked rides the message: an untouched control is
+    // the server's to resolve (Settings), so a thread nobody picked in follows them.
     try {
       const images = await Promise.all(
         sent.map(async (a) => ({ name: a.name, mimeType: a.file.type || 'image/png', data: await blobBase64(a.file) })),
@@ -299,9 +304,9 @@ export function useThread({
         threadId: to,
         text: words,
         ...(images.length ? { images } : {}),
-        ...(changed && model ? { model } : {}),
-        ...(effortChanged && effort ? { effort } : {}),
-        ...(fastChanged ? { fast } : {}),
+        ...(chosen.model !== undefined ? { model: chosen.model } : {}),
+        ...(chosen.effort !== undefined ? { effort: chosen.effort } : {}),
+        ...(chosen.fast !== undefined ? { fast: chosen.fast } : {}),
       })
       setPending((ps) => ps.map((p) => (p.localId === local.localId ? { ...p, promptId } : p)))
     } catch (e) {
