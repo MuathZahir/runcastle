@@ -160,7 +160,9 @@ describe('a round end reusing an earlier gate result', () => {
       reusedFrom: { kind: 'review', id: reviewId },
     })
     expect(readFileSync(join(reviewGateLogDir(runId), '0.log'), 'utf8')).toBe('typecheck output')
-    const wake = listAfter(ctx, featureId, 0).find((e) => e.type === 'lead.message_pending')
+    const wake = listAfter(ctx, featureId, 0).find(
+      (e) => e.type === 'lead.message_queued' || e.type === 'lead.wake_failed',
+    )
     expect((wake?.data as { text: string }).text).toContain(`not re-run: the branch had not moved since commit ${tip.slice(0, 7)}`)
   })
 
