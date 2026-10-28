@@ -98,8 +98,10 @@ nothing.
 ## Straight through, then ask
 
 1. Write `spec.md` (`./spec.md`) once the decisions are recorded.
-2. Write the tickets if the work is worth handing to workers (`./tickets.md`);
-   otherwise the plan says you will build it yourself.
+2. Write the tickets only if the work is worth handing to workers (SKILL.md,
+   "Build it the cheapest good way"; then `./tickets.md`). Otherwise the plan
+   says you will build it yourself, and that is the usual answer for a small
+   feature.
 3. Draw the preview and run its self-check (`./preview.md`).
 4. Commit the docs.
 5. **End with one closing chat message** that covers the plan only: that it was

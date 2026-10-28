@@ -34,6 +34,11 @@ export const ReviewGateRun = z.discriminatedUnion('status', [
     status: z.literal('ran'),
     commit: z.string(),
     commands: z.array(GateCommandResult),
+    /**
+     * Set when this record is a copy of an earlier pass's result on the same
+     * commit rather than a fresh run; `id` is that pass's run or ticket id.
+     */
+    reusedFrom: z.object({ kind: z.enum(['round', 'review']), id: z.string() }).optional(),
   }),
 ])
 export type ReviewGateRun = z.infer<typeof ReviewGateRun>

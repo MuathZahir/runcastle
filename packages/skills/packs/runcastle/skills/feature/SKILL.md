@@ -23,7 +23,7 @@ Write `spec.md` once what the feature does is settled, whether you build it your
 
 ## Build it the cheapest good way
 
-Small work you do yourself: a few files, a change that would not split into tickets, a fix a round left behind. Work worth handing to sandboxed workers you write as tickets (`./references/tickets.md`); `emit_tickets` opens the **Work** view beside the chat for you. If a "small" change keeps growing, make it tickets.
+Workers are a tool, not the default. Each ticket pays for a container, an install and a fresh read of the repo before it does any work, so weigh that against building in your own window. Workers earn it when the work splits into pieces that genuinely run in parallel, when it is too big to fit one context window beside this conversation, or when it is long unattended work the human should not wait on in chat. Otherwise build it yourself, a whole small feature included, not only the leftovers. Work you hand off you write as tickets (`./references/tickets.md`); `emit_tickets` opens the **Work** view beside the chat for you. If something you started yourself keeps growing, make the rest tickets.
 
 When the feature changes how a screen looks, offer to show it live before you talk layout in words: `./references/design.md`.
 

@@ -21,9 +21,9 @@
  *
  * Scope discipline: every rule here is one an agent cannot reasonably need. A
  * false deny in an unattended agent is expensive — it burns turns arguing with
- * a wall — so "re-running a full suite" is deliberately NOT a rule (the prompt
- * explicitly permits a second run after a fix, and the guard cannot tell the
- * two apart). Kill switch: `burnGuard: false`.
+ * a wall — so "re-running a suite" is deliberately NOT a rule (the prompt tells
+ * agents to run only narrowed tests and never the full suite, but the guard
+ * cannot tell a narrowed re-run after a fix from a repeat). Kill switch: `burnGuard: false`.
  */
 
 import type { AgentRuntime } from '@runcastle/core'

@@ -399,8 +399,11 @@ function gatesLine(gates: ReviewGateRun | undefined): string {
   if (!gates || gates.status === 'none_configured') return 'Gates: no verify commands are configured.'
   if (gates.status === 'couldnt_run') return `Gates: could not run — ${gates.reason}`
   const failed = gates.commands.filter((c) => c.outcome !== 'passed')
-  if (failed.length === 0) return `Gates: all ${gates.commands.length} verify command(s) passed.`
-  return `Gates: FAILED — ${failed.map((c) => `\`${c.command}\` (${c.outcome})`).join(', ')}.`
+  const reused = gates.reusedFrom
+    ? ` (not re-run: the branch had not moved since commit ${gates.commit.slice(0, 7)}, where they ran)`
+    : ''
+  if (failed.length === 0) return `Gates: all ${gates.commands.length} verify command(s) passed${reused}.`
+  return `Gates: FAILED${reused} — ${failed.map((c) => `\`${c.command}\` (${c.outcome})`).join(', ')}.`
 }
 
 /**

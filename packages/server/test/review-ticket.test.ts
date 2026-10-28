@@ -1694,6 +1694,56 @@ describe('the server gate run before each review pass', () => {
     })
   }
 
+  it('reuses a recorded result for the tip without calling the gate runner, and says so', async () => {
+    const pass = review(3)
+    const { ctx, patches } = ctxFor(pass)
+    const reused: ReviewGateRun = {
+      ...ranGates('bun run typecheck'),
+      commit: tip,
+      reusedFrom: { kind: 'round', id: 'run_1' },
+    }
+    let prompt = ''
+    await executeReviewTicket(
+      { ...ctx, reuseGates: async (ownerId, sha) => (ownerId === pass.id && sha === tip ? reused : undefined) },
+      pass,
+      deps({
+        runGates: async () => {
+          throw new Error('the gates must not run again')
+        },
+        runAgent: async (options) => {
+          prompt = String(options.prompt)
+        },
+      }),
+    )
+
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: reused }])
+    expect(prompt).toContain('earlier pass')
+    expect(prompt).toContain(`\`${tip.slice(0, 7)}\``)
+  })
+
+  it('runs the gates when the reuse lookup throws', async () => {
+    const pass = review(3)
+    const { ctx } = ctxFor(pass)
+    let ran = 0
+    await executeReviewTicket(
+      {
+        ...ctx,
+        reuseGates: async () => {
+          throw new Error('lookup broke')
+        },
+      },
+      pass,
+      deps({
+        runGates: async () => {
+          ran++
+          return { ...ranGates('bun run typecheck'), commit: tip }
+        },
+        runAgent: async () => {},
+      }),
+    )
+    expect(ran).toBe(1)
+  })
+
   it('still launches the reviewer when the gates could not run', async () => {
     const pass = review(3)
     const { ctx, patches } = ctxFor(pass)

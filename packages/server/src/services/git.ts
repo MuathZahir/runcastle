@@ -1594,13 +1594,21 @@ export async function commitsSince(
  * cannot be taken. Used by the test-drive stop to ask a narrower question than
  * "did anything change": did files under a migrations directory change, i.e.
  * could this drive have moved the dev database's schema out from under the
- * branch being returned to.
+ * branch being returned to. `throwOnError` is for a caller to whom an empty
+ * diff and a failed one mean opposite things, as gate reuse: there, `[]` would
+ * read as "nothing changed" and reuse a stale result.
  */
-export async function diffPaths(repoPath: string, from: string, to: string): Promise<string[]> {
+export async function diffPaths(
+  repoPath: string,
+  from: string,
+  to: string,
+  opts: { throwOnError?: boolean } = {},
+): Promise<string[]> {
   try {
     const out = (await git(repoPath).raw(['diff', '--name-only', from, to])).trim()
     return out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
-  } catch {
+  } catch (err) {
+    if (opts.throwOnError) throw err
     return []
   }
 }

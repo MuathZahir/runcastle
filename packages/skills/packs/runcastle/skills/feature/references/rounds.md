@@ -35,7 +35,7 @@ an orchestrator relay never does (`./design.md`, section 8).
    in the same round.
 2. **Every worker task names its deliverable and how it is checked.** A worker
    with no stated check reports success on its own terms. Say what is built and
-   what proves it: the test that goes green, the command that passes, the screen
+   what proves it: a test where one is worth writing, the command that passes, the screen
    that shows it.
 3. **Keep the round to `burnConcurrency` workers or fewer.** A soft cap: workers
    past it only queue, and a wider round has more to reconcile when it returns.
@@ -65,7 +65,11 @@ result, any review findings and where the digests are.
    amend `decisions.md` and `spec.md` when what was decided changed, and update
    the pending tickets. A contract reported wrong is a reason to re-plan.
 3. **Handle review findings.** A finding stays open until you resolve it: fix it
-   in a round or yourself, or dismiss it and say why.
+   in a round or yourself, or dismiss it and say why. A review reports useless
+   tests as low-severity observations, never defects: when the round you are
+   planning already mints a fix ticket, fold them into it (one acceptance
+   criterion: delete or rewrite the named tests), so they go at no extra sandbox
+   cost. Never mint a ticket only to delete useless tests.
 4. **Decide the next move**:
    - small leftovers → fix them yourself;
    - more work, or a failed ticket to retry → plan the next round;

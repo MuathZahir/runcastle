@@ -31,7 +31,7 @@ Four describe the drive loop and can only be settled here:
 Three describe the **sandbox** a burn agent works in, and no amount of running things on this host settles them — they are judgement calls about the repo, so treat them as human-supplied unless the human asks you to work one out with them:
 
 - **`setupCommand`** — what a fresh sandbox runs before the agent starts (install, plus any codegen or build step every ticket needs). Setting it *replaces* install detection, so the install command must be included explicitly.
-- **`verifyCommands`** — the exact typecheck/test/lint lines a burn agent should use, one per line. Unset, agents guess workspace filter names and burn whole suite runs discovering the right one.
+- **`verifyCommands`** — the exact typecheck/test/lint lines, one per line. They are the host's full gates, run once per round on the feature branch tip; burn agents read them to learn the tools and filter names and run them narrowed. Unset, agents guess workspace filter names and burn whole suite runs discovering the right one.
 - **`knownFailures`** — what already fails on the main branch, so an agent can tell its own breakage from the repo's. Free text; a count plus the suite names is enough.
 
 The image those three run in is not a key: runcastle sets it itself. What can fall to you is authoring the Dockerfile it builds — see the sandbox image, below.

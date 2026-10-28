@@ -1005,7 +1005,7 @@ export function buildFixNotes(ticket: Ticket): string {
   return [
     '### This ticket fixes a review finding',
     '',
-    "It was minted from a defect the review of this same lap reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the verify commands run on top of it.",
+    "It was minted from a defect the review of this same lap reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the host's gates run on top of it. If the defect is a failed gate, re-run exactly the check that failed, narrowed to what failed (the failing test files, or the failing command), and say in your digest that you did; never the full suite.",
   ].join('\n')
 }
 
@@ -1843,6 +1843,12 @@ export async function clearAttachments(workspacePath: string, repoPath: string):
  * needs a bound states it here, once, instead of every agent guessing at it
  * per ticket.
  *
+ * The commands are the host's full gates, run once per round — a ticket agent
+ * never runs them whole (ADR-0008's "verify with exactly these commands" is
+ * superseded in part). They are listed so the agent learns the right tools and
+ * filter names, then runs the static check once across the project and only the
+ * tests covering its change.
+ *
  * Both halves exist because burn logs showed agents paying, per ticket, for
  * information the operator already had:
  *
@@ -1851,13 +1857,13 @@ export async function clearAttachments(workspacePath: string, repoPath: string):
  *   burned two full runs on `--filter helix-frontend` and `--filter helix`
  *   before finding the right one. `config.verifyCommands` states them once.
  * - **Baseline.** Agents must separate their own breakage from the repo's
- *   existing breakage, and with no baseline the only way to get one is to run
- *   the full suite before touching anything — doubling the most expensive
- *   command in the burn, every ticket. `config.knownFailures` retires it.
+ *   existing breakage. `config.knownFailures` lists it up front, so a failing
+ *   test in a targeted run is not mistaken for the agent's own.
  *
  * When a field is unset the block still says something useful: derive the
- * commands once and record them, capture the baseline once and reuse it. The
- * failure mode being prevented is re-deriving per slice, not deriving at all.
+ * commands once, then run them narrowed; confirm a suspicious failure once
+ * against the pre-change code. The failure mode being prevented is re-deriving
+ * per slice, not deriving at all.
  */
 export function buildVerifyNotes(
   config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
@@ -1868,7 +1874,7 @@ export function buildVerifyNotes(
 
   if (commands) {
     out.push(
-      'Verify with exactly these commands — they are correct for this repo, so do not go looking for alternatives or guess at workspace/package filter names:',
+      'The host runs these commands once, in full, at the end of the round. They are correct for this repo, so use them to learn the right tools and workspace/package filter names rather than guessing — but do NOT run them whole. Run the static check (typecheck or its equivalent) once across the project, and narrow the tests to the files that cover your change:',
       '',
       '```',
       commands,
@@ -1876,7 +1882,7 @@ export function buildVerifyNotes(
     )
   } else {
     out.push(
-      "No verification commands are configured, so derive them ONCE from the repo (root `package.json` scripts, the workspace's own manifest, CI config) before your first test run — reading a manifest is free, discovering a filter name by running the wrong suite is not. Write the working commands into your notes and reuse them verbatim for the rest of the ticket.",
+      "No verification commands are configured, so derive the static-check and test commands ONCE from the repo (root `package.json` scripts, the workspace's own manifest, CI config) — reading a manifest is free, discovering a filter name by running the wrong suite is not. Then run the static check once across the project and the tests narrowed to the files that cover your change; never the whole suite. Reuse the commands verbatim for the rest of the ticket.",
     )
   }
 
@@ -1890,11 +1896,11 @@ export function buildVerifyNotes(
       failures,
       '```',
       '',
-      'Treat that as your baseline — do NOT spend a run establishing it yourself. Only a failure outside this set is yours to fix; if you hit one that looks pre-existing but is not listed, confirm it on a single targeted run of that one test, never a whole-suite re-run.',
+      'Treat that as your baseline — do NOT spend a run establishing it yourself. A failing test in a targeted run that is in this list is not yours. Only a failure outside this set is yours to fix; if you hit one that looks pre-existing but is not listed, confirm it on a single targeted run of that one test, never a whole-suite re-run.',
     )
   } else {
     out.push(
-      'No pre-existing-failure baseline is configured. If the suite is already red, capture the baseline ONCE — the first full run you do, before your changes land, is the baseline — and compare every later run against those saved results. Never re-run a whole suite just to re-establish what was already failing.',
+      'No pre-existing-failure baseline is configured, and you do not run the whole suite to build one. If a targeted test fails and looks unrelated to your change, confirm it ONCE against the pre-change code (`git show <base>:<path>`, where `<base>` is the commit your branch started from, or a detached scratch worktree at it) — never with a full run.',
     )
   }
 
