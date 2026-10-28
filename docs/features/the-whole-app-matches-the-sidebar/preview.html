@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The whole app matches the sidebar preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
+.ba > div > .hint{margin-bottom:8px}
+.mock{padding:16px;display:grid;gap:14px;font-family:var(--font-sans)}
+.mock .tabs{display:flex;gap:4px}
+.mock .tab{display:inline-flex;align-items:center;font-weight:500;color:var(--color-text-tertiary)}
+.mock .row{display:flex;align-items:center;gap:12px;padding:0 12px;color:var(--color-text);cursor:default}
+.mock .row .m{margin-left:auto;font-size:12px;color:var(--color-text-tertiary)}
+.mock .btns{display:flex;gap:8px;align-items:center}
+.mock .btn{display:inline-flex;align-items:center;border:1px solid var(--color-border);font-weight:500}
+.mock .btn.p{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
+/* today's look */
+.old .tab{height:28px;padding:0 10px;border-radius:6px;font-size:13px}
+.old .tab.on{background:var(--color-surface-selected);color:var(--color-text)}
+.old .row{height:40px;border-radius:6px;font-size:13px}
+.old .row.on{background:var(--color-surface-selected)}
+.old .row:not(.on):hover{background:var(--color-surface-hover)}
+.old .btn{height:28px;padding:0 10px;border-radius:6px;font-size:13px}
+/* after: the sidebar's material */
+.new .tab{height:32px;padding:0 12px;border-radius:10px;font-size:13px}
+.new .tab.on,.new .row.on{background:color-mix(in oklab,var(--color-text) 2.5%,transparent);box-shadow:inset 0 0 0 1px var(--color-border-subtle);color:var(--color-text)}
+.new .row{height:44px;border-radius:10px;font-size:14px}
+.new .row:not(.on):hover{background:color-mix(in oklab,var(--color-text) 3.5%,transparent)}
+.new .btn{height:32px;padding:0 12px;border-radius:6px;font-size:13px}
+.drop{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
+.drop .screen{height:260px;padding:12px}
+.drop .trig{margin-left:auto;width:120px;height:24px;border-radius:6px;border:1px solid var(--color-border)}
+.drop .menu{margin:6px 0 0 auto;width:180px;border-radius:10px;background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle),0 8px 24px -6px rgb(0 0 0 / .5);padding:4px;overflow:hidden}
+.drop .menu i{display:block;height:10px;margin:7px 8px;border-radius:3px;background:color-mix(in oklab,var(--color-text) 10%,transparent)}
+.drop .full{height:226px}
+.drop .capped{height:118px;position:relative}
+.drop .capped::after{content:"";position:absolute;right:3px;top:6px;width:3px;height:40px;border-radius:2px;background:var(--color-border-strong)}
+.designs{display:grid;gap:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The whole app matches the sidebar</h1>
+  <p class="lede">Every screen picks up the sidebar's roomier, calmer material at once, through the shared theme and building blocks. Long dropdowns stop at about ten rows. The grain is gone. Planned without you: every decision is assumed until you confirm it.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>built by the lead, no tickets</span><span class="mono">docs/features/the-whole-app-matches-the-sidebar/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">The same pieces, today and after. Hover the rows.</p>
+  <div class="ba">
+    <div><p class="hint">Today</p>
+<!-- screen:before-after-today -->
+      <div class="screen"><div class="mock old">
+        <div class="tabs"><span class="tab on">General</span><span class="tab">Models</span><span class="tab">Sandbox</span></div>
+        <div>
+          <div class="row on">Cut the UI work into seven features<span class="m">waiting for you</span></div>
+          <div class="row">Why did the burn of #14 stall overnight?<span class="m">22h</span></div>
+          <div class="row">Plan the changelog release flow<span class="m">2d</span></div>
+        </div>
+        <div class="btns"><span class="btn p">Start test drive</span><span class="btn">New chat</span></div>
+      </div></div>
+<!-- /screen:before-after-today -->
+    </div>
+    <div><p class="hint">After <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="11">11</a></p>
+<!-- screen:before-after-new -->
+      <div class="screen"><div class="mock new">
+        <div class="tabs"><span class="tab on">General</span><span class="tab">Models</span><span class="tab">Sandbox</span></div>
+        <div>
+          <div class="row on">Cut the UI work into seven features<span class="m">waiting for you</span></div>
+          <div class="row">Why did the burn of #14 stall overnight?<span class="m">22h</span></div>
+          <div class="row">Plan the changelog release flow<span class="m">2d</span></div>
+        </div>
+        <div class="btns"><span class="btn p">Start test drive</span><span class="btn">New chat</span></div>
+      </div></div>
+<!-- /screen:before-after-new -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Long dropdowns <a class="pin" data-d="5">5</a> <a class="pin" data-d="8">8</a></h3>
+    <p class="hint">Thirty scenarios. Today the menu runs to the bottom of the screen; after, it stops at about ten rows and scrolls.</p>
+    <div class="drop">
+      <div class="screen"><div class="trig"></div><div class="menu full"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="screen"><div class="trig"></div><div class="menu capped"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The real thing, in design</h3>
+    <p class="hint">Real components on sample data. A Tweaks menu in the corner switches the two looks still open: density (comfortable, the plan, or compact, today's sizes) and, on the app page, the grain.</p>
+    <div class="designs">
+<!-- screen:building-blocks -->
+      <div class="designed">
+        <h3>Building blocks <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></h3>
+        <p>Buttons, fields, tabs, rows, a 30-item scenarios menu, a long model select and a dialog: the real primitives on sample words. States in its top bar, light theme too.</p>
+        <p class="mono">apps/web/src/ui/* · apps/web/src/theme.css · preview /preview/kit.html</p>
+        <button data-open-design="/preview/kit.html">Open in design</button>
+      </div>
+<!-- /screen:building-blocks -->
+<!-- screen:whole-app -->
+      <div class="designed">
+        <h3>The whole app <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
+        <p>The real app: the sidebar beside the Orchestrator's page, on sample features and chats. The page's own layout is unchanged; it picks up only the shared pieces.</p>
+        <p class="mono">apps/web/src/components/SidebarParts.tsx · preview /preview/app.html</p>
+        <button data-open-design="/preview/app.html">Open in design</button>
+      </div>
+<!-- /screen:whole-app -->
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The chat looks the part</li>
+      <li><i class="dot"></i>The feature's right panel, step by step</li>
+      <li><i class="dot"></i>Test drive looks the part</li>
+      <li><i class="dot"></i>The Orchestrator's page</li>
+      <li><i class="dot"></i>The rest of the app looks the part</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Each screen's own layout</li>
+      <li><i class="dot"></i>New colours, fonts or corner sizes</li>
+      <li><i class="dot"></i>The page header and page column</li>
+      <li><i class="dot"></i>The thread switcher (being removed)</li>
+      <li><i class="dot"></i>Any new behaviour</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">One token file feeds every screen. The work sits at the top of this chain; screens only receive it.</p>
+      <div class="out2" style="grid-template-columns:120px 1fr;gap:10px 16px">
+        <span class="tag">theme.css</span><span>Hover and selected become see-through shades; new card and well fills and a <span class="mono">card</span> utility; a 14/20 <span class="mono">md</span> text step; controls 32/36, nav rows 36, list rows 44, menu rows 32, a 360px menu cap; the grain utility deleted.</span>
+        <span class="tag">src/ui</span><span>NavItem, ListRow and Tabs wear the card when selected and the shade on hover; the floating family shares one height cap and a thin scrollbar; buttons and dialogs get more padding.</span>
+        <span class="tag">sidebar</span><span>Its hand-written colour mixes move onto the shared tokens, with no visible change; the grain layer goes.</span>
+        <span class="tag">docs, tests</span><span>DESIGN.md and STYLE.md's general rules amended; tests that pin the old classes follow; the light contrast check blends see-through grounds over the canvas.</span>
+      </div>
+      <p class="hint" style="margin-top:12px">Most of the first three rows are already in the uncommitted design work. Left to build: the guide, the tests and a sweep for screens that hand-copy the old look. Then typecheck and tests; the preview pages' Tweaks menu is deleted before commit.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['The sidebar\'s material becomes the app\'s general rules', 'The brief asks for one look everywhere; leaving the guide\'s general rules unchanged would keep telling later screen features to draw the old look.', 'assumed'],
+    ['Hover and selection are see-through shades, and selected is the card', 'The human found the solid light blocks heavy in the sidebar; those same blocks are what make the rest of the app look different from it.', 'assumed'],
+    ['Rows and menus read at 14px; controls stay at 13px', 'The sidebar\'s comfort comes mostly from its 14px titles; raising every piece of text reads as zoomed in rather than calmer.', 'assumed'],
+    ['Comfortable sizes: taller controls, rows and menus', '"A little more spaced out and comfortable" is the human\'s own description of the sidebar; these steps match its rhythm.', 'assumed'],
+    ['Every dropdown stops at about ten rows and scrolls', 'Menus today may grow to the bottom of the screen; a fixed cap keeps long lists short, and the cut row shows there is more.', 'assumed'],
+    ['The grain behind the sidebar head is removed', 'The human called it a weird effect; the Orchestrator card already gives the head its character. Simpler than tuning it a third time.', 'assumed'],
+    ['This feature changes the shared pieces only; screens pick up what those give', 'The brief says the shared change happens here once; five screen features restyle their layouts on top of it.', 'assumed'],
+    ['Menus keep their raised panel; what changes is inside it', 'The panel already matches the sidebar\'s card radius and edge; the height and the cramped rows were the problem.', 'assumed'],
+    ['Colours, fonts, backgrounds and corner sizes stay', 'The sidebar was built on these same ones, so matching it needs none changed. Rows on their own move to the 10px corner, as the sidebar\'s do.', 'assumed'],
+    ['Dense places keep the small size', 'Tables and toolbars would grow taller than they need before their screen features land; the 24px small size stays for them.', 'assumed'],
+    ['Selected stays told by its edge, also under the pointer', 'In light, hover is about as strong as the card\'s fill, so the edge carries the difference, as in the sidebar today.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [4, 'Keep today\'s 28px buttons and inputs; make only rows, menus and dialogs roomier.', 'How far to move is your eye\'s call, and the challenger argued for smaller buttons. Switch density in the Tweaks menu to compare.', 'challenged'],
+    [6, 'Keep a much fainter grain, around 6%.', 'The brief asked to show you both. The Tweaks menu on the app page puts it back at 6% or at today\'s 20%.', 'challenged'],
+    [3, 'Raise the whole interface\'s default text from 13px to 14px.', 'A guess at what "spaced out and comfortable" means beyond rows; it decides how big every button and label reads.'],
+    [2, 'Keep solid selection blocks outside the sidebar; soften only hover.', 'It changes how every selected tab and row reads. The challenger wondered whether page tabs need a stronger mark.', 'challenged']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
