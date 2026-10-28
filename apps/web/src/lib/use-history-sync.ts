@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { parsePath, pathFor, type AppLocation } from './routes'
 
 /**
@@ -40,6 +40,33 @@ const THREAD_PARAM = 'thread'
 /** The chat thread the address names, so a reload reopens it; null where it names none. */
 export function threadInUrl(): string | null {
   return typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(THREAD_PARAM)
+}
+
+/**
+ * The page's pick of chat thread, seeded from the address so a reload reopens
+ * it — but only once `belongs`, this page's own thread list, vouches for the
+ * id. The address can name another page's thread: a new page renders before
+ * {@link useHistorySync} has moved the address off the old one, and a pasted
+ * link can say anything. Until the list answers (`belongs` null) the page shows
+ * `absent`; a foreign id is dropped, and {@link useThreadInUrl} then writes the
+ * page's own front over it. A send can only reach the thread in front, so it
+ * can only reach this page's threads.
+ */
+export function useAddressedThread<T extends null | undefined>(
+  absent: T,
+  belongs: ((threadId: string) => boolean) | null,
+): [string | T, (pick: string | T) => void] {
+  const [addressed, setAddressed] = useState(threadInUrl)
+  const [picked, setPicked] = useState<string | T>(absent)
+  if (addressed !== null && belongs) {
+    setAddressed(null)
+    if (belongs(addressed)) setPicked(addressed)
+  }
+  const pick = useCallback((next: string | T) => {
+    setAddressed(null)
+    setPicked(next)
+  }, [])
+  return [addressed !== null ? absent : picked, pick]
 }
 
 /**

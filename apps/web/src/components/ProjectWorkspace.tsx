@@ -9,7 +9,7 @@ import { Button, Page, PageHeader, PageTopbar } from '../ui'
 import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
 import { useThreadMenu } from '../lib/use-thread'
-import { threadInUrl, useThreadInUrl } from '../lib/use-history-sync'
+import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn } from './chat/ThreadColumn'
@@ -92,14 +92,6 @@ export function ProjectWorkspace({
   })
   // What is in front of the chat column: `undefined` follows the newest running
   // chat (the resting list when none runs), `null` is the list, an id is that thread.
-  // A reload reopens the thread the address names.
-  const [front, setFront] = useState<string | null | undefined>(() => threadInUrl() ?? undefined)
-  // The same key the Notes card reads, so knowing whether to offer it is free.
-  const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  // The drive's scenario errands open their chat in this column too.
-  const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
-  const toast = useToast()
-
   // Every chat of the project, finished ones included (chat-as-web-components
   // decision 7) — the resting list and the switcher both read it, so both show
   // the same names and states (decision 14). Invalidated by every `thread`
@@ -107,6 +99,19 @@ export function ProjectWorkspace({
   const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const listed = listQ.data ?? []
   const fallback = talk.session?.id ?? null
+  // A reload reopens the thread the address names — when it is this project's.
+  const [front, setFront] = useAddressedThread<null | undefined>(
+    undefined,
+    listQ.data
+      ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id)
+      : null,
+  )
+  // The same key the Notes card reads, so knowing whether to offer it is free.
+  const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
+  // The drive's scenario errands open their chat in this column too.
+  const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
+  const toast = useToast()
+
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
   const inFront = front === undefined || closedErrand ? fallback : front
   useThreadInUrl(inFront)

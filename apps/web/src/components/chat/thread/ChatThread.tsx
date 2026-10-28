@@ -60,6 +60,7 @@ export function ChatThread({
 }) {
   const scroller = useRef<HTMLDivElement>(null)
   const foot = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [footH, setFootH] = useState(160)
   const [dragging, setDragging] = useState(false)
@@ -72,28 +73,49 @@ export function ChatThread({
     return () => ro.disconnect()
   }, [])
 
+  // Where the thread was last scrolled to, by the reader or by the thread itself.
+  const lastTop = useRef(0)
+  const toFoot = (el: HTMLElement): void => {
+    el.scrollTop = el.scrollHeight
+    lastTop.current = el.scrollTop
+  }
+
   useEffect(() => {
     const el = scroller.current
-    if (el && atBottom) el.scrollTop = el.scrollHeight
+    if (el && atBottom) toFoot(el)
   }, [items, state, atBottom, footH])
 
-  // An image grows the thread when it loads, after the scroll above: a thread
-  // read at its foot stays at its foot. `load` does not bubble, so it is caught on the way down.
+  // The thread grows after the scroll above — an image loads, a turn folds, a
+  // message lays out — and a thread read at its foot stays at its foot through
+  // all of it: the content's resize follows it down, and so does an image's
+  // `load` (which does not bubble, so it is caught on the way down).
   const stick = useRef(atBottom)
   stick.current = atBottom
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scroller.current
-    if (!el) return
-    const onLoad = () => {
-      if (stick.current) el.scrollTop = el.scrollHeight
+    const inner = content.current
+    if (!el || !inner) return
+    const follow = () => {
+      if (stick.current) toFoot(el)
     }
-    el.addEventListener('load', onLoad, true)
-    return () => el.removeEventListener('load', onLoad, true)
+    const ro = new ResizeObserver(follow)
+    ro.observe(inner)
+    el.addEventListener('load', follow, true)
+    return () => {
+      ro.disconnect()
+      el.removeEventListener('load', follow, true)
+    }
   }, [])
 
+  // Only the reader leaves the foot, by scrolling up: the thread growing
+  // beneath them moves no scroll position, so it never unsticks the thread.
   const onScroll = () => {
     const el = scroller.current
-    if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 32)
+    if (!el) return
+    const up = el.scrollTop < lastTop.current
+    lastTop.current = el.scrollTop
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 32) setAtBottom(true)
+    else if (up) setAtBottom(false)
   }
 
   const hasImages = (e: DragEvent) => [...e.dataTransfer.items].some((i) => i.type.startsWith('image/'))
@@ -119,7 +141,7 @@ export function ChatThread({
       }}
     >
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 [scrollbar-gutter:stable]">
-        <div className="mx-auto flex w-full max-w-(--content-max) flex-col gap-6 pt-8" style={{ paddingBottom: footH + 24 }}>
+        <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col gap-6 pt-8" style={{ paddingBottom: footH + 24 }}>
           {items.length === 0 ? (
             <div className="pt-[12vh]">
               <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />

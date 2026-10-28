@@ -76,6 +76,7 @@ import {
   LEAD_WAKE_GRACE_MS,
   headerActions,
   leadWakeOf,
+  mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
@@ -730,7 +731,7 @@ export function Workspace({
         feature,
         rounds: roundsQ.data ?? [],
         declarations: declarationsQ.data ?? [],
-        agentWorking: !!liveSession && !liveSession.awaitingInput,
+        agentWorking: mainChatWorking(column.mainState, liveSession),
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.
@@ -929,7 +930,10 @@ export function Workspace({
               </StatusLabel>
             )}
             {!isDraft && (
-              <span className="mr-1 flex min-w-0">
+              // The actions keep their width, so the switcher's is capped: a
+              // thread named by a long first message truncates instead of
+              // pushing over the status (900px leaves it ~144px).
+              <span className="mr-1 flex max-w-[clamp(6rem,16vw,18rem)] min-w-0">
                 <ThreadSwitcher
                   threads={column.threads}
                   current={column.current}

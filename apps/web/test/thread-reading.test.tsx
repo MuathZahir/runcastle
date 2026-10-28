@@ -18,6 +18,7 @@ import { openMenu } from './floating'
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 const call = (title: string, kind: ToolCall['kind'], status: ToolCall['status'] = 'completed'): ToolCall => ({ id: title, kind, title, status })
@@ -100,5 +101,59 @@ describe('a thread with images', () => {
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1200 })
     fireEvent.load(container.querySelector('img')!)
     expect(scroller.scrollTop).toBe(1200)
+  })
+
+  /**
+   * The round-10 review: after a reload a thread with images opened short of
+   * its foot. Images grow the thread after its first scroll — and a scroll
+   * event the growth brings, read as "off the foot", used to unstick it before
+   * the image's `load` could follow. A loaded-from-cache image may never be
+   * seen loading at all. The content's resize is what follows it down now.
+   */
+  function grownThread() {
+    const observers: (() => void)[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: () => void) {}
+        observe() {
+          observers.push(this.cb)
+        }
+        disconnect() {}
+      },
+    )
+    const items: ThreadItem[] = [
+      { kind: 'user', id: 'p', text: 'look', images: [{ id: 'i', src: '/img.png', name: 'crop.png' }] },
+      { kind: 'agent', id: 'a', text: 'The newest answer' },
+    ]
+    const { container } = render(<ChatThread items={items} state="idle" footer={null} />)
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLElement
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    const grow = (to: number) => {
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: to })
+      // What the browser does as the image lays out: a scroll event at the old position, then the resize.
+      fireEvent.scroll(scroller)
+      act(() => observers.forEach((cb) => cb()))
+    }
+    return { scroller, grow }
+  }
+
+  it('opens at its newest message once its images have grown it, with no load event seen', () => {
+    const { scroller, grow } = grownThread()
+    grow(600)
+    expect(scroller.scrollTop).toBe(600)
+    grow(1200)
+    expect(scroller.scrollTop).toBe(1200)
+    expect(screen.queryByRole('button', { name: 'Jump to the newest' })).toBeNull()
+  })
+
+  it('leaves a reader who scrolled up where they are as the thread grows', () => {
+    const { scroller, grow } = grownThread()
+    grow(1200)
+    scroller.scrollTop = 300
+    fireEvent.scroll(scroller)
+    grow(1600)
+    expect(scroller.scrollTop).toBe(300)
+    expect(screen.getByRole('button', { name: 'Jump to the newest' })).toBeTruthy()
   })
 })

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -100,5 +102,36 @@ describe('the feature page header', () => {
 
   it('says nothing of what to test — the agent says it in the chat', () => {
     expect(header()).not.toContain('What to test')
+  })
+
+  // The round-10 review, at ~900px: a thread named by its long first message
+  // drew over the status ("Talking with yThis is a test…"). There is no layout
+  // engine here, so the test pins what keeps the row from overlapping: the
+  // switcher's width is capped and truncates, and no part of the status line
+  // refuses to shrink.
+  it('never overlaps in a narrow window: the switcher is capped and truncates, the status line shrinks with an ellipsis', () => {
+    const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
+    expect(source).toMatch(/<span className="mr-1 flex max-w-\[clamp\([^"]+\)\] min-w-0">\s*<ThreadSwitcher/)
+
+    const line = renderToStaticMarkup(
+      createElement(FeatureStatusLine, {
+        status: featureStatus({
+          feature: review,
+          rounds: [],
+          declarations: [{ scenario: 'Checkout', createdAt: 20 }],
+          agentWorking: false,
+          driving: false,
+          selfPlanning: false,
+          now: 0,
+        }),
+      }),
+    )
+    const spans = [...line.matchAll(/<span class="([^"]*)">[^<]/g)].map((m) => m[1]!)
+    expect(spans).toHaveLength(2)
+    for (const cls of spans) {
+      expect(cls).toMatch(/\bmin-w-0\b/)
+      expect(cls).toMatch(/\btruncate\b/)
+      expect(cls).not.toMatch(/\bshrink-0\b/)
+    }
   })
 })
