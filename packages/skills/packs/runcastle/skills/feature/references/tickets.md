@@ -43,8 +43,8 @@ the last commit, having lost every conclusion its predecessor reached.
 So size a ticket to **earn its container and still land in one pass**:
 substantial, with room left at the end for the tests, the self-review and the
 commits. Fine-grained slicing belongs *inside* a ticket, as the
-`acceptanceCriteria` list: the worker goes red→green one criterion at a time and
-commits each green slice, so one ticket with six criteria orients once; six
+`acceptanceCriteria` list: the worker works through the criteria and
+commits each finished slice, so one ticket with six criteria orients once; six
 one-criterion tickets orient six times.
 
 Expect a **handful of substantial tickets** for a feature — roughly 4–8, each
@@ -185,7 +185,7 @@ Each ticket:
 - **title** — `{group}: {task}`, in the domain vocabulary: `Checkout: apply the coupon at payment`.
 - **goal** — the end-to-end behaviour this ticket makes work, from the user's/caller's perspective. Not a layer list.
 - **context** — everything the sandboxed agent needs and cannot ask for: file paths, patterns to follow, type/schema shapes, gotchas, how to run and verify. Be concrete.
-- **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). Four to eight on a substantial ticket is right; a list running well past that will not land in one pass.
+- **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). Four to eight on a substantial ticket is right; a list running well past that will not land in one pass. Criteria are observable behaviours; ask for a test as a criterion only for a bug repro or a contract worth protecting, never for its own sake. A ticket that fixes red round gates names the failing command and test files in its `context` and has one criterion that re-runs them narrowed (never the full suite — the host runs that once per round). A review reports useless tests as low-severity observations, never defects: when the round already mints a fix ticket, fold those observations into it as one criterion (delete or rewrite the named tests), and never mint a ticket only to delete useless tests.
 - **seams** — `string[]`, the public interfaces to test at (from the spec's Seams; prefer existing, prefer the highest, prefer one).
 - **blockedBy** — `number[]`, **required**, only true gates; `[]` when there are none.
 - **kind** — `"implementation"` (the default, omit it) or `"review"`.

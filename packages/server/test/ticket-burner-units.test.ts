@@ -243,13 +243,12 @@ describe('renderTicketPrompt', () => {
     // Burns OOM-killed mid-suite lost a finished, passing fix every iteration
     // because the agent ran the full suite first and committed second.
     const template = readFileSync(burnerTemplatePath(), 'utf8')
-    expect(template).toMatch(/commit it \*before\* you start the full typecheck and test suite/i)
+    expect(template).toMatch(/commit it \*before\* you start the project-wide static check/i)
     expect(template).toMatch(/follow-up commit/i)
     expect(template).not.toMatch(/full suite once before your final commit/i)
-    // Self-review is where the agent most wants the full suite again — its
-    // fixes must be committed before that re-run too.
+    // Self-review fixes must be committed before the checks re-run too.
     expect(template).not.toMatch(/re-run typecheck \+ tests/i)
-    expect(template).toMatch(/commit the fixes \*before\* you re-run the full typecheck and test suite/i)
+    expect(template).toMatch(/commit the fixes \*before\* you re-run the targeted tests and the static check/i)
   })
 
   it('makes the parent the only writer and bounds read-only subagent reports', () => {
@@ -1523,18 +1522,18 @@ describe('ticket.timing — the one span a ticket duration may be read from', ()
 })
 
 describe('buildVerifyNotes — the prompt block that bounds verification spend', () => {
-  it('states configured commands verbatim and forbids hunting for alternatives', () => {
+  it('lists configured commands but tells the agent to narrow them, not run them whole', () => {
     const out = buildVerifyNotes({ verifyCommands: 'pnpm --filter @acme/web test' })
     expect(out).toContain('pnpm --filter @acme/web test')
-    // The point of configuring commands is that agents stop guessing filter
-    // names by running whole suites that error out.
-    expect(out).toMatch(/do not go looking for alternatives|guess/i)
+    expect(out).toMatch(/narrow/i)
+    expect(out).toMatch(/do NOT run them whole/)
   })
 
-  it('tells the agent to derive commands once when none are configured', () => {
+  it('tells the agent to derive commands once and run them narrowed when none are configured', () => {
     const out = buildVerifyNotes({})
     expect(out).toMatch(/ONCE/)
     expect(out).toMatch(/package\.json/i)
+    expect(out).toMatch(/narrowed/i)
   })
 
   it('renders a configured baseline and retires the pre-work full-suite run', () => {
@@ -1543,10 +1542,10 @@ describe('buildVerifyNotes — the prompt block that bounds verification spend',
     expect(out).toMatch(/do NOT spend a run establishing it yourself/)
   })
 
-  it('falls back to capture-the-baseline-once when none is configured', () => {
+  it('never asks for a baseline run when none is configured', () => {
     const out = buildVerifyNotes({})
-    expect(out).toMatch(/capture the baseline ONCE/i)
-    expect(out).toMatch(/Never re-run a whole suite/i)
+    expect(out).not.toMatch(/capture the baseline/i)
+    expect(out).toMatch(/pre-change code/i)
   })
 
   it('covers both halves independently — one configured, one not', () => {
