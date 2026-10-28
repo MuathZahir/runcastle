@@ -420,9 +420,12 @@ class Host implements AgentHost {
     const declinable = open.ask.kind === 'form' || open.ask.kind === 'link'
     if (open.ask.kind !== answer.kind && !(answer.kind === 'decline' && declinable)) throw new GateError(`ask ${askId} is ${ASK_NOUN[open.ask.kind]}`)
     let lines: Extract<ThreadEventBody, { type: 'ask_resolved' }>['lines']
+    const instead = answer.kind === 'approval' && answer.choice === 'deny' ? answer.instead?.trim() : undefined
     if (open.ask.kind === 'approval' && answer.kind === 'approval') {
       const what = { allow: 'Allowed', always: 'Always allowed', deny: 'Denied' }[answer.choice]
-      lines = [{ what, answer: open.ask.call.title, ...(answer.choice === 'deny' ? { denied: true } : {}) }]
+      lines = instead
+        ? [{ what: `${what} —`, answer: instead, denied: true }]
+        : [{ what, answer: open.ask.call.title, ...(answer.choice === 'deny' ? { denied: true } : {}) }]
     } else if ((open.ask.kind === 'form' || open.ask.kind === 'link') && answer.kind === 'decline') {
       lines = [{ what: 'Declined', answer: open.ask.message, denied: true }]
     } else if (open.ask.kind === 'form' && answer.kind === 'form') {
@@ -435,12 +438,17 @@ class Host implements AgentHost {
     }
     appendThreadEvent(t.id, { type: 'ask_resolved', id: askId, lines })
     markAgentWorking(this.ctx, t.id)
-    this.settleAsk(t, answer)
-    if (answer.kind === 'approval' && answer.choice === 'deny' && answer.instead?.trim()) {
-      const item: Queued = { id: newId('prompt'), text: answer.instead, blocks: [{ type: 'text', text: answer.instead }], source: 'human', logged: false }
-      this.logPrompt(t.id, item)
-      this.enqueue(t, item)
+    if (instead) {
+      // Neither adapter carries a message on a reject (claude-agent-acp denies with its
+      // own fixed words; codex-acp's approvals have none), so what to do instead is
+      // steered into the turn the approval holds open — sent before the denial, so the
+      // agent has it when it goes on — and is shown as the denial's line, not a bubble.
+      // An agent that does not steer gets it as its next prompt, still shown only there.
+      const item: Queued = { id: newId('prompt'), text: instead, blocks: [{ type: 'text', text: instead }], source: 'human', hidden: true, logged: false }
+      if (t.turn && t.steering) void this.steer(t, item)
+      else this.enqueue(t, item)
     }
+    this.settleAsk(t, answer)
   }
 
   async compact(threadId: string): Promise<void> {

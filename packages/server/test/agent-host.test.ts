@@ -336,7 +336,7 @@ describe('idle stop', () => {
 })
 
 describe('asks', () => {
-  async function approval(choice: 'allow' | 'always' | 'deny', instead?: string) {
+  async function approval(choice: 'allow' | 'always' | 'deny') {
     let outcome: unknown
     setup({
       turn: async (t) => {
@@ -351,8 +351,8 @@ describe('asks', () => {
     expect(view.state).toBe('waiting')
     expect(view.ask).toMatchObject({ kind: 'approval', call: { id: 'b1', title: 'bun add zod', kind: 'execute' } })
     expect(getSessionRow(ctx, id)!.awaitingInput).toBe(true)
-    await host.answer(id, view.ask!.id, { kind: 'approval', choice, ...(instead ? { instead } : {}) })
-    const after = await logUntil(id, turnsEnded(instead ? 2 : 1))
+    await host.answer(id, view.ask!.id, { kind: 'approval', choice })
+    const after = await logUntil(id, turnsEnded(1))
     return { id, outcome, events: after }
   }
 
@@ -368,11 +368,48 @@ describe('asks', () => {
     expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Always allowed' }] })
   })
 
-  it('answers an approval with deny, and sends what to do instead as the next prompt', async () => {
-    const { outcome, events } = await approval('deny', 'use valibot')
+  it('answers an approval with deny', async () => {
+    const { outcome, events } = await approval('deny')
     expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
     expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Denied', answer: 'bun add zod', denied: true }] })
+  })
+
+  it('denies with a reason in one turn: the reason reaches the agent within it, and shows with the denial, not as a bubble', async () => {
+    let outcome: unknown
+    setup({
+      turn: async (t) => {
+        outcome = (await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })).outcome
+        const steer = await t.nextSteer()
+        await t.say(`Using ${steer[0].type === 'text' ? steer[0].text.replace('use ', '') : ''} instead.`)
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
+    const asked = foldThread(await logUntil(id, has('ask')))
+    await host.answer(id, asked.ask!.id, { kind: 'approval', choice: 'deny', instead: 'use valibot' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Add zod'])
+    const view = foldThread(events)
+    expect(view.items.filter((i) => i.kind === 'agent')).toEqual([expect.objectContaining({ text: 'Using valibot instead.' })])
+    expect(view.items.some((i) => i.kind === 'user' && i.text === 'use valibot')).toBe(false)
+    expect(view.items.find((i) => i.kind === 'answered')).toMatchObject({ what: 'Denied —', answer: 'use valibot', denied: true })
+  })
+
+  it('denies with a reason to an agent that does not steer: the reason is its next prompt, still shown only with the denial', async () => {
+    setup({
+      steering: false,
+      turn: async (t) => {
+        if (t.prompt[0].type === 'text' && t.prompt[0].text === 'Add zod') await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
+    const asked = foldThread(await logUntil(id, has('ask')))
+    await host.answer(id, asked.ask!.id, { kind: 'approval', choice: 'deny', instead: 'use valibot' })
+    const events = await logUntil(id, turnsEnded(2))
     expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Add zod', 'use valibot'])
+    expect(foldThread(events).items.some((i) => i.kind === 'user' && i.text === 'use valibot')).toBe(false)
   })
 
   it('refuses an answer to an ask that is not open', async () => {
