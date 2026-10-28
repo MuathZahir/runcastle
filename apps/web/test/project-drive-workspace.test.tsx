@@ -567,6 +567,14 @@ describe('a live project chat', () => {
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
   })
 
+  it('ignores a ?thread= that is not one of the project’s chats, and drops it from the address', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/chat?thread=th_a_feature_chat')
+    threads = [entry('sess_1', 'Audit the journal', 2_000)]
+    mount(talk({ session: liveChat }))
+    expect(chatInFront()?.dataset.thread).toBe('sess_1')
+    await waitFor(() => expect(window.location.search).toBe('?thread=sess_1'))
+  })
+
   it('renames the chat in front from its switcher: Enter saves through thread.rename, Escape cancels', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
     mount(talk({ session: liveChat }))

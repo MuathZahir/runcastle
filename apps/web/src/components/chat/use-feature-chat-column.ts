@@ -5,7 +5,7 @@ import type { ThreadEntry } from '../../lib/chat-thread'
 import { mainChatInbox, subscribeInbox } from '../../lib/composer-inbox'
 import { featureChat } from '../../lib/feature-ui'
 import { useLivePoll } from '../../lib/live'
-import { threadInUrl, useThreadInUrl } from '../../lib/use-history-sync'
+import { useAddressedThread, useThreadInUrl } from '../../lib/use-history-sync'
 import { useToast } from '../../lib/toast'
 import { trpc } from '../../trpc'
 import { useScenarioChat, type ScenarioChatApi } from './ScenarioChat'
@@ -50,11 +50,15 @@ export function useFeatureChatColumn({
   const toast = useToast()
   const utils = trpc.useUtils()
   // Invalidated by every `thread` live signal (lib/live.ts).
-  const listed = trpc.thread.list.useQuery({ featureId }, { refetchInterval: useLivePoll() }).data ?? []
+  const listQ = trpc.thread.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  const listed = listQ.data ?? []
   const [started, setStarted] = useState<string | null>(null)
   const main = newestThread(listed, 'main') ?? started ?? featureChat(sessions)?.id ?? null
-  // A reload reopens the thread the address names.
-  const [picked, setPicked] = useState<string | null>(threadInUrl)
+  // A reload reopens the thread the address names — when it is this feature's.
+  const [picked, setPicked] = useAddressedThread(
+    null,
+    listQ.data ? (id) => id === main || id === driveSessionId || listed.some((t) => t.id === id) : null,
+  )
   const scenario = useScenarioChat(driveSessionId, setPicked)
   const closedErrand = picked !== null && picked === scenario.sessionId && !scenario.listed
   const inFront = picked !== null && !closedErrand ? picked : main
