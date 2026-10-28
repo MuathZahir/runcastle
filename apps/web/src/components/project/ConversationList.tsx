@@ -78,7 +78,7 @@ export function ConversationList({
               index={i}
               leading={t.state === 'idle' ? <IconMessage /> : <ThreadStateMark state={t.state} />}
               title={t.title}
-              meta={threadStateWords(t.state, t.updatedAt, now)}
+              meta={threadStateWords(t.state, t.updatedAt, now) || undefined}
               onClick={() => onOpen(t.id)}
             />
           ))}

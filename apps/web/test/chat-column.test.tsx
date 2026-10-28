@@ -232,7 +232,7 @@ describe('the feature page’s thread switcher', () => {
     await waitFor(() => expect(screen.getAllByRole('menuitemradio')).toHaveLength(2))
     const rows = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
     expect(rows.find((r) => r.includes('Fix the login page'))).toContain('working')
-    expect(rows.find((r) => r.includes('New chat'))).toMatch(/Thread · \d+[mhd]$|Thread · now$/)
+    expect(rows.find((r) => r.includes('New chat'))).toMatch(/New chat(\d+[mhd]|now)$/)
   })
 
   it('offers no End session', async () => {

@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { LINK } from '../ui/button'
@@ -121,22 +122,26 @@ const COMPONENTS: Components = {
  * utilities. `size` — `sm` (default) for dense surfaces, `base` for a page of
  * prose or a transcript; `tone` — `secondary` (default) · `primary` ·
  * `tertiary`. `className` places it (margins); size and colour are the props.
+ * `breaks` keeps a single newline as a line break, the way Claude and t3code
+ * show an agent's chat text; off for documents, whose prose is hard-wrapped.
  */
 export function Markdown({
   source,
   className,
   size = 'sm',
   tone = 'secondary',
+  breaks = false,
 }: {
   source: string
   className?: string
   size?: keyof typeof MARKDOWN_SIZE
   tone?: keyof typeof MARKDOWN_TONE
+  breaks?: boolean
 }) {
   const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]} ${MARKDOWN_TONE[tone]}`
   return (
     <div className={className ? `${root} ${className}` : root}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <ReactMarkdown remarkPlugins={breaks ? [remarkGfm, remarkBreaks] : [remarkGfm]} components={COMPONENTS}>
         {source}
       </ReactMarkdown>
     </div>

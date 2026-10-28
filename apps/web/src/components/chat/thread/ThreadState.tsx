@@ -1,8 +1,12 @@
 import type { ThreadState } from '../../../lib/chat-thread'
 import { Spinner, StatusDot } from '../../../ui'
 
-/** "now", "4m", "3h", "2d". */
+/**
+ * "now", "4m", "3h", "2d" — or nothing for a thread with no time at all, which
+ * would otherwise be aged from 1970 ("20754d").
+ */
 function ago(at: number, now = Date.now()): string {
+  if (!(at > 0)) return ''
   const m = Math.round((now - at) / 60_000)
   if (m < 1) return 'now'
   if (m < 60) return `${m}m`
@@ -21,7 +25,7 @@ export function ThreadStateMark({ state }: { state: ThreadState }) {
   return null
 }
 
-/** A thread's state in words: working, waiting for you, or how long it has been idle. */
+/** A thread's state in words: working, waiting for you, or how long it has been idle ('' when unknown). */
 export function threadStateWords(state: ThreadState, updatedAt: number, now?: number): string {
   return state === 'waiting' ? 'waiting for you' : state === 'working' ? 'working' : ago(updatedAt, now)
 }
