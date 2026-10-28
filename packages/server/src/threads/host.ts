@@ -338,6 +338,8 @@ interface Thread {
   opening?: string
   /** The session's config options (model, effort, fast mode), as it last reported them. */
   configOptions?: acp.SessionConfigOption[]
+  /** The session was given an effort the human picked: its level is no longer the one its model starts on. */
+  effortPicked?: boolean
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */
@@ -695,13 +697,24 @@ class Host implements AgentHost {
     const chosen = this.pendingConfig.get(threadId)
     const running = this.threads.get(threadId)?.state === 'running' ? foldThread(log).model : undefined
     const picked = running ? undefined : lastPickedModel(log)
-    const effort = chosen?.effort ?? picked?.effort
+    const { effort: startEffort, ...models } = threadModels(
+      row.runtime ?? DEFAULT_RUNTIME,
+      modelRoster(rosterConfig(this.ctx)),
+      chosen?.model ?? running?.id ?? this.startModel(row, log),
+    )
+    // Nobody picked an effort: a thread not running starts on the level its model starts on.
+    const effort = chosen?.effort ?? picked?.effort ?? (running ? undefined : startEffort)
     const fast = chosen?.fast ?? picked?.fast
     return {
-      ...threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), chosen?.model ?? running?.id ?? this.startModel(row, log)),
+      ...models,
       ...(effort ? { effort } : {}),
       ...(fast !== undefined ? { fast } : {}),
     }
+  }
+
+  /** Whether the human picked an effort for the thread: one its session was given, one waiting for it, or one logged as picked. */
+  private effortPicked(t: Thread): boolean {
+    return t.effortPicked === true || this.pendingConfig.get(t.id)?.effort !== undefined || lastPickedModel(readThreadEvents(t.id))?.effort !== undefined
   }
 
   /**
@@ -757,6 +770,7 @@ class Host implements AgentHost {
 
   /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
   private async applyConfig(t: Thread, choice: ConfigChoice): Promise<void> {
+    if (choice.effort !== undefined) t.effortPicked = true
     for (const key of ['model', 'effort', 'fast'] as const) {
       if (choice[key] === undefined || !t.conn || !t.sessionId) continue
       for (const req of configRequests(t.sessionId, t.configOptions, { [key]: choice[key] })) {
@@ -766,12 +780,17 @@ class Host implements AgentHost {
     }
   }
 
-  /** A session's options are its config, and what its runtime's catalog learns from; `opened`, as the session opened them. */
+  /**
+   * A session's options are its config, and what its runtime's catalog learns
+   * from: as the session `opened` them, or later while nobody picked an effort
+   * in it, they say the level its model starts on — Claude's `default` at open
+   * can be followed by the level Claude Code settled on.
+   */
   private noteOptions(t: Thread, options: acp.SessionConfigOption[] | null | undefined, opened = false): void {
     if (!options) return
     t.configOptions = options
     const runtime = getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME
-    const catalog = catalogFromOptions(readModelCatalog(runtime), options, opened)
+    const catalog = catalogFromOptions(readModelCatalog(runtime), options, opened || !this.effortPicked(t))
     if (catalog) writeModelCatalog(runtime, catalog)
   }
 

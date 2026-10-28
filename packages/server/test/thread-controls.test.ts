@@ -472,6 +472,55 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(fake.last().received.filter((r) => r.method === 'session/set_config_option')).toEqual([])
     expect(foldThread(readThreadEvents(id)).model).toMatchObject({ effort: 'high' })
   })
+
+  /** The effort the thread's last turn ran on, as its session reported it. */
+  const ranOn = (id: string) => foldThread(readThreadEvents(id)).model?.effort
+
+  it("shows an unpicked thread the level Claude Code settles on when the adapter opens on its own 'default', before its first turn and after its agent stops", async () => {
+    setup({ ...ALIASES, effort: 'default', settlesEffort: 'high' })
+    const first = chat()
+    await converse(first, 'Hello')
+    expect(ranOn(first)).toBe('high')
+
+    // A new thread nobody has talked to yet starts on the level the last one ran on.
+    const id = unstarted()
+    expect((await caller.thread.models({ threadId: id })).effort).toBe('high')
+    await caller.thread.send({ threadId: id, text: 'Hello' })
+    await logUntil(id, turnsEnded(1))
+    expect(ranOn(id)).toBe('high')
+
+    // Its agent stopped, it shows the level its next turn runs on.
+    await host.stop(id, 'idle')
+    expect((await caller.thread.models({ threadId: id })).effort).toBe('high')
+    await caller.thread.send({ threadId: id, text: 'Again' })
+    await logUntil(id, turnsEnded(2))
+    expect(ranOn(id)).toBe('high')
+    expect(received('session/set_config_option')).toEqual([])
+  })
+
+  it("takes the level Claude's 'default' effort names, and asks nothing to run on it", async () => {
+    setup({ ...ALIASES, effort: 'default', defaultEffortNote: 'High (recommended for this model)' })
+    const first = chat()
+    await converse(first, 'Hello')
+    expect(ranOn(first)).toBe('high')
+    const id = unstarted()
+    const shown = await caller.thread.models({ threadId: id })
+    expect(shown.effort).toBe('high')
+    await caller.thread.send({ threadId: id, text: 'Hello', model: shown.current!, effort: shown.effort })
+    await logUntil(id, turnsEnded(1))
+    expect(received('session/set_config_option')).toEqual([])
+  })
+
+  it('keeps showing a picked effort, never the level the model starts on', async () => {
+    setup({ ...ALIASES, effort: 'default', settlesEffort: 'high' })
+    const id = chat()
+    await caller.thread.send({ threadId: id, text: 'Hello', effort: 'low' })
+    await logUntil(id, turnsEnded(1))
+    await host.stop(id, 'idle')
+    expect((await caller.thread.models({ threadId: id })).effort).toBe('low')
+    // A pick in one thread is not the level the model starts on.
+    expect((await caller.thread.models({ threadId: unstarted() })).effort).toBeUndefined()
+  })
 })
 
 describe("a runtime's one model catalog", () => {
@@ -499,14 +548,16 @@ describe("a runtime's one model catalog", () => {
     await converse(id, 'Hello')
     const running = await caller.thread.models({ threadId: id })
     expect(running).toEqual({ runtime: 'claude-code', models: LIST, current: 'claude-opus-5-5' })
+    // Not running, it also says the effort Opus 5.5 starts on, which its next turn runs on.
+    const stopped = { ...running, effort: 'high' }
     await host.stop(id, 'idle')
-    expect(await caller.thread.models({ threadId: id })).toEqual(running)
+    expect(await caller.thread.models({ threadId: id })).toEqual(stopped)
 
     // A fresh server: nothing in memory, the catalog read from disk.
     setup(CLAUDE)
     const fresh = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
-    expect(await caller.thread.models({ threadId: fresh })).toEqual(running)
-    expect(await caller.thread.models({ featureId })).toEqual(running)
+    expect(await caller.thread.models({ threadId: fresh })).toEqual(stopped)
+    expect(await caller.thread.models({ featureId })).toEqual(stopped)
     expect(fake.processes).toHaveLength(0)
   })
 

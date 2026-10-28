@@ -67,6 +67,12 @@ export interface FakeScript {
    */
   options?: 'claude' | 'codex'
   fastBoolean?: boolean
+  /** Claude's effort as the session opens. Default `high`; `default` leaves the level to Claude Code. */
+  effort?: string
+  /** The description of Claude's `default` effort entry, which may name the level it stands for. */
+  defaultEffortNote?: string
+  /** The level Claude Code settles on, announced as a `config_option_update` as each turn begins. */
+  settlesEffort?: string
   /** What `_auth/status_update` pushes once a session opens. */
   authStatus?: unknown
   /** The session mode `session/new` / `session/load` report. Default `default`. */
@@ -157,7 +163,10 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
   const extra: acp.SessionConfigOption[] =
     script.options === 'claude'
       ? [
-          select('effort', 'thought_level', 'high', ['default', 'low', 'medium', 'high', 'max']),
+          {
+            ...select('effort', 'thought_level', script.effort ?? 'high', ['low', 'medium', 'high', 'max']),
+            options: [{ value: 'default', name: 'Default', ...(script.defaultEffortNote ? { description: script.defaultEffortNote } : {}) }, ...['low', 'medium', 'high', 'max'].map((value) => ({ value, name: value }))],
+          } as acp.SessionConfigOption,
           script.fastBoolean
             ? { id: 'fast', name: 'Fast mode', category: 'model_config', type: 'boolean', currentValue: false }
             : select('fast', 'model_config', 'off', ['on', 'off']),
@@ -267,6 +276,11 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
             : new Promise((r) => {
                 waiting = r
               }),
+      }
+      const effort = opened.configOptions.find((o) => o.id === 'effort')
+      if (script.settlesEffort && effort?.currentValue === 'default') {
+        effort.currentValue = script.settlesEffort
+        await update({ sessionUpdate: 'config_option_update', configOptions: opened.configOptions })
       }
       try {
         const stop = await (script.turn ?? (async (t) => void (await t.say('Done.'))))(turn)

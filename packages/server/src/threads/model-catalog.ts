@@ -135,10 +135,16 @@ function catalogModel(catalog: ModelCatalog, named: string | null | undefined, r
   return entry?.id ?? catalog.defaultId ?? catalog.models[0]?.id ?? null
 }
 
-/** What the composer's model controls offer a thread on `runtime` that is on, or would start on, `named`. */
+/**
+ * What the composer's model controls offer a thread on `runtime` that is on, or
+ * would start on, `named`, with the effort that model starts on where a session
+ * has said it: a thread nobody picked an effort in runs its next turn on it.
+ */
 export function threadModels(runtime: AgentRuntime, roster: readonly ModelEntry[], named: string | null | undefined): ThreadModels {
   const catalog = modelCatalog(runtime, roster)
-  return { runtime, models: withKnownControls(catalog.models, runtime), current: catalogModel(catalog, named, runtime) }
+  const current = catalogModel(catalog, named, runtime)
+  const effort = catalog.models.find((m) => m.id === current)?.defaultEffort
+  return { runtime, models: withKnownControls(catalog.models, runtime), current, ...(effort ? { effort } : {}) }
 }
 
 /** The catalog's entry for the model `named` names (its id, or a roster id), so a thread logs the id and label its picker offers. */

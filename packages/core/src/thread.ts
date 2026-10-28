@@ -191,7 +191,7 @@ export interface ThreadModels {
   models: ModelChoice[]
   /** The model the thread runs on, or would start on; null while its runtime offers none. */
   current: string | null
-  /** The effort the human chose for a thread not running to start on; absent while it runs, or when they chose none. */
+  /** The effort a thread not running starts on: the human's choice, else the level its model starts on; absent while it runs, or when neither is known. */
   effort?: Effort
   /** Fast mode as the human chose it for a thread not running to start on. */
   fast?: boolean
