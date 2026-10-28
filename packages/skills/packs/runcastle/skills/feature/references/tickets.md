@@ -3,7 +3,9 @@
 # Writing tickets
 
 Load this when work is worth handing to sandboxed workers and you are about to
-write, reshape or cancel tickets.
+write, reshape or cancel tickets. Whether it is worth it is your call (SKILL.md,
+"Build it the cheapest good way"): parallel pieces, work too big for your own
+window, or long unattended work. Anything else you build yourself.
 
 Break the work into **tickets** — vertical slices, each cutting end-to-end
 through every layer it needs, each big enough to be worth a whole agent session
