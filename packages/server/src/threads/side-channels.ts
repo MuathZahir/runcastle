@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process'
+import { existsSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { getSessionMessages, query, type SessionMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeRuntime } from '../launcher/runtimes/claude'
@@ -20,8 +23,12 @@ import { runcastleVersion } from '../version'
  *   session's options ask (`enableFileCheckpointing`, see `runtimes/claude.ts`)
  *   but only ever dry-runs `rewindFiles`; the real rewind goes through the
  *   Agent SDK on the conversation the checkpoints belong to.
+ * - Whether a conversation is still on disk. claude-agent-acp answers a
+ *   `session/load` with "Resource not found" whenever the CLI exits before it
+ *   answers `initialize` on a resume, whatever made it exit, so its word alone
+ *   does not say the conversation is gone.
  *
- * Each opens a short-lived connection to the human's own CLI and closes it.
+ * Each of the first two opens a short-lived connection to the human's own CLI and closes it.
  */
 
 const SIDE_CHANNEL_TIMEOUT_MS = 20_000
@@ -114,5 +121,19 @@ export async function rewindClaudeFiles(input: { sessionId: string; cwd: string;
     if (!result.canRewind) throw new Error(result.error ?? 'Claude Code has no checkpoint for that message')
   } finally {
     q.close()
+  }
+}
+
+/**
+ * Whether Claude Code holds a transcript of the conversation: `<id>.jsonl` in
+ * any project directory under its config dir, which is where `--resume` finds
+ * it, whatever directory the conversation began in.
+ */
+export function claudeTranscriptOnDisk(conversationId: string): boolean {
+  const projects = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects')
+  try {
+    return readdirSync(projects, { withFileTypes: true }).some((dir) => dir.isDirectory() && existsSync(join(projects, dir.name, `${conversationId}.jsonl`)))
+  } catch {
+    return false
   }
 }

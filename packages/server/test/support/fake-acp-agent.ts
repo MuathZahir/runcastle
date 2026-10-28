@@ -80,6 +80,8 @@ export interface FakeScript {
   announceOptions?: boolean
   /** Make `session/new` and `session/load` fail with this message. */
   failSession?: string
+  /** Make only `session/load` fail, with this message. */
+  loadError?: string
   /** Refuse `session/load` as claude-agent-acp does for a conversation no longer on disk ("Resource not found: <id>"). */
   gone?: boolean
   /** What a turn does. Default: says "Done." and ends the turn. */
@@ -220,6 +222,7 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
     .onRequest(acp.methods.agent.session.load, async ({ params, client }) => {
       note('session/load', params)
       if (script.failSession) throw new Error(script.failSession)
+      if (script.loadError) throw new Error(script.loadError)
       if (script.gone) throw acp.RequestError.resourceNotFound(params.sessionId)
       for (const update of script.replay ?? []) await client.notify(acp.methods.client.session.update, { sessionId: params.sessionId, update })
       await announce(client, params.sessionId)

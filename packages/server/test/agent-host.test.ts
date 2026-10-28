@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { foldThread, type ThreadEvent, type ThreadItem } from '@runcastle/core'
+import { sessionDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { createAgentHost } from '../src/threads/host'
+import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -36,9 +37,9 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-function setup(script: FakeScript = {}): void {
+function setup(script: FakeScript = {}, deps: Partial<AgentHostDeps> = {}): void {
   fake = createFakeAcp(script)
-  host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS })
+  host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, ...deps })
 }
 
 function thread(opts: { ccSessionId?: string; purpose?: 'self-plan' } = {}): string {
@@ -102,6 +103,61 @@ describe('starting a thread', () => {
     const view = foldThread(events)
     expect(view.items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('not logged in') })
     expect(host.isRunning(id)).toBe(false)
+  })
+})
+
+describe('reopening a conversation after a restart', () => {
+  const stoppedWithError = (e: ThreadEvent[]) => e.some((x) => x.type === 'process' && x.state === 'stopped')
+
+  it('reloads the conversation it started, in the directory it started it in', async () => {
+    setup()
+    const id = thread()
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await host.stopAll('shutdown')
+
+    // A new server run: a new host, with the row as the last run left it.
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS })
+    await host.prompt(id, { text: 'Still there?' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(2))
+    expect(fake.processes[0].received[1]).toMatchObject({ method: 'session/new', params: { cwd: '/wt' } })
+    expect(fake.last().received.map((r) => r.method)).toEqual(['initialize', 'session/load', 'session/set_mode', 'session/prompt'])
+    expect(fake.last().received[1].params).toMatchObject({ sessionId: 'acp-session-1', cwd: '/wt' })
+    expect(foldThread(events).items.some((i) => i.kind === 'notice')).toBe(false)
+    expect(getSessionRow(ctx, id)!.ccSessionId).toBe('acp-session-1')
+  })
+
+  it('does not start a new conversation when the load fails for another reason', async () => {
+    setup({ loadError: 'Claude native binary not found for win32-x64' })
+    const id = thread({ ccSessionId: 'cc-old' })
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    const events = await logUntil(id, stoppedWithError)
+    expect(methods()).toEqual(['initialize', 'session/load'])
+    expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('native binary not found') })
+    expect(getSessionRow(ctx, id)!.ccSessionId).toBe('cc-old')
+  })
+
+  it('does not start a new conversation over one the adapter calls gone that is still on disk', async () => {
+    const onDisk = vi.fn(() => true)
+    setup({ gone: true }, { conversationOnDisk: onDisk })
+    const id = thread({ ccSessionId: 'cc-on-disk' })
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    const events = await logUntil(id, stoppedWithError)
+    expect(onDisk).toHaveBeenCalledWith('claude-code', 'cc-on-disk')
+    expect(methods()).toEqual(['initialize', 'session/load'])
+    const view = foldThread(events)
+    expect(view.items.some((i) => i.kind === 'notice')).toBe(false)
+    expect(view.items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('would not reopen') })
+    expect(getSessionRow(ctx, id)!.ccSessionId).toBe('cc-on-disk')
+  })
+
+  it('refuses a new conversation that comes back under the gone one’s id', async () => {
+    setup({ gone: true, sessionId: 'cc-gone' }, { conversationOnDisk: () => false })
+    const id = thread({ ccSessionId: 'cc-gone' })
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    await logUntil(id, stoppedWithError)
+    expect(methods()).toEqual(['initialize', 'session/load', 'session/new'])
+    expect(prompts()).toHaveLength(0)
   })
 })
 
@@ -284,14 +340,18 @@ describe('a turn', () => {
     expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'stopped' })
   })
 
-  it('logs a crashed agent as a stopped process with the tail of its stderr, and starts afresh on the next prompt', async () => {
+  it('logs a crashed agent as a stopped process with the error its stderr gave, and starts afresh on the next prompt', async () => {
     setup({ turn: (t) => t.cancelled.then(() => undefined) })
     const id = thread()
     await host.prompt(id, { text: 'Go' }, { source: 'human' })
     await logUntil(id, has('turn_started'))
-    fake.last().crash('warming up\nError: the model stream died')
+    fake.last().crash('[session/query] sessionId=s1 resume=s1 apiType=native\nError: the model stream died\n    at stream (cli.js:1:2)')
     const events = await logUntil(id, (e) => e.some((x) => x.type === 'process' && x.state === 'stopped'))
-    expect(events.at(-1)).toMatchObject({ type: 'process', state: 'stopped', error: expect.stringContaining('the model stream died') })
+    expect(events.at(-1)).toMatchObject({
+      type: 'process',
+      state: 'stopped',
+      error: 'The agent stopped unexpectedly: Error: the model stream died. Your next message restarts it.',
+    })
     const view = foldThread(events)
     expect(view.state).toBe('idle')
     expect(view.items.some((i) => i.kind === 'error')).toBe(true)
@@ -303,6 +363,24 @@ describe('a turn', () => {
     await logUntil(id, turnsEnded(1))
     expect(fake.processes).toHaveLength(2)
     expect(fake.last().received[1].method).toBe('session/load')
+  })
+
+  it('shows a crash whose stderr is only the adapter’s debug log as one short line, and keeps the log in the session dir', async () => {
+    setup({ turn: (t) => t.cancelled.then(() => undefined) })
+    const id = thread()
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    const debug = [
+      '[session/create] sessionId=18edac9e phase=validate-cwd durationMs=0 totalMs=0',
+      '[session/models] sessionId=18edac9e phase=read-transcript durationMs=1 totalMs=1 messages=12 model=claude-opus-5-5',
+      '[authStatus] session account carries no identity signal; keeping probe',
+      '[session/create] sessionId=18edac9e phase=prepare-query durationMs=9 totalMs=11',
+    ].join('\n')
+    fake.last().crash(debug)
+    const events = await logUntil(id, (e) => e.some((x) => x.type === 'process' && x.state === 'stopped'))
+    expect(events.at(-1)).toMatchObject({ type: 'process', state: 'stopped', error: 'The agent stopped unexpectedly. Your next message restarts it.' })
+    expect(JSON.stringify(events)).not.toContain('phase=')
+    expect(readFileSync(join(sessionDir(id), 'agent-stderr.log'), 'utf8')).toContain('phase=prepare-query durationMs=9')
   })
 })
 
@@ -769,6 +847,7 @@ describe('a thread always shows what is happening', () => {
       launch: FAKE_LAUNCH,
       idleMs: IDLE_MS,
       lifecycle: { opening: () => 'STATE', briefing: () => 'BRIEFING' },
+      conversationOnDisk: () => false,
     })
     const id = thread({ ccSessionId: 'cc-gone' })
     await host.prompt(id, { text: 'Hello again' }, { source: 'human' })

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk/unstable'
@@ -49,7 +49,7 @@ import {
   turnEndIndex,
   type ConfigChoice,
 } from './controls'
-import { readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
+import { claudeTranscriptOnDisk, readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
 import { claudeUsageReport, codexUsageReport } from './usage'
 import {
   backgroundTasks,
@@ -118,6 +118,8 @@ export interface AgentHostDeps {
   rewindFiles?: (input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>
   /** How long a turn the agent started by itself may go quiet before it counts as over, on a runtime that does not say. */
   selfTurnQuietMs?: number
+  /** Whether the runtime's own record of a conversation is known to be on disk; see `side-channels.ts`. */
+  conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
 }
 
 /**
@@ -149,6 +151,9 @@ interface CodexHook {
 }
 
 const readUsageOf = (runtime: AgentRuntime): Promise<unknown> => (runtime === 'codex' ? readCodexRateLimits() : readClaudeUsage())
+
+/** Claude's transcripts are looked for; a Codex conversation's record is not, so its adapter's word stands. */
+const conversationOnDiskOf = (runtime: AgentRuntime, conversationId: string): boolean => runtime === 'claude-code' && claudeTranscriptOnDisk(conversationId)
 
 /** The account each adapter pushes (`_auth/status_update`), which names the plan. */
 const AUTH_STATUS_METHOD = '_auth/status_update'
@@ -211,8 +216,15 @@ const PLANNING_STOPPED =
 /** What the thread says after the human stopped its self-planning run, and how it goes on. */
 const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up with the lead.'
 
-/** How much of a crashed adapter's stderr the thread keeps as its error. */
+/** What the thread says when its agent process dies with nothing human-readable on its stderr. */
+const CRASHED = 'The agent stopped unexpectedly. Your next message restarts it.'
+
+/** Why the agent could not start, when the conversation on record is on disk but would not reopen: nothing replaced it. */
+const NOT_REOPENED = 'this conversation would not reopen. It is still on disk and nothing replaced it; your next message tries again.'
+
+/** How much of a crashed adapter's stderr is kept: it goes to the session dir's {@link STDERR_LOG}, not the thread. */
 const STDERR_TAIL = 2000
+const STDERR_LOG = 'agent-stderr.log'
 
 /** Updates a `session/load` replays from history, which the log already holds. */
 const REPLAYED = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan', 'subagent_update'])
@@ -330,19 +342,35 @@ function errorText(err: unknown): string {
 }
 
 /**
- * A `session/load` refused because the conversation is not on disk any more:
- * ACP's resource-not-found (claude-agent-acp's "Resource not found: <id>"), or
- * an adapter that says so in words.
+ * A `session/load` the adapter refused as a conversation it cannot find: ACP's
+ * resource-not-found (claude-agent-acp's "Resource not found: <id>"), or
+ * codex-acp's "no rollout found". Only the adapter's claim — claude-agent-acp
+ * says it of any CLI that exits while resuming — so the host also looks on disk.
  */
-function conversationGone(err: unknown): boolean {
+function saysConversationGone(err: unknown): boolean {
   if (err instanceof acp.RequestError && err.code === -32002) return true
-  return /not found|no (such )?(conversation|session|thread|rollout)/i.test(errorText(err))
+  return /no (such )?(conversation|session|thread|rollout)|(conversation|rollout) not found/i.test(errorText(err))
 }
 
-/** The tail of a crashed process's stderr, said as the thread's error. */
+/**
+ * A stderr line that is the adapter's or the runtime's own bookkeeping, not
+ * words for a person: a `[tag]` log line (claude-agent-acp's
+ * `[session/create] sessionId=… phase=…`), a stack frame, `key=value` fields or JSON.
+ */
+function debugShaped(line: string): boolean {
+  return /^\[[^\]]+\]/.test(line) || /^at\s/.test(line) || /^[{[]/.test(line) || (line.match(/\b[\w.]+=\S/g)?.length ?? 0) >= 2
+}
+
+/** What a dead process's stderr says in a thread: the short line, with the last human-readable line it gave. */
 function crashText(stderr: string): string {
-  const lines = stderr.trim().split(/\r?\n/).slice(-8).join('\n').trim()
-  return lines || 'The agent process exited unexpectedly.'
+  const said = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !debugShaped(line))
+    .at(-1)
+  if (!said) return CRASHED
+  const reason = said.length > 200 ? `${said.slice(0, 199)}…` : said.replace(/\.$/, '')
+  return `The agent stopped unexpectedly: ${reason}. Your next message restarts it.`
 }
 
 class Host implements AgentHost {
@@ -355,6 +383,7 @@ class Host implements AgentHost {
   private readonly readUsage: (runtime: AgentRuntime) => Promise<unknown>
   private readonly rewindFiles: NonNullable<AgentHostDeps['rewindFiles']>
   private readonly selfTurnQuietMs: number
+  private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -370,6 +399,7 @@ class Host implements AgentHost {
     this.readUsage = deps.readUsage ?? readUsageOf
     this.rewindFiles = deps.rewindFiles ?? rewindClaudeFiles
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
+    this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -764,7 +794,12 @@ class Host implements AgentHost {
       try {
         loaded = await conn.agent.request(acp.methods.agent.session.load, { ...session, sessionId: row.ccSessionId })
       } catch (err) {
-        if (!conversationGone(err)) throw err
+        if (!saysConversationGone(err)) throw err
+        // Said gone but still on disk: the CLI failed to reopen it, and a new conversation would bury it.
+        if (this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)) {
+          console.error(`thread ${t.id}: conversation ${row.ccSessionId} is on disk but did not reopen`, err)
+          throw new Error(NOT_REOPENED)
+        }
       } finally {
         t.loading = false
       }
@@ -804,6 +839,8 @@ class Host implements AgentHost {
    */
   private async startOver(t: Thread, conn: acp.ClientConnection, session: acp.NewSessionRequest, row: SessionRow): Promise<acp.NewSessionResponse> {
     const created = await conn.agent.request(acp.methods.agent.session.new, session)
+    // A new conversation under the old id would write over whatever is left of the old one.
+    if (created.sessionId === row.ccSessionId) throw new Error(`the new conversation came back under the old one's id (${created.sessionId})`)
     t.sessionId = created.sessionId
     const briefing = this.hook(() => this.lifecycle.briefing?.(row))
     if (briefing) t.opening = briefing
@@ -839,8 +876,22 @@ class Host implements AgentHost {
   private crashed(t: Thread, stderr: string): void {
     if (t.state === 'stopped') return
     this.detach(t)
+    this.keepStderr(t.id, stderr)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
     this.ended(t, 'crashed')
+  }
+
+  /** A dead process's stderr, for whoever debugs it: appended to the session dir's log, never the thread. */
+  private keepStderr(threadId: string, stderr: string): void {
+    if (!stderr.trim()) return
+    const path = join(sessionDir(threadId), STDERR_LOG)
+    try {
+      mkdirSync(sessionDir(threadId), { recursive: true })
+      appendFileSync(path, `--- ${new Date().toISOString()} the agent process exited\n${stderr.trimEnd()}\n`)
+      console.error(`thread ${threadId}: the agent process exited; its stderr is in ${path}`)
+    } catch (err) {
+      console.error(`thread ${threadId}: the agent process exited; its stderr could not be kept`, err, stderr)
+    }
   }
 
   /** The row's process is over: mark it so, and let the lifecycle react. */
