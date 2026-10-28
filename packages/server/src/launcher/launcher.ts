@@ -537,16 +537,16 @@ export async function launchPrepareSession(
 
   const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   assertRuntimeReady(reopen ? (reopen.runtime ?? DEFAULT_RUNTIME) : model.runtime, opts)
-  const row = reopen
-    ? reopen
-    : createSessionRow(ctx, {
-        projectId: project.id,
-        kind: 'prepare',
-        // No worktree: preparation is about THIS machine's checkout, and a docs-only
-        // talk worktree could neither run the dev server nor see the real .env.
-        worktreePath: project.repoPath,
-        model,
-      })
+  const row =
+    reopen ??
+    createSessionRow(ctx, {
+      projectId: project.id,
+      kind: 'prepare',
+      // No worktree: preparation is about THIS machine's checkout, and a docs-only
+      // talk worktree could neither run the dev server nor see the real .env.
+      worktreePath: project.repoPath,
+      model,
+    })
 
   emitProject(ctx, project.id, {
     // A deliberate fresh start reads exactly like a first-ever preparation on
@@ -621,15 +621,15 @@ export async function launchDriveFixSession(
   // Prepare's step, deliberately: the same host-side environment work under a narrower mandate.
   const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   assertRuntimeReady(reopen ? (reopen.runtime ?? DEFAULT_RUNTIME) : model.runtime, opts)
-  const row = reopen
-    ? reopen
-    : createSessionRow(ctx, {
-        featureId: feature.id,
-        kind: 'drive-fix',
-        // No worktree, for preparation's reason: the environment that broke is this machine's.
-        worktreePath: project.repoPath,
-        model,
-      })
+  const row =
+    reopen ??
+    createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'drive-fix',
+      // No worktree, for preparation's reason: the environment that broke is this machine's.
+      worktreePath: project.repoPath,
+      model,
+    })
 
   emit(ctx, feature.id, {
     type: 'session.launching',
