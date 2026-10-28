@@ -60,5 +60,9 @@ Planned by a self-planning run on 2026-10-28, with no human present. Decisions t
 **Why:** It keeps each diff on its ticket, so agents do not tidy the codebase on the side and collide with sibling tickets on landing.
 **Assumed.** Alternative: let agents delete any useless test they come across.
 
+## 13. The lead builds the work itself unless workers earn their cost
+**Decision:** Whether to build in the lead's own window or hand work to sandboxed workers is the lead's judgement, not a rule with "small" defined narrowly. Workers earn their cost when the work splits into pieces that genuinely run in parallel, when it is too big for one context window alongside the conversation, or when it is long unattended work the human should not wait on in chat. Otherwise the lead builds it itself, whole small features included, not only leftovers. The feature skill's "Build it the cheapest good way" and the matching lines in its ticket-writing and planning-alone references say this, briefly and as judgement, without tilting so far that big work lands in the chat. The lead makes this change itself after round 2, not as a ticket.
+**Why:** Added by the human on 2026-10-28, relayed by the orchestrator: "The burn agents are a tool that the feature agent can decide to use. But it doesn't have to use them," and "don't overdo it, make sure that workers are still used when needed." A lead planning alone reached for tickets by default because the bar for "small" was too narrow; a ticket costs a container, an install and a fresh read of the repo before it does any work.
+
 ## Challenge
 One independent challenger agent read the brief and these decisions. Its four unasked questions became decisions 10, 11, 12 and the "no typecheck" half of decision 2. It disagreed with decisions 4 and 8. Decision 4's **Challenged:** line carries its reason and the planner's answer stands; on decision 8 the orchestrator later took the challenger's version.
