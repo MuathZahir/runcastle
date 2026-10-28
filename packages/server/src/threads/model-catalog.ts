@@ -128,10 +128,11 @@ function rosterCatalog(roster: readonly ModelEntry[], runtime: AgentRuntime): Mo
  */
 function keepLongContext(models: ModelChoice[], id: string, runtime: AgentRuntime): void {
   if (!LONG_CONTEXT.test(id) || entryFor(models, id, runtime)) return
-  const at = models.indexOf(entryFor(models, id.replace(LONG_CONTEXT, ''), runtime) as ModelChoice)
-  if (at < 0 || models.some((m) => m.id === `${models[at].id}[1m]`)) return
-  const { id: _, label, defaultEffort: __, ...controls } = models[at]
-  models.splice(at + 1, 0, { ...controls, id, label: `${label} (1M)` })
+  const base = entryFor(models, id.replace(LONG_CONTEXT, ''), runtime)
+  if (!base || models.some((m) => m.id === `${base.id}[1m]`)) return
+  // The level the base model starts on says nothing of its 1M run's.
+  const { defaultEffort: _, ...controls } = base
+  models.splice(models.indexOf(base) + 1, 0, { ...controls, id, label: `${base.label} (1M)` })
 }
 
 /**
