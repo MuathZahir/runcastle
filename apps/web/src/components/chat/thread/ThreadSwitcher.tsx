@@ -95,10 +95,8 @@ export function ThreadSwitcher({
                   <span className="min-w-0 truncate">{t.title}</span>
                   <ThreadStateMark state={t.state} />
                 </span>
-                {/* Its state, never its kind (decision 14); nothing for an idle thread with no time. */}
-                {threadStateWords(t.state, t.updatedAt, now) && (
-                  <span className="text-xs text-text-tertiary">{threadStateWords(t.state, t.updatedAt, now)}</span>
-                )}
+                {/* Its state, never its kind (decision 14); empty, and so no height, for an idle thread with no time. */}
+                <span className="text-xs text-text-tertiary empty:hidden">{threadStateWords(t.state, t.updatedAt, now)}</span>
               </span>
             </DropdownMenuItem>
           ))}
