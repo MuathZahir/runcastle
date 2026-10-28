@@ -130,7 +130,6 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .step b{font-weight:500;color:var(--color-text)}
 .end{border-left:2px solid var(--color-success)}
 .end.bad{border-left-color:var(--color-danger)}
-.end.warn{border-left-color:var(--color-warning)}
 .case{margin-top:20px}
 [data-state]{display:none}
 [data-state].on{display:grid}
@@ -163,6 +162,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <button aria-pressed="true" data-case="a">Branch deleted (the bug)</button>
     <button aria-pressed="false" data-case="b">Push impossible</button>
     <button aria-pressed="false" data-case="c">Last commit never reached the host</button>
+    <button aria-pressed="false" data-case="d">Resolver and retries</button>
   </div>
 
   <div class="case cmp on" data-state="a">
@@ -194,12 +194,23 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="case cmp" data-state="c">
     <div><h3>Today</h3><div class="flow">
-      <div class="step"><i class="dot"></i><p>Commits 1 and 2 sync; commit 3 does not, and nothing was saved.</p></div>
+      <div class="step"><i class="dot"></i><p>Commits 1 and 2 sync; commit 3 does not.</p></div>
       <div class="step end bad"><i class="dot no"></i><p><b>Ticket done</b> with 2 of 3 commits. Part of the work lands silently.</p></div>
     </div></div>
     <div><h3>With this feature</h3><div class="flow">
-      <div class="step"><i class="dot"></i><p>The hook records the sandbox's last commit each time; the host checks it is on the ticket branch <a class="pin" data-d="7">7</a>.</p></div>
+      <div class="step"><i class="dot"></i><p>The hook keeps a record of any commit not yet on the host; the burner checks the ticket branch holds it <a class="pin" data-d="7">7</a>.</p></div>
       <div class="step end bad"><i class="dot no"></i><p><b>Failed: 1 commit(s) stranded in the sandbox</b>, never a partial &ldquo;done&rdquo;.</p></div>
+    </div></div>
+  </div>
+
+  <div class="case cmp" data-state="d">
+    <div><h3>Conflict resolver</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>The resolver's merge syncs; its fix after the merge does not.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>The pass <b>fails by name</b> instead of landing without the fix <a class="pin" data-d="11">11</a>.</p></div>
+    </div></div>
+    <div><h3>A retried attempt</h3><div class="flow">
+      <div class="step"><i class="dot"></i><p>An attempt dies after its last commit failed to sync; the next attempt starts on the shorter host branch.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>The timeline line, the next agent's recovery notes and the final error all say <b>N commit(s) stranded</b> <a class="pin" data-d="11">11</a>.</p></div>
     </div></div>
   </div>
 </section>
@@ -219,8 +230,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>Boot cleanup never touches a live burn (backlog feature)</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>The burner prompt and verify-notes text</li>
       <li><i class="dot"></i>Rescuing commits the sandbox could not push</li>
+      <li><i class="dot"></i>The burner prompt and verify-notes text</li>
       <li><i class="dot"></i>Mounted and no-sandbox modes (no hook, unchanged)</li>
     </ul></div>
   </div>
@@ -231,18 +242,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-  var D = [
-    ['A refused sync push falls back to a plain push, never to an overwrite', 'It fixes the deleted-branch failure without ever discarding anything on the host; the lease stays the first try, so amends still sync.', 'assumed'],
-    ['A commit that still cannot sync is saved where the host can collect it', 'Superseded by 9: no rescue.', 'superseded'],
-    ['Work that cannot be recovered fails the ticket by name, and is kept on a branch', 'Superseded by 9: no rescue, so nothing to keep.', 'superseded'],
-    ['The hook tells the agent its work is safe, and not to push by hand', 'Superseded by 10: the agent is asked to push once more.', 'superseded'],
-    ['The boot cleanup that deleted the live branches is parked, not fixed here', 'The brief rules out restart recovery; a correct sweep needs to know which runs are alive, and that check is what failed in this bug.', 'assumed'],
-    ["The agent's next restart in the same run starts from the saved commits", 'Superseded by 9: nothing is saved.', 'superseded'],
-    ["The burner checks that the sandbox's last commit reached the host", 'Without it, a ticket whose last commit failed to sync lands only part of its work as done, or reads as no commits.', 'assumed'],
-    ['Retry after a stranded failure starts from the host branch, not the saved commits', 'Superseded by 9: Retry continues from the host branch, as for any failed ticket.', 'superseded'],
-    ['No rescue: a commit that cannot sync fails the ticket by name', 'With the plain-push fallback, what is left for a rescue to catch is rare; a named failure plus Retry covers it. Changed by the orchestrator.', 'orchestrator'],
-    ['The hook asks the agent to push once more before it finishes', 'With no rescue, one more plain push is the last chance the work has, and a plain push cannot overwrite. Changed by the orchestrator.', 'orchestrator']
-  ]
+<div class="flow">
+        <div class="step"><i class="dot live"></i><p><b>Sync hook</b> (shared by the isolated clone, the cache slot and the conflict resolver): record HEAD in the mounted workspace, lease push and one retry, then a plain push, all to <span class="mono">refs/heads/&lt;temp branch&gt;</span>. A push that succeeds deletes the record, so it only ever names unsynced work. On failure it appends the unsynced count and the error, and asks the agent to push once more. Always exits 0.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Burner</b>: reads the record before each worktree goes and checks the branch holds that commit, on the normal path, the worktree-teardown path, the resolver verdict and the retry path. Stranded beats &ldquo;done&rdquo; and &ldquo;no commits&rdquo;.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Tests</b>: a new real-git file that installs the hook in a real clone (runs on Windows too): deleted branch, detached HEAD, amend, squash and drop by rebase, no overwrite, hand push, resolver pass, retry notes. Shape tests updated.</p></div>
+        <div class="step"><i class="dot live"></i><p><b>Who builds it</b>: the lead, in this checkout. No tickets.</p></div>
+      </div>
     </div>
   </details>
 </section>
@@ -258,13 +263,16 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['A refused sync push falls back to a plain push, never to an overwrite', 'It fixes the deleted-branch failure without ever discarding anything on the host; the lease stays the first try, so amends still sync.', 'assumed'],
-    ['A commit that still cannot sync is saved where the host can collect it', 'After the last commit nothing in the sandbox runs again; the mounted workspace is the one place it can write that outlives the container. The rescue shows on the timeline.', 'assumed'],
-    ['Work that cannot be recovered fails the ticket by name, and is kept on a branch', 'The brief: reach the host, or fail loudly saying the commits were stranded. A branch is where a developer looks, and it is the only copy left.', 'assumed'],
-    ['The hook tells the agent its work is safe, and not to push by hand', 'The agent has nothing useful to do about it, and a hand push could overwrite the host branch. The prompt is out of bounds, so the hook line is the place.', 'assumed'],
+    ['A commit that still cannot sync is saved where the host can collect it', 'Superseded by 9: no rescue.', 'superseded'],
+    ['Work that cannot be recovered fails the ticket by name, and is kept on a branch', 'Superseded by 9: no rescue, so nothing to keep.', 'superseded'],
+    ['The hook tells the agent its work is safe, and not to push by hand', 'Superseded by 10: the agent is asked to push once more.', 'superseded'],
     ['The boot cleanup that deleted the live branches is parked, not fixed here', 'The brief rules out restart recovery; a correct sweep needs to know which runs are alive, and that check is what failed in this bug.', 'assumed'],
-    ["The agent's next restart in the same run starts from the saved commits", 'Otherwise a restarted agent builds on the old tip and the saved commits can only fail by name.', 'assumed'],
-    ["The burner checks that the sandbox's last commit reached the host", 'Without it, a ticket whose last commit failed to sync lands only part of its work as done.', 'assumed'],
-    ['Retry after a stranded failure starts from the host branch, not the saved commits', 'It only fails when the two went different ways, so picking one would throw the other away.', 'assumed']
+    ["The agent's next restart in the same run starts from the saved commits", 'Superseded by 9: nothing is saved.', 'superseded'],
+    ["The burner checks that the sandbox's last commit reached the host", 'Without it, a ticket whose last commit failed to sync lands only part of its work as done, or reads as no commits.', 'assumed'],
+    ['Retry after a stranded failure starts from the host branch, not the saved commits', 'Superseded by 9: Retry continues from the host branch, as for any failed ticket.', 'superseded'],
+    ['No rescue: a commit that cannot sync fails the ticket by name', 'With the plain-push fallback, what is left for a rescue to catch is rare; a named failure plus Retry covers it. Changed by the orchestrator.', 'orchestrator'],
+    ['The hook asks the agent to push once more before it finishes', 'With no rescue, one more plain push is the last chance the work has, and a plain push cannot overwrite. Changed by the orchestrator.', 'orchestrator'],
+    ['Every pass the hook runs in is checked, and a retry names what it lost', 'The resolver installs the same hook, and a retried attempt otherwise loses work without a word. Changed by the orchestrator after its review.', 'orchestrator']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

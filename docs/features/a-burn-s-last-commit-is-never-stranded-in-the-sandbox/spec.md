@@ -34,7 +34,12 @@ commit:
 
 1. Records the checkout's HEAD in a small file in the mounted workspace, the
    one place the container writes that the host can still read once it is gone
-   (decision 7).
+   (decision 7). Any push that succeeds deletes the record, so it only ever
+   names work that has not reached the host. That matters for history
+   rewrites: a rebase that only drops commits fires no hook at all (neither
+   `post-commit` nor `post-rewrite`, which a real-git test showed), and a
+   record kept after a good push would go on naming the dropped commit and
+   fail a ticket that landed fine.
 2. Pushes with `--force-with-lease` to the full ref `refs/heads/<tempBranch>`;
    on refusal, waits two seconds and tries again. The full ref matters: a fresh
    clone of a workspace whose branch was deleted sits on a detached HEAD, and
@@ -60,6 +65,17 @@ hook never finished) gives "commit(s) stranded in the sandbox: the sync hook
 did not finish …". That failure wins over "done" and over "agent made no
 commits"; the commits that did reach the host stay preserved for Retry.
 
+The same check covers every other place the hook runs (decision 11):
+
+- **A conflict-resolver pass** installs the same hook. Its verdict (BLOCKED,
+  then stranded, then "did not complete the merge") is one exported function,
+  so a resolver whose merge synced but whose later fix did not fails the pass
+  by name rather than landing without the fix.
+- **An attempt that dies and is retried**: a stranded last commit is named in
+  the `ticket.retrying` timeline line, in the next agent's recovery notes (its
+  work is not on the branch; redo what is missing), and appended to the
+  ticket's error when no retry follows.
+
 `mounted` and `noSandbox` modes commit straight into the host worktree, have no
 hook and no record, and are unchanged.
 
@@ -68,19 +84,24 @@ hook and no record, and are unchanged.
 - **The sync hook under real git** (new test file): the hook script installed
   in a real clone of a throwaway "host" repo, fired by real commits. Git runs
   it through its own `sh`, so this runs on Windows too, unlike the existing
-  slot-script tests. Cases: a commit syncs and is recorded; a host branch
+  slot-script tests. Cases: a commit syncs and leaves no record; a host branch
   deleted under the burn is recreated (the bug); the same from a detached HEAD;
-  an amend still syncs; host commits the sandbox lacks are never overwritten
-  and the ticket fails by name; a hand push after the hook gave up counts.
+  an amend still syncs; a squash by rebase and a drop by rebase, each followed
+  by a hand force-push, are not called stranded; host commits the sandbox lacks
+  are never overwritten and the ticket fails by name; a hand push after the
+  hook gave up counts.
 - **The stranded check** (new, exported): `strandedCommitsError` with
   `parseSyncRecord` — given the repo, the temp branch and the record, it
   returns the failure text or nothing.
+- **The resolver verdict** (new, exported): `judgeResolverPass`, tested under
+  real git with a merge that synced and a fix after it that did or did not.
+- **The retry notes** (existing, `buildRetryNotes`): name stranded work.
 - **The setup-command shape tests** (existing): updated to the full-ref pushes,
   the plain-push fallback and the new agent line.
 
-The burner's run-end wiring (read the record, call the check, let it win) has no
-harness that drives it with a fake sandbox; it is a few lines, covered by
-reading and by the seams above.
+The burner's run-end and retry wiring (read the record, call the check, let it
+win) has no harness that drives it with a fake sandbox; it is a few lines,
+covered by reading and by the seams above.
 
 ## Out of scope
 
@@ -100,8 +121,15 @@ reading and by the seams above.
   sandbox restart before any commit still fails its setup fetch.
 - A stranded commit in one agent turn followed by a restart in a fresh
   container (a new iteration in the same run) is not caught if the restarted
-  agent's own commits sync: the record then holds the new HEAD. Rare, and the
+  agent's own commits sync: their push deletes the record. Rare, and the
   restarted agent sees the branch as it really is.
+- A commit that failed to sync, which the agent then drops by rebase and
+  force-pushes past, still reads as stranded: the record outlives the drop.
+  Rarer still, and it errs loud.
+- A resolver merge that completes without conflicts is committed by
+  `git merge` itself, which fires `post-merge`, not `post-commit`, so the hook
+  never pushes it. That predates this feature, and the resolver verdict's
+  "did not complete the merge" check already fails it loudly.
 - A hook disarmed entirely (a dependency install that rewires git hooks after
   setup) writes no record, so the check has nothing to compare. The existing
   `core.hooksPath` re-pin is what guards that.

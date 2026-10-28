@@ -160,3 +160,17 @@ the work has, and a plain push cannot overwrite anything on the host.
 **Assumed.** Alternative: tell the agent to carry on and leave it to the host
 (decision 4).
 **Changed by the orchestrator:** it replaced decision 4 along with the rescue.
+
+## 11. Every pass the hook runs in is checked, and a retry names what it lost
+**Decision:** The stranded check of decision 7 also judges a conflict-resolver
+pass: a resolver whose merge synced but whose later fix did not fails the pass
+by name instead of landing without the fix. When an attempt dies and is
+retried, a stranded last commit is named on the timeline, in the next agent's
+recovery notes, and in the ticket's error if no retry follows. Nothing is
+rescued (decision 9 stands).
+**Why:** The resolver installs the same hook, and an attempt chained onto a
+shorter host branch otherwise loses work without a word, which is the silence
+this feature exists to end.
+**Assumed.** Alternative: check only the implementer's final run, as first built.
+**Changed by the orchestrator:** its independent review of the diff found both
+gaps and asked for them to be closed.
