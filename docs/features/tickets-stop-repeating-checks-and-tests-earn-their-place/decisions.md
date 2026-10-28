@@ -36,10 +36,10 @@ Planned by a self-planning run on 2026-10-28, with no human present. Decisions t
 **Why:** Settled with the human in the brief ("I don't want ceremonies"). The charter keeps tests as one of the things that last; the ritual around writing them is what goes.
 
 ## 8. The reviewer judges tests by the same rule
-**Decision:** The review prompt carries decision 6. A missing test is a finding only where the diff adds behaviour worth protecting that nothing covers (a fixed bug with no repro is the clearest case). A test that is not worth its place is reported as a low-severity observation, so the lead can delete it by hand, not as a defect that mints a fix ticket.
-**Why:** The brief asks that the reviewer stop raising missing low-value tests and may flag useless ones. A defect turns into a fix ticket and a whole sandbox to delete a few lines, which is the kind of ceremony this feature removes.
+**Decision:** The review prompt carries decision 6. A missing test is a finding only where the diff adds behaviour worth protecting that nothing covers (a fixed bug with no repro is the clearest case). A test that is not worth its place is reported as a low-severity observation, never as a defect that mints its own fix ticket. The lead's guide (the rounds and ticket-writing references) says: when a round already mints a fix ticket, fold that review's useless-test observations into it, so those tests are deleted at no extra sandbox cost.
+**Why:** The brief asks that the reviewer stop raising missing low-value tests and may flag useless ones. A defect turns into a fix ticket and a whole sandbox to delete a few lines, which is the kind of ceremony this feature removes. But the human was emphatic that they do not want useless tests, and under the autonomous agreement an observation nobody acts on lets them pile up; riding along on a fix ticket that exists anyway removes them for free.
 **Assumed.** Alternative: report a useless test as a low-severity defect, so it gets fixed in the next round without the lead having to act.
-**Challenged:** Under the autonomous working agreement observations tend to be ignored, so useless tests would pile up; better to fold useless-test findings into a fix ticket whenever the round mints one anyway, and leave them as observations otherwise.
+**Changed by the orchestrator:** it took the challenger's version — fold useless-test observations into a fix ticket whenever the round mints one anyway — because the human does not want useless tests and an unacted observation lets them pile up.
 
 ## 9. Defaults change; nothing becomes customisable
 **Decision:** The prompts' defaults change for every project. No new setting, no per-project prompt override, no new burn-guard rule, no new telemetry: ADR-0008's per-ticket timing is how the gain is measured, after publish and reinstall.
@@ -61,4 +61,4 @@ Planned by a self-planning run on 2026-10-28, with no human present. Decisions t
 **Assumed.** Alternative: let agents delete any useless test they come across.
 
 ## Challenge
-One independent challenger agent read the brief and these decisions. Its four unasked questions became decisions 10, 11, 12 and the "no typecheck" half of decision 2. It disagreed with decisions 4 and 8; their **Challenged:** lines carry its reasons, and the planner's answers stand.
+One independent challenger agent read the brief and these decisions. Its four unasked questions became decisions 10, 11, 12 and the "no typecheck" half of decision 2. It disagreed with decisions 4 and 8. Decision 4's **Challenged:** line carries its reason and the planner's answer stands; on decision 8 the orchestrator later took the challenger's version.
