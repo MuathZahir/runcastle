@@ -431,6 +431,33 @@ describe('foldThread', () => {
     expect(kinds(again.items)).toEqual(['compacted', 'compacted'])
   })
 
+  it('the cost adds up across agent restarts: a new process counting from zero adds to what the last one spent', () => {
+    const v = foldThread(
+      log(
+        prompt('p1', 'one'),
+        { type: 'process', state: 'running' },
+        { type: 'usage', context: { used: 1000, size: 200000, costUsd: 0.2 } },
+        { type: 'usage', context: { used: 2000, size: 200000, costUsd: 0.36 } },
+        { type: 'process', state: 'stopped' },
+        prompt('p2', 'two'),
+        { type: 'process', state: 'starting' },
+        { type: 'process', state: 'running' },
+        { type: 'usage', context: { used: 3000, size: 200000, costUsd: 0.02 } },
+        { type: 'usage', context: { used: 3500, size: 200000, costUsd: 0.05 } },
+      ),
+    )
+    expect(v.context?.costUsd).toBeCloseTo(0.41)
+    // Without a restart, a report is the running process's total, never added twice.
+    const steady = foldThread(
+      log(
+        { type: 'process', state: 'running' },
+        { type: 'usage', context: { used: 1000, size: 200000, costUsd: 0.2 } },
+        { type: 'usage', context: { used: 2000, size: 200000, costUsd: 0.3 } },
+      ),
+    )
+    expect(steady.context?.costUsd).toBeCloseTo(0.3)
+  })
+
   it('words logged after a turn ended, with no turn around them, settle: the thread is not working', () => {
     const v = foldThread(
       log(

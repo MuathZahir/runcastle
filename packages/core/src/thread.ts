@@ -461,7 +461,8 @@ const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pe
  *   logged after a turn's end (with no turn around them) fold as settled.
  * - A model divider appears only when the model changes after one was set; a
  *   compaction shows once however many times it is reported before the next
- *   prompt; a usage report without a cost keeps the last one.
+ *   prompt; a usage report without a cost keeps the last one, and a restarted
+ *   process's cost adds to what the processes before it spent.
  * - The plan shows only while the thread is not idle; a suggestion clears on
  *   the next prompt.
  */
@@ -478,6 +479,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
   let compactedSincePrompt = false
+  /** The adapter reports cost per process: what earlier processes spent, and the current one's last report. */
+  let carriedCost = 0
+  let processCost: number | undefined
+  let restartedSinceCost = false
 
   /** Re-render the open turn's work and answer items in place. */
   const render = (live: boolean, endedAt?: number) => {
@@ -629,6 +634,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       }
       case 'process':
         view.process = e.state
+        if (e.state !== 'running') restartedSinceCost = true
         if (e.state !== 'starting' && startingPrompt) {
           delete startingPrompt.starting
           startingPrompt = null
@@ -732,8 +738,14 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'usage': {
-        // The thread's cost so far only grows: a report without it (one after a compaction) keeps the last.
-        const costUsd = e.context.costUsd ?? view.context?.costUsd
+        // The thread's cost so far only grows: a report without it (one after a compaction) keeps the last,
+        // and a restarted process counting from zero again adds to what the one before it spent.
+        if (e.context.costUsd !== undefined) {
+          if (restartedSinceCost && processCost !== undefined && e.context.costUsd < processCost) carriedCost += processCost
+          processCost = e.context.costUsd
+          restartedSinceCost = false
+        }
+        const costUsd = processCost !== undefined ? carriedCost + processCost : undefined
         view.context = { ...e.context, ...(costUsd !== undefined ? { costUsd } : {}) }
         break
       }
