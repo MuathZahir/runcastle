@@ -351,6 +351,38 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(dividers(id).map((d) => d.kind === 'model' && d.model)).toEqual(['Haiku 4.5'])
   })
 
+  // A thread started before the start path stopped logging the adapter's opening announcement carries it unpicked.
+  it("restarts a thread nobody picked a model in on its row's model, never on a model the adapter reported", async () => {
+    setup(ALIASES)
+    const id = await runcastleStarted('claude-sonnet-5')
+    await host.stop(id, 'idle')
+    appendThreadEvent(id, { type: 'model', model: 'opus', label: 'Opus 5' })
+    await caller.thread.send({ threadId: id, text: 'Again' })
+    await logUntil(id, turnsEnded(2))
+
+    expect(fake.last().received.filter((r) => r.method === 'session/set_config_option').map((r) => r.params)).toEqual([
+      { sessionId: 'acp-session-1', configId: 'model', value: 'sonnet' },
+    ])
+  })
+
+  it('marks every model the human picks, before the thread starts and after, and no model the adapter reports', async () => {
+    setup(ALIASES)
+    const id = unstarted()
+    await caller.thread.setModel({ threadId: id, model: 'claude-haiku-4-5' })
+    await caller.thread.send({ threadId: id, text: 'Hello' })
+    await logUntil(id, turnsEnded(1))
+    await caller.thread.send({ threadId: id, text: 'Again', model: 'claude-sonnet-5' })
+    await logUntil(id, turnsEnded(2))
+    const plain = await runcastleStarted('claude-sonnet-5')
+
+    const models = (thread: string) => readThreadEvents(thread).flatMap((e) => (e.type === 'model' ? [[e.model, e.picked ?? false]] : []))
+    expect(models(id)).toEqual([
+      ['haiku', true],
+      ['sonnet', true],
+    ])
+    expect(models(plain)).toEqual([['sonnet', false]])
+  })
+
   it('knows, before a thread starts, the effort each model starts on and the efforts every model takes', async () => {
     setup(ALIASES)
     await converse(chat(), 'Hello')
@@ -618,13 +650,17 @@ describe('branch', () => {
     expect(said(branched)).toEqual(['user:first', 'agent:answer 1'])
     const row = getSessionRow(ctx, branched)!
     expect(row).toMatchObject({ kind: 'side', featureId, worktreePath: '/wt', openedBeside: id })
-    expect((await caller.thread.list({ featureId })).find((t) => t.id === branched)).toMatchObject({ role: 'side', title: 'first' })
+    const named = async (thread: string) => (await caller.thread.list({ featureId })).find((t) => t.id === thread)
+    // Named as a branch of its parent until the human writes in it.
+    expect(await named(branched)).toMatchObject({ role: 'side', title: 'Branch of first' })
 
     await caller.thread.send({ threadId: branched, text: 'onwards' })
     await logUntil(branched, turnsEnded(2))
     expect(received('session/fork')).toEqual([expect.objectContaining({ sessionId: 'acp-session-1', _meta: expect.objectContaining({ jetbrains: { air: { fork: { version: 1, messageId: 'm1' } } } }) })])
     expect(getSessionRow(ctx, branched)!.ccSessionId).toBe('acp-session-1-fork-1')
     expect(said(branched)).toEqual(['user:first', 'agent:answer 1', 'user:onwards', 'agent:answer 3'])
+    expect(await named(branched)).toMatchObject({ title: 'onwards' })
+    expect(await named(id)).toMatchObject({ title: 'first' })
     // The thread it came from is as it was.
     expect(said(id)).toEqual(['user:first', 'agent:answer 1', 'user:second', 'agent:answer 2'])
   })
@@ -634,8 +670,15 @@ describe('branch', () => {
     answerWithIds()
     const id = chat({ kind: 'project' })
     const [first] = await converse(id, 'first')
+    await caller.thread.rename({ threadId: id, title: 'Release notes' })
     const { threadId: branched } = await caller.thread.branch({ threadId: id, promptId: first })
     expect(getSessionRow(ctx, branched)).toMatchObject({ kind: 'project', projectId })
+    const named = async (thread: string) => (await caller.thread.list({ projectId })).find((t) => t.id === thread)?.title
+    // The parent's rename, copied with its log, is the parent's name, not the branch's.
+    expect(await named(branched)).toBe('Branch of Release notes')
+    await caller.thread.rename({ threadId: branched, title: 'Changelog' })
+    expect(await named(branched)).toBe('Changelog')
+    expect(await named(id)).toBe('Release notes')
   })
 })
 

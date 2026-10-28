@@ -185,7 +185,7 @@ export const threadRouter = router({
   rename: publicProcedure.input(threadId.extend({ title: z.string().min(1).max(200) })).mutation(({ ctx, input }): { ok: true } => {
     threadRow(ctx, input.threadId)
     setSessionTitle(ctx, input.threadId, input.title)
-    appendThreadEvent(input.threadId, { type: 'title', title: input.title })
+    appendThreadEvent(input.threadId, { type: 'title', title: input.title, renamed: true })
     return { ok: true }
   }),
 

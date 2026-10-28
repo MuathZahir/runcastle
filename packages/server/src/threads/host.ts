@@ -6,6 +6,7 @@ import * as acp from '@agentclientprotocol/sdk/unstable'
 import {
   DEFAULT_RUNTIME,
   foldThread,
+  lastPickedModel,
   liveEvents,
   modelRoster,
   newId,
@@ -71,7 +72,7 @@ import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
-import { runtimeMayName } from './naming'
+import { runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 import { snapshotWorktree, worktreeChanges, worktreeRelative, type WorktreeSnapshot } from './worktree-changes'
@@ -498,7 +499,7 @@ class Host implements AgentHost {
    * it then reports is logged. Otherwise the choice goes to the agent when its
    * session next opens; a thread that has run before logs it as made, while
    * one that never has just starts on it, with no divider before its first
-   * message.
+   * message. Either way the logged model is the human's pick (`picked`).
    */
   async setConfig(threadId: string, choice: ConfigChoice): Promise<void> {
     const row = this.row(threadId)
@@ -506,7 +507,7 @@ class Host implements AgentHost {
     if (t?.conn && t.sessionId && t.configOptions) {
       await this.applyConfig(t, choice)
       const model = modelEvent(t.configOptions)
-      if (model) appendThreadEvent(threadId, model)
+      if (model) appendThreadEvent(threadId, { ...model, picked: true })
       return
     }
     this.pendingConfig.set(threadId, { ...this.pendingConfig.get(threadId), ...choice })
@@ -517,7 +518,7 @@ class Host implements AgentHost {
     const label = model === now.id ? now.label : (entry?.label ?? model)
     const effort = choice.effort ?? now.effort
     const fast = choice.fast ?? now.fast
-    appendThreadEvent(threadId, { type: 'model', model, label, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) })
+    appendThreadEvent(threadId, { type: 'model', model, label, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}), picked: true })
   }
 
   async fork(threadId: string, atPromptId: string, opts: { into: 'same' | 'new'; undoFiles?: boolean }): Promise<{ threadId: string }> {
@@ -554,7 +555,8 @@ class Host implements AgentHost {
   /**
    * A new thread beside `row` carrying its conversation through the turn of the
    * prompt at `at`: the log's prefix copied, the agent's conversation forked
-   * there when its next start opens it. Nothing is sent.
+   * there when its next start opens it, and named after `row` as it is called
+   * now ("Branch of …", `naming.ts`). Nothing is sent.
    */
   private branch(row: SessionRow, events: ThreadEvent[], at: number): { threadId: string } {
     const prefix = events.slice(0, turnEndIndex(events, at)).filter((e) => e.type !== 'process')
@@ -569,6 +571,7 @@ class Host implements AgentHost {
         })
       : createSessionRow(this.ctx, { projectId: row.projectId!, kind: 'project', worktreePath: row.worktreePath, ...model })
     seedThreadLog(created.id, prefix)
+    appendThreadEvent(created.id, { type: 'branched', from: threadName(row, readThreadEvents(row.id), threadAbout(this.ctx, row.featureId)) })
     const point = lastAgentMessageId(prefix)
     if (point && point !== 'unknown' && row.ccSessionId) writePendingFork(created.id, { open: { from: row.ccSessionId, messageId: point } })
     else if (point) {
@@ -623,15 +626,18 @@ class Host implements AgentHost {
 
   /**
    * What a session opening for the thread must run on, whoever sent the prompt
-   * that starts it: the model (and effort, fast mode) its log last records — the
-   * human's pick, kept across idle stops and restarts — else the model runcastle
-   * resolved for its row. The adapter opens on its own choice (the CLI's
-   * settings, a resumed conversation's last model) whatever the launch names.
+   * that starts it: the model (and effort, fast mode) the human last picked,
+   * kept across idle stops and restarts, else the model runcastle resolved for
+   * its row. A model the log records unpicked is only what an adapter reported
+   * on its own (claude-agent-acp's default as a session opened, before the
+   * host stopped logging that), never the thread's model. The adapter opens on
+   * its own choice (the CLI's settings, a resumed conversation's last model)
+   * whatever the launch names.
    */
   private intendedConfig(threadId: string, row: SessionRow): ConfigChoice {
-    const logged = foldThread(readThreadEvents(threadId)).model
-    if (!logged) return row.model ? { model: row.model } : {}
-    return { model: logged.id, ...(logged.effort ? { effort: logged.effort } : {}), ...(logged.fast !== undefined ? { fast: logged.fast } : {}) }
+    const picked = lastPickedModel(readThreadEvents(threadId))
+    if (!picked) return row.model ? { model: row.model } : {}
+    return { model: picked.model, ...(picked.effort ? { effort: picked.effort } : {}), ...(picked.fast !== undefined ? { fast: picked.fast } : {}) }
   }
 
   /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
@@ -759,7 +765,8 @@ class Host implements AgentHost {
     }
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     this.noteOptions(t, opened.configOptions, true)
-    const chosen = { ...intended, ...this.pendingConfig.get(t.id) }
+    const pick = this.pendingConfig.get(t.id)
+    const chosen = { ...intended, ...pick }
     this.pendingConfig.delete(t.id)
     await this.applyConfig(t, chosen)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
@@ -768,8 +775,9 @@ class Host implements AgentHost {
     if (fork) writePendingFork(t.id, { ...readPendingFork(t.id), open: undefined })
     t.state = 'running'
     appendThreadEvent(t.id, { type: 'process', state: 'running' })
+    // A pick made before the thread first ran is logged here, as the model it starts on.
     const model = modelEvent(t.configOptions)
-    if (model) appendThreadEvent(t.id, model)
+    if (model) appendThreadEvent(t.id, pick ? { ...model, picked: true } : model)
     this.hook(() => this.lifecycle.started?.(live ?? row, t.startedBy))
   }
 

@@ -208,7 +208,7 @@ export function withRelativePaths<E extends ThreadEventBody>(worktree: string, e
 }
 
 /** The model (and effort, fast mode) a session runs on, from its config options, as a `model` event. */
-export function modelEvent(options: readonly acp.SessionConfigOption[] | null | undefined): ThreadEventBody | null {
+export function modelEvent(options: readonly acp.SessionConfigOption[] | null | undefined): Extract<ThreadEventBody, { type: 'model' }> | null {
   const config = currentConfig(options)
   return config ? { type: 'model', ...config } : null
 }

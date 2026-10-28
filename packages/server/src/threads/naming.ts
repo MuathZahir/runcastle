@@ -1,6 +1,7 @@
 import { DEFAULT_RUNTIME, type SessionRow, type ThreadEvent } from '@runcastle/core'
-import { selfPlanKickoffFor } from '../launcher/runtimes/skills'
+import type { AppCtx } from '../db/types'
 import { deriveTitle } from '../services/conversations'
+import { tryGetFeature } from '../services/repo'
 
 /**
  * What a thread is called (chat-as-web-components decision 14): by what it is
@@ -29,34 +30,59 @@ export function runtimeMayName(events: readonly ThreadEvent[]): boolean {
   return said.length > 0 && said.every((e) => e.type === 'prompt' && e.source === 'human')
 }
 
-/** What the feature's main chat is called once a self-planning run in it is over, as the thread list's role names it. */
-export const MAIN_CHAT_NAME = 'Feature chat'
+/** What the thread's feature is called, for a main chat nobody has written in. */
+export interface ThreadAbout {
+  featureTitle?: string
+}
 
-/** A thread nobody has said anything in, named for what it is doing. */
-function errandName(row: SessionRow, events: readonly ThreadEvent[]): string | null {
+/** The {@link ThreadAbout} of a row's feature; nothing for a project's thread. */
+export function threadAbout(ctx: AppCtx, featureId: string | null | undefined): ThreadAbout {
+  const feature = featureId ? tryGetFeature(ctx, featureId) : null
+  return feature ? { featureTitle: feature.title } : {}
+}
+
+/**
+ * A thread nobody has said anything in, named for what it is doing: planning
+ * while a self-planning run is on, else a feature's main chat is named after
+ * its feature, and an errand thread after its errand.
+ */
+function errandName(row: SessionRow, events: readonly ThreadEvent[], about: ThreadAbout): string | null {
+  // The run clears the purpose as it ends (`lifecycle.ts`), finished or stopped.
   if (row.purpose === 'self-plan') return 'Planning by itself'
-  // The run is over (finished or stopped): the thread is the lead's chat again.
-  const planned = selfPlanKickoffFor(row.runtime ?? DEFAULT_RUNTIME)
-  if (row.kind === 'chat' && events.some((e) => e.type === 'prompt' && e.source === 'runcastle' && e.text.includes(planned))) return MAIN_CHAT_NAME
+  if (row.kind === 'chat' && about.featureTitle) return about.featureTitle
   if (row.kind === 'scenario') return row.purpose === 'scenario-setup' ? 'Scenario: setting scenarios up' : 'Scenario: writing scenarios'
   if (row.kind === 'drive-fix') return 'Fix: the test drive'
   if (events.some((e) => e.type === 'prompt' && e.source === 'runcastle' && !e.hidden)) return 'Working by itself'
   return null
 }
 
+/** The human's first message, cleaned and shortened; null before they wrote. */
+function firstMessage(row: SessionRow, events: readonly ThreadEvent[]): string | null {
+  const said = events.flatMap((e) => (e.type === 'prompt' && e.source === 'human' ? [{ role: 'user' as const, text: e.text }] : []))
+  return deriveTitle(said, row.runtime ?? DEFAULT_RUNTIME, row.kind)
+}
+
 /**
- * A logged thread's name: the human's rename, else the runtime's generated
- * title when {@link runtimeMayName}, else the human's first message cleaned
- * and shortened, else what it is doing, else {@link NEW_CHAT_NAME}.
+ * A logged thread's name: the human's rename, which wins over everything; a
+ * branch's "Branch of <parent>" until the human writes in it, then its own
+ * first message; else the runtime's generated title when {@link runtimeMayName},
+ * else the human's first message, else what it is doing, else {@link NEW_CHAT_NAME}.
  *
- * A row's title is the human's rename — except one that repeats a generated
- * title the runtime may not give, which an earlier host stored on the row.
+ * A row's title is a rename made before renames were marked, or a generated
+ * title the host stored — except one that repeats a generated title the runtime
+ * may not give, which an earlier host stored on the row.
  */
-export function threadName(row: SessionRow, events: readonly ThreadEvent[]): string {
+export function threadName(row: SessionRow, events: readonly ThreadEvent[], about: ThreadAbout = {}): string {
+  // A branch's log begins with its parent's, whose rename is the parent's.
+  const branchAt = events.map((e) => e.type).lastIndexOf('branched')
+  const own = events.slice(branchAt + 1)
+  const renamed = own.flatMap((e) => (e.type === 'title' && e.renamed ? [e.title] : [])).at(-1)
+  if (renamed) return renamed
+  const branched = events[branchAt]
+  if (branched?.type === 'branched') return firstMessage(row, own) ?? `Branch of ${branched.from}`
   const mayName = runtimeMayName(events)
   const generated = events.flatMap((e) => (e.type === 'title' ? [e.title] : []))
   if (row.title && (mayName || !generated.includes(row.title))) return row.title
   if (mayName && generated.length) return generated.at(-1)!
-  const said = events.flatMap((e) => (e.type === 'prompt' && e.source === 'human' ? [{ role: 'user' as const, text: e.text }] : []))
-  return deriveTitle(said, row.runtime ?? DEFAULT_RUNTIME, row.kind) ?? errandName(row, events) ?? NEW_CHAT_NAME
+  return firstMessage(row, events) ?? errandName(row, events, about) ?? NEW_CHAT_NAME
 }
