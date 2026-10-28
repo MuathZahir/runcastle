@@ -477,6 +477,11 @@ export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
   ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()
 }
 
+/** Point a thread's row at the model it next starts on (see `refreshThreadModel` in `launcher.ts`). */
+export function setSessionModel(ctx: AppCtx, id: string, model: string): void {
+  ctx.db.update(sessions).set({ model }).where(eq(sessions.id, id)).run()
+}
+
 /**
  * Forget a cached name, putting the row back to deriving one on every read.
  * The list clears the titles it can tell were derived by an older, worse

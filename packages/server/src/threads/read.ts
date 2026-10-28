@@ -14,7 +14,7 @@ import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from
 import { conversationTranscript, deriveTitle } from '../services/conversations'
 import { withRelativePaths } from './acp-map'
 import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
-import { NEW_CHAT_NAME, threadName } from './naming'
+import { NEW_CHAT_NAME, threadAbout, threadName, type ThreadAbout } from './naming'
 import { agentHost } from './types'
 
 /**
@@ -157,11 +157,11 @@ function titleFrom(row: SessionRow, said: string[]): string | null {
   )
 }
 
-function loggedEntry(ctx: AppCtx, row: SessionRow): ThreadEntry {
+function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEntry {
   const { view, events } = foldedLog(row.id)
   return {
     id: row.id,
-    title: threadName(row, events),
+    title: threadName(row, events, about),
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
     state: agentHost(ctx).isRunning(row.id) ? view.state : 'idle',
@@ -171,10 +171,10 @@ function loggedEntry(ctx: AppCtx, row: SessionRow): ThreadEntry {
 }
 
 /** A thread nothing has been said in yet. */
-function freshEntry(row: SessionRow): ThreadEntry {
+function freshEntry(row: SessionRow, about: ThreadAbout): ThreadEntry {
   return {
     id: row.id,
-    title: row.title ?? NEW_CHAT_NAME,
+    title: threadName(row, [], about),
     role: ROLE[row.kind],
     state: 'idle',
     updatedAt: row.createdAt ?? 0,
@@ -214,18 +214,19 @@ export function listThreads(ctx: AppCtx, scope: { featureId: string } | { projec
     'featureId' in scope
       ? featureSessions(ctx, scope.featureId, FEATURE_THREAD_KINDS)
       : PROJECT_THREAD_KINDS.flatMap((kind) => projectSessions(ctx, scope.projectId, kind))
+  const about = threadAbout(ctx, 'featureId' in scope ? scope.featureId : null)
   const conversations = new Set<string>()
   const entries: ThreadEntry[] = []
   for (const row of rows) {
     if (row.ccSessionId && conversations.has(row.ccSessionId)) continue
     if (row.ccSessionId) conversations.add(row.ccSessionId)
     if (hasThreadLog(row.id)) {
-      entries.push(loggedEntry(ctx, row))
+      entries.push(loggedEntry(ctx, row, about))
       continue
     }
     const source = transcriptRow(ctx, row)
     if (source) entries.push(transcriptEntry(ctx, row, source))
-    else if (row.status !== 'ended') entries.push(freshEntry(row))
+    else if (row.status !== 'ended') entries.push(freshEntry(row, about))
   }
   return entries.sort((a, b) => b.updatedAt - a.updatedAt)
 }

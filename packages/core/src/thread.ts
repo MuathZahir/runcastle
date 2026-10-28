@@ -286,10 +286,19 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     label: z.string(),
     effort: Effort.optional(),
     fast: z.boolean().optional(),
+    /**
+     * The human chose it (a pick in the composer, before or after the agent
+     * started). Absent: what the adapter reported on its own, which a restart
+     * does not take as the thread's model.
+     */
+    picked: z.boolean().optional(),
   }),
   z.object({ type: z.literal('commands'), commands: z.array(SlashCommand) }),
   z.object({ type: z.literal('compacted') }),
-  z.object({ type: z.literal('title'), title: z.string() }),
+  /** The thread's name: the runtime's generated title, or with `renamed` the human's rename, which wins over every other name. */
+  z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional() }),
+  /** The thread branched off another thread, then called `from`; shows nothing, and names it "Branch of …" until the human writes in it. */
+  z.object({ type: z.literal('branched'), from: z.string() }),
   /** The agent's guess at the human's next message; `null` clears it. */
   z.object({ type: z.literal('suggestion'), text: z.string().nullable() }),
   /**
@@ -438,6 +447,15 @@ interface Turn {
 }
 
 const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pending' }
+
+/** The model (and effort, fast mode) the human last picked on the thread; null when they never picked one. */
+export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEventBody, { type: 'model' }> | null {
+  for (let n = log.length - 1; n >= 0; n--) {
+    const e = log[n]
+    if (e.type === 'model' && e.picked) return e
+  }
+  return null
+}
 
 /**
  * Fold a thread's log into what the web renders. Pure, total and deterministic:
@@ -779,6 +797,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       case 'rewound':
       case 'briefed':
+      case 'branched':
         break
     }
   }

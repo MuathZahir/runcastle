@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { foldThread, type ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive, setThreadPurpose } from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -243,15 +243,40 @@ describe('thread router', () => {
     const selfPlan = thread('chat', 'self-plan')
     const scenario = thread('scenario')
     const fix = thread('drive-fix')
-    const woken = thread('chat')
+    const started = thread('chat')
 
-    const names = Object.fromEntries((await caller.thread.list({ featureId })).map((t) => [t.id, t.title]))
-    expect(names).toEqual({
+    const names = async () => Object.fromEntries((await caller.thread.list({ featureId })).map((t) => [t.id, t.title]))
+    expect(await names()).toEqual({
       [selfPlan]: 'Planning by itself',
       [scenario]: 'Scenario: writing scenarios',
       [fix]: 'Fix: the test drive',
-      [woken]: 'Working by itself',
+      // A feature's main chat only runcastle has spoken in is named after the feature.
+      [started]: 'Demo feature',
     })
+
+    // The planning run is over (finished or stopped): the purpose goes, and with it "Planning by itself".
+    setThreadPurpose(ctx, selfPlan, null)
+    expect((await names())[selfPlan]).toBe('Demo feature')
+    // Once the human writes, the first message names it.
+    appendThreadEvent(selfPlan, { type: 'prompt', id: 'p', text: 'Split the plan in two', source: 'human' })
+    expect((await names())[selfPlan]).toBe('Split the plan in two')
+  })
+
+  it('names a feature main chat nothing has been said in yet after the feature', async () => {
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' }).id
+    expect(await caller.thread.list({ featureId })).toEqual([expect.objectContaining({ id, title: 'Demo feature' })])
+  })
+
+  it("shows the human's rename at once, over a thread runcastle opened and the runtime titled", async () => {
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' }).id
+    appendThreadEvent(id, { type: 'prompt', id: 'k', text: 'Proceed with your task…', source: 'runcastle' })
+    appendThreadEvent(id, { type: 'prompt', id: 'p', text: 'Fix the login page', source: 'human' })
+    appendThreadEvent(id, { type: 'title', title: 'Runcastle feature session' })
+    await caller.thread.rename({ threadId: id, title: 'Login rework' })
+    // A title the runtime generates later does not take the name back.
+    appendThreadEvent(id, { type: 'title', title: 'Login page fixes' })
+
+    expect((await caller.thread.list({ featureId }))[0]).toMatchObject({ id, title: 'Login rework' })
   })
 
   it('reads a terminal-era conversation back from its transcript, listed once with readOnlyTranscript', async () => {
