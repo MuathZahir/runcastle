@@ -52,19 +52,37 @@ function defaultTarget(option: SelectOption): { value: string; name: string } | 
   return named ? values.find((c) => c.value !== DEFAULT_MODEL && c.name === named) : undefined
 }
 
-/** The model, effort and fast mode a session's options say it runs on; `default` as the model it stands for. */
+/** claude-agent-acp's "Default" effort: Claude Code resolves the level itself. */
+const DEFAULT_EFFORT = 'default'
+
+/** The level Claude's `default` effort entry names ("Default (High)"); none when it names none. */
+function defaultEffortLevel(option: SelectOption): Effort | undefined {
+  const entry = selectValues(option).find((c) => c.value === DEFAULT_EFFORT)
+  const named = /\b(low|medium|high|max)\b/i.exec(`${entry?.description ?? ''} ${entry?.name ?? ''}`)?.[1]
+  return named ? (named.toLowerCase() as Effort) : undefined
+}
+
+/** The level an effort option says the session runs on: its value, or the one `default` names. */
+function effortLevel(option: SelectOption | undefined): Effort | undefined {
+  if (!option) return undefined
+  if (option.currentValue === DEFAULT_EFFORT) return defaultEffortLevel(option)
+  const level = Effort.safeParse(option.currentValue)
+  return level.success ? level.data : undefined
+}
+
+/** The model, effort and fast mode a session's options say it runs on; `default` as the model or level it stands for. */
 export function currentConfig(options: readonly acp.SessionConfigOption[] | null | undefined): { model: string; label: string; effort?: Effort; fast?: boolean } | null {
   const model = modelOption(options)
   if (!model) return null
   const on = selectValues(model).find((c) => c.value === model.currentValue)
   const running = model.currentValue === DEFAULT_MODEL ? (defaultTarget(model) ?? { value: DEFAULT_MODEL, name: on?.description || on?.name || DEFAULT_MODEL }) : on
-  const effort = Effort.safeParse(effortOption(options)?.currentValue)
+  const effort = effortLevel(effortOption(options))
   const fast = fastOption(options)
   const fastOn = fast?.type === 'boolean' ? fast.currentValue : fast ? fast.currentValue === 'on' : undefined
   return {
     model: running?.value ?? model.currentValue,
     label: running?.name ?? model.currentValue,
-    ...(effort.success ? { effort: effort.data } : {}),
+    ...(effort ? { effort } : {}),
     ...(fastOn !== undefined ? { fast: fastOn } : {}),
   }
 }
@@ -81,14 +99,15 @@ export interface ModelCatalog {
  * labels and descriptions are the adapter's; Claude's `default` entry is not a
  * model of its own but the one it names. A session's options describe only the
  * model it runs on, so that model's effort levels and fast mode are learnt from
- * them and every other model keeps what an earlier session taught. Options a
- * session `opened` with, before anybody picked anything, also say the effort
- * that model starts on.
+ * them and every other model keeps what an earlier session taught. Options
+ * that say the level a model `startsOn` — a session's as it opened, or later
+ * while nobody picked an effort in it — also teach that model's start effort;
+ * a `default` that names no level teaches nothing and forgets nothing.
  */
 export function catalogFromOptions(
   prev: ModelCatalog | null,
   options: readonly acp.SessionConfigOption[] | null | undefined,
-  opened = false,
+  startsOn = false,
 ): ModelCatalog | null {
   const model = modelOption(options)
   const config = currentConfig(options)
@@ -104,7 +123,7 @@ export function catalogFromOptions(
       const here = c.value === config.model
       const was = known.get(c.value)
       const modelEfforts = here ? efforts : was?.efforts
-      const defaultEffort = here && opened ? config.effort : was?.defaultEffort
+      const defaultEffort = (here && startsOn ? config.effort : undefined) ?? was?.defaultEffort
       const isDefault = c.value === DEFAULT_MODEL
       return {
         id: c.value,
@@ -162,6 +181,7 @@ export function configRequests(
     if (!option || value === undefined || option.currentValue === value) return
     // Already on it through Claude's `default`, which stands for it.
     if (option.currentValue === DEFAULT_MODEL && defaultTarget(option)?.value === value) return
+    if (option.currentValue === DEFAULT_EFFORT && defaultEffortLevel(option) === value) return
     if (selectValues(option).some((c) => c.value === value)) out.push({ sessionId, configId: option.id, value })
   }
   const model = modelOption(options)

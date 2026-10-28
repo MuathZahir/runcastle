@@ -252,3 +252,12 @@ describe('a thread with images', () => {
     expect(screen.getByRole('button', { name: 'Jump to the newest' })).toBeTruthy()
   })
 })
+
+describe('editing a message', () => {
+  it('says the undo covers the agent’s file edits only: shell commands’ changes stay', () => {
+    render(<ChatThread items={[{ kind: 'user', id: 'p', text: 'Make it blue' }]} state="idle" actions={{ onEdit: vi.fn(), canUndoFiles: true }} footer={null} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit and rewind to here' }))
+    const undo = screen.getByRole('checkbox', { name: 'Also undo the agent’s file edits since — changes made by shell commands stay' }) as HTMLInputElement
+    expect(undo.checked).toBe(true)
+  })
+})

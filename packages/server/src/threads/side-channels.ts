@@ -99,9 +99,11 @@ function promptText(message: SessionMessage): string | null {
 /**
  * Put the worktree's files back as they were when the prompt was sent: the
  * `occurrence`-th (1-based) of the conversation's prompts whose text holds
- * `text`, the last such one when there are fewer.
+ * `text`, the last such one when there are fewer. Resolves to the files it
+ * restored: only what the agent's edit tools changed, as the CLI's own
+ * `/rewind` — a shell command's changes have no checkpoint.
  */
-export async function rewindClaudeFiles(input: { sessionId: string; cwd: string; text: string; occurrence: number }): Promise<void> {
+export async function rewindClaudeFiles(input: { sessionId: string; cwd: string; text: string; occurrence: number }): Promise<string[]> {
   const messages = await getSessionMessages(input.sessionId, { dir: input.cwd })
   const said = input.text.trim()
   const matches = messages.filter((m) => promptText(m)?.includes(said))
@@ -119,6 +121,7 @@ export async function rewindClaudeFiles(input: { sessionId: string; cwd: string;
   try {
     const result = await withTimeout('Rewinding the files', q.rewindFiles(target.uuid))
     if (!result.canRewind) throw new Error(result.error ?? 'Claude Code has no checkpoint for that message')
+    return result.filesChanged ?? []
   } finally {
     q.close()
   }
