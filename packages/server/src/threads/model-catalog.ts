@@ -57,8 +57,18 @@ export function rosterLabel(id: string, runtime: AgentRuntime): string {
   return `${capitalize(family.toLowerCase())} ${version.replaceAll('-', '.')}${long ? ' (1M)' : ''}`
 }
 
-/** Two names for one model: compared without case, spaces or punctuation. */
-export const labelKey = (label: string) => label.toLowerCase().replace(/[^a-z0-9]/g, '')
+/**
+ * Two names for one model: compared without case, spaces or punctuation, and
+ * whichever way a 1M one spells its context ("(1M)", "(1M context)").
+ */
+export const labelKey = (label: string) =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/context/g, '')
+
+/** Claude Code's 1M-context model-id modifier. */
+export const LONG_CONTEXT = /\[1m\]$/i
 
 /** The catalog entry a roster id names: by id, else by the label the adapter gives it. */
 function entryFor(models: readonly ModelChoice[], id: string, runtime: AgentRuntime): ModelChoice | undefined {
@@ -109,14 +119,32 @@ function rosterCatalog(roster: readonly ModelEntry[], runtime: AgentRuntime): Mo
 }
 
 /**
+ * A roster 1M model (`claude-opus-5-5[1m]`) the adapter lists no entry for, as
+ * its own entry right after its model's: "<model> (1M)", the adapter's label
+ * for the model with the context named. Claude Code takes 1M as a modifier on
+ * the model's own value (`modelValue` in `controls.ts`), so its list may not
+ * offer it; the picker still does. A model the adapter does not list at all
+ * gets none.
+ */
+function keepLongContext(models: ModelChoice[], id: string, runtime: AgentRuntime): void {
+  if (!LONG_CONTEXT.test(id) || entryFor(models, id, runtime)) return
+  const at = models.indexOf(entryFor(models, id.replace(LONG_CONTEXT, ''), runtime) as ModelChoice)
+  if (at < 0 || models.some((m) => m.id === `${models[at].id}[1m]`)) return
+  const { id: _, label, defaultEffort: __, ...controls } = models[at]
+  models.splice(at + 1, 0, { ...controls, id, label: `${label} (1M)` })
+}
+
+/**
  * The runtime's catalog: the adapter's as last kept, else the roster mapped to
- * its shape. The operator's note on a roster model is that model's one-line
- * description where they wrote one.
+ * its shape, with the roster's 1M models the adapter lists none for. The
+ * operator's note on a roster model is that model's one-line description where
+ * they wrote one.
  */
 export function modelCatalog(runtime: AgentRuntime, roster: readonly ModelEntry[]): ModelCatalog {
   const kept = readModelCatalog(runtime)
   if (!kept) return rosterCatalog(roster, runtime)
   const models = kept.models.map((m) => ({ ...m }))
+  for (const r of roster) if (r.runtime === runtime) keepLongContext(models, r.id, runtime)
   for (const r of roster) {
     if (r.runtime !== runtime || !r.note) continue
     const entry = entryFor(models, r.id, runtime)

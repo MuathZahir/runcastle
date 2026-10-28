@@ -334,11 +334,36 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(received('session/set_config_option').map((p) => p.value)).toEqual(['sonnet[1m]'])
   })
 
-  it('runs a 1M model the adapter offers no 1M entry for on the same model, never another', async () => {
+  it('runs a 1M model the adapter offers no 1M entry for on the same model, never another, and names it (1M)', async () => {
     setup(ALIASES)
     const id = await runcastleStarted('claude-sonnet-5[1m]')
     expect(received('session/set_config_option').map((p) => p.value)).toEqual(['sonnet'])
-    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'sonnet', label: 'Sonnet 5' })
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'claude-sonnet-5[1m]', label: 'Sonnet 5 (1M)' })
+    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'agent').map((i) => i.kind === 'agent' && i.model)).toEqual(['Sonnet 5 (1M)'])
+    // The chip: the thread is on the picker's 1M entry while it runs and after it stops.
+    expect((await caller.thread.models({ threadId: id })).current).toBe('claude-sonnet-5[1m]')
+    await host.stop(id, 'idle')
+    expect((await caller.thread.models({ threadId: id })).current).toBe('claude-sonnet-5[1m]')
+  })
+
+  it("keeps the roster's 1M models in the picker beside their adapter entries once the adapter has reported its list", async () => {
+    setup(ALIASES)
+    await converse(chat(), 'Hello')
+    const { models } = await caller.thread.models({ featureId })
+    expect(models.map((m) => [m.id, m.label])).toEqual([
+      ['opus', 'Opus 5'],
+      ['claude-opus-5[1m]', 'Opus 5 (1M)'],
+      ['sonnet', 'Sonnet 5'],
+      ['claude-sonnet-5[1m]', 'Sonnet 5 (1M)'],
+      ['haiku', 'Haiku 4.5'],
+    ])
+  })
+
+  it("adds no 1M entry where the adapter offers its own, however it spells it", async () => {
+    setup({ ...ALIASES, models: [...ALIASES.models!, { id: 'opus[1m]', label: 'Opus 5 (1M context)' }, { id: 'sonnet[1m]', label: 'Sonnet 5 long' }] })
+    await converse(chat(), 'Hello')
+    const { models } = await caller.thread.models({ featureId })
+    expect(models.map((m) => m.id)).toEqual(['opus', 'sonnet', 'haiku', 'opus[1m]', 'sonnet[1m]'])
   })
 
   it("restarts a thread on the model the human last picked, not its row's, with no divider", async () => {

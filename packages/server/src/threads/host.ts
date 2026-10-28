@@ -73,7 +73,7 @@ import { saveThreadImage } from './images'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
-import { catalogEntry, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
+import { catalogEntry, LONG_CONTEXT, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import { runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
@@ -288,6 +288,8 @@ export const spawnAdapter: AgentTransport = (spec, row) => {
 }
 
 /** A prompt waiting for the running turn to end. */
+type ModelEvent = Extract<ThreadEventBody, { type: 'model' }>
+
 interface Queued {
   id: string
   text: string
@@ -584,7 +586,7 @@ class Host implements AgentHost {
     const t = this.threads.get(threadId)
     if (t?.conn && t.sessionId && t.configOptions) {
       await this.applyConfig(t, choice)
-      const model = modelEvent(t.configOptions)
+      const model = this.runsOn(row, modelEvent(t.configOptions), choice.model)
       if (model) appendThreadEvent(threadId, { ...model, picked: true })
       return
     }
@@ -778,6 +780,21 @@ class Host implements AgentHost {
     return { model: picked.model, ...(picked.effort ? { effort: picked.effort } : {}), ...(picked.fast !== undefined ? { fast: picked.fast } : {}) }
   }
 
+  /**
+   * The model a session runs on, as the picker names it. A roster 1M model
+   * (`claude-sonnet-5[1m]`) the adapter lists no entry for runs on its model's
+   * own entry (`modelValue` in `controls.ts`), with its 1M context; it is logged
+   * as the catalog's 1M entry, so the chip and the answers keep saying "(1M)".
+   */
+  private runsOn(row: SessionRow, model: ModelEvent | null, asked: string | undefined): ModelEvent | null {
+    if (!model || !asked || !LONG_CONTEXT.test(asked) || LONG_CONTEXT.test(model.model)) return model
+    const runtime = row.runtime ?? DEFAULT_RUNTIME
+    const roster = modelRoster(rosterConfig(this.ctx))
+    const long = catalogEntry(runtime, roster, asked)
+    if (!long || catalogEntry(runtime, roster, asked.replace(LONG_CONTEXT, ''))?.id !== model.model) return model
+    return { ...model, model: long.id, label: long.label }
+  }
+
   /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
   private async applyConfig(t: Thread, choice: ConfigChoice): Promise<void> {
     if (choice.effort !== undefined) t.effortPicked = true
@@ -927,7 +944,7 @@ class Host implements AgentHost {
     // A pick made while no session could take it is logged as made, ahead of
     // the start; the model logged as the process runs is the start's own,
     // never a pick (`lastPickedModel`).
-    const model = modelEvent(t.configOptions)
+    const model = this.runsOn(row, modelEvent(t.configOptions), chosen.model)
     if (model && pick) appendThreadEvent(t.id, { ...model, picked: true })
     appendThreadEvent(t.id, { type: 'process', state: 'running' })
     if (model && !pick) appendThreadEvent(t.id, model)

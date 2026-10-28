@@ -1,6 +1,6 @@
 import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { Effort, type ModelChoice, type ThreadEvent, type ThreadView, type ToolKind, type WorkStep } from '@runcastle/core'
-import { labelKey, rosterLabel } from './model-catalog'
+import { labelKey, LONG_CONTEXT, rosterLabel } from './model-catalog'
 
 /**
  * The thread controls' pure parts (chat-as-web-components ticket 5): reading
@@ -154,16 +154,12 @@ export function catalogFromOptions(
 function modelValue(option: SelectOption, id: string): string | undefined {
   const values = selectValues(option)
   if (values.some((c) => c.value === id)) return id
-  const key = (name: string) => labelKey(name).replace(/context/g, '')
-  const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(key))
-  const named = values.find((c) => c.value !== DEFAULT_MODEL && names.has(key(c.name)))?.value
+  const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(labelKey))
+  const named = values.find((c) => c.value !== DEFAULT_MODEL && names.has(labelKey(c.name)))?.value
   if (named || !LONG_CONTEXT.test(id)) return named
   const base = modelValue(option, id.replace(LONG_CONTEXT, ''))
   return base && (values.find((c) => c.value === `${base}[1m]`)?.value ?? base)
 }
-
-/** Claude Code's 1M-context model-id modifier. */
-const LONG_CONTEXT = /\[1m\]$/i
 
 /**
  * The `session/set_config_option` requests that move a session's options to
