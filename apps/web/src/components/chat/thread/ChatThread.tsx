@@ -303,7 +303,7 @@ function UserMessage({
         <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2">
           <span className="text-xs text-text-tertiary">Rewinds the thread to here and sends this instead.</span>
           {actions?.canUndoFiles && (
-            <Checkbox checked={undoFiles} onChange={setUndoFiles} label="Also undo the agent’s file changes since" />
+            <Checkbox checked={undoFiles} onChange={setUndoFiles} label="Also undo the agent’s file edits since — changes made by shell commands stay" />
           )}
           <span className="ml-auto flex gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>

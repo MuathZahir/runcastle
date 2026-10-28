@@ -115,8 +115,8 @@ export interface AgentHostDeps {
   lifecycle?: ThreadLifecycle
   /** Where a runtime's account usage limits are read; see `side-channels.ts`. */
   readUsage?: (runtime: AgentRuntime) => Promise<unknown>
-  /** How Claude Code's file checkpoints are rewound; see `side-channels.ts`. */
-  rewindFiles?: (input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>
+  /** How Claude Code's file checkpoints are rewound, resolving to the files it restored; see `side-channels.ts`. */
+  rewindFiles?: (input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<string[]>
   /** How long a turn the agent started by itself may go quiet before it counts as over, on a runtime that does not say. */
   selfTurnQuietMs?: number
   /** Whether the runtime's own record of a conversation is known to be on disk; see `side-channels.ts`. */
@@ -219,6 +219,13 @@ const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up 
 
 /** What the thread says when its agent process dies with nothing human-readable on its stderr. */
 const CRASHED = 'The agent stopped unexpectedly. Your next message restarts it.'
+
+/**
+ * What the thread says ahead of the files a rewind with undo left as they are:
+ * Claude Code's checkpoints cover only its edit tools, and restoring a shell
+ * command's changes ourselves could wipe the human's own edits.
+ */
+const NOT_UNDONE = 'Left as they are — changed outside the agent’s edit tools, so not undone:'
 
 /** What the thread says when the agent could not start and the adapter's error has nothing human-readable. */
 const COULD_NOT_START = 'The agent could not start. Your next message tries again.'
@@ -595,10 +602,13 @@ class Host implements AgentHost {
 
     const t = this.threads.get(threadId)
     if (t?.turn || t?.ask) throw new GateError('the agent is working: stop it before editing a message')
+    let leftInPlace: string[] = []
     if (opts.undoFiles && (row.runtime ?? DEFAULT_RUNTIME) === 'claude-code' && row.ccSessionId) {
       const said = prompt.text.trim()
       const occurrence = events.slice(0, at + 1).filter((e) => e.type === 'prompt' && e.text.includes(said)).length
-      await this.rewindFiles({ sessionId: row.ccSessionId, cwd: row.worktreePath, text: prompt.text, occurrence })
+      const restored = new Set((await this.rewindFiles({ sessionId: row.ccSessionId, cwd: row.worktreePath, text: prompt.text, occurrence })).map((p) => worktreeRelative(row.worktreePath, p)))
+      const changed = events.slice(at).flatMap((e) => (e.type === 'turn_ended' ? (e.files ?? []).map((f) => f.path) : []))
+      leftInPlace = [...new Set(changed)].filter((path) => !restored.has(path))
     }
     const point = lastAgentMessageId(events.slice(0, at))
     if (point === 'unknown' && row.ccSessionId) {
@@ -613,6 +623,7 @@ class Host implements AgentHost {
       writePendingFork(threadId, { open: point && point !== 'unknown' && row.ccSessionId ? { from: row.ccSessionId, messageId: point } : 'fresh' })
     }
     appendThreadEvent(threadId, { type: 'rewound', toPromptId: atPromptId })
+    if (leftInPlace.length) appendThreadEvent(threadId, { type: 'notice', text: `${NOT_UNDONE} ${leftInPlace.join(', ')}` })
     return { threadId }
   }
 

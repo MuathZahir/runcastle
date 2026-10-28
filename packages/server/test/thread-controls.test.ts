@@ -29,7 +29,7 @@ let host: AgentHost
 let readUsage: ReturnType<typeof vi.fn<(runtime: AgentRuntime) => Promise<unknown>>>
 /** The row each agent launch was built from, in order. */
 let launched: SessionRow[] = []
-let rewindFiles: ReturnType<typeof vi.fn<(input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>>>
+let rewindFiles: ReturnType<typeof vi.fn<(input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<string[]>>>
 const temps: string[] = []
 
 beforeEach(async () => {
@@ -51,7 +51,7 @@ afterEach(async () => {
 function setup(script: FakeScript = {}): void {
   fake = createFakeAcp(script)
   readUsage = vi.fn(async () => ({}))
-  rewindFiles = vi.fn(async () => {})
+  rewindFiles = vi.fn(async () => [] as string[])
   launched = []
   const launch = async (_: AppCtx, row: SessionRow) => {
     launched.push(row)
@@ -660,6 +660,32 @@ describe('edit and rewind', () => {
     await caller.thread.edit({ threadId: id, promptId: second, text: 'other', undoFiles: true })
     await logUntil(id, turnsEnded(3))
     expect(rewindFiles).toHaveBeenCalledWith({ sessionId: 'acp-session-1', cwd: '/wt', text: 'second', occurrence: 1 })
+  })
+
+  it('says which files the rewound turns changed that the undo left as they are, and nothing when it restored them all', async () => {
+    setup()
+    let n = 0
+    const edit = (path: string) => ({ type: 'diff' as const, path: join('/wt', path), oldText: 'a\n', newText: 'b\n' })
+    fake.script.turn = async (t) => {
+      n++
+      const files = n === 1 ? ['first.ts'] : n === 2 ? ['src/edited.ts', 'built.js'] : []
+      for (const [k, path] of files.entries()) await t.update({ sessionUpdate: 'tool_call', toolCallId: `c${n}-${k}`, title: `Edit ${path}`, kind: 'edit', status: 'completed', content: [edit(path)] })
+      await t.say(`answer ${n}`, `m${n}`)
+    }
+    const id = chat()
+    const [, second] = await converse(id, 'first', 'second')
+    rewindFiles.mockResolvedValueOnce([join('/wt', 'src', 'edited.ts')])
+    await caller.thread.edit({ threadId: id, promptId: second, text: 'other', undoFiles: true })
+    await logUntil(id, turnsEnded(3))
+    const notices = foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')
+    expect(notices).toEqual([expect.objectContaining({ text: 'Left as they are — changed outside the agent’s edit tools, so not undone: built.js' })])
+
+    const again = (await caller.thread.send({ threadId: id, text: 'more' })).promptId
+    await logUntil(id, turnsEnded(4))
+    rewindFiles.mockResolvedValueOnce([])
+    await caller.thread.edit({ threadId: id, promptId: again, text: 'other again', undoFiles: true })
+    await logUntil(id, turnsEnded(5))
+    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')).toHaveLength(1)
   })
 
   it('rewinds the conversation only on Codex, whatever undoFiles says', async () => {
