@@ -2,7 +2,6 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ThreadEventBody } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -11,7 +10,6 @@ import { projects } from '../src/db/schema'
 import { launchSession } from '../src/launcher/launcher'
 import { getSessionRow } from '../src/launcher/sessions'
 import { createFeatureBranch } from '../src/services/git'
-import { appendThreadEvent } from '../src/threads/log'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 import { acpLaunchOf } from './support/thread-launch'
@@ -91,32 +89,5 @@ describe('launch model resolution (#48)', () => {
   it("a project's model wins over the global per-step model", async () => {
     ctx.config.stepModels = { ...ctx.config.stepModels, chat: 'claude-haiku-4-5-20251001' }
     expect(await launchAndReadModel('proj-beats-step', 'claude-sonnet-5')).toBe('claude-sonnet-5')
-  })
-
-  describe('reopening a thread', () => {
-    /** Open a feature's chat, move Settings' model on, and open the chat again; its row's model after. */
-    async function reopenAfterSettingsMove(slug: string, log: ThreadEventBody[] = []): Promise<string | null | undefined> {
-      const project = seedProject(ctx, repoPath)
-      const feature = seedFeature(ctx, project.id, { slug })
-      await createFeatureBranch(project, slug, 'main')
-      cleanup.push(worktreeDir(project.id, slug))
-      const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
-      cleanup.push(sessionDir(sessionId))
-      expect(getSessionRow(ctx, sessionId)?.model).toBe('claude-opus-5')
-      for (const body of log) appendThreadEvent(sessionId, body)
-      ctx.db.update(projects).set({ model: 'claude-sonnet-5' }).where(eq(projects.id, project.id)).run()
-      const reopened = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
-      expect(reopened.sessionId).toBe(sessionId)
-      return getSessionRow(ctx, sessionId)?.model
-    }
-
-    it('runs a reopened thread nobody picked a model in on the model runcastle resolves now', async () => {
-      // What an adapter reported on its own is no pick.
-      expect(await reopenAfterSettingsMove('reopen-unpicked', [{ type: 'model', model: 'opus', label: 'Opus 5' }])).toBe('claude-sonnet-5')
-    })
-
-    it('keeps a reopened thread on the model the human picked in it', async () => {
-      expect(await reopenAfterSettingsMove('reopen-picked', [{ type: 'model', model: 'haiku', label: 'Haiku 4.5', picked: true }])).toBe('claude-opus-5')
-    })
   })
 })

@@ -12,7 +12,7 @@ import type {
   SessionRow,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { DEFAULT_RUNTIME, lastPickedModel, newId, resolveModelEntry } from '@runcastle/core'
+import { DEFAULT_RUNTIME, newId, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
@@ -33,7 +33,7 @@ import { renderScenarioFollowUp, type PrepareBrief, type PrepareHost } from './a
 import { mainChatContext } from '../services/main-chat-excerpt'
 import { featureStateLine } from '../services/feature-state'
 import { tagRuncastlePrompt } from '../services/lead-prompt'
-import { hasThreadLog, readThreadEvents } from '../threads/log'
+import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent } from '../threads/types'
 import { LOCKFILES } from './lockfiles'
 import {
@@ -46,7 +46,6 @@ import {
   reportProjectLanding,
   resumeCapExceeded,
   resumeGoneReason,
-  setSessionModel,
   setThreadPurpose,
   transcriptBytes,
   type ResumeCapVerdict,
@@ -229,19 +228,6 @@ function underway(row: SessionRow): boolean {
 }
 
 /**
- * A thread a launch reopens runs on the model runcastle resolves for it now,
- * unless the human picked one in it: a row's model is what runcastle resolved
- * when the row was made, and Settings may have moved on since. A model of
- * another runtime is not offered (a thread is one runtime's conversation).
- */
-function refreshThreadModel(ctx: AppCtx, row: SessionRow, model: ModelEntry): SessionRow {
-  if (row.model === model.id || (row.runtime ?? DEFAULT_RUNTIME) !== model.runtime) return row
-  if (lastPickedModel(readThreadEvents(row.id))) return row
-  setSessionModel(ctx, row.id, model.id)
-  return { ...row, model: model.id }
-}
-
-/**
  * Say a launch's briefing into its thread as runcastle's prompt: queued behind
  * a running turn, sent at once otherwise, starting the agent when none runs.
  * `session.kickoff` records that the host took it. With `spawn:false` the
@@ -381,7 +367,7 @@ export async function launchSession(
     assertRuntimeReady(model.runtime, opts)
   }
 
-  const row: SessionRow = prior ? refreshThreadModel(ctx, prior, model) : newChatRow(ctx, feature, worktreePath, model, input)
+  const row: SessionRow = prior ?? newChatRow(ctx, feature, worktreePath, model, input)
   if (prior && input.purpose) setThreadPurpose(ctx, row.id, input.purpose, input.purposeData ?? null)
   const thread = getSessionRow(ctx, row.id) as SessionRow
   const runtime = thread.runtime ?? DEFAULT_RUNTIME
@@ -505,7 +491,6 @@ export async function launchSideSession(
     if (reopen?.kind !== 'side' || reopen.featureId !== feature.id) {
       throw new GateError(`no side session ${input.reopenSessionId} on ${feature.slug} to reopen`)
     }
-    refreshThreadModel(ctx, reopen, resolveModelEntry('chat', rosterConfig(ctx), projectForFeature(ctx, feature)))
     return { sessionId: reopen.id, resumed: underway(reopen) }
   }
 
@@ -553,7 +538,7 @@ export async function launchPrepareSession(
   const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   assertRuntimeReady(reopen ? (reopen.runtime ?? DEFAULT_RUNTIME) : model.runtime, opts)
   const row = reopen
-    ? refreshThreadModel(ctx, reopen, model)
+    ? reopen
     : createSessionRow(ctx, {
         projectId: project.id,
         kind: 'prepare',
@@ -637,7 +622,7 @@ export async function launchDriveFixSession(
   const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   assertRuntimeReady(reopen ? (reopen.runtime ?? DEFAULT_RUNTIME) : model.runtime, opts)
   const row = reopen
-    ? refreshThreadModel(ctx, reopen, model)
+    ? reopen
     : createSessionRow(ctx, {
         featureId: feature.id,
         kind: 'drive-fix',
@@ -718,7 +703,6 @@ export async function launchScenarioSession(
 
   const docked = drive.scenarioSessionId ? getSessionRow(ctx, drive.scenarioSessionId) : null
   if (docked) {
-    refreshThreadModel(ctx, docked, resolveModelEntry('prepare', rosterConfig(ctx), project))
     if (ask) {
       await sayToThread(
         ctx,
@@ -824,7 +808,6 @@ export async function launchProjectSession(
   const prior = named?.kind === 'project' && named.projectId === project.id ? named : null
   const capped = applyResumeCap(ctx, prior, { projectId: project.id, kind: 'project' })
   if (prior && !capped) {
-    refreshThreadModel(ctx, prior, resolveModelEntry('project', rosterConfig(ctx), project))
     emitProject(ctx, project.id, {
       type: 'session.resumed',
       message: 'reopening a project conversation',

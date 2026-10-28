@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, resolveModelEntry, type ModelStep, type SessionRow } from '@runcastle/core'
+import { DEFAULT_RUNTIME, resolveModelEntry, type ModelEntry, type ModelStep, type Project, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { serverUrlFor } from '../launcher/artifacts'
@@ -39,6 +39,15 @@ const STEP: Record<SessionRow['kind'], ModelStep> = {
   prepare: 'prepare',
 }
 
+function rowProject(ctx: AppCtx, row: SessionRow): Project {
+  return row.featureId ? projectForFeature(ctx, getFeatureRow(ctx, row.featureId)) : requireProjectById(ctx, row.projectId as string)
+}
+
+/** The model runcastle launches a thread of the row's kind on now, as Settings (and its project) resolve it. */
+export function resolvedThreadModel(ctx: AppCtx, row: SessionRow): ModelEntry {
+  return resolveModelEntry(STEP[row.kind], rosterConfig(ctx), rowProject(ctx, row))
+}
+
 /**
  * What the thread's runtime is handed: the row's kind's brief, as each of
  * today's launchers wrote it, and the kind's permission posture (which
@@ -46,14 +55,14 @@ const STEP: Record<SessionRow['kind'], ModelStep> = {
  */
 export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<RuntimeLaunchInput> {
   const runtime = row.runtime ?? DEFAULT_RUNTIME
-  const project = row.featureId ? projectForFeature(ctx, getFeatureRow(ctx, row.featureId)) : requireProjectById(ctx, row.projectId as string)
+  const project = rowProject(ctx, row)
   const base = {
     session: row,
     project,
     config: ctx.config,
     worktreePath: row.worktreePath,
     serverUrl: serverUrlFor(ctx.config),
-    model: row.model ?? resolveModelEntry(STEP[row.kind], rosterConfig(ctx), project).id,
+    model: row.model ?? resolvedThreadModel(ctx, row).id,
   }
   switch (row.kind) {
     case 'chat':

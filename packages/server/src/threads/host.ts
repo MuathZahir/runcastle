@@ -34,6 +34,7 @@ import {
   markAwaitingInput,
   markSessionEnded,
   markSessionLive,
+  setSessionModel,
   setSessionTitle,
 } from '../launcher/sessions'
 import { killProcessTree } from '../pty/kill-tree'
@@ -68,7 +69,7 @@ import {
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { acpLaunchFor } from './launch'
+import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
@@ -619,12 +620,48 @@ class Host implements AgentHost {
     }
   }
 
-  /** The runtime's one catalog (kept from its sessions, else the roster), and the model the thread is on or would start on. */
+  /**
+   * The runtime's one catalog (kept from its sessions, else the roster), and
+   * the model the thread is on while its agent runs, or would start on: a
+   * choice waiting for a session, else its start model. A thread not running
+   * also says the effort and fast mode the human chose for it to start on.
+   */
   models(threadId: string): ThreadModels {
     const row = this.row(threadId)
-    const chosen = this.pendingConfig.get(threadId)?.model
-    const logged = foldThread(readThreadEvents(threadId)).model?.id
-    return threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), chosen ?? logged ?? row.model)
+    const log = readThreadEvents(threadId)
+    const chosen = this.pendingConfig.get(threadId)
+    const running = this.threads.get(threadId)?.state === 'running' ? foldThread(log).model : undefined
+    const picked = running ? undefined : lastPickedModel(log)
+    const effort = chosen?.effort ?? picked?.effort
+    const fast = chosen?.fast ?? picked?.fast
+    return {
+      ...threadModels(row.runtime ?? DEFAULT_RUNTIME, modelRoster(rosterConfig(this.ctx)), chosen?.model ?? running?.id ?? this.startModel(row, log)),
+      ...(effort ? { effort } : {}),
+      ...(fast !== undefined ? { fast } : {}),
+    }
+  }
+
+  /**
+   * The model a thread starts on: the human's last pick, else the one
+   * runcastle resolves for its kind now (Settings), not what its row recorded
+   * when it was made — unless that is another runtime's, as a thread is one
+   * runtime's conversation.
+   */
+  private startModel(row: SessionRow, log: readonly ThreadEvent[]): string | undefined {
+    const picked = lastPickedModel(log)
+    if (picked) return picked.model
+    const resolved = resolvedThreadModel(this.ctx, row)
+    return resolved.runtime === (row.runtime ?? DEFAULT_RUNTIME) ? resolved.id : row.model
+  }
+
+  /** The row pointed at the model a thread nobody picked one in starts on, so its launch and its session both run on it. */
+  private followSettings(row: SessionRow): SessionRow {
+    const log = readThreadEvents(row.id)
+    if (lastPickedModel(log)) return row
+    const model = this.startModel(row, log)
+    if (!model || model === row.model) return row
+    setSessionModel(this.ctx, row.id, model)
+    return { ...row, model }
   }
 
   /** What of the message's model, effort and fast mode differs from what the thread runs on; null when nothing does. */
@@ -642,10 +679,10 @@ class Host implements AgentHost {
   /**
    * What a session opening for the thread must run on, whoever sent the prompt
    * that starts it: the model (and effort, fast mode) the human last picked,
-   * kept across idle stops and restarts, else the model runcastle resolved for
-   * its row. A model the log records unpicked is only what an adapter reported
-   * on its own (claude-agent-acp's default as a session opened, before the
-   * host stopped logging that), never the thread's model. The adapter opens on
+   * kept across idle stops and restarts, else its row's, which `followSettings`
+   * pointed at what runcastle resolves now. A model the log records unpicked is
+   * only what an adapter reported on its own (the model a session opened or
+   * started on), never the thread's model. The adapter opens on
    * its own choice (the CLI's settings, a resumed conversation's last model)
    * whatever the launch names.
    */
@@ -708,7 +745,8 @@ class Host implements AgentHost {
     return t
   }
 
-  private async connect(t: Thread, row: SessionRow): Promise<void> {
+  private async connect(t: Thread, given: SessionRow): Promise<void> {
+    const row = this.followSettings(given)
     // Read before the session opens: the adapter announces its own model as it
     // opens (claude-agent-acp), and that logged announcement is not a pick.
     const intended = this.intendedConfig(t.id, row)
@@ -789,10 +827,13 @@ class Host implements AgentHost {
     const live = markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
     if (fork) writePendingFork(t.id, { ...readPendingFork(t.id), open: undefined })
     t.state = 'running'
-    appendThreadEvent(t.id, { type: 'process', state: 'running' })
-    // A pick made before the thread first ran is logged here, as the model it starts on.
+    // A pick made while no session could take it is logged as made, ahead of
+    // the start; the model logged as the process runs is the start's own,
+    // never a pick (`lastPickedModel`).
     const model = modelEvent(t.configOptions)
-    if (model) appendThreadEvent(t.id, pick ? { ...model, picked: true } : model)
+    if (model && pick) appendThreadEvent(t.id, { ...model, picked: true })
+    appendThreadEvent(t.id, { type: 'process', state: 'running' })
+    if (model && !pick) appendThreadEvent(t.id, model)
     this.hook(() => this.lifecycle.started?.(live ?? row, t.startedBy))
   }
 

@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { foldThread, type AgentRuntime, type ThreadEvent } from '@runcastle/core'
+import { foldThread, type AgentRuntime, type SessionRow, type ThreadEvent } from '@runcastle/core'
 import { modelCatalogPath } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
@@ -27,6 +27,8 @@ let featureId: string
 let fake: FakeAcp
 let host: AgentHost
 let readUsage: ReturnType<typeof vi.fn<(runtime: AgentRuntime) => Promise<unknown>>>
+/** The row each agent launch was built from, in order. */
+let launched: SessionRow[] = []
 let rewindFiles: ReturnType<typeof vi.fn<(input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>>>
 const temps: string[] = []
 
@@ -50,7 +52,12 @@ function setup(script: FakeScript = {}): void {
   fake = createFakeAcp(script)
   readUsage = vi.fn(async () => ({}))
   rewindFiles = vi.fn(async () => {})
-  host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, readUsage, rewindFiles })
+  launched = []
+  const launch = async (_: AppCtx, row: SessionRow) => {
+    launched.push(row)
+    return FAKE_LAUNCH()
+  }
+  host = createAgentHost({ ctx, transport: fake.transport, launch, readUsage, rewindFiles })
   setAgentHostForTests(host)
 }
 
@@ -284,8 +291,9 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(received('session/set_config_option').map((p) => p.value)).toEqual(['haiku'])
   })
 
-  /** A main chat runcastle opens on `model`, as a launch resolves it, sent its kickoff. */
+  /** A main chat runcastle opens on `model`, as Settings resolve it, sent its kickoff. */
   async function runcastleStarted(model: string): Promise<string> {
+    ctx.config.model = model
     const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: model, runtime: 'claude-code' } }).id
     await host.prompt(id, { text: 'Proceed with your task' }, { source: 'runcastle' })
     await logUntil(id, turnsEnded(1))
@@ -352,7 +360,7 @@ describe('the model the composer shows is the one the agent runs on', () => {
   })
 
   // A thread started before the start path stopped logging the adapter's opening announcement carries it unpicked.
-  it("restarts a thread nobody picked a model in on its row's model, never on a model the adapter reported", async () => {
+  it('restarts a thread nobody picked a model in on the model runcastle resolves, never on a model the adapter reported', async () => {
     setup(ALIASES)
     const id = await runcastleStarted('claude-sonnet-5')
     await host.stop(id, 'idle')
@@ -381,6 +389,70 @@ describe('the model the composer shows is the one the agent runs on', () => {
       ['sonnet', true],
     ])
     expect(models(plain)).toEqual([['sonnet', false]])
+  })
+
+  describe('a thread nobody picked a model in follows Settings', () => {
+    const ANNOUNCING: FakeScript = { ...ALIASES, model: { id: 'opus', label: 'Opus 5' }, models: ALIASES.models!.slice(1), announceOptions: true }
+    const setConfigs = () => fake.last().received.filter((r) => r.method === 'session/set_config_option').map((r) => r.params)
+    const modelsLogged = (id: string) => readThreadEvents(id).flatMap((e) => (e.type === 'model' ? [[e.model, e.picked ?? false]] : []))
+
+    /**
+     * A preparation thread as round 13 left it: its row on a model Settings has
+     * since moved off, and its start logged that model `picked`, though nobody
+     * touched the picker.
+     */
+    function stalePrepare(): string {
+      const id = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: '/wt', model: { id: 'claude-opus-5[1m]', runtime: 'claude-code' } }).id
+      markSessionLive(ctx, id, { ccSessionId: 'acp-session-1' })
+      for (const body of [
+        { type: 'prompt', id: 'prompt_1', text: 'Hello', source: 'human' },
+        { type: 'process', state: 'starting' },
+        { type: 'process', state: 'running' },
+        { type: 'model', model: 'opus[1m]', label: 'Opus 5 (1M)', effort: 'high', picked: true },
+        { type: 'process', state: 'stopped' },
+      ] as const) {
+        appendThreadEvent(id, body)
+      }
+      markSessionEnded(ctx, id)
+      return id
+    }
+
+    it('reopens a stale preparation chat with a send on the model Settings resolve now, launch and session alike, logged unpicked', async () => {
+      setup(ANNOUNCING)
+      ctx.config.stepModels = { ...ctx.config.stepModels, prepare: 'claude-sonnet-5' }
+      const id = stalePrepare()
+      expect((await caller.thread.models({ threadId: id })).current).toBe('claude-sonnet-5')
+
+      await caller.thread.send({ threadId: id, text: 'Again' })
+      await logUntil(id, turnsEnded(1))
+
+      expect(launched.map((r) => r.model)).toEqual(['claude-sonnet-5'])
+      expect(getSessionRow(ctx, id)?.model).toBe('claude-sonnet-5')
+      expect(setConfigs()).toEqual([{ sessionId: 'acp-session-1', configId: 'model', value: 'sonnet' }])
+      expect(modelsLogged(id).at(-1)).toEqual(['sonnet', false])
+    })
+
+    it('moves an unpicked thread to a new Settings model on its next start, and keeps a human pick across restarts', async () => {
+      setup(ANNOUNCING)
+      ctx.config.model = 'claude-sonnet-5'
+      const unpicked = chat()
+      const picked = chat()
+      await converse(unpicked, 'Hello')
+      await converse(picked, 'Hello')
+      await caller.thread.setModel({ threadId: picked, model: 'claude-sonnet-5' })
+      await host.stopAll('idle')
+
+      ctx.config.model = 'claude-haiku-4-5'
+      expect((await caller.thread.models({ threadId: unpicked })).current).toBe('haiku')
+      expect((await caller.thread.models({ threadId: picked })).current).toBe('sonnet')
+      await caller.thread.send({ threadId: unpicked, text: 'Again' })
+      await logUntil(unpicked, turnsEnded(2))
+      expect(setConfigs().map((p) => p.value)).toEqual(['haiku'])
+      await caller.thread.send({ threadId: picked, text: 'Again' })
+      await logUntil(picked, turnsEnded(2))
+      expect(setConfigs().map((p) => p.value)).toEqual(['sonnet'])
+      expect(launched.map((r) => r.model)).toEqual(['claude-sonnet-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-sonnet-5'])
+    })
   })
 
   it('knows, before a thread starts, the effort each model starts on and the efforts every model takes', async () => {

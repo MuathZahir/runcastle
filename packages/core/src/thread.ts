@@ -191,6 +191,10 @@ export interface ThreadModels {
   models: ModelChoice[]
   /** The model the thread runs on, or would start on; null while its runtime offers none. */
   current: string | null
+  /** The effort the human chose for a thread not running to start on; absent while it runs, or when they chose none. */
+  effort?: Effort
+  /** Fast mode as the human chose it for a thread not running to start on. */
+  fast?: boolean
 }
 
 /** One subscription limit (Claude's 5-hour and weekly windows, Codex's rate limits). */
@@ -448,11 +452,17 @@ interface Turn {
 
 const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pending' }
 
-/** The model (and effort, fast mode) the human last picked on the thread; null when they never picked one. */
+/**
+ * The model (and effort, fast mode) the human last picked on the thread; null
+ * when they never picked one. A model logged directly after its process came
+ * up is the one that start ran on, never a pick, though an earlier host marked
+ * some `picked` there.
+ */
 export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEventBody, { type: 'model' }> | null {
   for (let n = log.length - 1; n >= 0; n--) {
     const e = log[n]
-    if (e.type === 'model' && e.picked) return e
+    const before = log[n - 1]
+    if (e.type === 'model' && e.picked && !(before?.type === 'process' && before.state === 'running')) return e
   }
   return null
 }
