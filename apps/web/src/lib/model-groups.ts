@@ -22,14 +22,15 @@ const FAMILY_ORDER = ['Fable', 'Opus', 'Sonnet', 'Haiku']
 
 /**
  * The effort `model` runs the next message on: the level held, where the model
- * takes it; else the one a session on it starts on; else the runtime's
- * recommended Medium, or the model's first level. None for a model that takes
- * no levels.
+ * takes it; else the one a session on it starts on; else `default`, the
+ * runtime's own level, while nobody has said which that is — never a guessed
+ * level the next turn may not run on. None for a model that takes no levels.
  */
-export function effortShown(model: ModelChoice | undefined, held: Effort | undefined): Effort | undefined {
+export function effortShown(model: ModelChoice | undefined, held: Effort | undefined): Effort | 'default' | undefined {
   const efforts = model?.efforts ?? []
-  for (const level of [held, model?.defaultEffort, 'medium' as const]) if (level && efforts.includes(level)) return level
-  return efforts[0]
+  if (!efforts.length) return undefined
+  for (const level of [held, model?.defaultEffort]) if (level && efforts.includes(level)) return level
+  return 'default'
 }
 
 /** Newer first. */

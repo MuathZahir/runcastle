@@ -131,9 +131,33 @@ describe('effort and fast mode', () => {
     expect(onEffort).toHaveBeenCalledWith('low')
   })
 
-  it('shows the recommended level when the model does not take the one held', () => {
+  it('shows the level the model starts on when it does not take the one held', () => {
+    controls({ models: [{ ...CLAUDE[1], defaultEffort: 'high' }], model: 'claude-sonnet-5-5', effort: 'max' })
+    expect(screen.getByRole('combobox', { name: 'Effort' }).textContent).toContain('High')
+  })
+
+  it('shows Default, never a guessed level, while the level the model starts on is not known', () => {
+    const { onEffort } = controls({ model: 'claude-sonnet-5-5', effort: undefined })
+    const trigger = screen.getByRole('combobox', { name: 'Effort' })
+    expect(trigger.textContent).toContain('Default')
+    expect(trigger.textContent).not.toContain('Medium')
+    fireEvent.click(trigger)
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Default', 'Low', 'Medium', 'High'])
+    expect(screen.getByRole('option', { name: 'Default' }).getAttribute('data-state')).toBe('checked')
+    fireEvent.click(screen.getByRole('option', { name: 'Medium' }))
+    expect(onEffort).toHaveBeenCalledWith('medium')
+    cleanup()
+    // A held level the model does not take is no clue either.
     controls({ model: 'claude-sonnet-5-5', effort: 'max' })
-    expect(screen.getByRole('combobox', { name: 'Effort' }).textContent).toContain('Medium')
+    expect(screen.getByRole('combobox', { name: 'Effort' }).textContent).toContain('Default')
+  })
+
+  it('offers no Default once the level the model starts on is known', () => {
+    controls({ models: [{ ...CLAUDE[1], defaultEffort: 'high' }], model: 'claude-sonnet-5-5', effort: undefined })
+    const trigger = screen.getByRole('combobox', { name: 'Effort' })
+    expect(trigger.textContent).toContain('High')
+    fireEvent.click(trigger)
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Low', 'Medium', 'High'])
   })
 
   it('has no effort control for a model that takes none, or whose levels are not known yet', () => {

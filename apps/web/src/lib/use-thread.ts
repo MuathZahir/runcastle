@@ -4,7 +4,6 @@ import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
 import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
 import { useLivePoll } from './live'
-import { effortShown } from './model-groups'
 import { useToast } from './toast'
 
 /**
@@ -236,8 +235,7 @@ export function useThread({
   const offered = (m: string | undefined) => (m !== undefined && models.some((x) => x.id === m) ? m : undefined)
   const model =
     offered(chosen.model) ?? (running ? offered(folded.model?.id) : undefined) ?? modelsQ.data?.current ?? chosen.model ?? folded.model?.id ?? undefined
-  const on = models.find((m) => m.id === model)
-  const effort = effortShown(on, chosen.effort ?? (running ? folded.model?.effort : modelsQ.data?.effort))
+  const effort = chosen.effort ?? (running ? folded.model?.effort : modelsQ.data?.effort)
   const fast = chosen.fast ?? (running ? folded.model?.fast : modelsQ.data?.fast) ?? false
   // A start or a stop moves what the thread is on, and the catalog learns the effort a model starts on as a session opens.
   useEffect(() => {
@@ -369,7 +367,7 @@ export function useThread({
     runtime: modelsQ.data?.runtime,
     models,
     model,
-    /** The effort the next message runs on: chosen, else the one the thread runs or starts on; absent for a model with no levels. */
+    /** The effort held for the next message: chosen, else the one the thread runs or starts on; absent while unknown (`effortShown`). */
     effort,
     chooseModel: (next: string) => choose({ model: next }),
     chooseEffort: (next: Effort) => choose({ effort: next }),

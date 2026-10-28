@@ -211,6 +211,8 @@ describe('ThreadColumn', () => {
     const model = await screen.findByRole('button', { name: 'Model' })
     expect(model.textContent).toBe('Opus 5.5')
     expect(api.inputs('thread.models')).toEqual([{ featureId: 'f1' }])
+    // No session has said what Opus starts on: the runtime's own level, unnamed.
+    expect(screen.getByRole('combobox', { name: 'Effort' }).textContent).toContain('Default')
 
     fireEvent.click(model)
     fireEvent.click(screen.getByRole('option', { name: /Sonnet 5.5/ }))

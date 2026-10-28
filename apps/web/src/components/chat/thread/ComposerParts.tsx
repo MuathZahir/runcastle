@@ -154,15 +154,27 @@ export function ModelControls({
   )
 }
 
-/** How hard the next message's model thinks: only the levels that model takes. */
-function EffortPicker({ efforts, effort, onEffort }: { efforts: Effort[]; effort: Effort; onEffort: (e: Effort) => void }) {
+/**
+ * How hard the next message's model thinks: only the levels that model takes,
+ * and Default while the level the runtime starts it on is not known.
+ */
+function EffortPicker({
+  efforts,
+  effort,
+  onEffort,
+}: {
+  efforts: Effort[]
+  effort: Effort | 'default'
+  onEffort: (e: Effort) => void
+}) {
   return (
-    <Select value={effort} onValueChange={(next) => onEffort(next as Effort)}>
+    <Select value={effort} onValueChange={(next) => next !== 'default' && onEffort(next as Effort)}>
       <SelectTrigger aria-label="Effort" className={CHIP}>
         <span className="text-text-tertiary">Effort</span>
         <SelectValue />
       </SelectTrigger>
       <SelectContent side="top" align="start">
+        {effort === 'default' && <SelectItem value="default">Default</SelectItem>}
         {efforts.map((e) => (
           <SelectItem key={e} value={e}>
             {EFFORT_LABEL[e]}
