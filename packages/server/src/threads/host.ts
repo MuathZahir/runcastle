@@ -197,6 +197,9 @@ export const IDLE_STOP_MS = 30 * 60_000
  */
 export const SELF_TURN_QUIET_MS = 30_000
 
+/** How long a runtime's usage read answers every thread before the account is asked again. */
+const USAGE_FRESH_MS = 60_000
+
 /** What the thread says when the conversation on record is gone and a new one starts in its place. */
 const LOST_CONVERSATION = 'Started a new conversation — the earlier one could not be found'
 
@@ -354,7 +357,7 @@ class Host implements AgentHost {
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
-  private readonly usageReports = new Map<AgentRuntime, UsageReport>()
+  private readonly usageReports = new Map<AgentRuntime, { report: UsageReport; at: number }>()
   private readonly authStatus = new Map<AgentRuntime, unknown>()
 
   constructor(deps: AgentHostDeps) {
@@ -593,19 +596,23 @@ class Host implements AgentHost {
     return { threadId: created.id }
   }
 
-  /** Only a thread whose agent runs asks the account: reading usage is never a reason to start one. */
+  /**
+   * The runtime's account limits, read whether or not the thread's agent runs:
+   * each reader starts its own short-lived process, never the thread's agent.
+   * One read answers every thread of the runtime for a minute.
+   */
   async usage(threadId: string): Promise<UsageReport> {
     const runtime = this.row(threadId).runtime ?? DEFAULT_RUNTIME
-    const last = (): UsageReport => this.usageReports.get(runtime) ?? { limits: [] }
-    if (!this.threads.get(threadId)?.conn) return last()
+    const last = this.usageReports.get(runtime)
+    if (last && Date.now() - last.at < USAGE_FRESH_MS) return last.report
     try {
       const read = await this.readUsage(runtime)
       const raw = { ...(typeof read === 'object' && read !== null ? read : {}), authStatus: this.authStatus.get(runtime) }
       const report = runtime === 'codex' ? codexUsageReport(raw) : claudeUsageReport(raw)
-      this.usageReports.set(runtime, report)
+      this.usageReports.set(runtime, { report, at: Date.now() })
       return report
     } catch {
-      return last()
+      return last?.report ?? { limits: [] }
     }
   }
 

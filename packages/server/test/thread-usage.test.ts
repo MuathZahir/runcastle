@@ -53,6 +53,15 @@ describe('codexUsageReport', () => {
     })
   })
 
+  it("labels a window by its real length: a free plan's 30-day window is not a week", () => {
+    const report = codexUsageReport({
+      rateLimits: { limitId: 'codex', primary: { usedPercent: 13, windowDurationMins: 43200, resetsAt: null }, secondary: null, planType: 'free' },
+      rateLimitsByLimitId: { codex: { limitId: 'codex', primary: { usedPercent: 13, windowDurationMins: 43200, resetsAt: null }, secondary: null, planType: 'free' } },
+    })
+    expect(report).toEqual({ limits: [{ label: 'Current 30-day window', percent: 13, resets: '' }], plan: 'ChatGPT Free' })
+    expect(codexUsageReport({ rateLimits: { primary: { usedPercent: 1, windowDurationMins: 2 * 24 * 60 } } }).limits[0]?.label).toBe('Current 2-day window')
+  })
+
   it('reports no plan for a logged-out account and no limits for unknown input', () => {
     expect(codexUsageReport({ authStatus: { kind: 'none', label: 'Not logged in' } })).toEqual({ limits: [] })
     for (const bad of [undefined, null, 'x', 4, [], {}, { rateLimits: 'x' }, { rateLimits: { primary: { usedPercent: 'a' } } }]) {

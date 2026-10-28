@@ -220,16 +220,19 @@ export function ContextMeter({
   limits,
   plan,
   onCompact,
+  onOpen,
 }: {
   context: ContextUsage
   limits: UsageLimit[]
   /** Which account the runtime runs on: "Claude Max", "ChatGPT Pro". */
   plan?: string
   onCompact: () => void
+  /** The popover opened: the limits are read again. */
+  onOpen?: () => void
 }) {
   const percent = Math.round((context.used / context.size) * 100)
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => open && onOpen?.()}>
       <PopoverTrigger
         aria-label={`Context ${percent}% used`}
         className={cx(

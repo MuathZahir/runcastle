@@ -435,6 +435,19 @@ describe('ThreadColumn', () => {
     expect(screen.queryByText('/compact')).toBeNull()
   })
 
+  it('reads the usage limits again as the meter opens, so a meter that first read nothing fills', async () => {
+    let reads = 0
+    const api = server(ON_SONNET, {
+      'thread.usage': () => (++reads === 1 ? { limits: [] } : { limits: [{ label: 'Current 30-day window', percent: 13, resets: '' }], plan: 'ChatGPT Free' }),
+    })
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(api.inputs('thread.usage')).toHaveLength(1))
+    fireEvent.click(await screen.findByRole('button', { name: 'Context 20% used' }))
+    expect(await screen.findByText('Current 30-day window')).toBeTruthy()
+    expect(screen.getByText('ChatGPT Free')).toBeTruthy()
+    expect(api.inputs('thread.usage')).toHaveLength(2)
+  })
+
   it('says why Compact is refused while the agent works', async () => {
     const api = server(ON_SONNET, {
       'thread.compact': () => {

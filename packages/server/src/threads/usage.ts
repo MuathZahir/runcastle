@@ -68,9 +68,10 @@ function titleCase(value: string): string {
 
 // ---- Codex ----
 
+/** A window named by its real length: a free plan's limit runs 30 days, not a week. */
 function codexWindowLabel(mins: number | undefined, fallback: string): string {
   if (mins === undefined) return fallback
-  if (mins >= 7 * 24 * 60) return WEEK_LABEL
+  if (mins === 7 * 24 * 60) return WEEK_LABEL
   if (mins === 300) return FIVE_HOUR_LABEL
   if (mins >= 24 * 60) return `Current ${Math.round(mins / (24 * 60))}-day window`
   if (mins >= 60) return `Current ${Math.round(mins / 60)}-hour window`
