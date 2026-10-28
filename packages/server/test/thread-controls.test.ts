@@ -713,30 +713,65 @@ describe('edit and rewind', () => {
     expect(rewindFiles).toHaveBeenCalledWith({ sessionId: 'acp-session-1', cwd: '/wt', text: 'second', occurrence: 1 })
   })
 
-  it('says which files the rewound turns changed that the undo left as they are, and nothing when it restored them all', async () => {
+  // Claude Code's checkpoints cover its edit tools only, and the SDK's list of
+  // restored files can come back empty: what an edit tool changed counts as
+  // undone; only what a shell command wrote is named as left in place.
+  it('names only the files a shell command wrote as left as they are, even when the SDK reports nothing restored', async () => {
+    setup()
+    const wt = tmpRepo()
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: wt, stdio: 'ignore' })
+    try {
+      git('init', '-q')
+      git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init')
+      let n = 0
+      fake.script.turn = async (t) => {
+        n++
+        if (n === 2) {
+          // The edit tool changes one file; a shell command writes another.
+          mkdirSync(join(wt, 'src'), { recursive: true })
+          writeFileSync(join(wt, 'src', 'edited.ts'), 'b\n')
+          await t.update({
+            sessionUpdate: 'tool_call',
+            toolCallId: 'c2-edit',
+            title: 'Edit src/edited.ts',
+            kind: 'edit',
+            status: 'completed',
+            content: [{ type: 'diff', path: join(wt, 'src', 'edited.ts'), oldText: '', newText: 'b\n' }],
+          })
+          writeFileSync(join(wt, 'built.js'), 'built\n')
+          await t.update({ sessionUpdate: 'tool_call', toolCallId: 'c2-run', title: 'node build.js', kind: 'execute', status: 'completed' })
+        }
+        await t.say(`answer ${n}`, `m${n}`)
+      }
+      const id = chat({ worktreePath: wt })
+      const [, second] = await converse(id, 'first', 'second')
+      rewindFiles.mockResolvedValueOnce([])
+      await caller.thread.edit({ threadId: id, promptId: second, text: 'other', undoFiles: true })
+      await logUntil(id, turnsEnded(3))
+      const notices = foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')
+      expect(notices).toEqual([expect.objectContaining({ text: 'Left as they are — changed outside the agent’s edit tools, so not undone: built.js' })])
+    } finally {
+      rmTemp(wt)
+    }
+  })
+
+  it('says nothing when the rewound turns only changed files through the edit tools', async () => {
     setup()
     let n = 0
-    const edit = (path: string) => ({ type: 'diff' as const, path: join('/wt', path), oldText: 'a\n', newText: 'b\n' })
     fake.script.turn = async (t) => {
       n++
-      const files = n === 1 ? ['first.ts'] : n === 2 ? ['src/edited.ts', 'built.js'] : []
-      for (const [k, path] of files.entries()) await t.update({ sessionUpdate: 'tool_call', toolCallId: `c${n}-${k}`, title: `Edit ${path}`, kind: 'edit', status: 'completed', content: [edit(path)] })
+      if (n === 2) {
+        const content = [{ type: 'diff' as const, path: join('/wt', 'src', 'edited.ts'), oldText: 'a\n', newText: 'b\n' }]
+        await t.update({ sessionUpdate: 'tool_call', toolCallId: 'c2', title: 'Edit src/edited.ts', kind: 'edit', status: 'completed', content })
+      }
       await t.say(`answer ${n}`, `m${n}`)
     }
     const id = chat()
     const [, second] = await converse(id, 'first', 'second')
-    rewindFiles.mockResolvedValueOnce([join('/wt', 'src', 'edited.ts')])
+    rewindFiles.mockResolvedValueOnce([])
     await caller.thread.edit({ threadId: id, promptId: second, text: 'other', undoFiles: true })
     await logUntil(id, turnsEnded(3))
-    const notices = foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')
-    expect(notices).toEqual([expect.objectContaining({ text: 'Left as they are — changed outside the agent’s edit tools, so not undone: built.js' })])
-
-    const again = (await caller.thread.send({ threadId: id, text: 'more' })).promptId
-    await logUntil(id, turnsEnded(4))
-    rewindFiles.mockResolvedValueOnce([])
-    await caller.thread.edit({ threadId: id, promptId: again, text: 'other again', undoFiles: true })
-    await logUntil(id, turnsEnded(5))
-    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')).toHaveLength(1)
+    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'notice')).toEqual([])
   })
 
   it('rewinds the conversation only on Codex, whatever undoFiles says', async () => {

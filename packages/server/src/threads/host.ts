@@ -394,10 +394,14 @@ function readableReason(text: string): string | undefined {
   return said.length > 200 ? `${said.slice(0, 199)}…` : said.replace(/\.$/, '')
 }
 
-/** What a dead process's stderr says in a thread: the short line, with the last human-readable line it gave. */
-function crashText(stderr: string): string {
-  const reason = readableReason(stderr)
-  return reason ? `The agent stopped unexpectedly: ${reason}. Your next message restarts it.` : CRASHED
+/**
+ * What a dead process says in a thread: the short line, always. Its stderr is
+ * the adapter's and the runtime's own chatter (debug lines, warnings, hints for
+ * whoever runs the process) and goes to the session's `agent-stderr.log`, never
+ * to the human.
+ */
+function crashText(_stderr: string): string {
+  return CRASHED
 }
 
 /** Why a start failed, in a thread: the short line, with the adapter's error where it reads as a sentence. */
@@ -609,8 +613,13 @@ class Host implements AgentHost {
     if (opts.undoFiles && (row.runtime ?? DEFAULT_RUNTIME) === 'claude-code' && row.ccSessionId) {
       const said = prompt.text.trim()
       const occurrence = events.slice(0, at + 1).filter((e) => e.type === 'prompt' && e.text.includes(said)).length
-      const restored = new Set((await this.rewindFiles({ sessionId: row.ccSessionId, cwd: row.worktreePath, text: prompt.text, occurrence })).map((p) => worktreeRelative(row.worktreePath, p)))
-      const changed = events.slice(at).flatMap((e) => (e.type === 'turn_ended' ? (e.files ?? []).map((f) => f.path) : []))
+      const reported = await this.rewindFiles({ sessionId: row.ccSessionId, cwd: row.worktreePath, text: prompt.text, occurrence })
+      // Claude Code's checkpoints cover what its edit tools changed; the SDK's own
+      // list of restored files can come back empty, so the edit calls logged since
+      // the message count as restored too. What a shell command changed stays.
+      const edited = events.slice(at).flatMap((e) => (e.type === 'tool' && e.call.diff ? [e.call.diff.path] : []))
+      const restored = new Set([...reported, ...edited].map((p) => worktreeRelative(row.worktreePath, p)))
+      const changed = events.slice(at).flatMap((e) => (e.type === 'turn_ended' ? (e.files ?? []).map((f) => worktreeRelative(row.worktreePath, f.path)) : []))
       leftInPlace = [...new Set(changed)].filter((path) => !restored.has(path))
     }
     const point = lastAgentMessageId(events.slice(0, at))

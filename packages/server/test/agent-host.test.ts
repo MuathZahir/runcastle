@@ -340,7 +340,7 @@ describe('a turn', () => {
     expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'stopped' })
   })
 
-  it('logs a crashed agent as a stopped process with the error its stderr gave, and starts afresh on the next prompt', async () => {
+  it('logs a crashed agent as a stopped process with one short line, never its stderr, and starts afresh on the next prompt', async () => {
     setup({ turn: (t) => t.cancelled.then(() => undefined) })
     const id = thread()
     await host.prompt(id, { text: 'Go' }, { source: 'human' })
@@ -350,7 +350,7 @@ describe('a turn', () => {
     expect(events.at(-1)).toMatchObject({
       type: 'process',
       state: 'stopped',
-      error: 'The agent stopped unexpectedly: Error: the model stream died. Your next message restarts it.',
+      error: 'The agent stopped unexpectedly. Your next message restarts it.',
     })
     const view = foldThread(events)
     expect(view.state).toBe('idle')
