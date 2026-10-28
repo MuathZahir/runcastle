@@ -5,8 +5,16 @@ import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { foldThread, type ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive, setThreadPurpose } from '../src/launcher/sessions'
+import {
+  createSessionRow,
+  getSessionRow,
+  markAwaitingInput,
+  markSessionEnded,
+  markSessionLive,
+  setThreadPurpose,
+} from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
+import { subscribeLive } from '../src/services/bus'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
@@ -418,6 +426,29 @@ describe('a feature whose lead replied (decision 15)', () => {
     await host.prompt(id, { text: 'Round 2 returned.' }, { source: 'runcastle' })
     await logUntil(id, turnEnded)
     expect(await awaits()).toEqual([true, true])
+  })
+
+  it('pushes a signal after which both reads wait, though the CLI’s Stop hook flipped the bit first', async () => {
+    const id = chat()
+    // Claude Code's Stop hook runs inside the CLI before the ACP turn returns,
+    // and it marks the row awaiting input (routes/hooks.ts) while the log does not yet say the turn ended.
+    fake.script.turn = async (t) => {
+      await t.say('Done.')
+      markAwaitingInput(ctx, id)
+    }
+    const reads: Promise<[boolean, boolean]>[] = []
+    const unsubscribe = subscribeLive((signal) => {
+      // What the browser does with a non-thread signal: a full resync.
+      if (signal.kind !== 'thread') reads.push(awaits())
+    })
+    try {
+      await caller.thread.send({ threadId: id, text: 'Fix the login page' })
+      await logUntil(id, turnEnded)
+      await new Promise((r) => setTimeout(r, 20))
+    } finally {
+      unsubscribe()
+    }
+    expect((await Promise.all(reads)).at(-1)).toEqual([true, true])
   })
 
   it('does not wait while the lead is mid-turn', async () => {

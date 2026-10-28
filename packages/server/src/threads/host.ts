@@ -507,7 +507,7 @@ class Host implements AgentHost {
       const answers = answer.kind === 'question' ? answer.answers : {}
       lines = open.ask.kind === 'question' ? open.ask.questions.map((q) => ({ what: `${q.header}:`, answer: answers[q.question] ?? '' })) : []
     }
-    appendThreadEvent(t.id, { type: 'ask_resolved', id: askId, lines })
+    this.logAwaits(t.id, { type: 'ask_resolved', id: askId, lines })
     markAgentWorking(this.ctx, t.id)
     if (instead) {
       // Neither adapter carries a message on a reject (claude-agent-acp denies with its
@@ -1040,6 +1040,18 @@ class Host implements AgentHost {
     publishLive({ kind: 'turn', sessionId: threadId })
   }
 
+  /**
+   * Log an event that moves whether the thread waits on the human (a turn's end,
+   * an ask and its answer) and push `turn` whatever the awaiting bit did: the
+   * header and the sidebar read `leadAwaitsHuman` off the log, and Claude Code's
+   * Stop hook sets the bit before ACP says the turn ended, so a flip of the bit
+   * may come before the log says anything.
+   */
+  private logAwaits(threadId: string, body: ThreadEventBody): void {
+    appendThreadEvent(threadId, body)
+    publishLive({ kind: 'turn', sessionId: threadId })
+  }
+
   /** Log a held prompt and keep its text, on disk, as the preface of the thread's next prompt. */
   private hold(threadId: string, text: string, source: PromptOptions['source']): { promptId: string } {
     const item: Queued = { id: newId('prompt'), text, blocks: [], source, logged: false }
@@ -1095,7 +1107,7 @@ class Host implements AgentHost {
     const files = await this.turnFiles(t, turn)
     if (isStopped(t)) return
     t.turn = null
-    appendThreadEvent(t.id, { ...end, ...(files.length ? { files } : {}) })
+    this.logAwaits(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     const row = getSessionRow(this.ctx, t.id)
     // The turn may have written files: the composer's `@` lists them afresh.
@@ -1159,7 +1171,7 @@ class Host implements AgentHost {
     // Ended meanwhile: by the stop that closed it, or by another end signal.
     if (isStopped(t) || t.turn !== turn) return
     t.turn = null
-    appendThreadEvent(t.id, { type: 'turn_ended', reason, ...(files.length ? { files } : {}) })
+    this.logAwaits(t.id, { type: 'turn_ended', reason, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     this.pump(t)
   }
@@ -1290,7 +1302,7 @@ class Host implements AgentHost {
   private openAsk(t: Thread, ask: Ask): Promise<AskAnswer | 'cancelled'> {
     if (t.state === 'stopped') return Promise.resolve('cancelled')
     this.settleAsk(t, 'cancelled')
-    appendThreadEvent(t.id, { type: 'ask', ask })
+    this.logAwaits(t.id, { type: 'ask', ask })
     markAwaitingInput(this.ctx, t.id)
     return new Promise((settle) => {
       t.ask = { ask, settle }
