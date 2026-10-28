@@ -202,9 +202,9 @@ export interface TriageGroup {
  * match wins. Archived wins over everything: an archived feature carries no
  * needs-me / working state, it only sits in the archived lane.
  *
- * Both lanes read the same live session (decisions §3): `needsMe` has already
- * claimed one whose agent has stopped for an answer, so any session left here
- * is one with an agent mid-turn — which is Agent working, not In progress.
+ * `needsMe` has already claimed a feature whose lead replied or asks
+ * (`leadAwaitsHuman`), so a session left here is Agent working while its agent
+ * is mid-turn, and In progress once it is not.
  */
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'
