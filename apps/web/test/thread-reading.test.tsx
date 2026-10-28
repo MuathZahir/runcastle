@@ -49,7 +49,6 @@ describe('a tool row', () => {
         call('mcp.runcastle.get_feature_context', 'execute'),
         call('Edit src/a.ts, src/b.ts', 'edit'),
         call('Editing files', 'edit'),
-        call('Guardian Review', 'think'),
         call("List files in 'src'", 'read'),
         call('Web search: acp rate limits', 'search'),
         call('Compact conversation', 'think'),
@@ -59,12 +58,35 @@ describe('a tool row', () => {
       'runcastle: get feature context',
       'Editedsrc/a.ts, src/b.ts',
       'Editedfiles',
-      'Guardian Review',
       "Listedfiles in 'src'",
       'Searched the webacp rate limits',
       'Compactedconversation',
       'Start subagent Planner',
     ])
+  })
+
+  it('shows a Codex command without the shell that launched it', () => {
+    expect(
+      rows([
+        call(`"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command 'Get-ChildItem src'`, 'execute'),
+        call('powershell.exe -NoProfile -Command "git status"', 'execute'),
+        call('cmd /c dir /b', 'execute'),
+        call("/bin/bash -lc 'bun test'", 'execute'),
+        call('bun run -c config', 'execute'),
+      ]),
+    ).toEqual(['RanGet-ChildItem src', 'Rangit status', 'Randir /b', 'Ranbun test', 'Ranbun run -c config'])
+  })
+
+  it("folds away a review that approved its action, and words one under way or one that stopped it for a person", () => {
+    const review = (id: string, status: ToolCall['status']): ToolCall => ({ id, kind: 'think', title: 'Guardian Review', status, output: 'Status: Approved' })
+    expect(rows([call('bun test', 'execute'), review('r1', 'completed'), review('r2', 'in_progress'), review('r3', 'failed')])).toEqual([
+      'Ranbun test',
+      "Checking with Codex's reviewer",
+      "Stopped by Codex's reviewer",
+    ])
+    cleanup()
+    render(<WorkBlock live seconds={3} steps={[{ kind: 'tools', id: 's', calls: [review('r1', 'completed')] }]} />)
+    expect(screen.queryAllByRole('list')).toEqual([])
   })
 
   it('says the in-flight verb while it runs', () => {

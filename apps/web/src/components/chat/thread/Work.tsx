@@ -73,7 +73,7 @@ const DOING_VERB = new Map(Object.values(TITLE_VERB).map((verb) => [verb[1], ver
  * skill, task and plan rows, and codex-acp's review, image and subagent rows.
  */
 const SENTENCE_TITLE =
-  /^(Load skill|Create task|Update task|List tasks|Get task|Approve Plan|Exited Plan Mode|Asking for|Preparing file|Edit notebook|Terminal|Guardian Review|Image generation|(Start|Interact with|Interrupt|Complete) subagent)\b/
+  /^(Load skill|Create task|Update task|List tasks|Get task|Approve Plan|Exited Plan Mode|Asking for|Preparing file|Edit notebook|Terminal|Image generation|(Start|Interact with|Interrupt|Complete) subagent)\b/
 
 /** An MCP tool's title: Claude's `mcp__server__tool`, codex-acp's `mcp.server.tool`. */
 const MCP_TITLE = /^mcp__(.+)__([^_].*)$|^mcp\.(.+)\.([^.]+)$/
@@ -81,16 +81,45 @@ const MCP_TITLE = /^mcp__(.+)__([^_].*)$|^mcp\.(.+)\.([^.]+)$/
 /** codex-acp's web search row, "Web search: <query>". */
 const WEB_SEARCH = /^Web search(?::\s*(.*))?$/
 
+/**
+ * codex-acp's automatic review of an action the agent takes. One follows every
+ * action, so an approved one folds away; one under way or one that stopped the
+ * action is said in a person's words.
+ */
+const REVIEW_TITLE = 'Guardian Review'
+
+/** A call the row list leaves out: a review that approved its action has nothing to say. */
+const foldedAway = (call: ToolCall): boolean => call.title === REVIEW_TITLE && call.status === 'completed'
+
+/** A command wrapped in its shell (`"…\pwsh.exe" -Command '…'`, `cmd /c …`, `bash -lc '…'`): the shell, then the script. */
+const LAUNCHER = /^("[^"]+"|\S+)\s+(?:-(?:NoLogo|NoProfile|NonInteractive)\s+)*(?:-Command|-c|-lc|\/c)\s+([\s\S]+)$/i
+const SHELLS = new Set(['pwsh', 'powershell', 'cmd', 'bash', 'zsh', 'sh'])
+
+/** The command a shell launcher wraps, unquoted; any other command as it is. */
+export function innerCommand(command: string): string {
+  const m = LAUNCHER.exec(command.trim())
+  const shell = m?.[1].replace(/"/g, '').split(/[\\/]/).pop()?.replace(/\.exe$/i, '').toLowerCase()
+  if (!m || !shell || !SHELLS.has(shell)) return command
+  const script = m[2].trim()
+  return /^(['"])[\s\S]*\1$/.test(script) ? script.slice(1, -1) : script
+}
+
 /** "get_feature_context" → "get feature context". */
 const inWords = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
 
 /**
  * What a call's row says: one verb, then what it acted on (in mono when that is
  * a path or a command). An MCP tool reads "runcastle: get feature context", an
- * internal tool by its name in words ("Used tool search"), never the raw name.
+ * internal tool by its name in words ("Used tool search"), never the raw name;
+ * a command reads without the shell that launched it.
  */
-export function callText(call: Pick<ToolCall, 'kind' | 'title'>, running: boolean): { verb?: string; target: string; mono: boolean } {
+export function callText(call: Pick<ToolCall, 'kind' | 'title' | 'status'>, running: boolean): { verb?: string; target: string; mono: boolean } {
   const tense = running ? 1 : 0
+  if (call.title === REVIEW_TITLE) {
+    const said = running ? "Checking with Codex's reviewer" : call.status === 'failed' ? "Stopped by Codex's reviewer" : "Checked by Codex's reviewer"
+    return { target: said, mono: false }
+  }
+  if (call.kind === 'execute') call = { ...call, title: innerCommand(call.title) }
   const mcp = MCP_TITLE.exec(call.title)
   if (mcp) {
     const [server, tool] = mcp[1] !== undefined ? [mcp[1], mcp[2]] : [mcp[3], mcp[4]]
@@ -177,14 +206,18 @@ function Steps({ steps }: { steps: WorkStep[] }) {
     <div className="flex min-w-0 flex-col gap-1">
       {steps.map((s) => {
         switch (s.kind) {
-          case 'tools':
+          case 'tools': {
+            const calls = s.calls.filter((c) => !foldedAway(c))
             return (
-              <ol key={s.id} className="m-0 flex list-none flex-col p-0">
-                {s.calls.map((c) => (
-                  <CallRow key={c.id} call={c} />
-                ))}
-              </ol>
+              calls.length > 0 && (
+                <ol key={s.id} className="m-0 flex list-none flex-col p-0">
+                  {calls.map((c) => (
+                    <CallRow key={c.id} call={c} />
+                  ))}
+                </ol>
+              )
             )
+          }
           case 'thought':
             return <Thought key={s.id} seconds={s.seconds} text={s.text} />
           case 'narration':
@@ -235,9 +268,11 @@ function Subagent({ title, status, calls }: { title: string; status: ToolCall['s
       }
     >
       <ol className="m-0 flex list-none flex-col border-l border-border-subtle p-0 pl-4">
-        {calls.map((c) => (
-          <CallRow key={c.id} call={c} />
-        ))}
+        {calls
+          .filter((c) => !foldedAway(c))
+          .map((c) => (
+            <CallRow key={c.id} call={c} />
+          ))}
       </ol>
     </Fold>
   )
