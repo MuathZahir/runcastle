@@ -44,6 +44,7 @@ export function ChatThread({
   state,
   workingSince,
   emptyHint,
+  loading,
   actions,
   onDropImages,
   footer,
@@ -53,6 +54,8 @@ export function ChatThread({
   /** When the current turn began, for the elapsed time beside "Working". */
   workingSince?: number
   emptyHint?: ReactNode
+  /** The thread's history is still being read: an empty thread is not yet a new one. */
+  loading?: boolean
   actions?: MessageActions
   onDropImages?: (files: File[]) => void
   /** The composer, or what the agent waits on you for, docked at the foot. */
@@ -142,7 +145,12 @@ export function ChatThread({
     >
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 [scrollbar-gutter:stable]">
         <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col gap-6 pt-8" style={{ paddingBottom: footH + 24 }}>
-          {items.length === 0 ? (
+          {items.length === 0 && loading ? (
+            <p role="status" className="m-0 flex items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary">
+              <Spinner />
+              Loading the thread…
+            </p>
+          ) : items.length === 0 ? (
             <div className="pt-[12vh]">
               <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />
             </div>

@@ -61,6 +61,35 @@ describe('ThreadColumn', () => {
     expect(await screen.findByText('Lined up — it had its own margin.')).toBeTruthy()
   })
 
+  it('shows a thread with history loading, never as an empty new thread, until its first read answers', async () => {
+    let release = () => undefined as void
+    const answered = new Promise<void>((resolve) => (release = resolve))
+    const api = fakeTrpc({
+      'thread.view': async () => {
+        await answered
+        return { items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }
+      },
+      'thread.events': async () => {
+        await answered
+        return { events: HISTORY }
+      },
+    })
+    render(<ThreadColumn threadId="th1" emptyHint="One chat per feature" />, { wrapper: api.Wrapper })
+    expect(await screen.findByText('Loading the thread…')).toBeTruthy()
+    expect(screen.queryByText('New thread')).toBeNull()
+    await act(async () => release())
+    expect(await screen.findByText('Lined up — it had its own margin.')).toBeTruthy()
+    expect(screen.queryByText('New thread')).toBeNull()
+    expect(screen.queryByText('Loading the thread…')).toBeNull()
+  })
+
+  it('welcomes a thread that is really empty once its read says so', async () => {
+    const api = server([])
+    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    expect(await screen.findByText('New thread')).toBeTruthy()
+    expect(screen.queryByText('Loading the thread…')).toBeNull()
+  })
+
   it('reads only what follows its cursor when a live thread signal arrives', async () => {
     const log = [...HISTORY]
     const api = server(log)

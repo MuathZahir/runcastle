@@ -168,6 +168,8 @@ export function useThread({
     if (log) return foldThread(log)
     return viewQ.data ?? EMPTY_THREAD_VIEW
   }, [threadId, log, viewQ.data])
+  /** Nothing read yet of a thread that exists: it is not known to be empty. */
+  const loading = enabled && !log && !viewQ.data && eventsQ.isPending
 
   // ---- sending ----
   const [pending, setPending] = useState<Pending[]>([])
@@ -334,6 +336,8 @@ export function useThread({
 
   return {
     view,
+    /** The thread's history is still on its way: show neither it nor the empty-thread welcome. */
+    loading,
     draft: text,
     setDraft,
     attachments: attachments as Attachment[],

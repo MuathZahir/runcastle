@@ -159,6 +159,7 @@ export function ThreadColumn({
           actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
           onDropImages={t.attach}
           emptyHint={emptyHint}
+          loading={t.loading}
           footer={
             <div className="flex flex-col gap-1.5">
               {footer}
