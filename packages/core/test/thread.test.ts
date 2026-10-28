@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { foldThread, lastPickedModel, liveEvents, ThreadEvent, type ThreadEventBody, type ThreadItem } from '../src/thread'
+import { awaitsHuman, foldThread, lastPickedModel, liveEvents, ThreadEvent, type ThreadEventBody, type ThreadItem } from '../src/thread'
 
 /** A log from bodies, one second apart unless an `at` is given. */
 function log(...bodies: Array<ThreadEventBody | [number, ThreadEventBody]>): ThreadEvent[] {
@@ -525,5 +525,53 @@ describe('lastPickedModel', () => {
   it('is never a model logged as its process came up, though round 13 marked some picked there', () => {
     expect(lastPickedModel(log(prompt('p1'), { type: 'process', state: 'starting' }, running, sonnet))).toBeNull()
     expect(lastPickedModel(log(prompt('p1'), running, opus))).toBeNull()
+  })
+})
+
+describe('awaitsHuman', () => {
+  const started: ThreadEventBody = { type: 'turn_started' }
+  const ended: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }
+  const said: ThreadEventBody = { type: 'agent_text', messageId: 'm1', text: 'Done.' }
+  const stopped: ThreadEventBody = { type: 'process', state: 'stopped' }
+  const ask: ThreadEventBody = {
+    type: 'ask',
+    ask: { kind: 'approval', id: 'a1', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'pending' } },
+  }
+
+  it('waits on the human once the agent replied after their message', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, said, ended), true)).toBe(true)
+  })
+
+  it('waits on the human after a wake runcastle sent ends its turn', () => {
+    expect(awaitsHuman(log(prompt('w1', 'Round 2 returned', { source: 'runcastle' }), started, said, ended), true)).toBe(true)
+  })
+
+  it('stops waiting the moment the human answers', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, said, ended, prompt('p2')), false)).toBe(false)
+  })
+
+  it('does not wait while the agent is mid-turn', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, said), true)).toBe(false)
+    expect(awaitsHuman(log(prompt('p1'), started, said, ended, { type: 'turn_started', source: 'agent' }), true)).toBe(false)
+  })
+
+  it('still waits after the idle stop took the process that replied', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, said, ended, stopped), false)).toBe(true)
+  })
+
+  it('waits on an open ask only while the process that asked runs', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, ask), true)).toBe(true)
+    expect(awaitsHuman(log(prompt('p1'), started, ask), false)).toBe(false)
+    expect(awaitsHuman(log(prompt('p1'), started, ask, { type: 'ask_resolved', id: 'a1', lines: [] }), true)).toBe(false)
+  })
+
+  it('a turn the human stopped, a cut-off one, or a hidden command’s is no reply', () => {
+    expect(awaitsHuman(log(prompt('p1'), started, said, { type: 'turn_ended', reason: 'cancelled' }), true)).toBe(false)
+    expect(awaitsHuman(log(prompt('p1'), started, said, stopped), false)).toBe(false)
+    expect(awaitsHuman(log(prompt('p1', '/compact', { hidden: true }), started, ended), true)).toBe(false)
+  })
+
+  it('an empty thread waits on nobody', () => {
+    expect(awaitsHuman([], false)).toBe(false)
   })
 })

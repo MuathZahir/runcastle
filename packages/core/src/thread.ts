@@ -428,6 +428,35 @@ export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
   return events.filter((e, j) => !superseded.has(j) && e.type !== 'rewound')
 }
 
+/**
+ * The thread waits on the human (decision 15): the agent asks something while
+ * its process runs, or its turn ended after the last message it was sent and
+ * nothing has been sent since — whoever sent that message, a wake included,
+ * and whether or not its process is still up. A turn the human stopped is no
+ * reply, nor is one a stopped process cut off, nor one a hidden command ran.
+ */
+export function awaitsHuman(events: readonly ThreadEvent[], running: boolean): boolean {
+  let answering = false
+  let replied = false
+  let asking = false
+  for (const e of liveEvents(events)) {
+    if (e.type === 'prompt') {
+      answering = !e.hidden
+      replied = false
+    } else if (e.type === 'turn_started') {
+      if (e.source === 'agent') answering = true
+      replied = false
+    } else if (e.type === 'turn_ended') {
+      replied = answering && e.reason !== 'cancelled'
+    } else if (e.type === 'ask') {
+      asking = true
+    } else if (e.type === 'ask_resolved' || (e.type === 'process' && e.state === 'stopped')) {
+      asking = false
+    }
+  }
+  return (running && asking) || replied
+}
+
 /** One piece of a turn, in arrival order, before it is split into work and answer. */
 type Segment =
   | { kind: 'text'; id: string; text: string }
