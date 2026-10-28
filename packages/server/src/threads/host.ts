@@ -688,6 +688,9 @@ class Host implements AgentHost {
   }
 
   private async connect(t: Thread, row: SessionRow): Promise<void> {
+    // Read before the session opens: the adapter announces its own model as it
+    // opens (claude-agent-acp), and that logged announcement is not a pick.
+    const intended = this.intendedConfig(t.id, row)
     const spec = await this.launch(this.ctx, row)
     const proc = await this.transport(spec, row)
     t.proc = proc
@@ -756,7 +759,7 @@ class Host implements AgentHost {
     }
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     this.noteOptions(t, opened.configOptions, true)
-    const chosen = { ...this.intendedConfig(t.id, row), ...this.pendingConfig.get(t.id) }
+    const chosen = { ...intended, ...this.pendingConfig.get(t.id) }
     this.pendingConfig.delete(t.id)
     await this.applyConfig(t, chosen)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
@@ -1021,6 +1024,9 @@ class Host implements AgentHost {
     const own = !t.sessionId || sessionId === t.sessionId
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
     for (const body of t.map(update, own ? undefined : sessionId)) {
+      // The model a session opens on is logged once it runs, after the thread's own
+      // choice is applied; the adapter's announcement while it opens is not news.
+      if (body.type === 'model' && t.state === 'starting') continue
       if (body.type === 'title') {
         // The runtime's generated title names a thread nobody named, unless it was made from
         // runcastle's opening (see `naming.ts`); a name the human gave stays.

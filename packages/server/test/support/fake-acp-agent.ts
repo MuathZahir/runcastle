@@ -73,6 +73,11 @@ export interface FakeScript {
   mode?: string
   /** What `session/load` replays before it answers. */
   replay?: acp.SessionUpdate[]
+  /**
+   * Announce the opened session's config options as a `config_option_update`
+   * before `session/new` / `session/load` answers, as claude-agent-acp does.
+   */
+  announceOptions?: boolean
   /** Make `session/new` and `session/load` fail with this message. */
   failSession?: string
   /** Refuse `session/load` as claude-agent-acp does for a conversation no longer on disk ("Resource not found: <id>"). */
@@ -177,6 +182,11 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
   const pushAuth = async (client: { notify: (method: string, params: unknown) => Promise<void> }) => {
     if (script.authStatus !== undefined) await client.notify('_auth/status_update', { authStatus: script.authStatus })
   }
+  const announce = async (client: { notify: (method: string, params: unknown) => Promise<void> }, sessionId: string) => {
+    if (!script.announceOptions) return
+    const update = { sessionUpdate: 'config_option_update', configOptions: opened.configOptions }
+    await client.notify(acp.methods.client.session.update, { sessionId, update })
+  }
 
   const app = acp
     .agent({ name: 'fake-agent' })
@@ -192,6 +202,7 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
       note('session/new', params)
       if (script.failSession) throw new Error(script.failSession)
       await pushAuth(client)
+      await announce(client, script.sessionId ?? 'acp-session-1')
       return { sessionId: script.sessionId ?? 'acp-session-1', ...opened }
     })
     .onRequest(acp.methods.agent.session.fork, async ({ params, client }) => {
@@ -211,6 +222,7 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
       if (script.failSession) throw new Error(script.failSession)
       if (script.gone) throw acp.RequestError.resourceNotFound(params.sessionId)
       for (const update of script.replay ?? []) await client.notify(acp.methods.client.session.update, { sessionId: params.sessionId, update })
+      await announce(client, params.sessionId)
       return opened
     })
     .onRequest(acp.methods.agent.session.setMode, ({ params }) => {

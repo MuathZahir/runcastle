@@ -302,6 +302,17 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(dividers(id)).toEqual([])
   })
 
+  // claude-agent-acp announces its own model as the session opens, before it
+  // answers; logged, that announcement must not pass for the human's last pick.
+  it('runs on the resolved model when the adapter announces its own model as the session opens', async () => {
+    setup({ ...ALIASES, model: { id: 'opus', label: 'Opus 5' }, models: ALIASES.models!.slice(1), announceOptions: true })
+    const id = await runcastleStarted('claude-sonnet-5')
+
+    expect(received('session/set_config_option').map((p) => [p.configId, p.value])).toEqual([['model', 'sonnet']])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'sonnet', label: 'Sonnet 5' })
+    expect(dividers(id)).toEqual([])
+  })
+
   it("runs a 1M model on the adapter's 1M entry, however the adapter spells its context", async () => {
     setup({ ...ALIASES, models: [...ALIASES.models!, { id: 'opus[1m]', label: 'Opus 5 (1M context)' }] })
     const id = await runcastleStarted('claude-opus-5[1m]')
