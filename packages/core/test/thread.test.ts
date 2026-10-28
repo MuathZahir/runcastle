@@ -357,13 +357,39 @@ describe('foldThread', () => {
         { type: 'model', model: 'opus', label: 'Opus 5.5', effort: 'high' },
         prompt('p1'),
         { type: 'model', model: 'sonnet', label: 'Sonnet 5.5', effort: 'low' },
+        prompt('p2'),
         { type: 'model', model: 'opus', label: 'Opus 5.5', effort: 'low' },
       ),
     )
     expect(v.items.filter((i) => i.kind === 'model')).toEqual([
       { kind: 'model', id: 'model:2', model: 'Sonnet 5.5', effort: 'low' },
-      { kind: 'model', id: 'model:3', model: 'Opus 5.5' },
+      { kind: 'model', id: 'model:4', model: 'Opus 5.5' },
     ])
+  })
+
+  it('picks made with nothing said between them draw one divider, and none when they come back to the model before', () => {
+    const tried = foldThread(
+      log(
+        { type: 'model', model: 'opus', label: 'Opus 5.5' },
+        prompt('p1'),
+        { type: 'model', model: 'sonnet', label: 'Sonnet 5.5' },
+        { type: 'model', model: 'haiku', label: 'Haiku 5.5' },
+        { type: 'model', model: 'fable', label: 'Fable 5.1' },
+        prompt('p2'),
+      ),
+    )
+    expect(tried.items.filter((i) => i.kind === 'model').map((i) => i.kind === 'model' && i.model)).toEqual(['Fable 5.1'])
+    expect(kinds(tried.items)).toEqual(['user', 'model', 'user'])
+
+    const back = foldThread(
+      log(
+        { type: 'model', model: 'opus', label: 'Opus 5.5' },
+        prompt('p1'),
+        { type: 'model', model: 'sonnet', label: 'Sonnet 5.5' },
+        { type: 'model', model: 'opus', label: 'Opus 5.5' },
+      ),
+    )
+    expect(back.items.filter((i) => i.kind === 'model')).toEqual([])
   })
 
   it('each answer names the model that wrote it', () => {

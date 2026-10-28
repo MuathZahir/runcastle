@@ -598,6 +598,8 @@ describe("a runtime's one model catalog", () => {
     await logUntil(id, turnsEnded(2))
     expect(received('session/set_config_option')).toEqual([])
     await caller.thread.setModel({ threadId: id, model: 'claude-sonnet-5-5' })
+    await caller.thread.send({ threadId: id, text: 'On Sonnet' })
+    await logUntil(id, turnsEnded(3))
     await caller.thread.setModel({ threadId: id, model: 'claude-opus-5-5' })
     expect(said(id).filter((s) => s.startsWith('model:'))).toEqual(['model:Sonnet 5.5', 'model:Opus 5.5'])
   })
@@ -808,6 +810,17 @@ describe('edit and rewind', () => {
     await logUntil(id, turnsEnded(3))
     expect(rewindFiles).not.toHaveBeenCalled()
     expect(received('session/fork')).toHaveLength(1)
+  })
+
+  it('is named by its new first message once the old one is edited away', async () => {
+    setup()
+    answerWithIds()
+    const id = chat()
+    const [first] = await converse(id, 'Fix the old thing', 'second')
+    await caller.thread.edit({ threadId: id, promptId: first, text: 'Build the new thing' })
+    await logUntil(id, turnsEnded(3))
+    const title = (await caller.thread.list({ featureId })).find((t) => t.id === id)?.title
+    expect(title).toBe('Build the new thing')
   })
 
   it('starts the conversation afresh when the first message is edited', async () => {

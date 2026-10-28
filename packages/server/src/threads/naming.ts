@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, type SessionRow, type ThreadEvent } from '@runcastle/core'
+import { DEFAULT_RUNTIME, liveEvents, type SessionRow, type ThreadEvent } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { deriveTitle } from '../services/conversations'
 import { tryGetFeature } from '../services/repo'
@@ -58,7 +58,8 @@ function errandName(row: SessionRow, events: readonly ThreadEvent[], about: Thre
 
 /** The human's first message, cleaned and shortened; null before they wrote. */
 function firstMessage(row: SessionRow, events: readonly ThreadEvent[]): string | null {
-  const said = events.flatMap((e) => (e.type === 'prompt' && e.source === 'human' ? [{ role: 'user' as const, text: e.text }] : []))
+  // A message a rewind cut away no longer names the thread.
+  const said = liveEvents(events).flatMap((e) => (e.type === 'prompt' && e.source === 'human' ? [{ role: 'user' as const, text: e.text }] : []))
   return deriveTitle(said, row.runtime ?? DEFAULT_RUNTIME, row.kind)
 }
 

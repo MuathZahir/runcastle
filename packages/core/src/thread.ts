@@ -536,6 +536,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
   let compactedSincePrompt = false
+  /** The model in force before the divider now last in the items, so a quick run of picks folds into one. */
+  let modelBeforeDivider: ThreadView['model'] = undefined
   /** The adapter reports cost per process: what earlier processes spent, and the current one's last report. */
   let carriedCost = 0
   let processCost: number | undefined
@@ -807,7 +809,12 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'model': {
-        const before = view.model
+        // Picks made with nothing said between them are one change: the divider
+        // compares against the model before the first of them.
+        const stacked = items.at(-1)?.kind === 'model'
+        if (stacked) items.pop()
+        const before = stacked ? modelBeforeDivider : view.model
+        if (!stacked) modelBeforeDivider = view.model
         if (before && before.id !== e.model) {
           const effortChanged = !!before.effort && !!e.effort && before.effort !== e.effort
           items.push({ kind: 'model', id: `model:${e.i}`, model: e.label, ...(effortChanged ? { effort: e.effort } : {}) })
