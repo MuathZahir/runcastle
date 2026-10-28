@@ -33,6 +33,9 @@ export function pickReusableGates(
     .find(
       (c) =>
         c.gates.status === 'ran' &&
+        // A command that timed out or could not start is a fact about the machine
+        // then, not the commit: such a record is retried, never copied forward.
+        c.gates.commands.every((r) => r.outcome !== 'couldnt_run') &&
         c.gates.commands.length === commands.length &&
         c.gates.commands.every((r, i) => r.command === commands[i]) &&
         unmoved(c.gates.commit),
@@ -74,8 +77,8 @@ export async function reuseGateResult(input: {
         candidates.push({ kind: 'review', id: t.id, at: t.completedAt ?? Date.now(), gates: t.reviewGateRun })
       }
     }
-    // Resolve each distinct commit once; an unresolvable one (or a failed diff)
-    // is treated as moved, since diffPaths answers [] on error.
+    // Resolve each distinct commit once; an unresolvable one, or a diff that
+    // cannot be taken, is treated as moved.
     const verdicts = new Map<string, boolean>()
     for (const c of candidates) {
       if (c.gates.status !== 'ran' || verdicts.has(c.gates.commit)) continue
@@ -85,7 +88,8 @@ export async function reuseGateResult(input: {
       } else if (!(await headSha(project.repoPath, commit))) {
         verdicts.set(commit, false)
       } else {
-        verdicts.set(commit, onlyFeatureDocs(await diffPaths(project.repoPath, commit, sha), feature.slug))
+        const paths = await diffPaths(project.repoPath, commit, sha, { throwOnError: true }).catch(() => undefined)
+        verdicts.set(commit, paths !== undefined && onlyFeatureDocs(paths, feature.slug))
       }
     }
     const hit = pickReusableGates(candidates, commands, (commit) => verdicts.get(commit) === true)

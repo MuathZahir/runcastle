@@ -62,7 +62,7 @@ These commits landed on `{{FEATURE_BRANCH}}` while you were working — this is 
 
 4. **Watch for semantic conflicts, not just textual ones.** Files that merged cleanly can still be broken by the other side's rename, signature change, or moved export. After resolving the marked hunks, run typecheck and the tests covering both sides' touched code, and fix what the merge broke.
 
-   Verify with these commands, and spend them carefully — capture a full run to a file (`<command> > /tmp/verify.log 2>&1`) and grep that file rather than re-running the suite to re-read it. Never `git stash` mid-merge: it is unrecoverable if your process dies, and it will strand the merge state.
+   Spend your checks carefully: capture a run's output to a file (`<command> > /tmp/verify.log 2>&1`) and grep that file rather than re-running to re-read it. Never `git stash` mid-merge: it is unrecoverable if your process dies, and it will strand the merge state.
 
    {{VERIFY_NOTES}}
 

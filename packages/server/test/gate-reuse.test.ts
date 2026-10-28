@@ -49,6 +49,12 @@ describe('pickReusableGates', () => {
     expect(pickReusableGates([candidate('a', 1, couldnt), candidate('b', 2, { status: 'none_configured' })], CMDS, () => true)).toBeUndefined()
   })
 
+  it('never takes a run in which a command timed out or could not start', () => {
+    const timedOut = ran('tip')
+    if (timedOut.status === 'ran') timedOut.commands[1] = { command: CMDS[1]!, outcome: 'couldnt_run', exitCode: null, reason: 'timed out', log: '1.log' }
+    expect(pickReusableGates([candidate('a', 1, timedOut)], CMDS, unmovedTip)).toBeUndefined()
+  })
+
   it('skips a result for different commands, or the same ones in another order', () => {
     expect(pickReusableGates([candidate('a', 1, ran('tip', ['bun run typecheck']))], CMDS, unmovedTip)).toBeUndefined()
     expect(pickReusableGates([candidate('a', 1, ran('tip', [...CMDS].reverse()))], CMDS, unmovedTip)).toBeUndefined()

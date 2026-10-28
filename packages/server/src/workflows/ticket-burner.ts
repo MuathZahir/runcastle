@@ -1900,7 +1900,7 @@ export function buildVerifyNotes(
     )
   } else {
     out.push(
-      'No pre-existing-failure baseline is configured, and you do not run the whole suite to build one. If a targeted test fails and looks unrelated to your change, confirm it ONCE against the pre-change code (`git show HEAD~` or a detached scratch worktree) — never with a full run.',
+      'No pre-existing-failure baseline is configured, and you do not run the whole suite to build one. If a targeted test fails and looks unrelated to your change, confirm it ONCE against the pre-change code (`git show <base>:<path>`, where `<base>` is the commit your branch started from, or a detached scratch worktree at it) — never with a full run.',
     )
   }
 
