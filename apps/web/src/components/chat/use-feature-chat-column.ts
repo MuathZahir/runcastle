@@ -24,6 +24,11 @@ export interface FeatureChatColumn {
   mainState: ThreadEntry['state'] | undefined
   /** The thread in front; null is the main chat nobody has started yet. */
   inFront: string | null
+  /**
+   * The address names a thread the thread list has not yet vouched for: the
+   * column shows it opening, never the main chat, and nothing can be sent.
+   */
+  pending: boolean
   /** The switcher's id for what is in front. */
   current: string
   pick: (id: string) => void
@@ -59,15 +64,19 @@ export function useFeatureChatColumn({
   const listed = listQ.data ?? []
   const [started, setStarted] = useState<string | null>(null)
   const main = newestThread(listed, 'main') ?? started ?? featureChat(sessions)?.id ?? null
-  // A reload reopens the thread the address names — when it is this feature's.
-  const [picked, setPicked] = useAddressedThread(
+  // A reload or a pasted link opens the thread the address names — when it is this feature's.
+  const {
+    front: picked,
+    pick: setPicked,
+    pending,
+  } = useAddressedThread(
     null,
     listQ.data ? (id) => id === main || id === driveSessionId || listed.some((t) => t.id === id) : null,
   )
   const scenario = useScenarioChat(driveSessionId, setPicked)
   const closedErrand = picked !== null && picked === scenario.sessionId && !scenario.listed
   const inFront = picked !== null && !closedErrand ? picked : main
-  useThreadInUrl(inFront)
+  useThreadInUrl(pending ? undefined : inFront)
 
   useEffect(() => subscribeInbox(mainChatInbox(featureId), () => setPicked(null)), [featureId])
 
@@ -98,6 +107,7 @@ export function useFeatureChatColumn({
     main,
     mainState: listed.find((t) => t.id === main)?.state,
     inFront,
+    pending: pending !== null,
     current: inFront ?? UNSTARTED_CHAT,
     pick: (id) => setPicked(id === UNSTARTED_CHAT || id === main ? null : id),
     newThread: () => create.mutate({ featureId }),

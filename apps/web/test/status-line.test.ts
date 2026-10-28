@@ -20,6 +20,7 @@ const input = (over: {
   rounds?: FeatureStatusInput['rounds']
   declarations?: FeatureStatusInput['declarations']
   agentWorking?: boolean
+  agentStateKnown?: boolean
   driving?: boolean
   selfPlanning?: boolean
   leadWake?: FeatureStatusInput['leadWake']
@@ -29,6 +30,7 @@ const input = (over: {
   rounds: over.rounds ?? [],
   declarations: over.declarations ?? [],
   agentWorking: over.agentWorking ?? false,
+  ...(over.agentStateKnown ? { agentStateKnown: true } : {}),
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
@@ -103,6 +105,12 @@ describe('featureStatus', () => {
       kind: 'talking',
       label: 'Talking with you',
     })
+  })
+
+  it('a wake inside its grace reads what the main chat’s own thread state says, once the thread list holds it', () => {
+    const woken = { leadWake: { pendingSince: 1_000 }, now: 1_000 + 5_000, agentStateKnown: true }
+    expect(featureStatus(input({ ...woken, agentWorking: false })).kind).toBe('talking')
+    expect(featureStatus(input({ ...woken, agentWorking: true })).kind).toBe('working')
   })
 
   it('the agent mid-turn reads Working with no round and no wake at all', () => {

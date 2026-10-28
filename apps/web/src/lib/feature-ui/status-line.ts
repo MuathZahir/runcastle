@@ -48,6 +48,12 @@ export interface FeatureStatusInput {
   declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'createdAt'>[]
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
+  /**
+   * `agentWorking` is the main chat's own thread state, as the thread list and
+   * the sidebar read it. It is then the whole truth: a wake starts that chat,
+   * so its log already says whether it works, and a wake earns no grace.
+   */
+  agentStateKnown?: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
   /**
@@ -193,7 +199,11 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   const pendingSince = input.leadWake?.pendingSince
   const failed = input.leadWake?.failed
   const failedSinceWake = !!failed && failed.at >= (pendingSince ?? -Infinity)
-  const waking = pendingSince !== undefined && !failedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
+  const waking =
+    !input.agentStateKnown &&
+    pendingSince !== undefined &&
+    !failedSinceWake &&
+    input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {

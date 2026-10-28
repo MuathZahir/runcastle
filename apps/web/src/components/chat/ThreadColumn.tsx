@@ -3,10 +3,29 @@ import type { ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
 import { promptIdFor, useThread, type ThreadStart } from '../../lib/use-thread'
+import { Spinner } from '../../ui'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
 import { Composer } from './thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from './thread/ComposerParts'
+
+/**
+ * The column while the thread a link names waits on the page's thread list to
+ * vouch for it: neither another thread nor a composer, so nothing is sent
+ * before the column knows which thread it shows.
+ */
+export function ThreadOpening({ label = 'Chat' }: { label?: string }) {
+  return (
+    <section
+      aria-label={label}
+      aria-busy="true"
+      data-thread-column=""
+      className="flex min-h-0 min-w-0 flex-1 items-center justify-center gap-2 bg-surface text-sm text-text-tertiary"
+    >
+      <Spinner /> Opening the thread…
+    </section>
+  )
+}
 
 /**
  * One thread in the chat column (chat-as-web-components decisions 7, 8): the

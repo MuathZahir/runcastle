@@ -17,7 +17,7 @@ import {
   type AppLocation,
   type FeatureView,
 } from '../lib/routes'
-import { currentPath, useHistorySync } from '../lib/use-history-sync'
+import { AddressSettled, currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
@@ -337,7 +337,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         {/* The view fills the panel. The feature's details are not mounted
             here: they are one of the feature page's panel views, and the
             palette's toggle switches the same `featureView` the page does. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">{body}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">
+          {/* Until the landing, the page shown is the stored one, not the
+              address's: it leaves the address's thread for the page it names. */}
+          <AddressSettled.Provider value={landed}>{body}</AddressSettled.Provider>
+        </div>
       </Frame>
 
       <CommandPalette

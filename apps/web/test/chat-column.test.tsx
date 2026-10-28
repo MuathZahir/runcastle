@@ -36,7 +36,7 @@ const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { mainChatInbox, putInInbox } = await import('../src/lib/composer-inbox')
 const { useThreadMenu } = await import('../src/lib/use-thread')
-const { useHistorySync } = await import('../src/lib/use-history-sync')
+const { AddressSettled, useHistorySync } = await import('../src/lib/use-history-sync')
 const { featureStatus, mainChatWorking } = await import('../src/lib/feature-ui/status-line')
 const { FeatureStatusLine } = await import('../src/components/workspace/FeatureStatusLine')
 
@@ -115,7 +115,18 @@ afterEach(() => {
   window.history.replaceState(null, '', '/')
 })
 
-const switcher = (): HTMLElement => screen.getByRole('button', { name: 'Thread' })
+/** An answer the test gives when it chooses. */
+function later<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+/** Let the address writes, which wait a tick, land. */
+const tick = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
+
+const switcher = (): HTMLElement =>screen.getByRole('button', { name: 'Thread' })
 const column = (): HTMLElement => document.querySelector('[data-column]') as HTMLElement
 /** The thread rows the switcher lists, by title. */
 const options = (): string[] => {
@@ -209,6 +220,28 @@ describe('the feature page’s thread switcher', () => {
     expect(within(column()).queryByText('said in th_a_side')).toBeNull()
     await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b?thread=th_b'))
     expect(switcher().textContent).toContain('Chat of B')
+  })
+
+  it('moving to another feature in the app drops ?thread= from the address at once', async () => {
+    const lists: Record<string, ThreadEntry[]> = {
+      feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A side thread of A', 'side')],
+      feat_b: [thread('th_b', 'Chat of B', 'main')],
+    }
+    const b = later<ThreadEntry[]>()
+    const api = server({ extra: { 'thread.list': ({ featureId }: { featureId: string }) => (featureId === 'feat_b' ? b.promise : lists[featureId]) } })
+    function Shell({ slug }: { slug: string }) {
+      useHistorySync({ kind: 'feature', projectId: 'proj_1', featureSlug: slug }, () => {})
+      return <Page key={slug} featureId={slug} />
+    }
+    window.history.replaceState(null, '', '/p/proj_1/f/feat_a?thread=th_a_side')
+    const { rerender } = render(<Shell slug="feat_a" />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_a_side')
+
+    rerender(<Shell slug="feat_b" />)
+    await tick()
+    expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b')
+    await act(async () => b.resolve(lists.feat_b!))
+    expect(await within(column()).findByText('said in th_b')).toBeTruthy()
   })
 
   it('makes a side thread with New thread and selects it', async () => {
@@ -317,6 +350,75 @@ describe('the feature page’s thread switcher', () => {
   })
 })
 
+/** A thread link, loaded or pasted, while the feature's thread list answers late (ticket 29). */
+describe('a thread’s link', () => {
+  const lists: Record<string, ThreadEntry[]> = {
+    feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A side thread of A', 'side')],
+    feat_b: [thread('th_b', 'Chat of B', 'main')],
+  }
+  const SIDE_LINK = '/p/proj_1/f/feat_a/chat?thread=th_a_side'
+  const send = (text: string): void => {
+    fireEvent.change(within(column()).getByLabelText('Message'), { target: { value: text } })
+    fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
+  }
+
+  it('loaded fresh shows the side thread once the list answers, and a send goes to it; until then nothing can be sent', async () => {
+    const a = later<ThreadEntry[]>()
+    const api = server({ extra: { 'thread.list': () => a.promise } })
+    window.history.replaceState(null, '', SIDE_LINK)
+    render(<Page featureId="feat_a" />, { wrapper: api.Wrapper })
+
+    // Pending: neither the main thread nor a composer, and the link stays in the address.
+    expect(within(column()).getByText('Opening the thread…')).toBeTruthy()
+    await tick()
+    expect(within(column()).queryByLabelText('Message')).toBeNull()
+    expect(api.inputs('thread.events')).toEqual([])
+    expect(window.location.search).toBe('?thread=th_a_side')
+
+    await act(async () => a.resolve(lists.feat_a!))
+    expect(await within(column()).findByText('said in th_a_side')).toBeTruthy()
+    send('Still on the side?')
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_a_side', text: 'Still on the side?' }]))
+    expect(window.location.search).toBe('?thread=th_a_side')
+  })
+
+  it('pasted while on another feature: the stored page shown before the landing leaves it for the page it names', async () => {
+    const api = server({ extra: { 'thread.list': ({ featureId }: { featureId: string }) => lists[featureId] } })
+    /** The shell: before it lands it shows the feature it stored, then the one the address names. */
+    function Shell({ slug, landed }: { slug: string; landed: boolean }) {
+      return (
+        <AddressSettled.Provider value={landed}>
+          <Page key={slug} featureId={slug} />
+        </AddressSettled.Provider>
+      )
+    }
+    window.history.replaceState(null, '', SIDE_LINK)
+    const { rerender } = render(<Shell slug="feat_b" landed={false} />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_b')
+    await tick()
+    expect(window.location.search).toBe('?thread=th_a_side')
+
+    rerender(<Shell slug="feat_a" landed />)
+    expect(await within(column()).findByText('said in th_a_side')).toBeTruthy()
+    send('Which thread is this?')
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_a_side', text: 'Which thread is this?' }]))
+    expect(window.location.search).toBe('?thread=th_a_side')
+  })
+
+  it('naming another feature’s thread is dropped once the list answers, and the page shows its own', async () => {
+    const b = later<ThreadEntry[]>()
+    const api = server({ extra: { 'thread.list': () => b.promise } })
+    window.history.replaceState(null, '', '/p/proj_1/f/feat_b/chat?thread=th_a_side')
+    render(<Page featureId="feat_b" />, { wrapper: api.Wrapper })
+    expect(within(column()).getByText('Opening the thread…')).toBeTruthy()
+
+    await act(async () => b.resolve(lists.feat_b!))
+    expect(await within(column()).findByText('said in th_b')).toBeTruthy()
+    await waitFor(() => expect(window.location.search).toBe('?thread=th_b'))
+    expect(api.inputs('thread.events').some((i) => (i as { threadId: string }).threadId === 'th_a_side')).toBe(false)
+  })
+})
+
 describe('the scenario errand in the column', () => {
   it('brings the scenario chat an errand opens to the front, naming it by its errand', async () => {
     const api = server()
@@ -358,19 +460,44 @@ describe('the scenario errand in the column', () => {
 
 describe('the feature header’s status', () => {
   /** The header's status line as the feature page derives it: the main chat's thread state, the row's stale turn bit beside it. */
-  function Header() {
+  function Header({ wokenAt }: { wokenAt?: number }) {
     const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
     const status = featureStatus({
       feature: { status: 'active', waitingReason: null },
       rounds: [],
       declarations: [],
       agentWorking: mainChatWorking(column.mainState, { awaitingInput: false }),
+      agentStateKnown: column.mainState !== undefined,
       driving: false,
       selfPlanning: false,
+      ...(wokenAt !== undefined ? { leadWake: { pendingSince: wokenAt } } : {}),
       now: at,
     })
     return <FeatureStatusLine status={status} />
   }
+
+  it('says what the main thread says after a runcastle-sent turn ends, inside the wake’s grace', async () => {
+    let state: ThreadEntry['state'] = 'working'
+    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
+    // The orchestrator's message went out five seconds ago, well inside its grace.
+    render(<Header wokenAt={at - 5_000} />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
+
+    state = 'idle'
+    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
+  })
+
+  it('says Working once a human message sets the main thread working', async () => {
+    let state: ThreadEntry['state'] = 'idle'
+    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
+    render(<Header />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
+
+    state = 'working'
+    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
+  })
 
   it('leaves Working when the main chat’s turn ends, on the thread signal alone', async () => {
     let state: ThreadEntry['state'] = 'working'

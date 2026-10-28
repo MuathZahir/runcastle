@@ -63,6 +63,7 @@ vi.mock('../src/components/chat/ThreadColumn', () => ({
   ThreadColumn: ({ label, threadId }: { label?: string; threadId: string | null }) => (
     <section aria-label={label} data-thread-column="" data-thread={threadId ?? 'new'} />
   ),
+  ThreadOpening: () => <section aria-label="Chat" aria-busy="true" data-thread-column="" />,
 }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 vi.mock('../src/lib/use-session-branch', () => ({

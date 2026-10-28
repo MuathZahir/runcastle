@@ -732,6 +732,7 @@ export function Workspace({
         rounds: roundsQ.data ?? [],
         declarations: declarationsQ.data ?? [],
         agentWorking: mainChatWorking(column.mainState, liveSession),
+        agentStateKnown: column.mainState !== undefined,
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.
