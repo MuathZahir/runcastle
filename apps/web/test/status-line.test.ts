@@ -21,6 +21,7 @@ const input = (over: {
   declarations?: FeatureStatusInput['declarations']
   agentWorking?: boolean
   agentStateKnown?: boolean
+  leadAwaitsHuman?: boolean
   driving?: boolean
   selfPlanning?: boolean
   leadWake?: FeatureStatusInput['leadWake']
@@ -31,6 +32,7 @@ const input = (over: {
   declarations: over.declarations ?? [],
   agentWorking: over.agentWorking ?? false,
   ...(over.agentStateKnown ? { agentStateKnown: true } : {}),
+  leadAwaitsHuman: over.leadAwaitsHuman ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
@@ -48,6 +50,26 @@ const declaration = (scenario: string, createdAt: number) => ({ scenario, create
 describe('featureStatus', () => {
   it('reads Talking with you with nothing running and nothing asked, and offers no button', () => {
     expect(featureStatus(input({}))).toEqual({ kind: 'talking', label: 'Talking with you' })
+  })
+
+  it('reads Waiting for you once the lead replied and the human has not answered (decision 15)', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, agentStateKnown: true }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+    })
+  })
+
+  it('lets an explicit waiting reason speak over the bare reply', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, feature: { waitingReason: 'stopped' } }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'stopped',
+    })
+  })
+
+  it('reads Working, not waiting, while a round runs or the lead is mid-turn', () => {
+    expect(featureStatus(input({ leadAwaitsHuman: true, rounds: [round(2, 'running', 10)] })).label).toBe('Working · Round 2')
+    expect(featureStatus(input({ leadAwaitsHuman: true, agentWorking: true })).kind).toBe('working')
   })
 
   it('reads Planning by itself while a self-planning run is live, with its Stop', () => {

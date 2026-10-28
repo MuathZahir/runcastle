@@ -54,6 +54,11 @@ export interface FeatureStatusInput {
    * so its log already says whether it works, and a wake earns no grace.
    */
   agentStateKnown?: boolean
+  /**
+   * The lead replied, or asks, and the human has not answered: the feature's
+   * `leadAwaitsHuman`, the same flag that files it under Needs you in the sidebar.
+   */
+  leadAwaitsHuman: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
   /**
@@ -140,9 +145,8 @@ export function wakeFailedWhy(exitCode: number | null): string {
  *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
  * - Waiting for you · the agent's run failed — the newest `lead.wake_failed` is
  *   newer than the last round and the last wake.
- * - Waiting for you · stopped / round N failed / round N done — the last round
- *   returned and the agent's turn is over: nothing is running and nothing will
- *   be dispatched until the human replies.
+ * - Waiting for you — the lead replied, or asks, and the human has not answered
+ *   (`leadAwaitsHuman`, the sidebar's Needs you).
  * - Talking with you — otherwise: nothing running and nothing asked.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
@@ -209,9 +213,10 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
     return { kind: 'waiting', label: 'Waiting for you', why: wakeFailedWhy(failed.exitCode), primary: 'chat' }
   }
-  // Nothing runs and nothing is asked: the sidebar files this under In progress,
-  // so the header must not claim the feature waits on the human. A stopped round
-  // already says so through the waiting reason Stop sets.
+  // After the lead's reply the next move is the human's (chat-as-web-components
+  // decision 15): the sidebar reads the same flag into Needs you.
+  if (input.leadAwaitsHuman) return { kind: 'waiting', label: 'Waiting for you' }
+  // Nothing runs and nothing is asked: the sidebar files this under In progress.
   return { kind: 'talking', label: TALKING }
 }
 

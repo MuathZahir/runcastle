@@ -29,6 +29,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     },
     activeRun: over.activeRun ?? false,
     liveSession: over.liveSession ?? null,
+    leadAwaitsHuman: over.leadAwaitsHuman ?? false,
     waitingReason: over.waitingReason ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],

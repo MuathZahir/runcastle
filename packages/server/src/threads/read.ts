@@ -1,5 +1,6 @@
 import { statSync } from 'node:fs'
 import {
+  awaitsHuman,
   DEFAULT_RUNTIME,
   foldThread,
   type SessionKind,
@@ -168,6 +169,24 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEn
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
   }
+}
+
+/**
+ * The feature's lead waits on the human (decision 15): {@link awaitsHuman} over
+ * its main chat — the newest one with a log, as the thread list's newest main
+ * entry — so the header and the sidebar read one answer. A conversation from
+ * the terminal era has no log, and waits on nobody.
+ */
+export function leadAwaitsHuman(ctx: AppCtx, featureId: string): boolean {
+  let newest: { at: number; waits: boolean } | null = null
+  for (const row of featureSessions(ctx, featureId, ['chat'])) {
+    if (!hasThreadLog(row.id)) continue
+    const { events } = foldedLog(row.id)
+    const at = events.at(-1)?.at ?? row.createdAt ?? 0
+    if (newest && newest.at >= at) continue
+    newest = { at, waits: awaitsHuman(events, agentHost(ctx).isRunning(row.id)) }
+  }
+  return newest?.waits ?? false
 }
 
 /** A thread nothing has been said in yet. */

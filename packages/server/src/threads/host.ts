@@ -38,6 +38,7 @@ import {
   setSessionTitle,
 } from '../launcher/sessions'
 import { killProcessTree } from '../pty/kill-tree'
+import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
 import { runcastleVersion } from '../version'
@@ -973,6 +974,9 @@ class Host implements AgentHost {
       ...(item.hidden ? { hidden: true } : {}),
     })
     item.logged = true
+    // A message answers the lead's reply (`leadAwaitsHuman`): the header and the
+    // sidebar read that off the log, so they drop it now, not at the turn's start.
+    publishLive({ kind: 'turn', sessionId: threadId })
   }
 
   /** Log a held prompt and keep its text, on disk, as the preface of the thread's next prompt. */

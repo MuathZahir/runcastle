@@ -36,7 +36,8 @@ export type LiveSignal =
     }
   | {
       /**
-       * A session's turn state flipped (working ↔ awaiting input). It writes no
+       * A session's turn state flipped (working ↔ awaiting input), or a thread
+       * took a message that answers its agent's reply. It writes no
        * timeline row — a turn is not an event anyone reads back — but the
        * status line and the triage lanes read the bit, so it pushes like one.
        */

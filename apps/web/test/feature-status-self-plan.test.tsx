@@ -33,6 +33,7 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
     rounds: [],
     declarations: [],
     agentWorking: false,
+    leadAwaitsHuman: false,
     driving: false,
     selfPlanning,
     now: 0,

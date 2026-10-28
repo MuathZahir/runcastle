@@ -38,7 +38,7 @@ const blocker = (slug: string) => ({
   satisfied: false,
 })
 
-const waiting = listItem({ liveSession: { status: 'live', awaitingInput: true } as never })
+const waiting = listItem({ leadAwaitsHuman: true })
 const ready = listItem({ waitingReason: 'ready to test' })
 const stopped = listItem({ waitingReason: 'stopped' })
 const asked = listItem({ waitingReason: 'which retry policy should rounds use?' })

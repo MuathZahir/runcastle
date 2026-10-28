@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveScenario, ThreadEntry, ThreadEvent } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import { fakeTrpc, type FakeHandlers } from './fake-trpc'
-import { full as fixture } from './fixtures'
+import { full as fixture, listItem } from './fixtures'
 import { openMenu } from './floating'
 
 /**
@@ -39,6 +39,8 @@ const { useThreadMenu } = await import('../src/lib/use-thread')
 const { AddressSettled, useHistorySync } = await import('../src/lib/use-history-sync')
 const { featureStatus, mainChatWorking } = await import('../src/lib/feature-ui/status-line')
 const { FeatureStatusLine } = await import('../src/components/workspace/FeatureStatusLine')
+const { SidebarFeatureRow } = await import('../src/components/SidebarParts')
+const { trpc } = await import('../src/trpc')
 
 const FAILED: DriveScenario = {
   file: '.runcastle/scenarios/checkout/expired-coupon.ts',
@@ -458,57 +460,124 @@ describe('the scenario errand in the column', () => {
   })
 })
 
-describe('the feature header’s status', () => {
-  /** The header's status line as the feature page derives it: the main chat's thread state, the row's stale turn bit beside it. */
-  function Header({ wokenAt }: { wokenAt?: number }) {
+describe('the feature header’s status and its sidebar row (decision 15)', () => {
+  /**
+   * The header's status line as the feature page derives it (the main chat's
+   * thread state, the row's stale turn bit beside it, `feature.get`'s
+   * `leadAwaitsHuman`), above the feature's sidebar row from `feature.list`.
+   */
+  function HeaderAndRow({ wokenAt }: { wokenAt?: number }) {
     const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
+    const full = trpc.feature.get.useQuery({ id: 'feat_1' }).data
+    const row = trpc.feature.list.useQuery({ projectId: 'proj_1' }).data?.[0]
+    if (!full || !row) return null
     const status = featureStatus({
-      feature: { status: 'active', waitingReason: null },
+      feature: full.feature,
       rounds: [],
       declarations: [],
       agentWorking: mainChatWorking(column.mainState, { awaitingInput: false }),
       agentStateKnown: column.mainState !== undefined,
+      leadAwaitsHuman: full.leadAwaitsHuman,
       driving: false,
       selfPlanning: false,
       ...(wokenAt !== undefined ? { leadWake: { pendingSince: wokenAt } } : {}),
       now: at,
     })
-    return <FeatureStatusLine status={status} />
+    return (
+      <>
+        <FeatureStatusLine status={status} />
+        <div data-row="">
+          <SidebarFeatureRow f={row} active={false} onSelect={() => {}} actions={[]} />
+        </div>
+      </>
+    )
   }
 
-  it('says what the main thread says after a runcastle-sent turn ends, inside the wake’s grace', async () => {
-    let state: ThreadEntry['state'] = 'working'
-    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
+  /**
+   * A feature whose main chat the test moves: the thread's state, whether the
+   * lead's reply waits on the human, and a waiting reason. `move` changes it and
+   * refetches every read, as a live signal's resync does (lib/live.ts).
+   */
+  function feature(start: { state: ThreadEntry['state']; replied: boolean; waitingReason?: string }) {
+    let now = start
+    const api = server({
+      extra: {
+        'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state: now.state })],
+        'feature.get': () => ({
+          ...fixture({ id: 'feat_1', waitingReason: now.waitingReason ?? null }),
+          leadAwaitsHuman: now.replied,
+        }),
+        'feature.list': () => [
+          listItem({
+            id: 'feat_1',
+            waitingReason: now.waitingReason ?? null,
+            liveSession: { status: 'live', awaitingInput: now.state !== 'working' },
+            leadAwaitsHuman: now.replied,
+          }),
+        ],
+      },
+    })
+    const move = async (next: typeof start) => {
+      now = next
+      await act(() => api.queryClient.invalidateQueries())
+    }
+    return { api, move }
+  }
+
+  const header = () => screen.getByRole('status').textContent ?? ''
+  const row = () => document.querySelector('[data-row]') as HTMLElement
+  /** Both places say the feature waits on the human, the row with its amber dot. */
+  const bothWait = async () =>
+    waitFor(() => {
+      expect(header()).toBe('Waiting for you')
+      expect(row().textContent).toContain('Waiting on you')
+      expect(row().innerHTML).toContain('bg-warning')
+    })
+  const bothWork = async () =>
+    waitFor(() => {
+      expect(header()).toContain('Working')
+      expect(row().textContent).toContain('Agent working')
+      expect(row().innerHTML).not.toContain('bg-warning')
+    })
+
+  it('waits on the human in both once a runcastle-sent wake’s turn ends, even inside the wake’s grace', async () => {
+    const { api, move } = feature({ state: 'working', replied: false })
     // The orchestrator's message went out five seconds ago, well inside its grace.
-    render(<Header wokenAt={at - 5_000} />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
+    render(<HeaderAndRow wokenAt={at - 5_000} />, { wrapper: api.Wrapper })
+    await bothWork()
 
-    state = 'idle'
-    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
+    await move({ state: 'idle', replied: true })
+    await bothWait()
   })
 
-  it('says Working once a human message sets the main thread working', async () => {
-    let state: ThreadEntry['state'] = 'idle'
-    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
-    render(<Header />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
+  it('waits on the human in both after an ordinary lead reply, and a human message clears both', async () => {
+    const { api, move } = feature({ state: 'working', replied: false })
+    render(<HeaderAndRow />, { wrapper: api.Wrapper })
+    await bothWork()
 
-    state = 'working'
-    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
+    await move({ state: 'idle', replied: true })
+    await bothWait()
+
+    // The message is logged while the idle-stopped agent comes back: nobody waits on anybody.
+    await move({ state: 'idle', replied: false })
+    await waitFor(() => {
+      expect(header()).toBe('Talking with you')
+      expect(row().textContent).toContain('In progress')
+      expect(row().innerHTML).not.toContain('bg-warning')
+    })
+
+    await move({ state: 'working', replied: false })
+    await bothWork()
   })
 
-  it('leaves Working when the main chat’s turn ends, on the thread signal alone', async () => {
-    let state: ThreadEntry['state'] = 'working'
-    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
-    render(<Header />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
-
-    // A lead wake's turn ends: the log says idle, and its `thread` live signal invalidates thread.list (lib/live.ts).
-    state = 'idle'
-    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
+  it('lets an explicit waiting reason speak in both, with its own words', async () => {
+    const { api } = feature({ state: 'idle', replied: true, waitingReason: 'stopped' })
+    render(<HeaderAndRow />, { wrapper: api.Wrapper })
+    await waitFor(() => {
+      expect(header()).toBe('Waiting for you· stopped')
+      expect(row().textContent).toContain('Stopped')
+      expect(row().innerHTML).toContain('bg-warning')
+    })
   })
 })
 

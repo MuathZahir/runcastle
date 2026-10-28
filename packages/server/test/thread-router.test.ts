@@ -396,3 +396,49 @@ describe('thread router', () => {
     expect((await app.request(`/api/threads/${id}/images/x.svg`)).status).toBe(404)
   })
 })
+
+describe('a feature whose lead replied (decision 15)', () => {
+  /** What the sidebar and the header each read: `feature.list`'s row and `feature.get`. */
+  async function awaits(): Promise<[boolean, boolean]> {
+    const [row] = await caller.feature.list({ projectId })
+    const full = await caller.feature.get({ id: featureId })
+    return [row!.leadAwaitsHuman, full.leadAwaitsHuman]
+  }
+
+  it('waits on the human in both reads once the lead answers their message', async () => {
+    const id = chat()
+    expect(await awaits()).toEqual([false, false])
+    await caller.thread.send({ threadId: id, text: 'Fix the login page' })
+    await logUntil(id, turnEnded)
+    expect(await awaits()).toEqual([true, true])
+  })
+
+  it('waits on the human after a wake runcastle sent ends its turn', async () => {
+    const id = chat()
+    await host.prompt(id, { text: 'Round 2 returned.' }, { source: 'runcastle' })
+    await logUntil(id, turnEnded)
+    expect(await awaits()).toEqual([true, true])
+  })
+
+  it('does not wait while the lead is mid-turn', async () => {
+    fake.script.turn = async (t) => {
+      await t.cancelled
+      return 'cancelled'
+    }
+    const id = chat()
+    await caller.thread.send({ threadId: id, text: 'long' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
+    expect(await awaits()).toEqual([false, false])
+  })
+
+  it('still waits after the idle stop, and a human message clears it at once', async () => {
+    const id = chat()
+    await caller.thread.send({ threadId: id, text: 'Fix the login page' })
+    await logUntil(id, turnEnded)
+    await host.stop(id, 'idle')
+    expect(await awaits()).toEqual([true, true])
+    // The message is logged before the agent is back to take it.
+    appendThreadEvent(id, { type: 'prompt', id: 'p_next', text: 'Thanks — now the signup page', source: 'human' })
+    expect(await awaits()).toEqual([false, false])
+  })
+})

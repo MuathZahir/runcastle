@@ -843,7 +843,7 @@ function withSession(
   awaitingInput: boolean,
   over: Partial<FeatureListItem> = {},
 ): FeatureListItem {
-  return listItem({ liveSession: { status: 'live', awaitingInput }, ...over })
+  return listItem({ liveSession: { status: 'live', awaitingInput }, leadAwaitsHuman: awaitingInput, ...over })
 }
 
 describe('archive derivations', () => {
@@ -1111,6 +1111,18 @@ describe('turn-aware feature states', () => {
     const f = withSession(true)
     expect(needsMe(f)?.kind).toBe('input')
     expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('keeps a feature whose lead replied in Needs you after its process stopped idle', () => {
+    const f = listItem({ liveSession: null, leadAwaitsHuman: true })
+    expect(needsMe(f)).toEqual({ kind: 'input', label: 'the lead waits on your answer' })
+    expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('reads a turn-end bit the main chat’s log does not back (a turn the human stopped) as in progress', () => {
+    const f = listItem({ liveSession: { status: 'live', awaitingInput: true }, leadAwaitsHuman: false })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('inProgress')
   })
 
   it('reads a terminal that is still launching as working, not waiting', () => {
