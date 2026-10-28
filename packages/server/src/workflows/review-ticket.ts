@@ -575,7 +575,9 @@ export function buildGateNotes(
       break
     case 'ran':
       out.push(
-        `Before you started, the server ran this project's verify commands once each on the feature branch at \`${shortCommit(gateRun.commit)}\`, in a sandbox with the branch checked out and its dependencies installed:`,
+        gateRun.reusedFrom
+          ? `The server did not re-run this project's verify commands for this pass: the result below is from an earlier pass on the feature branch at \`${shortCommit(gateRun.commit)}\`, and the branch has not moved since (or only this feature's docs changed). They ran once each, in a sandbox with the branch checked out and its dependencies installed:`
+          : `Before you started, the server ran this project's verify commands once each on the feature branch at \`${shortCommit(gateRun.commit)}\`, in a sandbox with the branch checked out and its dependencies installed:`,
         '',
         ...gateRun.commands.map((result) => gateCommandNote(ticketId, result)),
         '',
@@ -815,6 +817,9 @@ async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps
   // so a static import evaluates review-gates before ticket-burner's constants
   // exist whenever ticket-burner is the one loaded first (as at server boot).
   try {
+    // At most one gate run per commit: an earlier round or review may have gated this tip.
+    const reused = await ctx.reuseGates?.(ticket.id, sha).catch(() => undefined)
+    if (reused) return reused
     const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
     return await runGates({ config: deps.config, project, ticketId: ticket.id, sha })
   } catch (err) {

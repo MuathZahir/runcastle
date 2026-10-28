@@ -16,6 +16,7 @@ import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from 
 import { addTicketTokens, refreshLeadTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
+import { reuseGateResult } from './gate-reuse'
 import { getWorkflow } from './registry'
 
 /**
@@ -197,6 +198,8 @@ export async function startRun(
     addTicketTokens: (id, usage, sessionIds) => addTicketTokens(ctx, id, usage, sessionIds),
     storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
     listFindings: () => listFindingsByFeature(ctx, featureId),
+    reuseGates: (ownerId, sha) =>
+      reuseGateResult({ ctx, config: ctx.config, project, feature, ownerId, sha }),
     updateFinding: (findingId, progress, reason) => {
       markFixProgress(ctx, findingId, progress, reason)
     },
@@ -268,7 +271,13 @@ async function endRound(
   const project = projectForFeature(ctx, feature)
   let gates: ReviewGateRun
   try {
-    gates = await runGates({ ctx, project, feature, runId })
+    // The verify commands run at most once per commit: a review in this round,
+    // or an earlier round, may already have gated the tip.
+    const sha = await headSha(project.repoPath, feature.branch)
+    const reused = sha
+      ? await reuseGateResult({ ctx, config: ctx.config, project, feature, ownerId: runId, sha })
+      : undefined
+    gates = reused ?? (await runGates({ ctx, project, feature, runId }))
   } catch (err) {
     gates = {
       status: 'couldnt_run',

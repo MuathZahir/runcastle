@@ -60,6 +60,12 @@ export interface WorkflowCtx {
   /** Read findings when a verification ticket records the fixes it is checking. */
   listFindings?(): ReviewFinding[]
   /**
+   * A gate result already recorded on this feature for the same commit and
+   * verify commands, copied (logs included) to `ownerId`; undefined on a miss.
+   * Never throws.
+   */
+  reuseGates?(ownerId: string, sha: string): Promise<ReviewGateRun | undefined>
+  /**
    * Mirror a fix ticket's lifecycle onto the review finding it was minted from
    * (`ticket.originFindingId`), so found/fixed/open is counted from findings
    * joined to their tickets rather than from two ledgers that can disagree.
