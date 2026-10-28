@@ -5,6 +5,7 @@ import {
   type Feature,
   type ReadyDeclaration,
   type RoundSummary,
+  type ThreadEntry,
 } from '@runcastle/core'
 import { CHAT_ACTION } from './next-step/chat'
 import type { ActionKind, NextAction, NextStep } from './next-step/types'
@@ -74,6 +75,19 @@ export interface LeadWake {
  * that silently went nowhere stops reading as Working within a minute.
  */
 export const LEAD_WAKE_GRACE_MS = 60_000
+
+/**
+ * {@link FeatureStatusInput.agentWorking}: the main chat's own thread state,
+ * which every `thread` live signal refreshes, so a turn's end (a lead wake's
+ * too) leaves Working at once; the session row's turn bit only until the
+ * thread list holds the main chat.
+ */
+export function mainChatWorking(
+  mainState: ThreadEntry['state'] | undefined,
+  session: { awaitingInput: boolean } | undefined,
+): boolean {
+  return mainState !== undefined ? mainState === 'working' : !!session && !session.awaitingInput
+}
 
 /** Read the lead's latest wake and wake failure off a feature's event log, oldest first. */
 export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data'>[]): LeadWake {

@@ -37,6 +37,8 @@ const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { mainChatInbox, putInInbox } = await import('../src/lib/composer-inbox')
 const { useThreadMenu } = await import('../src/lib/use-thread')
 const { useHistorySync } = await import('../src/lib/use-history-sync')
+const { featureStatus, mainChatWorking } = await import('../src/lib/feature-ui/status-line')
+const { FeatureStatusLine } = await import('../src/components/workspace/FeatureStatusLine')
 
 const FAILED: DriveScenario = {
   file: '.runcastle/scenarios/checkout/expired-coupon.ts',
@@ -351,6 +353,35 @@ describe('the scenario errand in the column', () => {
     const api = server()
     render(<Page driveSessionId="th_live" />, { wrapper: api.Wrapper })
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
+  })
+})
+
+describe('the feature header’s status', () => {
+  /** The header's status line as the feature page derives it: the main chat's thread state, the row's stale turn bit beside it. */
+  function Header() {
+    const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
+    const status = featureStatus({
+      feature: { status: 'active', waitingReason: null },
+      rounds: [],
+      declarations: [],
+      agentWorking: mainChatWorking(column.mainState, { awaitingInput: false }),
+      driving: false,
+      selfPlanning: false,
+      now: at,
+    })
+    return <FeatureStatusLine status={status} />
+  }
+
+  it('leaves Working when the main chat’s turn ends, on the thread signal alone', async () => {
+    let state: ThreadEntry['state'] = 'working'
+    const api = server({ extra: { 'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state })] } })
+    render(<Header />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Working'))
+
+    // A lead wake's turn ends: the log says idle, and its `thread` live signal invalidates thread.list (lib/live.ts).
+    state = 'idle'
+    await act(() => api.queryClient.invalidateQueries({ queryKey: [['thread', 'list']] }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Talking with you'))
   })
 })
 

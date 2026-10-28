@@ -76,6 +76,7 @@ import {
   LEAD_WAKE_GRACE_MS,
   headerActions,
   leadWakeOf,
+  mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
@@ -730,7 +731,7 @@ export function Workspace({
         feature,
         rounds: roundsQ.data ?? [],
         declarations: declarationsQ.data ?? [],
-        agentWorking: !!liveSession && !liveSession.awaitingInput,
+        agentWorking: mainChatWorking(column.mainState, liveSession),
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.

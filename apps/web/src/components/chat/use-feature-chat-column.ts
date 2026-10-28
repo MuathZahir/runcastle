@@ -17,6 +17,11 @@ export interface FeatureChatColumn {
   threads: ThreadEntry[]
   /** The feature's main chat thread; null while nobody has started it. */
   main: string | null
+  /**
+   * Whether the main chat is working, waiting on the human or idle, as the
+   * thread list reads its log; undefined while the list does not hold it.
+   */
+  mainState: ThreadEntry['state'] | undefined
   /** The thread in front; null is the main chat nobody has started yet. */
   inFront: string | null
   /** The switcher's id for what is in front. */
@@ -91,6 +96,7 @@ export function useFeatureChatColumn({
     scenario,
     threads,
     main,
+    mainState: listed.find((t) => t.id === main)?.state,
     inFront,
     current: inFront ?? UNSTARTED_CHAT,
     pick: (id) => setPicked(id === UNSTARTED_CHAT || id === main ? null : id),
