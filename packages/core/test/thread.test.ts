@@ -302,6 +302,21 @@ describe('foldThread', () => {
     expect(work.steps[0]).toMatchObject({ calls: [{ status: 'failed' }] })
   })
 
+  it('a turn a server restart cut off says the restart interrupted it, not that you stopped it', () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'turn_started' },
+        { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'in_progress' } },
+        { type: 'process', state: 'stopped', restarted: true },
+      ),
+    )
+    expect(v.state).toBe('idle')
+    expect(kinds(v.items)).toEqual(['user', 'work', 'notice'])
+    expect(v.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Interrupted — runcastle restarted' })
+    expect((v.items[1] as Extract<ThreadItem, { kind: 'work' }>).steps[0]).toMatchObject({ calls: [{ status: 'failed' }] })
+  })
+
   it('a failed turn and a process that dies mid-turn both leave an error line', () => {
     const failed = foldThread(log(prompt('p1'), { type: 'turn_started' }, { type: 'turn_ended', reason: 'error', error: 'rate limited' }))
     expect(failed.items.at(-1)).toMatchObject({ kind: 'error', message: 'rate limited' })

@@ -124,6 +124,15 @@ describe('featureStatus', () => {
     )
   })
 
+  it('a self-planning run stopped short reads planning stopped, with the Chat door to pick it up with the lead', () => {
+    expect(featureStatus(input({ feature: { waitingReason: 'planning stopped' } }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'planning stopped',
+      primary: 'chat',
+    })
+  })
+
   it('a wake that already failed ends its grace at once: the failure shows, not Working', () => {
     expect(
       featureStatus(input({ leadWake: { pendingSince: 1_000, failed: { at: 5_000, exitCode: null } }, now: 6_000 })),

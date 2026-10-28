@@ -422,7 +422,11 @@ describe('boot reconciliation', () => {
     reconcileStaleSessions(ctx)
 
     expect(getSessionRow(ctx, row.id)?.status).toBe('ended')
-    expect((await caller().thread.view({ threadId: row.id })).state).toBe('idle')
+    const view = await caller().thread.view({ threadId: row.id })
+    expect(view.state).toBe('idle')
+    // The cut-off turn says the restart stopped it, not the human.
+    expect(view.items.map((i) => i.kind)).toEqual(['user', 'notice'])
+    expect(view.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Interrupted — runcastle restarted' })
     // An idle log is left as it is.
     const idle = (await caller().thread.events({ threadId: row.id })).events.length
     reconcileStaleSessions(ctx)

@@ -124,14 +124,27 @@ export function catalogFromOptions(
  * option offers it, else the entry named as that model. The picker may hold
  * runcastle's roster ids (`claude-haiku-5-5`) while the adapter's values are
  * its own (Claude Code's aliases, `haiku`), so a roster id is matched by the
- * label its adapter gives the model ("Haiku 5.5"). Undefined when no entry is.
+ * label its adapter gives the model ("Haiku 5.5"), a 1M one ("Opus 5.5 (1M)")
+ * whichever way the adapter spells its context ("(1M context)").
+ *
+ * A Claude `[1m]` id the adapter names no entry for lands on the base model's
+ * entry with Claude Code's `[1m]` suffix (`opus[1m]`), else on the base model
+ * itself: the same model with its standard context, never another model.
+ * Undefined when no entry is.
  */
 function modelValue(option: SelectOption, id: string): string | undefined {
   const values = selectValues(option)
   if (values.some((c) => c.value === id)) return id
-  const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(labelKey))
-  return values.find((c) => c.value !== DEFAULT_MODEL && names.has(labelKey(c.name)))?.value
+  const key = (name: string) => labelKey(name).replace(/context/g, '')
+  const names = new Set([id, rosterLabel(id, 'claude-code'), rosterLabel(id, 'codex')].map(key))
+  const named = values.find((c) => c.value !== DEFAULT_MODEL && names.has(key(c.name)))?.value
+  if (named || !LONG_CONTEXT.test(id)) return named
+  const base = modelValue(option, id.replace(LONG_CONTEXT, ''))
+  return base && (values.find((c) => c.value === `${base}[1m]`)?.value ?? base)
 }
+
+/** Claude Code's 1M-context model-id modifier. */
+const LONG_CONTEXT = /\[1m\]$/i
 
 /**
  * The `session/set_config_option` requests that move a session's options to

@@ -15,8 +15,9 @@ import { markSessionEnded } from './sessions'
  * simply idle, and its next prompt starts it again.
  *
  * A thread's log cut off mid-turn (or mid-ask) by the restart would still fold
- * as working or waiting, so its log is closed with a `process stopped` event —
- * the same one a stopped process writes — and it folds idle.
+ * as working or waiting, so its log is closed with a `process stopped` event
+ * marked `restarted`, and it folds idle, its cut-off turn saying the restart
+ * interrupted it rather than "Stopped by you".
  *
  * `bun --hot` safety: the agent host survives hot reloads on `globalThis`, so a
  * thread whose process is genuinely still running is skipped.
@@ -29,7 +30,7 @@ export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
   for (const session of rows) {
     if (host.isRunning(session.id)) continue
     if (hasThreadLog(session.id) && foldThread(readThreadEvents(session.id)).state !== 'idle') {
-      appendThreadEvent(session.id, { type: 'process', state: 'stopped' })
+      appendThreadEvent(session.id, { type: 'process', state: 'stopped', restarted: true })
     }
     if (session.status !== 'launching' && session.status !== 'live') continue
     markSessionEnded(ctx, session.id)

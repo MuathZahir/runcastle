@@ -5,6 +5,7 @@ import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
 import { stopDesignServerForSession } from '../services/design'
 import { startDocsWatch } from '../services/docs-watch'
 import { emitForSession } from '../services/events'
+import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import type { ThreadLifecycle } from './host'
@@ -64,15 +65,21 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
   }
 }
 
+/** Why the feature waits on the human once a self-planning run stopped short: its next step is the chat. */
+const PLANNING_STOPPED = 'planning stopped'
+
 /**
  * A self-planning run is over: say whether the plan is complete, and make the
- * thread the lead's ordinary chat again, so asks reach the human. No-op for a
- * thread with any other purpose.
+ * thread the lead's ordinary chat again, so asks reach the human. A run that
+ * stopped short leaves the feature waiting on the human ({@link PLANNING_STOPPED}),
+ * whose next message picks it up with the lead. No-op for a thread with any
+ * other purpose.
  */
 function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
   // The plan is complete when the run ended its turn asking the human for the yes (`wait_for_you`).
   const complete = getFeatureRow(ctx, row.featureId).waitingReason !== null
+  if (!complete) setWaiting(ctx, row.featureId, PLANNING_STOPPED)
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
     message: complete ? 'planning finished' : 'planning stopped before the plan was complete',

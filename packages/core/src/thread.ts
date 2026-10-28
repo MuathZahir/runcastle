@@ -215,6 +215,9 @@ export interface UsageReport {
 export const TurnEnd = z.enum(['end_turn', 'max_tokens', 'max_turn_requests', 'refusal', 'cancelled', 'error'])
 export type TurnEnd = z.infer<typeof TurnEnd>
 
+/** What a turn a server restart cut off reads as, in place of "Stopped by you". */
+export const RESTART_INTERRUPTED = 'Interrupted — runcastle restarted'
+
 export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A prompt sent to the agent: the human's, or runcastle's own (a kickoff, a wake, an orchestrator line). */
   z.object({
@@ -234,6 +237,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     state: z.enum(['starting', 'running', 'stopped']),
     /** Why it stopped or failed to start, when that is not a normal idle stop. */
     error: z.string().optional(),
+    /** It died with the server: written at boot over a log a restart cut off (a turn it cut reads {@link RESTART_INTERRUPTED}). */
+    restarted: z.literal(true).optional(),
   }),
   /** A turn begins: the answer to a prompt, or (`source: 'agent'`) one the agent started by itself, as Claude Code does when a background command it left running finishes. */
   z.object({ type: z.literal('turn_started'), source: z.literal('agent').optional() }),
@@ -536,7 +541,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     return turn
   }
 
-  const closeTurn = (e: ThreadEvent, reason: TurnEnd, files?: FileChange[], error?: string) => {
+  const closeTurn = (e: ThreadEvent, reason: TurnEnd | 'restarted', files?: FileChange[], error?: string) => {
     if (turn) {
       for (const c of turn.calls.values()) if (c.status === 'in_progress' || c.status === 'pending') c.status = reason === 'end_turn' ? 'completed' : 'failed'
       for (const s of turn.subagents.values()) if (s.status === 'in_progress' || s.status === 'pending') s.status = reason === 'end_turn' ? 'completed' : 'failed'
@@ -544,6 +549,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     }
     if (files?.length) items.push({ kind: 'changes', id: `changes:${e.i}`, files })
     if (reason === 'cancelled') items.push({ kind: 'stopped', id: `stopped:${e.i}` })
+    if (reason === 'restarted') items.push({ kind: 'notice', id: `notice:${e.i}`, text: RESTART_INTERRUPTED })
     if (reason === 'error' || reason === 'refusal' || reason === 'max_tokens' || reason === 'max_turn_requests') {
       const message =
         error ??
@@ -628,7 +634,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           startingPrompt = null
         }
         if (e.state === 'stopped') {
-          if (turn) closeTurn(e, e.error ? 'error' : 'cancelled', undefined, e.error)
+          if (turn) closeTurn(e, e.error ? 'error' : e.restarted ? 'restarted' : 'cancelled', undefined, e.error)
           if (e.error && !items.some((x) => x.id === `error:${e.i}`)) items.push({ kind: 'error', id: `error:${e.i}`, message: e.error })
           ask = undefined
           view.tasks = []

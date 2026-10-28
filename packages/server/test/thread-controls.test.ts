@@ -284,6 +284,62 @@ describe('the model the composer shows is the one the agent runs on', () => {
     expect(received('session/set_config_option').map((p) => p.value)).toEqual(['haiku'])
   })
 
+  /** A main chat runcastle opens on `model`, as a launch resolves it, sent its kickoff. */
+  async function runcastleStarted(model: string): Promise<string> {
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: model, runtime: 'claude-code' } }).id
+    await host.prompt(id, { text: 'Proceed with your task' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(1))
+    return id
+  }
+
+  it('runs a thread runcastle starts on the model resolved for it, set before its first prompt', async () => {
+    setup(ALIASES)
+    const id = await runcastleStarted('claude-sonnet-5')
+
+    expect(methods()).toEqual(['initialize', 'session/new', 'session/set_mode', 'session/set_config_option', 'session/prompt'])
+    expect(received('session/set_config_option').map((p) => [p.configId, p.value])).toEqual([['model', 'sonnet']])
+    expect(foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'agent').map((i) => i.kind === 'agent' && i.model)).toEqual(['Sonnet 5'])
+    expect(dividers(id)).toEqual([])
+  })
+
+  it("runs a 1M model on the adapter's 1M entry, however the adapter spells its context", async () => {
+    setup({ ...ALIASES, models: [...ALIASES.models!, { id: 'opus[1m]', label: 'Opus 5 (1M context)' }] })
+    const id = await runcastleStarted('claude-opus-5[1m]')
+    expect(received('session/set_config_option').map((p) => p.value)).toEqual(['opus[1m]'])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'opus[1m]', label: 'Opus 5 (1M context)' })
+  })
+
+  it("finds the 1M entry by Claude Code's alias suffix when its name says nothing of 1M", async () => {
+    setup({ ...ALIASES, models: [...ALIASES.models!, { id: 'sonnet[1m]', label: 'Sonnet 5 long' }] })
+    await runcastleStarted('claude-sonnet-5[1m]')
+    expect(received('session/set_config_option').map((p) => p.value)).toEqual(['sonnet[1m]'])
+  })
+
+  it('runs a 1M model the adapter offers no 1M entry for on the same model, never another', async () => {
+    setup(ALIASES)
+    const id = await runcastleStarted('claude-sonnet-5[1m]')
+    expect(received('session/set_config_option').map((p) => p.value)).toEqual(['sonnet'])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'sonnet', label: 'Sonnet 5' })
+  })
+
+  it("restarts a thread on the model the human last picked, not its row's, with no divider", async () => {
+    setup(ALIASES)
+    const id = await runcastleStarted('claude-sonnet-5')
+    await caller.thread.setModel({ threadId: id, model: 'claude-haiku-4-5', effort: 'low' })
+    expect(dividers(id).map((d) => d.kind === 'model' && d.model)).toEqual(['Haiku 4.5'])
+    // The process is gone (an idle stop, a restart): the next adapter opens on its own default.
+    await host.stop(id, 'idle')
+    await caller.thread.send({ threadId: id, text: 'Again' })
+    await logUntil(id, turnsEnded(2))
+
+    expect(fake.last().received.filter((r) => r.method === 'session/set_config_option').map((r) => r.params)).toEqual([
+      { sessionId: 'acp-session-1', configId: 'model', value: 'haiku' },
+      { sessionId: 'acp-session-1', configId: 'effort', value: 'low' },
+    ])
+    expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'haiku', effort: 'low' })
+    expect(dividers(id).map((d) => d.kind === 'model' && d.model)).toEqual(['Haiku 4.5'])
+  })
+
   it('knows, before a thread starts, the effort each model starts on and the efforts every model takes', async () => {
     setup(ALIASES)
     await converse(chat(), 'Hello')

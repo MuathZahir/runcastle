@@ -758,11 +758,16 @@ describe('a thread always shows what is happening', () => {
     await logUntil(id, has('turn_started'))
     await host.stop(id, 'archived')
     const stopped = readThreadEvents(id)
-    expect(stopped.slice(-2)).toMatchObject([
+    expect(stopped.slice(-3)).toMatchObject([
       { type: 'turn_ended', reason: 'cancelled' },
+      { type: 'notice' },
       { type: 'process', state: 'stopped' },
     ])
-    expect(foldThread(stopped).items.at(-1)).toMatchObject({ kind: 'stopped' })
+    // Not a silent "Stopped by you": the thread says planning stopped and how it goes on.
+    expect(foldThread(stopped).items.slice(-2)).toMatchObject([
+      { kind: 'stopped' },
+      { kind: 'notice', text: 'Planning stopped. Send a message to pick it up with the lead.' },
+    ])
 
     await host.prompt(id, { text: 'What now?' }, { source: 'human' })
     await logUntil(id, turnsEnded(2))

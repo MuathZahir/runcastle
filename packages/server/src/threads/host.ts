@@ -204,6 +204,9 @@ const LOST_CONVERSATION = 'Started a new conversation — the earlier one could 
 const PLANNING_STOPPED =
   '[runcastle] The human stopped your self-planning run before it finished: planning was stopped by the human, so the plan may be incomplete.'
 
+/** What the thread says after the human stopped its self-planning run, and how it goes on. */
+const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up with the lead.'
+
 /** How much of a crashed adapter's stderr the thread keeps as its error. */
 const STDERR_TAIL = 2000
 
@@ -472,6 +475,7 @@ class Host implements AgentHost {
       appendThreadEvent(t.id, { type: 'turn_ended', reason: 'cancelled', ...(files.length ? { files } : {}) })
     }
     if (planning && reason === 'archived') {
+      appendThreadEvent(t.id, { type: 'notice', text: PLANNING_STOPPED_NOTICE })
       const pending = readPendingFork(t.id)
       writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_STOPPED}\n\n${pending.preface}` : PLANNING_STOPPED })
     }
@@ -617,6 +621,19 @@ class Host implements AgentHost {
     return Object.keys(change).length ? change : null
   }
 
+  /**
+   * What a session opening for the thread must run on, whoever sent the prompt
+   * that starts it: the model (and effort, fast mode) its log last records — the
+   * human's pick, kept across idle stops and restarts — else the model runcastle
+   * resolved for its row. The adapter opens on its own choice (the CLI's
+   * settings, a resumed conversation's last model) whatever the launch names.
+   */
+  private intendedConfig(threadId: string, row: SessionRow): ConfigChoice {
+    const logged = foldThread(readThreadEvents(threadId)).model
+    if (!logged) return row.model ? { model: row.model } : {}
+    return { model: logged.id, ...(logged.effort ? { effort: logged.effort } : {}), ...(logged.fast !== undefined ? { fast: logged.fast } : {}) }
+  }
+
   /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
   private async applyConfig(t: Thread, choice: ConfigChoice): Promise<void> {
     for (const key of ['model', 'effort', 'fast'] as const) {
@@ -739,9 +756,9 @@ class Host implements AgentHost {
     }
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     this.noteOptions(t, opened.configOptions, true)
-    const chosen = this.pendingConfig.get(t.id)
+    const chosen = { ...this.intendedConfig(t.id, row), ...this.pendingConfig.get(t.id) }
     this.pendingConfig.delete(t.id)
-    if (chosen) await this.applyConfig(t, chosen)
+    await this.applyConfig(t, chosen)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
     if (isStopped(t)) return
     const live = markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
