@@ -14,14 +14,6 @@ import {
 import { SELECT_GHOST } from '../../../ui/select'
 import { ThreadStateMark, threadStateWords } from './ThreadState'
 
-const ROLE_LABEL: Record<ThreadEntry['role'], string> = {
-  main: 'Feature chat',
-  side: 'Thread',
-  scenario: 'Scenario chat',
-  project: 'Project chat',
-  prepare: 'Preparation',
-}
-
 /**
  * The header's thread list (decision 7): every thread of the feature — its main
  * chat, side threads, scenario chats — finished ones included, newest first,
@@ -103,9 +95,8 @@ export function ThreadSwitcher({
                   <span className="min-w-0 truncate">{t.title}</span>
                   <ThreadStateMark state={t.state} />
                 </span>
-                <span className="text-xs text-text-tertiary">
-                  {ROLE_LABEL[t.role]} · {threadStateWords(t.state, t.updatedAt, now)}
-                </span>
+                {/* Its state, never its kind (decision 14); empty, and so no height, for an idle thread with no time. */}
+                <span className="text-xs text-text-tertiary empty:hidden">{threadStateWords(t.state, t.updatedAt, now)}</span>
               </span>
             </DropdownMenuItem>
           ))}

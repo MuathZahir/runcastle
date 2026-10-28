@@ -378,7 +378,7 @@ function UserMessage({
 function AgentMessage({ item, actions }: { item: Extract<ThreadItem, { kind: 'agent' }>; actions?: MessageActions }) {
   return (
     <div className="group/msg relative flex flex-col animate-fade-in">
-      <Markdown source={item.text} size="base" tone="primary" />
+      <Markdown source={item.text} size="base" tone="primary" breaks />
       <Actions align="start">
         <CopyButton text={item.text} />
         {actions?.onBranch && (
@@ -393,16 +393,54 @@ function AgentMessage({ item, actions }: { item: Extract<ThreadItem, { kind: 'ag
 /** The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`); the line already says who spoke. */
 const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/
 
-/** Runcastle's own message to the agent (Go, a round's end): one quiet line, not your bubble. */
+/** How long a runcastle line's head may run before it is cut at a word: about one line of the column. */
+const RUNCASTLE_HEAD_MAX = 140
+
+/**
+ * A runcastle line split into what shows and what folds: its first sentence of
+ * its first line, cut at a word past {@link RUNCASTLE_HEAD_MAX}. A briefing's
+ * state header, its quote of the main chat and its paths are all `rest`.
+ */
+function foldRuncastleText(text: string): { head: string; rest: boolean } {
+  const firstLine = text.split('\n', 1)[0].trim()
+  const sentence = /^.+?[.!?](?=\s|$)/.exec(firstLine)?.[0] ?? firstLine
+  const space = sentence.lastIndexOf(' ', RUNCASTLE_HEAD_MAX)
+  const head =
+    sentence.length <= RUNCASTLE_HEAD_MAX
+      ? sentence
+      : `${sentence.slice(0, space > 0 ? space : RUNCASTLE_HEAD_MAX).replace(/[\s,;:]+$/, '')}…`
+  return { head, rest: head !== text.trim() }
+}
+
+/**
+ * Runcastle's own message to the agent (Go, a round's end, a thread's
+ * briefing): one quiet line, not your bubble. A long one shows its first
+ * sentence, the rest behind Show more.
+ */
 function RuncastleLine({ text: tagged }: { text: string }) {
   const text = tagged.replace(RUNCASTLE_TAG, '')
+  const { head, rest } = foldRuncastleText(text)
+  const [open, setOpen] = useState(false)
   return (
-    <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary">
+    <p className={cx('m-0 flex min-w-0 gap-2 text-sm text-text-tertiary', open ? 'items-start' : 'items-center')}>
       <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-accent-text ring-1 ring-inset ring-[color-mix(in_oklab,var(--color-accent)_28%,transparent)]">
         <IconOrchestrator size={12} />
       </span>
-      <span className="min-w-0">
-        <span className="font-medium text-text-secondary">Runcastle</span> · {text}
+      <span className={cx('min-w-0', open && 'whitespace-pre-wrap break-words')}>
+        <span className="font-medium text-text-secondary">Runcastle</span> · {open ? text : head}
+        {rest && (
+          <>
+            {' '}
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+              className="cursor-pointer whitespace-nowrap text-text-tertiary underline-offset-2 hover:text-text-secondary hover:underline"
+            >
+              {open ? 'Show less' : 'Show more'}
+            </button>
+          </>
+        )}
       </span>
     </p>
   )

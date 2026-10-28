@@ -58,6 +58,29 @@ export function readStoredNav(): StoredNav | null {
   }
 }
 
+const SETUP_KEY = 'runcastle.setupComplete.v1'
+
+/**
+ * Whether the last doctor that answered found the host set up. It lets the next
+ * load land without waiting on the doctor's probes (seconds, where the project
+ * list is milliseconds); the fresh report still corrects it.
+ */
+function readKnownSetUp(): boolean {
+  try {
+    return localStorage.getItem(SETUP_KEY) === 'true'
+  } catch {
+    return false // storage may be unavailable (private mode) — wait for the doctor
+  }
+}
+
+function writeKnownSetUp(setUp: boolean): void {
+  try {
+    localStorage.setItem(SETUP_KEY, String(setUp))
+  } catch {
+    // storage may be unavailable (private mode) — non-fatal
+  }
+}
+
 /** Remembers where the user navigated to, for the next load. */
 export function writeStoredNav(nav: StoredNav): void {
   try {
@@ -70,7 +93,10 @@ export function writeStoredNav(nav: StoredNav): void {
 export interface ProjectNavApi {
   /** Open projects (undefined while the first list load is in flight). */
   projects: Project[] | undefined
-  /** True until both facts the landing is decided from have arrived. */
+  /**
+   * True until the landing can be decided: the list, and the doctor too unless
+   * the last one found the host set up.
+   */
   loading: boolean
   /**
    * Why the setup checks could not be run, when they failed. Nothing here gates
@@ -133,17 +159,35 @@ export function useProjectNav(): ProjectNavApi {
   // set up" put everyone whose doctor 500'd in front of the wizard instead of
   // their projects — diagnostics are not a prerequisite for listing them. The
   // banner says the checks did not run and offers the re-run.
+  //
+  // A host the last doctor found set up does not wait for this one: the doctor
+  // runs seconds where the list is milliseconds, and holding the landing held
+  // the project and its thread behind it. Should the fresh report find setup
+  // gone, the landing is decided again — to the wizard — unless the user has
+  // already moved.
+  const [knownSetUp] = useState(readKnownSetUp)
   const hostSetUp = doctor.data ? setupComplete(doctor.data.results) : true
-  if (!resolved.current && projects && !doctor.isLoading) {
+  const landedEarly = useRef(false)
+  // Whether the address has been squared with the resolved landing yet.
+  const normalized = useRef(false)
+  if (!resolved.current && projects && (!doctor.isLoading || knownSetUp)) {
     resolved.current = launchView(projects, urlLocation, stored, hostSetUp)
+    landedEarly.current = doctor.isLoading
+  } else if (landedEarly.current && projects && !doctor.isLoading) {
+    landedEarly.current = false
+    if (!hostSetUp && chosen === null) {
+      resolved.current = launchView(projects, urlLocation, stored, false)
+      normalized.current = false
+    }
   }
+
+  useEffect(() => {
+    if (doctor.data) writeKnownSetUp(setupComplete(doctor.data.results))
+  }, [doctor.data])
 
   const landing = chosen ?? resolved.current
   const view: AppView = landing?.view ?? 'home'
   const currentProjectId = landing?.projectId ?? null
-
-  // Whether the address has been squared with the resolved landing yet.
-  const normalized = useRef(false)
 
   // If the list moves out from under where the user is standing — the bound
   // project closed elsewhere, or the last card removed from the home — fall
@@ -229,7 +273,7 @@ export function useProjectNav(): ProjectNavApi {
 
   return {
     projects,
-    loading: q.isLoading || doctor.isLoading,
+    loading: q.isLoading || (doctor.isLoading && !knownSetUp),
     doctorError: doctor.error?.message ?? null,
     recheckDoctor,
     view,

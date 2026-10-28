@@ -99,6 +99,41 @@ describe('the runcastle line', () => {
     const items: ThreadItem[] = [{ kind: 'user', id: 'p', text: '[runcastle] Proceed with your task.', from: 'runcastle' }]
     render(<ChatThread items={items} state="idle" footer={null} />)
     expect(screen.getByText(/Proceed with your task/).closest('p')?.textContent).toBe('Runcastle · Proceed with your task.')
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+  })
+
+  it("folds a long briefing to its first sentence, its paths behind Show more", () => {
+    const brief =
+      '[runcastle] Proceed as a side session: you are a side session of this feature. You may do anything the main chat does.\n' +
+      'The main chat said: "let us ship it".\nIts transcript: C:\\Users\\user\\.runcastle\\sessions\\ses_1\\transcript.jsonl'
+    render(<ChatThread items={[{ kind: 'user', id: 'p', text: brief, from: 'runcastle' }]} state="idle" footer={null} />)
+    const line = () => screen.getByText(/Proceed as a side session/).closest('p')?.textContent
+    expect(line()).toBe('Runcastle · Proceed as a side session: you are a side session of this feature. Show more')
+    expect(line()).not.toContain('transcript.jsonl')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(line()).toContain('C:\\Users\\user\\.runcastle\\sessions\\ses_1\\transcript.jsonl')
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }))
+    expect(line()).not.toContain('transcript.jsonl')
+  })
+
+  it('cuts a first sentence longer than a line at a word', () => {
+    const long = `[runcastle] ${'word '.repeat(60)}end.`
+    render(<ChatThread items={[{ kind: 'user', id: 'p', text: long, from: 'runcastle' }]} state="idle" footer={null} />)
+    const text = screen.getByText(/word/).closest('p')?.textContent ?? ''
+    expect(text).toMatch(/^Runcastle · (word )+word… Show more$/)
+  })
+})
+
+describe("the agent's text", () => {
+  it('keeps its single line breaks, and leaves lists and code blocks as they were', () => {
+    const text = 'one\ntwo\nthree\n\n- a\n- b\n\n```\nx\ny\n```'
+    const { container } = render(<ChatThread items={[{ kind: 'agent', id: 'a', text }]} state="idle" footer={null} />)
+    const para = screen.getByText(/one/).closest('p')
+    expect(para?.querySelectorAll('br')).toHaveLength(2)
+    expect(container.querySelectorAll('li')).toHaveLength(2)
+    expect(container.querySelector('pre')?.textContent).toBe('x\ny\n')
+    expect(container.querySelector('pre br')).toBeNull()
   })
 })
 
@@ -136,6 +171,20 @@ describe('the header thread list', () => {
     expect(row('b').innerHTML).toContain('bg-warning')
     expect(row('c').textContent).toContain('now')
     expect(row('c').querySelector('[data-progress]')).toBeNull()
+  })
+
+  it('ages no thread that has no time, and names none by its kind', () => {
+    const at = Date.now()
+    const threads: ThreadEntry[] = [
+      { id: 'old', title: 'New chat', role: 'main', state: 'idle', updatedAt: 0, runtime: 'claude-code' },
+      { id: 'side', title: 'Fix the header', role: 'side', state: 'idle', updatedAt: at - 3 * 3_600_000, runtime: 'claude-code' },
+    ]
+    render(<ThreadSwitcher threads={threads} current="side" onPick={() => {}} onNew={() => {}} now={at} />)
+    openMenu(screen.getByRole('button', { name: 'Thread' }))
+    expect(screen.getByRole('menuitemradio', { name: /New chat/ }).textContent).toBe('New chat')
+    const side = screen.getByRole('menuitemradio', { name: /Fix the header/ }).textContent ?? ''
+    expect(side).toBe('Fix the header3h')
+    expect(side).not.toMatch(/Feature chat|Thread/)
   })
 })
 

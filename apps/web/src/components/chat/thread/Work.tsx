@@ -221,7 +221,7 @@ function Steps({ steps }: { steps: WorkStep[] }) {
           case 'thought':
             return <Thought key={s.id} seconds={s.seconds} text={s.text} />
           case 'narration':
-            return <Markdown key={s.id} source={s.text} size="sm" tone="secondary" className="my-1.5" />
+            return <Markdown key={s.id} source={s.text} size="sm" tone="secondary" className="my-1.5" breaks />
           case 'subagent':
             return <Subagent key={s.id} title={s.title} status={s.status} calls={s.calls} />
         }

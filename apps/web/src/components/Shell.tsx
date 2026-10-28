@@ -30,7 +30,8 @@ export function Shell() {
 
   // First load in flight. The list alone is not enough to place the user: until
   // the doctor answers too, showing anything risks showing onboarding to someone
-  // who is past it. A doctor that FAILS has answered as far as this gate is
+  // who is past it — unless the last doctor found the host set up, when nothing
+  // waits on this one. A doctor that FAILS has answered as far as this gate is
   // concerned — a broken probe never holds the project list.
   if (nav.loading || nav.projects === undefined) {
     // The frame is up at once, the page's shape in placeholder bars where the
