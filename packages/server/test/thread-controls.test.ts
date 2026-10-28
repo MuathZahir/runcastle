@@ -661,23 +661,33 @@ describe('usage', () => {
     expect(readUsage).toHaveBeenCalledWith('codex')
   })
 
-  it('starts nothing for an idle thread: the last report for the runtime, else no limits', async () => {
-    readUsage.mockResolvedValue(claudeUsage)
-    const idle = chat()
-    expect(await caller.thread.usage({ threadId: idle })).toEqual({ limits: [] })
+  it("reads the account for a thread whose agent does not run, without starting it", async () => {
+    readUsage.mockResolvedValue({ rateLimits: { primary: { usedPercent: 13, windowDurationMins: 43200, resetsAt: 1_800_000_000 }, planType: 'free' } })
+    const idle = chat({ runtime: 'codex' })
+    expect(await caller.thread.usage({ threadId: idle })).toMatchObject({ plan: 'ChatGPT Free', limits: [{ label: 'Current 30-day window', percent: 13 }] })
+    expect(readUsage).toHaveBeenCalledWith('codex')
     expect(fake.processes).toHaveLength(0)
-    expect(readUsage).not.toHaveBeenCalled()
+  })
 
-    const id = chat()
-    await converse(id, 'Hello')
-    const read = await caller.thread.usage({ threadId: id })
-    expect(await caller.thread.usage({ threadId: idle })).toEqual(read)
+  it("answers every thread of the runtime from one read for a minute, then reads again", async () => {
+    readUsage.mockResolvedValue(claudeUsage)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    try {
+      const read = await caller.thread.usage({ threadId: chat() })
+      expect(await caller.thread.usage({ threadId: chat() })).toEqual(read)
+      expect(readUsage).toHaveBeenCalledTimes(1)
+
+      now.mockReturnValue(1_000_000 + 61_000)
+      await caller.thread.usage({ threadId: chat() })
+      expect(readUsage).toHaveBeenCalledTimes(2)
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('degrades to the last report when the read fails', async () => {
     readUsage.mockRejectedValue(new Error('no'))
     const id = chat()
-    await converse(id, 'Hello')
     expect(await caller.thread.usage({ threadId: id })).toEqual({ limits: [] })
   })
 })
