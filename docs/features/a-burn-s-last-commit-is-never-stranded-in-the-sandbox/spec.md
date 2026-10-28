@@ -5,8 +5,8 @@
 A ticket's agent works in a checkout inside its container (a fresh clone in
 `isolated` mode, a reused cache-volume checkout in `slot` mode). A git
 `post-commit` hook pushes each commit to the ticket's temp branch on the host.
-When that push fails, the hook says "will retry on your next commit; do not
-re-commit" and gives up. For the last commit there is no next commit: the
+When that push failed, the hook said "will retry on your next commit; do not
+re-commit" and gave up. For the last commit there is no next commit: the
 container is removed, and the ticket fails with "agent made no commits" even
 though the agent finished, with checks green.
 
@@ -17,104 +17,91 @@ branches (they had no commits yet, so they looked merged). Every later push used
 
 ## Approach
 
-From the human's side: a ticket whose agent committed its work either lands it,
-or fails saying "N commit(s) stranded in the sandbox" with the reason and a
-branch holding them. It never fails as "agent made no commits" when commits
-exist, and never lands only part of the work as done. When the host had to
-collect commits the sandbox could not push, the feature's timeline says so.
+From the human's side: a ticket whose agent committed its work either lands
+it, or fails saying "N commit(s) stranded in the sandbox: <reason>". It never
+fails as "agent made no commits" when the sandbox held commits, and never lands
+only part of the work as done. Retry then continues from whatever reached the
+host, as for any failed ticket (decision 9). Nothing is rescued from the
+container after it is gone.
 
-The shape, all in the burner (`packages/server/src/workflows/ticket-burner.ts`)
-and its tests. The burner prompt and verify-notes text are not touched
+All in the burner (`packages/server/src/workflows/ticket-burner.ts`), one small
+git helper, and tests. The burner prompt and verify-notes text are not touched
 (the in-flight feature `tickets-stop-repeating-checks-and-tests-earn-their-place`
 owns them).
 
-**The sync hook** (built by the shared repo-setup steps, so `isolated` and
-`slot` both get it), on every commit:
+**The sync hook** (one builder, so `isolated` and `slot` both get it), on every
+commit:
 
-1. Records the checkout's HEAD in a small sync folder in the mounted workspace
-   (decision 7). The folder sits beside the other agent files the host harvests
-   and is never committed.
-2. Pushes with `--force-with-lease` as today; on refusal, waits briefly and
-   tries again.
-3. On refusal again, does a plain push to the full ref name
-   (`refs/heads/<tempBranch>`, so a detached HEAD in a fresh clone of a
-   workspace whose branch was deleted still works). This creates a missing
-   branch or fast-forwards one that is behind, and refuses if the host holds
-   commits the sandbox lacks (decision 1). Never a force push without a lease.
-4. On success, deletes any saved bundle in the sync folder: a newer push
-   carries everything.
-5. On failure, writes a git bundle of the unsynced commits (HEAD, excluding what
-   the remote-tracking ref says the host already has; all of HEAD when that ref
-   is missing) into the sync folder, replacing any older one (decision 2). It
-   prints one stderr line: the commit did not reach the host, it is saved for
-   the host to collect, carry on, do not push by hand or re-commit
-   (decision 4). It still exits 0.
+1. Records the checkout's HEAD in a small file in the mounted workspace, the
+   one place the container writes that the host can still read once it is gone
+   (decision 7).
+2. Pushes with `--force-with-lease` to the full ref `refs/heads/<tempBranch>`;
+   on refusal, waits two seconds and tries again. The full ref matters: a fresh
+   clone of a workspace whose branch was deleted sits on a detached HEAD, and
+   git refuses `HEAD:<branch>` to a ref the remote lacks.
+3. On refusal again, does a plain push of the same ref (decision 1). This
+   creates a missing branch or fast-forwards one that is behind, and refuses if
+   the host holds commits the sandbox lacks. Never a force push without a lease.
+4. On failure, appends to the record how many commits are unsynced and the
+   push's first error line, prints that error, and asks the agent to run
+   `git push origin HEAD:refs/heads/<tempBranch>` once more before it finishes
+   (decision 10). It never promises a later commit will carry it, and still
+   exits 0.
 
-**Container setup** (decision 6): after the checkout is ready and before the
-agent starts, if the sync folder holds a bundle whose commits follow from the
-checkout's tip, fast-forward the checkout onto them and push. Otherwise leave
-the bundle for the host. In `slot` mode the fetch of the temp branch must still
-come first; this step follows it.
-
-**Host, after every agent run** (decision 2, 3, 7), one function the success
-path and the failed-attempt path both call, before they read the worktree's
-agent files away or count the ticket's commits:
-
-- If a bundle is saved: verify it, fetch it, and move the temp branch onto its
-  tip when the branch is missing or is an ancestor of that tip. Emit a timeline
-  event naming how many commits were collected. When the branch went
-  elsewhere, keep the bundle's commits on a branch of their own next to the
-  temp branch and report them as stranded.
-- If a HEAD record is present, check the temp branch contains that commit. If
-  not, report stranded.
-- Report stranded as a failed outcome: `N commit(s) stranded in the sandbox:
-  <reason>`, naming the kept branch when there is one. That outcome wins over
-  "done" (no partial landing) and over "agent made no commits". The temp
-  branch's own commits stay preserved for Retry as any failed ticket's chain
-  is (decision 8: Retry does not switch to the stranded branch).
+**The burner, after a run** — on the normal path and on the path where the run
+rejects only because sandcastle could not remove its worktree (which otherwise
+lands the commits as done) — reads the record out of the mounted worktree
+before discarding it, then checks the temp branch contains the recorded HEAD.
+It checks the branch, not the hook's word: an agent that pushed by hand after
+the hook gave up has its work home. If the branch lacks it, the ticket fails
+with "N commit(s) stranded in the sandbox: <push error> (the agent's last
+commit <sha> never reached <tempBranch>)". A record with only a HEAD line (the
+hook never finished) gives "commit(s) stranded in the sandbox: the sync hook
+did not finish …". That failure wins over "done" and over "agent made no
+commits"; the commits that did reach the host stay preserved for Retry.
 
 `mounted` and `noSandbox` modes commit straight into the host worktree, have no
-hook and no sync folder, and are unchanged: the host function finds nothing and
-does nothing.
-
-The doc comments explaining the hook's "it will heal; do not re-commit"
-reasoning are rewritten to match.
+hook and no record, and are unchanged.
 
 ## Seams
 
-- **The sync hook and setup script under real git** (existing):
-  `packages/server/test/burn-slot-workspace.test.ts` already runs the slot setup
-  script against throwaway workspace and volume repos and commits in the slot.
-  New cases there: delete the workspace's temp branch, then commit, and the
-  commit reaches the workspace; break the remote entirely, then commit, and a
-  bundle is saved and the agent is told so; a later good commit clears it; the
-  next setup on a slot with a saved bundle takes the commits in. An `isolated`
-  clone of a workspace on a detached HEAD syncs too.
-- **The host's collect-and-check function** (new, exported from the burner):
-  given the repo, the temp branch and the worktree directory, it returns
-  collected / stranded / nothing. Tested with real git temp repos: a bundle on a
-  deleted branch is collected; a bundle on a diverged branch is kept on its own
-  branch and reported stranded; a HEAD record missing from the branch with no
-  bundle is reported stranded; no files means nothing.
-- **Outcome interpretation** (existing, `interpretRunResult` and the code after
-  `run()`): a stranded report turns into the named failure even when the chain
-  has commits.
+- **The sync hook under real git** (new test file): the hook script installed
+  in a real clone of a throwaway "host" repo, fired by real commits. Git runs
+  it through its own `sh`, so this runs on Windows too, unlike the existing
+  slot-script tests. Cases: a commit syncs and is recorded; a host branch
+  deleted under the burn is recreated (the bug); the same from a detached HEAD;
+  an amend still syncs; host commits the sandbox lacks are never overwritten
+  and the ticket fails by name; a hand push after the hook gave up counts.
+- **The stranded check** (new, exported): `strandedCommitsError` with
+  `parseSyncRecord` — given the repo, the temp branch and the record, it
+  returns the failure text or nothing.
+- **The setup-command shape tests** (existing): updated to the full-ref pushes,
+  the plain-push fallback and the new agent line.
 
-Tests assert behaviour (where commits end up, what the outcome says), not the
-hook's text, except that the line no longer promises a later commit.
+The burner's run-end wiring (read the record, call the check, let it win) has no
+harness that drives it with a fake sandbox; it is a few lines, covered by
+reading and by the seams above.
 
 ## Out of scope
 
+- Rescuing commits that could not be pushed (saving them for the host,
+  collecting them, a branch of stranded work): dropped by the orchestrator
+  (decision 9).
 - The boot cleanup deleting a live burn's temp branches, and the boot reconcile
   failing a run that is still alive. Parked as the backlog feature "Boot cleanup
   never touches a live burn" (decision 5).
 - The burner prompt (`implement-ticket.md`) and the verify-notes text.
-- Making Retry resume from stranded commits (decision 8).
 - Any change to `mounted` / `noSandbox` workspace modes.
 
 ## Open questions
 
 - Until the parked feature ships, a hot reload of the server during a burn can
-  still delete a temp branch before the agent's first commit. This feature
-  makes the next push recreate it, but a sandbox restart that happens before any
-  commit still fails its setup fetch. Accepted as the parked feature's to fix.
+  still delete a temp branch. The next commit's plain push recreates it, but a
+  sandbox restart before any commit still fails its setup fetch.
+- A stranded commit in one agent turn followed by a restart in a fresh
+  container (a new iteration in the same run) is not caught if the restarted
+  agent's own commits sync: the record then holds the new HEAD. Rare, and the
+  restarted agent sees the branch as it really is.
+- A hook disarmed entirely (a dependency install that rewires git hooks after
+  setup) writes no record, so the check has nothing to compare. The existing
+  `core.hooksPath` re-pin is what guards that.

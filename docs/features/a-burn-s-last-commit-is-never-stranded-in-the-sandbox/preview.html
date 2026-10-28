@@ -181,14 +181,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="case cmp" data-state="b">
     <div><h3>Today</h3><div class="flow">
-      <div class="step"><i class="dot"></i><p>Every push fails (host branch moved, ref locked, mount hiccup).</p></div>
-      <div class="step end bad"><i class="dot no"></i><p><b>Agent made no commits.</b> Work lost.</p></div>
+      <div class="step"><i class="dot"></i><p>Every push fails (host branch holds other commits, mount hiccup).</p></div>
+      <div class="step"><i class="dot"></i><p>Hook says <span class="mono">will retry on your next commit</span>; the agent stops.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p><b>Agent made no commits.</b> Work lost, and the reason with it.</p></div>
     </div></div>
     <div><h3>With this feature</h3><div class="flow">
-      <div class="step"><i class="dot"></i><p>Hook saves the unsynced commits as one file in the mounted workspace <a class="pin" data-d="2">2</a> and tells the agent to carry on, not push by hand <a class="pin" data-d="4">4</a>.</p></div>
-      <div class="step"><i class="dot"></i><p>If the agent is restarted in a new container, its setup takes the saved commits in first <a class="pin" data-d="6">6</a>.</p></div>
-      <div class="step end"><i class="dot ok"></i><p>After the run the host collects them onto the ticket branch. Timeline: <span class="mono">collected 2 commit(s) the sandbox could not push</span>. Ticket lands.</p></div>
-      <div class="step end warn"><i class="dot no"></i><p>If the ticket branch went elsewhere: <b>failed: 2 commit(s) stranded in the sandbox</b>, kept on their own branch named in the error <a class="pin" data-d="3">3</a>. Retry starts from the ticket branch <a class="pin" data-d="8">8</a>.</p></div>
+      <div class="step"><i class="dot"></i><p>Hook prints the push error and asks the agent to run <span class="mono">git push origin HEAD:refs/heads/&lt;branch&gt;</span> once more <a class="pin" data-d="10">10</a>.</p></div>
+      <div class="step end"><i class="dot ok"></i><p>The hand push works: the host branch has the last commit, <b>ticket lands</b>.</p></div>
+      <div class="step end bad"><i class="dot no"></i><p>It still fails: <b>failed: 2 commit(s) stranded in the sandbox: &lt;push error&gt;</b>. No rescue; Retry continues from what reached the host <a class="pin" data-d="9">9</a>.</p></div>
     </div></div>
   </div>
 
@@ -220,7 +220,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     </ul></div>
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>The burner prompt and verify-notes text</li>
-      <li><i class="dot"></i>Retry resuming from stranded commits</li>
+      <li><i class="dot"></i>Rescuing commits the sandbox could not push</li>
       <li><i class="dot"></i>Mounted and no-sandbox modes (no hook, unchanged)</li>
     </ul></div>
   </div>
@@ -231,13 +231,18 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-<div class="flow">
-        <div class="step"><i class="dot live"></i><p><b>Sync hook</b> (shared by the isolated clone and the cache slot): record HEAD, lease push and retry, then a plain push to <span class="mono">refs/heads/&lt;temp branch&gt;</span>. On success, delete any saved bundle; on failure, write a git bundle of the unsynced commits and one stderr line. Always exit 0.</p></div>
-        <div class="step"><i class="dot live"></i><p><b>Container setup</b>: a saved bundle that follows from the checkout tip is fast-forwarded in and pushed before the agent starts.</p></div>
-        <div class="step"><i class="dot live"></i><p><b>Host, after each run or failed attempt</b>: one new function collects a bundle onto the temp branch when it is missing or behind, else keeps it on its own branch; then checks the recorded HEAD is on the temp branch. Stranded beats &ldquo;done&rdquo; and &ldquo;no commits&rdquo;.</p></div>
-        <div class="step"><i class="dot live"></i><p><b>Tests</b>: the real-git slot harness (deleted branch still syncs, broken remote saves, next setup takes it in, detached clone syncs) and real-git tests of the host function. Behaviour, not hook text.</p></div>
-        <div class="step"><i class="dot live"></i><p><b>Who builds it</b>: the lead, in this checkout. No tickets: one file and its tests.</p></div>
-      </div>
+  var D = [
+    ['A refused sync push falls back to a plain push, never to an overwrite', 'It fixes the deleted-branch failure without ever discarding anything on the host; the lease stays the first try, so amends still sync.', 'assumed'],
+    ['A commit that still cannot sync is saved where the host can collect it', 'Superseded by 9: no rescue.', 'superseded'],
+    ['Work that cannot be recovered fails the ticket by name, and is kept on a branch', 'Superseded by 9: no rescue, so nothing to keep.', 'superseded'],
+    ['The hook tells the agent its work is safe, and not to push by hand', 'Superseded by 10: the agent is asked to push once more.', 'superseded'],
+    ['The boot cleanup that deleted the live branches is parked, not fixed here', 'The brief rules out restart recovery; a correct sweep needs to know which runs are alive, and that check is what failed in this bug.', 'assumed'],
+    ["The agent's next restart in the same run starts from the saved commits", 'Superseded by 9: nothing is saved.', 'superseded'],
+    ["The burner checks that the sandbox's last commit reached the host", 'Without it, a ticket whose last commit failed to sync lands only part of its work as done, or reads as no commits.', 'assumed'],
+    ['Retry after a stranded failure starts from the host branch, not the saved commits', 'Superseded by 9: Retry continues from the host branch, as for any failed ticket.', 'superseded'],
+    ['No rescue: a commit that cannot sync fails the ticket by name', 'With the plain-push fallback, what is left for a rescue to catch is rare; a named failure plus Retry covers it. Changed by the orchestrator.', 'orchestrator'],
+    ['The hook asks the agent to push once more before it finishes', 'With no rescue, one more plain push is the last chance the work has, and a plain push cannot overwrite. Changed by the orchestrator.', 'orchestrator']
+  ]
     </div>
   </details>
 </section>
@@ -264,10 +269,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [2, "Detect only: record the last commit and fail the ticket by name, no rescue (the challenger's pick).", 'It sets the size of the fix: the rescue adds a saved file, a host apply step, and decisions 3 and 6. The challenger called it too heavy once the push falls back.', 'challenged'],
+    [9, 'Rescue unpushed commits through a saved file the host collects (the original plan, decisions 2, 3 and 6).', 'Changed by the orchestrator: a stranded commit now fails the ticket and its last work is lost, though the plain push makes that rare.', 'orchestrator'],
+    [10, 'Tell the agent to carry on and leave the commit to the host.', 'Changed by the orchestrator along with 9. A hand push is safe because it cannot overwrite.', 'orchestrator'],
     [5, 'Also fix the boot sweep here so it skips a branch a live burn still holds.', 'The sweep is the root cause and runs on every hot reload of the server. The challenger would fix it here.', 'challenged'],
-    [1, 'Refresh the lease and force-push, which also covers an amend after a failed sync.', 'Safe only if nothing else ever writes a ticket branch; the boot sweep showed something does.', 'challenged'],
-    [6, 'Collect the saved commits only once, after the run ends.', 'The costliest part of the rescue for the rarest case; the challenger would drop it.', 'challenged']
+    [1, 'Refresh the lease and force-push, which also covers an amend after a failed sync.', 'Safe only if nothing else ever writes a ticket branch; the boot sweep showed something does.', 'challenged']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

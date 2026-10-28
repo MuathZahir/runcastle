@@ -48,6 +48,7 @@ marker) and fail the ticket loudly, without recovering the work.
 almost nothing is left for a rescue to catch; retrying with backoff, recording
 the sandbox's last commit and failing by name (decision 7) meets the brief
 without a file contract, a host-side apply step or decision 6.
+**Superseded by 9.**
 
 ## 3. Work that cannot be recovered fails the ticket by name, and is kept on a branch
 **Decision:** If the host cannot put the saved commits on the temp branch (the
@@ -62,6 +63,7 @@ work, and it is the only copy left.
 **Assumed.** Alternative: fail by name but let the saved commits go with the
 worktree.
 **Challenged:** Part of the rescue it would drop (see decision 2).
+**Superseded by 9.**
 
 ## 4. The hook tells the agent its work is safe, and not to push by hand
 **Decision:** The hook's line to the agent on a failed sync says the commit did
@@ -74,6 +76,7 @@ the burner prompt out of bounds, so the hook's own line is the only place to
 say it.
 **Assumed.** Alternative: tell the agent to push by hand, as ticket 1's agent
 did on its own.
+**Superseded by 10.**
 
 ## 5. The boot cleanup that deleted the live branches is parked, not fixed here
 **Decision:** This feature makes the sandbox survive a missing or moved temp
@@ -106,6 +109,7 @@ so the work fails by decision 3 when it could have landed.
 that a restart in between turns the rescue into a named failure.
 **Challenged:** Drop it; it is the most expensive part of the rescue for the
 rarest case.
+**Superseded by 9.**
 
 ## 7. The burner checks that the sandbox's last commit reached the host
 **Decision:** On every commit the hook records the sandbox's latest commit in
@@ -129,3 +133,30 @@ branch for the human to merge in or ignore.
 different ways, so picking one for the human would throw the other away. This
 case should be rare enough that a manual call is cheaper than a rule.
 **Assumed.** Alternative: Retry resumes from the saved commits.
+**Superseded by 9.**
+
+## 9. No rescue: a commit that cannot sync fails the ticket by name
+**Decision:** Supersedes: 2, 3, 6 and 8. The hook saves nothing and the host
+collects nothing. A commit the sandbox could not push is caught by decision 7
+and fails the ticket as "N commit(s) stranded in the sandbox: <reason>". The
+human's Retry continues from whatever did reach the host, as for any failed
+ticket. Decision 7 stands, without its "once any saved commits are collected"
+step.
+**Why:** With the plain-push fallback (decision 1), what is left for a rescue
+to catch is rare, and a named failure plus Retry covers it at a fraction of the
+machinery: no saved file, no host-side apply step, no stranded branch, no
+setup change.
+**Assumed.** Alternative: the rescue in decisions 2, 3 and 6.
+**Changed by the orchestrator:** it judged the rescue heavier than this bug
+deserves and took the challenger's side.
+
+## 10. The hook asks the agent to push once more before it finishes
+**Decision:** Supersedes: 4. When every push fails, the hook's line says the
+commit did not reach the host and asks the agent to run
+`git push origin HEAD:refs/heads/<tempBranch>` once more before it finishes. It
+no longer promises that a later commit will carry it.
+**Why:** With no rescue, one more plain push by the agent is the last chance
+the work has, and a plain push cannot overwrite anything on the host.
+**Assumed.** Alternative: tell the agent to carry on and leave it to the host
+(decision 4).
+**Changed by the orchestrator:** it replaced decision 4 along with the rescue.
