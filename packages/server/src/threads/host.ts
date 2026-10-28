@@ -220,6 +220,9 @@ const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up 
 /** What the thread says when its agent process dies with nothing human-readable on its stderr. */
 const CRASHED = 'The agent stopped unexpectedly. Your next message restarts it.'
 
+/** What the thread says when the agent could not start and the adapter's error has nothing human-readable. */
+const COULD_NOT_START = 'The agent could not start. Your next message tries again.'
+
 /** Why the agent could not start, when the conversation on record is on disk but would not reopen: nothing replaced it. */
 const NOT_REOPENED = 'this conversation would not reopen. It is still on disk and nothing replaced it; your next message tries again.'
 
@@ -353,25 +356,44 @@ function saysConversationGone(err: unknown): boolean {
   return /no (such )?(conversation|session|thread|rollout)|(conversation|rollout) not found/i.test(errorText(err))
 }
 
+/** An adapter's or runtime's warning, which reads as a sentence but is not the reason it stopped. */
+const WARNING_PREFIX = /^(unexpected case\b|\[?warn(ing)?\b|\(node:\d+\)|deprecat)/i
+
 /**
- * A stderr line that is the adapter's or the runtime's own bookkeeping, not
- * words for a person: a `[tag]` log line (claude-agent-acp's
- * `[session/create] sessionId=… phase=…`), a stack frame, `key=value` fields or JSON.
+ * A line that reads as words for a person: a sentence with no JSON (braces,
+ * brackets, quoted keys), no `key=value` fields, no ids, not a stack frame and
+ * not a warning. The rest is the adapter's or the runtime's own bookkeeping —
+ * claude-agent-acp's `[session/create] sessionId=… phase=…`, an
+ * `Unexpected case` line and the message it dumps after it.
  */
-function debugShaped(line: string): boolean {
-  return /^\[[^\]]+\]/.test(line) || /^at\s/.test(line) || /^[{[]/.test(line) || (line.match(/\b[\w.]+=\S/g)?.length ?? 0) >= 2
+function readsAsSentence(line: string): boolean {
+  if (WARNING_PREFIX.test(line) || /^at\s/.test(line)) return false
+  if (/[{}[\]]|"[\w.-]+"\s*:|\b[\w.]+=\S/.test(line)) return false
+  if (/\b[0-9a-f]{8}-[0-9a-f]{4}-|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{12,}\b/i.test(line)) return false
+  return (line.match(/[A-Za-z]{2,}/g)?.length ?? 0) >= 2
+}
+
+/** The last line of an adapter's text that reads as a sentence, trimmed for a thread; none when no line does. */
+function readableReason(text: string): string | undefined {
+  const said = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(readsAsSentence)
+    .at(-1)
+  if (!said) return undefined
+  return said.length > 200 ? `${said.slice(0, 199)}…` : said.replace(/\.$/, '')
 }
 
 /** What a dead process's stderr says in a thread: the short line, with the last human-readable line it gave. */
 function crashText(stderr: string): string {
-  const said = stderr
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !debugShaped(line))
-    .at(-1)
-  if (!said) return CRASHED
-  const reason = said.length > 200 ? `${said.slice(0, 199)}…` : said.replace(/\.$/, '')
-  return `The agent stopped unexpectedly: ${reason}. Your next message restarts it.`
+  const reason = readableReason(stderr)
+  return reason ? `The agent stopped unexpectedly: ${reason}. Your next message restarts it.` : CRASHED
+}
+
+/** Why a start failed, in a thread: the short line, with the adapter's error where it reads as a sentence. */
+function failedStartText(err: unknown): string {
+  const reason = readableReason(errorText(err))
+  return reason ? `The agent could not start: ${reason}.` : COULD_NOT_START
 }
 
 class Host implements AgentHost {
@@ -910,7 +932,7 @@ class Host implements AgentHost {
     if (t.state === 'stopped') return
     this.detach(t)
     await t.proc?.kill().catch(() => {})
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: `The agent could not start: ${errorText(err)}` })
+    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: failedStartText(err) })
     this.ended(t, 'crashed')
   }
 

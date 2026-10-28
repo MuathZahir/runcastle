@@ -382,6 +382,34 @@ describe('a turn', () => {
     expect(JSON.stringify(events)).not.toContain('phase=')
     expect(readFileSync(join(sessionDir(id), 'agent-stderr.log'), 'utf8')).toContain('phase=prepare-query durationMs=9')
   })
+
+  it('never shows an adapter warning or the JSON it dumps after it as the reason a crash happened', async () => {
+    setup({ turn: (t) => t.cancelled.then(() => undefined) })
+    const id = thread()
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    const stderr = [
+      'Unexpected case in toAcpNotifications: system',
+      '{"type":"system","subtype":"status","session_id":"0b6c2a54-1f0e-4c1d-9a7e-3f1d2c4b5a69"}',
+      '{',
+      '  "type": "result",',
+      '  "uuid": "7e1f0c3a9b2d4e5f"',
+      '}',
+      '[warn] the adapter saw an unknown update kind',
+      'Session 0b6c2a54-1f0e-4c1d-9a7e-3f1d2c4b5a69 exited',
+    ].join('\n')
+    fake.last().crash(stderr)
+    const events = await logUntil(id, (e) => e.some((x) => x.type === 'process' && x.state === 'stopped'))
+    expect(events.at(-1)).toMatchObject({ type: 'process', state: 'stopped', error: 'The agent stopped unexpectedly. Your next message restarts it.' })
+  })
+
+  it('shows a failed start’s adapter error only where it reads as a sentence', async () => {
+    setup({ failSession: 'Unexpected case: {"code":-32603,"sessionId":"18edac9e4b2f"}' })
+    const id = thread()
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    const events = await logUntil(id, (e) => e.some((x) => x.type === 'process' && x.state === 'stopped'))
+    expect(events.at(-1)).toMatchObject({ type: 'process', state: 'stopped', error: 'The agent could not start. Your next message tries again.' })
+  })
 })
 
 describe('idle stop', () => {
