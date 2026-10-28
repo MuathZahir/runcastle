@@ -1,6 +1,10 @@
 # ADR-0008: Burn performance — measure the burn, bound the agent, enforce the rules
 
 - **Status:** accepted (2026-07-27)
+- **Amended:** 2026-10-28 — ticket agents no longer run the verify commands
+  whole; the host runs them at most once per commit (feature
+  tickets-stop-repeating-checks-and-tests-earn-their-place). See "Amendment"
+  at the end; decisions 4 and 5 below are read through it.
 - **Extends:** ADR-0004 (dependency caching) and ADR-0005 (isolated workspace),
   both of which fixed *environment* costs. This one addresses what the agent
   itself spends, which turned out to be larger.
@@ -204,3 +208,34 @@ Recorded because an earlier draft of this ADR collapsed these into a single
    correct when an "iteration" becomes an "attempt".
 
 - **A hard container memory limit.** See decision 3.
+
+## Amendment (2026-10-28) — the host owns the full gates
+
+Measured on a larger project: with decision 4's "verify with exactly these
+commands", agents ran the full verify commands 2–3 times per ticket (~6.6 min a
+ticket), while the host already runs them once per round. The review pass and
+the round's end also ran them twice on the same commit (~5 min each).
+
+1. **Decision 4 changes meaning.** `verifyCommands` are now the host's full
+   gates, run at the end of each round. They stay in the burner prompt so the
+   agent learns the project's real tools and filter names, but the agent never
+   runs them whole: it runs the project's static check once, after committing,
+   and only the tests covering its change. A ticket fixing a gate failure
+   re-runs exactly the failing check, narrowed. Breakage elsewhere is the round
+   gates' to catch, and the feature lead runs a fix round.
+2. **Decision 5's "run the whole suite once at the end" is withdrawn** for ticket
+   agents. The rest of decision 5 stands: commit every green slice, use the file
+   tools, capture output to a file and read it back, treat a guard denial as
+   policy.
+3. **The host runs the gates at most once per commit.** A round's end and a
+   review or verification pass reuse a recorded result for the same branch tip
+   and the same commands (commits touching only the feature's own docs don't
+   count as moving it). A result where any command timed out or could not
+   start is never reused. A reused result is marked as reused, with the commit
+   it ran on (`packages/server/src/workflows/gate-reuse.ts`).
+4. **Test-first is gone from every prompt.** Agents write a test only where it
+   protects behaviour that could plausibly break; a change with nothing worth
+   testing gets none, and the digest says so.
+
+Decision 2's guard is unchanged: no new rules. `ticket.timing` (decision 1)
+remains the way to measure the effect.
