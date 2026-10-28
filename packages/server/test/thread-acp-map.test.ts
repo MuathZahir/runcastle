@@ -103,6 +103,39 @@ describe('createUpdateMapper', () => {
     ])
   })
 
+  it("names a codex-acp file change by its files, from its diffs or an approval's locations", () => {
+    const map = mapper()
+    expect(
+      map({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'fc1',
+        title: 'Editing files',
+        kind: 'edit',
+        status: 'in_progress',
+        content: [
+          { type: 'diff', path: '/wt/src/a.ts', oldText: 'x\n', newText: 'y\n' },
+          { type: 'diff', path: '/wt/src/b.ts', oldText: null, newText: 'z\n' },
+        ],
+      }),
+    ).toMatchObject([{ type: 'tool', call: { id: 'fc1', title: 'Edit /wt/src/a.ts, /wt/src/b.ts' } }])
+    expect(toolCallOf({ toolCallId: 'fc2', title: 'Editing files', locations: [{ path: '/wt/c.ts' }] })).toMatchObject({ title: 'Edit /wt/c.ts' })
+    // Nothing to name the files by: the title stays, and the row reads it in plain words.
+    expect(toolCallOf({ toolCallId: 'fc3', title: 'Editing files', kind: 'edit' })).toMatchObject({ title: 'Editing files' })
+  })
+
+  it("carries a command's output that codex-acp streams in _meta, and its MCP progress, as output to append", () => {
+    const map = mapper()
+    expect(map({ sessionUpdate: 'tool_call_update', toolCallId: 'c1', _meta: { terminal_output_delta: { data: 'line 1\n', terminal_id: 'c1' } } })).toEqual([
+      { type: 'tool', call: { id: 'c1' }, outputAppend: 'line 1\n' },
+    ])
+    expect(map({ sessionUpdate: 'tool_call_update', toolCallId: 'm1', _meta: { mcp_output_delta: { data: 'Indexing…' } } })).toEqual([
+      { type: 'tool', call: { id: 'm1' }, outputAppend: 'Indexing…' },
+    ])
+    expect(map({ sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', _meta: { terminal_exit: { exit_code: 0 } } })).toEqual([
+      { type: 'tool', call: { id: 'c1', status: 'completed' } },
+    ])
+  })
+
   it('maps plan, commands, usage, title, suggestion, model and compaction', () => {
     const map = mapper()
     expect(map({ sessionUpdate: 'plan', entries: [{ content: 'Do it', priority: 'high', status: 'in_progress' }] })).toEqual([

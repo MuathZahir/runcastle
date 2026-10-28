@@ -57,10 +57,29 @@ const TITLE_VERB: Record<string, [done: string, doing: string]> = {
   Fetch: ['Fetched', 'Fetching'],
   Search: ['Searched', 'Searching'],
   Run: ['Ran', 'Running'],
+  // codex-acp's own openings: "List files in 'src'", "View Image a.png", "Open page: …", "Find in page …", "Compact conversation".
+  List: ['Listed', 'Listing'],
+  View: ['Viewed', 'Viewing'],
+  Open: ['Opened', 'Opening'],
+  Find: ['Searched', 'Searching'],
+  Compact: ['Compacted', 'Compacting'],
 }
 
-/** Titles that already read as a sentence (claude-agent-acp's skill, task and plan rows): shown as they are. */
-const SENTENCE_TITLE = /^(Load skill|Create task|Update task|List tasks|Get task|Approve Plan|Exited Plan Mode|Asking for|Preparing file|Edit notebook|Terminal)\b/
+/** A title that opens in flight ("Editing files", codex-acp's edit row): the verb it says, with the call's own tense. */
+const DOING_VERB = new Map(Object.values(TITLE_VERB).map((verb) => [verb[1], verb] as const))
+
+/**
+ * Titles that already read as a sentence, shown as they are: claude-agent-acp's
+ * skill, task and plan rows, and codex-acp's review, image and subagent rows.
+ */
+const SENTENCE_TITLE =
+  /^(Load skill|Create task|Update task|List tasks|Get task|Approve Plan|Exited Plan Mode|Asking for|Preparing file|Edit notebook|Terminal|Guardian Review|Image generation|(Start|Interact with|Interrupt|Complete) subagent)\b/
+
+/** An MCP tool's title: Claude's `mcp__server__tool`, codex-acp's `mcp.server.tool`. */
+const MCP_TITLE = /^mcp__(.+)__([^_].*)$|^mcp\.(.+)\.([^.]+)$/
+
+/** codex-acp's web search row, "Web search: <query>". */
+const WEB_SEARCH = /^Web search(?::\s*(.*))?$/
 
 /** "get_feature_context" → "get feature context". */
 const inWords = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
@@ -72,11 +91,16 @@ const inWords = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
  */
 export function callText(call: Pick<ToolCall, 'kind' | 'title'>, running: boolean): { verb?: string; target: string; mono: boolean } {
   const tense = running ? 1 : 0
-  const mcp = /^mcp__(.+)__([^_].*)$/.exec(call.title)
-  if (mcp) return { target: `${inWords(mcp[1].replace(/^plugin_/, ''))}: ${inWords(mcp[2])}`, mono: false }
+  const mcp = MCP_TITLE.exec(call.title)
+  if (mcp) {
+    const [server, tool] = mcp[1] !== undefined ? [mcp[1], mcp[2]] : [mcp[3], mcp[4]]
+    return { target: `${inWords(server.replace(/^plugin_/, ''))}: ${inWords(tool)}`, mono: false }
+  }
   if (SENTENCE_TITLE.test(call.title)) return { target: call.title, mono: false }
+  const web = WEB_SEARCH.exec(call.title)
+  if (web) return { verb: running ? 'Searching the web' : 'Searched the web', target: web[1] ?? '', mono: false }
   const [first, ...rest] = call.title.split(' ')
-  const own = TITLE_VERB[first]
+  const own = TITLE_VERB[first] ?? DOING_VERB.get(first)
   if (own) return { verb: own[tense], target: rest.join(' '), mono: true }
   // An internal tool's raw name (ToolSearch): its words.
   if (/^[A-Z][A-Za-z]+$/.test(call.title)) {

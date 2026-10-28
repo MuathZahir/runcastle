@@ -42,6 +42,30 @@ describe('a tool row', () => {
     ])
   })
 
+  it("reads codex-acp's rows the same way: one verb, its MCP tools by server and words, its review in plain words", () => {
+    expect(
+      rows([
+        call('mcp.runcastle.get_feature_context', 'execute'),
+        call('Edit src/a.ts, src/b.ts', 'edit'),
+        call('Editing files', 'edit'),
+        call('Guardian Review', 'think'),
+        call("List files in 'src'", 'read'),
+        call('Web search: acp rate limits', 'search'),
+        call('Compact conversation', 'think'),
+        call('Start subagent Planner', 'other'),
+      ]),
+    ).toEqual([
+      'runcastle: get feature context',
+      'Editedsrc/a.ts, src/b.ts',
+      'Editedfiles',
+      'Guardian Review',
+      "Listedfiles in 'src'",
+      'Searched the webacp rate limits',
+      'Compactedconversation',
+      'Start subagent Planner',
+    ])
+  })
+
   it('says the in-flight verb while it runs', () => {
     expect(rows([call('Read src/a.ts', 'read', 'in_progress')])).toEqual(['Readingsrc/a.ts'])
   })

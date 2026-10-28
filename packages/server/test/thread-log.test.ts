@@ -59,6 +59,19 @@ describe('the thread log', () => {
     expect(events.map((e) => e.i)).toEqual([0, 1, 2, 3])
   })
 
+  it("joins a command's rapid output chunks into one event, but never a chunk that also changes the call", () => {
+    vi.useFakeTimers()
+    const id = newId('sess')
+    appendThreadEvent(id, { type: 'tool', call: { id: 'c1' }, outputAppend: 'one\n' })
+    appendThreadEvent(id, { type: 'tool', call: { id: 'c1' }, outputAppend: 'two\n' })
+    appendThreadEvent(id, { type: 'tool', call: { id: 'c1', status: 'completed' }, outputAppend: 'three\n' })
+    flushThreadLog(id)
+    expect(readThreadEvents(id)).toMatchObject([
+      { i: 0, call: { id: 'c1' }, outputAppend: 'one\ntwo\n' },
+      { i: 1, call: { id: 'c1', status: 'completed' }, outputAppend: 'three\n' },
+    ])
+  })
+
   it('starts a new event once the coalescing window has passed, or for another message', () => {
     vi.useFakeTimers()
     const id = newId('sess')

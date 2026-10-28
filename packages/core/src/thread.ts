@@ -254,6 +254,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     call: ToolCall.partial().required({ id: true }),
     /** The subagent this call belongs to, when it is one of a subagent's calls. */
     parentId: z.string().optional(),
+    /** What the call printed since its last update (a command's streamed output): added to its `output`. */
+    outputAppend: z.string().optional(),
   }),
   /** A subagent the turn delegated to, first seen or updated. */
   z.object({ type: z.literal('subagent'), id: z.string(), title: z.string().optional(), status: ToolStatus.optional() }),
@@ -667,6 +669,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         if (known) {
           Object.assign(known, Object.fromEntries(Object.entries(e.call).filter(([, v]) => v !== undefined && v !== '')))
         } else addCall(t, e, { ...BLANK_CALL, ...(e.call as Partial<ToolCall>), id: e.call.id }, e.parentId)
+        if (e.outputAppend) {
+          const call = t.calls.get(e.call.id)!
+          call.output = (call.output ?? '') + e.outputAppend
+        }
         render(true)
         break
       }
