@@ -1,4 +1,5 @@
 import { DEFAULT_RUNTIME, liveEvents, type SessionRow, type ThreadEvent } from '@runcastle/core'
+import { selfPlanKickoffFor } from '../launcher/runtimes/skills'
 import { deriveTitle } from '../services/conversations'
 
 /**
@@ -24,9 +25,15 @@ export function runtimeMayName(events: readonly ThreadEvent[]): boolean {
   return first?.type === 'prompt' && first.source === 'human'
 }
 
+/** What the feature's main chat is called once a self-planning run in it is over, as the thread list's role names it. */
+export const MAIN_CHAT_NAME = 'Feature chat'
+
 /** A thread nobody has said anything in, named for what it is doing. */
 function errandName(row: SessionRow, events: readonly ThreadEvent[]): string | null {
   if (row.purpose === 'self-plan') return 'Planning by itself'
+  // The run is over (finished or stopped): the thread is the lead's chat again.
+  const planned = selfPlanKickoffFor(row.runtime ?? DEFAULT_RUNTIME)
+  if (row.kind === 'chat' && events.some((e) => e.type === 'prompt' && e.source === 'runcastle' && e.text.includes(planned))) return MAIN_CHAT_NAME
   if (row.kind === 'scenario') return row.purpose === 'scenario-setup' ? 'Scenario: setting scenarios up' : 'Scenario: writing scenarios'
   if (row.kind === 'drive-fix') return 'Fix: the test drive'
   if (events.some((e) => e.type === 'prompt' && e.source === 'runcastle' && !e.hidden)) return 'Working by itself'

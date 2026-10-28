@@ -93,6 +93,9 @@ export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data
 /** The reason an idle agent waits on after the human stopped its round. */
 export const STOPPED = 'stopped'
 
+/** The reason the feature waits on after a self-planning run stopped short: the chat picks it up with the lead. */
+export const PLANNING_STOPPED = 'planning stopped'
+
 /** The line for a feature with nothing running and nothing asked. */
 export const TALKING = 'Talking with you'
 
@@ -164,7 +167,10 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
     }
   }
 
-  if (feature.waitingReason) return { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
+  if (feature.waitingReason) {
+    const waiting: FeatureStatus = { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
+    return feature.waitingReason === PLANNING_STOPPED ? { ...waiting, primary: 'chat' } : waiting
+  }
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not

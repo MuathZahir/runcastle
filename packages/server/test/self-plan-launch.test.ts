@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { AgentRuntime, Feature, SessionPurpose, ThreadEvent } from '@runcastle/core'
+import { foldThread, type AgentRuntime, type Feature, type SessionPurpose, type ThreadEvent } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,10 +14,12 @@ import { listAfter } from '../src/services/events'
 import { setWaiting } from '../src/services/lead-status'
 import { featureDocPath } from '../src/services/feature-docs'
 import { createFeatureBranch } from '../src/services/git'
-import { listSessionsByFeature, projectForFeature } from '../src/services/repo'
+import { getFeatureRow, listSessionsByFeature, projectForFeature } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeScript } from './support/fake-acp-agent'
@@ -263,6 +265,37 @@ describe('a self-planning run', () => {
       const [ended] = selfPlanEnded(f.id)
       expect(ended?.data).toEqual({ sessionId, complete: false })
       expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
+    })
+
+    it('leaves a stopped run as the feature chat, saying planning stopped and waiting on the human', async () => {
+      const f = await feature('halted')
+      fakeHost({ turn: () => new Promise(() => {}) })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+      await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_started'))
+      const caller = createCallerFactory(appRouter)(ctx)
+      const name = async () => (await caller.thread.list({ featureId: f.id })).find((t) => t.id === sessionId)?.title
+      expect(await name()).toBe('Planning by itself')
+
+      await host?.stop(sessionId, 'archived')
+
+      expect(await name()).toBe('Feature chat')
+      expect(foldThread(readThreadEvents(sessionId)).items.at(-1)).toEqual(
+        expect.objectContaining({ kind: 'notice', text: 'Planning stopped. Send a message to pick it up with the lead.' }),
+      )
+      // "Waiting for you · planning stopped", which puts the Chat door on the bar.
+      expect(getFeatureRow(ctx, f.id).waitingReason).toBe('planning stopped')
+    })
+
+    it('names a finished run the feature chat too', async () => {
+      const f = await feature('finished')
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+
+      const listed = await createCallerFactory(appRouter)(ctx).thread.list({ featureId: f.id })
+      expect(listed.find((t) => t.id === sessionId)?.title).toBe('Feature chat')
+      // A complete plan keeps its own question.
+      expect(getFeatureRow(ctx, f.id).waitingReason).toBe('Start round 1?')
     })
 
     it('says nothing for a human’s turn, or a thread with any other purpose', async () => {
