@@ -1435,6 +1435,20 @@ export async function branchCommitsAhead(
   }
 }
 
+/**
+ * Whether `branch` contains commit `sha`. `false` when either is missing — a
+ * commit that never reached this repo is exactly what callers are asking about.
+ * Compares merge-base to the sha rather than using `merge-base --is-ancestor`,
+ * whose "no" is a silent exit 1 that simple-git resolves.
+ */
+export async function branchContains(repoPath: string, branch: string, sha: string): Promise<boolean> {
+  try {
+    return (await git(repoPath).raw(['merge-base', sha, branch])).trim() === sha
+  } catch {
+    return false
+  }
+}
+
 /** One commit as a landing reports it. */
 export interface CommitSummary {
   sha: string

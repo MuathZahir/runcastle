@@ -68,6 +68,7 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  branchContains,
   burnWorktreePath,
   cleanupBurnWorktree,
   commitSummaries,
@@ -1419,6 +1420,89 @@ export function resolveBurnWorkspaceMode(
 }
 
 /**
+ * Where the sync hook records the agent's latest commit, in the mounted
+ * workspace — the one place the container writes that the host can still read
+ * after sandcastle removes it. Line 1 is HEAD, written before every push; when
+ * every push failed, line 2 is how many commits were left unsynced (`?` when
+ * the clone cannot tell) and line 3 the push's first error line.
+ */
+export const SYNC_RECORD_FILE = '.runcastle-sync'
+
+/** Wrap `s` for `sh` as one literal word. */
+function singleQuote(s: string): string {
+  return `'${s.replaceAll("'", `'\\''`)}'`
+}
+
+/**
+ * The post-commit sync hook, one line per element (step 4 of
+ * {@link buildIsolatedSetupCommand}). Every push names the FULL ref: a fresh
+ * clone of a workspace whose branch was deleted sits on a detached HEAD, and
+ * `HEAD:<branch>` to a ref the remote lacks is refused as ambiguous.
+ *
+ * The lease push stays first, so an agent amending its own commit still syncs.
+ * Its errors are muted because the plain push follows: that one creates a
+ * missing branch or fast-forwards one that is behind, and refuses — never
+ * overwrites — when the host holds commits the clone lacks.
+ */
+export function buildSyncHookScript(tempBranch: string): string[] {
+  const ref = `refs/heads/${tempBranch}`
+  return [
+    '#!/bin/sh',
+    'unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE',
+    `rec=${SANDBOX_WORKSPACE_PATH}/${SYNC_RECORD_FILE}`,
+    'git rev-parse HEAD > "$rec" 2>/dev/null',
+    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && exit 0`,
+    'sleep 2',
+    `git push --quiet --force-with-lease origin HEAD:${ref} 2>/dev/null && exit 0`,
+    `out=$(git push --quiet origin HEAD:${ref} 2>&1) && exit 0`,
+    `{ git rev-list --count refs/remotes/origin/${tempBranch}..HEAD 2>/dev/null || echo '?'; printf '%s\\n' "$out" | grep . | head -n 1; } >> "$rec"`,
+    `printf '%s\\n' "$out" >&2`,
+    `echo "runcastle: commit sync failed: this commit has NOT reached the host, and no later commit is sure to carry it. Before you finish, run once more: git push origin HEAD:${ref}" >&2`,
+    'exit 0',
+  ]
+}
+
+/** What the sync hook last recorded (see {@link SYNC_RECORD_FILE}). */
+export interface SyncRecord {
+  head: string
+  /** Commits left unsynced when every push failed; `null` when the clone could not tell. */
+  unsynced?: number | null
+  /** The failed push's first error line. */
+  reason?: string
+}
+
+/** `undefined` for anything without a full commit id on its first line. */
+export function parseSyncRecord(text: string | undefined): SyncRecord | undefined {
+  const [head, count, ...rest] = (text ?? '').split('\n').map((l) => l.trim())
+  if (!head || !/^[0-9a-f]{40,64}$/.test(head)) return undefined
+  if (count === undefined || count === '') return { head }
+  const n = Number(count)
+  const reason = rest.find((l) => l.length > 0)
+  return { head, unsynced: Number.isInteger(n) ? n : null, ...(reason ? { reason } : {}) }
+}
+
+/**
+ * The failure for a ticket whose agent's last commit never reached the host —
+ * or `undefined` when it did, or when there is no record to check (`mounted`
+ * and `noSandbox` commit straight into the host worktree and write none).
+ * Checked against the temp branch itself, never against what the hook said:
+ * an agent that pushed by hand after the hook gave up has its work home.
+ */
+export async function strandedCommitsError(
+  repoPath: string,
+  tempBranch: string,
+  record: SyncRecord | undefined,
+): Promise<string | undefined> {
+  if (!record || (await branchContains(repoPath, tempBranch, record.head))) return undefined
+  const sha = record.head.slice(0, 8)
+  if (record.unsynced === undefined) {
+    return `commit(s) stranded in the sandbox: the sync hook did not finish pushing the agent's last commit ${sha} to ${tempBranch}`
+  }
+  const count = record.unsynced === null ? 'unknown number of' : String(record.unsynced)
+  return `${count} commit(s) stranded in the sandbox: ${record.reason ?? 'the sync push failed'} (the agent's last commit ${sha} never reached ${tempBranch})`
+}
+
+/**
  * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
  * via `sh -c`, cwd = the mounted workspace). Seven steps:
  *
@@ -1460,10 +1544,16 @@ export function resolveBurnWorkspaceMode(
  *    them to hook processes, and an inherited pin is exactly what made the old
  *    hook's `git -C <workspace>` step address the clone instead of the
  *    workspace. Unset, the push is unambiguously the clone's own.
- *    A failed push is retried once; a second failure prints one stderr line and
- *    exits 0 — git ignores a post-commit hook's status, and the next commit's
- *    push of `HEAD` carries everything not yet synced, so the honest thing to
- *    tell the agent is "it will heal; do not re-commit".
+ *    A refused lease push is retried once, then falls back to a PLAIN push of
+ *    the full ref (see {@link buildSyncHookScript}): it recreates a temp branch
+ *    the host deleted under a live burn — the boot temp-branch sweep did exactly
+ *    that, and every lease push after it was "stale info" — or fast-forwards
+ *    one that is behind, and still refuses to overwrite anything. When that
+ *    fails too, the hook asks the agent to push once more and exits 0. It must
+ *    NOT promise that a later commit heals it: the commit that matters most is
+ *    the last, and nothing comes after it. Before pushing, the hook records the
+ *    clone's HEAD in the mounted workspace ({@link SYNC_RECORD_FILE}), so the
+ *    host can tell, after the container is gone, whether that commit arrived.
  * 5. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
  *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
  *    preinstalled — only `corepack` is — and in real burns every agent
@@ -1531,10 +1621,10 @@ function buildRepoSetupSteps(
     `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_PREFIX}' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_PREFIX}' >> "${excludeFile}"; }; fi`,
     // Push-only, and synchronous: the hook runs inside a container sandcastle
     // removes seconds after the agent exits, so a backgrounded push would put
-    // the LAST commit — the one that matters most — at risk. The branch is a
-    // printf ARG, never interpolated into the format string, so no branch text
-    // is ever shell-interpreted.
-    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
+    // the LAST commit — the one that matters most — at risk. Each script line
+    // is a single-quoted printf ARG, so nothing in it is interpreted while the
+    // hook is being written.
+    `printf '%s\\n' ${buildSyncHookScript(tempBranch).map(singleQuote).join(' ')} > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (pm === 'pnpm' || pm === 'yarn') {
@@ -4684,6 +4774,10 @@ async function burnTicket(
     return pending
   }
 
+  /** The sync hook's record in one agent branch's mounted worktree — read before it is discarded. */
+  const readSyncRecord = (branch: string): SyncRecord | undefined =>
+    parseSyncRecord(readAgentFile([burnWorktreePath(project.repoPath, branch)], SYNC_RECORD_FILE))
+
   /**
    * One conflict-resolver pass: an agent on a fresh branch off `branch` that
    * merges the feature branch IN and resolves. Same sandbox, model, workspace
@@ -5008,6 +5102,9 @@ async function burnTicket(
         break
       } catch (err) {
         await clearAttachmentsFor(tempBranch)
+        // The one agent file a failure path still needs (the teardown landing
+        // below), read out before the worktree goes.
+        const syncRecord = readSyncRecord(tempBranch)
         // Every failure path below either returns or `continue`s onto a fresh
         // temp branch, and none of them reads the worktree — so this attempt's
         // is finished with, whatever happens next.
@@ -5036,6 +5133,11 @@ async function burnTicket(
         // rediscovering it, so land the chain and tidy up best-effort instead.
         if (isWorktreeTeardownError(err)) {
           const removed = await discardWorktree(tempBranch)
+          const stranded = await strandedCommitsError(project.repoPath, tempBranch, syncRecord)
+          if (stranded) {
+            if (salvaged.length > 0) preserveChain(tempBranch)
+            return { status: 'failed', error: stranded }
+          }
           if (salvaged.length > 0) {
             ctx.emitEvent({
               type: 'burn.worktree.teardown-failed',
@@ -5128,12 +5230,19 @@ async function burnTicket(
     emitUnrunnableGates(ctx, ticket, readAgentFile(agentFileDirs, 'GATE_UNRUNNABLE.md'))
     // Harvested before the landing, attached after it — see `harvestedDigest`.
     harvestedDigest = harvestDigest(agentFileDirs)
-    // Both agent files are out of the preserved worktree now, and attachments
+    const syncRecord = readSyncRecord(tempBranch)
+    // Every agent file is out of the preserved worktree now, and attachments
     // were cleared before the break — nothing reads it after this point.
     await discardWorktree(tempBranch)
     const chain = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
+    // Ahead of everything else: a last commit that never left the sandbox must
+    // fail by name, never land the commits before it as "done" and never read
+    // as "agent made no commits".
+    const stranded = await strandedCommitsError(project.repoPath, tempBranch, syncRecord)
     let outcome: TicketOutcome
-    if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {
+    if (stranded) {
+      outcome = { status: 'failed', error: stranded }
+    } else if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {
       outcome = { status: 'failed', error: `agent reported BLOCKED:\n${blocked.trim()}` }
     } else if (chain.length > 0) {
       outcome = { status: 'done', commits: chain }

@@ -1848,11 +1848,10 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     // receive.denyCurrentBranch=ignore host-side) and stops there. Sync
     // requires no agent discipline. (Asserted on `cmd`, not a ' && '-split
     // step: the hook body itself contains ' && '.)
-    expect(cmd).toContain(`HEAD:%s`)
+    expect(cmd).toContain(`HEAD:refs/heads/${branch}`)
     // git exports GIT_DIR & co to hooks, and an inherited pin is what made the
     // old hook's `git -C <workspace>` step address the clone instead
     expect(cmd).toContain('unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE')
-    expect(cmd).toContain(`'${branch}' '${branch}'`)
     expect(cmd).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     expect(cmd).toContain(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     // install runs INSIDE the clone, on the container's native filesystem
@@ -1863,26 +1862,28 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     // The reset was the expensive half: it stats every tracked file across the
     // bind mount, 15–90s per commit, for a working tree nothing reads (commit
     // collection, later iterations and landing all go through the ref).
-    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
+    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'))
     expect(hook).not.toContain('reset')
-    expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
+    // the workspace is only ever WRITTEN one small file (the sync record),
+    // never addressed as a repo
+    expect(hook).not.toContain(`git -C ${SANDBOX_WORKSPACE_PATH}`)
     // agents wrapped the old hook in `timeout` to get their prompt back; there
     // is nothing left to wrap
     expect(hook).not.toContain('timeout')
   })
 
-  it('retries a failed push once, then says one calm line and exits 0', () => {
-    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
-    const push = `git push --quiet --force-with-lease origin HEAD:${branch}`
-    // exactly two pushes: the first, and one retry after a pause
-    expect(hook.split(push)).toHaveLength(3)
-    expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
+  it('retries the lease push once, falls back to a plain push, then asks the agent to push and exits 0', () => {
+    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'))
+    const lease = `git push --quiet --force-with-lease origin HEAD:refs/heads/${branch}`
+    // two lease pushes: the first, and one retry after a pause
+    expect(hook.split(lease)).toHaveLength(3)
+    // then a plain push of the full ref — creates or fast-forwards, never forces
+    expect(hook).toContain(`git push --quiet origin HEAD:refs/heads/${branch}`)
+    expect(hook).not.toMatch(/git push[^\n]*(--force |-f )/)
     // git ignores a post-commit hook's exit status, so the commit is safe
-    // either way — and a later push of HEAD carries everything still unsynced,
-    // which is why the line tells the agent NOT to re-commit.
-    expect(hook).toContain(
-      'echo "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2',
-    )
+    // either way — but nothing promises a later commit will carry it
+    expect(hook).not.toContain('next commit')
+    expect(hook).toContain(`run once more: git push origin HEAD:refs/heads/${branch}`)
     expect(hook.trimEnd().endsWith('exit 0')).toBe(true)
   })
 
