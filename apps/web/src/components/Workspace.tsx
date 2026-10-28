@@ -930,7 +930,10 @@ export function Workspace({
               </StatusLabel>
             )}
             {!isDraft && (
-              <span className="mr-1 flex min-w-0">
+              // The actions keep their width, so the switcher's is capped: a
+              // thread named by a long first message truncates instead of
+              // pushing over the status (900px leaves it ~144px).
+              <span className="mr-1 flex max-w-[clamp(6rem,16vw,18rem)] min-w-0">
                 <ThreadSwitcher
                   threads={column.threads}
                   current={column.current}
