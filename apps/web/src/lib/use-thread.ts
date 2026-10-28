@@ -328,7 +328,16 @@ export function useThread({
   const branchM = trpc.thread.branch.useMutation(quiet)
 
   // ---- controls whose reads may be refused: each degrades to nothing ----
+  // A first read may come back empty; the account is asked again as a turn ends
+  // and as the meter opens, the last answer shown meanwhile.
   const usageQ = trpc.thread.usage.useQuery({ threadId: id }, { enabled })
+  const refetchUsage = usageQ.refetch
+  const wasWorking = useRef(false)
+  useEffect(() => {
+    const working = folded.state === 'working'
+    if (wasWorking.current && !working && enabled) void refetchUsage()
+    wasWorking.current = working
+  }, [folded.state, enabled, refetchUsage])
   const fileQuery = AT_FILE.exec(text)?.[1]
   const filesQ = trpc.thread.files.useQuery({ threadId: id, query: fileQuery ?? '', limit: 8 }, { enabled: enabled && fileQuery !== undefined })
 
@@ -364,6 +373,10 @@ export function useThread({
     },
     /** The account's limits and plan; none while that read is refused. */
     usage: usageQ.data,
+    /** Ask the account again (the meter opening). */
+    refreshUsage: () => {
+      if (enabled) void refetchUsage()
+    },
     /** The worktree's files matching the `@` being typed; none while that read is refused. */
     files: filesQ.data ?? [],
     edit: (promptId: string, next: string, undoFiles: boolean) => {

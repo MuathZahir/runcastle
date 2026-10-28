@@ -171,6 +171,7 @@ export function ThreadColumn({
                       limits={t.usage?.limits ?? []}
                       {...(t.usage?.plan ? { plan: t.usage.plan } : {})}
                       onCompact={t.compact}
+                      onOpen={t.refreshUsage}
                     />
                   )}
                 </div>
