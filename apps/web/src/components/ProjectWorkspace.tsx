@@ -12,7 +12,7 @@ import { useThreadMenu } from '../lib/use-thread'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
-import { ThreadColumn } from './chat/ThreadColumn'
+import { ThreadColumn, ThreadOpening } from './chat/ThreadColumn'
 import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
@@ -99,8 +99,12 @@ export function ProjectWorkspace({
   const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const listed = listQ.data ?? []
   const fallback = talk.session?.id ?? null
-  // A reload reopens the thread the address names — when it is this project's.
-  const [front, setFront] = useAddressedThread<null | undefined>(
+  // A reload or a pasted link opens the chat the address names — when it is this project's.
+  const {
+    front,
+    pick: setFront,
+    pending,
+  } = useAddressedThread<null | undefined>(
     undefined,
     listQ.data
       ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id)
@@ -113,9 +117,11 @@ export function ProjectWorkspace({
   const toast = useToast()
 
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
-  const inFront = front === undefined || closedErrand ? fallback : front
-  useThreadInUrl(inFront)
-  const resting = inFront === null
+  // While the address's chat is pending, nothing is in front and the list is not shown either.
+  const opening = pending !== null
+  const inFront = opening ? null : front === undefined || closedErrand ? fallback : front
+  useThreadInUrl(opening ? undefined : inFront)
+  const resting = inFront === null && !opening
   // The switcher always names what is in front, before the list has it.
   const threads = withStandIns(
     listed,
@@ -307,6 +313,7 @@ export function ProjectWorkspace({
             // One thread in front, or the resting list; the switcher picks.
             <>
               {restPage}
+              {opening && !chatHidden && <ThreadOpening />}
               {inFront && !chatHidden &&
                 (scenarioInFront ? (
                   <ThreadColumn

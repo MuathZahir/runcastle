@@ -74,6 +74,12 @@ export function projectIdOf(location: AppLocation): string | null {
   return location.kind === 'home' ? null : location.projectId
 }
 
+/** Whether two locations are one page, whatever view of it each names: a feature's views share its chat column. */
+export function samePage(a: AppLocation | null, b: AppLocation): boolean {
+  if (!a || a.kind !== b.kind || projectIdOf(a) !== projectIdOf(b)) return false
+  return a.kind !== 'feature' || (b.kind === 'feature' && a.featureSlug === b.featureSlug)
+}
+
 /** The canonical path for a location. Always absolute, never trailing-slashed. */
 export function pathFor(location: AppLocation): string {
   if (location.kind === 'home') return '/'

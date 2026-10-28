@@ -32,6 +32,8 @@ const threadRename = vi.fn()
 const threadExport = vi.fn((_input: unknown) => ({ markdown: '# Audit the journal\n' }))
 /** What `thread.list` answers for the project. */
 let threads: ThreadEntry[] = []
+/** Whether `thread.list` has answered yet. */
+let threadsAnswered = true
 let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
   runnerConfigured: false,
   scenarios: [],
@@ -68,7 +70,7 @@ vi.mock('../src/trpc', () => {
         thread: { list: { invalidate }, export: { fetch: async (input: unknown) => threadExport(input) } },
       }),
       thread: {
-        list: { useQuery: () => ({ data: threads }) },
+        list: { useQuery: () => ({ data: threadsAnswered ? threads : undefined, isPending: !threadsAnswered }) },
         rename: {
           useMutation: () => ({ isPending: false, mutate: (input: { threadId: string; title: string }) => threadRename(input) }),
         },
@@ -157,6 +159,7 @@ vi.mock('../src/components/chat/ThreadColumn', () => ({
   ThreadColumn: ({ label, threadId }: { label?: string; threadId: string | null }) => (
     <section aria-label={label} data-thread-column="" data-thread={threadId ?? 'new'} />
   ),
+  ThreadOpening: () => <section aria-label="Chat" aria-busy="true" data-thread-column="" />,
 }))
 vi.mock('../src/lib/project-notes', () => ({
   uploadProjectNoteScreenshot: vi.fn(),
@@ -193,6 +196,7 @@ const note = (id: string, createdAt: number, over: Partial<ProjectNote> = {}): P
 
 beforeEach(() => {
   slot = null
+  threadsAnswered = true
   testDriveResult = { ok: true }
   scenarios = { runnerConfigured: false, scenarios: [] }
   project = {
@@ -565,6 +569,37 @@ describe('a live project chat', () => {
     cleanup()
     mount(talk({ session: liveChat }))
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
+  })
+
+  it('opens the chat a reloaded or pasted link names, not the overview, even when the list answers late', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/chat?thread=sess_old')
+    threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
+    threadsAnswered = false
+    const { rerender } = mount(talk({ session: liveChat }))
+    // Pending: neither the resting list nor the running chat, and the link stays.
+    expect(screen.getByRole('region', { name: 'Chat' }).getAttribute('aria-busy')).toBe('true')
+    expect(restShown()).toBe(false)
+    expect(chatInFront()).toBeNull()
+    await act(() => new Promise((r) => setTimeout(r, 10)))
+    expect(window.location.search).toBe('?thread=sess_old')
+
+    threadsAnswered = true
+    rerender()
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(screen.queryByRole('region', { name: 'Chat' })).toBeNull()
+  })
+
+  it('drops a ?thread= that is not one of the project’s chats once a late list answers', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/chat?thread=th_a_feature_chat')
+    threads = [entry('sess_1', 'Audit the journal', 2_000)]
+    threadsAnswered = false
+    const { rerender } = mount(talk({ session: liveChat }))
+    expect(chatInFront()).toBeNull()
+
+    threadsAnswered = true
+    rerender()
+    expect(chatInFront()?.dataset.thread).toBe('sess_1')
+    await waitFor(() => expect(window.location.search).toBe('?thread=sess_1'))
   })
 
   it('ignores a ?thread= that is not one of the project’s chats, and drops it from the address', async () => {

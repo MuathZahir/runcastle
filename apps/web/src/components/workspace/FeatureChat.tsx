@@ -5,7 +5,7 @@ import type { ChatNoticeTarget } from '../../lib/chat-notices'
 import { mainChatInbox } from '../../lib/composer-inbox'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
-import { ThreadColumn } from '../chat/ThreadColumn'
+import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it.'
@@ -46,6 +46,7 @@ export function FeatureChat({
   const isScenario = inFront !== null && inFront === scenario.sessionId
   const entry = column.threads.find((t) => t.id === column.current)
   if (hidden) return null
+  if (column.pending) return <ThreadOpening label="Thread" />
   return (
     <ThreadColumn
       // A fresh column per thread: its draft, attachments and scroll are its
