@@ -61,27 +61,21 @@ afterEach(() => {
 })
 
 describe('the model controls on every chat surface', () => {
-  it('the project chat shows effort and fast mode, and its first message runs on them', async () => {
+  it('the project chat shows effort and fast mode, and its first message carries what the human picked', async () => {
     const api = server()
     render(<ProjectChat threadId="th_project" onOpenThread={() => undefined} />, { wrapper: api.Wrapper })
     await expectControls()
     fireEvent.click(screen.getByRole('button', { name: 'Fast mode' }))
     send('Plan the audit')
-    await waitFor(() =>
-      expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_project', text: 'Plan the audit', model: 'opus', effort: 'high', fast: true }]),
-    )
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_project', text: 'Plan the audit', fast: true }]))
   })
 
-  it('the preparation chat shows effort and fast mode before it starts, and its first message runs on them', async () => {
+  it('the preparation chat shows effort and fast mode before it starts, and its untouched first message leaves them to the server', async () => {
     const api = server()
     render(<PreparationWorkspace projectId="proj_1" />, { wrapper: api.Wrapper })
     await expectControls()
     expect(api.inputs('thread.models')).toEqual([{ projectId: 'proj_1', kind: 'prepare' }])
     send('The dev server is bun run dev')
-    await waitFor(() =>
-      expect(api.inputs('thread.send')).toEqual([
-        { threadId: 'th_prep', text: 'The dev server is bun run dev', model: 'opus', effort: 'high', fast: false },
-      ]),
-    )
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_prep', text: 'The dev server is bun run dev' }]))
   })
 })
