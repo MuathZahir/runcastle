@@ -13,7 +13,7 @@ import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
 import { withRelativePaths } from './acp-map'
-import { hasThreadLog, readThreadEvents, threadLogPath } from './log'
+import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
 import { NEW_CHAT_NAME, threadName } from './naming'
 import { agentHost } from './types'
 
@@ -82,6 +82,22 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   })
   if (events.at(-1)?.type === 'prompt') push({ type: 'process', state: 'stopped' })
   return events
+}
+
+/**
+ * Continue a terminal-era conversation: before anything else is logged, its log
+ * starts as the transcript's turns, indexed as {@link threadEvents} read them
+ * back, so history survives a reload and a client holding those turns reads on
+ * after them. The kickoff the conversation began with is left out of the turns,
+ * so the log says runcastle `briefed` it. No-op for a thread with a log, or with
+ * no conversation on record.
+ */
+export function seedFromTranscript(ctx: AppCtx, threadId: string): void {
+  if (hasThreadLog(threadId)) return
+  const events = transcriptEvents(ctx, threadRow(ctx, threadId))
+  if (!events.length) return
+  seedThreadLog(threadId, events)
+  appendThreadEvent(threadId, { type: 'briefed' })
 }
 
 /** The thread's events after `after`: its log, or its transcript's turns when it has no log. */

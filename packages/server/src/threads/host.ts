@@ -72,6 +72,7 @@ import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import { runtimeMayName } from './naming'
+import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 import { snapshotWorktree, worktreeChanges, worktreeRelative, type WorktreeSnapshot } from './worktree-changes'
 
@@ -369,6 +370,7 @@ class Host implements AgentHost {
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
+    seedFromTranscript(this.ctx, threadId)
     if (opts.hold) return this.hold(threadId, input.text, opts.source)
     const change = this.configChange(threadId, opts)
     if (change) await this.setConfig(threadId, change)
@@ -445,6 +447,7 @@ class Host implements AgentHost {
     const row = this.row(threadId)
     const t = this.threads.get(threadId)
     if (t?.turn || t?.ask || t?.queue.length) throw new GateError('the agent is working: compact once its turn ends')
+    seedFromTranscript(this.ctx, threadId)
     const item: Queued = {
       id: newId('prompt'),
       text: COMPACT_COMMAND,
@@ -889,10 +892,12 @@ class Host implements AgentHost {
     // still reads as the human's (the UserPromptSubmit hook looks at its start).
     // A command is never given it: the opening would become the command's argument.
     const [first, ...rest] = item.blocks
+    // The thread says it was briefed, so no title made of the opening names it (`naming.ts`).
     const opening = item.hidden ? undefined : t.opening
     const prompt: acp.ContentBlock[] =
       opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${opening}` }, ...rest] : item.blocks
     if (!item.hidden) t.opening = undefined
+    if (prompt !== item.blocks) appendThreadEvent(t.id, { type: 'briefed' })
     let end: Extract<ThreadEventBody, { type: 'turn_ended' }>
     try {
       const res = await t.conn!.agent.request(acp.methods.agent.session.prompt, { sessionId: t.sessionId!, prompt })

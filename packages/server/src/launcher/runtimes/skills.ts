@@ -80,15 +80,18 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
  * skill — the role is the whole briefing, and the side session's first move is
  * the human's ask. The fixed first sentence is what `promptMatchesKickoff`
  * recognises, so it must stay ahead of anything feature-specific.
+ *
+ * `held` is the form that rides ahead of the human's first message in one
+ * prompt (decision 12): the ask is already there, so there is nothing to wait for.
  */
-export function sideKickoffFor(): string {
+export function sideKickoffFor(held = false): string {
   return (
     'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
     'chat, and you do not carry on the main chat\'s task. You may do anything the main chat does — ' +
     'read, write the spec and decisions, emit and edit tickets, resolve findings, park drafts, ' +
     'edit code — except run rounds: the main chat alone dispatches, stops and declares ready. ' +
     'The folder is shared with the main chat, so stage only your own files (`git add <paths>`, ' +
-    'never `-A`). Wait for the human\'s ask.'
+    `never \`-A\`).${held ? '' : " Wait for the human's ask."}`
   )
 }
 

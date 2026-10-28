@@ -300,6 +300,14 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
   z.object({ type: z.literal('notice'), text: z.string() }),
+  /**
+   * Runcastle's own words reached the agent's conversation without being a
+   * message in the thread: an opening that rode with a prompt (a resumed main
+   * chat's state header, a lost conversation's briefing), or the kickoff a
+   * terminal-era conversation began with before its log. Shows nothing; it
+   * keeps the runtime's generated title, made of those words, from naming the thread.
+   */
+  z.object({ type: z.literal('briefed') }),
 ])
 export type ThreadEventBody = z.infer<typeof ThreadEventBody>
 
@@ -725,6 +733,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         items.push({ kind: 'error', id: `error:${e.i}`, message: e.message })
         break
       case 'rewound':
+      case 'briefed':
         break
     }
   }

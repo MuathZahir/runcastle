@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ThreadEvent, ThreadEventBody } from '@runcastle/core'
+import { foldThread, type ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
@@ -177,6 +177,17 @@ describe('thread router', () => {
     ])
     const renamed = thread([{ type: 'prompt', id: 'p', text: 'whatever', source: 'human' }])
     await caller.thread.rename({ threadId: renamed, title: 'Journal audit' })
+    // Runcastle's words reached the conversation later, or rode unseen with a prompt: no generated title names it.
+    const wokenLater = thread([
+      { type: 'prompt', id: 'p', text: 'Audit the journal', source: 'human' },
+      { type: 'prompt', id: 'w', text: '[runcastle] The round ended.', source: 'runcastle' },
+      { type: 'title', title: 'Runcastle round summary' },
+    ])
+    const briefedUnseen = thread([
+      { type: 'prompt', id: 'p', text: 'Pick up the release', source: 'human' },
+      { type: 'briefed' },
+      { type: 'title', title: 'Runcastle feature session' },
+    ])
 
     const names = Object.fromEntries((await caller.thread.list({ projectId })).map((t) => [t.id, t.title]))
     expect(names).toEqual({
@@ -184,7 +195,25 @@ describe('thread router', () => {
       [firstMessage]: 'A notes inbox for the project',
       [generated]: 'Dark mode for the app',
       [renamed]: 'Journal audit',
+      [wokenLater]: 'Audit the journal',
+      [briefedUnseen]: 'Pick up the release',
     })
+  })
+
+  it('names a resumed chat by the human’s message when its opening rode with it, never by the title made of it', async () => {
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: { opening: () => '[runcastle] Feature status: Talking with you.' } })
+    setAgentHostForTests(host)
+    fake.script.turn = async (t) => {
+      await t.update({ sessionUpdate: 'session_info_update', title: 'Runcastle feature session' })
+    }
+    const id = chat()
+    await caller.thread.send({ threadId: id, text: 'Where were we on the login page?' })
+    await logUntil(id, turnEnded)
+
+    const sent = fake.last().received.find((r) => r.method === 'session/prompt')!.params as { prompt: { text: string }[] }
+    expect(sent.prompt[0].text).toContain('Feature status: Talking with you.')
+    expect((await caller.thread.list({ featureId }))[0]).toMatchObject({ id, title: 'Where were we on the login page?' })
+    expect(getSessionRow(ctx, id)?.title ?? null).toBeNull()
   })
 
   // decision 12 merges the opening into the first prompt: a title the runtime made of it names runcastle's words.
@@ -254,6 +283,39 @@ describe('thread router', () => {
     expect(list).toEqual([expect.objectContaining({ id: newer, title: 'Set up the env file', readOnlyTranscript: true })])
     const view = await caller.thread.view({ threadId: newer })
     expect(view.items.map((i) => i.kind)).toEqual(['user', 'agent'])
+  })
+
+  it('continues a terminal-era conversation with its history in order, live and after a reload, keeping its name', async () => {
+    const [, newer] = terminalEra('cc-continued', [
+      ['Make the header blue', 'Done, it is blue.'],
+      ['And bold', 'Bold too.'],
+    ])
+    fake.script.turn = async (t) => {
+      await t.update({ sessionUpdate: 'session_info_update', title: 'Runcastle feature session' })
+      await t.say('Italic as well.')
+    }
+    // What a client opened on the thread holds before it is continued.
+    const held = (await caller.thread.events({ threadId: newer })).events
+
+    await caller.thread.send({ threadId: newer, text: 'Now italic' })
+    await logUntil(newer, (e) => e.filter((x) => x.type === 'turn_ended').length === 3)
+
+    const said = (events: ThreadEvent[]) =>
+      foldThread(events).items.map((i) => (i.kind === 'user' || i.kind === 'agent' ? `${i.kind}:${i.text}` : i.kind))
+    const history = ['user:Make the header blue', 'agent:Done, it is blue.', 'user:And bold', 'agent:Bold too.', 'user:Now italic', 'agent:Italic as well.']
+    // Live: the held turns, then what came after them.
+    const live = (await caller.thread.events({ threadId: newer, after: held.at(-1)!.i })).events
+    expect(said([...held, ...live]).filter((s) => s.startsWith('user:') || s.startsWith('agent:'))).toEqual(history)
+    // After a reload: the whole log, read from the start.
+    const reloaded = (await caller.thread.events({ threadId: newer })).events
+    expect(reloaded.slice(0, held.length)).toEqual(held)
+    expect(reloaded.map((e) => e.i)).toEqual(reloaded.map((_, n) => n))
+    expect(said(reloaded).filter((s) => s.startsWith('user:') || s.startsWith('agent:'))).toEqual(history)
+
+    const listed = (await caller.thread.list({ featureId })).find((t) => t.id === newer)
+    expect(listed).toMatchObject({ title: 'Make the header blue' })
+    expect(listed).not.toHaveProperty('readOnlyTranscript')
+    expect(getSessionRow(ctx, newer)?.title ?? null).toBeNull()
   })
 
   it('reads a terminal-era conversation whose last prompt got no answer as idle, not starting', async () => {

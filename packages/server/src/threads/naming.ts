@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, liveEvents, type SessionRow, type ThreadEvent } from '@runcastle/core'
+import { DEFAULT_RUNTIME, type SessionRow, type ThreadEvent } from '@runcastle/core'
 import { selfPlanKickoffFor } from '../launcher/runtimes/skills'
 import { deriveTitle } from '../services/conversations'
 
@@ -6,8 +6,10 @@ import { deriveTitle } from '../services/conversations'
  * What a thread is called (chat-as-web-components decision 14): by what it is
  * about, never by its kind, and never by runcastle's own words.
  *
- * Since decision 12 a thread's opening briefing rides in its first prompt, so a
- * title the runtime generated for that conversation summarises the briefing
+ * A title the runtime generates summarises the conversation's start, and once
+ * runcastle's opening or a kickoff reached the conversation — sent alone, held
+ * for the human's first message (decision 12), riding a resumed chat's prompt,
+ * or begun in a terminal before the log — that start is runcastle's words
  * ("Runcastle project skill session"). Such a title names nothing; the human's
  * first message names the thread instead.
  */
@@ -17,12 +19,14 @@ export const NEW_CHAT_NAME = 'New chat'
 
 /**
  * Whether the runtime's generated title may name the thread: only when the
- * first prompt the agent got was the human's own, with no runcastle opening.
+ * human's own words are all runcastle ever said to that conversation — no
+ * prompt of runcastle's, and nothing it `briefed` the agent with besides.
  * A command (Compact now) is no prompt of anyone's.
  */
 export function runtimeMayName(events: readonly ThreadEvent[]): boolean {
-  const first = liveEvents(events).find((e) => e.type === 'prompt' && !e.hidden)
-  return first?.type === 'prompt' && first.source === 'human'
+  if (events.some((e) => e.type === 'briefed')) return false
+  const said = events.filter((e) => e.type === 'prompt' && !e.hidden)
+  return said.length > 0 && said.every((e) => e.type === 'prompt' && e.source === 'human')
 }
 
 /** What the feature's main chat is called once a self-planning run in it is over, as the thread list's role names it. */
