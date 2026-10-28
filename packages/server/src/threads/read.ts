@@ -65,6 +65,8 @@ function transcriptRow(ctx: AppCtx, row: SessionRow): SessionRow | null {
  * prompt, each answer a whole turn of words. The launcher's kickoff lines are
  * left out, as the transcript pane leaves them out. No process runs behind it,
  * so a last prompt that got no answer folds as said, not as starting an agent.
+ * A slash command reads as what was typed, and the CLI's own lines are dropped
+ * (see {@link typedText}).
  */
 function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   const at = row.createdAt ?? 0
@@ -73,8 +75,10 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   const source = transcriptRow(ctx, row)
   if (!source) return events
   conversationTranscript(ctx, source.id).turns.forEach((turn, n) => {
-    if (turn.role === 'user') push({ type: 'prompt', id: `${row.id}-t${n}`, text: turn.text, source: 'human' })
-    else {
+    if (turn.role === 'user') {
+      const text = typedText(turn.text)
+      if (text !== null) push({ type: 'prompt', id: `${row.id}-t${n}`, text, source: 'human' })
+    } else {
       push({ type: 'turn_started' })
       push({ type: 'agent_text', messageId: `${row.id}-t${n}`, text: turn.text })
       push({ type: 'turn_ended', reason: 'end_turn' })
@@ -82,6 +86,25 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   })
   if (events.at(-1)?.type === 'prompt') push({ type: 'process', state: 'stopped' })
   return events
+}
+
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
+
+/**
+ * What the human typed in a Claude Code terminal's `user` turn, or null for a
+ * turn the CLI wrote itself. A slash command is recorded as markup
+ * (`<command-name>/model</command-name>…<command-args>sonnet</command-args>`)
+ * and reads back as the line typed, `/model sonnet`; its output and the caveat
+ * before it (`<local-command-stdout>…`, `<local-command-caveat>…`) were never
+ * said by anyone, and are dropped.
+ */
+function typedText(text: string): string | null {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('<local-command-')) return null
+  const name = COMMAND_NAME.exec(trimmed)?.[1]?.trim()
+  if (!name) return text
+  return `${name} ${COMMAND_ARGS.exec(trimmed)?.[1]?.trim() ?? ''}`.trim()
 }
 
 /**
