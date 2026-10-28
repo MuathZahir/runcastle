@@ -183,7 +183,77 @@ describe('foldThread', () => {
     ])
     expect(answered.state).toBe('working')
     expect(answered.ask).toBeUndefined()
-    expect(kinds(answered.items)).toEqual(['user', 'agent', 'answered', 'agent'])
+    expect(kinds(answered.items)).toEqual(['user', 'work', 'answered', 'agent'])
+  })
+
+  it('a turn with approvals folds as one turn: each approved command is one row that settles, and no row is blank', () => {
+    // claude-agent-acp's permission flow: the tool_call surfaces first, the
+    // permission request names the same toolCallId, and once allowed the tool's
+    // updates carry its status and output but no title.
+    const approved = (n: number, command: string): ThreadEventBody[] => [
+      { type: 'tool', call: { id: `toolu_${n}`, kind: 'execute', title: command, status: 'pending' } },
+      { type: 'ask', ask: { kind: 'approval', id: `ask_${n}`, call: { id: `toolu_${n}`, kind: 'execute', title: command, status: 'pending' } } },
+      { type: 'ask_resolved', id: `ask_${n}`, lines: [{ what: 'Allowed', answer: command }] },
+      { type: 'tool', call: { id: `toolu_${n}`, status: 'in_progress' } },
+      { type: 'tool', call: { id: `toolu_${n}`, status: 'completed', output: 'ok' } },
+    ]
+    const events = log(
+      prompt('p1', 'Set up the repo'),
+      { type: 'process', state: 'running' },
+      { type: 'turn_started' },
+      { type: 'agent_text', messageId: 'm1', text: 'Installing first.' },
+      ...approved(1, 'bun install'),
+      ...approved(2, 'bun run build'),
+      // The third is allowed and still running when its turn is read.
+      ...approved(3, 'git init').slice(0, 4),
+      { type: 'agent_text', messageId: 'm2', text: 'All set.' },
+    )
+    const live = foldThread(events)
+    expect(kinds(live.items)).toEqual(['user', 'work', 'answered', 'answered', 'answered', 'agent'])
+    const running = live.items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(running.live).toBe(true)
+
+    const settled = foldThread([...events, { i: events.length, at: 99_000, type: 'turn_ended', reason: 'end_turn' }])
+    expect(kinds(settled.items)).toEqual(['user', 'work', 'answered', 'answered', 'answered', 'agent'])
+    const work = settled.items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(work.live).toBeUndefined()
+    expect(work.steps.map((s) => s.kind)).toEqual(['narration', 'tools', 'tools', 'tools'])
+    const calls = work.steps.flatMap((s) => (s.kind === 'tools' ? s.calls : []))
+    expect(calls.map((c) => [c.title, c.status])).toEqual([
+      ['bun install', 'completed'],
+      ['bun run build', 'completed'],
+      ['git init', 'completed'],
+    ])
+    expect(settled.items[5]).toMatchObject({ kind: 'agent', text: 'All set.' })
+  })
+
+  it("an approval whose call never surfaced is the call's row, and its later updates keep the approval's title", () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'turn_started' },
+        { type: 'ask', ask: { kind: 'approval', id: 'a1', call: { id: 'call_1', kind: 'edit', title: 'Edit a.ts', status: 'pending' } } },
+        { type: 'ask_resolved', id: 'a1', lines: [{ what: 'Allowed', answer: 'Edit a.ts' }] },
+        { type: 'tool', call: { id: 'call_1', title: '', status: 'completed' } },
+      ),
+    )
+    const work = v.items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(work.steps).toMatchObject([{ kind: 'tools', calls: [{ id: 'call_1', kind: 'edit', title: 'Edit a.ts', status: 'completed' }] }])
+  })
+
+  it('a denied command fails its row', () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'turn_started' },
+        { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'rm -rf dist', status: 'pending' } },
+        { type: 'ask', ask: { kind: 'approval', id: 'a1', call: { id: 'c1', kind: 'execute', title: 'rm -rf dist', status: 'pending' } } },
+        { type: 'ask_resolved', id: 'a1', lines: [{ what: 'Denied', answer: 'rm -rf dist', denied: true }] },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    const work = v.items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(work.steps).toMatchObject([{ kind: 'tools', calls: [{ id: 'c1', status: 'failed' }] }])
   })
 
   it("an MCP server's form or link waits like any ask, and its answer folds to lines", () => {

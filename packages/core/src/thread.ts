@@ -414,6 +414,8 @@ type Segment =
   | { kind: 'thought'; id: string; text: string; from: number; to: number }
   | { kind: 'tools'; id: string; calls: ToolCall[] }
   | { kind: 'subagent'; id: string; title: string; status: ToolStatus; calls: ToolCall[] }
+  /** An ask answered here: it shows nothing in the work, but words before it are no longer the turn's answer. */
+  | { kind: 'answered' }
 
 interface Turn {
   id: string
@@ -443,6 +445,9 @@ const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pe
  *   turn runs and folded to "Worked for …" once it ends. Live or settled, the
  *   split is the same, so streaming words show as the answer until a tool call
  *   turns them into narration.
+ * - An ask mid-turn stays in its turn: an approval's call is the same row as
+ *   the tool call it asks about (matched by id, the first title kept), and its
+ *   answer's lines follow the turn's one work item, ahead of the answer.
  * - A prompt sent before the process ran shows `starting` until the process
  *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
  * - A thread is `working` only inside a turn a `turn_started` opened: words
@@ -486,6 +491,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
             return { kind: 'tools', id: s.id, calls: s.calls.map((c) => ({ ...c })) }
           case 'subagent':
             return { kind: 'subagent', id: s.id, title: s.title, status: s.status, calls: s.calls.map((c) => ({ ...c })) }
+          case 'answered':
+            return null
         }
       })
       .filter((s): s is WorkStep => s !== null)
@@ -551,7 +558,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   }
 
   /**
-   * Something the human did mid-turn (a steered message, an answered ask) sits
+   * Something the human did mid-turn (a steered message, a command) sits
    * between what the agent did before it and what it does after: settle the
    * part before, and start a fresh work/answer pair after it in the same turn.
    */
@@ -565,6 +572,18 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.calls = new Map()
     workIndex = -1
     answerIndex = -1
+  }
+
+  /** A call first seen: under its subagent, else in the turn's run of tool calls. */
+  const addCall = (t: Turn, e: ThreadEvent, call: ToolCall, parentId?: string) => {
+    t.calls.set(call.id, call)
+    const parent = parentId ? t.subagents.get(parentId) : undefined
+    if (parent) parent.calls.push(call)
+    else {
+      const lastSeg = t.segments[t.segments.length - 1]
+      if (lastSeg?.kind === 'tools') lastSeg.calls.push(call)
+      else t.segments.push({ kind: 'tools', id: `tools:${e.i}`, calls: [call] })
+    }
   }
 
   for (const e of events) {
@@ -646,18 +665,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         const t = openTurn(e)
         const known = t.calls.get(e.call.id)
         if (known) {
-          Object.assign(known, Object.fromEntries(Object.entries(e.call).filter(([, v]) => v !== undefined)))
-        } else {
-          const call: ToolCall = { ...BLANK_CALL, ...(e.call as Partial<ToolCall>), id: e.call.id }
-          t.calls.set(call.id, call)
-          const parent = e.parentId ? t.subagents.get(e.parentId) : undefined
-          if (parent) parent.calls.push(call)
-          else {
-            const lastSeg = t.segments[t.segments.length - 1]
-            if (lastSeg?.kind === 'tools') lastSeg.calls.push(call)
-            else t.segments.push({ kind: 'tools', id: `tools:${e.i}`, calls: [call] })
-          }
-        }
+          Object.assign(known, Object.fromEntries(Object.entries(e.call).filter(([, v]) => v !== undefined && v !== '')))
+        } else addCall(t, e, { ...BLANK_CALL, ...(e.call as Partial<ToolCall>), id: e.call.id }, e.parentId)
         render(true)
         break
       }
@@ -681,17 +690,35 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'tasks':
         view.tasks = e.tasks
         break
-      case 'ask':
+      case 'ask': {
         ask = e.ask
+        if (e.ask.kind !== 'approval') break
+        // The call an approval asks about is the turn's row for it, whichever arrived first.
+        const t = openTurn(e)
+        const known = t.calls.get(e.ask.call.id)
+        if (!known) addCall(t, e, { ...e.ask.call })
+        else if (!known.title) known.title = e.ask.call.title
+        render(true)
         break
-      case 'ask_resolved':
-        if (ask?.id === e.id) ask = undefined
-        // The answer sits between the turn's work and whatever the agent does next.
-        splitTurn(e)
+      }
+      case 'ask_resolved': {
+        const answered = ask?.id === e.id ? ask : undefined
+        if (answered) ask = undefined
+        // An answer is part of its turn: the work stays one fold, the answer's lines follow it.
+        if (turn) {
+          const t: Turn = turn
+          if (answered?.kind === 'approval' && e.lines.some((l) => l.denied)) {
+            const call = t.calls.get(answered.call.id)
+            if (call && (call.status === 'pending' || call.status === 'in_progress')) call.status = 'failed'
+          }
+          t.segments.push({ kind: 'answered' })
+          render(true)
+        }
         e.lines.forEach((l, n) =>
           items.push({ kind: 'answered', id: `answered:${e.i}:${n}`, what: l.what, answer: l.answer, ...(l.denied ? { denied: true } : {}) }),
         )
         break
+      }
       case 'usage': {
         // The thread's cost so far only grows: a report without it (one after a compaction) keeps the last.
         const costUsd = e.context.costUsd ?? view.context?.costUsd
