@@ -167,7 +167,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>The whole app matches the sidebar</h1>
-  <p class="lede">Every screen picks up the sidebar's roomier, calmer material at once, through the shared theme and building blocks. Long dropdowns stop at about ten rows. The grain is gone. Planned without you: every decision is assumed until you confirm it.</p>
+  <p class="lede">Every screen picks up the sidebar's roomier, calmer material at once, through the shared theme and building blocks. Long dropdowns stop at about ten rows and scroll. Planned without you, then confirmed by you on 29 October.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span>built by the lead, no tickets</span><span class="mono">docs/features/the-whole-app-matches-the-sidebar/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -218,7 +218,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>The real thing, in design</h3>
-    <p class="hint">Real components on sample data. A Tweaks menu in the corner switches the two looks still open: density (comfortable, the plan, or compact, today's sizes) and, on the app page, the grain.</p>
+    <p class="hint">Real components on sample data. What you approved, now committed.</p>
     <div class="designs">
 <!-- screen:building-blocks -->
       <div class="designed">
@@ -230,8 +230,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- /screen:building-blocks -->
 <!-- screen:whole-app -->
       <div class="designed">
-        <h3>The whole app <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
-        <p>The real app: the sidebar beside the Orchestrator's page, on sample features and chats. The page's own layout is unchanged; it picks up only the shared pieces.</p>
+        <h3>The whole app <a class="pin" data-d="7">7</a> <a class="pin" data-d="12">12</a></h3>
+        <p>The real app: the sidebar beside the Orchestrator's page, on sample features and chats. The page's own layout is unchanged; it picks up only the shared pieces. The grain behind the sidebar head is untouched.</p>
         <p class="mono">apps/web/src/components/SidebarParts.tsx · preview /preview/app.html</p>
         <button data-open-design="/preview/app.html">Open in design</button>
       </div>
@@ -263,6 +263,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>New colours, fonts or corner sizes</li>
       <li><i class="dot"></i>The page header and page column</li>
       <li><i class="dot"></i>The thread switcher (being removed)</li>
+      <li><i class="dot"></i>The sidebar grain (another feature)</li>
       <li><i class="dot"></i>Any new behaviour</li>
     </ul></div>
   </div>
@@ -275,12 +276,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="sub">
       <p class="hint">One token file feeds every screen. The work sits at the top of this chain; screens only receive it.</p>
       <div class="out2" style="grid-template-columns:120px 1fr;gap:10px 16px">
-        <span class="tag">theme.css</span><span>Hover and selected become see-through shades; new card and well fills and a <span class="mono">card</span> utility; a 14/20 <span class="mono">md</span> text step; controls 32/36, nav rows 36, list rows 44, menu rows 32, a 360px menu cap; the grain utility deleted.</span>
+        <span class="tag">theme.css</span><span>Hover and selected become see-through shades; new card and well fills and a <span class="mono">card</span> utility; a 14/20 <span class="mono">md</span> text step; controls 32/36, nav rows 36, list rows 44, menu rows 32, a 360px menu cap.</span>
         <span class="tag">src/ui</span><span>NavItem, ListRow and Tabs wear the card when selected and the shade on hover; the floating family shares one height cap and a thin scrollbar; buttons and dialogs get more padding.</span>
-        <span class="tag">sidebar</span><span>Its hand-written colour mixes move onto the shared tokens, with no visible change; the grain layer goes.</span>
+        <span class="tag">sidebar</span><span>Its hand-written colour mixes move onto the shared tokens, with no visible change. Its grain is left alone.</span>
         <span class="tag">docs, tests</span><span>DESIGN.md and STYLE.md's general rules amended; tests that pin the old classes follow; the light contrast check blends see-through grounds over the canvas.</span>
       </div>
-      <p class="hint" style="margin-top:12px">Most of the first three rows are already in the uncommitted design work. Left to build: the guide, the tests and a sweep for screens that hand-copy the old look. Then typecheck and tests; the preview pages' Tweaks menu is deleted before commit.</p>
+      <p class="hint" style="margin-top:12px">The first three rows are the committed design work. Then: the guide, the tests and a sweep for screens that hand-copy the old look; typecheck and tests.</p>
     </div>
   </details>
 </section>
@@ -295,26 +296,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['The sidebar\'s material becomes the app\'s general rules', 'The brief asks for one look everywhere; leaving the guide\'s general rules unchanged would keep telling later screen features to draw the old look.', 'assumed'],
-    ['Hover and selection are see-through shades, and selected is the card', 'The human found the solid light blocks heavy in the sidebar; those same blocks are what make the rest of the app look different from it.', 'assumed'],
-    ['Rows and menus read at 14px; controls stay at 13px', 'The sidebar\'s comfort comes mostly from its 14px titles; raising every piece of text reads as zoomed in rather than calmer.', 'assumed'],
-    ['Comfortable sizes: taller controls, rows and menus', '"A little more spaced out and comfortable" is the human\'s own description of the sidebar; these steps match its rhythm.', 'assumed'],
-    ['Every dropdown stops at about ten rows and scrolls', 'Menus today may grow to the bottom of the screen; a fixed cap keeps long lists short, and the cut row shows there is more.', 'assumed'],
-    ['The grain behind the sidebar head is removed', 'The human called it a weird effect; the Orchestrator card already gives the head its character. Simpler than tuning it a third time.', 'assumed'],
-    ['This feature changes the shared pieces only; screens pick up what those give', 'The brief says the shared change happens here once; five screen features restyle their layouts on top of it.', 'assumed'],
-    ['Menus keep their raised panel; what changes is inside it', 'The panel already matches the sidebar\'s card radius and edge; the height and the cramped rows were the problem.', 'assumed'],
-    ['Colours, fonts, backgrounds and corner sizes stay', 'The sidebar was built on these same ones, so matching it needs none changed. Rows on their own move to the 10px corner, as the sidebar\'s do.', 'assumed'],
-    ['Dense places keep the small size', 'Tables and toolbars would grow taller than they need before their screen features land; the 24px small size stays for them.', 'assumed'],
-    ['Selected stays told by its edge, also under the pointer', 'In light, hover is about as strong as the card\'s fill, so the edge carries the difference, as in the sidebar today.', 'assumed']
+    ['The sidebar\'s material becomes the app\'s general rules', 'The brief asks for one look everywhere; leaving the guide\'s general rules unchanged would keep telling later screen features to draw the old look.'],
+    ['Hover and selection are see-through shades, and selected is the card', 'The human found the solid light blocks heavy in the sidebar; those same blocks are what make the rest of the app look different from it.'],
+    ['Rows and menus read at 14px; controls stay at 13px', 'The sidebar\'s comfort comes mostly from its 14px titles; raising every piece of text reads as zoomed in rather than calmer.'],
+    ['Comfortable sizes: taller controls, rows and menus', '"A little more spaced out and comfortable" is the human\'s own description of the sidebar; these steps match its rhythm.'],
+    ['Every dropdown stops at about ten rows and scrolls', 'Menus today may grow to the bottom of the screen; a fixed cap keeps long lists short, and the cut row shows there is more.'],
+    ['The grain behind the sidebar head is removed (superseded by 12)', 'Superseded: the human is handling the grain in another feature.'],
+    ['This feature changes the shared pieces only; screens pick up what those give', 'The brief says the shared change happens here once; five screen features restyle their layouts on top of it.'],
+    ['Menus keep their raised panel; what changes is inside it', 'The panel already matches the sidebar\'s card radius and edge; the height and the cramped rows were the problem.'],
+    ['Colours, fonts, backgrounds and corner sizes stay', 'The sidebar was built on these same ones, so matching it needs none changed. Rows on their own move to the 10px corner, as the sidebar\'s do.'],
+    ['Dense places keep the small size', 'Tables and toolbars would grow taller than they need before their screen features land; the 24px small size stays for them.'],
+    ['Selected stays told by its edge, also under the pointer', 'In light, hover is about as strong as the card\'s fill, so the edge carries the difference, as in the sidebar today.'],
+    ['The grain is not this feature\'s', 'The human is handling the grain in another feature; it stays exactly as it is on main. Supersedes 6.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [4, 'Keep today\'s 28px buttons and inputs; make only rows, menus and dialogs roomier.', 'How far to move is your eye\'s call, and the challenger argued for smaller buttons. Switch density in the Tweaks menu to compare.', 'challenged'],
-    [6, 'Keep a much fainter grain, around 6%.', 'The brief asked to show you both. The Tweaks menu on the app page puts it back at 6% or at today\'s 20%.', 'challenged'],
-    [3, 'Raise the whole interface\'s default text from 13px to 14px.', 'A guess at what "spaced out and comfortable" means beyond rows; it decides how big every button and label reads.'],
-    [2, 'Keep solid selection blocks outside the sidebar; soften only hover.', 'It changes how every selected tab and row reads. The challenger wondered whether page tabs need a stronger mark.', 'challenged']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

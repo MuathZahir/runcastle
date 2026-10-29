@@ -8,8 +8,7 @@ rest of the app was not. Beside it, every content screen reads tighter and
 harder: 13px rows, solid light blocks for hover and selection, 28px controls,
 30px menu rows. Dropdowns are the worst of it: a menu with many items (the
 scenarios dropdown, the thread dropdown) grows all the way to the bottom of the
-screen. And the film grain behind the sidebar head reads as a strange "white
-green effect" rather than texture.
+screen.
 
 Five screen features (the chat, the feature's right panel, test drive, the
 Orchestrator's page, the rest of the app) wait on this one to restyle their
@@ -22,7 +21,7 @@ because the change is made in the theme and the shared building blocks every
 screen is drawn from. Rows, menus and pickers read at the sidebar's 14px.
 Hovering anything is a faint shade; a selected row or tab is the same card the
 selected sidebar row is. Buttons and fields are a little taller. Long
-dropdowns stop at about ten rows and scroll. The grain is gone. The sidebar
+dropdowns stop at about ten rows and scroll. The sidebar
 itself looks the same, now drawn from the same shared pieces.
 
 **The shape:**
@@ -38,7 +37,6 @@ itself looks the same, now drawn from the same shared pieces.
   - Metrics: `--control-h` 32, `--control-lg` 36, `--row-h` 36, and new
     `--list-row-h` 44, `--menu-item-h` 32, `--menu-max-h` 360px.
     `--control-sm` stays 24 (decision 10).
-  - The `film-grain` utility is deleted.
 - **Shared building blocks** (`src/ui/`, `ui.tsx`):
   - `NavItem`, `ListRow`, `Tabs`: selected wears `card`, hover is
     `surface-hover`, labels at `md`, rows on their own at 10px corners; hover
@@ -52,28 +50,24 @@ itself looks the same, now drawn from the same shared pieces.
     tokens. `Dialog` header, body and footer get more padding.
 - **The sidebar** (`SidebarParts`, `Sidebar`): its hand-written colour mixes
   and 14px text move onto `surface-hover`, `card`, `fill-well` and `md`, with
-  no visible change; `SidebarGrain` is deleted (decision 6).
+  no visible change. The grain behind its head is untouched (decision 12).
 - **Screens** change only where they hand-copy the old look in a way that now
   clashes (decision 7). Their layouts belong to the screen features.
 - **The design guide** (`DESIGN.md`, `STYLE.md`): the general rules are
   amended (decision 1): the card, see-through hover and selection, the `md`
   step, the new metrics and the menu cap become app-wide rules; the sidebar
   notes keep only its own exceptions (the Orchestrator wash, the orbit light,
-  the count well); the grain lines go.
+  the count well).
 - **Tests** that pin the old classes move with them (the selected-row and
   selected-tab assertions now look for `card`), and the light contrast check
   learns to blend a see-through ground over the canvas before measuring.
 
-**Designed in design mode** (uncommitted until the human's yes):
+**Designed in design mode** (approved by the human, committed):
 `apps/web/preview/kit.html` (the building blocks: buttons, fields, tabs, rows,
 a 30-item scenarios menu, a long model select, a dialog) and
 `apps/web/preview/app.html` (the real app — sidebar and the Orchestrator's
-page — on sample data). A Tweaks menu on both switches density (comfortable,
-the code, or compact, today's sizes); the app page also switches the grain
-(none, the code; faint 6%; as today 20%). Most of the build above is already
-in that uncommitted work; what remains is the guide, the tests and the sweep
-for clashing hand-copies. The Tweaks menu is deleted before anything is
-committed.
+page — on sample data). Most of the build above is in that design work; what
+remains is the guide, the tests and the sweep for clashing hand-copies.
 
 ## Seams
 
@@ -92,6 +86,8 @@ committed.
 - Each screen's own layout: the chat, the feature's right panel, test drive,
   the Orchestrator's page and the remaining screens are their own features,
   which start once this merges.
+- The film grain behind the sidebar head: another feature owns it
+  (decision 12).
 - The thread switcher: it is being removed by "Threads in the sidebar". Its
   dropdown gets the height cap for free until then.
 - Any new behaviour.
@@ -101,8 +97,6 @@ committed.
 
 ## Open questions
 
-- The density (decision 4) and the grain (decision 6) are the human's eye to
-  settle, on the previews' Tweaks menu.
 - A dropdown that lists code-shaped values asks for a mono font, but the
   floating panel already names the sans font, and two font utilities on one
   element are a coin flip. This is how it is today too; worth fixing while
