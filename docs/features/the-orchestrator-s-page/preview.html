@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Orchestrator's page preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:14px}
+.ba h3{margin-bottom:8px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.wire{padding:18px 20px 22px;display:flex;flex-direction:column;gap:6px;min-height:430px}
+.w-row{display:flex;align-items:center;gap:8px;min-height:22px}
+.w-title{font-size:16px;font-weight:600}
+.w-tile{width:22px;height:22px;border-radius:5px;background:var(--color-accent-subtle);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--color-accent) 40%,transparent)}
+.w-sq{width:22px;height:22px;border-radius:5px;background:var(--color-surface-hover);flex:none}
+.w-facts{font-size:11px;color:var(--color-text-tertiary)}
+.w-btn{height:20px;padding:0 8px;border-radius:5px;border:1px solid var(--color-border);font-size:11px;display:inline-flex;align-items:center;color:var(--color-text-secondary);white-space:nowrap}
+.w-btn.p{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
+.w-ghost{font-size:11px;color:var(--color-text-tertiary);white-space:nowrap}
+.w-h{font-weight:600;margin-top:12px;display:flex;align-items:center;gap:6px}
+.w-h small{font-weight:400;color:var(--color-text-tertiary);font-size:11px}
+.w-g{font-size:11px;color:var(--color-text-tertiary);margin-top:6px}
+.w-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-secondary);min-height:20px}
+.w-line i{width:6px;height:6px;border-radius:9px;background:var(--color-text-disabled);flex:none}
+.w-line i.w{background:var(--color-warning)}
+.w-line span:last-child{margin-left:auto;color:var(--color-text-tertiary);font-size:11px}
+.w-sep{border-top:1px solid var(--color-border-subtle);margin:8px 0 2px}
+.w-hint{font-size:11px;color:var(--color-text-tertiary)}
+.right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.dim{opacity:.5}
+.hoodlist{margin:8px 0 0;padding-left:18px;color:var(--color-text-secondary)}
+.hoodlist li{margin:4px 0}
+@media (max-width:760px){.ba{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The Orchestrator's page</h1>
+  <p class="lede">The page the sidebar's Orchestrator card opens, made calm: the buttons on the title's line, then notes, then every conversation grouped by when it was last active.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-orchestrator-s-page/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Before and after, at rest (no chat in front). The real screen is below the sketch: open it in design.</p>
+  <div class="ba">
+    <div>
+      <h3>Today</h3>
+      <div class="screen"><div class="wire">
+        <div class="w-row"><span class="w-title">runcastle</span></div>
+        <div class="w-facts">runcastle/project · lands on main</div>
+        <div class="w-sep"></div>
+        <div class="w-row"><span class="w-sq"></span><span><b>Talk it through</b><br><span class="w-hint">Bring a raw idea; the chat checks it…</span></span><span class="right"><span class="w-ghost">landing on main ▾</span><span class="w-btn p">New chat</span></span></div>
+        <div class="w-sep"></div>
+        <div class="w-row"><span class="w-sq"></span><span><b>Test drive</b><br><span class="w-hint">Run everything that has shipped…</span></span><span class="right"><span class="w-btn">Test drive ▾</span></span></div>
+        <div class="w-row w-ghost">› Drive setup</div>
+        <div class="w-h">Chats</div>
+        <div class="w-line"><i class="w"></i><span>Cut the UI work into seven features</span><span>waiting for you</span></div>
+        <div class="w-line"><i></i><span>Plan the changelog release flow</span><span>2h</span></div>
+        <div class="w-line"><i class="w"></i><span>Why did the burn of #14 stall?</span><span>waiting for you</span></div>
+        <div class="w-line dim"><i></i><span>… ten, then Show 70 more</span><span></span></div>
+        <div class="w-hint" style="margin-top:auto">Notes open by themselves in a side panel.</div>
+      </div></div>
+    </div>
+    <div>
+      <h3>After</h3>
+      <div class="screen"><div class="wire">
+        <div class="w-row"><span class="w-tile"></span><span class="w-title">Orchestrator</span><a class="pin" data-d="1">1</a><span class="right"><span class="w-btn">Test drive ▾</span><span class="w-ghost">landing on main ▾</span><span class="w-btn p">New chat</span><a class="pin" data-d="2">2</a></span></div>
+        <div class="w-facts">runcastle · runcastle/project</div>
+        <div class="w-h">Notes <small>6 open</small><a class="pin" data-d="4">4</a><span class="right"><span class="w-btn">Triage 6</span></span></div>
+        <div class="w-line"><i></i><span>The Working shelf’s light keeps going</span><span>20m</span></div>
+        <div class="w-line"><i></i><span>Merge dialog: the branch name wraps</span><span>45m</span></div>
+        <div class="w-line dim"><i></i><span>… five, then Show N more · 2 triaged</span><span></span></div>
+        <div class="w-h">Conversations <small>18</small><a class="pin" data-d="5">5</a><span class="right"><span class="w-btn" style="width:90px">Filter</span></span></div>
+        <div class="w-g">Active <a class="pin" data-d="7">7</a></div>
+        <div class="w-line"><i class="w"></i><span>Cut the UI work into seven features</span><span>waiting for you</span></div>
+        <div class="w-line"><i class="w"></i><span>Why did the burn of #14 stall?</span><span>waiting for you</span></div>
+        <div class="w-g">Today · Yesterday · This week · This month · Earlier <a class="pin" data-d="6">6</a></div>
+        <div class="w-line"><i></i><span>Plan the changelog release flow</span><span>2h</span></div>
+        <div class="w-sep"></div>
+        <div class="w-row w-ghost">› Drive setup <a class="pin" data-d="3">3</a></div>
+      </div></div>
+    </div>
+  </div>
+  <p class="hint" style="margin-top:10px">With no chats yet, an empty state takes the list's place <a class="pin" data-d="8">8</a>. Around a chat, the header reads "Orchestrator › chat title" and nothing above shows <a class="pin" data-d="9">9</a>.</p>
+
+  <div class="sub">
+<!-- screen:orchestrator-page -->
+<div class="designed">
+  <h3>The Orchestrator page at rest</h3>
+  <p>Real sidebar and real page components; chats, notes and the drive slot are sample data. Four samples on its top bar (busy project, a few chats and no notes, drive slot taken, new project), both themes, and a Tweaks menu at the bottom right with the two looks still open: the accent tile beside the title or none, and conversations grouped by date or flat.</p>
+  <p class="mono">apps/web/src/components/ProjectWorkspace.tsx · project/OrchestratorDoors.tsx · project/DriveSetup.tsx · project/ConversationList.tsx · project/NotesCard.tsx · preview /preview/orchestrator.html</p>
+  <button data-open-design="/preview/orchestrator.html">Open in design</button>
+</div>
+<!-- /screen:orchestrator-page -->
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing deferred</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The chat column ("The chat looks the part")</li>
+      <li><i class="dot"></i>The project drive screen ("Test drive looks the part")</li>
+      <li><i class="dot"></i>The shared theme and building blocks</li>
+      <li><i class="dot"></i>The sidebar's Orchestrator card and its list</li>
+      <li><i class="dot"></i>Archiving, pinning or renaming chats here</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">The page at rest is composed in the project workspace from these pieces, top to bottom:</p>
+      <ul class="hoodlist">
+        <li><span class="mono">PageHeader</span>: the mark, "Orchestrator", the facts line, and <span class="mono">OrchestratorDoors</span> (new) on the title's line: the drive's states, the landing menu, New chat, and a caption hung beneath.</li>
+        <li><span class="mono">NotesCard</span> gains a section form for the page; the panel's form stays. <span class="mono">NoteDot</span> gains a narrow column for lists with no pictures.</li>
+        <li><span class="mono">ConversationList</span> groups by the pure <span class="mono">conversationGroup(thread, now)</span>; a filter past five; no Show more.</li>
+        <li><span class="mono">DriveSetup</span> (new): the disclosure lifted out of the old Test drive card.</li>
+        <li>The panel: at rest it offers only a running drive and never opens by itself; around a chat it offers Notes as today. The note capture's View and a drive's Stop land accordingly.</li>
+        <li>Deleted: <span class="mono">NewChatCard</span>, <span class="mono">TestDriveCard</span>, <span class="mono">ActionRow</span>, their still-true tests moved to the new pieces. DESIGN.md's project-page paragraph rewritten.</li>
+      </ul>
+      <p class="hint" style="margin-top:10px">Built by the lead in this checkout, no workers: the design already lives in the real components, so what is left is tests, deletions, the docs paragraph and a check of View and drive stop.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['The page is called the Orchestrator, as the sidebar calls it', "The project's name showed three times in one view, while the card you clicked says Orchestrator. The project's name moves to the facts line.", 'assumed'],
+    ["The two doors become buttons on the title's line", 'Two rows of tile, title, hint and controls were most of the page and said what the buttons say. The landing menu stays beside New chat, the choice it argues.', 'assumed'],
+    ['Drive setup moves to the foot of the page', 'It is read once and then known; it sat between the actions and the list you came for.', 'assumed'],
+    ['Notes sit on the page at rest, not in the side panel', 'The page has a wide empty column; opening a second column for a few one-line notes splits one screen in two. Around a chat, the panel keeps Notes.', 'assumed'],
+    ["The conversation list stays, as the page's full history", 'The sidebar lists five and sends "All N conversations" here; removing the list would strand about 80 chats.', 'assumed'],
+    ['Conversations are grouped by when they were last active', 'At 80 chats a flat list behind Show more is a wall; dates are how people look for an old chat. Every chat is listed.', 'assumed'],
+    ['Chats that are working or waiting sit above the date groups', 'By date alone, a chat waiting on you since last week would sit below newer idle ones.', 'assumed'],
+    ['A project with no chats yet invites the first one', 'It is the first thing a new user sees; empty headings over nothing read as broken.', 'assumed'],
+    ['Around a chat, the page is the crumb, the chat and the panel', "Today's layout is already right there; what changes is the crumb and the notes' look.", 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [4, 'Keep Notes in the side panel, opened by itself at rest, and only restyle it.', 'It changes where notes live and when the panel opens, which the brief may count as new behaviour. The challenger disagreed.', 'challenged'],
+    [2, 'Keep the two door rows and only tidy them.', "The biggest change to the page's look; the explanation under each door goes.", ''],
+    [1, "Keep the project's name as crumb and title.", "Every project's page gets the same title; the challenger would put the project in the crumb.", 'challenged'],
+    [6, 'A flat list, newest first, ten then Show N more.', 'A look as much as a choice: the Tweaks menu flips it to flat so you can compare.', '']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
