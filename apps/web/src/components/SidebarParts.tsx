@@ -535,7 +535,7 @@ export function SidebarThreadRow({
     <div
       className={cx(
         'group/thread relative shrink-0 rounded-md transition-colors duration-(--dur-1) ease-app',
-        active ? 'bg-[color-mix(in_oklab,var(--color-text)_6%,transparent)]' : HOVER,
+        active ? 'card' : HOVER,
       )}
       onContextMenu={actions.length > 0 ? openRowMenu : undefined}
     >
@@ -549,7 +549,7 @@ export function SidebarThreadRow({
         <ThreadGlyph state={thread.state} />
         <span
           className={cx(
-            'min-w-0 flex-1 truncate text-[13px] leading-5',
+            'min-w-0 flex-1 truncate text-md',
             active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
           )}
         >

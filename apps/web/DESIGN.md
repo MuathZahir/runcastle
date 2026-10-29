@@ -93,8 +93,10 @@ before adding.
     and its threads share one card; the open Orchestrator lists its chats
     inside its own card, under a hairline. A thread row is one 32px line in
     three columns (`SidebarThreadRow`): a 16px glyph (spinner working, amber
-    dot waiting, chat bubble at rest), the 13px title, the age; a hairline from
-    the title column divides one row from the next. Five rows, then "Show N
+    dot waiting, chat bubble at rest), the title at the row step (`text-md`,
+    14px), the age; a hairline from the title column divides one row from the
+    next. The thread in front is the card (`rounded-md`, nested in its
+    feature's card); hover is `surface-hover`, as on every row. Five rows, then "Show N
     more" (a feature) or "All N conversations" (the Orchestrator's page). The
     open row carries a fold chevron, and "+" and "…" on hover. A row's hover
     controls and the marks under them show and hide on the same conditions
