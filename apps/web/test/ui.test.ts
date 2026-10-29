@@ -446,6 +446,7 @@ describe('ListRow and List', () => {
   it('is a 44px row with glyph, title and meta', () => {
     const out = html(createElement(ListRow, { leading: createElement('svg'), title: 'Untitled chat', meta: '22m', onClick: () => {} }))
     expect(out).toContain('min-h-(--list-row-h)')
+    expect(out).toContain('text-md')
     expect(out).toContain('Untitled chat')
     expect(out).toContain('22m')
     expect(out).toContain('hover:bg-surface-hover')

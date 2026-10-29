@@ -97,7 +97,6 @@ remains is the guide, the tests and the sweep for clashing hand-copies.
 
 ## Open questions
 
-- A dropdown that lists code-shaped values asks for a mono font, but the
-  floating panel already names the sans font, and two font utilities on one
-  element are a coin flip. This is how it is today too; worth fixing while
-  here if it is a one-line change.
+None left. The one this spec raised, a mono-font list losing to the panel's
+own sans face, was a one-line fix: the floating panel no longer names a face
+(the body's is sans), so a caller's `font-mono` is the only one stated.

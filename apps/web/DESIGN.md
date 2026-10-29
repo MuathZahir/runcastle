@@ -291,7 +291,7 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 
 | Primitive | Contract |
 |---|---|
-| `Button` | `variant` primary · secondary (default) · ghost · danger · danger-ghost (Stop / Cancel / End in a row of ghosts); `size` sm 24 · md 28 · lg 32; `icon` (leading), `kbd` hint. Icon-only ⇒ use `IconButton`. |
+| `Button` | `variant` primary · secondary (default) · ghost · danger · danger-ghost (Stop / Cancel / End in a row of ghosts); `size` sm 24 · md 32 · lg 36; `icon` (leading), `kbd` hint. Icon-only ⇒ use `IconButton`. |
 | `IconButton` | Square ghost button, one icon, required `label` (tooltip + aria-label). `href` makes it a link ("Open app"); `badge` a small neutral count. |
 | Link (`LINK`) | `accent-text`, no underline at rest, underline on hover — one look for every link in text. |
 | `Kbd` | One key; `text-tertiary`, hairline. Only in menus, search, beside the primary. |
@@ -310,7 +310,7 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 | `SegmentedControl` | Inset track, raised thumb that slides; for 2–4 values that should all be visible (Theme). |
 | `Checkbox` / `Switch` | Hairline box / track on the inset ground; on = `primary` fill. Focus ring outside. |
 | `EmptyState` | Tertiary icon, title, hint, ≤1 action; no frame. |
-| `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 32px `text-md` items with icons + kbd; capped at `--menu-max-h`, then scrolls. |
+| `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 32px `text-md` items with icons + kbd. The lists (menu, select, combobox) stop at `--menu-max-h`, then scroll; a `Popover` holds prose and stops only at the screen's edge. |
 | `Dialog` | `surface-raised`, `rounded-lg`, `shadow-dialog`; title `text-lg`, footer right-aligned with one primary. |
 | `Tooltip` | Small `surface-raised` label after 400ms hover; for every IconButton. |
 | `PageTopbar`, `Page`, `PageHeader`, `Section`, `Aside`, `AsideLayout` | The frame pieces above, so every surface lays out identically. `AsideLayout` floats the aside over the page when the panel is too narrow to share. |

@@ -39,7 +39,15 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
  * same band rather than each picking a number.
  */
 export const FLOATING_SURFACE =
-  'z-[300] overflow-y-auto overscroll-contain [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin] rounded-lg bg-surface-raised font-sans text-sm text-text shadow-popover animate-pop-in'
+  'z-[300] overflow-y-auto overscroll-contain rounded-lg bg-surface-raised text-sm text-text shadow-popover animate-pop-in'
+
+/**
+ * The thin scrollbar, on whichever element scrolls a floating list (the panel,
+ * Radix's select viewport, the combobox's list). `styles.css` sets it on the
+ * document, but `scrollbar-width` is not inherited, so a scroller states it;
+ * the colour is inherited and stays the document's.
+ */
+export const FLOATING_SCROLLBAR = '[scrollbar-width:thin]'
 
 /**
  * One row of a floating list (menu item, select option, combobox row): 32px
@@ -87,4 +95,6 @@ export const FLOATING_SEPARATOR = '-mx-1 my-1 h-px bg-border-subtle'
 export const FLOATING_CAP = {
   dropdown: 'max-h-[min(var(--radix-dropdown-menu-content-available-height),var(--menu-max-h))]',
   select: 'max-h-[min(var(--radix-select-content-available-height),var(--menu-max-h))]',
+  /** The combobox's list; its panel keeps the measured cap as the backstop. */
+  combobox: 'max-h-(--menu-max-h)',
 } as const

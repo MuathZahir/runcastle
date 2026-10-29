@@ -9,7 +9,7 @@ import {
 import { createContext, useContext, useState } from 'react'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconSearch } from '../icons'
-import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, cx } from './floating'
+import { FLOATING_CAP, FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SCROLLBAR, cx } from './floating'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 /**
@@ -152,7 +152,7 @@ export function ComboboxList({
 }: ComponentPropsWithoutRef<typeof CommandList>) {
   return (
     <CommandList
-      className={cx('max-h-(--menu-max-h) overflow-y-auto overscroll-contain [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin] p-1', className)}
+      className={cx(FLOATING_CAP.combobox, FLOATING_SCROLLBAR, 'overflow-y-auto overscroll-contain p-1', className)}
       {...props}
     />
   )

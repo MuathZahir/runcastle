@@ -27,7 +27,7 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 | `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped`; a `-text` word peer for each but `draft` | `text-phase-review`, `text-phase-review-text` |
 | `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
 | `--text-*` | `xs` 12/16 · `sm` 13/20 controls · `md` **14/20, every row** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-md`, `text-xl` |
-| `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, rows) · `lg` 10 (panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
+| `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, items in a menu, rows inside a card) · `lg` 10 (cards, rows and tabs on their own, panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
 | `--shadow-*` | `popover`, `dialog` — floating layers only | `shadow-popover` |
 | `--ease-*` | `app` (state changes), `out-app` (entering) | `ease-out-app` |
 | `--animate-*` | `rise-in`, `fade-in`, `pop-in`, `dialog-in`, `backdrop-in`, `slide-in-right`, `toast-in`, `breathe`, `spin` | `animate-rise-in` |
@@ -171,7 +171,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 
 | Primitive | Props | Notes |
 |---|---|---|
-| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 28 (default) · `lg` 32; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
+| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
 | `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |

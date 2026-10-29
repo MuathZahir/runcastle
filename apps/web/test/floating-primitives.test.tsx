@@ -75,6 +75,11 @@ describe('DropdownMenu', () => {
     expect(menu.className).toContain(
       'max-h-[min(var(--radix-dropdown-menu-content-available-height),var(--menu-max-h))]',
     )
+    // Its rows are the sidebar's: 32px at the row step.
+    for (const item of screen.getAllByRole('menuitem')) {
+      expect(item.className).toContain('min-h-(--menu-item-h)')
+      expect(item.className).toContain('text-md')
+    }
     expect(menu.className).toContain('overflow-y-auto')
   })
 

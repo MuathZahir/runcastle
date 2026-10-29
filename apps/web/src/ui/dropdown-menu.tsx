@@ -6,6 +6,7 @@ import {
   FLOATING_ITEM_DEFAULT,
   FLOATING_LABEL,
   FLOATING_CAP,
+  FLOATING_SCROLLBAR,
   FLOATING_SEPARATOR,
   FLOATING_SURFACE,
   cx,
@@ -72,6 +73,7 @@ export function DropdownMenuContent({
         className={cx(
           FLOATING_SURFACE,
           FLOATING_CAP.dropdown,
+          FLOATING_SCROLLBAR,
           'min-w-48 p-1',
           className,
         )}

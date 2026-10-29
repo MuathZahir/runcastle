@@ -104,9 +104,10 @@ function RowControl({
 }
 
 /**
- * One row of the sidebar: 32px, a leading icon (or phase glyph), a one-line
- * truncated label, optional trailing `dot` and `meta`. Selected (`active`) is
- * `surface-selected` + `text` + medium weight — nothing else.
+ * A one-line nav row: 36px (`--row-h`) at the row step (`text-md`), a leading
+ * icon (or phase glyph), a one-line truncated label, optional trailing `dot`
+ * and `meta`. Selected (`active`) is the card + `text` + medium weight —
+ * nothing else.
  *
  * - `icon` | `phase` — the leading glyph (`phase` draws a `PhaseIcon`).
  * - `label` — one line; the full title lives in the page header. `title`
