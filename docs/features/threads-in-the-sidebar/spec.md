@@ -24,9 +24,12 @@ opens the rest in place. A feature with only its main chat shows no list
 (decision 2). Opening another feature folds this one.
 
 The Orchestrator card works the same way while the Orchestrator page is open:
-its chats list under the card, five of them, and the last row, "All N
-conversations", opens the Orchestrator page at rest, where every conversation
-is listed (decision 3).
+its chats list inside its accent card, under a hairline below the card's head,
+so they read as the Orchestrator's and not as the features below (the human's
+first look at the design). The head's chevron turns down while they show, and
+its hover animation stays on the head. Five chats show, and the last row, "All
+N conversations", opens the Orchestrator page at rest, where every
+conversation is listed (decision 3).
 
 The open row (feature or Orchestrator) carries a "+" ("New thread") beside its
 "…": on a feature it starts a side thread, on the Orchestrator a new project
