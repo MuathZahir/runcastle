@@ -17,7 +17,7 @@ import {
   PrepRow,
   Shelf,
   SidebarFeatureRow,
-  SidebarGrain,
+  SidebarBackdrop,
   SidebarStatusLine,
   WorkingShelf,
 } from '../src/components/SidebarParts'
@@ -89,7 +89,7 @@ function Design({ features, sample }: { features: FeatureListItem[]; sample: Sam
   const nothing = inbox.length + stopped.length + pick('agentWorking').length === 0
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
-      <SidebarGrain />
+      <SidebarBackdrop />
       <div className="flex h-10 shrink-0 items-center gap-0.5">
         <div className="flex min-w-0 flex-1">
           <ProjectSwitcher nav={nav} />

@@ -38,7 +38,7 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
  * The project sidebar's pieces, as markup over resolved values (DESIGN.md
  * §Frame, sidebar notes). The `Sidebar` owns the queries and composes them:
  *
- * - the {@link OrchestratorCard} under the head, over a {@link SidebarGrain};
+ * - the {@link OrchestratorCard} under the head, over a {@link SidebarBackdrop};
  * - what needs you, unheaded: {@link PrepRow} while preparation is owed, then
  *   {@link SidebarFeatureRow}s waiting on you, then the stopped ones;
  * - the {@link WorkingShelf}, open, its rows in the bay;
@@ -588,11 +588,42 @@ export function SidebarStatusLine({
   )
 }
 
-/** Behind the sidebar's head: a fine static film grain, fading out downward. */
-export function SidebarGrain() {
+/**
+ * The halftone's mask: one dot per 8px cell, its radius shrinking from 1.1px
+ * with distance from the head's top centre until it is gone. The tile is 640px
+ * wide so the widest sidebar (420px) never meets its edge; the fade is sized to
+ * a 320px head, so the texture looks the same at any width. Radii round to
+ * 0.1px and each size is one stroked path of round-capped zero-length lines, so
+ * the whole mask is a handful of paths, built once.
+ */
+const HALFTONE_MASK = (() => {
+  const w = 640
+  const h = 256
+  const pitch = 8
+  const rx = 320 * 1.15
+  const ry = h * 1.15
+  const bySize = new Map<number, string>()
+  for (let y = pitch / 2; y < h; y += pitch)
+    for (let x = pitch / 2; x < w; x += pitch) {
+      const r = Math.round(11 * (1 - Math.hypot((x - w / 2) / rx, y / ry))) / 10
+      if (r >= 0.2) bySize.set(r, `${bySize.get(r) ?? ''}M${x} ${y}h0`)
+    }
+  const paths = [...bySize].map(([r, d]) => `<path d='${d}' stroke-width='${(2 * r).toFixed(1)}'/>`).join('')
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' stroke='black' stroke-linecap='round'>${paths}</svg>`
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+})()
+
+/**
+ * Behind the sidebar's head: a static halftone, dots shrinking away from the
+ * top centre. The dots are the text colour at 6%, so they read in both themes.
+ */
+export function SidebarBackdrop() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-64 overflow-hidden">
-      <div className="film-grain absolute inset-0 opacity-[0.2] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+    <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 overflow-hidden">
+      <div
+        className="absolute top-0 left-1/2 h-64 w-[640px] -translate-x-1/2 bg-[color-mix(in_oklab,var(--color-text)_6%,transparent)]"
+        style={{ maskImage: HALFTONE_MASK }}
+      />
     </div>
   )
 }

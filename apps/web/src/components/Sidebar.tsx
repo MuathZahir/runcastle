@@ -47,7 +47,7 @@ import {
   PrepRow,
   Shelf,
   SidebarFeatureRow,
-  SidebarGrain,
+  SidebarBackdrop,
   SidebarStatusLine,
   WorkingShelf,
 } from './SidebarParts'
@@ -130,7 +130,7 @@ export const ORCHESTRATOR_TITLE =
  * composed from the pieces in `SidebarParts` the way /preview/sidebar.html does:
  *
  * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New chat ·
- *   Add to backlog · Jot a note) and the collapse button, over the film grain;
+ *   Add to backlog · Jot a note) and the collapse button, over the halftone;
  * - the Orchestrator card — the project's own door, its chat;
  * - what needs you, unheaded: preparation while it is owed, the features
  *   waiting on you, then the ones in progress (nothing running, nothing asked);
@@ -293,7 +293,7 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
-      <SidebarGrain />
+      <SidebarBackdrop />
       <div className="flex h-10 shrink-0 items-center gap-0.5">
         <div className="flex min-w-0 flex-1">
           <ProjectSwitcher nav={nav} />
