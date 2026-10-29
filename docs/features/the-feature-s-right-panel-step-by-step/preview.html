@@ -162,7 +162,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>The feature&rsquo;s right panel, step by step</h1>
-  <p class="lede">The panel beside the chat reads as one panel: views as tabs, no repeated title, the plan preview filling its view, and every doc read in the panel instead of a dialog over the chat. This feature is the frame, the plan and the docs; the round, review and shipped views follow as their own feature. Planned without you.</p>
+  <p class="lede">The panel beside the chat, simplified: three views as tabs (Plan, Tickets, Details), no repeated title, the plan preview filling its view, docs read in the panel, one plain list of tickets that looks like the sidebar, and the notes moved into the drive. Review is gone. First planned without you; reworked after your look on 29 October.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-feature-s-right-panel-step-by-step/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -192,7 +192,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div>
         <h3>After</h3>
         <div class="wire">
-          <div class="hd"><span class="tab on">Plan</span><span class="tab">Work</span><span class="tab">Details</span><a class="pin" data-d="3" style="position:static">3</a><span class="grow"></span>&#8250; &#215;</div>
+          <div class="hd"><span class="tab on">Plan</span><span class="tab">Tickets</span><span class="tab">Details</span><a class="pin" data-d="3" style="position:static">3</a><span class="grow"></span>&#8250; &#215;</div>
           <div class="bar"><span class="tab on">Preview</span><span class="tab">Decisions 12</span><span class="tab">Spec</span><a class="pin" data-d="6" style="position:static">6</a><span class="grow"></span>updated 40m ago &#8689;</div>
           <div class="fill"><div class="ln" style="width:55%;height:10px;background:var(--color-text-disabled)"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:85%"></div><div class="ln" style="width:40%"></div><span class="sb" style="right:4px"></span><a class="pin" data-d="5" style="right:16px;bottom:12px">5</a></div>
         </div>
@@ -202,13 +202,61 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </div>
 
   <div class="sub">
+    <h3>Three views, and Review gone <a class="pin" data-d="14">14</a></h3>
+    <p class="hint">Where everything Review held now lives.</p>
+    <div class="flow">
+      <span class="st">Notes for the agent, Send to agent</span><span class="ar">&rarr;</span><span class="st">Drive, under the app <a class="pin" data-d="16">16</a></span>
+    </div>
+    <div class="flow">
+      <span class="st">Findings, the walkthrough</span><span class="ar">&rarr;</span><span class="st">the review ticket&rsquo;s row <a class="pin" data-d="15">15</a></span>
+      <span class="st">Rounds trail</span><span class="ar">&rarr;</span><span class="st">folded rounds in Tickets <a class="pin" data-d="18">18</a></span>
+    </div>
+    <div class="flow">
+      <span class="st">Conflict and drive notices</span><span class="ar">&rarr;</span><span class="st">atop the chat</span>
+      <span class="st">Shipped record</span><span class="ar">&rarr;</span><span class="st">Details: Merged, the outcome first</span>
+    </div>
+  </div>
+
+  <div class="sub">
     <h3>Designed screens, in the real app</h3>
     <p class="hint">Real components on sample data (the shipped feature &ldquo;The whole app matches the sidebar&rdquo;). Each opens in the design view; the bar at its bottom left switches step, theme and the one Tweak.</p>
     <div class="screens">
+<!-- screen:tickets-running -->
+<div class="designed">
+  <h3>Tickets, round 2 running <a class="pin" data-d="18">18</a> <a class="pin" data-d="19">19</a></h3>
+  <p>Round 1 folded on top; round 2&rsquo;s tickets as sidebar rows. Open the failed one: its actions and what went wrong.</p>
+  <p class="mono">src/components/bodies/tickets/TicketsView.tsx · preview /preview/feature-panel.html?step=round</p>
+  <button data-open-design="/preview/feature-panel.html?step=round">Open in design</button>
+</div>
+<!-- /screen:tickets-running -->
+<!-- screen:tickets-waiting -->
+<div class="designed">
+  <h3>Tickets, before round 1 <a class="pin" data-d="17">17</a></h3>
+  <p>The tickets waiting to run, with what each waits on and its model. The &ldquo;&hellip;&rdquo; holds one model for all.</p>
+  <p class="mono">src/components/bodies/tickets/TicketsView.tsx · preview /preview/feature-panel.html?step=tickets</p>
+  <button data-open-design="/preview/feature-panel.html?step=tickets">Open in design</button>
+</div>
+<!-- /screen:tickets-waiting -->
+<!-- screen:tickets-ready -->
+<div class="designed">
+  <h3>Tickets, ready to drive <a class="pin" data-d="15">15</a></h3>
+  <p>Both rounds done. Open the review ticket: what the review found and Watch the walkthrough.</p>
+  <p class="mono">src/components/bodies/tickets/TicketsView.tsx · preview /preview/feature-panel.html?step=ready</p>
+  <button data-open-design="/preview/feature-panel.html?step=ready">Open in design</button>
+</div>
+<!-- /screen:tickets-ready -->
+<!-- screen:drive-notes -->
+<div class="designed">
+  <h3>Drive with notes <a class="pin" data-d="16">16</a></h3>
+  <p>The drive&rsquo;s stage (its dev server still starting here), and under it the notes, the composer and Send to agent.</p>
+  <p class="mono">src/components/review/FeatureDriveView.tsx · preview /preview/feature-panel.html?step=drive</p>
+  <button data-open-design="/preview/feature-panel.html?step=drive">Open in design</button>
+</div>
+<!-- /screen:drive-notes -->
 <!-- screen:plan-view -->
 <div class="designed">
   <h3>Plan, with a preview <a class="pin" data-d="5">5</a> <a class="pin" data-d="6">6</a></h3>
-  <p>The tabs, the plan&rsquo;s bar and the preview filling the view. Decisions and Spec tabs read the docs in place.</p>
+  <p>The tabs, the plan&rsquo;s bar and the preview filling the view. Decisions and Spec read the docs in place.</p>
   <p class="mono">src/components/bodies/PlanBody.tsx · PreviewPanel.tsx · workspace/PanelViewBar.tsx · preview /preview/feature-panel.html?step=plan</p>
   <button data-open-design="/preview/feature-panel.html?step=plan">Open in design</button>
 </div>
@@ -224,7 +272,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:details-view -->
 <div class="designed">
   <h3>Details <a class="pin" data-d="8">8</a> <a class="pin" data-d="9">9</a></h3>
-  <p>One column: the facts (branch, started, waits on, waited on by), the docs by title and age, Activity closed.</p>
+  <p>One column: the facts, the docs by title and age, Activity closed. Step &ldquo;Shipped&rdquo; shows the outcome leading.</p>
   <p class="mono">src/components/inspector/Inspector.tsx · Knowledge.tsx · FeatureFacts.tsx · preview /preview/feature-panel.html?step=docs</p>
   <button data-open-design="/preview/feature-panel.html?step=docs">Open in design</button>
 </div>
@@ -232,19 +280,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:doc-reader -->
 <div class="designed">
   <h3>A doc open <a class="pin" data-d="7">7</a></h3>
-  <p>The reader in place of the list: the way back, the title, the path and age, the doc as prose; open full window on the right.</p>
+  <p>The reader in place of the list: the way back, the title, the path and age, the doc as prose; full window on the right.</p>
   <p class="mono">src/components/DocReader.tsx · preview /preview/feature-panel.html?step=reader</p>
   <button data-open-design="/preview/feature-panel.html?step=reader">Open in design</button>
 </div>
 <!-- /screen:doc-reader -->
-<!-- screen:work-in-frame -->
-<div class="designed">
-  <h3>Work, Review and Shipped in the new frame <a class="pin" data-d="10">10</a></h3>
-  <p>Only their top and edges change here; their insides are the follow-on feature&rsquo;s. Steps tickets, round, review and shipped.</p>
-  <p class="mono">src/components/Workspace.tsx (documentView) · preview /preview/feature-panel.html?step=round</p>
-  <button data-open-design="/preview/feature-panel.html?step=round">Open in design</button>
-</div>
-<!-- /screen:work-in-frame -->
     </div>
   </div>
 
@@ -257,10 +297,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <span class="st">back to the list</span>
     </div>
     <div class="flow">
-      <span class="st">Work &rsaquo; Docs menu &rsaquo; spec</span><span class="ar">&rarr;</span>
-      <span class="st">&larr; Work &rsaquo; Spec</span>
-      <span class="st">Review &rsaquo; the outcome link</span><span class="ar">&rarr;</span>
-      <span class="st">&larr; Review &rsaquo; Outcome</span>
+      <span class="st">Tickets &rsaquo; &hellip; &rsaquo; spec</span><span class="ar">&rarr;</span>
+      <span class="st">&larr; Tickets &rsaquo; Spec</span>
     </div>
   </div>
 
@@ -278,10 +316,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h2>What is left out</h2>
   <div class="out2">
     <div><h3>Later</h3><ul>
-      <li><i class="dot"></i>The insides of Work, Review and Shipped: &ldquo;The panel&rsquo;s round, review and shipped views&rdquo;, parked as a draft</li><li><i class="dot"></i>The round view listing its tickets twice (the follow-on&rsquo;s first fix)</li>
+      <li><i class="dot"></i>Nothing parked. The draft &ldquo;The panel&rsquo;s round, review and shipped views&rdquo; is folded back in and should be deleted</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>The chat column and the test drive view (their own features)</li><li><i class="dot"></i>The shared theme and building blocks</li><li><i class="dot"></i>The activity feed&rsquo;s rows</li><li><i class="dot"></i>New behaviour: no new view, action or data</li>
+      <li><i class="dot"></i>The chat column and the test drive&rsquo;s own look (their own features)</li>
+      <li><i class="dot"></i>The shared theme and building blocks</li>
+      <li><i class="dot"></i>The activity feed&rsquo;s rows</li>
+      <li><i class="dot"></i>New behaviour: every action kept is one the panel already had</li>
     </ul></div>
   </div>
 </section>
@@ -292,15 +333,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
 
-      <p class="hint">Built by the lead in this checkout, no worker tickets: the look is already in the designed components. Then one review ticket drives Plan and Details.</p>
+      <p class="hint">Three worker tickets, then one review that drives the panel. The designs are committed first, so workers connect them without restyling.</p>
       <dl class="hoodgrid">
-        <dt>FeaturePanel</dt><dd>Tabs over the offered views; under ~520px the closed tabs keep their icon only. Tabs gains a per-item tooltip.</dd>
-        <dt>Workspace documentView</dt><dd>No FeatureHeader in a view (a draft keeps it, as its page); Plan full-height, the rest a 24px column.</dd>
-        <dt>PanelViewBar</dt><dd>New. 40px, sticky: a view&rsquo;s own tabs or way back on the left, facts and actions on the right.</dd>
-        <dt>PlanBody · PreviewPanel</dt><dd>Preview, Decisions, Spec on the bar; the preview fills its view. GrillBody and ArtifactPane retire.</dd>
-        <dt>DocReader · DocProse</dt><dd>New. The reader; PanelState gains the open doc, so Work&rsquo;s Docs menu and Review&rsquo;s outcome link open it in their own view. DocPeek retires.</dd>
-        <dt>DetailsView · Knowledge · FeatureFacts</dt><dd>One column; docs by title and age; facts as a PropertyList; Activity in a closed Disclosure.</dd>
-        <dt>DESIGN.md · STYLE.md</dt><dd>The panel&rsquo;s tabs, column, view bar and reader replace the switcher menu and DocPeek.</dd>
+        <dt>#1 Tickets</dt><dd>TicketsView takes every action RunBody and TicketsBody had (stop, retry, model, edit, cancel, set aside, the live log, one model for all); the review ticket&rsquo;s findings and walkthrough; RunBody, the run lanes and the ledger retire.</dd>
+        <dt>#2 Review retired</dt><dd>Review never offered, /review lands on Tickets; its notices move atop the chat; ReviewBody, ShippedBody and their bands retire; notes in the drive; Merged and the outcome in Details.</dd>
+        <dt>#3 Frame and docs</dt><dd>The open doc in the panel&rsquo;s state and the reader in every view; DocPeek and the grill pane retire; Tabs gets a tooltip; DESIGN.md and STYLE.md. After #2, which edits the same panel model.</dd>
+        <dt>#4 Review</dt><dd>Drives Plan, Tickets, Details and a drive with notes against these criteria.</dd>
       </dl>
 
     </div>
@@ -317,27 +355,34 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['This feature is the panel’s frame, the plan and the docs; the round, review and shipped views become their own feature', 'Work, Review and Shipped are about 4,000 lines with problems of their own; the frame must settle first, and the docs view was named first.', 'assumed'],
+    ['This feature is the panel’s frame, the plan and the docs; the round, review and shipped views become their own feature', 'Superseded by 13.', 'assumed'],
     ['A view no longer repeats the feature’s title, branch and age', 'The page’s header row already names the feature; the repeat costs about 170px of every view.', 'assumed'],
-    ['The views switch by tabs in the panel’s header', 'Views of one object switch with tabs, and a view that appears (Review) is seen. Narrow, the closed tabs keep their icon only.', 'assumed'],
-    ['A view is a panel column, not a page', 'The centred page column was made for a whole window. One 40px bar shape for a view’s own switch, used only by Plan and the reader.', 'assumed'],
+    ['The views switch by tabs in the panel’s header', 'Views of one object switch with tabs, and a view that appears is seen. Narrow, the closed tabs keep their icon only.', 'assumed'],
+    ['A view is a panel column, not a page', 'The centred page column was made for a whole window. One 40px bar shape for a view’s own switch.', 'assumed'],
     ['The plan preview fills the Plan view', 'Today it is a framed box with its own scrollbar inside a scrolling page.', 'assumed'],
     ['Decisions and spec are read inside the Plan view', 'The plan is these three documents; a dialog over the chat breaks the page’s layout.', 'assumed'],
-    ['Every doc opens in the panel, never in a dialog', 'A dialog hides the chat the human is talking to about that doc; read in place, the way back returns where they were.', 'assumed'],
+    ['Every doc opens in the panel, never in a dialog', 'A dialog hides the chat; read in place, the way back returns where you were.', 'assumed'],
     ['The docs list reads as documents, not files', 'Title and age say what changed; the mono file name repeated the title in code type.', 'assumed'],
-    ['Details is one column: the feature’s facts, its docs, then its activity', 'The facts from the dropped header live here; no second row of tabs; activity is read rarely.', 'assumed'],
-    ['Work, Review and Shipped get the frame only', 'Keeps the cut clean: the follow-on redraws them inside a settled frame.', 'assumed'],
+    ['Details is one column: the feature’s facts, its docs, then its activity', 'The facts from the dropped header live here; activity is read rarely, so it stays closed.', 'assumed'],
+    ['Work, Review and Shipped get the frame only', 'Superseded by 13.', 'assumed'],
     ['Where things open counts as layout, not new behaviour', 'The brief rules out new behaviour; these moves change where things appear, not what the app does.', 'assumed'],
-    ['Design and Drive get their tab only', 'Both are frames around another app; the test drive has its own feature.', 'assumed']
+    ['Design and Drive get their tab only', 'Superseded by 16 for the Drive view.', 'assumed'],
+    ['This feature takes the round, review and shipped views back', 'Your simplification removes most of what made them big. The parked draft should be deleted.'],
+    ['The Review view is retired', 'You asked whether it was needed. The status line says when to drive; the rest belongs with the drive or the tickets.'],
+    ['What Review held goes where it is used, or goes', 'Notices atop the chat, findings and walkthrough on the review ticket, the shipped record in Details; the rounds trail goes.', 'assumed'],
+    ['Notes for the agent live in the drive', 'You: they belong in the drive panel. Under the app, so a half-width panel keeps the app its whole width.', 'assumed'],
+    ['Work becomes Tickets', 'Tickets is the word the rest of the app uses, and a ticket outlives its worker.', 'assumed'],
+    ['Tickets is one list: the current round, earlier rounds folded above', 'Your words. No Run section, no run timeline, no history picker.'],
+    ['A ticket is a sidebar row', 'Two lines, the state in words; opens in place into a card with its actions and detail.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [1, 'One feature with all six steps, a ticket per step.', 'The brief asked to propose a split for the orchestrator to cut; the planner parked the follow-on draft itself. Easy to undo.', 'challenged'],
-    [3, 'Keep today’s menu, restyled.', 'Tabs were taken out of the page’s header row once before; the challenger asks whether you want them back in the panel. Try the Tweak.', 'challenged'],
-    [6, 'Keep the file-name buttons, opening a dialog.', 'Decisions and spec become readable in two places (Plan and the docs list); the challenger would route the list rows to Plan’s tabs.', 'challenged'],
-    [7, 'Keep the doc dialog, restyled.', 'The biggest change in how docs are shown, and the one the brief named first.'],
-    [11, 'Change only how each thing looks, not where it opens.', 'The brief says “no new behaviour”; tabs, in-panel reading and a closed Activity are layout by the planner’s reading, but the line is yours.']
+    [15, 'A small “Review” section at the top of Tickets for the findings and the walkthrough.', 'Findings now sit one click deep, on the review ticket’s row.'],
+    [16, 'Notes beside the app, as the project drive keeps them.', 'Beside, they squeezed the app to a sliver in a half panel. “Test drive looks the part” planned no notes column; the two need reconciling.'],
+    [19, 'One-line rows with the state as a trailing word, restyled.', 'Two-line rows are roomier but show fewer tickets per screen.'],
+    [3, 'Keep today’s menu, restyled.', 'Tabs were taken out of the page’s header row once before. Try the Tweak.', 'challenged'],
+    [7, 'Keep the doc dialog, restyled.', 'The biggest change in how docs are shown, and the one the brief named first.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

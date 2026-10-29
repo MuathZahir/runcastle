@@ -75,3 +75,43 @@ view lists the same tickets twice.
 **Decision:** The Design and Drive views gain their place in the header's tabs and nothing else. The test drive's look belongs to "Test drive looks the part", and the design view is a frame around the design server's page.
 **Why:** Both are frames around another app; the brief keeps the test drive out of this feature.
 **Assumed.** Alternative: give the Design view the panel column too.
+
+---
+
+*The human looked at the designs on 2026-10-29 and asked to simplify much further:
+no Review view, the notes in the drive, Work renamed and reduced to one simple list
+of tickets that looks like the sidebar. Decisions 13 to 19 record that. Where a
+detail below is the planner's reading of it, the decision is marked assumed.*
+
+## 13. This feature takes the round, review and shipped views back
+**Decision:** The whole panel is this feature's again: the Tickets view (decisions 17 to 19), the retirement of Review (decisions 14, 15) and the notes in the drive (decision 16) are built here, together with the frame, the plan and the docs. The parked follow-on "The panel's round, review and shipped views" is no longer needed and should be deleted. Supersedes: 1, 10.
+**Why:** The human's simplification removes most of what made those views big: one of them goes, and the other becomes one list. What is left fits beside the frame.
+
+## 14. The Review view is retired
+**Decision:** The panel has no Review view. Its tab, its body and the shipped record it became after merge are gone; the views are Plan, Tickets and Details, with Design and Drive while they run.
+**Why:** The human: "Do we need the review panel?" The status line already says when the feature is ready and what to drive; everything else it held either belongs with the drive, belongs with the tickets, or is read rarely enough to go (decision 15).
+
+## 15. What Review held goes where it is used, or goes
+**Decision:** The merge-conflict, refused-drive and nothing-verified notices move atop the chat with the page's other notices. The review agent's findings and its recorded walkthrough show on the review ticket's own row in Tickets. Once merged, Details says "Merged 3h ago" and the outcome leads its docs. The rounds trail is dropped, since Tickets folds the rounds. The project's drive instructions, the spec's deferred scope and the per-ticket accounts leave the panel: the first lives in the project's settings, the second in the spec, the third on each ticket's row.
+**Why:** Nothing the human acts on is lost, and nothing is said twice. The rounds trail was the "round section" the human said is not needed.
+**Assumed.** Alternative: keep a small "Review" section at the top of Tickets for the findings and the recording.
+
+## 16. Notes for the agent live in the drive
+**Decision:** Writing notes while driving, the notes list and Send to agent move from Review into the feature's drive view, under the running app. Notes are about what the human sees in the drive, so they sit where they are seen. Under rather than beside, so a half-width panel keeps the app its whole width. Supersedes: 12, for the Drive view.
+**Why:** The human: the notes "should be in the drive panel". Drawn beside the app first, the notes squeezed it to a sliver in a half-width panel.
+**Assumed.** Alternative: notes beside the app as an aside, as the project drive keeps them.
+**Note:** "Test drive looks the part" (planned, not built) decided the feature drive keeps no notes column (its decision 9). The two need reconciling; this one follows the human's newer word.
+
+## 17. Work becomes Tickets
+**Decision:** The Work view is renamed Tickets, keeping its list icon.
+**Why:** The human suggested "Workers" or "Tickets". Tickets is the word the rest of the app already uses (rounds hold tickets; the agent "makes tickets"), and a ticket outlives its worker.
+**Assumed.** Alternative: Workers.
+
+## 18. Tickets is one list: the current round, earlier rounds folded above
+**Decision:** One list, no Run and Tickets sections. Earlier rounds sit at the top, each folded to one line ("Round 1 · 4 of 4 landed · 18m"), opening to their tickets. Below them, the current round's tickets. Before the first round the current round is the tickets waiting to run; after a round has finished and new tickets wait, those are the next round and the finished one folds. The run timeline and the run history picker go; Stop stays in the page's header.
+**Why:** The human: "just the tickets of the current round with all rounds collapsed above". Today the running round's tickets show twice, once as run lanes and once as the ledger.
+
+## 19. A ticket is a sidebar row
+**Decision:** Each ticket is drawn like a feature row in the sidebar: two lines, the title at 14px with its number before it, then a 12px line of a status glyph, the state in words ("Running · 4m", "Landed · a1b2c3d", "Waits on #1", "Failed · no commits") and the model. A running ticket's words shimmer as a working sidebar row does. Clicking a ticket opens it in place as a card: its actions as small quiet buttons (stop, retry, model, edit, cancel, as its state allows), the goal and acceptance criteria, then the worker's live log or its digest. The controls for the whole list (one model for every waiting ticket, the default model, the sandbox) move into a "…" menu on the view's bar.
+**Why:** The human asked for the tickets to look better and match the sidebar. A row that says its state in words reads at a glance; the detail is one click away instead of on every row.
+**Assumed.** Alternative: one-line rows with the state as a trailing word, as today but restyled.
