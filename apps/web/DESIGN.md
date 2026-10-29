@@ -74,10 +74,10 @@ before adding.
   - **Rows are two lines**: a 14px title with at most one trailing dot, then a
     12px line of the 12px phase glyph, the state in words, and the age. Every
     lane draws the same row; there are no lane headings over the moving work.
-  - **One card material**: `rounded-lg`, a fill of 2.5% of `text` over the
-    canvas, a hairline `ring-border-subtle`. The selected row, the Working bay
-    and a live drive wear it; rows inside a card take `rounded-md` so the
-    corners nest. Hover is a 3.5% fill — never the light `surface-selected` block.
+  - **The card** (§Space, size, shape — the app's one material, first drawn
+    here): the selected row, the Working bay and a live drive wear it; rows
+    inside a card take `rounded-md` so the corners nest. Hover is
+    `surface-hover`, as everywhere.
   - **The Orchestrator card** is the sidebar's one accent fill (a sanctioned
     exception to "never a gradient"): a dark accent wash from the icon side, a
     fine accent grid fading in from the far corner, `IconOrchestrator` in a
@@ -202,8 +202,14 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
   chrome reads as a material, never as flat grey. Keep new greys on that ramp.
 - Grounds: `canvas` frame + sidebar; `surface` content; `surface-raised` for
   anything floating (menus, popovers, dialogs, toasts, palette); `surface-inset`
-  for code, terminal, transcript and inputs. Hover `surface-hover`; current item
-  `surface-selected`.
+  for code, terminal, transcript and inputs.
+- **Hover and selection are see-through**, never a solid lighter block: hover
+  is `surface-hover` (3.5% of `text` in dark, 4% in light) over whatever ground
+  is behind — canvas, surface or a raised menu alike. A selected row, list row
+  or tab is **the card** (`card`: a 2.5% `fill-card` with a hairline edge drawn
+  inside); a pressed ghost or an open trigger is `surface-selected` (6%). Hover
+  never changes a selected row: the edge and full-strength text tell it from
+  hover, in both themes. A small count or press well is `fill-well`.
 - Text: `text` primary, `text-secondary` descriptions, `text-tertiary` metadata.
   `text-disabled` is decorative only.
 - Lines: `border` for the panel edge and section rules, `border-subtle` between
@@ -240,7 +246,8 @@ Geist (UI) and Geist Mono (code), self-hosted via Fontsource.
 | `text-xl font-semibold tracking-tight` | 22/28 | page title, once |
 | `text-lg font-semibold` | 16/24 | section heading, dialog title |
 | `text-base` | 14/22 | prose: specs, chat, markdown |
-| `text-sm` | 13/20 | **the UI default**: rows, nav, inputs, menus, buttons |
+| `text-md` | 14/20 | **every row**: list rows, nav rows, menu items, options — as the sidebar's titles |
+| `text-sm` | 13/20 | controls: inputs, buttons, labels, tabs |
 | `text-xs` | 12/16 | metadata, captions, group labels (`font-medium`) |
 | `font-mono text-xs` | 12/18 | branches, paths, commands, SHAs — only code-shaped strings |
 
@@ -251,10 +258,19 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 ## Space, size, shape
 
 - 4px grid (Tailwind default spacing). Row gaps 8, row padding 12, section gap 32.
-- Controls: `h-(--control-sm)` 24 · `h-(--control-h)` 28 · `h-(--control-lg)` 32.
-  Sidebar rows `--row-h` 32; list rows 40.
-- Radii: `rounded-sm` 4 (kbd, checkbox) · `rounded-md` 6 (controls, rows, items) ·
-  `rounded-lg` 10 (panel, menus, dialogs) · `rounded-full` dots only. No pill buttons.
+- Comfortable sizes, the sidebar's rhythm: controls `h-(--control-sm)` 24 ·
+  `h-(--control-h)` 32 · `h-(--control-lg)` 36; nav rows `--row-h` 36; list rows
+  `--list-row-h` 44; menu rows `--menu-item-h` 32. Dense places — a toolbar, a
+  table cell, a row's actions — take the 24px small size.
+- A floating list stops at `--menu-max-h` (360px, about ten rows) or the room
+  below its trigger, whichever is less, and scrolls inside with a thin
+  scrollbar.
+- Radii: `rounded-sm` 4 (kbd, checkbox) · `rounded-md` 6 (controls, items in a
+  menu, rows inside a card) · `rounded-lg` 10 (cards, rows on their own, panel,
+  menus, dialogs) · `rounded-full` dots only. No pill buttons.
+- **The card**: `card` + a radius — a faint fill and a hairline edge. The
+  selected row or tab, a bay of rows, a live drive. Never a box around a
+  section.
 - Content is flat. `shadow-popover` / `shadow-dialog` for floating layers only.
 
 ## Components (in `src/ui.tsx`, `src/ui/`, `src/icons.tsx`)
@@ -269,18 +285,18 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 | `StatusDot` | 6px dot; tone success · warning · danger · accent · live (breathing) · neutral. |
 | `StatusLabel` | dot/glyph + word in `text-secondary` — what every former "chip" becomes. |
 | `SectionLabel` | 12px medium sentence-case group heading + count + one trailing action. |
-| `NavItem` | 32px one-line row: icon/PhaseIcon, one-line truncated label, trailing meta; selected = `surface-selected` + `text`, nothing else. Row menu on hover "…" / right-click. The project sidebar's feature rows are two-line (`SidebarFeatureRow`, §Frame). |
-| `ListRow` | 40px list row: glyph, one-line title (or wrapping prose), optional second line, trailing meta; hover actions float over the meta; a control (a model picker) sits beside the row's button, never inside it. |
+| `NavItem` | 36px one-line row at `text-md`: icon/PhaseIcon, one-line truncated label, trailing meta; selected = the card + `text`, nothing else. Row menu on hover "…" / right-click. The project sidebar's feature rows are two-line (`SidebarFeatureRow`, §Frame). |
+| `ListRow` | 44px list row at `text-md`, the card when active: glyph, one-line title (or wrapping prose), optional second line, trailing meta; hover actions float over the meta; a control (a model picker) sits beside the row's button, never inside it. |
 | `PropertyList` | Two quiet columns: `text-tertiary` keys, `text` values with a leading glyph. |
 | `MetaLine` | One line of small inline facts separated by space. |
 | `PhaseStepper` | Inline: done = check glyph, current = its glyph in its phase hue over a 14% wash of that hue, future = dashed ring; past step being viewed = `surface-selected`. |
-| `Tabs` | Text tabs; selected = `surface-selected` fill. No underline, no box. |
+| `Tabs` | Text tabs; selected = the card. No underline. |
 | `TextField` / `Input` | `surface-inset`, hairline, focus → accent border + ring. |
 | `Disclosure` | Chevron + title + aside; closed by default; animated open. `sm`: a compact 12px line for detail under something else. |
 | `SegmentedControl` | Inset track, raised thumb that slides; for 2–4 values that should all be visible (Theme). |
 | `Checkbox` / `Switch` | Hairline box / track on the inset ground; on = `primary` fill. Focus ring outside. |
 | `EmptyState` | Tertiary icon, title, hint, ≤1 action; no frame. |
-| `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 30px items with icons + kbd. |
+| `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 32px `text-md` items with icons + kbd; capped at `--menu-max-h`, then scrolls. |
 | `Dialog` | `surface-raised`, `rounded-lg`, `shadow-dialog`; title `text-lg`, footer right-aligned with one primary. |
 | `Tooltip` | Small `surface-raised` label after 400ms hover; for every IconButton. |
 | `PageTopbar`, `Page`, `PageHeader`, `Section`, `Aside`, `AsideLayout` | The frame pieces above, so every surface lays out identically. `AsideLayout` floats the aside over the page when the panel is too narrow to share. |

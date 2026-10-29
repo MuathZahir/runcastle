@@ -67,12 +67,14 @@ describe('DropdownMenu', () => {
     expect(document.body.contains(menu)).toBe(true)
   })
 
-  it('caps its height at the space Radix measured, and scrolls inside that', () => {
+  it('caps its height at ten rows or the space Radix measured, and scrolls inside that', () => {
     render(<Harness />)
     openMenu(screen.getByRole('button', { name: 'Actions' }))
 
     const menu = screen.getByRole('menu')
-    expect(menu.className).toContain('max-h-(--radix-dropdown-menu-content-available-height)')
+    expect(menu.className).toContain(
+      'max-h-[min(var(--radix-dropdown-menu-content-available-height),var(--menu-max-h))]',
+    )
     expect(menu.className).toContain('overflow-y-auto')
   })
 
@@ -238,13 +240,13 @@ describe('Select', () => {
     expect(document.body.contains(list)).toBe(true)
   })
 
-  it('caps a long list at the space Radix measured, and scrolls inside that', () => {
+  it('caps a long list at ten rows or the space Radix measured, and scrolls inside that', () => {
     render(<Harness />)
     fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
 
     const list = screen.getByRole('listbox', { name: 'Ticket model options' })
     expect(screen.getAllByRole('option').length).toBe(roster.length + 1)
-    expect(list.className).toContain('max-h-(--radix-select-content-available-height)')
+    expect(list.className).toContain('max-h-[min(var(--radix-select-content-available-height),var(--menu-max-h))]')
     // Radix's own viewport is the scroller — `overflow: hidden auto`, inline.
     expect(list.querySelector('[data-radix-select-viewport]')).toBeTruthy()
   })
@@ -397,7 +399,7 @@ describe('Combobox', () => {
     // Every branch is rendered, and every one of them is inside the capped box.
     expect(screen.getAllByRole('option')).toHaveLength(branches.length)
     for (const option of screen.getAllByRole('option')) expect(list.contains(option)).toBe(true)
-    expect(list.className).toContain('max-h-64')
+    expect(list.className).toContain('max-h-(--menu-max-h)')
     expect(list.className).toContain('overflow-y-auto')
     // The panel around it is capped too, for a window too short for even that.
     const panel = document.querySelector('[cmdk-root]')!.parentElement!

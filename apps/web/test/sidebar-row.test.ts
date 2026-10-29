@@ -145,7 +145,7 @@ describe('the sidebar feature row', () => {
 
   it('becomes a card when selected', () => {
     expect(row(idle, { active: true })).toContain('aria-current="page"')
-    expect(row(idle, { active: true })).toContain('ring-border-subtle')
+    expect(row(idle, { active: true })).toMatch(/class="[^"]*\bcard\b/)
     expect(row(idle)).not.toContain('aria-current')
   })
 
