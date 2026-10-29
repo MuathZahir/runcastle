@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
-import type { ThreadState } from '../lib/chat-thread'
+import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
   needsMe,
@@ -18,14 +18,17 @@ import { relTime } from '../lib/format'
 import type { NotifyState } from '../lib/notifications'
 import {
   IconActivity,
+  IconArrowRight,
   IconBell,
   IconBellOff,
   IconChevronDown,
   IconChevronRight,
   IconCube,
+  IconMessage,
   IconMoon,
   IconOrchestrator,
   IconPlay,
+  IconPlus,
   IconSettings,
   IconShield,
   IconStop,
@@ -105,10 +108,33 @@ function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
 }
 
 /**
+ * A row's hover controls ("+", "…") show on hover or keyboard focus, and the
+ * marks they cover hide on exactly the same: a mouse click leaves focus in the
+ * row but is neither, so the two never show at once.
+ */
+const REVEAL_NAV = 'opacity-0 group-hover/nav:opacity-100 group-has-[:focus-visible]/nav:opacity-100'
+const CONCEAL_NAV = 'group-hover/nav:opacity-0 group-has-[:focus-visible]/nav:opacity-0'
+
+/** The chevron that folds and unfolds the open row's threads (threads-in-the-sidebar decision 10). */
+function FoldToggle({ folded, onToggle, what }: { folded: boolean; onToggle: () => void; what: string }) {
+  return (
+    <span data-fold-toggle="" className="inline-flex">
+      <IconButton
+        size="sm"
+        label={folded ? `Show ${what}` : `Hide ${what}`}
+        icon={<IconChevronRight className={cx('transition-transform duration-(--dur-2) ease-app', !folded && 'rotate-90')} />}
+        onClick={onToggle}
+      />
+    </span>
+  )
+}
+
+/**
  * The two-line row every sidebar row is drawn on: a 14px title with an
  * optional trailing dot, then a 12px line of glyph, words and an aside. The
  * menu is a hover "…" or a right-click. Selected, it becomes a card; `nested`
- * (inside a card) takes the smaller radius.
+ * (inside a card) takes the smaller radius. A `toggle` (the open feature's
+ * fold chevron) stays at the title line's end, the hover controls beside it.
  */
 function TwoLineRow({
   title,
@@ -120,9 +146,11 @@ function TwoLineRow({
   dot,
   quiet = false,
   active = false,
+  flat = false,
   nested = false,
   onClick,
   actions,
+  toggle,
 }: {
   title: string
   tooltip?: string
@@ -133,16 +161,19 @@ function TwoLineRow({
   dot?: StatusTone
   quiet?: boolean
   active?: boolean
+  /** Active inside a card that already marks it (the open feature with its threads): no fill of its own. */
+  flat?: boolean
   nested?: boolean
   onClick?: () => void
   actions?: ReactNode
+  toggle?: ReactNode
 }) {
   return (
     <div
       className={cx(
         'group/nav relative shrink-0 transition-colors duration-(--dur-1) ease-app',
         nested ? 'rounded-md' : 'rounded-lg',
-        active ? SIDEBAR_CARD : HOVER,
+        active && !flat ? SIDEBAR_CARD : HOVER,
       )}
       onContextMenu={actions ? openRowMenu : undefined}
     >
@@ -153,7 +184,7 @@ function TwoLineRow({
         onClick={onClick}
         className="flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] px-2.5 py-2 text-left"
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className={cx('flex min-w-0 items-center gap-2', toggle !== undefined && 'pr-6')}>
           <span
             className={cx(
               'min-w-0 flex-1 truncate text-[14px] leading-5',
@@ -163,7 +194,7 @@ function TwoLineRow({
             {title}
           </span>
           {dot && (
-            <span className="transition-opacity duration-(--dur-1) group-hover/nav:opacity-0">
+            <span className={cx('transition-opacity duration-(--dur-1)', CONCEAL_NAV)}>
               <StatusDot tone={dot} />
             </span>
           )}
@@ -175,11 +206,28 @@ function TwoLineRow({
         </span>
       </button>
       {actions && (
-        <span className="absolute top-1.5 right-1 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/nav:opacity-100 group-hover/nav:opacity-100">
+        <span
+          data-row-actions=""
+          className={cx(
+            'absolute top-1.5 flex items-center transition-opacity duration-(--dur-1)',
+            toggle !== undefined ? 'right-7' : 'right-1',
+            REVEAL_NAV,
+          )}
+        >
           {actions}
         </span>
       )}
+      {toggle !== undefined && <span className="absolute top-1.5 right-1">{toggle}</span>}
     </div>
+  )
+}
+
+/** New thread: the "+" on the open feature's row and on the open Orchestrator card. */
+function NewThreadButton({ onClick }: { onClick: () => void }) {
+  return (
+    <span data-new-thread="" className="inline-flex">
+      <IconButton size="sm" label="New thread" icon={<IconPlus />} onClick={onClick} />
+    </span>
   )
 }
 
@@ -193,17 +241,34 @@ export function SidebarFeatureRow({
   onSelect,
   actions,
   nested = false,
+  onNewThread,
+  threads,
+  folded = false,
+  onToggleThreads,
 }: {
   f: FeatureListItem
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
+  /** The open feature's "+": a new side thread. */
+  onNewThread?: () => void
+  /**
+   * The open feature's {@link SidebarThreadList}, once it has more than its
+   * main chat: unfolded, the row and its threads share one card.
+   */
+  threads?: ReactNode
+  /** The human folded the open feature's threads away (decision 10). */
+  folded?: boolean
+  /** With `threads`: the chevron that folds and unfolds them. */
+  onToggleThreads?: () => void
 }) {
+  const shown = folded ? undefined : threads
   const lane = triageOf(f)
   const nm = lane === 'needsYou' ? needsMe(f) : null
   const words = featureStateWords(f)
-  return (
+  const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
+  const row = (
     <TwoLineRow
       title={f.title}
       tooltip={nm ? `${f.title} — ${nm.label}` : f.status === 'draft' ? `${f.title} — ${rowChip(f).title}` : f.title}
@@ -217,10 +282,30 @@ export function SidebarFeatureRow({
       dot={rowDot(f)}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}
-      nested={nested}
+      flat={shown !== undefined}
+      nested={nested || shown !== undefined}
       onClick={() => onSelect(f.id)}
-      actions={actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined}
+      actions={
+        onNewThread || menu ? (
+          <>
+            {onNewThread && <NewThreadButton onClick={onNewThread} />}
+            {menu}
+          </>
+        ) : undefined
+      }
+      toggle={
+        threads !== undefined && onToggleThreads ? (
+          <FoldToggle folded={folded} onToggle={onToggleThreads} what="threads" />
+        ) : undefined
+      }
     />
+  )
+  if (shown === undefined) return row
+  return (
+    <div data-open-feature="" className={cx(SIDEBAR_CARD, nested && 'rounded-md', 'flex shrink-0 flex-col p-1')}>
+      {row}
+      {shown}
+    </div>
   )
 }
 
@@ -400,14 +485,170 @@ export function WorkingShelf({
 }
 
 // ---------------------------------------------------------------------------
+// Threads
+// ---------------------------------------------------------------------------
+
+/**
+ * The rows a thread list shows (threads-in-the-sidebar decision 3): the first
+ * `cap` in the order given (the main chat, then newest started) and, past
+ * them, the one in front and any working or waiting on you, in place.
+ */
+export function visibleThreads(
+  threads: readonly ThreadEntry[],
+  current: string | null,
+  cap = 5,
+): { shown: ThreadEntry[]; hidden: number } {
+  const shown = threads.filter((t, i) => i < cap || t.id === current || t.state !== 'idle')
+  return { shown, hidden: threads.length - shown.length }
+}
+
+/**
+ * A thread's leading mark, in a fixed column so the titles after it line up:
+ * a spinner while it works, the amber dot while it waits on you, the chat glyph
+ * at rest.
+ */
+export function ThreadGlyph({ state }: { state: ThreadState }) {
+  return (
+    <span className="inline-flex size-4 shrink-0 items-center justify-center text-icon">
+      {state === 'idle' ? <IconMessage size={14} /> : <ThreadStateMark state={state} />}
+    </span>
+  )
+}
+
+/**
+ * One thread under its feature or the Orchestrator, on one line in three
+ * columns: its {@link ThreadGlyph}, its title, and how long ago it moved. Its
+ * "…" (hover, right-click) holds what the header's switcher held for the
+ * thread in front.
+ */
+export function SidebarThreadRow({
+  thread,
+  active,
+  onOpen,
+  actions,
+}: {
+  thread: ThreadEntry
+  active: boolean
+  onOpen: (id: string) => void
+  actions: FeatureAction[]
+}) {
+  return (
+    <div
+      className={cx(
+        'group/thread relative shrink-0 rounded-md transition-colors duration-(--dur-1) ease-app',
+        active ? 'bg-[color-mix(in_oklab,var(--color-text)_6%,transparent)]' : HOVER,
+      )}
+      onContextMenu={actions.length > 0 ? openRowMenu : undefined}
+    >
+      <button
+        type="button"
+        title={thread.title}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => onOpen(thread.id)}
+        className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[inherit] px-2.5 text-left"
+      >
+        <ThreadGlyph state={thread.state} />
+        <span
+          className={cx(
+            'min-w-0 flex-1 truncate text-[13px] leading-5',
+            active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
+          )}
+        >
+          {thread.title}
+        </span>
+        <span
+          className={cx(
+            'shrink-0 text-xs text-text-tertiary tabular-nums transition-opacity duration-(--dur-1)',
+            actions.length > 0 && 'group-hover/thread:opacity-0 group-has-[:focus-visible]/thread:opacity-0',
+          )}
+        >
+          {thread.updatedAt > 0 && relTime(thread.updatedAt)}
+        </span>
+      </button>
+      {actions.length > 0 && (
+        <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-hover/thread:opacity-100 group-has-[:focus-visible]/thread:opacity-100">
+          <FeatureActionsMenu actions={actions} label="Thread actions" />
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A thread list's last row, in the rows' columns: "Show N more" opens the rest
+ * in place; "All N conversations" goes where they live.
+ */
+export function ThreadListMore({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 text-left text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:text-text-secondary"
+    >
+      <span className="inline-flex size-4 shrink-0 items-center justify-center text-icon">{icon}</span>
+      {label}
+    </button>
+  )
+}
+
+/**
+ * The open feature's or the Orchestrator's threads in the order given, five
+ * and then the rest: a feature's open in place ("Show N more"); the
+ * Orchestrator's are its page's conversation list (`more`, "All N conversations").
+ */
+export function SidebarThreadList({
+  threads,
+  current,
+  onOpen,
+  actionsFor,
+  more,
+  label = 'Threads',
+}: {
+  threads: readonly ThreadEntry[]
+  /** The thread in front, or null when none is (the Orchestrator page at rest). */
+  current: string | null
+  onOpen: (id: string) => void
+  actionsFor: (t: ThreadEntry) => FeatureAction[]
+  /** Where the rest live, instead of opening in place. */
+  more?: () => void
+  label?: string
+}) {
+  const [all, setAll] = useState(false)
+  const { shown, hidden } = all ? { shown: [...threads], hidden: 0 } : visibleThreads(threads, current)
+  return (
+    <ul aria-label={label} className="m-0 flex animate-rise-in list-none flex-col gap-px p-0">
+      {shown.map((t, i) => (
+        <li key={t.id} className="flex flex-col gap-px">
+          {/* Divided: a hairline from the title column to the edge, between thread rows. */}
+          {i > 0 && <span aria-hidden className="mr-2.5 ml-[34px] h-px bg-border-subtle" />}
+          <SidebarThreadRow thread={t} active={t.id === current} onOpen={onOpen} actions={actionsFor(t)} />
+        </li>
+      ))}
+      {hidden > 0 && (
+        <li>
+          {more ? (
+            <ThreadListMore label={`All ${threads.length} conversations`} icon={<IconArrowRight size={12} />} onClick={more} />
+          ) : (
+            <ThreadListMore label={`Show ${hidden} more`} icon={<IconChevronDown size={12} />} onClick={() => setAll(true)} />
+          )}
+        </li>
+      )}
+    </ul>
+  )
+}
+
+
+// ---------------------------------------------------------------------------
 // The Orchestrator
 // ---------------------------------------------------------------------------
 
 /**
  * The project's own door, and the one card the accent fills: a dark accent
- * wash from its icon side, a fine accent grid fading in from the far corner,
- * the hub in a small accent tile. Still at rest; on hover the hub lights its
- * nodes in turn and a sheen crosses the card (`orchestrator-beat`).
+ * wash from its icon side, a fine accent grid fading in from the far corner of
+ * its head, the hub in a small accent tile. Still at rest; on hover the hub
+ * lights its nodes in turn and a sheen crosses the head (`orchestrator-beat`).
+ * Open, its chats list inside the same card under a hairline, so they read as
+ * the Orchestrator's and not as the features below (threads-in-the-sidebar).
  */
 export function OrchestratorCard({
   status,
@@ -416,6 +657,10 @@ export function OrchestratorCard({
   onOpen,
   actions,
   title,
+  onNewThread,
+  threads,
+  folded = false,
+  onToggleThreads,
 }: {
   /** The second line: what it holds ("Waiting for you · 2 notes"). */
   status: string
@@ -425,57 +670,88 @@ export function OrchestratorCard({
   onOpen: () => void
   actions: FeatureAction[]
   title?: string
+  /** While it is open: "+", a new project chat. */
+  onNewThread?: () => void
+  /** While it is open: its {@link SidebarThreadList}, inside the card unless `folded`. */
+  threads?: ReactNode
+  /** The human folded its chats away (decision 10). */
+  folded?: boolean
+  /** With `threads`: the chevron that folds and unfolds them, in place of the "go" chevron. */
+  onToggleThreads?: () => void
 }) {
+  const toggles = threads !== undefined && onToggleThreads !== undefined
+  const shown = folded ? undefined : threads
   return (
     <div
       className={cx(
-        'orchestrator-beat group/nav relative isolate shrink-0 overflow-hidden rounded-lg ring-1 ring-inset',
+        'relative isolate shrink-0 overflow-hidden rounded-lg ring-1 ring-inset',
         'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--color-accent)_16%,var(--color-canvas)),color-mix(in_oklab,var(--color-accent)_5%,var(--color-canvas))_70%)]',
         'shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_7%,transparent)]',
         active
           ? 'ring-[color-mix(in_oklab,var(--color-accent)_55%,transparent)]'
           : 'ring-[color-mix(in_oklab,var(--color-accent)_28%,transparent)]',
       )}
-      onContextMenu={actions.length > 0 ? openRowMenu : undefined}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 -z-10 w-2/3 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--color-accent)_14%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--color-accent)_14%,transparent)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_left,black,transparent)]"
-      />
-      <span
-        aria-hidden
-        data-sheen
-        className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/2 -translate-x-[120%] bg-[linear-gradient(100deg,transparent,color-mix(in_oklab,var(--color-text)_7%,transparent),transparent)]"
-      />
-      <button
-        type="button"
-        onClick={onOpen}
-        title={title}
-        aria-current={active ? 'page' : undefined}
-        className="flex w-full cursor-pointer items-center gap-3 px-2.5 py-2.5 text-left"
+      <div
+        className="orchestrator-beat group/nav relative isolate overflow-hidden"
+        onContextMenu={actions.length > 0 ? openRowMenu : undefined}
       >
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset">
-          <IconOrchestrator size={18} />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[14px] leading-5 font-semibold tracking-tight text-text">Orchestrator</span>
-          <span className="truncate text-xs text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]">
-            {status}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 -z-10 w-2/3 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--color-accent)_14%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--color-accent)_14%,transparent)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_left,black,transparent)]"
+        />
+        <span
+          aria-hidden
+          data-sheen
+          className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/2 -translate-x-[120%] bg-[linear-gradient(100deg,transparent,color-mix(in_oklab,var(--color-text)_7%,transparent),transparent)]"
+        />
+        <button
+          type="button"
+          onClick={onOpen}
+          title={title}
+          aria-current={active ? 'page' : undefined}
+          className={cx('flex w-full cursor-pointer items-center gap-3 py-2.5 pl-2.5 text-left', toggles ? 'pr-9' : 'pr-2.5')}
+        >
+          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset">
+            <IconOrchestrator size={18} />
           </span>
-        </span>
-        <span className="flex items-center gap-2 transition-opacity duration-(--dur-1) group-hover/nav:opacity-0">
-          <ThreadStateMark state={state} />
-          <IconChevronRight size={14} className="text-icon" />
-        </span>
-      </button>
-      {actions.length > 0 && (
-        <span className="absolute top-1/2 right-1.5 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/nav:opacity-100 group-hover/nav:opacity-100">
-          <FeatureActionsMenu actions={actions} label="Project actions" />
-        </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-[14px] leading-5 font-semibold tracking-tight text-text">Orchestrator</span>
+            <span className="truncate text-xs text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]">
+              {status}
+            </span>
+          </span>
+          <span className={cx('flex items-center gap-2 transition-opacity duration-(--dur-1)', CONCEAL_NAV)}>
+            <ThreadStateMark state={state} />
+            {!toggles && <IconChevronRight size={14} className="text-icon" />}
+          </span>
+        </button>
+        {(actions.length > 0 || onNewThread) && (
+          <span
+            data-row-actions=""
+            className={cx(
+              'absolute top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-(--dur-1)',
+              toggles ? 'right-8' : 'right-1.5',
+              REVEAL_NAV,
+            )}
+          >
+            {onNewThread && <NewThreadButton onClick={onNewThread} />}
+            <FeatureActionsMenu actions={actions} label="Project actions" />
+          </span>
+        )}
+        {toggles && onToggleThreads && (
+          <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
+            <FoldToggle folded={folded} onToggle={onToggleThreads} what="conversations" />
+          </span>
+        )}
+      </div>
+      {shown !== undefined && (
+        <div className="border-t border-[color-mix(in_oklab,var(--color-accent)_22%,transparent)] p-1">{shown}</div>
       )}
     </div>
   )
 }
+
 
 // ---------------------------------------------------------------------------
 // Foot and backdrop
@@ -516,12 +792,12 @@ export function DriveCard({
           <span className="truncate text-[14px] leading-5 text-text">{label}</span>
           <span className="truncate text-xs text-text-tertiary">{detail}</span>
         </span>
-        <span className={cx('transition-opacity duration-(--dur-1)', onStop && 'group-hover/nav:opacity-0')}>
+        <span className={cx('transition-opacity duration-(--dur-1)', onStop && CONCEAL_NAV)}>
           <StatusDot tone="live" />
         </span>
       </button>
       {onStop && (
-        <span className="absolute top-1/2 right-1.5 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/nav:opacity-100 group-hover/nav:opacity-100">
+        <span className={cx('absolute top-1/2 right-1.5 -translate-y-1/2 transition-opacity duration-(--dur-1)', REVEAL_NAV)}>
           <IconButton size="sm" label={`Stop the ${label.toLowerCase()}`} icon={<IconStop />} disabled={stopping} onClick={onStop} />
         </span>
       )}

@@ -56,6 +56,7 @@ export const busyFeatures: FeatureListItem[] = [
         slug: 'scenario-fixtures-for-drives',
         title: 'Scenario fixtures for drives',
         status: 'active',
+        upNext: false,
         satisfied: false,
       },
     ],
