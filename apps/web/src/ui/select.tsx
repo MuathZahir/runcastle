@@ -1,7 +1,7 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconChevronDown } from '../icons'
-import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SURFACE, cx } from './floating'
+import { FLOATING_CAP, FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SURFACE, cx } from './floating'
 
 /**
  * The app's value picker: one choice out of a fixed, grouped list — the model
@@ -153,7 +153,8 @@ export function SelectContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-select-content-available-height) min-w-32',
+          FLOATING_CAP.select,
+          'min-w-32',
           className,
         )}
         {...props}

@@ -71,8 +71,8 @@ const BUTTON_EDGE: Record<ButtonAttached, string> = {
 
 const BUTTON_SIZE: Record<CanonicalSize, string> = {
   sm: 'h-(--control-sm) px-2 text-xs',
-  md: 'h-(--control-h) px-2.5 text-sm',
-  lg: 'h-(--control-lg) px-3.5 text-sm',
+  md: 'h-(--control-h) px-3 text-sm',
+  lg: 'h-(--control-lg) px-4 text-sm',
 }
 
 /**

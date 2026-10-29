@@ -15,13 +15,13 @@ export interface TabItem<T extends string = string> {
 
 const TAB_SIZE = {
   sm: 'h-(--control-sm) px-2 text-sm',
-  md: 'h-(--control-h) px-2.5 text-sm',
+  md: 'h-(--control-h) px-3 text-sm',
 } as const
 
 /**
  * Text tabs that switch a page body between views of the same object (DESIGN.md
  * principle 1: views switch with Tabs, not more columns). No underline, no box:
- * the selected tab takes `surface-selected` and `text`.
+ * the selected tab is the card (`card`) in `text`, as a selected sidebar row.
  *
  * A real ARIA tablist: `role="tab"` + `aria-selected`, a roving tabindex (only
  * the selected tab is in the Tab order), and ←/→/Home/End move to and select a
@@ -82,10 +82,10 @@ export function Tabs<T extends string>({
             disabled={it.disabled}
             onClick={() => onChange(it.id)}
             className={cx(
-              'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md font-medium whitespace-nowrap',
+              'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg font-medium whitespace-nowrap',
               'transition-colors duration-(--dur-1) ease-app disabled:cursor-not-allowed disabled:text-text-disabled',
               TAB_SIZE[size],
-              selected ? 'bg-surface-selected text-text' : 'text-text-tertiary enabled:hover:text-text',
+              selected ? 'card text-text' : 'text-text-tertiary enabled:hover:bg-surface-hover enabled:hover:text-text',
             )}
           >
             {it.icon && (

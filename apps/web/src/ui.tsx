@@ -487,7 +487,7 @@ export function DialogHeader({
   className?: string
 }) {
   return (
-    <div className={cx('flex items-start gap-3 px-5 pt-4 pb-3', className)}>
+    <div className={cx('flex items-start gap-3 px-6 pt-5 pb-4', className)}>
       <div className="min-w-0 flex-1">
         <h2 id={id} className="m-0 text-lg font-semibold text-text">
           {title}
@@ -501,7 +501,7 @@ export function DialogHeader({
 
 /** A dialog's content area, padded to line up with the header and footer. */
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cx('px-5 pb-4', className)}>{children}</div>
+  return <div className={cx('px-6 pb-5', className)}>{children}</div>
 }
 
 /**
@@ -518,7 +518,7 @@ export function DialogFooter({
   children: ReactNode
 }) {
   return (
-    <div className={cx('flex items-center gap-2 px-5 pt-1 pb-4', className)}>
+    <div className={cx('flex items-center gap-2 px-6 pt-1 pb-5', className)}>
       {start && <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-text-tertiary">{start}</div>}
       <div className="ml-auto flex items-center gap-2">{children}</div>
     </div>

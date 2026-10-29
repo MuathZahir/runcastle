@@ -5,6 +5,7 @@ import {
   FLOATING_ITEM_DANGER,
   FLOATING_ITEM_DEFAULT,
   FLOATING_LABEL,
+  FLOATING_CAP,
   FLOATING_SEPARATOR,
   FLOATING_SURFACE,
   cx,
@@ -42,7 +43,8 @@ export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
  * The menu surface. Portalled to `<body>`, so no ancestor's `overflow` can clip
  * it — the ticket card that turned scrollable around its own model menu is the
  * bug this line fixes — and capped at the height Radix measured between the
- * trigger and the viewport edge, so a long menu scrolls inside itself.
+ * trigger and the viewport edge, and at `--menu-max-h` beyond that, so a long
+ * menu scrolls inside itself (`FLOATING_CAP`).
  *
  * Escape stops here. Radix listens for it on the document in the capture phase
  * and closes the topmost layer; letting it carry on to `window` would hand the
@@ -69,7 +71,8 @@ export function DropdownMenuContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-dropdown-menu-content-available-height) min-w-48 p-1',
+          FLOATING_CAP.dropdown,
+          'min-w-48 p-1',
           className,
         )}
         {...props}
@@ -81,7 +84,7 @@ export function DropdownMenuContent({
 type ItemTone = 'default' | 'danger'
 
 /**
- * One action: 30px, optional leading `icon` (16px, `text-icon`), the label,
+ * One action: 32px, optional leading `icon` (16px, `text-icon`), the label,
  * and an optional trailing `kbd` hint. `tone="danger"` is the destructive row
  * (Delete, Remove) — the label in `danger-text`, the icon in `danger`.
  *
