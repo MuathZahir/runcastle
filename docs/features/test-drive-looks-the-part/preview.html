@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test drive looks the part preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px}
+.ba h3{margin-bottom:8px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.wire{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);padding:10px;height:360px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--color-text-secondary)}
+.wire .band{border-radius:var(--radius-md);background:var(--color-surface-inset);padding:6px 10px;display:flex;align-items:center;gap:8px}
+.wire .empty{border:1px dashed var(--color-border);background:none;color:var(--color-text-disabled)}
+.wire .app{flex:1;border-radius:var(--radius-md);background:#f6f7f9;color:#57606a;display:grid;place-items:center}
+.wire .app.short{flex:none;height:112px}
+.wire .win{flex:1;display:flex;flex-direction:column;border-radius:var(--radius-lg);overflow:hidden;box-shadow:inset 0 0 0 1px var(--color-border);background:color-mix(in srgb,var(--color-text) 2.5%,transparent)}
+.wire .win .tb{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--color-border-subtle)}
+.wire .win .st{min-height:26px;display:flex;align-items:center;gap:8px;padding:4px 10px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-tertiary)}
+.wire .win .app{border-radius:0}
+.wire .win .sl{height:24px;display:flex;align-items:center;gap:10px;padding:0 10px;border-top:1px solid var(--color-border-subtle);font-family:var(--font-mono);font-size:11px;color:var(--color-text-tertiary)}
+.wire .grow{flex:1}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.place{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised)}
+.place b{display:block;font-weight:500;margin-bottom:2px}
+.designed-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+@media (max-width:760px){.ba,.three,.designed-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Test drive looks the part</h1>
+  <p class="lede">The test drive becomes one calm window that fills the panel, the same on a feature and on the project, and a scenario is picked from one searchable list wherever it is chosen. Look and layout only; the drive behaves as today.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/test-drive-looks-the-part/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Planned without you. The screens below are real components in the worktree, waiting for your look.</p>
+
+  <div class="sub">
+    <h3>The running drive: three bands become one window <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a></h3>
+    <div class="ba">
+      <div><h3>Today</h3>
+        <div class="wire">
+          <div class="band empty">an empty header row</div>
+          <div class="band">Running Two coupons stacked&hellip; <span class="grow"></span>output</div>
+          <div class="band">tools &middot; App | API &middot; Scenario: Two coupons stacked &#8964;</div>
+          <div class="app short">the app, in a 16:9 box</div>
+          <div class="band">&#9679; Dev server &middot; branch &middot; address <span class="grow"></span>Show output</div>
+          <div class="band empty" style="flex:1;min-height:0">dead space</div>
+        </div>
+      </div>
+      <div><h3>Planned</h3>
+        <div class="wire">
+          <div class="win">
+            <div class="tb"><span class="dot live"></span><b style="color:var(--color-text);font-weight:500">Two coupons stacked &#8964;</b> App | API<span class="grow"></span>select &middot; reload &middot; 1440 &middot; open</div>
+            <div class="st">Running Two coupons stacked&hellip; its output, inside the window</div>
+            <div class="app">the app, at the panel&rsquo;s full height</div>
+            <div class="sl"><span>&#9679; Dev server</span><span>branch</span><span>address</span><span class="grow"></span><span>Output</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>One searchable list, in all three places <a class="pin" data-d="1">1</a> <a class="pin" data-d="8">8</a></h3>
+    <div class="three">
+      <div class="place"><b>Feature header</b><span class="hint">the caret on Test drive</span></div>
+      <div class="place"><b>Project page</b><span class="hint">the caret on its Test drive row</span></div>
+      <div class="place"><b>Running drive</b><span class="hint">the scenario control, first in the toolbar</span></div>
+    </div>
+    <p class="hint" style="margin-top:8px">Grouped: This feature, then the project&rsquo;s groups. The one the drive is on is checked. Blank app and New scenario last. A search box only past eight scenarios.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Designed screens <a class="pin" data-d="3">3</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="9">9</a> <a class="pin" data-d="10">10</a></h3>
+    <p class="hint">Each page has a moment bar across the top, and a Tweaks menu bottom left for the one open look: the window as a card, or flush with the panel.</p>
+    <div class="designed-grid">
+<!-- screen:feature-drive -->
+<div class="designed">
+  <h3>Feature drive</h3>
+  <p>The feature page&rsquo;s panel on a running drive: the window, its toolbar and status line. Real components; the scenarios and the shop app are sample data.</p>
+  <p class="mono">src/components/review/DriveStage.tsx, DrivePanel.tsx, ScenarioDrive.tsx &middot; preview /preview/drive.html</p>
+  <button data-open-design="/preview/drive.html?moment=landed">Open in design</button>
+</div>
+<!-- /screen:feature-drive -->
+<!-- screen:scenario-picker -->
+<div class="designed">
+  <h3>Scenario picker</h3>
+  <p>The searchable list open over a running drive, 26 sample scenarios in five groups. It also opens from the header&rsquo;s Test drive caret (moment &ldquo;Choosing where to start&rdquo;).</p>
+  <p class="mono">src/components/review/ScenarioPicker.tsx &middot; src/ui/split-button.tsx &middot; preview /preview/drive.html?moment=picker</p>
+  <button data-open-design="/preview/drive.html?moment=picker">Open in design</button>
+</div>
+<!-- /screen:scenario-picker -->
+<!-- screen:drive-states -->
+<div class="designed">
+  <h3>Drive states</h3>
+  <p>Scenario running and failed, no scenarios yet, starting, setup failed, nothing started, review agent driving. Pick them from the moment bar.</p>
+  <p class="mono">src/components/review/drive-parts.tsx &middot; preview /preview/drive.html?moment=setup-failed</p>
+  <button data-open-design="/preview/drive.html?moment=setup-failed">Open in design</button>
+</div>
+<!-- /screen:drive-states -->
+<!-- screen:project-drive -->
+<div class="designed">
+  <h3>Project drive</h3>
+  <p>The project drive in its panel: one header line, the same window, its notes beside it; and the project page&rsquo;s Test drive row with its list. Sample notes and scenarios.</p>
+  <p class="mono">src/components/project/ProjectDriveView.tsx, TestDriveCard.tsx &middot; preview /preview/project-drive.html</p>
+  <button data-open-design="/preview/project-drive.html">Open in design</button>
+</div>
+<!-- /screen:project-drive -->
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Matching the review&rsquo;s recording player to the drive window: the right-panel feature&rsquo;s</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Any new drive behaviour</li>
+      <li><i class="dot"></i>The shared theme and building blocks (one added split button option aside)</li>
+      <li><i class="dot"></i>The notes aside&rsquo;s own look</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">I build this myself after your yes: the designs are already the real components, so what is left is small.</p>
+      <ul style="color:var(--color-text-secondary);margin:10px 0 0;padding-left:18px">
+        <li>New: a shared drive stage both drives render, and a scenario picker on the shared searchable list.</li>
+        <li>The drive frame gains slots above the page, in its place (the API view) and under it; the design view moves its server menu to the far right.</li>
+        <li>The split button may open a searchable list instead of an action menu.</li>
+        <li>Left to do: drop the recording stage&rsquo;s unreachable live-drive branches, delete the old scenario menu rows, update the 13 tests that read the old markup, add tests for the picker and the stage, note the window in DESIGN.md and STYLE.md.</li>
+        <li>Checks: the web typecheck and the whole test suite green before I say ready.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['A scenario is picked from one searchable list, everywhere', 'A capped menu still makes you read down a long list; two letters find a scenario in forty. Search only past eight, so a handful stays one click.', 'assumed'],
+    ['The running drive is one window: toolbar, app, status line', 'In the side panel the 16:9 box left the app short with dead space, and three stacked bands read as three things.', 'assumed'],
+    ['The feature drive and the project drive share one stage', 'They told the same moments in two layouts. One window, the same states; only the way out of a failed setup differs. The agent\u2019s drive keeps the app visible.', 'assumed'],
+    ['A scenario\u2019s progress is said in the toolbar and under it, inside the window', 'The strips sat above the frame, so the eye left the window to read about what is in it.', 'assumed'],
+    ['The project drive\u2019s header is one line', 'Its second line repeated facts read once; the folder and identity move to the status line.', 'assumed'],
+    ['The design view\u2019s toolbar changes with the drive\u2019s', 'Both draw the same frame; splitting it would leave two looks for one thing.', 'assumed'],
+    ['The review\u2019s recording stage is left as it is', 'It belongs to the right-panel feature. The feature drive stops borrowing it.', 'assumed'],
+    ['The project page\u2019s Test drive row keeps its layout', 'The row already follows the page\u2019s grammar; only its caret changes.', 'assumed'],
+    ['Notes stay where they are', 'Look and layout only: the project drive keeps its notes aside, the feature drive its captures as test notes.', 'assumed'],
+    ['In a narrow panel the toolbar shrinks, never wraps', 'A second row would cover the app; the scenario\u2019s name gives way first, no tool folds away.', 'assumed'],
+    ['The human\u2019s other complaints are asked at the design checkpoint', 'Nobody was here to ask what else looks wrong; decisions 2 to 5 are guesses at it.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [6, 'Copy the frame so the design view keeps today\u2019s look', 'It goes beyond the brief, and the design view is where other features\u2019 designs are judged. The challenger flagged it.', 'challenged'],
+    [2, 'Keep the 16:9 stage; or put the address in the toolbar and drop the status line', 'The biggest change of look, and the challenger would have dropped the status line.', 'challenged'],
+    [1, 'Keep the action menu, now capped and scrolling; or a list down the side of the drive', 'The brief left \u201cis a dropdown even right\u201d to you.'],
+    [11, 'Wait for your answer before designing', 'What else bothers you about the drive is yours to say; this plan guessed.'],
+    [7, 'Restyle the recording player here too', 'Until the right-panel feature lands, the recording player and the drive window will look different.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
