@@ -12,6 +12,7 @@ const entry = (id: string, role: ThreadEntry['role'], updatedAt: number): Thread
   title: id,
   role,
   state: 'idle',
+  createdAt: updatedAt,
   updatedAt,
   runtime: 'claude-code',
 })

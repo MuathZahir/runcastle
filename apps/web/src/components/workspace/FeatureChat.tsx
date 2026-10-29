@@ -17,7 +17,7 @@ const SIDE_HINT = 'A fresh conversation on this feature, beside the feature chat
  * `ThreadColumn`. Opening it never launches anything; a main chat nobody has
  * started is an empty thread whose first message starts it (`start`, the
  * feature's chat launch). The notice deck floats over it while it is in view.
- * Its thread list is the page header's (`ThreadSwitcher`).
+ * Its thread list is the sidebar's, under the feature's row (threads-in-the-sidebar).
  */
 export function FeatureChat({
   full,

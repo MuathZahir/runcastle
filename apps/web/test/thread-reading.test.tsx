@@ -5,8 +5,8 @@ import type { ThreadEntry, ThreadItem, ToolCall } from '../src/lib/chat-thread'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { PlanStrip } from '../src/components/chat/thread/ComposerParts'
 import { ChangesCard, WorkBlock } from '../src/components/chat/thread/Work'
-import { ThreadSwitcher } from '../src/components/chat/thread/ThreadSwitcher'
-import { openMenu } from './floating'
+import { SidebarThreadList } from '../src/components/SidebarParts'
+import { sidebarThreadOrder } from '../src/lib/sidebar-threads'
 
 /**
  * What the human reads in a thread (chat-as-web-components ticket 17): no
@@ -158,33 +158,67 @@ describe('the background strip', () => {
   })
 })
 
-describe('the header thread list', () => {
-  it('marks each thread working, waiting or idle as the project page list does', () => {
-    const at = Date.now()
-    const entry = (id: string, state: ThreadEntry['state']): ThreadEntry => ({ id, title: `Thread ${id}`, role: 'project', state, updatedAt: at, runtime: 'claude-code' })
-    render(<ThreadSwitcher threads={[entry('a', 'working'), entry('b', 'waiting'), entry('c', 'idle')]} current="c" onPick={() => {}} onNew={() => {}} now={at} />)
-    openMenu(screen.getByRole('button', { name: 'Thread' }))
-    const row = (id: string) => screen.getByRole('menuitemradio', { name: new RegExp(`Thread ${id}`) })
-    expect(row('a').textContent).toContain('working')
-    expect(row('a').querySelector('[data-progress]')).not.toBeNull()
-    expect(row('b').textContent).toContain('waiting for you')
-    expect(row('b').innerHTML).toContain('bg-warning')
-    expect(row('c').textContent).toContain('now')
-    expect(row('c').querySelector('[data-progress]')).toBeNull()
+describe('the sidebar thread list', () => {
+  const at = Date.now()
+  const entry = (id: string, state: ThreadEntry['state'], over: Partial<ThreadEntry> = {}): ThreadEntry => ({
+    id,
+    title: `Thread ${id}`,
+    role: 'project',
+    state,
+    createdAt: at,
+    updatedAt: at,
+    runtime: 'claude-code',
+    ...over,
+  })
+  const row = (title: string) => screen.getByTitle(title).parentElement as HTMLElement
+
+  it('marks each thread working, waiting or idle, as the project page list does', () => {
+    render(<SidebarThreadList threads={[entry('a', 'working'), entry('b', 'waiting'), entry('c', 'idle')]} current="c" onOpen={() => {}} actionsFor={() => []} />)
+    expect(row('Thread a').querySelector('[data-progress]')).not.toBeNull()
+    expect(row('Thread b').innerHTML).toContain('bg-warning')
+    expect(row('Thread c').textContent).toContain('now')
+    expect(row('Thread c').querySelector('[data-progress]')).toBeNull()
   })
 
   it('ages no thread that has no time, and names none by its kind', () => {
-    const at = Date.now()
     const threads: ThreadEntry[] = [
-      { id: 'old', title: 'New chat', role: 'main', state: 'idle', updatedAt: 0, runtime: 'claude-code' },
-      { id: 'side', title: 'Fix the header', role: 'side', state: 'idle', updatedAt: at - 3 * 3_600_000, runtime: 'claude-code' },
+      entry('old', 'idle', { title: 'New chat', role: 'main', updatedAt: 0 }),
+      entry('side', 'idle', { title: 'Fix the header', role: 'side', updatedAt: at - 3 * 3_600_000 }),
     ]
-    render(<ThreadSwitcher threads={threads} current="side" onPick={() => {}} onNew={() => {}} now={at} />)
-    openMenu(screen.getByRole('button', { name: 'Thread' }))
-    expect(screen.getByRole('menuitemradio', { name: /New chat/ }).textContent).toBe('New chat')
-    const side = screen.getByRole('menuitemradio', { name: /Fix the header/ }).textContent ?? ''
-    expect(side).toBe('Fix the header3h')
-    expect(side).not.toMatch(/Feature chat|Thread/)
+    render(<SidebarThreadList threads={threads} current="side" onOpen={() => {}} actionsFor={() => []} />)
+    expect(row('New chat').textContent).toBe('New chat')
+    expect(row('Fix the header').textContent).toBe('Fix the header3h')
+  })
+
+  it('shows five, then the rest in place; the one in front and any working or waiting show past five', () => {
+    const threads = Array.from({ length: 9 }, (_, i) =>
+      entry(`${i}`, i === 7 ? 'waiting' : 'idle', { title: `Thread ${i}` }),
+    )
+    const opened: string[] = []
+    render(<SidebarThreadList threads={threads} current="8" onOpen={(id) => opened.push(id)} actionsFor={() => []} />)
+    const titles = () => screen.getAllByRole('button').flatMap((b) => (b.title ? [b.title] : []))
+    expect(titles()).toEqual(['Thread 0', 'Thread 1', 'Thread 2', 'Thread 3', 'Thread 4', 'Thread 7', 'Thread 8'])
+    fireEvent.click(screen.getByRole('button', { name: /Show 2 more/ }))
+    expect(titles()).toHaveLength(9)
+    fireEvent.click(screen.getByTitle('Thread 5'))
+    expect(opened).toEqual(['5'])
+  })
+
+  it('sends the Orchestrator’s rest to its page: "All N conversations"', () => {
+    const threads = Array.from({ length: 80 }, (_, i) => entry(`${i}`, 'idle'))
+    const more = vi.fn()
+    render(<SidebarThreadList threads={threads} current={null} onOpen={() => {}} actionsFor={() => []} more={more} />)
+    fireEvent.click(screen.getByRole('button', { name: /All 80 conversations/ }))
+    expect(more).toHaveBeenCalledOnce()
+  })
+
+  it('keeps each thread’s place: the main chat first, then the newest started, whatever moved last', () => {
+    const order = sidebarThreadOrder([
+      entry('old-side', 'idle', { role: 'side', createdAt: 1, updatedAt: 99 }),
+      entry('new-side', 'idle', { role: 'side', createdAt: 3, updatedAt: 3 }),
+      entry('main', 'idle', { role: 'main', createdAt: 0, updatedAt: 0 }),
+    ])
+    expect(order.map((t) => t.id)).toEqual(['main', 'new-side', 'old-side'])
   })
 })
 

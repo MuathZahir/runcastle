@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads in the sidebar preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px}
+.ba h3{margin-bottom:8px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.mock{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-canvas);overflow:hidden;font-size:12px}
+.mock .bar{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-bottom:1px solid var(--color-border-subtle);background:var(--color-surface);white-space:nowrap;overflow:hidden}
+.mock .bar .now{overflow:hidden;text-overflow:ellipsis}
+.mock .crumb{color:var(--color-text-tertiary)}
+.mock .now{color:var(--color-text);font-weight:500}
+.mock .sw{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:var(--radius-md);background:var(--color-surface-hover)}
+.mock .menu{margin:4px 10px 10px auto;width:62%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);padding:4px}
+.mock .menu div{height:22px;display:flex;align-items:center;padding:0 8px;color:var(--color-text-secondary)}
+.mock .menu .fade{opacity:.45}
+.mock .side{display:grid;grid-template-columns:210px 1fr;min-height:250px}
+.mock .rail{padding:8px;border-right:1px solid var(--color-border-subtle)}
+.mock .orch{padding:6px 8px;border-radius:var(--radius-md);border:1px solid color-mix(in oklab,var(--color-accent) 30%,transparent);background:color-mix(in oklab,var(--color-accent) 10%,var(--color-canvas));font-weight:600}
+.mock .row{padding:5px 8px;border-radius:var(--radius-md)}
+.mock .row small{display:block;color:var(--color-text-tertiary);font-size:11px}
+.mock .card{margin:6px 0;padding:3px;border-radius:var(--radius-md);background:color-mix(in oklab,var(--color-text) 3%,transparent);box-shadow:inset 0 0 0 1px var(--color-border-subtle)}
+.mock .t{display:flex;align-items:center;gap:6px;height:22px;padding:0 6px 0 16px;border-radius:var(--radius-sm);color:var(--color-text-secondary)}
+.mock .t span{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mock .t.on{background:color-mix(in oklab,var(--color-text) 7%,transparent);color:var(--color-text);font-weight:500}
+.mock .t.more{color:var(--color-text-tertiary);font-size:11px}
+.mock .w{width:6px;height:6px;border-radius:9px;background:var(--color-warning);flex:none}
+.mock .age{color:var(--color-text-tertiary);font-size:11px}
+.mock .pane{display:flex;flex-direction:column}
+.mock .pane .body{flex:1;display:grid;place-items:center;color:var(--color-text-tertiary)}
+.mock .pin{margin-left:4px}
+@media (max-width:760px){.ba{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Threads in the sidebar</h1>
+  <p class="lede">The open feature, and the open Orchestrator, list their threads right under their row in the sidebar. The thread dropdown in the chat header goes away; the header just names the thread you are in.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>Planned without you, confirmed after three design looks · the lead builds it, no tickets</span><span class="mono">docs/features/threads-in-the-sidebar/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Before and after, in miniature. The real design is the screen below it.</p>
+  <div class="ba">
+    <div>
+      <h3>Before · a dropdown in the header</h3>
+      <div class="mock">
+        <div class="bar"><span class="crumb">Sidebar refresh</span><span class="sw">Why does the bay draw… ▾</span></div>
+        <div class="menu">
+          <div>+ New thread</div><div>Rename…</div><div>Export as Markdown</div>
+          <div>Plan the sidebar refresh with me</div><div>Why does the bay draw square corners?</div>
+          <div>Try a film grain behind the head</div><div>Scenario chat · Fix busy-project</div>
+          <div>Count well contrast in the light theme</div><div class="fade">… and on, to the bottom of the screen</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>After · the open feature lists its threads</h3>
+      <div class="mock">
+        <div class="side">
+          <div class="rail">
+            <div class="orch">Orchestrator</div>
+            <div class="card">
+              <div class="row">Sidebar refresh <a class="pin" data-d="1">1</a><a class="pin" data-d="4">4</a><small>Waiting for you · 7m</small></div>
+              <div class="t"><span>Plan the sidebar refresh with me</span><i class="w"></i></div>
+              <div class="t on"><span>Why does the bay draw square corners?</span><span class="age">2h</span></div>
+              <div class="t"><span>Try a film grain behind the head</span><span class="age">⟳</span></div>
+              <div class="t"><span>Scenario chat · Fix busy-project</span><span class="age">1d</span></div>
+              <div class="t"><span>Count well contrast in the light theme</span><span class="age">2d</span></div>
+              <div class="t more">Show 3 more <a class="pin" data-d="3">3</a></div>
+            </div>
+            <div class="row">Rounds see blockers<small>Which retry policy…</small></div>
+            <div class="row">Scenario fixtures<small>In progress</small></div>
+          </div>
+          <div class="pane">
+            <div class="bar"><span class="crumb">Sidebar refresh ›</span><span class="now">Why does the bay draw square corners?</span><a class="pin" data-d="6">6</a></div>
+            <div class="body">the chat</div>
+          </div>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:6px">Hover a thread for its "…": Rename, Export, close a scenario chat <a class="pin" data-d="5">5</a></p>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The real design</h3>
+    <p class="hint">Real sidebar components, waiting for your eye. It opens on the dev server in the design panel.</p>
+<!-- screen:sidebar-threads -->
+<div class="designed">
+  <h3>Sidebar with threads, and the header naming the thread</h3>
+  <p>The sidebar pieces, the thread rows and lists, and the header are real components; features and threads are sample data. The open Orchestrator holds its chats inside its own accent card. Four samples: a feature with eight threads, a working feature inside the Working bay, a feature with only its main chat, and the Orchestrator with 80 chats. Click rows and threads to move around.</p>
+  <p>Your picks are built in: thread rows <b>divided</b> by hairlines, the open feature as <b>one card</b>, the "+" <b>on hover</b>.</p>
+  <p class="mono">apps/web/src/components/SidebarParts.tsx · preview /preview/sidebar-threads.html</p>
+  <button data-open-design="/preview/sidebar-threads.html">Open in design</button>
+</div>
+<!-- /screen:sidebar-threads -->
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Archiving or hiding a thread, if dead threads crowd the lists</li>
+      <li><i class="dot"></i>Threads in the command palette, for a closed sidebar</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The rest of the chat header and the chat's look ("The chat looks the part")</li>
+      <li><i class="dot"></i>The Orchestrator page's conversation list ("The Orchestrator's page")</li>
+      <li><i class="dot"></i>Shared style and building blocks ("The whole app matches the sidebar")</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="mock" style="padding:14px;background:var(--color-surface)">
+        <p><b>The page publishes, the sidebar draws.</b> Only the open page's threads ever show, and that page already holds them.</p>
+        <p class="mono" style="margin-top:10px;color:var(--color-text-secondary)">feature page chat column · Orchestrator page<br>&nbsp;&nbsp;→ shell-level channel { scope, threads, inFront, pick, newThread, actionsFor }<br>&nbsp;&nbsp;→ sidebar: open feature row / Orchestrator card → SidebarThreadList</p>
+        <ul style="margin:12px 0 0;padding-left:18px;color:var(--color-text-secondary)">
+          <li>No new queries: the sidebar draws the list the page already fetched.</li>
+          <li><span class="mono">thread.list</span> rows gain <span class="mono">createdAt</span>; the web orders main first, then newest started. The server's order stays for the Orchestrator page.</li>
+          <li>Rename and Export move from the switcher to the thread row's menu, via the existing thread menu hook, for any thread. The scenario chat's close becomes a menu action.</li>
+          <li><span class="mono">ThreadSwitcher</span> is deleted; the header gains the thread as a second breadcrumb.</li>
+          <li>Picking keeps the thread in the address (<span class="mono">?thread=</span>), so a reload lands on it.</li>
+          <li>Size: about a day's work in a handful of web files plus one field on the server, so the lead builds it in this chat. No tickets, no workers.</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['The open feature shows its threads; the others stay folded', 'Only the open feature (or the open Orchestrator) unfolds: one feature\'s threads at a time keeps the list short, and the amber dot already says which other feature needs you. Decision 10 adds a chevron to fold the open one.'],
+    ['A feature with only its main chat shows no thread list', 'A one-item list under a row that already opens that chat is noise; most features never get a second thread.'],
+    ['Threads keep their place: main chat first, then newest started; five, then more', 'Rows never jump when an agent posts. Five show, plus the one in front and any working or waiting. A feature\'s rest open in place; the Orchestrator\'s 80 chats go to its page ("All N conversations"), since its card is pinned above the scrolling list.'],
+    ['"New thread" is a "+" on the open row', 'The switcher\'s New thread needs a new home, and most open features have no list to end. Hover-only or always shown is a Tweaks choice.'],
+    ['Rename, Export and closing a scenario chat move to the thread row\'s menu', 'Every sidebar row already keeps its actions in a "…" menu, and the header carries no menu of its own.'],
+    ['The chat header names the thread as plain text', 'The brief: the header just names the thread you are in. It becomes a second breadcrumb after the feature.'],
+    ['With the sidebar closed, threads switch by opening it again', 'The sidebar is the one place threads live, and it is one key (Ctrl/⌘+B) away.'],
+    ['Clicking a feature row opens its main chat, as today', 'The row\'s destination stays predictable; a waiting side thread is listed right under it with its amber dot.'],
+    ['Threads cannot be archived or hidden in this feature', 'The five-row cap and stable order keep lists short; archiving needs a new server state.'],
+    ['The open feature\'s threads can be folded', 'Your ask on the second design look: a chevron on the open feature and the open Orchestrator folds their threads away; a folded feature stays folded, remembered per browser. Replaces decision 1\'s "no chevron".']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

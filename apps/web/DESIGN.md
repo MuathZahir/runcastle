@@ -88,8 +88,20 @@ before adding.
     (`text-shimmer`); rows that need you only wear their dot.
   - **Shelf counts sit in a small round well** (`ShelfCount`) — a sidebar-only
     exception to "no pills"; nowhere else.
-  - Behind the head, a static `film-grain` at 20%, fading out downward: white
-    specks on dark, softer dark specks on light.
+  - **Threads live in the sidebar** (threads-in-the-sidebar; preview
+    `preview/sidebar-threads.html`), never in a header menu. The open feature
+    and its threads share one card; the open Orchestrator lists its chats
+    inside its own card, under a hairline. A thread row is one 32px line in
+    three columns (`SidebarThreadRow`): a 16px glyph (spinner working, amber
+    dot waiting, chat bubble at rest), the 13px title, the age; a hairline from
+    the title column divides one row from the next. Five rows, then "Show N
+    more" (a feature) or "All N conversations" (the Orchestrator's page). The
+    open row carries a fold chevron, and "+" and "…" on hover. A row's hover
+    controls and the marks under them show and hide on the same conditions
+    (hover or keyboard focus), so they never overlap.
+  - Behind the head, a static halftone (`SidebarBackdrop`): a dot every 8px,
+    shrinking from 1.1px away from the top centre until gone, in the text
+    colour at 6% so it reads in both themes. No grain, no noise.
 - **The sidebar has two states: open or closed** (design-mode decision 12).
   Closed is zero width — no icon rail, nothing of it left on the canvas — and
   the content panel takes the whole window. Ctrl/⌘+B toggles it, the sidebar's

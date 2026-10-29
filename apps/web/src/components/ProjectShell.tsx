@@ -19,6 +19,7 @@ import {
 } from '../lib/routes'
 import { AddressSettled, currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
+import { SidebarThreadsProvider } from '../lib/sidebar-threads'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
 import { Frame, useFrame } from './Frame'
@@ -388,7 +389,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // And any session launch under it lands on that feature's chat.
   return (
     <OpenSettingsProvider open={ws.openSettings}>
-      <LandOnChatProvider value={landOnChat}>{shell}</LandOnChatProvider>
+      <LandOnChatProvider value={landOnChat}>
+        {/* The open page publishes its threads; the sidebar beside it lists them. */}
+        <SidebarThreadsProvider>{shell}</SidebarThreadsProvider>
+      </LandOnChatProvider>
     </OpenSettingsProvider>
   )
 }

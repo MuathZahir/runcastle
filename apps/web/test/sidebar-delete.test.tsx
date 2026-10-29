@@ -29,7 +29,11 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'Project' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },
-    thread: { list: { useQuery: () => ({ data: [] }) } },
+    thread: {
+      list: { useQuery: () => ({ data: [] }) },
+      // The sidebar thread rows' Rename (threads-in-the-sidebar decision 5).
+      rename: { useMutation: () => ({ mutate: () => {} }) },
+    },
   },
 }))
 

@@ -13,7 +13,7 @@ import { useScenarioChat, type ScenarioChatApi } from './ScenarioChat'
 export interface FeatureChatColumn {
   /** The drive errand's chat — what the page provides to the drive through `ScenarioChatContext`. */
   scenario: ScenarioChatApi
-  /** The header's thread list. */
+  /** The feature's thread list, which the sidebar draws under its row. */
   threads: ThreadEntry[]
   /** The feature's main chat thread; null while nobody has started it. */
   main: string | null
@@ -29,7 +29,7 @@ export interface FeatureChatColumn {
    * column shows it opening, never the main chat, and nothing can be sent.
    */
   pending: boolean
-  /** The switcher's id for what is in front. */
+  /** The thread list's id for what is in front. */
   current: string
   pick: (id: string) => void
   /** New thread: a side thread, brought to the front. */
@@ -41,7 +41,7 @@ export interface FeatureChatColumn {
 /**
  * The feature page's chat column (chat-as-web-components decision 7): every
  * thread of the feature — its main chat, side threads, scenario and Fix-it
- * chats, finished ones included — listed in the header, one in front. An
+ * chats, finished ones included — listed in the sidebar, one in front. An
  * errand's open, or a new thread, brings its thread to the front; closing the
  * errand hands the column back to the main chat. A Select area crop for the
  * main chat brings it to the front too.
