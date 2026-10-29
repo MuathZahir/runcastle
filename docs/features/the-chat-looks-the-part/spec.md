@@ -36,9 +36,24 @@ What the human sees:
   width, so its edges match the messages above. The thread's scrollbar is the
   app's thin, quiet one. The thread fades as it passes under the header, the
   same way it fades under the composer.
-- **Your message wears the card** at the card's 10px corners. The
-  changed-files card wears it too. Runcastle's own line keeps its small mark,
-  now in the shared accent-subtle look instead of a hand-mixed tint.
+- **Your message keeps today's bubble** (the human's pick). The changed-files
+  card wears the shared card. Runcastle's own line keeps its small mark, now in
+  the shared accent-subtle look instead of a hand-mixed tint.
+- **Calls of one kind read as one line.** Two or more calls of one family in
+  a row fold into one line that opens to each call: looking around ("Read 3
+  files, searched for 1 pattern"), changing files ("Edited 5 files +40 −12"),
+  running commands ("Ran 3 commands"). While one is in flight the line reads
+  in the present and names it. A failed call adds "· 1 failed". MCP tools,
+  skills and reviews keep their own lines.
+- **A subagent is a card**: its head names the task and its call count and
+  opens to its calls; while it runs, the call in flight shows under the head.
+- **One spinner at a time.** The thread's "Working" line is gone; while a turn
+  runs the composer says "Working 1m 18s" beside Stop, with no spinner. The
+  only spinner is the call in flight. The context meter is a short bar with
+  its percentage, and steps aside for "Working" while a turn runs.
+- **The last message's buttons clear the composer.** The thread keeps room
+  under its last message for the hover buttons, and the composer's fade is
+  24px, so they are never under it.
 - **An answer and its changes are one block.** When a turn ends with a
   changed-files card, the answer draws the card under its text, 12px down, and
   the answer's hover actions hang under the card. Before, they floated in the
@@ -66,9 +81,17 @@ The shape of it:
   foot. It draws the top fade. A changes item that follows an answer is passed
   to that answer (`AgentMessage`) and drawn inside it, not on its own.
 - The composer (`Composer`) renders its `top` slot inside its box, and takes a
-  new `meter` slot at the start of its footer's right side. The plan strip
+  new `meter` slot at the start of its footer's right side, and a
+  `workingSince` that shows the working clock there in the meter's place while
+  a turn runs. The thread (`ChatThread`) no longer draws a working line or
+  takes `workingSince`; its bottom padding is the foot's height plus 56px. The plan strip
   (`PlanStrip`) loses its tab chrome and becomes a section with a hairline
   under it.
+- The work view (`Work.tsx`) folds calls with `groupCalls` (runs of one
+  family: explore = read, search, fetch; change = edit, delete, move; run =
+  execute) and words them with `groupText`; both are exported and pure, so
+  they are unit-tested directly. `Subagent` becomes a card over the same
+  grouped list.
 - The chat column (`ThreadColumn`) passes the context meter to the composer's
   `meter` slot. Under the box it shows only the working caption.
 - The notice deck (`NoticeDeck`) keeps its stacking behaviour. Only the card's
@@ -82,8 +105,8 @@ The shape of it:
   the title.
 - The design preview `apps/web/preview/chat.html` is repaired. It still
   imported the thread switcher that "Threads in the sidebar" removed. It now
-  draws the header as the app does, and gains a Notices toggle and a Tweaks
-  menu for the two open choices: your message's look and the header's emphasis.
+  draws the header as the app does, and gains a Notices toggle, a running
+  subagent moment, and grouped calls in its sample turns.
 
 No server, schema or API change.
 
@@ -92,6 +115,9 @@ No server, schema or API change.
 - **The chat preview** (existing, `apps/web/preview/chat.html`): every moment of
   a thread (working, approval, questions, idle, new thread, notices), in both
   themes. This is where the look is judged.
+- **Call grouping** (new, pure): `groupCalls` and `groupText` over lists of
+  calls: runs fold only within one family, a lone call stays alone, a file
+  edited twice counts once, a call in flight turns its kind's verb present.
 - **Static markup of the thread pieces** (existing tier-1 tests in
   `apps/web/test/`): the composer's markup shows the plan strip and the meter
   inside its box. The notice card's markup has no uppercase class, no glow layer
@@ -116,8 +142,5 @@ No server, schema or API change.
 
 ## Open questions
 
-- Which parts of the chat look worst to the human. The brief left this to be
-  asked with previews. The plan answers it with the planner's own reading, and
-  the human's look at the designs may reorder it.
-- The two Tweaks choices: card or well or today's bubble for your message, and
-  whether the feature or the thread leads the header.
+- Which parts of the chat still look off to the human after this round of
+  designs.

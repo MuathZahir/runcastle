@@ -15,11 +15,9 @@ own recommendation, accepted so the plan could be finished; the ones marked
 **Why:** Today every item is 24px from the next, so an answer sits as far from its own question as from the next one, and a long thread reads as an even list rather than a conversation.
 **Assumed.** Alternative: keep the even 24px spacing and only restyle the pieces.
 
-## 3. Your message wears the card
-**Decision:** Your message bubble is the app's one material, the card (a faint fill with a hairline edge), at the card's 10px corners, instead of its own stronger tint with an inner highlight. The preview's Tweaks menu offers the well (a slightly stronger fill, no edge) and today's bubble to compare.
-**Why:** The sidebar's selected row, the Working bay and a live drive already wear the card; your message is the one hand-mixed surface left in the thread, and it reads heavier than everything around it.
-**Assumed.** Alternative: keep today's stronger bubble, which stands out more in a long thread.
-**Challenged:** Elsewhere the card marks something selected or live (the selected row, the Working bay, a live drive); putting it on every message you send weakens that meaning, so the well (a stronger fill, no edge) is the better fit.
+## 3. Your message keeps today's bubble
+**Decision:** Your message keeps today's bubble: its stronger tint with the inner highlight, at 10px corners. The other surfaces in the thread that mixed their own tint (the changed-files card) wear the shared card.
+**Why:** The human compared the card, the well and today's bubble in the preview and chose today's (2026-10-29).
 
 ## 4. The composer is one object
 **Decision:** The agent's task list ("2 of 5 · Keep code blocks whole …") and its running background commands move inside the composer's box as its top section, under a hairline, instead of a separate tab of another colour sitting on the box. The context meter moves into the composer's own footer row, beside attach and send. Where the agent works ("Feature worktree · feature/x") stays a quiet caption under the box.
@@ -27,10 +25,8 @@ own recommendation, accepted so the plan could be finished; the ones marked
 **Assumed.** Alternative: keep the strip as a tab over the box and the meter beside the caption.
 
 ## 5. The header leads with the feature's name; the thread trails it
-**Decision:** In the page's one header row over a chat, the feature's title (or the project's name) reads first at full strength, the thread in front follows it in quieter type, then the status line. Its content and buttons stay as they are. This needs one shared change: the breadcrumb (`Crumbs`, shared by every page header) gains a way to show its last item quietly. The preview's Tweaks menu offers today's emphasis, where the thread is the bold item, to compare.
+**Decision:** In the page's one header row over a chat, the feature's title (or the project's name) reads first at full strength, the thread in front follows it in quieter type, then the status line. Its content and buttons stay as they are. This needs one shared change: the breadcrumb (`Crumbs`, shared by every page header) gains a way to show its last item quietly. The human chose this over today's emphasis in the preview (2026-10-29).
 **Why:** The page is the feature; "Feature chat" in bold beside a dimmed feature title reads backwards, and the sidebar already marks which thread is open.
-**Assumed.** Alternative: keep the breadcrumb's usual emphasis, the thread bold and the feature dim.
-**Challenged:** The breadcrumb is shared by every page and the foundation feature owns shared pieces, so the change should be put to the human openly rather than made inside a chat feature.
 
 ## 6. The notice cards drop the retired marks
 **Decision:** The cards that float over the chat (a round finished, a run failed, what to test) keep their place, their stacking and their words. They lose what the design guide has retired: the uppercase eyebrow becomes sentence case, the coloured glow from the corner goes, the "×3" pill becomes a plain count, the title drops to medium weight, and the tinted action becomes the shared small button. The phase colour stays on the card's glyph and its eyebrow word.
@@ -62,3 +58,21 @@ own recommendation, accepted so the plan could be finished; the ones marked
 **Decision:** When a turn ends with a changed-files card, the answer and the card are one block, and the answer's hover actions (copy, branch, the model's name) hang under the card instead of in the gap between the answer and the card.
 **Why:** The human's note "Weird spacing" (2026-10-29) shows those actions floating between an answer and its card. With decision 2's tighter 12px gap they would cover the card.
 **Assumed.** Alternative: keep the actions under the answer's text and leave the old 24px gap before the card.
+
+## Revisited 2026-10-29 (after the human looked at the designs)
+
+## 12. Calls of one kind in a row read as one line
+**Decision:** Two or more calls of one family in a row fold into one line, as Claude Code reads them: looking around ("Read 3 files, searched for 1 pattern"), changing files ("Edited 5 files +40 −12", a file edited twice counted once), and running commands ("Ran 3 commands"). The line opens to each call. While one call in the run is in flight, the line reads in the present ("Running 2 commands") and names that call, so you see what is happening without opening it. A failed call adds "· 1 failed". A single call, an MCP tool, a skill and a review still read as their own line.
+**Why:** The human: "multiple edits would read as 'Edited 5 files' and can be expanded to see the tool calls."
+
+## 13. A subagent is a card
+**Decision:** A subagent the turn delegates to is a card (the shared card material): its head says "Subagent", what it was asked and how many calls it made, and opens to its calls, grouped as in decision 12. While it runs, its call in flight shows under the head, and only that call spins.
+**Why:** The human: "The subagent tool call looks bad. It should probably be a card." It is a piece of work on its own, not one more line among the calls.
+
+## 14. One spinner at a time; "Working" moves into the composer
+**Decision:** The thread loses its "Working 1m 18s · Esc to stop" line. While a turn runs, the composer says "Working 1m 18s" beside Stop, with no spinner of its own, and the box's travelling edge light stays. The only spinner in view is the call in flight. The context meter becomes a short bar with its percentage, so it no longer looks like a third spinner; it steps aside for "Working" while a turn runs.
+**Why:** The human found the two circling spinners while a command runs weird ("maybe we remove the working, make it look different"). The meter's partial ring read as a spinner too.
+
+## 15. The last message's buttons clear the composer
+**Decision:** The thread keeps room under its last message for the hover buttons (copy, branch, the model's name), and the composer's fade above its box is shorter (24px), so at the foot of the thread those buttons are never under the fade.
+**Why:** The human: scrolled all the way down, the copy and branch buttons were partly covered by the composer's background.

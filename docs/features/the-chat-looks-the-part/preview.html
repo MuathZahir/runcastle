@@ -129,7 +129,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .b{height:14px;border-radius:4px;background:var(--color-surface-selected)}
 .b.you{align-self:flex-end;width:55%;height:22px;border-radius:var(--radius-lg)}
 .b.you.old{background:color-mix(in oklab,var(--color-text) 9%,var(--color-surface));box-shadow:inset 0 0 0 1px var(--color-border-subtle)}
-.b.you.new{background:color-mix(in oklab,var(--color-text) 2.5%,transparent);box-shadow:inset 0 0 0 1px var(--color-border)}
+.b.you.new{background:color-mix(in oklab,var(--color-text) 9%,var(--color-surface));box-shadow:inset 0 0 0 1px var(--color-border-subtle)}
 .b.work{width:30%;height:10px;background:var(--color-border-strong);opacity:.6}
 .b.ans{width:92%}
 .g24{height:24px}.g12{height:12px}.g32{height:32px}
@@ -156,7 +156,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>The chat looks the part</h1>
-  <p class="lede">The chat you approved, restyled on the shared look and with its layout fixed: turns instead of an even list, one column edge, one composer box, calm notice cards. Every chat gets it, the Orchestrator's too. Planned without you; I build it myself, no tickets.</p>
+  <p class="lede">The chat you approved, restyled on the shared look and with its layout fixed: turns instead of an even list, calls grouped like Claude Code's, subagents as cards, one spinner at a time, one composer box, calm notice cards. Every chat gets it, the Orchestrator's too. Planned without you; I build it myself, no tickets.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-chat-looks-the-part/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -207,7 +207,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         </div>
         <ul class="notes">
           <li>A turn sits together, 12px; a new turn after 32px. <a class="pin" data-d="2">2</a></li>
-          <li>Your message wears the shared card. <a class="pin" data-d="3">3</a></li>
+          <li>Your message keeps today's bubble. <a class="pin" data-d="3">3</a></li>
           <li>One composer box: task list on top, the meter beside Send, one column edge. <a class="pin" data-d="4">4</a></li>
         </ul>
       </div>
@@ -216,12 +216,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>The real screens</h3>
-    <p class="hint">Real components on sample data. The Tweaks menu (bottom left) switches your message's look and the header's emphasis. The theme toggle is top right.</p>
+    <p class="hint">Real components on sample data. The theme toggle is top right.</p>
     <div class="designs">
 <!-- screen:chat-working -->
 <div class="designed">
   <h3>A turn in flight</h3>
-  <p>The thread, the composer with its task list inside, the header leading with the feature. <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="9">9</a></p>
+  <p>Edits and commands grouped into one line each, the subagent as a card, one spinner, "Working" beside Stop, the task list inside the composer. <a class="pin" data-d="12">12</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></p>
   <p class="mono">src/components/chat/thread/ChatThread.tsx · Composer.tsx · ComposerParts.tsx · src/ui/page.tsx · preview /preview/chat.html?moment=working</p>
   <button data-open-design="/preview/chat.html?moment=working">Open in design</button>
 </div>
@@ -229,11 +229,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:chat-idle -->
 <div class="designed">
   <h3>A settled thread</h3>
-  <p>Turns with air between them, your message on the card, the changed-files card with the answer's actions under it (hover the answer), runcastle's line and a divider. <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a> <a class="pin" data-d="11">11</a></p>
+  <p>Turns with air between them, the changed-files card with the answer's actions under it, the last answer's buttons clear of the composer (hover the answers), the meter as a bar. <a class="pin" data-d="2">2</a> <a class="pin" data-d="11">11</a> <a class="pin" data-d="15">15</a></p>
   <p class="mono">src/components/chat/thread/ChatThread.tsx · Work.tsx · preview /preview/chat.html?moment=idle</p>
   <button data-open-design="/preview/chat.html?moment=idle">Open in design</button>
 </div>
 <!-- /screen:chat-idle -->
+<!-- screen:chat-subagent -->
+<div class="designed">
+  <h3>A subagent at work</h3>
+  <p>The subagent card with its call in flight under the head; click it to open its grouped calls. <a class="pin" data-d="13">13</a></p>
+  <p class="mono">src/components/chat/thread/Work.tsx · preview /preview/chat.html?moment=subagent</p>
+  <button data-open-design="/preview/chat.html?moment=subagent">Open in design</button>
+</div>
+<!-- /screen:chat-subagent -->
 <!-- screen:chat-notices -->
 <div class="designed">
   <h3>Notice cards</h3>
@@ -315,23 +323,25 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['This pass keeps the approved chat and restyles it', 'You approved this shape three days ago; the brief asks for the shared style and the layout fixed, not a new direction. Every chat gets it through the one chat column.', 'assumed'],
     ['A turn is the unit of space', 'Today every item is 24px from the next, so a long thread reads as an even list. Now a turn sits together (12px) and a new one starts after 32px.', 'assumed'],
-    ['Your message wears the card', 'Your bubble is the last hand-mixed surface in the thread and reads heavier than the rest. Tweaks offers the well and today\'s bubble.', 'assumed'],
+    ['Your message keeps today\'s bubble', 'You compared the card, the well and today\'s bubble and chose today\'s.'],
     ['The composer is one object', 'The task list moves inside the box, the meter beside Send; three stacked pieces on three grounds become one box.', 'assumed'],
-    ['The header leads with the feature\'s name; the thread trails it', 'The page is the feature; "Feature chat" bold beside a dim title reads backwards. Needs one opt-in flag on the shared breadcrumb.', 'assumed'],
+    ['The header leads with the feature\'s name; the thread trails it', 'You chose it over today\'s emphasis. Needs one opt-in flag on the shared breadcrumb.'],
     ['The notice cards drop the retired marks', 'Sentence-case eyebrow, no glow, a plain count, the shared button; the phase colour stays on the glyph and eyebrow word.', 'assumed'],
     ['A new thread keeps its composer at the foot', 'The composer never moves, so the first message does not make it jump.', 'assumed'],
     ['The agent\'s formatted text keeps the shared Markdown look', 'The renderer also draws every spec and doc; restyling it belongs to the shared style, not the chat.', 'assumed'],
     ['Live work keeps showing step by step', 'You approved the live steps; one updating line would hide what the agent does, which is behaviour.', 'assumed'],
     ['While the agent asks, the task list waits with the composer', 'The ask is the one thing to look at; this is how the chat behaves today.', 'assumed'],
-    ['An answer's actions hang under its changed-files card', 'Your "Weird spacing" note: the copy, branch and model buttons floated between the answer and its card; with the tighter gap they would cover it.', 'assumed']
+    ['An answer\'s actions hang under its changed-files card', 'Your "Weird spacing" note: the copy, branch and model buttons floated between the answer and its card; with the tighter gap they would cover it.', 'assumed'],
+    ['Calls of one kind in a row read as one line', 'You asked for Claude Code\'s grouping: "Edited 5 files", opening to each call. Exploring, changing and running each fold; while one is in flight the line names it.'],
+    ['A subagent is a card', 'You asked for it: a subagent is its own piece of work. Its head names the task; while it runs, its call in flight shows under the head.'],
+    ['One spinner at a time; "Working" moves into the composer', 'The two circling spinners looked weird. The thread\'s Working line goes; "Working 1m 18s" sits beside Stop; the meter becomes a bar so it no longer looks like a spinner.'],
+    ['The last message\'s buttons clear the composer', 'Scrolled to the bottom, copy and branch were under the composer\'s fade. The thread keeps room for them and the fade is shorter.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [1, 'A bolder new direction (a name and mark on every message, or both sides as bubbles), drawn beside this one.', 'The brief says to show directions, plural; I offered one direction with two switches. The challenger disagreed.', 'challenged'],
-    [3, 'The well: a slightly stronger fill, no edge (in Tweaks).', 'The card elsewhere means selected or live; on every message it may blur that. The challenger preferred the well.', 'challenged'],
+    [1, 'A bolder new direction (a name and mark on every message, or both sides as bubbles), drawn beside this one.', 'The brief says to show directions, plural; I offered one direction. The challenger disagreed.', 'challenged'],
     [4, 'Keep the task list as a tab on the box and the meter under it.', 'It moves controls you may be used to finding.'],
-    [5, 'Keep the thread bold and the feature dim, as every breadcrumb does (in Tweaks).', 'It adds a flag to a building block every page shares, which the foundation feature owns.', 'challenged'],
     [6, 'Keep the coloured cards, or keep a coloured left edge, so a failed run is hard to miss.', 'They call you to act; calmer cards could be missed. The challenger wanted one stronger mark.', 'challenged']
   ]
   var list = $('#dlist')
