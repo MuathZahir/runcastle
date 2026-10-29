@@ -36,8 +36,15 @@ What the human sees:
   width, so its edges match the messages above. The thread's scrollbar is the
   app's thin, quiet one. The thread fades as it passes under the header, the
   same way it fades under the composer.
-- **Your message keeps today's bubble** (the human's pick). The changed-files
-  card wears the shared card. Runcastle's own line keeps its small mark, now in
+- **Three materials, one per job.** Raised floats over the thread (the
+  composer, a message being edited, an ask, a notice card). The well sits in
+  the thread (your message, a turn's changed files, a subagent). Inset is
+  code-shaped, inside the other two (a command, output, a diff, an attached
+  image). Raised and well share a 1px top highlight. They are defined once in
+  the chat's materials module (`thread/surfaces.ts`) and every container uses
+  one of them.
+- **Your message keeps today's bubble** (the human's pick), which is the well.
+  The changed-files card wears the well too. Runcastle's own line keeps its small mark, now in
   the shared accent-subtle look instead of a hand-mixed tint.
 - **Calls of one kind read as one line.** Two or more calls of one family in
   a row fold into one line that opens to each call: looking around ("Read 3
@@ -45,12 +52,15 @@ What the human sees:
   running commands ("Ran 3 commands"). While one is in flight the line reads
   in the present and names it. A failed call adds "· 1 failed". MCP tools,
   skills and reviews keep their own lines.
-- **A subagent is a card**: its head names the task and its call count and
+- **A subagent is a card** (the well): its head names the task and its call count and
   opens to its calls; while it runs, the call in flight shows under the head.
 - **One spinner at a time.** The thread's "Working" line is gone; while a turn
   runs the composer says "Working 1m 18s" beside Stop, with no spinner. The
   only spinner is the call in flight. The context meter is a short bar with
   its percentage, and steps aside for "Working" while a turn runs.
+- **"/" works anywhere a word starts.** The list of commands and skills opens
+  for "/" at the start of the message or after a space, as "@" does for
+  files; picking one keeps the rest of the message.
 - **The last message's buttons clear the composer.** The thread keeps room
   under its last message for the hover buttons, and the composer's fade is
   24px, so they are never under it.

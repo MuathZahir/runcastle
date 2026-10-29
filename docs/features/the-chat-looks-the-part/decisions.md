@@ -76,3 +76,11 @@ own recommendation, accepted so the plan could be finished; the ones marked
 ## 15. The last message's buttons clear the composer
 **Decision:** The thread keeps room under its last message for the hover buttons (copy, branch, the model's name), and the composer's fade above its box is shorter (24px), so at the foot of the thread those buttons are never under the fade.
 **Why:** The human: scrolled all the way down, the copy and branch buttons were partly covered by the composer's background.
+
+## 16. Three materials, one per job
+**Decision:** Every container in the chat is one of three materials, chosen by what it is. Raised floats over the thread: the composer, a message being edited, an ask, a notice card (the raised ground, one soft shadow). The well sits in the thread: your message, a turn's changed files, a subagent (a see-through tint with a hairline edge, today's bubble look). Inset is code-shaped and sits inside one of the two: a command, its output, a diff, an attached image. Raised and well catch the same 1px highlight on their top edge. Each material is defined once, in the chat's own module, and nothing in the chat styles a container by hand. Supersedes: 3's line that the changed-files card wears the shared card, and 13's card material.
+**Why:** The human: "there's a lot of different card styles and colors … the input text box is different than the message which is different than the subagent card." The chat had six hand-mixed recipes for its containers; three, each with one job, read as one design.
+
+## 17. "/" lists commands and skills anywhere in the message
+**Decision:** Typing "/" at the start of the message or after a space opens the list of commands and skills, as "@" does for files; picking one puts its name in place and keeps the rest of the message.
+**Why:** The human: skill autocomplete only works at the start. It is a small change to the box being restyled here; whether the agent acts on a name in mid-message is up to the agent, as when you type it by hand.

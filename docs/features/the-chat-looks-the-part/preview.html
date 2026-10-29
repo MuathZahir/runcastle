@@ -221,7 +221,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:chat-working -->
 <div class="designed">
   <h3>A turn in flight</h3>
-  <p>Edits and commands grouped into one line each, the subagent as a card, one spinner, "Working" beside Stop, the task list inside the composer. <a class="pin" data-d="12">12</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></p>
+  <p>Edits and commands grouped into one line each, the subagent in the same material as your message, one spinner, "Working" beside Stop, the task list inside the composer. <a class="pin" data-d="16">16</a> <a class="pin" data-d="12">12</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></p>
   <p class="mono">src/components/chat/thread/ChatThread.tsx · Composer.tsx · ComposerParts.tsx · src/ui/page.tsx · preview /preview/chat.html?moment=working</p>
   <button data-open-design="/preview/chat.html?moment=working">Open in design</button>
 </div>
@@ -229,7 +229,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:chat-idle -->
 <div class="designed">
   <h3>A settled thread</h3>
-  <p>Turns with air between them, the changed-files card with the answer's actions under it, the last answer's buttons clear of the composer (hover the answers), the meter as a bar. <a class="pin" data-d="2">2</a> <a class="pin" data-d="11">11</a> <a class="pin" data-d="15">15</a></p>
+  <p>Turns with air between them, the changed-files card with the answer's actions under it, the last answer's buttons clear of the composer (hover the answers), the meter as a bar. Type "/" after a word to see the list. <a class="pin" data-d="17">17</a> <a class="pin" data-d="2">2</a> <a class="pin" data-d="11">11</a> <a class="pin" data-d="15">15</a></p>
   <p class="mono">src/components/chat/thread/ChatThread.tsx · Work.tsx · preview /preview/chat.html?moment=idle</p>
   <button data-open-design="/preview/chat.html?moment=idle">Open in design</button>
 </div>
@@ -335,7 +335,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Calls of one kind in a row read as one line', 'You asked for Claude Code\'s grouping: "Edited 5 files", opening to each call. Exploring, changing and running each fold; while one is in flight the line names it.'],
     ['A subagent is a card', 'You asked for it: a subagent is its own piece of work. Its head names the task; while it runs, its call in flight shows under the head.'],
     ['One spinner at a time; "Working" moves into the composer', 'The two circling spinners looked weird. The thread\'s Working line goes; "Working 1m 18s" sits beside Stop; the meter becomes a bar so it no longer looks like a spinner.'],
-    ['The last message\'s buttons clear the composer', 'Scrolled to the bottom, copy and branch were under the composer\'s fade. The thread keeps room for them and the fade is shorter.']
+    ['The last message\'s buttons clear the composer', 'Scrolled to the bottom, copy and branch were under the composer\'s fade. The thread keeps room for them and the fade is shorter.'],
+    ['Three materials, one per job', 'Six hand-mixed container styles become three: raised floats over the thread (composer, asks, notices), the well sits in it (your message, changed files, subagents), inset holds code.'],
+    ['"/" lists commands and skills anywhere in the message', 'You found the list only opened at the very start. Now "/" after a space opens it, as "@" does for files.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
