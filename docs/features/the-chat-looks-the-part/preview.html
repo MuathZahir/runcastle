@@ -229,7 +229,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:chat-idle -->
 <div class="designed">
   <h3>A settled thread</h3>
-  <p>Turns with air between them, your message on the card, the changed-files card, runcastle's line and a divider. <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a></p>
+  <p>Turns with air between them, your message on the card, the changed-files card with the answer's actions under it (hover the answer), runcastle's line and a divider. <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a> <a class="pin" data-d="11">11</a></p>
   <p class="mono">src/components/chat/thread/ChatThread.tsx · Work.tsx · preview /preview/chat.html?moment=idle</p>
   <button data-open-design="/preview/chat.html?moment=idle">Open in design</button>
 </div>
@@ -322,7 +322,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A new thread keeps its composer at the foot', 'The composer never moves, so the first message does not make it jump.', 'assumed'],
     ['The agent\'s formatted text keeps the shared Markdown look', 'The renderer also draws every spec and doc; restyling it belongs to the shared style, not the chat.', 'assumed'],
     ['Live work keeps showing step by step', 'You approved the live steps; one updating line would hide what the agent does, which is behaviour.', 'assumed'],
-    ['While the agent asks, the task list waits with the composer', 'The ask is the one thing to look at; this is how the chat behaves today.', 'assumed']
+    ['While the agent asks, the task list waits with the composer', 'The ask is the one thing to look at; this is how the chat behaves today.', 'assumed'],
+    ['An answer's actions hang under its changed-files card', 'Your "Weird spacing" note: the copy, branch and model buttons floated between the answer and its card; with the tighter gap they would cover it.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

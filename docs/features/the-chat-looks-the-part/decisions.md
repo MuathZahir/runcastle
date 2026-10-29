@@ -57,3 +57,8 @@ own recommendation, accepted so the plan could be finished; the ones marked
 **Decision:** When the agent asks you something (an approval, a question, a form), the ask takes the composer's place as today, and the task list and background commands, now inside the composer, are out of view until you answer.
 **Why:** The ask is the one thing to look at in that moment, and it is how the chat behaves today; the task list returns with the composer.
 **Assumed.** Alternative: keep the task list showing above the ask, so you keep the context of what the agent was doing.
+
+## 11. An answer's actions hang under its changed-files card
+**Decision:** When a turn ends with a changed-files card, the answer and the card are one block, and the answer's hover actions (copy, branch, the model's name) hang under the card instead of in the gap between the answer and the card.
+**Why:** The human's note "Weird spacing" (2026-10-29) shows those actions floating between an answer and its card. With decision 2's tighter 12px gap they would cover the card.
+**Assumed.** Alternative: keep the actions under the answer's text and leave the old 24px gap before the card.

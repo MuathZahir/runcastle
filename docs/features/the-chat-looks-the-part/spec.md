@@ -39,6 +39,10 @@ What the human sees:
 - **Your message wears the card** at the card's 10px corners. The
   changed-files card wears it too. Runcastle's own line keeps its small mark,
   now in the shared accent-subtle look instead of a hand-mixed tint.
+- **An answer and its changes are one block.** When a turn ends with a
+  changed-files card, the answer draws the card under its text, 12px down, and
+  the answer's hover actions hang under the card. Before, they floated in the
+  gap between the answer and the card (the human's "Weird spacing" note).
 - **The composer is one box.** The task list and the background commands are
   its top section, under a hairline. The context meter is the first control on
   its footer's right, before attach, Stop and Send. The working caption ("Feature
@@ -59,7 +63,8 @@ The shape of it:
 - The chat thread component (`ChatThread`) wraps each item in a spacer whose top
   margin depends on whether the item opens a turn (`opensTurn`). It measures the
   scroller's scrollbar width with the same ResizeObserver that measures the
-  foot. It draws the top fade.
+  foot. It draws the top fade. A changes item that follows an answer is passed
+  to that answer (`AgentMessage`) and drawn inside it, not on its own.
 - The composer (`Composer`) renders its `top` slot inside its box, and takes a
   new `meter` slot at the start of its footer's right side. The plan strip
   (`PlanStrip`) loses its tab chrome and becomes a section with a hairline
