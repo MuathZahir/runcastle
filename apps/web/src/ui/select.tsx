@@ -1,7 +1,7 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconChevronDown } from '../icons'
-import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SURFACE, cx } from './floating'
+import { FLOATING_CAP, FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SCROLLBAR, FLOATING_SURFACE, cx } from './floating'
 
 /**
  * The app's value picker: one choice out of a fixed, grouped list — the model
@@ -130,7 +130,8 @@ export function SelectValue({
  *
  * The surface states the UI default size (`text-sm`); a caller that passes
  * `text-xs` wins, because Tailwind happens to emit `text-xs` after `text-sm`.
- * Pass `font-mono` for a list of code-shaped values (model ids).
+ * Pass `font-mono` for a list of code-shaped values (model ids): the surface
+ * names no face of its own (the body's is sans), so the caller's is the only one.
  */
 export function SelectContent({
   className,
@@ -153,14 +154,15 @@ export function SelectContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-select-content-available-height) min-w-32',
+          FLOATING_CAP.select,
+          'min-w-32',
           className,
         )}
         {...props}
       >
         {/* At least as wide as the control it dropped from, so a row never
             reads narrower closed than open. */}
-        <SelectPrimitive.Viewport className="w-full min-w-(--radix-select-trigger-width) p-1">
+        <SelectPrimitive.Viewport className={cx('w-full min-w-(--radix-select-trigger-width) p-1', FLOATING_SCROLLBAR)}>
           {children}
         </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>

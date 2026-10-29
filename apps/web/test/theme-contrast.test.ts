@@ -110,7 +110,7 @@ describe('the light palette holds its contrast floors', () => {
   })
 
   it.each(MARKS)('%s clears 3:1 as a mark on every ground', (mark) => {
-    for (const ground of ['surface', 'canvas', 'surface-hover', 'surface-selected']) {
+    for (const ground of ['surface', 'canvas', 'surface-hover', 'surface-selected', 'fill-card']) {
       expectContrast(mark, ground, 3)
     }
   })

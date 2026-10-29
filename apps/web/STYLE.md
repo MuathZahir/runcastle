@@ -19,15 +19,15 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 
 | Namespace | Tokens | Utilities |
 |---|---|---|
-| `--color-*` grounds | `canvas`, `surface`, `surface-raised`, `surface-hover`, `surface-selected`, `surface-inset`, `scrim` | `bg-surface`, `bg-surface-hover`, `bg-scrim` |
+| `--color-*` grounds | `canvas`, `surface`, `surface-raised`, `surface-inset`, `scrim`; see-through (a `color-mix` of `text`): `surface-hover`, `surface-selected`, `fill-card`, `fill-well` | `bg-surface`, `bg-surface-hover`, `bg-fill-well`, `bg-scrim` |
 | `--color-*` lines | `border`, `border-subtle` (translucent, so it reads on every ground — `surface-raised` included), `border-strong` | `border-border-subtle` |
 | `--color-*` text | `text`, `text-secondary`, `text-tertiary`, `text-disabled`, `icon` | `text-text-secondary`, `text-icon` |
 | `--color-*` action | `primary`, `primary-hover`, `on-primary`, `accent`, `accent-text`, `accent-subtle`, `focus-ring` | `bg-primary`, `text-accent-text` |
 | `--color-*` status | `success`, `warning`, `danger`, `danger-subtle`; word peers `success-text`, `warning-text`, `danger-text` | `text-success`, `text-danger-text`, `bg-danger-subtle` |
 | `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped`; a `-text` word peer for each but `draft` | `text-phase-review`, `text-phase-review-text` |
 | `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
-| `--text-*` | `xs` 12/16 · `sm` **13/20, the UI default** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-sm`, `text-xl` |
-| `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, rows) · `lg` 10 (panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
+| `--text-*` | `xs` 12/16 · `sm` 13/20 controls · `md` **14/20, every row** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-md`, `text-xl` |
+| `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, items in a menu, rows inside a card) · `lg` 10 (cards, rows and tabs on their own, panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
 | `--shadow-*` | `popover`, `dialog` — floating layers only | `shadow-popover` |
 | `--ease-*` | `app` (state changes), `out-app` (entering) | `ease-out-app` |
 | `--animate-*` | `rise-in`, `fade-in`, `pop-in`, `dialog-in`, `backdrop-in`, `slide-in-right`, `toast-in`, `breathe`, `spin` | `animate-rise-in` |
@@ -49,8 +49,9 @@ Tailwind's own colour, type, radius and shadow scales are switched off
 by design. No raw hex, no `rgba()`, no arbitrary colours in components.
 
 Metrics are un-namespaced and read with `var()` or an arbitrary value
-(`h-(--control-h)`): `--control-sm` 24 · `--control-h` 28 · `--control-lg` 32,
-`--row-h` 32, `--topbar-h` 44, `--sidebar-w` 248, `--inspector-w` 320,
+(`h-(--control-h)`): `--control-sm` 24 · `--control-h` 32 · `--control-lg` 36,
+`--row-h` 36, `--list-row-h` 44, `--menu-item-h` 32, `--menu-max-h` 360,
+`--topbar-h` 44, `--sidebar-w` 248, `--inspector-w` 320,
 `--aside-w` 380, `--content-max` 760, `--content-wide` 1040 (plus the older
 `--artifact-w`, `--chat-panel-w`, `--notes-rail-w`), and
 `--dur-1/-2/-3` = 120/180/240ms. Spacing is Tailwind's **default 4px scale** —
@@ -128,7 +129,9 @@ variants as lookup maps composed by `cx()` (exported from `ui.tsx`). No `@apply`
 component classes and no runtime styling dependency; `clsx`, `cva` and
 `tailwind-merge` are deliberately absent. `@utility` in `theme.css` is the
 escape hatch for what utilities cannot express (`animate-pop-in`, which also
-sets the Radix transform origin).
+sets the Radix transform origin), and the home of the one material: `card` — a
+`fill-card` ground and a hairline edge drawn inside, the radius left to the
+caller — worn by every selected row and tab, a bay of rows and a live drive.
 
 ### Floating primitives (`src/ui/`)
 
@@ -145,11 +148,11 @@ What they share (`src/ui/floating.ts`): `FLOATING_SURFACE` — `surface-raised`,
 `rounded-lg`, `shadow-popover` (its first ring is the hairline), `text-sm`,
 `animate-pop-in`, and `z-[300]`, one band above `Dialog`'s `z-[200]` so a
 picker opened inside settings floats over its backdrop — and the row classes
-`FLOATING_ITEM` + `FLOATING_ITEM_DEFAULT` | `FLOATING_ITEM_DANGER` (30px,
+`FLOATING_ITEM` + `FLOATING_ITEM_DEFAULT` | `FLOATING_ITEM_DANGER` (32px `text-md`,
 icon + label + trailing slot, `surface-hover` where the keyboard or pointer
 is), `FLOATING_LABEL` (12px medium group heading) and `FLOATING_SEPARATOR`.
 Each content part portals to `<body>`, caps itself at the height Radix
-measured, and stops Escape so the keystroke that closes it does not also close
+measured or `--menu-max-h`, whichever is less (`FLOATING_CAP`), and stops Escape so the keystroke that closes it does not also close
 the dialog around it.
 
 | Primitive | What it is | Notes |
@@ -168,7 +171,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 
 | Primitive | Props | Notes |
 |---|---|---|
-| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 28 (default) · `lg` 32; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
+| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
 | `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
@@ -194,8 +197,8 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | Primitive | Props | Notes |
 |---|---|---|
 | `SectionLabel` | children, `count`, `action`, `className`, `id`. | 12px medium sentence case; the count in plain `text-tertiary`. `SectionTitle` renders exactly the same. |
-| `NavItem` | `label`; `icon` or `phase`; `meta`; `dot` (tone); `active`; `href` or `onClick`; `actions` (hover/focus-revealed); `onContextMenu`; `onDoubleClick`; `tone` `default` · `quiet` (28px `text-xs` tertiary, no glyph, words lined up under the labels — "Show all (N)"); `title`; `className`. | 32px sidebar row. |
-| `ListRow` | `title`; `leading` (a 16px minimum box — a thumbnail takes its own); `subtitle` (inline); `description` (a second line, 12px tertiary); `wrap` (the title wraps — prose); `meta`; `onClick` or `href`; `tooltip`; `label` (accessible name) / `expanded` (`aria-expanded`); `control` (an interactive thing beside the row's button, never inside it; `meta` follows it); `actions` (hover/focus-revealed) + `actionsOverlay` (float over the meta, which fades, instead of reserving width); `active`; `index` (stagger for the first 8 of an initial render); `animate`; `as` `div` · `li` · `article`; `className`. | 40px content row: conversations, projects, tickets, notes. |
+| `NavItem` | `label`; `icon` or `phase`; `meta`; `dot` (tone); `active`; `href` or `onClick`; `actions` (hover/focus-revealed); `onContextMenu`; `onDoubleClick`; `tone` `default` · `quiet` (28px `text-xs` tertiary, no glyph, words lined up under the labels — "Show all (N)"); `title`; `className`. | 36px nav row; the card when `active`. |
+| `ListRow` | `title`; `leading` (a 16px minimum box — a thumbnail takes its own); `subtitle` (inline); `description` (a second line, 12px tertiary); `wrap` (the title wraps — prose); `meta`; `onClick` or `href`; `tooltip`; `label` (accessible name) / `expanded` (`aria-expanded`); `control` (an interactive thing beside the row's button, never inside it; `meta` follows it); `actions` (hover/focus-revealed) + `actionsOverlay` (float over the meta, which fades, instead of reserving width); `active`; `index` (stagger for the first 8 of an initial render); `animate`; `as` `div` · `li` · `article`; `className`. | 44px content row: conversations, projects, tickets, notes; the card when `active`. |
 | `List` | `divided`, `label`, `className`, children. | `divided` rules rows with `border-subtle`. |
 | `PropertyList` | `items: { label, value, sub?, leading? \| tone? \| phase?, mono? }[]`. | Two quiet columns. |
 | `MetaLine` | `items: ({ text?, strong?, tone? \| icon? \| phase?, mono?, title? } \| false \| null)[]`. | One line of 2–4 facts. |

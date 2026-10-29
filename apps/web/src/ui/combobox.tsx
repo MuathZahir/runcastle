@@ -9,7 +9,7 @@ import {
 import { createContext, useContext, useState } from 'react'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconSearch } from '../icons'
-import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, cx } from './floating'
+import { FLOATING_CAP, FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SCROLLBAR, cx } from './floating'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 /**
@@ -124,11 +124,11 @@ export function ComboboxInput({
   ...props
 }: ComponentPropsWithoutRef<typeof CommandInput>) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border-subtle px-3 text-icon">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3 text-icon">
       <IconSearch size={14} className="shrink-0" />
       <CommandInput
         className={cx(
-          'min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 font-sans text-sm text-text outline-none placeholder:text-text-tertiary',
+          'min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 font-sans text-md text-text outline-none placeholder:text-text-tertiary',
           className,
         )}
         {...props}
@@ -139,7 +139,7 @@ export function ComboboxInput({
 
 /**
  * The rows. This is the scroller: capped here rather than on the panel so the
- * search row stays put while the branches move under it. `max-h-64` is the cap
+ * search row stays put while the branches move under it. `--menu-max-h` is the cap
  * in the common case and the panel's measured available height is the backstop
  * in a short window — whichever is smaller bites, and the list scrolls inside
  * it either way.
@@ -152,7 +152,7 @@ export function ComboboxList({
 }: ComponentPropsWithoutRef<typeof CommandList>) {
   return (
     <CommandList
-      className={cx('max-h-64 overflow-y-auto overscroll-contain p-1', className)}
+      className={cx(FLOATING_CAP.combobox, FLOATING_SCROLLBAR, 'overflow-y-auto overscroll-contain p-1', className)}
       {...props}
     />
   )

@@ -32,7 +32,7 @@ import { Tooltip } from './tooltip'
  */
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'solid' | 'accent'
 
-/** `sm` 24 (inside rows and toolbars) · `md` 28 (default) · `lg` 32 (a page header's primary). `xs` is a deprecated alias of `sm`. */
+/** `sm` 24 (inside rows and toolbars) · `md` 32 (default) · `lg` 36 (a page header's primary). `xs` is a deprecated alias of `sm`. */
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'xs'
 
 type CanonicalVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost'
@@ -71,8 +71,8 @@ const BUTTON_EDGE: Record<ButtonAttached, string> = {
 
 const BUTTON_SIZE: Record<CanonicalSize, string> = {
   sm: 'h-(--control-sm) px-2 text-xs',
-  md: 'h-(--control-h) px-2.5 text-sm',
-  lg: 'h-(--control-lg) px-3.5 text-sm',
+  md: 'h-(--control-h) px-3 text-sm',
+  lg: 'h-(--control-lg) px-4 text-sm',
 }
 
 /**
@@ -203,7 +203,7 @@ export type IconButtonProps = Omit<ComponentPropsWithRef<'button'>, 'children'> 
   /** The one icon (an `Icon*` element). `children` is accepted as an alias. */
   icon?: ReactNode
   children?: ReactNode
-  /** `sm` 24 inside rows · `md` 28 in bars (default) · `lg` 32. `xs` = `sm`. */
+  /** `sm` 24 inside rows · `md` 32 in bars (default) · `lg` 36. `xs` = `sm`. */
   size?: ButtonSize
   /**
    * Default `ghost` (no border or fill at rest). `danger-ghost` stays quiet at

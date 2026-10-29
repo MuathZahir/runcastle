@@ -10,7 +10,7 @@
    Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
 :root{
   color-scheme:dark;
-  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
   --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
   --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
   --color-primary:#eceef4;--color-on-primary:#0a0c11;
@@ -23,7 +23,7 @@
 }
 :root[data-theme="light"]{
   color-scheme:light;
-  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
   --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
   --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
   --color-primary:#161a24;--color-on-primary:#ffffff;
@@ -34,7 +34,7 @@
 @media (prefers-color-scheme:light){
   :root:not([data-theme]){
     color-scheme:light;
-    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
     --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
     --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
     --color-primary:#161a24;--color-on-primary:#ffffff;

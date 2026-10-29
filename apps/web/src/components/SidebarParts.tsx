@@ -53,11 +53,10 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
  * so the corners nest. The Orchestrator is the one card the accent fills.
  */
 
-/** A shade off the canvas: the hover fill. */
-const HOVER = 'hover:bg-[color-mix(in_oklab,var(--color-text)_3.5%,transparent)]'
-/** The card: the selected row, the Working bay, a live drive. */
-export const SIDEBAR_CARD =
-  'rounded-lg bg-[color-mix(in_oklab,var(--color-text)_2.5%,transparent)] ring-1 ring-inset ring-border-subtle'
+/** A shade off the canvas: the hover fill, the same as every row's in the app. */
+const HOVER = 'hover:bg-surface-hover'
+/** The card (theme.css `card`): the selected row, the Working bay, a live drive. */
+export const SIDEBAR_CARD = 'card rounded-lg'
 
 /** The glyph a row wears: the feature's landed share of tickets (decision 9). */
 export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; size?: number; label?: string }) {
@@ -187,7 +186,7 @@ function TwoLineRow({
         <span className={cx('flex min-w-0 items-center gap-2', toggle !== undefined && 'pr-6')}>
           <span
             className={cx(
-              'min-w-0 flex-1 truncate text-[14px] leading-5',
+              'min-w-0 flex-1 truncate text-md',
               active ? 'font-medium text-text' : quiet ? 'text-text-secondary' : 'text-text',
             )}
           >
@@ -344,7 +343,7 @@ export function PrepRow({
 /** A shelf's count, in a small round well. */
 export function ShelfCount({ n }: { n: number }) {
   return (
-    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--color-text)_6%,transparent)] px-1.5 text-xs text-text-secondary tabular-nums">
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-fill-well px-1.5 text-xs text-text-secondary tabular-nums">
       {n}
     </span>
   )
@@ -377,7 +376,7 @@ function ShelfHead({
       )}
     >
       <span className={cx('inline-flex shrink-0 [&>svg]:size-4', live ? 'text-accent-text' : 'text-icon')}>{icon}</span>
-      <span className={cx('text-[14px] leading-5', live ? 'font-medium text-text' : 'text-text-secondary group-hover/head:text-text')}>
+      <span className={cx('text-md', live ? 'font-medium text-text' : 'text-text-secondary group-hover/head:text-text')}>
         {label}
       </span>
       <ShelfCount n={count} />
@@ -536,7 +535,7 @@ export function SidebarThreadRow({
     <div
       className={cx(
         'group/thread relative shrink-0 rounded-md transition-colors duration-(--dur-1) ease-app',
-        active ? 'bg-[color-mix(in_oklab,var(--color-text)_6%,transparent)]' : HOVER,
+        active ? 'card' : HOVER,
       )}
       onContextMenu={actions.length > 0 ? openRowMenu : undefined}
     >
@@ -550,7 +549,7 @@ export function SidebarThreadRow({
         <ThreadGlyph state={thread.state} />
         <span
           className={cx(
-            'min-w-0 flex-1 truncate text-[13px] leading-5',
+            'min-w-0 flex-1 truncate text-md',
             active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
           )}
         >
@@ -716,7 +715,7 @@ export function OrchestratorCard({
             <IconOrchestrator size={18} />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-[14px] leading-5 font-semibold tracking-tight text-text">Orchestrator</span>
+            <span className="truncate text-md font-semibold tracking-tight text-text">Orchestrator</span>
             <span className="truncate text-xs text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]">
               {status}
             </span>
@@ -789,7 +788,7 @@ export function DriveCard({
           <IconPlay size={14} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[14px] leading-5 text-text">{label}</span>
+          <span className="truncate text-md text-text">{label}</span>
           <span className="truncate text-xs text-text-tertiary">{detail}</span>
         </span>
         <span className={cx('transition-opacity duration-(--dur-1)', onStop && CONCEAL_NAV)}>

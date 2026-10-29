@@ -104,9 +104,10 @@ function RowControl({
 }
 
 /**
- * One row of the sidebar: 32px, a leading icon (or phase glyph), a one-line
- * truncated label, optional trailing `dot` and `meta`. Selected (`active`) is
- * `surface-selected` + `text` + medium weight — nothing else.
+ * A one-line nav row: 36px (`--row-h`) at the row step (`text-md`), a leading
+ * icon (or phase glyph), a one-line truncated label, optional trailing `dot`
+ * and `meta`. Selected (`active`) is the card + `text` + medium weight —
+ * nothing else.
  *
  * - `icon` | `phase` — the leading glyph (`phase` draws a `PhaseIcon`).
  * - `label` — one line; the full title lives in the page header. `title`
@@ -169,16 +170,16 @@ export function NavItem({
       className={cx(
         // `relative` holds the absolutely placed actions; the row is never
         // itself positioned by a caller (it lives in a flex column).
-        'group/nav relative flex min-w-0 shrink-0 items-center rounded-md',
+        'group/nav relative flex min-w-0 shrink-0 items-center rounded-lg',
         'transition-colors duration-(--dur-1) ease-app',
         quiet ? 'h-7' : 'h-(--row-h)',
-        // Hover is half the selected fill: on the canvas the two tokens are
-        // close enough that a lingering pointer read as a second selection.
+        // Selected is the card, as the sidebar's rows; hover a shade off the
+        // ground, never a block that reads as a second selection.
         active
-          ? 'bg-surface-selected text-text'
+          ? 'card text-text'
           : quiet
-            ? 'text-text-tertiary hover:bg-surface-hover/50 hover:text-text-secondary'
-            : 'text-text-secondary hover:bg-surface-hover/50 hover:text-text',
+            ? 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
+            : 'text-text-secondary hover:bg-surface-hover hover:text-text',
         className,
       )}
     >
@@ -188,10 +189,10 @@ export function NavItem({
         current={active}
         title={title ?? (typeof label === 'string' ? label : undefined)}
         className={cx(
-          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md pr-3 text-left text-inherit',
+          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[inherit] pr-3 text-left text-inherit',
           // Quiet rows carry no glyph: the words start where a label does
           // after a 16px icon (10 + 16 + 8).
-          quiet ? 'pl-8.5 text-xs' : 'pl-2.5 text-sm',
+          quiet ? 'pl-8.5 text-xs' : 'pl-2.5 text-md',
           active && 'font-medium',
         )}
       >
@@ -232,7 +233,7 @@ export function NavItem({
 }
 
 /**
- * A 40px list row in the content panel: a leading glyph, a one-line title,
+ * A 44px list row in the content panel: a leading glyph, a one-line title,
  * trailing meta — conversations, tickets, laps, runs, projects, notes.
  *
  * - `leading` — the glyph (a `PhaseIcon`, a `StatusDot`, an `Icon*`, a
@@ -252,7 +253,7 @@ export function NavItem({
  * - `actions` — trailing controls revealed on hover / focus. By default they
  *   reserve their width; `actionsOverlay` floats them over the `meta` instead
  *   (which fades out while they show), so a row keeps its meta column tight.
- * - `active` — the current row (`surface-selected`).
+ * - `active` — the current row: the card (`card`), as the sidebar's.
  * - `index` — its position on first render: the first 8 rows rise in with a
  *   20ms stagger. Pass it only on the initial list, never on rows that arrive
  *   by polling (those can pass `animate` alone).
@@ -337,9 +338,9 @@ export function ListRow({
     </>
   )
   const inner = cx(
-    'flex min-h-10 min-w-0 flex-1 gap-3 rounded-md px-3 text-left text-sm text-text',
+    'flex min-h-(--list-row-h) min-w-0 flex-1 gap-3 rounded-[inherit] px-3 text-left text-md text-text',
     wrap ? 'items-start' : 'items-center',
-    multiline && 'py-2',
+    multiline && 'py-2.5',
   )
   return (
     <Root
@@ -347,9 +348,9 @@ export function ListRow({
       style={staggered ? ({ '--i': index } as CSSProperties) : undefined}
       className={cx(
         // `relative` anchors the overlaid actions.
-        'group/row relative flex min-w-0 items-center rounded-md transition-colors duration-(--dur-1) ease-app',
+        'group/row relative flex min-w-0 items-center rounded-lg transition-colors duration-(--dur-1) ease-app',
         'list-none',
-        active ? 'bg-surface-selected' : interactive && 'hover:bg-surface-hover',
+        active ? 'card' : interactive && 'hover:bg-surface-hover',
         (staggered || animate) && 'animate-rise-in',
         staggered && '[animation-delay:calc(var(--i)*20ms)]',
         className,

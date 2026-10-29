@@ -32,8 +32,16 @@
   --color-canvas: #0a0c11; /* the frame: the one sidebar, behind the content panel */
   --color-surface: #10131a; /* the content panel: pages, lists, documents */
   --color-surface-raised: #161a24; /* anything floating: menus, dialogs, toasts, tooltips */
-  --color-surface-hover: #1a1e29; /* hovered row, item, ghost button */
-  --color-surface-selected: #212636; /* the current row / tab / pressed ghost */
+  /* Hover and selection are see-through shades of the text colour, not solid
+     blocks (the sidebar's material, carried app-wide): a shade off whatever
+     ground they sit on — canvas, surface or a raised menu alike. */
+  --color-surface-hover: color-mix(in oklab, var(--color-text) 3.5%, transparent); /* hovered row, item, ghost button */
+  --color-surface-selected: color-mix(in oklab, var(--color-text) 6%, transparent); /* a pressed ghost, an open trigger */
+  /* The card: the selected row or tab, a bay of rows, a live drive. A fainter
+     fill than selected, because it always wears a hairline edge too (`card`). */
+  --color-fill-card: color-mix(in oklab, var(--color-text) 2.5%, transparent);
+  /* A small well: a count, a press. */
+  --color-fill-well: color-mix(in oklab, var(--color-text) 6%, transparent);
   --color-surface-inset: #0c0e14; /* code, terminal, transcript, inputs */
 
   /* ---- lines (1px, always) ---- */
@@ -113,14 +121,17 @@
   --font-sans: "Geist Variable", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono Variable", "Cascadia Code", ui-monospace, Consolas, monospace;
 
-  /* ---- type ramp: exactly five steps (DESIGN.md §Type) ----
-     xs 12/16 caption+label · sm 13/20 THE UI DEFAULT · base 14/22 prose ·
+  /* ---- type ramp: six steps (DESIGN.md §Type) ----
+     xs 12/16 caption+label · sm 13/20 controls · md 14/20 THE ROW: every row,
+     menu item and list title, as the sidebar's · base 14/22 prose ·
      lg 16/24 section title · xl 22/28 page title (once per page). */
   --text-*: initial;
   --text-xs: 12px;
   --text-xs--line-height: 16px;
   --text-sm: 13px;
   --text-sm--line-height: 20px;
+  --text-md: 14px;
+  --text-md--line-height: 20px;
   --text-base: 14px;
   --text-base--line-height: 22px;
   --text-lg: 16px;
@@ -171,9 +182,15 @@
      read them with `var()` / arbitrary values (`h-(--control-h)`).
      Spacing stays on Tailwind's default 4px scale — no custom tokens. */
   --control-sm: 24px; /* small buttons, icon buttons in rows */
-  --control-h: 28px; /* default button / input / select */
-  --control-lg: 32px; /* the page's primary, the search field */
-  --row-h: 32px; /* sidebar row */
+  --control-h: 32px; /* default button / input / select */
+  --control-lg: 36px; /* the page's primary, the search field */
+  --row-h: 36px; /* a one-line nav row (NavItem) */
+  --list-row-h: 44px; /* a content list row (ListRow) */
+  --menu-item-h: 32px; /* a row of a menu, select or combobox */
+  /* A floating list stops growing here and scrolls inside itself, however
+     much screen is left below its trigger: ten rows and a bit, so the cut
+     row says there is more. */
+  --menu-max-h: 360px;
   --topbar-h: 44px; /* content topbar, aside header */
   --sidebar-w: 248px; /* the shell overrides it as you drag */
   --inspector-w: 320px;
@@ -212,8 +229,10 @@
   --color-canvas: #f4f6f9;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-surface-hover: #eef1f6;
-  --color-surface-selected: #e4e8f1;
+  --color-surface-hover: color-mix(in oklab, var(--color-text) 4%, transparent);
+  --color-surface-selected: color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-fill-card: color-mix(in oklab, var(--color-text) 3%, transparent);
+  --color-fill-well: color-mix(in oklab, var(--color-text) 7%, transparent);
   --color-surface-inset: #f4f6f9;
   --color-border: #dfe3ec;
   --color-border-subtle: rgb(22 30 50 / 0.07);
@@ -330,6 +349,15 @@
   &:hover [data-sheen] {
     animation: sheen 1.1s var(--ease-app) 1;
   }
+}
+
+/* The card (DESIGN.md §Space, size, shape): the selected row or tab, a bay
+   of rows, a live drive. A faint fill and a hairline edge drawn inside, so it
+   never shifts what it wraps. The radius is the caller's: `rounded-lg` on its
+   own, `rounded-md` for a row inside another card, so the corners nest. */
+@utility card {
+  background-color: var(--color-fill-card);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
 }
 
 /* ---- native element reset ----

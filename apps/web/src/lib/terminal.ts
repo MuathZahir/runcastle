@@ -284,7 +284,7 @@ const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
     '--color-text': '#eceef4',
     '--color-accent': '#4f8ef7',
     '--color-accent-subtle': '#16213a',
-    '--color-surface-selected': '#212636',
+    '--color-border-strong': '#333a4d',
     '--color-danger-text': '#f06363',
     '--color-success-text': '#46b67a',
     '--color-warning-text': '#e2a53b',
@@ -295,7 +295,7 @@ const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
     '--color-text': '#161a24',
     '--color-accent': '#3a7ef0',
     '--color-accent-subtle': '#ecf2fe',
-    '--color-surface-selected': '#e4e8f1',
+    '--color-border-strong': '#cdd2de',
     '--color-danger-text': '#c42828',
     '--color-success-text': '#137745',
     '--color-warning-text': '#9c5600',
@@ -358,8 +358,10 @@ function tokenReader(resolved: Resolved): (name: string) => string {
 /**
  * The xterm palette for the painted theme, derived from the design tokens:
  * ground `surface-inset`, ink `text`, cursor `accent`, selection
- * `accent-subtle`, and the status and accent word colours (`-text` peers, since
- * program output is words) as red/green/yellow/blue. Read at call time, so
+ * `accent-subtle` (`border-strong` once the terminal loses focus — a solid
+ * grey, since xterm cannot read the see-through `surface-selected`), and the
+ * status and accent word colours (`-text` peers, since program output is
+ * words) as red/green/yellow/blue. Read at call time, so
  * calling it again after `<html data-theme>` flips re-themes a live terminal.
  */
 export function terminalTheme(resolved: Resolved, read = tokenReader(resolved)): TerminalTheme {
@@ -370,7 +372,7 @@ export function terminalTheme(resolved: Resolved, read = tokenReader(resolved)):
     cursor: read('--color-accent'),
     cursorAccent: ground,
     selectionBackground: read('--color-accent-subtle'),
-    selectionInactiveBackground: read('--color-surface-selected'),
+    selectionInactiveBackground: read('--color-border-strong'),
     red: read('--color-danger-text'),
     green: read('--color-success-text'),
     yellow: read('--color-warning-text'),

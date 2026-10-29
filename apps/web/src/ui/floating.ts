@@ -39,10 +39,19 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
  * same band rather than each picking a number.
  */
 export const FLOATING_SURFACE =
-  'z-[300] overflow-y-auto rounded-lg bg-surface-raised font-sans text-sm text-text shadow-popover animate-pop-in'
+  'z-[300] overflow-y-auto overscroll-contain rounded-lg bg-surface-raised text-sm text-text shadow-popover animate-pop-in'
 
 /**
- * One row of a floating list (menu item, select option, combobox row): 30px,
+ * The thin scrollbar, on whichever element scrolls a floating list (the panel,
+ * Radix's select viewport, the combobox's list). `styles.css` sets it on the
+ * document, but `scrollbar-width` is not inherited, so a scroller states it;
+ * the colour is inherited and stays the document's.
+ */
+export const FLOATING_SCROLLBAR = '[scrollbar-width:thin]'
+
+/**
+ * One row of a floating list (menu item, select option, combobox row): 32px
+ * (`--menu-item-h`) at the row size (`text-md`, 14px) as the sidebar's rows,
  * icon + label + trailing slot, `surface-hover` where the keyboard or pointer
  * is. Radix marks that row `data-highlighted`; cmdk marks it
  * `data-selected=true` — both are covered so every list lights the same way.
@@ -52,7 +61,7 @@ export const FLOATING_SURFACE =
  * the attribute's value can say.
  */
 export const FLOATING_ITEM =
-  'flex min-h-7.5 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm ' +
+  'flex min-h-(--menu-item-h) w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-md ' +
   'transition-colors duration-(--dur-1) ease-app select-none [&_svg]:shrink-0 ' +
   "data-[disabled='']:cursor-not-allowed data-[disabled='']:opacity-50 " +
   'data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50'
@@ -71,7 +80,21 @@ export const FLOATING_ITEM_DANGER =
 
 /** The group heading inside a floating list: 12px medium, sentence case. */
 export const FLOATING_LABEL =
-  'block px-2 pt-1.5 pb-1 font-sans text-xs font-medium text-text-tertiary'
+  'block px-2.5 pt-2 pb-1 font-sans text-xs font-medium text-text-tertiary'
 
 /** A hairline between groups, bleeding to the panel's edges. */
 export const FLOATING_SEPARATOR = '-mx-1 my-1 h-px bg-border-subtle'
+
+/**
+ * The height cap every floating list wears: the space Radix measured between
+ * the trigger and the screen's edge, but never more than `--menu-max-h`, so a
+ * long list (forty threads, thirty scenarios) stops at ten rows and scrolls
+ * inside itself instead of running to the bottom of the screen. Spelled whole
+ * per primitive, since each Radix part names its own measured variable.
+ */
+export const FLOATING_CAP = {
+  dropdown: 'max-h-[min(var(--radix-dropdown-menu-content-available-height),var(--menu-max-h))]',
+  select: 'max-h-[min(var(--radix-select-content-available-height),var(--menu-max-h))]',
+  /** The combobox's list; its panel keeps the measured cap as the backstop. */
+  combobox: 'max-h-(--menu-max-h)',
+} as const

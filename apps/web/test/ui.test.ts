@@ -419,7 +419,7 @@ describe('SectionLabel and SectionTitle', () => {
 })
 
 describe('NavItem', () => {
-  it('is a 32px row with a leading glyph, a truncated label and trailing meta', () => {
+  it('is a 36px row with a leading glyph, a truncated label and trailing meta', () => {
     const out = html(createElement(NavItem, { phase: 'building', label: 'Auto-continue burns', meta: '3/7', onClick: () => {} }))
     expect(out).toContain('h-(--row-h)')
     expect(out).toContain('text-phase-building')
@@ -428,9 +428,10 @@ describe('NavItem', () => {
     expect(out).toContain('<button')
   })
 
-  it('marks the current page with the selected ground alone', () => {
+  it('marks the current page with the card alone', () => {
     const out = html(createElement(NavItem, { label: 'Chats', active: true, href: '/chats' }))
-    expect(out).toContain('bg-surface-selected')
+    expect(out).toMatch(/class="[^"]*\bcard\b/)
+    expect(out).not.toContain('bg-surface-selected')
     expect(out).toContain('aria-current="page"')
     expect(out).toContain('href="/chats"')
   })
@@ -442,9 +443,10 @@ describe('NavItem', () => {
 })
 
 describe('ListRow and List', () => {
-  it('is a 40px row with glyph, title and meta', () => {
+  it('is a 44px row with glyph, title and meta', () => {
     const out = html(createElement(ListRow, { leading: createElement('svg'), title: 'Untitled chat', meta: '22m', onClick: () => {} }))
-    expect(out).toContain('min-h-10')
+    expect(out).toContain('min-h-(--list-row-h)')
+    expect(out).toContain('text-md')
     expect(out).toContain('Untitled chat')
     expect(out).toContain('22m')
     expect(out).toContain('hover:bg-surface-hover')
@@ -513,7 +515,7 @@ describe('Tabs', () => {
 
   it('selects one tab, and only it is in the Tab order', () => {
     expect(out.match(/aria-selected="true"/g)).toHaveLength(1)
-    expect(out).toMatch(/aria-selected="true" tabindex="0"[^>]*bg-surface-selected[^>]*>Tickets/)
+    expect(out).toMatch(/aria-selected="true" tabindex="0"[^>]*\bcard\b[^>]*>Tickets/)
     expect(out.match(/tabindex="-1"/g)).toHaveLength(2)
   })
 
