@@ -15,9 +15,11 @@ human called it "one of the worst designs I've seen".
 (decisions 1–5). While a feature is open, its row in the sidebar unfolds: the
 row and its threads share one card (the sidebar's card material, as the Working
 bay uses), each thread a one-line row under the feature's two-line row. A
-thread row shows its title, then a spinner while it works, the amber dot while it
-waits on you, or, idle, how long since it moved. The thread in front is filled a
-shade brighter. The main chat comes first, then the other threads newest started
+thread row has three columns so the list reads as structured (the human's second
+look at the design): a leading glyph (a spinner while it works, the amber dot
+while it waits on you, a chat bubble at rest), the title, and how long since it
+moved. The list's last row ("Show N more", "All N conversations") keeps the
+same columns. The thread in front is filled a shade brighter. The main chat comes first, then the other threads newest started
 first, and rows never move because an agent posted. Five rows show; the thread
 in front and any working or waiting thread show even past five; "Show N more"
 opens the rest in place. A feature with only its main chat shows no list
@@ -50,7 +52,8 @@ are new in the sidebar's parts module; `SidebarFeatureRow` takes the open
 feature's list (`threads`) and a "+" (`onNewThread`); `OrchestratorCard` takes a
 "+" too. Two looks were left to the human's eye on the preview page and are
 recorded in the plan: the open feature as one card or as a tree line, and
-whether the "+" waits for hover or stays on the open row. Building writes the
+whether the "+" waits for hover or stays on the open row; and after the
+human's second look, the thread row's style. Building writes the
 chosen values into these components and removes the preview's Tweaks menu.
 
 **How it is wired.**
@@ -116,6 +119,7 @@ open feature's card, five then more, the "+" on the open row.
 
 ## Open questions
 
-- The two looks on the preview page: one card or tree line for the open
-  feature, and the "+" on hover or always on the open row. The plan builds
-  "one card" and "on hover" unless the human picks otherwise.
+- The looks on the preview page: thread rows as an icon column, divided by
+  hairlines, or two lines; one card or tree line for the open feature; the "+"
+  on hover or always on the open row. The plan builds "icon column", "one card"
+  and "on hover" unless the human picks otherwise.
