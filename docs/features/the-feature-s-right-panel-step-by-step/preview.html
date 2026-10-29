@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The feature's right panel, step by step · preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
+.ba h3{margin-bottom:8px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.wire{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);height:300px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.wire .hd{height:30px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--color-border-subtle);font-size:11px;color:var(--color-text-secondary)}
+.wire .tab{padding:2px 8px;border-radius:var(--radius-md);color:var(--color-text-tertiary)}
+.wire .tab.on{background:var(--color-surface-hover);box-shadow:inset 0 0 0 1px var(--color-border-subtle);color:var(--color-text)}
+.wire .bar{height:26px;display:flex;align-items:center;gap:4px;padding:0 10px;font-size:10.5px;color:var(--color-text-tertiary)}
+.wire .grow{flex:1}
+.wire .ttl{margin:14px 16px 0;height:12px;width:60%;border-radius:3px;background:var(--color-text-disabled)}
+.wire .sub{margin:6px 16px 0;height:7px;width:45%;border-radius:3px;background:var(--color-border-strong)}
+.wire .chips{display:flex;gap:6px;margin:16px 16px 0}
+.wire .chips i{height:9px;width:62px;border-radius:3px;background:var(--color-border-strong)}
+.wire .box{margin:14px 16px 0;flex:1;border:1px solid var(--color-border-strong);border-radius:6px;background:var(--color-surface-inset);position:relative}
+.wire .sb{position:absolute;top:6px;bottom:6px;width:4px;border-radius:2px;background:var(--color-border-strong)}
+.wire .fill{flex:1;border-top:1px solid var(--color-border-subtle);background:var(--color-surface-inset);position:relative;padding:12px 16px}
+.wire .ln{height:7px;border-radius:3px;background:var(--color-border-strong);margin-top:7px}
+.wire .pin{position:absolute}
+.cap{margin-top:8px;color:var(--color-text-secondary);font-size:12px}
+.screens{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:12px}
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.flow .st{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:6px 10px;background:var(--color-surface-raised)}
+.flow .ar{color:var(--color-text-tertiary)}
+.hoodgrid{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin-top:8px}
+.hoodgrid dt{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.hoodgrid dd{margin:0;color:var(--color-text-secondary)}
+@media (max-width:760px){.ba{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The feature&rsquo;s right panel, step by step</h1>
+  <p class="lede">The panel beside the chat reads as one panel: views as tabs, no repeated title, the plan preview filling its view, and every doc read in the panel instead of a dialog over the chat. This feature is the frame, the plan and the docs; the round, review and shipped views follow as their own feature. Planned without you.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-feature-s-right-panel-step-by-step/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>The Plan view, today and after</h3>
+    <p class="hint">Drawn to show the shape. The real screens are below, in the app.</p>
+    <div class="ba">
+      <div>
+        <h3>Today</h3>
+        <div class="wire">
+          <div class="hd">Plan &#9662;<span class="grow"></span>&#8250; &#215;</div>
+          <div class="ttl"></div><div class="sub"></div>
+          <div class="chips"><i></i><i></i></div>
+          <div class="box"><span class="sb" style="right:4px"></span></div>
+          <span class="sb" style="right:3px;top:40px;bottom:8px"></span>
+          <div style="height:14px"></div>
+        </div>
+        <p class="cap">A menu for the views, the title again, two file-name buttons that open a dialog, and a framed preview with two scrollbars.</p>
+      </div>
+      <div>
+        <h3>After</h3>
+        <div class="wire">
+          <div class="hd"><span class="tab on">Plan</span><span class="tab">Work</span><span class="tab">Details</span><a class="pin" data-d="3" style="position:static">3</a><span class="grow"></span>&#8250; &#215;</div>
+          <div class="bar"><span class="tab on">Preview</span><span class="tab">Decisions 12</span><span class="tab">Spec</span><a class="pin" data-d="6" style="position:static">6</a><span class="grow"></span>updated 40m ago &#8689;</div>
+          <div class="fill"><div class="ln" style="width:55%;height:10px;background:var(--color-text-disabled)"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:85%"></div><div class="ln" style="width:40%"></div><span class="sb" style="right:4px"></span><a class="pin" data-d="5" style="right:16px;bottom:12px">5</a></div>
+        </div>
+        <p class="cap">Tabs in the header, no repeated title <a class="pin" data-d="2">2</a>, the plan&rsquo;s three parts on one bar <a class="pin" data-d="4">4</a>, the preview filling the view with one scrollbar.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Designed screens, in the real app</h3>
+    <p class="hint">Real components on sample data (the shipped feature &ldquo;The whole app matches the sidebar&rdquo;). Each opens in the design view; the bar at its bottom left switches step, theme and the one Tweak.</p>
+    <div class="screens">
+<!-- screen:plan-view -->
+<div class="designed">
+  <h3>Plan, with a preview <a class="pin" data-d="5">5</a> <a class="pin" data-d="6">6</a></h3>
+  <p>The tabs, the plan&rsquo;s bar and the preview filling the view. Decisions and Spec tabs read the docs in place.</p>
+  <p class="mono">src/components/bodies/PlanBody.tsx · PreviewPanel.tsx · workspace/PanelViewBar.tsx · preview /preview/feature-panel.html?step=plan</p>
+  <button data-open-design="/preview/feature-panel.html?step=plan">Open in design</button>
+</div>
+<!-- /screen:plan-view -->
+<!-- screen:plan-early -->
+<div class="designed">
+  <h3>Plan, before a preview exists <a class="pin" data-d="6">6</a></h3>
+  <p>The same view with Decisions and Spec only; the spec&rsquo;s empty state until it is written.</p>
+  <p class="mono">src/components/bodies/PlanBody.tsx · preview /preview/feature-panel.html?step=early</p>
+  <button data-open-design="/preview/feature-panel.html?step=early">Open in design</button>
+</div>
+<!-- /screen:plan-early -->
+<!-- screen:details-view -->
+<div class="designed">
+  <h3>Details <a class="pin" data-d="8">8</a> <a class="pin" data-d="9">9</a></h3>
+  <p>One column: the facts (branch, started, waits on, waited on by), the docs by title and age, Activity closed.</p>
+  <p class="mono">src/components/inspector/Inspector.tsx · Knowledge.tsx · FeatureFacts.tsx · preview /preview/feature-panel.html?step=docs</p>
+  <button data-open-design="/preview/feature-panel.html?step=docs">Open in design</button>
+</div>
+<!-- /screen:details-view -->
+<!-- screen:doc-reader -->
+<div class="designed">
+  <h3>A doc open <a class="pin" data-d="7">7</a></h3>
+  <p>The reader in place of the list: the way back, the title, the path and age, the doc as prose; open full window on the right.</p>
+  <p class="mono">src/components/DocReader.tsx · preview /preview/feature-panel.html?step=reader</p>
+  <button data-open-design="/preview/feature-panel.html?step=reader">Open in design</button>
+</div>
+<!-- /screen:doc-reader -->
+<!-- screen:work-in-frame -->
+<div class="designed">
+  <h3>Work, Review and Shipped in the new frame <a class="pin" data-d="10">10</a></h3>
+  <p>Only their top and edges change here; their insides are the follow-on feature&rsquo;s. Steps tickets, round, review and shipped.</p>
+  <p class="mono">src/components/Workspace.tsx (documentView) · preview /preview/feature-panel.html?step=round</p>
+  <button data-open-design="/preview/feature-panel.html?step=round">Open in design</button>
+</div>
+<!-- /screen:work-in-frame -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Reading a doc <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">The same in every view: the doc takes the view&rsquo;s place, and the way back returns to it. The chat never hides.</p>
+    <div class="flow">
+      <span class="st">Details &rsaquo; Docs &rsaquo; &ldquo;Menus today&rdquo;</span><span class="ar">&rarr;</span>
+      <span class="st">&larr; Details &rsaquo; Menus today &middot; the doc</span><span class="ar">&rarr;</span>
+      <span class="st">back to the list</span>
+    </div>
+    <div class="flow">
+      <span class="st">Work &rsaquo; Docs menu &rsaquo; spec</span><span class="ar">&rarr;</span>
+      <span class="st">&larr; Work &rsaquo; Spec</span>
+      <span class="st">Review &rsaquo; the outcome link</span><span class="ar">&rarr;</span>
+      <span class="st">&larr; Review &rsaquo; Outcome</span>
+    </div>
+  </div>
+
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The insides of Work, Review and Shipped: &ldquo;The panel&rsquo;s round, review and shipped views&rdquo;, parked as a draft</li><li><i class="dot"></i>The round view listing its tickets twice (the follow-on&rsquo;s first fix)</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The chat column and the test drive view (their own features)</li><li><i class="dot"></i>The shared theme and building blocks</li><li><i class="dot"></i>The activity feed&rsquo;s rows</li><li><i class="dot"></i>New behaviour: no new view, action or data</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+
+      <p class="hint">Built by the lead in this checkout, no worker tickets: the look is already in the designed components. Then one review ticket drives Plan and Details.</p>
+      <dl class="hoodgrid">
+        <dt>FeaturePanel</dt><dd>Tabs over the offered views; under ~520px the closed tabs keep their icon only. Tabs gains a per-item tooltip.</dd>
+        <dt>Workspace documentView</dt><dd>No FeatureHeader in a view (a draft keeps it, as its page); Plan full-height, the rest a 24px column.</dd>
+        <dt>PanelViewBar</dt><dd>New. 40px, sticky: a view&rsquo;s own tabs or way back on the left, facts and actions on the right.</dd>
+        <dt>PlanBody · PreviewPanel</dt><dd>Preview, Decisions, Spec on the bar; the preview fills its view. GrillBody and ArtifactPane retire.</dd>
+        <dt>DocReader · DocProse</dt><dd>New. The reader; PanelState gains the open doc, so Work&rsquo;s Docs menu and Review&rsquo;s outcome link open it in their own view. DocPeek retires.</dd>
+        <dt>DetailsView · Knowledge · FeatureFacts</dt><dd>One column; docs by title and age; facts as a PropertyList; Activity in a closed Disclosure.</dd>
+        <dt>DESIGN.md · STYLE.md</dt><dd>The panel&rsquo;s tabs, column, view bar and reader replace the switcher menu and DocPeek.</dd>
+      </dl>
+
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['This feature is the panel’s frame, the plan and the docs; the round, review and shipped views become their own feature', 'Work, Review and Shipped are about 4,000 lines with problems of their own; the frame must settle first, and the docs view was named first.', 'assumed'],
+    ['A view no longer repeats the feature’s title, branch and age', 'The page’s header row already names the feature; the repeat costs about 170px of every view.', 'assumed'],
+    ['The views switch by tabs in the panel’s header', 'Views of one object switch with tabs, and a view that appears (Review) is seen. Narrow, the closed tabs keep their icon only.', 'assumed'],
+    ['A view is a panel column, not a page', 'The centred page column was made for a whole window. One 40px bar shape for a view’s own switch, used only by Plan and the reader.', 'assumed'],
+    ['The plan preview fills the Plan view', 'Today it is a framed box with its own scrollbar inside a scrolling page.', 'assumed'],
+    ['Decisions and spec are read inside the Plan view', 'The plan is these three documents; a dialog over the chat breaks the page’s layout.', 'assumed'],
+    ['Every doc opens in the panel, never in a dialog', 'A dialog hides the chat the human is talking to about that doc; read in place, the way back returns where they were.', 'assumed'],
+    ['The docs list reads as documents, not files', 'Title and age say what changed; the mono file name repeated the title in code type.', 'assumed'],
+    ['Details is one column: the feature’s facts, its docs, then its activity', 'The facts from the dropped header live here; no second row of tabs; activity is read rarely.', 'assumed'],
+    ['Work, Review and Shipped get the frame only', 'Keeps the cut clean: the follow-on redraws them inside a settled frame.', 'assumed'],
+    ['Where things open counts as layout, not new behaviour', 'The brief rules out new behaviour; these moves change where things appear, not what the app does.', 'assumed'],
+    ['Design and Drive get their tab only', 'Both are frames around another app; the test drive has its own feature.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [1, 'One feature with all six steps, a ticket per step.', 'The brief asked to propose a split for the orchestrator to cut; the planner parked the follow-on draft itself. Easy to undo.', 'challenged'],
+    [3, 'Keep today’s menu, restyled.', 'Tabs were taken out of the page’s header row once before; the challenger asks whether you want them back in the panel. Try the Tweak.', 'challenged'],
+    [6, 'Keep the file-name buttons, opening a dialog.', 'Decisions and spec become readable in two places (Plan and the docs list); the challenger would route the list rows to Plan’s tabs.', 'challenged'],
+    [7, 'Keep the doc dialog, restyled.', 'The biggest change in how docs are shown, and the one the brief named first.'],
+    [11, 'Change only how each thing looks, not where it opens.', 'The brief says “no new behaviour”; tabs, in-panel reading and a closed Activity are layout by the planner’s reading, but the line is yours.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
