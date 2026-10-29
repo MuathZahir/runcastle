@@ -66,7 +66,7 @@ describe('the resting list', () => {
 
   it('opens a chat as its thread from its row', () => {
     const opened: string[] = []
-    const chat: ThreadEntry = { id: 'th_1', title: 'New chat', role: 'project', state: 'working', updatedAt: at, runtime: 'claude-code' }
+    const chat: ThreadEntry = { id: 'th_1', title: 'New chat', role: 'project', state: 'working', createdAt: at, updatedAt: at, runtime: 'claude-code' }
     render(<ConversationList threads={[chat]} pending={false} onOpen={(id) => opened.push(id)} />)
 
     fireEvent.click(screen.getByRole('button', { name: /New chat/ }))

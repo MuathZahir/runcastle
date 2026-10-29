@@ -48,6 +48,7 @@ const chat = (over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   title: 'Read the audit handoff and turn it into features',
   role: 'project',
   state: 'idle',
+  createdAt: NOW - 3 * HOUR,
   updatedAt: NOW - 3 * HOUR,
   runtime: 'claude-code',
   ...over,

@@ -410,14 +410,13 @@ export function markdownFileName(title: string): string {
 }
 
 /**
- * The thread switcher's rows for the thread in front, as its props: rename it
- * (`thread.rename`), and export it (`thread.export`) as a downloaded
- * `<title>.md`. Apart from `useThread`, since the switcher sits in the page
- * header, away from the column. None for a thread that has not begun.
+ * A thread row's menu in the sidebar (threads-in-the-sidebar decision 5), for
+ * any thread: rename it (`thread.rename`), and export it (`thread.export`) as a
+ * downloaded `<title>.md`.
  */
-export function useThreadMenu(threadId: string | null | undefined): {
-  onRename?: (title: string) => void
-  onExport?: (title: string) => void
+export function useThreadActions(): {
+  rename: (threadId: string, title: string) => void
+  exportMarkdown: (threadId: string, title: string) => void
 } {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -425,8 +424,7 @@ export function useThreadMenu(threadId: string | null | undefined): {
     onSuccess: () => void utils.thread.list.invalidate(),
     onError: (e) => toast.push(e.message),
   })
-  if (!threadId) return {}
-  const exportMarkdown = async (title: string): Promise<void> => {
+  const exportMarkdown = async (threadId: string, title: string): Promise<void> => {
     try {
       const { markdown } = await utils.thread.export.fetch({ threadId }, { staleTime: 0 })
       const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
@@ -440,7 +438,7 @@ export function useThreadMenu(threadId: string | null | undefined): {
     }
   }
   return {
-    onRename: (title) => renameM.mutate({ threadId, title }),
-    onExport: (title) => void exportMarkdown(title),
+    rename: (threadId, title) => renameM.mutate({ threadId, title }),
+    exportMarkdown: (threadId, title) => void exportMarkdown(threadId, title),
   }
 }

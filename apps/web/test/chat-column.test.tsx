@@ -10,17 +10,17 @@ import { full as fixture, listItem } from './fixtures'
 import { openMenu } from './floating'
 
 /**
- * The feature page's chat column (chat-as-web-components decision 7): the
- * header's ThreadSwitcher lists every thread of the feature from `thread.list`,
- * finished ones included, and the column shows the one in front through
- * ThreadColumn. A drive errand brings its scenario chat to the front and
- * closing it hands the column back; New thread makes a side thread and selects
- * it; a thread waiting on the human that is not in view puts a dot on the
- * switcher.
+ * The feature page's chat column (chat-as-web-components decision 7) and its
+ * threads in the sidebar (threads-in-the-sidebar): the sidebar lists every
+ * thread of the open feature from `thread.list` under its row, finished ones
+ * included, and the column shows the one in front through ThreadColumn; the
+ * header names it. A drive errand brings its scenario chat to the front and
+ * closing it hands the column back; the row's "+" makes a side thread and
+ * selects it.
  *
- * Tier 2: the switcher is a portalled menu. The seam is the column the page
- * assembles — its hook, the switcher, the chat and the drive that opens an
- * errand — on the app's real tRPC hooks; the server is faked by path.
+ * Tier 2: row menus are portalled. The seam is the page as it assembles its
+ * column and publishes its threads, beside the real sidebar, on the app's real
+ * tRPC hooks; the server is faked by path.
  */
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -29,13 +29,13 @@ vi.mock('../src/lib/live', async (importOriginal) => ({
   useLivePoll: () => false,
 }))
 
-const { ScenarioChatContext, ScenarioChatMenu } = await import('../src/components/chat/ScenarioChat')
-const { ThreadSwitcher } = await import('../src/components/chat/thread/ThreadSwitcher')
+const { ScenarioChatContext } = await import('../src/components/chat/ScenarioChat')
+const { Sidebar } = await import('../src/components/Sidebar')
+const { SidebarThreadsProvider, usePublishSidebarThreads } = await import('../src/lib/sidebar-threads')
 const { useFeatureChatColumn } = await import('../src/components/chat/use-feature-chat-column')
 const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { mainChatInbox, putInInbox } = await import('../src/lib/composer-inbox')
-const { useThreadMenu } = await import('../src/lib/use-thread')
 const { AddressSettled, useHistorySync } = await import('../src/lib/use-history-sync')
 const { featureStatus, mainChatWorking } = await import('../src/lib/feature-ui/status-line')
 const { FeatureStatusLine } = await import('../src/components/workspace/FeatureStatusLine')
@@ -55,6 +55,7 @@ const thread = (id: string, title: string, role: ThreadEntry['role'], over: Part
   title,
   role,
   state: 'idle',
+  createdAt: at,
   updatedAt: at,
   runtime: 'claude-code',
   ...over,
@@ -78,22 +79,67 @@ function server({ threads = [thread('th_main', 'Feature chat', 'main')], extra =
     'feature.launchSession': () => ({ sessionId: 'th_started' }),
     'feature.driveScenarios': () => ({ runnerConfigured: true, scenarios: [] }),
     'feature.openScenarioChat': () => ({ sessionId: 'th_scn' }),
+    // The sidebar's own read: the open feature's row, in its lane.
+    'feature.list': () => ['feat_1', 'feat_a', 'feat_b'].map((id) => listItem({ id, slug: id })),
     ...extra,
   })
 }
 
-/** The feature page's header switcher and column beside its drive panel, as the page assembles them. */
-function Page({ featureId = 'feat_1', driveSessionId, scenario, sessions = [] }: { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions'] }) {
+const nav = {
+  projects: [{ id: 'proj_1', name: 'shop-app', repoPath: '/repo' }],
+  loading: false,
+  doctorError: null,
+  recheckDoctor: () => {},
+  view: 'project' as const,
+  currentProjectId: 'proj_1',
+  currentProject: { id: 'proj_1', name: 'shop-app', repoPath: '/repo' },
+  goHome: () => {},
+  enterProject: () => {},
+  showOpen: () => {},
+  cancelOpen: () => {},
+}
+
+type PageProps = { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions'] }
+
+/** The feature page beside the project sidebar, as the project shell lays them out. */
+function Page(props: PageProps) {
+  return (
+    <SidebarThreadsProvider>
+      <div data-sidebar="">
+        <Sidebar
+          projectId="proj_1"
+          nav={nav}
+          view="feature"
+          selectedFeatureId={props.featureId ?? 'feat_1'}
+          onSelect={() => {}}
+          onSelectProject={() => {}}
+          onNewChat={() => {}}
+          onDraft={() => {}}
+          onOpenPreparation={() => {}}
+        />
+      </div>
+      <FeaturePage {...props} />
+    </SidebarThreadsProvider>
+  )
+}
+
+/** The page's column beside its drive panel, its threads published and named, as Workspace does it. */
+function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions = [] }: PageProps) {
   const column = useFeatureChatColumn({ featureId, sessions, driveSessionId })
-  const threadMenu = useThreadMenu(column.inFront)
+  usePublishSidebarThreads({
+    scope: { featureId },
+    threads: column.threads,
+    current: column.current,
+    pick: column.pick,
+    newThread: column.newThread,
+    ...(column.scenario.sessionId && column.scenario.listed
+      ? { errand: { threadId: column.scenario.sessionId, close: column.scenario.close } }
+      : {}),
+  })
   const full = { ...fixture({ id: featureId }), sessions, tickets: [] } as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
-      <header>
-        <ThreadSwitcher threads={column.threads} current={column.current} onPick={column.pick} onNew={column.newThread} {...threadMenu}>
-          {column.scenario.listed && column.inFront === column.scenario.sessionId && <ScenarioChatMenu chat={column.scenario} />}
-        </ThreadSwitcher>
-      </header>
+      <header data-thread-name="">{column.threads.find((t) => t.id === column.current)?.title}</header>
       <div data-column="">
         <FeatureChat
           full={full}
@@ -128,29 +174,40 @@ function later<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 /** Let the address writes, which wait a tick, land. */
 const tick = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
 
-const switcher = (): HTMLElement =>screen.getByRole('button', { name: 'Thread' })
+/** The header's name for the thread in front. */
+const threadName = (): HTMLElement => document.querySelector('[data-thread-name]') as HTMLElement
 const column = (): HTMLElement => document.querySelector('[data-column]') as HTMLElement
-/** The thread rows the switcher lists, by title. */
-const options = (): string[] => {
-  openMenu(switcher())
-  const rows = screen.getAllByRole('menuitemradio').map((o) => o.querySelector('span span span')?.textContent ?? '')
-  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
-  return rows
-}
+const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
+/** The open feature's thread list in the sidebar; null while it lists none (decision 2). */
+const threadList = (): HTMLElement | null => within(sidebar()).queryByRole('list', { name: 'Threads' })
+/** The thread rows the sidebar lists under the open feature, by title, in order. */
+const options = (): string[] =>
+  threadList() ? within(threadList()!).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
+/** A thread's row in the sidebar's list. */
+const threadRow = (title: string): HTMLElement => within(threadList()!).getByTitle(title).parentElement as HTMLElement
 const pick = (title: string): void => {
-  openMenu(switcher())
-  fireEvent.click(screen.getAllByRole('menuitemradio').find((o) => o.textContent?.includes(title)) as HTMLElement)
+  fireEvent.click(within(threadList()!).getByTitle(title))
 }
-const menuAction = (name: string): void => {
-  openMenu(switcher())
+/** The open feature row's "+". */
+const newThread = (): void => {
+  fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
+}
+/** An item of a thread row's "…" menu. */
+const threadAction = (title: string, name: string): void => {
+  openMenu(within(threadRow(title)).getByRole('button', { name: 'Thread actions' }))
   fireEvent.click(screen.getByRole('menuitem', { name }))
+}
+/** The open feature row's own "…" menu, open. */
+const featureMenu = (): void => {
+  const open = sidebar().querySelector('button[aria-current="page"]')?.parentElement as HTMLElement
+  openMenu(within(open).getByRole('button', { name: 'Feature actions' }))
 }
 const newScenario = (): void => {
   openMenu(screen.getByRole('button', { name: 'Scenario' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
 }
 
-describe('the feature page’s thread switcher', () => {
+describe('the open feature’s threads in the sidebar', () => {
   it('lists every thread from thread.list, finished ones included, with the main chat in front', async () => {
     const api = server({
       threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side', { updatedAt: at - 86_400_000 })],
@@ -158,7 +215,7 @@ describe('the feature page’s thread switcher', () => {
     render(<Page />, { wrapper: api.Wrapper })
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
     await waitFor(() => expect(options()).toEqual(['Feature chat', 'An old side thread']))
-    expect(switcher().textContent).toContain('Feature chat')
+    expect(threadName().textContent).toBe('Feature chat')
   })
 
   it('switches the column to a picked thread', async () => {
@@ -184,7 +241,7 @@ describe('the feature page’s thread switcher', () => {
     cleanup()
     render(<Page />, { wrapper: server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] }).Wrapper })
     expect(await within(column()).findByText('said in th_old')).toBeTruthy()
-    expect(switcher().textContent).toContain('An old side thread')
+    expect(threadName().textContent).toBe('An old side thread')
   })
 
   it('ignores a ?thread= the feature does not hold, drops it from the address, and sends to its own thread', async () => {
@@ -221,7 +278,9 @@ describe('the feature page’s thread switcher', () => {
     expect(await within(column()).findByText('said in th_b')).toBeTruthy()
     expect(within(column()).queryByText('said in th_a_side')).toBeNull()
     await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b?thread=th_b'))
-    expect(switcher().textContent).toContain('Chat of B')
+    expect(threadName().textContent).toBe('Chat of B')
+    // Feature B has only its main chat: the sidebar lists nothing under it (decision 2).
+    expect(threadList()).toBeNull()
   })
 
   it('moving to another feature in the app drops ?thread= from the address at once', async () => {
@@ -246,11 +305,11 @@ describe('the feature page’s thread switcher', () => {
     expect(await within(column()).findByText('said in th_b')).toBeTruthy()
   })
 
-  it('makes a side thread with New thread and selects it', async () => {
+  it('makes a side thread with the row’s "+" and selects it', async () => {
     const api = server()
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    menuAction('New thread')
+    newThread()
     expect(await within(column()).findByText('said in th_side')).toBeTruthy()
     expect(api.inputs('thread.new')).toEqual([{ featureId: 'feat_1' }])
   })
@@ -260,62 +319,72 @@ describe('the feature page’s thread switcher', () => {
     const api = server({ threads: [thread('th_main', 'Fix the login page', 'main', { state: 'working' })] })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    menuAction('New thread')
+    newThread()
     expect(await within(column()).findByText('said in th_side')).toBeTruthy()
 
-    openMenu(switcher())
-    await waitFor(() => expect(screen.getAllByRole('menuitemradio')).toHaveLength(2))
-    const rows = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
-    expect(rows.find((r) => r.includes('Fix the login page'))).toContain('working')
-    expect(rows.find((r) => r.includes('New chat'))).toMatch(/New chat(\d+[mhd]|now)$/)
+    // The main chat first, then the newest started (decision 3).
+    await waitFor(() => expect(options()).toEqual(['Fix the login page', 'New chat']))
+    expect(threadRow('Fix the login page').querySelector('[data-progress]')).not.toBeNull()
+    expect(threadRow('New chat').textContent).toMatch(/New chat(\d+[mhd]|now)$/)
   })
 
-  it('offers no End session', async () => {
-    const api = server()
-    render(<Page />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_main')
-    openMenu(switcher())
-    expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
-  })
-
-  it('puts a dot on the switcher while another thread waits on the human', async () => {
+  it('marks a thread waiting on the human with the amber dot', async () => {
     const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_ask', 'Asking', 'side', { state: 'waiting' })] })
     render(<Page />, { wrapper: api.Wrapper })
-    expect(await within(switcher()).findByLabelText('Another thread is waiting for you')).toBeTruthy()
-    pick('Asking')
-    await waitFor(() => expect(within(switcher()).queryByLabelText('Another thread is waiting for you')).toBeNull())
+    await waitFor(() => expect(options()).toHaveLength(2))
+    expect(within(threadRow('Asking')).getByLabelText('Waiting for you')).toBeTruthy()
+    expect(within(threadRow('Feature chat')).queryByLabelText('Waiting for you')).toBeNull()
   })
 
-  it('renames the thread in front through thread.rename, and the list shows the new title', async () => {
-    const list = [thread('th_main', 'Feature chat', 'main')]
+  it('folds the open feature’s threads away with its chevron, and brings them back', async () => {
+    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
+    render(<Page />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(options()).toHaveLength(2))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Hide threads' }))
+    expect(threadList()).toBeNull()
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Show threads' }))
+    expect(options()).toHaveLength(2)
+  })
+
+  it('renames a thread from its row’s menu through thread.rename, and the list and header show the new title', async () => {
+    const list = [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')]
     const api = server({
       threads: list,
       extra: {
-        'thread.list': () => list,
+        // A fresh array, as a real response is: the cache sees the change.
+        'thread.list': () => [...list],
         'thread.rename': ({ threadId, title }: { threadId: string; title: string }) => {
-          list[0] = { ...list[0], id: threadId, title }
+          list[0] = { ...list[0]!, id: threadId, title }
           return { ok: true }
         },
       },
     })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    menuAction('Rename…')
+    await waitFor(() => expect(options()).toHaveLength(2))
+    threadAction('Feature chat', 'Rename…')
     const field = screen.getByRole('textbox', { name: 'Thread name' })
     fireEvent.change(field, { target: { value: 'Coupon expiry' } })
     fireEvent.submit(field.closest('form')!)
     await waitFor(() => expect(api.inputs('thread.rename')).toEqual([{ threadId: 'th_main', title: 'Coupon expiry' }]))
-    await waitFor(() => expect(switcher().textContent).toContain('Coupon expiry'))
+    await waitFor(() => expect(options()).toEqual(['Coupon expiry', 'An old side thread']))
+    expect(threadName().textContent).toBe('Coupon expiry')
   })
 
-  it('exports the thread in front as a downloaded <title>.md from thread.export', async () => {
+  it('exports a feature’s only chat from the feature row’s menu as a downloaded <title>.md', async () => {
     const api = server({ extra: { 'thread.export': () => ({ markdown: '# Feature chat\n' }) } })
     URL.createObjectURL = vi.fn(() => 'blob:md')
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    menuAction('Export as Markdown')
+    // One chat lists nothing under the row (decision 2): its menu carries the chat's own.
+    expect(threadList()).toBeNull()
+    await waitFor(() => {
+      featureMenu()
+      expect(screen.getByRole('menuitem', { name: 'Export the chat as Markdown' })).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export the chat as Markdown' }))
     await waitFor(() => expect(click).toHaveBeenCalledOnce())
     expect(api.inputs('thread.export')).toEqual([{ threadId: 'th_main' }])
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('Feature chat.md')
@@ -325,18 +394,17 @@ describe('the feature page’s thread switcher', () => {
   it('offers no Rename or Export for a feature chat nobody has started', async () => {
     const api = server({ threads: [] })
     render(<Page />, { wrapper: api.Wrapper })
-    openMenu(switcher())
-    expect(screen.getByRole('menuitem', { name: 'New thread' })).toBeTruthy()
-    expect(screen.queryByRole('menuitem', { name: 'Rename…' })).toBeNull()
-    expect(screen.queryByRole('menuitem', { name: 'Export as Markdown' })).toBeNull()
+    await waitFor(() => expect(within(sidebar()).getByRole('button', { name: 'New thread' })).toBeTruthy())
+    featureMenu()
+    expect(screen.queryByRole('menuitem', { name: 'Rename the chat…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Export the chat as Markdown' })).toBeNull()
   })
 
   it('shows a feature chat nobody started as an empty thread, and its first Send starts it', async () => {
     const api = server({ threads: [] })
     render(<Page />, { wrapper: api.Wrapper })
     // named "New chat" until something is said in it, never by its kind (decision 14)
-    expect(switcher().textContent).toContain('New chat')
-    expect(switcher().textContent).not.toContain('Feature chat')
+    expect(threadName().textContent).toBe('New chat')
     expect(within(column()).getByText('New thread')).toBeTruthy()
     fireEvent.change(within(column()).getByLabelText('Message'), { target: { value: 'Plan the export' } })
     fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
@@ -428,7 +496,7 @@ describe('the scenario errand in the column', () => {
     await within(column()).findByText('said in th_main')
     newScenario()
     expect(await within(column()).findByText('said in th_scn')).toBeTruthy()
-    expect(switcher().textContent).toContain('Scenario chat · New scenario')
+    expect(threadName().textContent).toBe('Scenario chat · New scenario')
     // The drive keeps the panel: no chat is docked inside it.
     expect(within(document.querySelector('[data-panel]') as HTMLElement).queryByLabelText('Message')).toBeNull()
   })
@@ -437,7 +505,7 @@ describe('the scenario errand in the column', () => {
     const api = server()
     render(<Page scenario={FAILED} />, { wrapper: api.Wrapper })
     fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
-    await waitFor(() => expect(switcher().textContent).toContain('Scenario chat · Fix Expired coupon'))
+    await waitFor(() => expect(threadName().textContent).toBe('Scenario chat · Fix Expired coupon'))
   })
 
   it('hands the column back when the errand is closed, and New scenario brings it to the front again', async () => {
@@ -446,7 +514,8 @@ describe('the scenario errand in the column', () => {
     await within(column()).findByText('said in th_main')
     newScenario()
     await within(column()).findByText('said in th_scn')
-    menuAction('Close the scenario chat')
+    await waitFor(() => expect(options()).toContain('Scenario chat · New scenario'))
+    threadAction('Scenario chat · New scenario', 'Close the scenario chat')
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
 
     newScenario()

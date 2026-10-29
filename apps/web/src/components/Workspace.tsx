@@ -44,7 +44,7 @@ import {
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
-import { useThreadMenu } from '../lib/use-thread'
+import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -59,8 +59,7 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
-import { ScenarioChatContext, ScenarioChatMenu } from './chat/ScenarioChat'
-import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
+import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { HeaderAction } from './workspace/HeaderAction'
@@ -287,8 +286,23 @@ export function Workspace({
     sessions: q.data?.sessions ?? [],
     driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
-  // The switcher's Rename and Export, for a thread in front that has begun.
-  const threadMenu = useThreadMenu(column.inFront)
+  // The feature's threads live in the sidebar, under its row
+  // (threads-in-the-sidebar); a draft has none to show.
+  usePublishSidebarThreads(
+    isDraft || !q.data
+      ? null
+      : {
+          scope: { featureId },
+          threads: column.threads,
+          current: column.current,
+          pick: column.pick,
+          newThread: column.newThread,
+          ...(column.scenario.sessionId && column.scenario.listed
+            ? { errand: { threadId: column.scenario.sessionId, close: column.scenario.close } }
+            : {}),
+        },
+  )
+  const inFrontTitle = column.threads.find((t) => t.id === column.current)?.title
 
   // Settles once the refetches land, for a mutation that must stay pending
   // until the page shows what it caused.
@@ -907,8 +921,9 @@ export function Workspace({
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
-      {/* The page's one header row (decision 12): title · status, then the
-          switcher, at most one action, "⋯" and the panel toggle. */}
+      {/* The page's one header row (decision 12): title, then the thread in
+          front named as plain text (threads-in-the-sidebar decision 6) · status,
+          at most one action, "⋯" and the panel toggle. */}
       <PageTopbar
         crumbs={[
           {
@@ -922,6 +937,7 @@ export function Workspace({
               />
             ),
           },
+          ...(!isDraft && inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
         status={status && <FeatureStatusLine status={status} />}
         actions={
@@ -930,24 +946,6 @@ export function Workspace({
               <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
                 Offline, retrying
               </StatusLabel>
-            )}
-            {!isDraft && (
-              // The actions keep their width, so the switcher's is capped: a
-              // thread named by a long first message truncates instead of
-              // pushing over the status (900px leaves it ~144px).
-              <span className="mr-1 flex max-w-[clamp(6rem,16vw,18rem)] min-w-0">
-                <ThreadSwitcher
-                  threads={column.threads}
-                  current={column.current}
-                  onPick={column.pick}
-                  onNew={column.newThread}
-                  {...threadMenu}
-                >
-                  {column.scenario.listed && column.inFront === column.scenario.sessionId && (
-                    <ScenarioChatMenu chat={column.scenario} />
-                  )}
-                </ThreadSwitcher>
-              </span>
             )}
             {headerRow.action && (
               <span className="mr-1 flex">

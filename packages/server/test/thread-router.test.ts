@@ -162,6 +162,11 @@ describe('thread router', () => {
     ])
     expect(list[0]).toMatchObject({ title: 'Fix the login page', state: 'idle', runtime: 'claude-code' })
     expect(list[0]).not.toHaveProperty('readOnlyTranscript')
+    // When each was started, for the sidebar's order (threads-in-the-sidebar
+    // decision 3): the scenario chat was opened before the main chat.
+    expect(list[1]!.createdAt).toBeGreaterThan(0)
+    expect(list[1]!.createdAt).toBeLessThanOrEqual(list[0]!.createdAt)
+    expect(list[0]!.createdAt).toBeLessThan(list[0]!.updatedAt + 1)
     expect(await caller.thread.list({ projectId })).toEqual([])
   })
 

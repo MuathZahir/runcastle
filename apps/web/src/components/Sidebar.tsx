@@ -18,7 +18,10 @@ import { useDesktopNotifications } from '../lib/use-notifications'
 import { useTheme } from '../lib/theme'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import type { ThreadState } from '../lib/chat-thread'
+import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
+import { foldKey, sidebarThreadOrder, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { useThreadActions } from '../lib/use-thread'
+import { UNSTARTED_CHAT } from '../lib/chat-sessions'
 import {
   IconArchive,
   IconClock,
@@ -28,6 +31,7 @@ import {
   IconMessage,
   IconPencil,
   IconSearch,
+  IconX,
 } from '../icons'
 import {
   DropdownMenu,
@@ -49,8 +53,10 @@ import {
   SidebarFeatureRow,
   SidebarBackdrop,
   SidebarStatusLine,
+  SidebarThreadList,
   WorkingShelf,
 } from './SidebarParts'
+import { RenameThreadDialog } from './chat/thread/RenameThreadDialog'
 
 /**
  * localStorage key for whether the Archived shelf starts open — the old
@@ -264,16 +270,65 @@ export function Sidebar(props: SidebarProps) {
     return actions
   }
 
-  const row = (f: FeatureListItem, nested = false) => (
-    <SidebarFeatureRow
-      key={f.id}
-      f={f}
-      active={f.id === selectedFeatureId && view === 'feature'}
-      onSelect={onSelect}
-      actions={actionsFor(f)}
-      nested={nested}
-    />
-  )
+  // The open page's threads (threads-in-the-sidebar): the open feature's under
+  // its row, the Orchestrator's in its card. Nothing else ever lists threads.
+  const published = useSidebarThreads()
+  const fold = useFoldedThreads()
+  const threadActions = useThreadActions()
+  const [renaming, setRenaming] = useState<{ threadId: string; title: string } | null>(null)
+  // A chat nobody has started has no thread yet: nothing to rename or export.
+  const threadActionsFor = (t: ThreadEntry): FeatureAction[] => t.id === UNSTARTED_CHAT ? [] : [
+    { key: 'rename', label: 'Rename…', onSelect: () => setRenaming({ threadId: t.id, title: t.title }) },
+    { key: 'export', label: 'Export as Markdown', icon: <IconDoc />, onSelect: () => threadActions.exportMarkdown(t.id, t.title) },
+    ...(published?.errand?.threadId === t.id
+      ? [{ key: 'close-errand', label: 'Close the scenario chat', icon: <IconX />, onSelect: published.errand.close }]
+      : []),
+  ]
+  const featureThreads =
+    view === 'feature' && published && 'featureId' in published.scope && published.scope.featureId === selectedFeatureId
+      ? published
+      : null
+  const projectThreads = view === 'project' && published && 'projectId' in published.scope ? published : null
+
+  const row = (f: FeatureListItem, nested = false) => {
+    const open = f.id === selectedFeatureId && view === 'feature'
+    const own = open && featureThreads ? featureThreads : null
+    const ordered = own ? sidebarThreadOrder(own.threads) : []
+    // A feature with only its main chat lists nothing: the row is the chat (decision 2).
+    const list =
+      own && ordered.length > 1 ? (
+        <SidebarThreadList threads={ordered} current={own.current} onOpen={own.pick} actionsFor={threadActionsFor} />
+      ) : undefined
+    const key = own ? foldKey(own.scope) : ''
+    // With no list, the one chat's Rename and Export ride on the feature's own menu.
+    const sole = own && ordered.length === 1 && ordered[0]!.id !== UNSTARTED_CHAT ? ordered[0]! : null
+    const soleActions: FeatureAction[] = sole
+      ? [
+          { key: 'rename-chat', label: 'Rename the chat…', icon: <IconPencil />, onSelect: () => setRenaming({ threadId: sole.id, title: sole.title }) },
+          { key: 'export-chat', label: 'Export the chat as Markdown', icon: <IconDoc />, onSelect: () => threadActions.exportMarkdown(sole.id, sole.title) },
+        ]
+      : []
+    return (
+      <SidebarFeatureRow
+        key={f.id}
+        f={f}
+        active={open}
+        // The open feature's row brings its main chat to the front (decision 8).
+        onSelect={(id) => {
+          const main = own && ordered.find((t) => t.role === 'main')
+          if (main) own.pick(main.id)
+          else onSelect(id)
+        }}
+        actions={[...actionsFor(f), ...soleActions]}
+        nested={nested}
+        {...(own ? { onNewThread: own.newThread } : {})}
+        threads={list}
+        folded={fold.folded(key)}
+        onToggleThreads={() => fold.toggle(key)}
+      />
+    )
+  }
+  const orchestratorFold = projectThreads ? foldKey(projectThreads.scope) : ''
 
   const notesWords = openNotes > 0 ? ` · ${openNotes} note${openNotes === 1 ? '' : 's'}` : ''
   const orchestratorActions: FeatureAction[] =
@@ -321,6 +376,23 @@ export function Sidebar(props: SidebarProps) {
           onOpen={onSelectProject}
           actions={orchestratorActions}
           title={ORCHESTRATOR_TITLE}
+          {...(projectThreads
+            ? {
+                onNewThread: projectThreads.newThread,
+                threads: (
+                  <SidebarThreadList
+                    label="Conversations"
+                    threads={sidebarThreadOrder(projectThreads.threads)}
+                    current={projectThreads.current}
+                    onOpen={projectThreads.pick}
+                    actionsFor={threadActionsFor}
+                    {...(projectThreads.rest ? { more: projectThreads.rest } : {})}
+                  />
+                ),
+                folded: fold.folded(orchestratorFold),
+                onToggleThreads: () => fold.toggle(orchestratorFold),
+              }
+            : {})}
         />
       </div>
 
@@ -391,6 +463,16 @@ export function Sidebar(props: SidebarProps) {
           onConfirm={() => del.mutate({ featureId: pendingDelete.feature.id })}
           onCancel={() => setPendingDelete(null)}
           returnFocusRef={pendingDelete.returnFocusRef}
+        />
+      )}
+      {renaming && (
+        <RenameThreadDialog
+          title={renaming.title}
+          onClose={() => setRenaming(null)}
+          onSave={(title) => {
+            threadActions.rename(renaming.threadId, title)
+            setRenaming(null)
+          }}
         />
       )}
     </nav>

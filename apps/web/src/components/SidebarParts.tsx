@@ -518,8 +518,8 @@ export function ThreadGlyph({ state }: { state: ThreadState }) {
 /**
  * One thread under its feature or the Orchestrator, on one line in three
  * columns: its {@link ThreadGlyph}, its title, and how long ago it moved. Its
- * "…" (hover, right-click) holds what the header's switcher held for the
- * thread in front.
+ * "…" (hover, right-click) holds Rename, Export and, on an open scenario
+ * chat, its close (decision 5).
  */
 export function SidebarThreadRow({
   thread,

@@ -8,12 +8,11 @@ import { useLivePoll } from '../lib/live'
 import { Button, Page, PageHeader, PageTopbar } from '../ui'
 import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
-import { useThreadMenu } from '../lib/use-thread'
+import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
-import { ScenarioChatContext, ScenarioChatMenu, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
+import { ScenarioChatContext, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from './chat/ThreadColumn'
-import { ThreadSwitcher } from './chat/thread/ThreadSwitcher'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
@@ -41,8 +40,8 @@ import { useProjectDrive } from '../lib/use-project-drive'
  * landing branch lives in a menu beside the button it argues (decisions.md #3).
  *
  * A list, not a thread, is the resting state (decision 5). A chat in front
- * fills the column as a thread (chat-as-web-components decision 7), and its
- * switcher lists every chat of the project, each opening at once; the project
+ * fills the column as a thread (chat-as-web-components decision 7); every chat
+ * of the project lists in the sidebar under the Orchestrator (threads-in-the-sidebar), and the project
  * crumb steps back to the list. Any number of chats run at once (decision 14).
  */
 
@@ -122,7 +121,7 @@ export function ProjectWorkspace({
   const inFront = opening ? null : front === undefined || closedErrand ? fallback : front
   useThreadInUrl(opening ? undefined : inFront)
   const resting = inFront === null && !opening
-  // The switcher always names what is in front, before the list has it.
+  // The sidebar and the header always name what is in front, before the list has it.
   const threads = withStandIns(
     listed,
     inFront
@@ -134,8 +133,7 @@ export function ProjectWorkspace({
       : [],
   )
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
-  const threadMenu = useThreadMenu(inFront)
-  // Every new-chat door — New chat, the shell's New, the switcher's New thread —
+  // Every new-chat door — New chat, the shell's New, the sidebar's "+" —
   // opens an empty thread, whatever else is running (decision 14); its first
   // message starts it.
   const create = trpc.thread.new.useMutation({
@@ -195,13 +193,21 @@ export function ProjectWorkspace({
     projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
-  // The switcher's menu speaks for the chat in front: the scenario chat's close.
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
-  const switcher = inFront && (
-    <ThreadSwitcher threads={threads} current={inFront} onPick={setFront} onNew={newChat} {...threadMenu}>
-      {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
-    </ThreadSwitcher>
-  )
+  // The Orchestrator's chats live in the sidebar, under its card
+  // (threads-in-the-sidebar); its "All N conversations" is this page at rest.
+  usePublishSidebarThreads({
+    scope: { projectId },
+    threads,
+    current: inFront,
+    pick: setFront,
+    newThread: newChat,
+    ...(scenarioChat.sessionId && scenarioChat.listed
+      ? { errand: { threadId: scenarioChat.sessionId, close: scenarioChat.close } }
+      : {}),
+    rest: () => setFront(null),
+  })
+  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : undefined
 
   const restPage = (
     <div className={resting && !chatHidden ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting || chatHidden}>
@@ -271,12 +277,12 @@ export function ProjectWorkspace({
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       {/* The one header row (design-mode decision 12): the project, then the
-          switcher naming the chat in front as the crumb after it; at most one
-          action; the panel toggle. */}
+          chat in front named as plain text (threads-in-the-sidebar decision 6);
+          at most one action; the panel toggle. */}
       <PageTopbar
         crumbs={[
           { label: projectName, icon: <IconFolder />, ...(resting ? {} : { onClick: () => setFront(null) }) },
-          ...(switcher && !resting ? [{ label: switcher }] : []),
+          ...(inFrontTitle && !resting ? [{ label: inFrontTitle }] : []),
         ]}
         actions={
           <>

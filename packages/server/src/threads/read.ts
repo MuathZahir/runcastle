@@ -166,6 +166,7 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEn
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
     state: agentHost(ctx).isRunning(row.id) ? view.state : 'idle',
+    createdAt: row.createdAt ?? 0,
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
   }
@@ -196,6 +197,7 @@ function freshEntry(row: SessionRow, about: ThreadAbout): ThreadEntry {
     title: threadName(row, [], about),
     role: ROLE[row.kind],
     state: 'idle',
+    createdAt: row.createdAt ?? 0,
     updatedAt: row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
   }
@@ -215,6 +217,7 @@ function transcriptEntry(ctx: AppCtx, row: SessionRow, source: SessionRow): Thre
     title: title ?? NEW_CHAT_NAME,
     role: ROLE[row.kind],
     state: 'idle',
+    createdAt: row.createdAt ?? 0,
     updatedAt: row.endedAt ?? row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
     readOnlyTranscript: true,

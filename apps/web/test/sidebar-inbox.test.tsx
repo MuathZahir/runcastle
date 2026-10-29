@@ -45,7 +45,11 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: data.notes }) } },
-    thread: { list: { useQuery: () => ({ data: data.threads }) } },
+    thread: {
+      list: { useQuery: () => ({ data: data.threads }) },
+      // The sidebar thread rows' Rename (threads-in-the-sidebar decision 5).
+      rename: { useMutation: () => ({ mutate: () => {} }) },
+    },
   },
 }))
 
@@ -55,6 +59,7 @@ const thread = (state: ThreadEntry['state'], updatedAt = 0): ThreadEntry => ({
   title: 'New chat',
   role: 'project',
   state,
+  createdAt: updatedAt,
   updatedAt,
   runtime: 'claude-code',
 })

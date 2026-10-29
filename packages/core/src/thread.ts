@@ -399,13 +399,15 @@ export interface ThreadView {
   cursor: number
 }
 
-/** A row of the thread list in the header's switcher. */
+/** A row of a thread list: the sidebar's, under the open feature or the Orchestrator. */
 export interface ThreadEntry {
   id: string
   title: string
   /** What kind of thread: the feature's main chat, a side thread, a scenario chat, a project chat. */
   role: 'main' | 'side' | 'scenario' | 'project' | 'prepare'
   state: ThreadState
+  /** When it was started: the sidebar's order, which an agent posting never changes. */
+  createdAt: number
   /** When it last moved, for "4m", "2d". */
   updatedAt: number
   runtime: 'claude-code' | 'codex'
