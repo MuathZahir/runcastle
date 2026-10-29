@@ -18,7 +18,8 @@ bay uses), each thread a one-line row under the feature's two-line row. A
 thread row has three columns so the list reads as structured (the human's second
 look at the design): a leading glyph (a spinner while it works, the amber dot
 while it waits on you, a chat bubble at rest), the title, and how long since it
-moved. The list's last row ("Show N more", "All N conversations") keeps the
+moved. A hairline divides one thread row from the next, starting at the title
+column. The list's last row ("Show N more", "All N conversations") keeps the
 same columns. The thread in front is filled a shade brighter. The main chat comes first, then the other threads newest started
 first, and rows never move because an agent posted. Five rows show; the thread
 in front and any working or waiting thread show even past five; "Show N more"
@@ -59,11 +60,9 @@ feature's list (`threads`), a "+" (`onNewThread`) and the fold (`folded`,
 amber dot, the Orchestrator's spinner) hide on exactly the same, so a mouse
 click that leaves focus in the row no longer shows both at once (the human's
 third look; the drive card at the sidebar's foot had the same flaw and is fixed
-with it). Two looks were left to the human's eye on the preview page and are
-recorded in the plan: the open feature as one card or as a tree line, and
-whether the "+" waits for hover or stays on the open row; and after the
-human's second look, the thread row's style. Building writes the
-chosen values into these components and removes the preview's Tweaks menu.
+with it). The human picked divided thread rows, the open feature as one card
+and the "+" on hover; those are written into the components and the preview's
+Tweaks menu is gone.
 
 **How it is wired.**
 
@@ -131,7 +130,6 @@ open feature's card, five then more, the "+" on the open row.
 
 ## Open questions
 
-- The looks on the preview page: thread rows as an icon column, divided by
-  hairlines, or two lines; one card or tree line for the open feature; the "+"
-  on hover or always on the open row. The plan builds "icon column", "one card"
-  and "on hover" unless the human picks otherwise.
+None. The looks left open on the design page were settled with the human's yes
+(2026-10-29): thread rows divided by hairlines, the open feature as one card,
+the "+" on hover.

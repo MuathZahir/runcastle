@@ -163,7 +163,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <header id="what">
   <h1>Threads in the sidebar</h1>
   <p class="lede">The open feature, and the open Orchestrator, list their threads right under their row in the sidebar. The thread dropdown in the chat header goes away; the header just names the thread you are in.</p>
-  <div class="meta"><span><span data-dcount></span> decisions</span><span>Planned without you · the lead builds it, no tickets</span><span class="mono">docs/features/threads-in-the-sidebar/preview.html</span></div>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>Planned without you, confirmed after three design looks · the lead builds it, no tickets</span><span class="mono">docs/features/threads-in-the-sidebar/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
   </nav>
@@ -221,7 +221,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <div class="designed">
   <h3>Sidebar with threads, and the header naming the thread</h3>
   <p>The sidebar pieces, the thread rows and lists, and the header are real components; features and threads are sample data. The open Orchestrator holds its chats inside its own accent card. Four samples: a feature with eight threads, a working feature inside the Working bay, a feature with only its main chat, and the Orchestrator with 80 chats. Click rows and threads to move around.</p>
-  <p>A Tweaks menu (bottom right) holds the looks left to you: thread rows as an <b>icon column</b>, <b>divided</b> by hairlines, or <b>two lines</b>; the open feature as <b>one card</b> or a <b>tree line</b>; and the "+" <b>on hover</b> or <b>always on the open row</b>. The plan builds icon column, one card and on hover unless you pick otherwise.</p>
+  <p>Your picks are built in: thread rows <b>divided</b> by hairlines, the open feature as <b>one card</b>, the "+" <b>on hover</b>.</p>
   <p class="mono">apps/web/src/components/SidebarParts.tsx · preview /preview/sidebar-threads.html</p>
   <button data-open-design="/preview/sidebar-threads.html">Open in design</button>
 </div>
@@ -283,25 +283,20 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['The open feature shows its threads; the others stay folded', 'Only the open feature (or the open Orchestrator) unfolds: one feature\'s threads at a time keeps the list short, and the amber dot already says which other feature needs you. Decision 10 adds a chevron to fold the open one.', 'assumed'],
-    ['A feature with only its main chat shows no thread list', 'A one-item list under a row that already opens that chat is noise; most features never get a second thread.', 'assumed'],
-    ['Threads keep their place: main chat first, then newest started; five, then more', 'Rows never jump when an agent posts. Five show, plus the one in front and any working or waiting. A feature\'s rest open in place; the Orchestrator\'s 80 chats go to its page ("All N conversations"), since its card is pinned above the scrolling list.', 'assumed'],
-    ['"New thread" is a "+" on the open row', 'The switcher\'s New thread needs a new home, and most open features have no list to end. Hover-only or always shown is a Tweaks choice.', 'assumed'],
-    ['Rename, Export and closing a scenario chat move to the thread row\'s menu', 'Every sidebar row already keeps its actions in a "…" menu, and the header carries no menu of its own.', 'assumed'],
-    ['The chat header names the thread as plain text', 'The brief: the header just names the thread you are in. It becomes a second breadcrumb after the feature.', 'assumed'],
-    ['With the sidebar closed, threads switch by opening it again', 'The sidebar is the one place threads live, and it is one key (Ctrl/⌘+B) away.', 'assumed'],
-    ['Clicking a feature row opens its main chat, as today', 'The row\'s destination stays predictable; a waiting side thread is listed right under it with its amber dot.', 'assumed'],
-    ['Threads cannot be archived or hidden in this feature', 'The five-row cap and stable order keep lists short; archiving needs a new server state.', 'assumed'],
+    ['The open feature shows its threads; the others stay folded', 'Only the open feature (or the open Orchestrator) unfolds: one feature\'s threads at a time keeps the list short, and the amber dot already says which other feature needs you. Decision 10 adds a chevron to fold the open one.'],
+    ['A feature with only its main chat shows no thread list', 'A one-item list under a row that already opens that chat is noise; most features never get a second thread.'],
+    ['Threads keep their place: main chat first, then newest started; five, then more', 'Rows never jump when an agent posts. Five show, plus the one in front and any working or waiting. A feature\'s rest open in place; the Orchestrator\'s 80 chats go to its page ("All N conversations"), since its card is pinned above the scrolling list.'],
+    ['"New thread" is a "+" on the open row', 'The switcher\'s New thread needs a new home, and most open features have no list to end. Hover-only or always shown is a Tweaks choice.'],
+    ['Rename, Export and closing a scenario chat move to the thread row\'s menu', 'Every sidebar row already keeps its actions in a "…" menu, and the header carries no menu of its own.'],
+    ['The chat header names the thread as plain text', 'The brief: the header just names the thread you are in. It becomes a second breadcrumb after the feature.'],
+    ['With the sidebar closed, threads switch by opening it again', 'The sidebar is the one place threads live, and it is one key (Ctrl/⌘+B) away.'],
+    ['Clicking a feature row opens its main chat, as today', 'The row\'s destination stays predictable; a waiting side thread is listed right under it with its amber dot.'],
+    ['Threads cannot be archived or hidden in this feature', 'The five-row cap and stable order keep lists short; archiving needs a new server state.'],
     ['The open feature\'s threads can be folded', 'Your ask on the second design look: a chevron on the open feature and the open Orchestrator folds their threads away; a folded feature stays folded, remembered per browser. Replaces decision 1\'s "no chevron".']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [1, 'A chevron on every feature row, each folding on its own, so several features show their threads at once.', 'Your words were "all the threads in each feature"; this plan shows one feature\'s at a time. It also settles decisions 2 and 8.'],
-    [3, 'Order by latest activity, as the dropdown did; and move the Orchestrator card into the scrolling list so its 80 chats open in place.', 'It changes the order you are used to, and sends the Orchestrator\'s overflow to its page rather than the sidebar.'],
-    [7, 'List threads in the command palette (Ctrl/⌘ K) too.', 'The challenger argued a search box is not a list and scales to 80 chats; this plan keeps one place.', 'challenged'],
-    [8, 'Open the waiting side thread when one waits, else the main chat.', 'The challenger argued the amber dot should take you to what waits; this plan keeps the row\'s destination fixed.', 'challenged']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
