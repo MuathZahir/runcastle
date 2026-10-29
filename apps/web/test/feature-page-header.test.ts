@@ -108,11 +108,13 @@ describe('the feature page header', () => {
   // The round-10 review, at ~900px: a thread named by its long first message
   // drew over the status ("Talking with yThis is a test…"). There is no layout
   // engine here, so the test pins what keeps the row from overlapping: the
-  // switcher's width is capped and truncates, and no part of the status line
-  // refuses to shrink.
-  it('never overlaps in a narrow window: the switcher is capped and truncates, the status line shrinks with an ellipsis', () => {
+  // thread is named as the breadcrumb's last item (threads-in-the-sidebar
+  // decision 6), which the breadcrumb truncates first and caps beside a status,
+  // and no part of the status line refuses to shrink.
+  it('never overlaps in a narrow window: the thread name truncates in the breadcrumb, the status line shrinks with an ellipsis', () => {
     const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
-    expect(source).toMatch(/<span className="mr-1 flex max-w-\[clamp\([^"]+\)\] min-w-0">\s*<ThreadSwitcher/)
+    expect(source).not.toContain('<ThreadSwitcher')
+    expect(source).toContain('...(!isDraft && inFrontTitle ? [{ label: inFrontTitle }] : [])')
 
     const line = renderToStaticMarkup(
       createElement(FeatureStatusLine, {

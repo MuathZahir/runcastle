@@ -66,9 +66,12 @@ vi.mock('../src/trpc', () => {
       useUtils: () => ({
         project: { projectSession: { invalidate }, conversations: { invalidate } },
         projectNotes: { invalidate },
-        feature: { driveInfo: { invalidate } },
+        feature: { driveInfo: { invalidate }, list: { invalidate }, get: { invalidate } },
         thread: { list: { invalidate }, export: { fetch: async (input: unknown) => threadExport(input) } },
       }),
+      // The sidebar's reads, for the tests that mount it beside the page.
+      useQueries: () => [],
+      events: { listByProject: { useQuery: () => ({ data: undefined }) } },
       thread: {
         list: { useQuery: () => ({ data: threadsAnswered ? threads : undefined, isPending: !threadsAnswered }) },
         rename: {
@@ -86,6 +89,7 @@ vi.mock('../src/trpc', () => {
       },
       project: {
         list: { useQuery: () => ({ data: [project] }) },
+        prep: { useQuery: () => ({ data: undefined }) },
         branches: { useQuery: () => ({ data: { current: 'main', detected: 'main', branches: [] } }) },
         conversationTranscript: {
           useQuery: () => ({
@@ -109,6 +113,7 @@ vi.mock('../src/trpc', () => {
       },
       projectNotes: {
         list: { useQuery: () => ({ data: notes }) },
+        openCount: { useQuery: () => ({ data: 0 }) },
         add: { useMutation: () => ({ mutateAsync: addNote }) },
         edit: { useMutation: mutation },
         delete: { useMutation: mutation },
@@ -136,11 +141,15 @@ vi.mock('../src/trpc', () => {
         endSession: { useMutation: mutation },
         // The API view's Try it, mounted when a map door lands on the API side.
         sendCall: { useMutation: mutation },
+        testDrive: { useMutation: mutation },
+        archive: { useMutation: mutation },
+        unarchive: { useMutation: mutation },
+        delete: { useMutation: mutation },
       },
     },
   }
 })
-vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
+vi.mock('../src/lib/live', () => ({ useLivePoll: () => false, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: toast }) }))
 vi.mock('../src/lib/use-session-branch', () => ({
   useSessionBranch: () => ({
@@ -167,6 +176,8 @@ vi.mock('../src/lib/project-notes', () => ({
 }))
 
 const { ProjectWorkspace } = await import('../src/components/ProjectWorkspace')
+const { Sidebar } = await import('../src/components/Sidebar')
+const { SidebarThreadsProvider } = await import('../src/lib/sidebar-threads')
 
 const talk = (over: Partial<ProjectTalkApi> = {}): ProjectTalkApi => ({
   session: null,
@@ -235,6 +246,59 @@ function mount(
   const view = render(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />)
   return { rerender: () => view.rerender(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />) }
 }
+
+/**
+ * The page beside the project sidebar, as the project shell lays them out: the
+ * Orchestrator's chats list in its card (threads-in-the-sidebar).
+ */
+function mountWithSidebar(api: ProjectTalkApi = talk()) {
+  const nav = {
+    // Named apart from the page's own crumb, so the two never share a button name.
+    projects: [{ id: 'proj_1', name: 'nav-project', repoPath: '/repo' }],
+    loading: false,
+    doctorError: null,
+    recheckDoctor: () => {},
+    view: 'project' as const,
+    currentProjectId: 'proj_1',
+    currentProject: { id: 'proj_1', name: 'nav-project', repoPath: '/repo' },
+    goHome: () => {},
+    enterProject: () => {},
+    showOpen: () => {},
+    cancelOpen: () => {},
+  }
+  const tree = () => (
+    <SidebarThreadsProvider>
+      <div data-sidebar="">
+        <Sidebar
+          projectId="proj_1"
+          nav={nav}
+          view="project"
+          selectedFeatureId={null}
+          onSelect={() => {}}
+          onSelectProject={() => {}}
+          onNewChat={() => {}}
+          onDraft={() => {}}
+          onOpenPreparation={() => {}}
+        />
+      </div>
+      <ProjectWorkspace projectId="proj_1" talk={api} />
+    </SidebarThreadsProvider>
+  )
+  const view = render(tree())
+  return { rerender: () => view.rerender(tree()) }
+}
+
+const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
+/** The Orchestrator's chats as its card lists them: each row's title, in order. */
+const orchestratorChats = (): string[] => {
+  const list = within(sidebar()).queryByRole('list', { name: 'Conversations' })
+  return list ? within(list).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
+}
+/** A chat's row in the Orchestrator's card. */
+const chatRow = (title: string): HTMLElement =>
+  within(within(sidebar()).getByRole('list', { name: 'Conversations' })).getByTitle(title).parentElement as HTMLElement
+/** The header's name for the chat in front: the breadcrumb's last item. */
+const chatName = (): string => document.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent ?? ''
 
 describe('the Test drive card', () => {
   it('sits under New chat and keeps the plan in a closed Drive setup disclosure', () => {
@@ -409,30 +473,27 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
   title,
   role: 'project',
   state: 'idle',
+  createdAt: updatedAt,
   updatedAt,
   runtime: 'claude-code',
 })
 
 /** The chat in front of the column: its region, and which thread it shows. */
 const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Project chat' })
-const threadSwitcher = (): HTMLElement => screen.getByRole('button', { name: 'Thread' })
 
 /**
  * A finished project chat is a thread like any other (chat-as-web-components
  * decision 7): it opens at once, with no Resume and nothing to end.
  */
 describe('a finished project chat', () => {
-  it('opens as its thread from the list, named in the header’s switcher, with no Resume or End session', () => {
+  it('opens as its thread from the list, named in the header, with no Resume', () => {
     threads = [entry('sess_old', 'Plan the audit')]
     mount()
     fireEvent.click(screen.getByRole('button', { name: /Plan the audit/ }))
 
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
-    expect(threadSwitcher().closest('header')).toBeTruthy()
-    expect(threadSwitcher().textContent).toContain('Plan the audit')
-    openMenu(threadSwitcher())
-    expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    expect(chatName()).toBe('Plan the audit')
+    expect(screen.queryByRole('button', { name: 'Thread' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Resume|Reopen/ })).toBeNull()
   })
 
@@ -465,7 +526,7 @@ describe('New chat with a chat running', () => {
     expect(chatInFront()?.dataset.thread).toBe('th_new')
     expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
     // named "New chat" until something is said in it, never by its kind
-    expect(threadSwitcher().textContent).toContain('New chat')
+    expect(chatName()).toBe('New chat')
   })
 
   // The project page's New door (ProjectShell, the sidebar's Create menu) asks through `newChatRequest`.
@@ -478,25 +539,25 @@ describe('New chat with a chat running', () => {
     expect(consumed).toHaveBeenCalled()
   })
 
-  it('opens an empty new thread from the switcher’s New thread the same way', () => {
+  it('opens an empty new thread from the Orchestrator’s "+" the same way', () => {
     running()
-    mount(talk({ session: liveChat }))
-    openMenu(threadSwitcher())
-    fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
+    mountWithSidebar(talk({ session: liveChat }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
 
-  it('lists the same threads, names and states on the page as in the switcher', () => {
+  it('lists the same threads, names and states on the page as in the Orchestrator’s card', () => {
     threads = [
       { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
       { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting' },
       entry('sess_old', 'An older idea'),
     ]
-    mount(talk({ session: liveChat }))
-    openMenu(threadSwitcher())
-    const inSwitcher = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    mountWithSidebar(talk({ session: liveChat }))
+    // Newest started first (decision 3): these were started in the order of their last move.
+    expect(orchestratorChats()).toEqual(['Audit the journal', 'Cut the export idea', 'An older idea'])
+    expect(chatRow('Audit the journal').querySelector('[data-progress]')).not.toBeNull()
+    expect(within(chatRow('Cut the export idea')).getByLabelText('Waiting for you')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     const onPage = [...document.querySelectorAll('[aria-label="Chats"] [data-list-row]')].map((row) => row.textContent ?? '')
 
@@ -507,10 +568,8 @@ describe('New chat with a chat running', () => {
       ['An older idea', 'd'],
     ]
     expected.forEach(([name, state], i) => {
-      for (const row of [inSwitcher[i], onPage[i]]) {
-        expect(row).toContain(name)
-        expect(row).toContain(state)
-      }
+      expect(onPage[i]).toContain(name)
+      expect(onPage[i]).toContain(state)
     })
   })
 })
@@ -539,20 +598,17 @@ describe('a live project chat', () => {
     expect(chatInFront()).toBeNull()
   })
 
-  it('lists every chat of the project in its switcher, each opening its thread, and New thread selects a new one', () => {
+  it('lists every chat of the project in the Orchestrator’s card, each opening its thread, and "+" selects a new one', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
-    mount(talk({ session: liveChat }))
-    expect(threadSwitcher().textContent).toContain('Audit the journal')
+    mountWithSidebar(talk({ session: liveChat }))
+    expect(chatName()).toBe('Audit the journal')
 
-    openMenu(threadSwitcher())
-    const options = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
-    expect(options[0]).toContain('Audit the journal')
-    expect(options[1]).toContain('An older idea')
-    fireEvent.click(screen.getAllByRole('menuitemradio')[1])
+    expect(orchestratorChats()).toEqual(['Audit the journal', 'An older idea'])
+    fireEvent.click(within(sidebar()).getByTitle('An older idea'))
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(chatName()).toBe('An older idea')
 
-    openMenu(threadSwitcher())
-    fireEvent.click(screen.getByRole('menuitem', { name: 'New thread' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
@@ -560,9 +616,8 @@ describe('a live project chat', () => {
   it('keeps the chat in front in the address, and a reload reopens it', async () => {
     window.history.replaceState(null, '', '/p/proj_1/chat')
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
-    mount(talk({ session: liveChat }))
-    openMenu(threadSwitcher())
-    fireEvent.click(screen.getAllByRole('menuitemradio')[1])
+    mountWithSidebar(talk({ session: liveChat }))
+    fireEvent.click(within(sidebar()).getByTitle('An older idea'))
     await waitFor(() => expect(window.location.search).toBe('?thread=sess_old'))
     expect(window.location.pathname).toBe('/p/proj_1/chat')
 
@@ -610,10 +665,10 @@ describe('a live project chat', () => {
     await waitFor(() => expect(window.location.search).toBe('?thread=sess_1'))
   })
 
-  it('renames the chat in front from its switcher: Enter saves through thread.rename, Escape cancels', () => {
+  it('renames a chat from its row’s menu in the Orchestrator’s card: Enter saves through thread.rename, Escape cancels', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
-    mount(talk({ session: liveChat }))
-    openMenu(threadSwitcher())
+    mountWithSidebar(talk({ session: liveChat }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const field = screen.getByRole('textbox', { name: 'Thread name' }) as HTMLInputElement
     expect(field.value).toBe('Audit the journal')
@@ -621,7 +676,7 @@ describe('a live project chat', () => {
     expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
     expect(threadRename).not.toHaveBeenCalled()
 
-    openMenu(threadSwitcher())
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const again = screen.getByRole('textbox', { name: 'Thread name' })
     fireEvent.change(again, { target: { value: 'Journal audit' } })
@@ -630,13 +685,13 @@ describe('a live project chat', () => {
     expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
   })
 
-  it('exports the chat in front as a downloaded Markdown file named by its title', async () => {
+  it('exports a chat from its row’s menu as a downloaded Markdown file named by its title', async () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
     URL.createObjectURL = vi.fn(() => 'blob:md')
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    mount(talk({ session: liveChat }))
-    openMenu(threadSwitcher())
+    mountWithSidebar(talk({ session: liveChat }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export as Markdown' }))
     await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
     expect(threadExport).toHaveBeenCalledWith({ threadId: 'sess_1' })
@@ -646,11 +701,10 @@ describe('a live project chat', () => {
     click.mockRestore()
   })
 
-  it('has one header row, and no End session in its switcher', () => {
+  it('has one header row, naming the chat in front with no switcher', () => {
     mount(talk({ session: liveChat }))
     expect([...document.querySelectorAll('header')].filter(shown)).toHaveLength(1)
-    openMenu(threadSwitcher())
-    expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Thread' })).toBeNull()
   })
 
   it('opens the panel toggle at the Notes while no drive is up, counting the open ones', () => {

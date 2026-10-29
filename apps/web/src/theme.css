@@ -351,16 +351,6 @@
   }
 }
 
-/* A fine, static film grain: greyscale fractal noise in one repeated tile.
-   White specks on the dark canvas; the light theme swaps in dark specks,
-   since white never shows on a light canvas. */
-@utility film-grain {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  :root[data-theme="light"] & {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .3 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-}
-
 /* The card (DESIGN.md §Space, size, shape): the selected row or tab, a bay
    of rows, a live drive. A faint fill and a hairline edge drawn inside, so it
    never shifts what it wraps. The radius is the caller's: `rounded-lg` on its

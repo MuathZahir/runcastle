@@ -1,7 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import type { ScenarioErrand } from '../../lib/chat-sessions'
-import { IconX } from '../../icons'
-import { DropdownMenuItem } from '../../ui/dropdown-menu'
 
 /**
  * The scenario chat (drive-scenarios decisions 3, 8), in the chat column
@@ -72,12 +70,3 @@ export function scenarioErrandHint(errand: ScenarioErrand): string {
   return errand.kind === 'new' ? 'Describe the state you want to land in' : 'Fix the scenario that failed'
 }
 
-/** The switcher's row while the scenario chat is in front: close, which hands the column back. */
-export function ScenarioChatMenu({ chat }: { chat: ScenarioChatApi }) {
-  if (!chat.sessionId) return null
-  return (
-    <DropdownMenuItem icon={<IconX />} onSelect={chat.close}>
-      Close the scenario chat
-    </DropdownMenuItem>
-  )
-}
