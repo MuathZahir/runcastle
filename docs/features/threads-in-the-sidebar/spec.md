@@ -23,13 +23,17 @@ same columns. The thread in front is filled a shade brighter. The main chat come
 first, and rows never move because an agent posted. Five rows show; the thread
 in front and any working or waiting thread show even past five; "Show N more"
 opens the rest in place. A feature with only its main chat shows no list
-(decision 2). Opening another feature folds this one.
+(decision 2). Opening another feature folds this one. A chevron at the end of
+the open row's title line folds its threads away and brings them back
+(decision 10); a feature you folded stays folded when you return to it,
+remembered per browser like the Archived shelf.
 
 The Orchestrator card works the same way while the Orchestrator page is open:
 its chats list inside its accent card, under a hairline below the card's head,
 so they read as the Orchestrator's and not as the features below (the human's
-first look at the design). The head's chevron turns down while they show, and
-its hover animation stays on the head. Five chats show, and the last row, "All
+first look at the design). The head's "go" chevron becomes the fold chevron
+while it is open, and its hover animation stays on the head. Five chats show,
+and the last row, "All
 N conversations", opens the Orchestrator page at rest, where every
 conversation is listed (decision 3).
 
@@ -49,8 +53,13 @@ bay draw square corners?", plain text that opens nothing (decision 6).
 page beside them (`/preview/sidebar-threads.html`): `SidebarThreadRow`,
 `SidebarThreadList` and the pure `visibleThreads` (which rows a list shows)
 are new in the sidebar's parts module; `SidebarFeatureRow` takes the open
-feature's list (`threads`) and a "+" (`onNewThread`); `OrchestratorCard` takes a
-"+" too. Two looks were left to the human's eye on the preview page and are
+feature's list (`threads`), a "+" (`onNewThread`) and the fold (`folded`,
+`onToggleThreads`); `OrchestratorCard` takes the same. A row's hover controls
+("+", "…") show on hover or keyboard focus only, and the marks under them (the
+amber dot, the Orchestrator's spinner) hide on exactly the same, so a mouse
+click that leaves focus in the row no longer shows both at once (the human's
+third look; the drive card at the sidebar's foot had the same flaw and is fixed
+with it). Two looks were left to the human's eye on the preview page and are
 recorded in the plan: the open feature as one card or as a tree line, and
 whether the "+" waits for hover or stays on the open row; and after the
 human's second look, the thread row's style. Building writes the
@@ -98,7 +107,10 @@ open feature's card, five then more, the "+" on the open row.
   over resolved values** (existing tier-1 rendered-chrome seam, apps/web/STYLE.md):
   the list appears only with two or more threads, "Show N more" opens in place,
   "All N conversations" calls `more`, a thread row's menu holds Rename, Export
-  and a scenario chat's close, the "+" calls `onNewThread`.
+  and a scenario chat's close, the "+" calls `onNewThread`, the chevron calls
+  `onToggleThreads` and a folded row draws no list.
+- **The sidebar's fold memory** (new, beside the Archived shelf's): which
+  features and whether the Orchestrator the human folded, kept per browser.
 - **The feature page and the Orchestrator page through the fake tRPC**
   (existing page tests): no thread dropdown in the header, the header's
   breadcrumb names the thread in front, picking a thread in the sidebar brings

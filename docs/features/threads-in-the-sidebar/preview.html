@@ -283,7 +283,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['The open feature shows its threads; the others stay folded', 'Only the open feature (or the open Orchestrator) unfolds. No chevrons and no fold state: one feature\'s threads at a time keeps the list short, and the amber dot already says which other feature needs you.', 'assumed'],
+    ['The open feature shows its threads; the others stay folded', 'Only the open feature (or the open Orchestrator) unfolds: one feature\'s threads at a time keeps the list short, and the amber dot already says which other feature needs you. Decision 10 adds a chevron to fold the open one.', 'assumed'],
     ['A feature with only its main chat shows no thread list', 'A one-item list under a row that already opens that chat is noise; most features never get a second thread.', 'assumed'],
     ['Threads keep their place: main chat first, then newest started; five, then more', 'Rows never jump when an agent posts. Five show, plus the one in front and any working or waiting. A feature\'s rest open in place; the Orchestrator\'s 80 chats go to its page ("All N conversations"), since its card is pinned above the scrolling list.', 'assumed'],
     ['"New thread" is a "+" on the open row', 'The switcher\'s New thread needs a new home, and most open features have no list to end. Hover-only or always shown is a Tweaks choice.', 'assumed'],
@@ -291,7 +291,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The chat header names the thread as plain text', 'The brief: the header just names the thread you are in. It becomes a second breadcrumb after the feature.', 'assumed'],
     ['With the sidebar closed, threads switch by opening it again', 'The sidebar is the one place threads live, and it is one key (Ctrl/⌘+B) away.', 'assumed'],
     ['Clicking a feature row opens its main chat, as today', 'The row\'s destination stays predictable; a waiting side thread is listed right under it with its amber dot.', 'assumed'],
-    ['Threads cannot be archived or hidden in this feature', 'The five-row cap and stable order keep lists short; archiving needs a new server state.', 'assumed']
+    ['Threads cannot be archived or hidden in this feature', 'The five-row cap and stable order keep lists short; archiving needs a new server state.', 'assumed'],
+    ['The open feature\'s threads can be folded', 'Your ask on the second design look: a chevron on the open feature and the open Orchestrator folds their threads away; a folded feature stays folded, remembered per browser. Replaces decision 1\'s "no chevron".']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

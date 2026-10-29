@@ -52,3 +52,8 @@ gives its reason and the lead's answer stands.
 **Decision:** Every thread stays listed, finished ones included, as the switcher listed them. Archiving or hiding a thread is not part of this feature; if dead threads crowd the lists, it is its own feature.
 **Why:** The five-row cap and stable order already keep the lists short, and archiving a thread needs a new server state, which is more than moving the list.
 **Assumed.** Alternative: an "Archive" row in the thread's "…" menu that drops it from the list.
+
+## 10. The open feature's threads can be folded
+**Decision:** The open feature's row, when it has threads to list, and the open Orchestrator card carry a chevron that folds and unfolds their threads. The chevron stays visible at the row's right; the row's "+" and "…" appear beside it on hover. A feature you folded stays folded when you come back to it, remembered per browser the way the Archived shelf is. Only the open feature has threads to fold: other features still show none (decision 1).
+Supersedes: decision 1's "no chevron and no fold state to remember".
+**Why:** The human, on the second design look: "I want to be able to collapse the features to hide the threads."
