@@ -43,12 +43,17 @@ The open row (feature or Orchestrator) carries a "+" ("New thread") beside its
 chat, exactly as the switcher's and the Create menu's doors do today
 (decision 4). Each thread row has its own "…" menu, also on right-click:
 Rename…, Export as Markdown, and on a scenario chat that is still open, its
-close (decision 5). The feature row still opens the feature with its main chat
-in front (decision 8).
+close (decision 5). A feature with only its main chat lists no rows
+(decision 2), so that chat's Rename and Export ride on the feature row's own
+"…" as "Rename the chat…" and "Export the chat as Markdown"; a chat nobody has
+started has neither. The feature row still opens the feature with its main
+chat in front, and on the open feature brings the main chat back to the front
+(decision 8).
 
 In the content panel's header, the dropdown is gone. The breadcrumb names the
-thread after the feature (or "Orchestrator"): "Sidebar refresh › Why does the
-bay draw square corners?", plain text that opens nothing (decision 6).
+thread after the feature (or after the project's name, on the Orchestrator's
+page): "Sidebar refresh › Why does the bay draw square corners?", plain text
+that opens nothing (decision 6).
 
 **The approved look.** The design lives in the real components, with a preview
 page beside them (`/preview/sidebar-threads.html`): `SidebarThreadRow`,
