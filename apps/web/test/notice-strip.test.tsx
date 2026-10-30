@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NoticeDeck } from '../src/components/chat/NoticeDeck'
+import { NoticeStrip } from '../src/components/chat/NoticeStrip'
 import type { ChatNotice } from '../src/lib/chat-notices'
 
 /**
- * The Chat tab's notice deck. Tier 2: collapsing, fanning out on hover and on
- * keyboard focus, and the card buttons are all behaviour, not markup.
+ * The strip of notices on the composer's top edge. Tier 2: folding the older
+ * notices behind "+N more" and the row buttons are behaviour, not markup.
  */
 const SPEC: ChatNotice = {
   kind: 'spec',
@@ -39,76 +39,70 @@ const RUN: ChatNotice = {
   eventId: 3,
 }
 
-function renderDeck(notices: ChatNotice[] = [RUN, TICKETS, SPEC]) {
+function renderStrip(notices: ChatNotice[] = [RUN, TICKETS, SPEC]) {
   const onAct = vi.fn()
   const onDismiss = vi.fn()
-  render(<NoticeDeck notices={notices} onAct={onAct} onDismiss={onDismiss} />)
-  return { onAct, onDismiss, deck: screen.getByRole('status') }
+  const view = render(<NoticeStrip notices={notices} onAct={onAct} onDismiss={onDismiss} />)
+  return { onAct, onDismiss, view }
 }
 
-describe('NoticeDeck', () => {
+describe('NoticeStrip', () => {
   afterEach(cleanup)
 
   it('is a polite live region', () => {
-    const { deck } = renderDeck()
-    expect(deck.getAttribute('aria-live')).toBe('polite')
+    renderStrip()
+    expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite')
   })
 
-  it('collapsed, only the newest card is readable, the rest peek behind it with a count hint', () => {
-    renderDeck()
-    expect(screen.getByText('3 notifications')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1)
-    expect(screen.getByRole('button', { name: /View run/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /View tickets/ })).toBeNull()
-    // The older cards are still there, as edges.
-    expect(screen.getAllByRole('article', { hidden: true })).toHaveLength(3)
+  it('draws nothing with no notices', () => {
+    const { view } = renderStrip([])
+    expect(view.container.innerHTML).toBe('')
   })
 
-  it('shows no hint for a single card', () => {
-    renderDeck([SPEC])
-    expect(screen.queryByText(/notifications$/)).toBeNull()
+  it('shows only the newest notice, with the older ones folded behind "+N more"', () => {
+    renderStrip()
+    expect(screen.getByText('+2 more')).toBeTruthy()
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'View run' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'View tickets' })).toBeNull()
   })
 
-  it('fans every card out on hover, and collapses again when the pointer leaves', () => {
-    const { deck } = renderDeck()
-    fireEvent.mouseEnter(deck)
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(3)
-    expect(screen.queryByText('3 notifications')).toBeNull()
-    fireEvent.mouseLeave(deck)
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1)
+  it('offers no "+N more" for a single notice', () => {
+    renderStrip([SPEC])
+    expect(screen.queryByRole('button', { expanded: false })).toBeNull()
   })
 
-  it('fans out when keyboard focus moves into it, and collapses when it leaves', () => {
-    render(
-      <>
-        <button>Outside</button>
-        <NoticeDeck notices={[RUN, TICKETS, SPEC]} onAct={() => {}} onDismiss={() => {}} />
-      </>,
-    )
-    act(() => screen.getByRole('button', { name: /View run/ }).focus())
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(3)
-    act(() => screen.getByRole('button', { name: 'Outside' }).focus())
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1)
+  it('opens the older notices above the newest, oldest first, and folds them again', () => {
+    renderStrip()
+    const more = screen.getByRole('button', { name: '+2 more' })
+    fireEvent.click(more)
+    expect(more.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getAllByRole('article').map((n) => within(n).getAllByRole('button')[0].textContent)).toEqual([
+      'View spec',
+      'View tickets',
+      'Show less',
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }))
+    expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
-  it("calls onAct and onDismiss with the card's kind", () => {
-    const { deck, onAct, onDismiss } = renderDeck()
-    fireEvent.mouseEnter(deck)
-    fireEvent.click(screen.getByRole('button', { name: /View tickets/ }))
+  it("calls onAct and onDismiss with the notice's kind", () => {
+    const { onAct, onDismiss } = renderStrip()
+    fireEvent.click(screen.getByRole('button', { name: '+2 more' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View tickets' }))
     expect(onAct).toHaveBeenCalledWith('tickets')
-    const specCard = screen.getByText('Spec written').closest('article') as HTMLElement
-    fireEvent.click(within(specCard).getByRole('button', { name: 'Dismiss' }))
+    const spec = screen.getByText('Spec written').closest('article') as HTMLElement
+    fireEvent.click(within(spec).getByRole('button', { name: 'Dismiss' }))
     expect(onDismiss).toHaveBeenCalledWith('spec')
   })
 
-  it('shows a burst count and wears each card in its hue', () => {
-    const { deck } = renderDeck()
-    fireEvent.mouseEnter(deck)
+  it('shows a burst count and wears each notice in its hue, on its glyph alone', () => {
+    renderStrip([TICKETS, RUN])
     expect(screen.getByLabelText('3 times').textContent).toBe('×3')
-    const hues = screen.getAllByRole('article').map((card) => card.getAttribute('data-hue'))
-    expect(hues).toEqual(['danger', 'tickets', 'planning'])
-    const ticketsCard = screen.getByText('Tickets updated').closest('article') as HTMLElement
-    expect(ticketsCard.innerHTML).toContain('text-phase-tickets')
-    expect(ticketsCard.querySelector('[data-phase="tickets"]')).not.toBeNull()
+    const notice = screen.getByText('Tickets updated').closest('article') as HTMLElement
+    expect(notice.getAttribute('data-hue')).toBe('tickets')
+    const glyph = notice.querySelector('[data-phase="tickets"]')!.parentElement as HTMLElement
+    expect(glyph.getAttribute('class')).toContain('text-phase-tickets')
+    expect(screen.getByRole('button', { name: 'View tickets' }).getAttribute('class')).not.toContain('text-phase-tickets')
   })
 })
