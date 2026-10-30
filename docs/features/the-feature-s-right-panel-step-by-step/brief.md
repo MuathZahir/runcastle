@@ -25,3 +25,14 @@ Waits on "The whole app matches the sidebar"; starts by itself when it merges. R
 ## Working agreement (the human, 2026-10-28)
 
 Checkpoint: the human looks at each feature's designs before it builds. The orchestrator gathers ready designs into one message. Once the human has approved a feature's design, the orchestrator carries it through build, review and merge without asking for a test drive.
+
+## Added by the orchestrator, 2026-10-30
+
+## Merge order with sibling features (orchestrator, 2026-10-30)
+
+This feature's plan now reaches into two things siblings own, so it lands last of the four screen features:
+
+- **The Drive view.** Moving notes and "Send to agent" under the running app touches the drive view that "Test drive looks the part" redesigns (its new shared drive frame, `DriveStage`, `DrivePanel.tsx`, `FeatureDriveView.tsx`). Build the notes onto that new frame, after test drive merges, not onto today's.
+- **The chat's notice area.** Moving the conflict and drive warnings to the top of the chat touches what "The chat looks the part" just replaced: the floating notice deck (`NoticeDeck`) is deleted and notices become one strip on the top edge of the message box. Put the warnings into that strip, after the chat merges.
+
+Tickets that touch the drive view or the chat's notices should not be dispatched until those two have merged and this branch has merged main. The rest can go ahead.
