@@ -185,7 +185,9 @@ document, under **one header row**:
   message being edited, an ask, the notice strip); the **well** sits in the
   thread (your message, a turn's changed files, a subagent); **inset** is
   code-shaped and sits inside those two (a command, output, a diff, an attached
-  image). Raised and well catch one 1px highlight on their top edge. Space
+  image). Raised and well catch one 1px highlight on their top edge, and raised
+  is every floating layer's elevation: dialogs, menus and the palette catch the
+  same edge. Space
   follows the conversation: 12px inside a turn, 40px before a new one. Thread,
   composer and asks share one 760 column edge.
   - **Work reads quietly**: settled, a turn folds to "Worked for 3m 43s". Calls
@@ -257,6 +259,18 @@ holds the Notes inbox and opens only when asked. The drive is the page here too.
 While nothing has been said, the chat shows the hub in a large accent tile and
 "What are we building?", and the line under the composer is the landing
 branch's menu.
+
+**The all-projects home** (`PortfolioHome`; preview `preview/rest.html`) sits in
+the same frame, its sidebar on the project sidebar's head height and halftone,
+so moving between the two moves nothing. Projects with something running or
+waiting on you sit on top in the Working bay's card, waiting before running,
+its edge lit while something runs; the rest follow as divided rows. With
+nothing live there is no card.
+
+**First-run setup** (`components/first-run/`) hangs from a fixed height, so its
+rail stays put between steps; a long step scrolls in the panel. The current step
+wears the card. The intro's mark sits in the accent tile the Orchestrator's empty
+chat opens on: the same first moment.
 
 **Conversations** is a page of its own, opened by "All N conversations": every
 chat of the project, as a ledger. From 1000px of content the dates hang in a
@@ -375,7 +389,7 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 | `Checkbox` / `Switch` | Hairline box / track on the inset ground; on = `primary` fill. Focus ring outside. |
 | `EmptyState` | Tertiary icon, title, hint, ≤1 action; no frame. |
 | `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 32px `text-md` items with icons + kbd. The lists (menu, select, combobox) stop at `--menu-max-h`, then scroll; a `Popover` holds prose and stops only at the screen's edge. |
-| `Dialog` | `surface-raised`, `rounded-lg`, `shadow-dialog`; title `text-lg`, footer right-aligned with one primary. |
+| `Dialog` | `surface-raised`, `rounded-lg`, `shadow-dialog`; title `text-lg`, footer right-aligned with one primary, a hairline over it only when the body above scrolls. |
 | `Tooltip` | Small `surface-raised` label after 400ms hover; for every IconButton. |
 | `PageTopbar`, `Page`, `PageHeader`, `Section`, `Aside`, `AsideLayout` | The frame pieces above, so every surface lays out identically. `AsideLayout` floats the aside over the page when the panel is too narrow to share. |
 

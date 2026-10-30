@@ -76,6 +76,6 @@ Checked in a 620px-tall window: a long step scrolls inside the panel rather than
 **Assumed.** Alternative: none worth weighing.
 
 ## 14. Built here, with no tickets, each screen its own commit
-**Decision:** The designs are already written in the real components, so the work left is committing them, updating the five test files they touch, the palette's search word and the two design docs. The lead does that in this checkout. The home and the first-run changes land as separate commits so either can be undone alone, and the report says what changed and why.
+**Decision:** The designs are already written in the real components, so the work left is committing them, updating the test files they touch, adding one test for the home's split, the palette's search word and the two design docs. The lead does that in this checkout. The home and the first-run changes land as separate commits so either can be undone alone, and the report says what changed and why.
 **Why:** It is one small pass over files the lead has just read; a worker would pay for a container to repeat it. With no design check, the report and those seams are what the human has to come back to.
 **Assumed.** Alternative: a review ticket that walks every screen in a drive.

@@ -20,7 +20,7 @@ Each screen keeps its layout and its job. This is a short list of gaps, already 
 
 **Dialogs and forms.** A footer has a hairline only when the body above it scrolls, so Add to backlog loses its own. Merge's conflict line becomes the shared failure note. The discard question sits on the card rather than the hover ground. Fields and form spacing stay.
 
-**What is left to build.** Commit the designs, with the home and first-run as separate commits so either can be undone alone. Update the five test files they touch (AFK step, palette rows, first-run wizard, the draft card's rhythm, wizard rail). Add "orchestrator" to the palette's search words. Update `DESIGN.md` (the home, the wizard, the elevation's edge) and `STYLE.md` (the palette's exception, `surfaces.ts`'s raised material). No server, schema or API change.
+**What is left to build.** Commit the designs, with the home and first-run as separate commits so either can be undone alone. Update the test files they touch (AFK step, palette rows, first-run wizard, the draft card's rhythm, wizard rail) and add a test for the home's split. Add "orchestrator" to the palette's search words, with its test. Update `DESIGN.md` (the home, the wizard, the elevation's edge) and `STYLE.md` (the palette's exception, `surfaces.ts`'s raised material). No server, schema or API change.
 
 The preview page `apps/web/preview/rest.html` renders every state by `?state=`, reached with real components on sample data.
 
