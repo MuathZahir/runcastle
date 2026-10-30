@@ -78,6 +78,10 @@ export function usePanel(view: PanelView | null, onViewChange: (view: FeatureVie
     share: width / PANEL_SHARE.max,
     ...(reading && reading.view === view ? { doc: reading.doc } : {}),
   }
+  // …for good: coming back to that view shows the view, not the doc.
+  useEffect(() => {
+    if (reading && reading.view !== view) setRest(({ reading: _left, ...kept }) => kept)
+  }, [reading, view])
 
   // Read through a ref so `dispatch` is stable: the stream handler and the
   // mutation callbacks that call it outlive the render they were made in.
