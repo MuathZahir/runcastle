@@ -235,7 +235,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
 
 **Other**: `DimLine`, `FailureNote` (`danger-subtle` notice about a path),
-`BranchMenu`, `RoundSections`, `NoteThumbnail`, `BARE_BUTTON`.
+`BranchMenu`, `NoteThumbnail`, `BARE_BUTTON`.
 
 ### Dialog
 
