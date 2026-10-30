@@ -25,7 +25,7 @@ export interface DriveNoteStore extends Omit<DriveNoteActions, 'onOpenPicture'> 
   earlier?: { title: string; notes: DriveNote[] }
   /** What has already gone to the agent, folded. */
   sent?: DriveNote[]
-  /** Save a note, with its picture if it has one. */
+  /** Save a note, with its picture if it has one; settles once `notes` holds it. */
   add: (text: string, picture: Blob | null) => Promise<void>
   /** A feature's notes go to its agent; with none waiting, no Send is offered. */
   send?: { count: number; run: () => void }
@@ -74,6 +74,9 @@ export function DrivePage({
   // The box's draft outlives the rail being folded.
   const [draft, setDraft] = useState('')
   const [staged, setStaged] = useState<Staged | null>(null)
+  // Notes on their way to the server. A slow server must not make one vanish
+  // from the box and stay nowhere: it is on the list from the keystroke.
+  const [saving, setSaving] = useState<DriveNote[]>([])
   const field = useRef<HTMLTextAreaElement>(null)
 
   const stagePicture = (png: Blob) => {
@@ -90,14 +93,19 @@ export function DrivePage({
   const addNote = () => {
     const text = draft.trim() || WORDLESS
     const png = staged?.png ?? null
+    const id = `saving-${Date.now()}`
+    setSaving((notes) => [...notes, { id, text, when: 'now', saving: true, ...(staged ? { picture: staged.src } : {}) }])
     setDraft('')
     setStaged(null)
-    store.add(text, png).catch((e: unknown) => {
-      // Put it back: a note that failed to save is not lost.
-      setDraft(text === WORDLESS ? '' : text)
-      if (png) stagePicture(png)
-      toast.push(e instanceof Error ? e.message : 'the note could not be saved')
-    })
+    store
+      .add(text, png)
+      .catch((e: unknown) => {
+        // Put it back: a note that failed to save is not lost.
+        setDraft(text === WORDLESS ? '' : text)
+        if (png) stagePicture(png)
+        toast.push(e instanceof Error ? e.message : 'the note could not be saved')
+      })
+      .finally(() => setSaving((notes) => notes.filter((n) => n.id !== id)))
   }
 
   const leading = (
@@ -134,7 +142,7 @@ export function DrivePage({
           railOpen && (
             <Aside title="Notes" onClose={() => setRailOpen(false)} bodyClassName="flex flex-col">
               <DriveNotes
-                notes={store.notes}
+                notes={[...store.notes, ...saving]}
                 earlier={store.earlier}
                 sent={store.sent}
                 onOpenPicture={setPicture}

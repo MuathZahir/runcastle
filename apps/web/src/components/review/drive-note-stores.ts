@@ -41,7 +41,7 @@ export function useFeatureDriveNotes(featureId: string, onSent: () => void): Dri
   const utils = trpc.useUtils()
   const toast = useToast()
   const list = trpc.notes.list.useQuery({ featureId })
-  const refresh = () => void utils.notes.list.invalidate({ featureId })
+  const refresh = () => utils.notes.list.invalidate({ featureId })
   const fail = (e: { message: string }) => toast.push(e.message)
   const add = trpc.notes.add.useMutation()
   const edit = trpc.notes.edit.useMutation({ onSuccess: refresh, onError: fail })
@@ -74,7 +74,7 @@ export function useFeatureDriveNotes(featureId: string, onSent: () => void): Dri
           toast.push(`the note was saved, but its picture was not: ${e instanceof Error ? e.message : String(e)}`),
         )
       }
-      refresh()
+      await refresh()
     },
     onEdit: (noteId, text) => edit.mutate({ noteId, text }),
     onDelete: (noteId) => remove.mutate({ noteId }),
@@ -91,7 +91,7 @@ export function useProjectDriveNotes(projectId: string, startedAt: number | unde
   const utils = trpc.useUtils()
   const toast = useToast()
   const list = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  const refresh = () => void utils.projectNotes.invalidate()
+  const refresh = () => utils.projectNotes.invalidate()
   const fail = (e: { message: string }) => toast.push(e.message)
   const add = trpc.projectNotes.add.useMutation()
   const edit = trpc.projectNotes.edit.useMutation({ onSuccess: refresh, onError: fail })
@@ -107,7 +107,7 @@ export function useProjectDriveNotes(projectId: string, startedAt: number | unde
           toast.push(`the note was saved, but its picture was not: ${e instanceof Error ? e.message : String(e)}`),
         )
       }
-      refresh()
+      await refresh()
     },
     onEdit: (noteId, text) => edit.mutate({ noteId, text }),
     onDelete: (noteId) => remove.mutate({ noteId }),

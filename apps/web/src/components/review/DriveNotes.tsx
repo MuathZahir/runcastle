@@ -19,6 +19,8 @@ export interface DriveNote {
   picture?: string
   /** "4m", "now": the note's age. */
   when: string
+  /** On its way to the server: shown at once, nothing to act on yet. */
+  saving?: boolean
 }
 
 export interface DriveNoteActions {
@@ -147,8 +149,8 @@ export function DriveNoteRow({
               </>
             ) : (
               <>
-                <span className="min-w-0 flex-1 truncate">{note.when}</span>
-                {!readonly && <Actions onEdit={() => setMode('edit')} onDelete={() => setMode('delete')} />}
+                <span className="min-w-0 flex-1 truncate">{note.saving ? 'Saving…' : note.when}</span>
+                {!readonly && !note.saving && <Actions onEdit={() => setMode('edit')} onDelete={() => setMode('delete')} />}
               </>
             )}
           </div>

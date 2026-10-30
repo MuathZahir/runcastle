@@ -18,7 +18,7 @@ const uploadScreenshot = vi.fn(async () => {})
 vi.mock('../src/trpc', () => ({
   trpc: {
     useUtils: () => ({
-      notes: { list: { invalidate: vi.fn() }, delivery: { invalidate: vi.fn() } },
+      notes: { list: { invalidate: async () => undefined }, delivery: { invalidate: vi.fn() } },
       feature: { driveInfo: { invalidate: vi.fn() } },
     }),
     notes: {
@@ -43,6 +43,7 @@ vi.mock('../src/lib/land-on-chat', () => ({ useLandOnChat: () => () => undefined
 vi.mock('../src/lib/reviews', async (original) => ({
   ...(await original<typeof import('../src/lib/reviews')>()),
   uploadScreenshot,
+  toPngBlob: async (image: Blob) => image,
 }))
 vi.mock('../src/components/TerminalView', () => ({ TerminalView: () => null }))
 
@@ -190,6 +191,51 @@ describe('the feature’s drive page', () => {
     expect(add).toHaveBeenCalledWith({ featureId: 'feat_1', text: 'the total jumps' })
     expect(uploadScreenshot).not.toHaveBeenCalled()
     expect(box.value).toBe('')
+  })
+
+  it('shows a note at once, saving, however slow the server is', async () => {
+    let answer: (note: { id: string }) => void = () => undefined
+    add.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve as typeof answer)))
+    page()
+    const box = screen.getByRole('textbox', { name: 'Note' })
+    fireEvent.change(box, { target: { value: 'seen while the server thinks' } })
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter' })
+    })
+    expect(screen.getByText('seen while the server thinks')).toBeTruthy()
+    expect(screen.getByText('Saving…')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Delete note' })).toBeNull()
+
+    await act(async () => answer({ id: 'note_new' }))
+    expect(screen.queryByText('Saving…')).toBeNull()
+  })
+
+  it('shows the picture on a note still saving, and sends it up with the note', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:picked')
+    let answer: (note: { id: string }) => void = () => undefined
+    add.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve as typeof answer)))
+    const { container } = render(
+      <FeatureDriveView
+        full={{ feature: { id: 'feat_1', projectId: 'proj_1', branch: 'feature/x', title: 'Coupons' }, sessions: [] } as never}
+        stopping={false}
+        onBack={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    )
+    const picker = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(picker, { target: { files: [new File(['png'], 'shot.png', { type: 'image/png' })] } })
+    })
+    const box = screen.getByRole('textbox', { name: 'Note' })
+    fireEvent.change(box, { target: { value: 'with a picture' } })
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter' })
+    })
+    const row = screen.getByText('with a picture').closest('li')!
+    expect(row.querySelector('img')?.getAttribute('src')).toBe('blob:picked')
+
+    await act(async () => answer({ id: 'note_new' }))
+    expect(uploadScreenshot).toHaveBeenCalledWith('note_new', expect.any(Blob))
   })
 
   it('names what is driven and goes back from the head', () => {
