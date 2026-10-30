@@ -38,10 +38,11 @@ the feature's title; each starts with its own content in a 24px column.
 - **Details**: one column: the feature's facts (branch, started or merged,
   what it waits on, what waits on it), its docs by title and age (the outcome
   first once merged), then Activity, closed.
-- **Drive** is untouched here: another feature is working on it (decision 20).
+- **Drive** is untouched here: "Test drive looks the part" makes it a full page
+  of its own, with the notes in its rail (decision 23).
 - **Review is gone.** Its notices sit atop the chat; its findings and
   recording are the review ticket's; the shipped record is Details. The notes
-  for the agent sit in Details, under the docs, until the drive takes them.
+  for the agent go to the drive's rail.
 - **Docs** are read in the panel, in the view they were opened from, with a
   way back, never in a dialog.
 
@@ -86,10 +87,9 @@ build connects them without restyling.
   strip (decision 21): `NoticeStrip` takes rows that hold while their condition
   does, with an optional action. The shipped record's
   facts are Details': "Merged" from the shipped time, the outcome doc first.
-- **Notes for now** (decision 20): `DetailsView` takes a `notes` node; the
-  page passes `OpenWork` (notes only, no findings) while a drive is up or the
-  agent has declared ready, unless the drive has taken the notes by then. `OpenWork`, `NoteComposer`, `SendToAgent`,
-  `WorkList` and `NotesRail` stay for the drive's feature to mount.
+- **Notes** (decision 23): not this feature's. `OpenWork`, `NoteComposer`,
+  `SendToAgent`, `WorkList` and `NotesRail` stay for test drive to take; whatever
+  it leaves unused goes when this branch merges its change.
 - **The doc reader** (decision 7): `PanelState` gains the open doc (a
   relPath), cleared on a view switch or close; an open doc unfolds a folded
   panel. The view on show renders `DocReader` in its place with "← <view>".
@@ -126,7 +126,7 @@ has landed.
   and friends): stop, retry, model, edit and cancel reach the same tRPC calls
   `RunBody` and `TicketsBody` made.
 - **`PlanBody`, `DetailsView`, `DocReader`** (tier 1/2): tabs per existing
-  doc; doc order and facts; reader back; the notes shown only when passed.
+  doc; doc order and facts; reader back.
 
 ## Out of scope
 
@@ -138,5 +138,7 @@ has landed.
 
 ## Open questions
 
-- When the drive's feature mounts the notes, remove them from Details (one
-  prop, decision 20).
+- Test drive merges before this feature. This branch takes its change when it
+  lands, and the panel's Drive tab follows whatever it decides. If it has not
+  landed when the rest is done, the orchestrator is told; nothing is built
+  around it.

@@ -121,6 +121,7 @@ detail below is the planner's reading of it, the decision is marked assumed.*
 **Decision:** This feature does not touch the drive view: the human said to forget it, because another feature is working on it. The notes for the agent do not move there here. The pieces stay (`OpenWork`, `NoteComposer`, `SendToAgent`, `WorkList`, `NotesRail`) so that feature can mount them. Since Review was the only place to write notes and press Send to agent, they show in Details for now, under the docs, under the same condition Review used (a drive is up, or the agent declared ready). Removing them from Details when the drive takes them is one prop. Supersedes: 16.
 **Why:** The human: "Forget about the drive panel (it's being worked on by another feature)." Retiring Review with no other home would leave notes taken in a drive with no way to reach the agent.
 **Assumed.** Alternative: no notes anywhere until the drive feature lands; the human reports in the chat.
+**Changed by the orchestrator:** superseded by decision 23; the drive's rail is the notes' home.
 
 ## 21. Review's warnings are standing rows on the chat's notice strip
 **Decision:** The merge-conflict, conflict-resolved, refused-drive, nothing-verified and project-drive-blocking warnings show as rows on the notice strip on the message box, in its one-line shape: a title, a short subtitle, an action only where the warning had one. Unlike the strip's event notices they stand while their condition holds and go when it ends. Details a one-liner cannot hold (a conflict's file list, a refusal's raw message) go in the row's tooltip.
@@ -132,3 +133,9 @@ detail below is the planner's reading of it, the decision is marked assumed.*
 **Decision:** The opened ticket card does not offer Retry, Retry on another model, Retry fresh or Resolve with agent. A failed ticket keeps what the panel already gave it: the model picker, Edit, Cancel and, for a landing conflict, Resolve in terminal. Supersedes: 19, for "retry".
 **Why:** The human's Retry and Waive were removed on purpose by an earlier feature: a failed ticket is the agent's to handle (tickets-and-review-are-tools-not-phases, decision 12). The planner's design and ticket 1 brought them back by mistake, against this feature's own "no new behaviour" (decision 11).
 **Assumed.** Alternative: keep Retry, as the design the human approved showed it.
+
+## 23. Notes do not sit in Details; the drive's rail is their home
+**Decision:** Details shows no notes. "Test drive looks the part" takes them: the human chose its direction A, where the drive is a full page of its own with a right rail of Notes, then Chat, for the feature drive and the project drive. Send to agent lives there. The Review view's "all good" send goes with Review. This feature leaves the panel's Drive tab alone and does not redesign it; test drive decides how a drive is entered. Test drive merges before this feature, and this branch takes its change when it lands. Supersedes: 20.
+**Why:** The stopgap existed only because notes had no home, and now they have one by the human's own choice of direction.
+**Assumed.** Alternative: keep the stopgap in Details until test drive has landed.
+**Changed by the orchestrator:** relayed from "Test drive looks the part"; the human chose direction A but has not yet said yes to building it.
