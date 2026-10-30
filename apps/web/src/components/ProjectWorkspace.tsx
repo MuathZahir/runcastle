@@ -299,6 +299,7 @@ export function ProjectWorkspace({
           { label: projectName, icon: <IconFolder />, ...(resting ? {} : { onClick: () => setFront(null) }) },
           ...(inFrontTitle && !resting ? [{ label: inFrontTitle }] : []),
         ]}
+        trail
         actions={
           <>
             {/* The resting page's Test drive card is behind a live chat, so the

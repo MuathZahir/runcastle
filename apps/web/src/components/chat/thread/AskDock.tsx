@@ -4,6 +4,7 @@ import type { FormField, FormValues, Question, ToolCall } from '../../../lib/cha
 import { IconArrowLeft, IconArrowRight, IconCheck, IconCube, IconExternalLink, IconShield, IconSparkle } from '../../../icons'
 import { BARE_BUTTON, Button, Checkbox, Field, Kbd, LINK, TextField, cx } from '../../../ui'
 import { DiffView } from './Work'
+import { RAISED } from './surfaces'
 
 /**
  * What the agent waits on the human for, docked where the composer is
@@ -15,8 +16,7 @@ import { DiffView } from './Work'
  */
 
 export const DOCK =
-  'relative flex flex-col rounded-lg bg-surface-raised ' +
-  'shadow-[var(--elevation-popover),inset_0_1px_0_color-mix(in_oklab,var(--color-text)_6%,transparent)] animate-rise-in'
+  `${RAISED} relative flex flex-col animate-rise-in`
 
 /** One numbered choice. */
 function Choice({

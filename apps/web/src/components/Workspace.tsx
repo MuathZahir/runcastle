@@ -978,6 +978,7 @@ export function Workspace({
           },
           ...(!isDraft && inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
+        trail
         status={status && <FeatureStatusLine status={status} />}
         actions={
           <>

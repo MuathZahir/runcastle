@@ -190,27 +190,6 @@ function FastToggle({ fast, onFast }: { fast: boolean; onFast: (on: boolean) => 
   return <IconButton label="Fast mode" icon={<IconFlame size={14} />} active={fast} onClick={() => onFast(!fast)} />
 }
 
-function Ring({ percent, size = 16 }: { percent: number; size?: number }) {
-  const r = (size - 3) / 2
-  const c = 2 * Math.PI * r
-  const tone = percent >= 85 ? 'text-danger' : percent >= 65 ? 'text-warning' : 'text-text-secondary'
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth="2" className="stroke-border" />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray={`${(c * percent) / 100} ${c}`}
-        className={cx('stroke-current transition-[stroke-dasharray] duration-(--dur-3) ease-app', tone)}
-      />
-    </svg>
-  )
-}
-
 function Bar({ percent }: { percent: number }) {
   const tone = percent >= 85 ? 'bg-danger' : percent >= 65 ? 'bg-warning' : 'bg-text-secondary'
   return (
@@ -253,8 +232,10 @@ export function ContextMeter({
           'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary data-[state=open]:bg-surface-hover',
         )}
       >
-        <Ring percent={percent} />
-        {percent >= 65 && <span>{percent}%</span>}
+        <span className="block w-5">
+          <Bar percent={percent} />
+        </span>
+        <span>{percent}%</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">
@@ -328,13 +309,13 @@ export function PlanStrip({
   const current = plan.find((p) => p.status === 'in_progress')
   if (plan.length === 0 && tasks.length === 0) return null
   return (
-    <div className="mx-3 flex flex-col overflow-hidden rounded-t-lg border-x border-t border-border-subtle bg-surface-inset text-sm animate-rise-in">
+    <div className="flex flex-col overflow-hidden rounded-t-lg border-b border-border-subtle text-sm animate-fade-in">
       {plan.length > 0 && (
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className={cx(BARE_BUTTON, 'flex h-8 min-w-0 cursor-pointer items-center gap-2 px-3 text-left hover:bg-surface-hover')}
+          className={cx(BARE_BUTTON, 'flex h-9 min-w-0 cursor-pointer items-center gap-2 px-4 text-left transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover')}
         >
           <span className="shrink-0 text-xs tabular-nums text-text-tertiary">
             {done} of {plan.length}
@@ -344,7 +325,7 @@ export function PlanStrip({
         </button>
       )}
       {open && (
-        <ol className="m-0 flex list-none flex-col gap-0.5 px-3 pb-2 animate-fade-in">
+        <ol className="m-0 flex list-none flex-col gap-0.5 px-4 pb-2 animate-fade-in">
           {plan.map((p) => (
             <li key={p.content} className="flex min-w-0 items-center gap-2 py-0.5">
               {p.status === 'completed' ? (
@@ -362,7 +343,7 @@ export function PlanStrip({
         </ol>
       )}
       {tasks.map((t) => (
-        <div key={t.id} className="flex h-8 min-w-0 items-center gap-2 border-t border-border-subtle px-3">
+        <div key={t.id} className="flex h-9 min-w-0 items-center gap-2 border-t border-border-subtle pr-2 pl-4 first:border-t-0">
           <IconTerminal size={13} className="shrink-0 text-icon" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{t.title}</span>
           <span className="shrink-0 text-xs tabular-nums text-text-tertiary">running {duration(Math.max(0, Math.round((now - t.startedAt) / 1000)))}</span>
