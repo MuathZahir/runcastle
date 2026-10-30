@@ -9,7 +9,7 @@ import { parsePath, pathFor, samePage, type AppLocation } from './routes'
  * navigates. Nothing else in the app calls `pushState` — which is what keeps
  * the URL from becoming a second source of truth, and what makes "overlays
  * never enter history" a property of the code rather than a convention: the
- * palette, Settings, DocPeek, the Draft form and the read-only phase pin are
+ * palette, Settings, the Draft form and the read-only phase pin are
  * not representable as an {@link AppLocation}, so they cannot reach here.
  */
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   INITIAL_PANEL,
-  isPanelView,
   panelReducer,
   type PanelAction,
   type PanelState,
@@ -9,11 +8,9 @@ import {
 } from '../../lib/feature-ui/panel'
 import { useRailWidth, type RailWidthSpec } from '../../lib/rail-width'
 import type { FeatureView } from '../../lib/routes'
-import { IconButton, cx } from '../../ui'
-import { SELECT_GHOST, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { IconButton, Tabs, cx } from '../../ui'
 import {
   IconArrowLeft,
-  IconCheck,
   IconChevronRight,
   IconDoc,
   IconInfo,
@@ -35,7 +32,6 @@ import {
 export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
   plan: <IconDoc />,
   work: <IconList />,
-  review: <IconCheck />,
   design: <IconPen />,
   drive: <IconPlay />,
   details: <IconInfo />,
@@ -48,6 +44,12 @@ export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
  */
 export const PANEL_SHARE: RailWidthSpec = { key: 'runcastle.feature.panel', min: 0, max: 1000, default: 500 }
 
+/** The open doc, with the view it was opened in. */
+interface Reading {
+  doc: string
+  view: PanelView
+}
+
 export interface PanelApi {
   state: PanelState
   dispatch: (action: PanelAction) => void
@@ -55,16 +57,29 @@ export interface PanelApi {
 
 /**
  * The panel's state: the open view is `view` (the shell's), everything else
- * — the size, the fold, the design path and who opened it — is held here, the
+ * — the size, the fold, the design path, who opened it and the doc being
+ * read — is held here, the
  * size remembered per browser. A dispatch that changes the view hands it back
  * through `onViewChange`, `chat` for the panel closed.
  */
 export function usePanel(view: PanelView | null, onViewChange: (view: FeatureView) => void): PanelApi {
   const { width, setWidth } = useRailWidth(PANEL_SHARE)
-  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed' | 'last'>>({
+  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed' | 'last'> & { reading?: Reading }>({
     collapsed: INITIAL_PANEL.collapsed,
   })
-  const state: PanelState = { ...rest, view, share: width / PANEL_SHARE.max }
+  const { reading, ...held } = rest
+  // A doc is read in the view it was opened from; once the shell shows
+  // another (the address bar, history), the doc stays behind.
+  const state: PanelState = {
+    ...held,
+    view,
+    share: width / PANEL_SHARE.max,
+    ...(reading && reading.view === view ? { doc: reading.doc } : {}),
+  }
+  // …for good: coming back to that view shows the view, not the doc.
+  useEffect(() => {
+    if (reading && reading.view !== view) setRest(({ reading: _left, ...kept }) => kept)
+  }, [reading, view])
 
   // Read through a ref so `dispatch` is stable: the stream handler and the
   // mutation callbacks that call it outlive the render they were made in.
@@ -74,12 +89,13 @@ export function usePanel(view: PanelView | null, onViewChange: (view: FeatureVie
   const dispatch = useCallback(
     (action: PanelAction) => {
       const before = current.current.state
-      const { view: nextView, share, path, origin, collapsed, last } = panelReducer(before, action)
+      const { view: nextView, share, path, origin, collapsed, last, doc } = panelReducer(before, action)
       setRest({
         collapsed,
         ...(path !== undefined ? { path } : {}),
         ...(origin ? { origin } : {}),
         ...(last ? { last } : {}),
+        ...(doc && nextView ? { reading: { doc, view: nextView } } : {}),
       })
       if (share !== before.share) setWidth(share * PANEL_SHARE.max)
       if (nextView !== before.view) current.current.onViewChange(nextView ?? 'chat')
@@ -238,24 +254,22 @@ export function FeaturePanel({
   children: ReactNode
 }) {
   return (
-    <section aria-label={label(view)} className="flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
+    <section aria-label={label(view)} className="@container/panel flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-3">
-        <Select value={view} onValueChange={(next) => isPanelView(next) && views.includes(next) && onSwitch(next)}>
-          <SelectTrigger aria-label="Panel view" className={cx(SELECT_GHOST, 'text-sm text-text')}>
-            <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[view]}</span>
-            <SelectValue>{label(view)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent align="start" aria-label="Panel view">
-            {views.map((v) => (
-              <SelectItem key={v} value={v}>
-                <span className="flex items-center gap-2">
-                  <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[v]}</span>
-                  {label(v)}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* The views as tabs (decision 3). A narrow panel keeps the open tab's
+            word and only the icons of the others, each named by its tooltip. */}
+        <Tabs
+          items={views.map((v) => ({
+            id: v,
+            label: <span className={cx(v !== view && '@max-[520px]/panel:sr-only')}>{label(v)}</span>,
+            icon: PANEL_VIEW_ICON[v],
+            ...(v !== view ? { tooltip: label(v) } : {}),
+          }))}
+          value={view}
+          onChange={onSwitch}
+          label="Panel views"
+          className="-ml-1 min-w-0"
+        />
         {view === 'design' && path && (
           <span className="min-w-0 truncate font-mono text-xs text-text-tertiary">{path}</span>
         )}

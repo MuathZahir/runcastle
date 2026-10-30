@@ -24,14 +24,15 @@ describe('panelShowRequest', () => {
   })
 
   it('opens every fixed view by name: emit_tickets’ Work among them', () => {
-    for (const view of ['plan', 'work', 'review', 'details', 'design', 'drive'] as const) {
+    for (const view of ['plan', 'work', 'details', 'design', 'drive'] as const) {
       expect(panelShowRequest(event(1, { data: { view } }), 'f1')).toEqual({ view })
     }
   })
 
-  it('reads the retired body and preview as Work and Plan', () => {
+  it('reads the retired body, preview and review as Tickets and Plan', () => {
     expect(panelShowRequest(event(1, { data: { view: 'body' } }), 'f1')).toEqual({ view: 'work' })
     expect(panelShowRequest(event(1, { data: { view: 'preview' } }), 'f1')).toEqual({ view: 'plan' })
+    expect(panelShowRequest(event(1, { data: { view: 'review' } }), 'f1')).toEqual({ view: 'work' })
   })
 
   it('reads the screen width the agent asked the design view to open at, and drops one that is no width', () => {

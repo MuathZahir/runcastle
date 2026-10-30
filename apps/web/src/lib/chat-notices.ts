@@ -16,7 +16,7 @@ export type ChatNoticeKind = 'preview' | 'spec' | 'tickets' | 'ticket-failed' | 
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
 
 /** The panel view a notice's action opens beside the chat (design-mode decision 5). */
-export type ChatNoticeTarget = Extract<PanelView, 'plan' | 'work' | 'review' | 'drive'>
+export type ChatNoticeTarget = Extract<PanelView, 'plan' | 'work' | 'drive'>
 
 export interface ChatNotice {
   kind: ChatNoticeKind
@@ -33,7 +33,24 @@ export interface ChatNotice {
   expiresAfterMs?: number
 }
 
-/** How long "Test drive running" stays: the human just started it, and the drive opens beside the chat. */
+/**
+ * A row on the strip that stands while its condition holds and goes when it
+ * ends (the-feature-s-right-panel decision 21) — a merge conflict, a refused
+ * review drive — rather than one an event raised. It has an action only where
+ * the warning has one, and a ✕ only where it can be waved away.
+ */
+export interface StandingNotice {
+  key: string
+  hue: ChatNoticeHue
+  title: string
+  subtitle: string
+  /** What a one-liner cannot hold: a conflict's file list, a refusal's raw message. */
+  tooltip?: string
+  action?: { label: string; onClick: () => void; disabled?: boolean }
+  onDismiss?: () => void
+}
+
+/** How long "Test drive running" stays:the human just started it, and the drive opens beside the chat. */
 export const DRIVE_NOTICE_MS = 5000
 
 /** What `noticeFor` needs to know about a ticket to recognise a review pass. */
@@ -140,7 +157,8 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Review ready',
       subtitle: ticket.title,
       actionLabel: 'View review',
-      target: 'review',
+      // The review ticket's row carries what it found (the-feature-s-right-panel decision 15).
+      target: 'work',
     })
   }
 

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FeatureView } from '../src/lib/routes'
 import { FeaturePanel, PanelSplit, PanelStrip, usePanel } from '../src/components/workspace/FeaturePanel'
@@ -16,7 +16,14 @@ function Page({ start = 'work' as FeatureView }) {
   const shown = panel.state.view
   return (
     <PanelSplit
-      chat={<div>the chat</div>}
+      chat={
+        <div>
+          the chat
+          {/* The address bar, history: the shell changing the view without the panel. */}
+          <button type="button" onClick={() => setView('details')}>Go to details</button>
+          <button type="button" onClick={() => setView('work')}>Go to work</button>
+        </div>
+      }
       panel={
         shown && (
           <FeaturePanel
@@ -28,6 +35,13 @@ function Page({ start = 'work' as FeatureView }) {
             onClose={() => panel.dispatch({ type: 'close' })}
           >
             the body
+            {panel.state.doc ? (
+              <p>reading {panel.state.doc}</p>
+            ) : (
+              <button type="button" onClick={() => panel.dispatch({ type: 'openDoc', doc: 'spec.md' })}>
+                Read the spec
+              </button>
+            )}
           </FeaturePanel>
         )
       }
@@ -103,11 +117,30 @@ describe('the feature panel', () => {
     expect(panelWidth()).toBe('30%')
   })
 
-  it('names the open view with its icon on the picker', () => {
+  it('switches views by tabs naming every offered view, each with its icon (decision 3)', () => {
     render(<Page />)
-    const picker = screen.getByRole('combobox', { name: 'Panel view' })
-    expect(picker.textContent).toContain('work')
-    expect(picker.querySelector('svg')).not.toBeNull()
+    const tabs = within(screen.getByRole('tablist', { name: 'Panel views' })).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['work', 'details'])
+    expect(tabs.every((tab) => tab.querySelector('svg'))).toBe(true)
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: 'details' }))
+    expect(screen.getByRole('tab', { name: 'details' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('names a tab whose word a narrow panel hides in a tooltip, the word still its accessible name', async () => {
+    render(<Page />)
+    const details = screen.getByRole('tab', { name: 'details' })
+    fireEvent.focus(details)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('details')
+  })
+
+  it('reads a doc in the view it was opened in, and leaves it behind when the shell shows another', () => {
+    render(<Page />)
+    fireEvent.click(screen.getByRole('button', { name: 'Read the spec' }))
+    expect(screen.getByText('reading spec.md')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Go to details' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Go to work' }))
+    expect(screen.queryByText('reading spec.md')).toBeNull()
   })
 
   it('closes to the chat alone', () => {

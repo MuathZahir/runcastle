@@ -48,13 +48,9 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
   renderToStaticMarkup(
     createElement(EvidenceStage, {
       featureId: 'ftr_1',
-      branch: 'feature/x',
       recordings: [recording()],
       notes: [] as TestNote[],
       readonly: false,
-      driveState: 'idle',
-      dryRun: false,
-      failure: null,
       expand: { expanded: false, set: () => undefined },
       ...props,
     }),
@@ -145,34 +141,6 @@ describe('EvidenceStage', () => {
     expect(html).not.toContain('<video')
   })
 
-  /** Decision 17: the drive takes the stage, and gives it back when it stops. */
-  it('swaps the recording out for the drive while a drive is up', () => {
-    const html = render({
-      driveState: 'serving',
-      drive: { branch: 'feature/x', devPaneId: 'pane_1', devUrl: 'http://localhost:5173', devReady: true },
-    })
-    expect(html).not.toContain('<video')
-    expect(html).toMatch(/dev server/i)
-  })
-
-  /** Decision 20: a drive problem about the stage renders IN the stage. */
-  it('renders a failed drive setup where the video would be', () => {
-    const html = render({
-      driveState: 'setup-failed',
-      drive: { branch: 'feature/x' },
-      failure: { command: 'bun setup', outcome: 'exited 3', output: 'boom', canFix: true },
-    })
-    expect(html).toContain('Drive setup failed')
-    expect(html).toContain('bun setup')
-    expect(html).toContain('Fix drive')
-    expect(html).not.toContain('<video')
-  })
-
-  it('says a preparation dry run is holding the drive rather than offering one', () => {
-    const html = render({ recordings: [], dryRun: true })
-    expect(html).toContain('A preparation dry-run is holding the drive')
-  })
-
   /** Decision 33a: history plays, it never acts. */
   it('drops Annotate on a readonly view', () => {
     const html = render({ readonly: true })
@@ -188,18 +156,11 @@ describe('EvidenceStage', () => {
  * (`stage-expand.test.tsx`).
  */
 describe('EvidenceStage expanded', () => {
-  const SERVING = {
-    driveState: 'serving' as const,
-    drive: { branch: 'feature/x', devPaneId: 'pane_1', devUrl: 'http://localhost:5173', devReady: true },
-  }
-
   it('offers one expand control, naming the key that does the same thing', () => {
     const html = render()
     // An IconButton: its name is the verb, and F rides in its tooltip.
     expect(html).toContain('aria-label="Expand"')
     expect(html).toContain('aria-pressed="false"')
-    // And the same single control while the drive is what is on the stage.
-    expect(render(SERVING).match(/aria-label="Expand"/g)).toHaveLength(1)
   })
 
   it('says what the control now does, and that the stage is expanded', () => {
@@ -213,19 +174,15 @@ describe('EvidenceStage expanded', () => {
    * The point of the expand: a frame that kept its aspect ratio or its viewport
    * clamp would be the size it always was inside a bigger box.
    */
-  it('drops the 16:9 clamp for the overlay’s fill, on both sides of the swap', () => {
-    for (const html of [expanded(), expanded(SERVING)]) {
-      expect.soft(html).toContain('min-h-0 flex-1')
-      expect.soft(html).not.toContain('aspect-video')
-      expect.soft(html).not.toContain('max-h-[calc(100vh-320px)]')
-    }
+  it('drops the 16:9 clamp for the overlay’s fill', () => {
+    const html = expanded()
+    expect(html).toContain('min-h-0 flex-1')
+    expect(html).not.toContain('aspect-video')
+    expect(html).not.toContain('max-h-[calc(100vh-320px)]')
   })
 
-  /** Collapsed, both sides wear the one 16:9 string the stage layer writes. */
-  it('sizes both sides from one collapsed frame, 16:9 and clamped', () => {
-    const frame = 'aspect-video max-h-[calc(100vh-320px)]'
-    expect(render()).toContain(frame)
-    expect(render(SERVING)).toContain(frame)
+  it('sizes the collapsed frame 16:9 and clamped', () => {
+    expect(render()).toContain('aspect-video max-h-[calc(100vh-320px)]')
   })
 
   /** A page with nowhere to expand into (the shipped record) offers no expand. */

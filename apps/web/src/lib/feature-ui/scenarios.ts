@@ -49,6 +49,20 @@ export function scenarioMenu(
   }
 }
 
+/** The scenarios grouped as the picker shows them: "This feature", the project's groups, then the ungrouped. */
+export function scenarioGroups(menu: ScenarioMenu): { heading: string; entries: ScenarioEntry[] }[] {
+  const groups: { heading: string; entries: ScenarioEntry[] }[] = []
+  if (menu.own.length > 0) groups.push({ heading: 'This feature', entries: menu.own })
+  // `others` is already ordered group by group, the ungrouped last.
+  for (const s of menu.others) {
+    const heading = s.group ?? (groups.length > 0 ? 'Other' : menu.othersLabel)
+    const last = groups[groups.length - 1]
+    if (last && last.heading === heading && last.heading !== 'This feature') last.entries.push(s)
+    else groups.push({ heading, entries: [s] })
+  }
+  return groups
+}
+
 /** The main click's label: what it starts on, said before the click. */
 export function testDriveLabel(defaultScenario: ScenarioEntry | null, fallback: string): string {
   return defaultScenario ? `Test drive · ${defaultScenario.name}` : fallback

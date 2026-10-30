@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NoticeStrip } from '../src/components/chat/NoticeStrip'
-import type { ChatNotice } from '../src/lib/chat-notices'
+import type { ChatNotice, StandingNotice } from '../src/lib/chat-notices'
 
 /**
  * The strip of notices on the composer's top edge. Tier 2: folding the older
@@ -94,6 +94,66 @@ describe('NoticeStrip', () => {
     const spec = screen.getByText('Spec written').closest('article') as HTMLElement
     fireEvent.click(within(spec).getByRole('button', { name: 'Dismiss' }))
     expect(onDismiss).toHaveBeenCalledWith('spec')
+  })
+
+  describe('standing rows', () => {
+    const CONFLICT: StandingNotice = {
+      key: 'conflict',
+      hue: 'danger',
+      title: 'Merge conflict',
+      subtitle: '2 files · main into feature/x',
+      tooltip: 'a.ts\nb.ts',
+      action: { label: 'Resolve with agent', onClick: vi.fn() },
+    }
+    const UNVERIFIED: StandingNotice = { key: 'unverified', hue: 'review', title: 'Nothing verified', subtitle: 'ask the agent' }
+
+    function renderStanding(standing: StandingNotice[], notices: ChatNotice[] = [RUN, TICKETS, SPEC]) {
+      const onAct = vi.fn()
+      const onDismiss = vi.fn()
+      render(<NoticeStrip notices={notices} standing={standing} onAct={onAct} onDismiss={onDismiss} />)
+      return { onAct, onDismiss }
+    }
+
+    it('shows on its own, with no event notices', () => {
+      renderStanding([UNVERIFIED], [])
+      expect(screen.getAllByRole('article')).toHaveLength(1)
+      expect(screen.getByText('Nothing verified')).toBeTruthy()
+    })
+
+    it('stands before the event notices and never folds behind "+N more"', () => {
+      renderStanding([CONFLICT, UNVERIFIED])
+      expect(screen.getAllByRole('article').map((a) => within(a).getAllByText(/./)[0].textContent)).toEqual([
+        'Merge conflict',
+        'Nothing verified',
+        'Run finished with failures',
+      ])
+      expect(screen.getByText('+2 more')).toBeTruthy()
+    })
+
+    it('has its action only where given, no ✕ unless dismissible, and its tooltip', () => {
+      const dismiss = vi.fn()
+      renderStanding([CONFLICT, { ...UNVERIFIED, onDismiss: dismiss }], [])
+      const conflict = screen.getByText('Merge conflict').closest('article') as HTMLElement
+      expect(conflict.getAttribute('title')).toBe('a.ts\nb.ts')
+      expect(within(conflict).queryByRole('button', { name: 'Dismiss' })).toBeNull()
+      fireEvent.click(within(conflict).getByRole('button', { name: 'Resolve with agent' }))
+      expect(CONFLICT.action?.onClick).toHaveBeenCalled()
+      const unverified = screen.getByText('Nothing verified').closest('article') as HTMLElement
+      expect(within(unverified).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Dismiss'])
+      fireEvent.click(within(unverified).getByRole('button', { name: 'Dismiss' }))
+      expect(dismiss).toHaveBeenCalled()
+    })
+
+    it('holds a disabled action', () => {
+      renderStanding([{ ...CONFLICT, action: { label: 'Resolve with agent', onClick: vi.fn(), disabled: true } }], [])
+      expect((screen.getByRole('button', { name: 'Resolve with agent' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('leaves the event notices acting by kind as before', () => {
+      const { onAct } = renderStanding([CONFLICT])
+      fireEvent.click(screen.getByRole('button', { name: 'View run' }))
+      expect(onAct).toHaveBeenCalledWith('run')
+    })
   })
 
   it('shows a burst count and wears each notice in its hue, on its glyph alone', () => {

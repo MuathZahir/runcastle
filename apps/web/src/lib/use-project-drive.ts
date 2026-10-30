@@ -19,9 +19,9 @@ export interface ProjectDriveApi {
   drive: SlotDrive | null
   /**
    * Start a drive, landing on `scenario` once the app answers (null: the blank
-   * app); `onStarted` runs only when the server took it.
+   * app); `onRefused` runs when the server did not take it.
    */
-  start: (scenario: string | null, onStarted?: () => void) => void
+  start: (scenario: string | null, onRefused?: () => void) => void
   stop: (onStopped?: () => void) => void
   starting: boolean
   stopping: boolean
@@ -37,23 +37,27 @@ export function useProjectDrive(projectId: string): ProjectDriveApi {
   })
   const slot = driveQ.data ?? null
 
-  const run = (action: 'start' | 'stop', then?: () => void, scenario?: string | null): void =>
+  const run = (action: 'start' | 'stop', then?: () => void, scenario?: string | null, refused?: () => void): void =>
     testDrive.mutate(
       { projectId, action, ...(scenario ? { scenario } : {}) },
       {
         onSuccess: (result) => {
           // A refusal is an answer, not an error: the slot is held, and the
           // server's sentence names by whom.
-          if (!result.ok) toast.push(result.deniedReason ?? `the drive could not ${action}`)
-          else then?.()
+          if (result.ok) then?.()
+          else {
+            toast.push(result.deniedReason ?? `the drive could not ${action}`)
+            refused?.()
+          }
         },
+        onError: () => refused?.(),
       },
     )
 
   return {
     slot,
     drive: isThisProjectDrive(slot, projectId) ? slot : null,
-    start: (scenario, onStarted) => run('start', onStarted, scenario),
+    start: (scenario, onRefused) => run('start', undefined, scenario, onRefused),
     stop: (onStopped) => run('stop', onStopped),
     starting: testDrive.isPending && testDrive.variables?.action === 'start',
     stopping: testDrive.isPending && testDrive.variables?.action === 'stop',

@@ -20,7 +20,7 @@ import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/t
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
 import { NoticeStrip } from '../src/components/chat/NoticeStrip'
-import type { ChatNotice } from '../src/lib/chat-notices'
+import type { ChatNotice, StandingNotice } from '../src/lib/chat-notices'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { CODEX_MODELS, COMMANDS, FILES, LIMITS, MODELS, MOMENTS, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
 
@@ -328,10 +328,29 @@ const NOTICES: ChatNotice[] = [
   { kind: 'preview', hue: 'planning', title: 'The plan is ready', subtitle: 'Decisions, spec and the preview to look at', actionLabel: 'Open the plan', target: 'plan', count: 1, eventId: 1 },
 ]
 
+/** A warning that stands while its condition holds (the-feature-s-right-panel decision 21). */
+const STANDING: StandingNotice[] = [
+  {
+    key: 'conflict',
+    hue: 'danger',
+    title: 'Merge conflict',
+    subtitle: '2 files · main into feature/export-csv',
+    tooltip: 'src/server/export.ts\nsrc/server/routes.ts',
+    action: { label: 'Resolve with agent', onClick: noop },
+  },
+]
+
 /** The strip on the foot's top edge, as ThreadColumn places its children. */
 function Notices() {
   const [notices, setNotices] = useState(NOTICES)
-  return <NoticeStrip notices={notices} onAct={noop} onDismiss={(k) => setNotices((ns) => ns.filter((n) => n.kind !== k))} />
+  return (
+    <NoticeStrip
+      notices={notices}
+      standing={STANDING}
+      onAct={noop}
+      onDismiss={(k) => setNotices((ns) => ns.filter((n) => n.kind !== k))}
+    />
+  )
 }
 
 function FeaturePage({

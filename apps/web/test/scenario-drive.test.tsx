@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveCallResult, DriveScenario, ScenarioEntry } from '@runcastle/core'
-import { openMenu } from './floating'
+import { openList } from './floating'
 
 /**
  * A running drive's scenarios (drive-scenarios decisions 3, 7, 8): the Scenario
@@ -88,11 +88,14 @@ const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 
 const DEV = 'about:blank'
 
+const onToChat = vi.fn()
+
 function mount(scenario?: DriveScenario, scenarioSessionId?: string) {
   const el = (s?: DriveScenario, sid?: string) => (
     <ScenarioDrive
       projectId="proj_1"
       featureId="feat_1"
+      onToChat={onToChat}
       drive={{ devUrl: DEV, ...(s ? { scenario: s } : {}), ...(sid ? { scenarioSessionId: sid } : {}) }}
     />
   )
@@ -119,7 +122,7 @@ describe('the running drive’s Scenario menu', () => {
     mount(landed('l1'))
     const [bar, ...more] = screen.getAllByRole('toolbar')
     expect(more).toHaveLength(0)
-    expect(bar!.contains(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))).toBe(true)
+    expect(bar!.contains(screen.getByRole('button', { name: /Expired coupon/ }))).toBe(true)
     expect(bar!.contains(screen.getByRole('button', { name: 'Reload' }))).toBe(true)
     expect(frame().parentElement!.contains(bar!)).toBe(false)
     // Nothing but the selection layers is placed over the frame.
@@ -128,31 +131,29 @@ describe('the running drive’s Scenario menu', () => {
 
   it('names the current scenario and lists This feature, the others, Blank app and New scenario', () => {
     mount(landed('l1'))
-    openMenu(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))
-
-    const menu = screen.getByRole('menu')
-    expect(menu.textContent).toContain('This feature')
-    expect(menu.textContent).toContain('Other scenarios')
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
-      'Expired couponCheckout',
-      'Signed outAuth',
+    expect(openList(screen.getByRole('button', { name: /Expired coupon/ }))).toEqual([
+      'Expired coupon',
+      'Signed out',
       'Blank app',
       'New scenario',
     ])
+    const list = screen.getByRole('listbox')
+    expect(list.textContent).toContain('This feature')
+    expect(list.textContent).toContain('Auth')
   })
 
   it('runs the scenario picked against the live drive', () => {
     mount()
-    openMenu(screen.getByRole('button', { name: 'Scenario' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Signed out/ }))
+    openList(screen.getByRole('button', { name: /Blank app/ }))
+    fireEvent.click(screen.getByRole('option', { name: /Signed out/ }))
     expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: SCENARIOS[1]!.file })
   })
 
   it('goes back to the plain URL on Blank app', () => {
     mount(landed('l1'))
     expect(frame().getAttribute('src')).toBe(`${DEV}#cart`)
-    openMenu(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Blank app' }))
+    openList(screen.getByRole('button', { name: /Expired coupon/ }))
+    fireEvent.click(screen.getByRole('option', { name: 'Blank app' }))
     expect(frame().getAttribute('src')).toBe(DEV)
     expect(runScenario).not.toHaveBeenCalled()
   })
@@ -202,9 +203,10 @@ describe('a failed scenario', () => {
     expect(frame().getAttribute('src')).toBe(DEV)
   })
 
-  it('opens the scenario chat on that file from Fix it, and docks nothing beside the drive', () => {
+  it('opens the scenario chat on that file from Fix it, and goes to the chat page for it', () => {
     mount(failed)
     fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
+    expect(onToChat).toHaveBeenCalledTimes(1)
     expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1', fixFile: SCENARIOS[0]!.file })
     // The chat is the page's chat column's (design-mode decision 9), never an
     // aside inside the drive — chat-column.test covers where it lands.

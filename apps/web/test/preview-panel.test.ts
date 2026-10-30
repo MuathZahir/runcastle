@@ -31,15 +31,11 @@ describe('PreviewPanel', () => {
     expect(html).toContain('the show')
   })
 
-  it('heads the section "Preview" with when it was written and an "Open full window" control', () => {
+  it('fills its view with one frame: no heading, no box, no fixed height (the-feature-s-right-panel decision 5)', () => {
     const html = render(Date.now() - 2 * 60 * 60 * 1000)
-    expect(html).toContain('>Preview</h2>')
-    expect(html).toContain('updated 2h ago')
-    expect(html).toContain('aria-label="Open full window"')
-  })
-
-  it('omits the written time when the file has none', () => {
-    expect(render()).not.toContain('updated')
+    expect(html).not.toContain('<h2')
+    expect(html).not.toMatch(/h-\[60vh\]|max-h-|style="height/)
+    expect(html).toMatch(/<iframe[^>]*class="[^"]*flex-1/)
   })
 
   it('shows a loading skeleton and no frame before the file is read', () => {

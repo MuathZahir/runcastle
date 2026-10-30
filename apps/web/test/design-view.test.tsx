@@ -146,7 +146,7 @@ describe('DesignView', () => {
   it('names the page it loads in the panel header, the remembered one included', () => {
     status = { ...RUNNING, lastPath: '/preview/invites' }
     render(<HeaderedDesignView />)
-    const header = screen.getByRole('combobox', { name: 'Panel view' }).parentElement!
+    const header = screen.getByRole('tablist', { name: 'Panel views' }).parentElement!
     expect(header.textContent).toContain('/preview/invites')
   })
 

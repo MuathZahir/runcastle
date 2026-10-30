@@ -1,82 +1,34 @@
 import { useEffect, useState, type RefObject } from 'react'
-import { fmtClock, type DriveScenario, type DriveState, type TestNote } from '@runcastle/core'
-import { IconButton, StatusLabel } from '../../ui'
+import { fmtClock, type TestNote } from '@runcastle/core'
+import { IconButton } from '../../ui'
 import { IconCollapse, IconExpand } from '../../icons'
-import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
+import { latestReview } from '../../lib/feature-ui'
 import type { ReviewArtifacts } from '../../lib/reviews'
 import { useStageExpandKeys, type StageExpand } from '../../lib/stage-expand'
 import { clusterMarkers } from '../../lib/walkthrough'
 import { WalkthroughPlayer, type WalkthroughHandle } from '../WalkthroughPlayer'
-import { SettingsLink } from '../settings/MessageWithSettingsLink'
-import { DrivePanel } from './DrivePanel'
-import { ScenarioDrive } from './ScenarioDrive'
-import { DriveFooter, DriveSetupFailed, StopDrive } from './drive-parts'
 
 /**
  * The top of the review page: one large evidence stage (decision 17).
  *
  * Not a card among cards and not a two-up split — roughly the full content
- * width, 16:9, and the first thing a returning human sees. By default it plays
- * the latest completed review pass's walkthrough; the moment a test drive is up
- * it becomes the drive panel, and stopping the drive swaps it back. Watching the
- * recording and driving the app are the same activity — inspecting the build
- * with annotation tools in hand — and never happen at once, so they share one
- * canvas.
- *
- * The stage is never a dead card — and since decision 6 it never mounts as one
- * either: with no recording and no drive there is no stage at all, so its
- * callers mount it only when there is something to put on it. A drive problem
- * that is about the stage (setup failed, a bare checkout) renders IN the stage,
- * where the video would be, because that is where the eye already is. Starting
- * a drive is not offered here any more — that entry point is the Test drive
- * control in the state line, beside the state it is about.
- *
- * Which of the two is on the stage, and what a drive that is not serving shows
- * instead, both come from the server's one drive-state value (decision 20) —
- * the same value the next-step bar resolves from, so the bar can no longer
- * invite a merge over a bare checkout or a failed setup command.
+ * width, 16:9, and the first thing a returning human sees. It plays the latest
+ * completed review pass's walkthrough. The stage is never a dead card: with no
+ * recording there is no stage at all (decision 6), so its callers mount it only
+ * when there is one. A live drive has its own page (`DrivePage`).
  */
 
 /**
- * The active drive as the stage and its parts read it. Whose drive it is and
- * whether a dev command exists are not here: both are already answered by the
- * server's `driveState` (decision 20), and a second copy of either is a second
- * thing that can disagree with the bar.
- */
-export interface StageDrive {
-  branch: string
-  devPaneId?: string
-  devUrl?: string
-  devReady?: boolean
-  devReadyTimedOut?: boolean
-  /** The scenario the drive is in, and its docked chat (drive-scenarios). */
-  scenario?: DriveScenario
-  scenarioSessionId?: string
-}
-
-/** Which side of the swap is showing, from the server's one drive-state value. */
-function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive' {
-  return driveView(state).stageKind === 'player' && hasRecording ? 'player' : 'drive'
-}
-
-/**
- * The box whatever is on the stage sits in — written here, once, for both sides
- * of the swap: the walkthrough's frame used to spell the same 16:9 string out
- * for itself, and a second copy is a second thing to forget when the sizing
- * changes.
+ * The box the recording sits in.
  *
  * Collapsed it is 16:9, clamped so the frame and its bar fit the viewport
  * together (decision 23e). Expanded it is the overlay's fill instead — no aspect
  * ratio and no clamp, because a box that kept either would leave the stage the
  * size it was and the expand would have bought nothing (decision 3).
- *
- * A `screen` is content that brings its own pixels — the app, the recording —
- * against the `prose` the drive states put where the video would be.
  */
-function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
+function stageFrame(expanded: boolean): string {
   const size = expanded ? 'min-h-0 flex-1' : 'aspect-video max-h-[calc(100vh-320px)]'
-  const skin = content === 'screen' ? 'overflow-hidden' : 'overflow-auto p-6'
-  return `relative flex w-full flex-col rounded-md bg-surface-inset ${size} ${skin}`
+  return `relative flex w-full flex-col overflow-hidden rounded-md bg-surface-inset ${size}`
 }
 
 /**
@@ -108,16 +60,10 @@ function stageIdentity(
 
 export function EvidenceStage({
   featureId,
-  projectId,
-  branch,
   recordings,
   picked = null,
   notes,
   readonly,
-  driveState,
-  drive,
-  dryRun,
-  failure,
   expand,
   handleRef,
   onStageRecording,
@@ -125,12 +71,6 @@ export function EvidenceStage({
   onAnnotationSaved,
 }: {
   featureId: string
-  /**
-   * The feature's project — what a scenario runs against. Without it the drive
-   * shows the app alone, with no Scenario menu (the shipped record).
-   */
-  projectId?: string
-  branch: string
   /** Every review pass that left a recording, newest last. */
   recordings: readonly ReviewArtifacts[]
   /**
@@ -145,15 +85,8 @@ export function EvidenceStage({
   notes: readonly TestNote[]
   /** Looking back at review on a shipped feature — the record plays, nothing acts. */
   readonly: boolean
-  /** The server's own drive-state value (decision 20) — one truth for bar and stage. */
-  driveState: DriveState
-  drive?: StageDrive
-  /** A preparation dry run is holding the one drive slot (decision 9). */
-  dryRun: boolean
-  failure: DriveFailure | null
   /**
-   * The stage's expanded state, held by the page above so that switching drive ↔
-   * walkthrough while expanded stays expanded (decision 4) — and so the page can
+   * The stage's expanded state, held by the page above so that the page can
    * put its other bands away while the stage has the window. Absent on a page
    * with nowhere to expand into (the shipped record), where the stage offers no
    * expand at all.
@@ -161,7 +94,7 @@ export function EvidenceStage({
   expand?: StageExpand
   handleRef?: RefObject<WalkthroughHandle | null>
   /**
-   * Which recording is playing right now, or null when the stage is the drive.
+   * Which recording is playing right now.
    * The open-work rows below need it reactively — a timestamp is only a live
    * jump into the recording it was taken against (decision 22) — and the handle
    * ref beside it cannot say so, because a ref does not re-render its readers.
@@ -176,7 +109,6 @@ export function EvidenceStage({
 
   const latest = latestReview(recordings)
   const onStage = recordings.find((r) => r.ticketId === picked) ?? latest
-  const showing = stageShows(driveState, !!onStage?.videoUrl)
   // A recording swapped for another is a fresh measurement: the length on the
   // identity line must never be the one the previous recording reported.
   useEffect(() => setDuration(null), [onStage?.ticketId])
@@ -188,20 +120,15 @@ export function EvidenceStage({
   const previous = index > 0 ? recordings[index - 1] : undefined
   const fixes = onStage && previous ? previous.landedSince - onStage.landedSince : null
 
-  const view = driveView(driveState)
-  // The app fills its own frame; every other drive state is prose in a padded
-  // card where the video would be.
-  const fills = view.stageKind === 'panel' || view.stageKind === 'agent'
-
-  const playing = showing === 'player' && onStage?.videoUrl ? onStage.ticketId : null
+  const playing = onStage?.videoUrl ? onStage.ticketId : null
   useEffect(() => {
     onStageRecording?.(playing ? { ticketId: playing } : null)
   }, [onStageRecording, playing])
 
-  // F and Escape belong to whatever is on the stage, so the drive side binds
-  // them here and the player binds them for itself — behind the guards that stop
-  // a keystroke meant for a drawing from resizing the page under it.
-  useStageExpandKeys(expand, showing !== 'player')
+  // The player binds F and Escape for itself, behind the guards that stop a
+  // keystroke meant for a drawing from resizing the page under it; with nothing
+  // playing they are bound here.
+  useStageExpandKeys(expand, !playing)
   const expanded = expand?.expanded ?? false
 
   return (
@@ -211,9 +138,6 @@ export function EvidenceStage({
     // particular while the column is scrolling past it.
     <section id="evidence-stage" className="flex min-h-0 flex-1 flex-col gap-3">
       <header className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-2">
-        {/* Only a recording has an identity to state. With none, the stage is a
-            drive — it is mounted for no other reason (decision 6) — and the
-            drive says what it is doing in the card below. */}
         {onStage && (
           <span
             className="min-w-0 truncate text-sm text-text-secondary"
@@ -227,9 +151,8 @@ export function EvidenceStage({
           </span>
         )}
 
-        {/* The stage takes the window (decision 3), and gives it back. One
-            control for both sides of the swap, saying the key that does the
-            same thing from wherever the eye is. */}
+        {/* The stage takes the window (decision 3), and gives it back, saying
+            the key that does the same thing from wherever the eye is. */}
         {expand && (
           <IconButton
             className="ml-auto"
@@ -242,7 +165,7 @@ export function EvidenceStage({
         )}
       </header>
 
-      {showing === 'player' && onStage?.videoUrl ? (
+      {onStage?.videoUrl && (
         <WalkthroughPlayer
           key={onStage.ticketId}
           url={onStage.videoUrl}
@@ -250,7 +173,7 @@ export function EvidenceStage({
           ticketId={onStage.ticketId}
           passKind={onStage.passKind}
           readonly={readonly}
-          frameClassName={stageFrame(expanded, 'screen')}
+          frameClassName={stageFrame(expanded)}
           expand={expand}
           markers={clusterMarkers(notes, onStage.ticketId)}
           onMarkerClick={onMarkerClick}
@@ -258,184 +181,7 @@ export function EvidenceStage({
           onDuration={setDuration}
           handleRef={handleRef}
         />
-      ) : (
-        <div className={stageFrame(expanded, fills ? 'screen' : 'prose')}>
-          <DriveStage
-            featureId={featureId}
-            projectId={projectId}
-            branch={branch}
-            driveState={driveState}
-            drive={drive}
-            dryRun={dryRun}
-            failure={failure}
-            hasRecording={!!onStage?.videoUrl}
-            readonly={readonly}
-          />
-        </div>
       )}
-
-      {/* Under the stage while a drive is up (decision 20's footer chrome):
-          which server, which branch, and its output one click away. */}
-      {view.footer.showDevChip && (
-        <DriveFooter branch={drive?.branch ?? branch} drive={drive} />
-      )}
-
     </section>
   )
-}
-
-/**
- * What the stage shows when it is not playing a recording (decision 20): the
- * drive, or the honest reason there is nothing to play.
- */
-function DriveStage({
-  featureId,
-  projectId,
-  branch,
-  driveState,
-  drive,
-  dryRun,
-  failure,
-  hasRecording,
-  readonly,
-}: {
-  featureId: string
-  projectId?: string
-  branch: string
-  driveState: DriveState
-  drive?: StageDrive
-  dryRun: boolean
-  failure: DriveFailure | null
-  hasRecording: boolean
-  readonly: boolean
-}) {
-  if (driveState === 'idle') {
-    if (dryRun) {
-      return (
-        <div className="text-sm text-text-secondary">
-          A preparation dry-run is holding the drive — it is proving this project’s drive commands
-          on your machine. Stop it from Preparation, and this branch can take the wheel.
-        </div>
-      )
-    }
-    if (hasRecording) {
-      // A recording exists but the stage is showing this: the drive stopped and
-      // the player is one render away. Nothing to say beyond the branch.
-      return <div className="font-mono text-xs text-text-tertiary">{branch}</div>
-    }
-    // Idle, no recording, and the stage is mounted anyway: a drive this browser
-    // started is on its way up and the server's state has not caught up yet
-    // (decision 6 mounts the stage for nothing else). The placeholder box that
-    // used to live here — a 16:9 card holding one apologetic sentence — is gone.
-    return (
-      <StatusLabel spinning size="sm">
-        Starting the test drive — the branch is being checked out
-      </StatusLabel>
-    )
-  }
-
-  // Readonly describes what a drive did; it never instructs and never acts
-  // (decision 33a), so every control below is gated on it rather than on the
-  // state that mounted the card.
-  const stop = readonly ? null : <StopDrive featureId={featureId} label="Stop test drive" />
-
-  switch (driveView(driveState).stageKind) {
-    case 'starting':
-      return (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <StatusLabel spinning size="sm" strong>
-              Starting the dev server
-            </StatusLabel>
-            <span className="truncate font-mono text-xs text-text-tertiary">{drive?.branch ?? branch}</span>
-          </div>
-          <div className="text-sm text-text-secondary">
-            The branch is checked out and the project’s dev command is running. The app appears here
-            as soon as it answers — its output is under the stage.
-          </div>
-        </div>
-      )
-
-    // The state is derived FROM the failure server-side, so `failure` is
-    // present here; the guard is what keeps a wire that disagrees with itself
-    // from rendering an empty card.
-    case 'failed':
-      return failure ? (
-        <DriveSetupFailed featureId={featureId} failure={failure} readonly={readonly} />
-      ) : (
-        <div className="text-sm text-text-secondary">
-          The drive’s setup command failed — its output is in the timeline.
-        </div>
-      )
-
-    // Nothing was meant to start, so nothing is claimed to have (findings F22).
-    case 'bare':
-      return (
-        <div className="flex flex-col gap-3">
-          <StatusLabel tone="neutral" size="sm" strong>
-            Branch checked out — nothing started
-          </StatusLabel>
-          <div className="text-sm text-text-secondary">
-            {readonly ? (
-              'This project had no dev command, so the drive checked the branch out and started nothing.'
-            ) : (
-              <>
-                This project has no dev command ·{' '}
-                <SettingsLink location={{ page: 'project', field: 'devCommand' }}>
-                  Set one in Settings
-                </SettingsLink>{' '}
-                and the next drive boots the app right here.
-              </>
-            )}
-          </div>
-          {stop}
-        </div>
-      )
-
-    // The review agent is at the wheel. Its drive is the same machinery on the
-    // same checkout, so the app is shown exactly as the human's own drive shows
-    // it — with a banner saying whose hands are on it, and the purpose-blind
-    // stop that lets the human take the wheel back.
-    case 'agent':
-      return (
-        <>
-          {drive?.devUrl ? (
-            <DrivePanel featureId={featureId} url={drive.devUrl} agentDriving readonly={readonly} />
-          ) : (
-            <div className="flex flex-col gap-3 p-6">
-              <div className="flex items-center gap-3">
-                <StatusLabel tone="live" size="sm" strong>
-                  Review agent driving
-                </StatusLabel>
-                <span className="truncate font-mono text-xs text-text-tertiary">{drive?.branch ?? branch}</span>
-              </div>
-              <div className="text-sm text-text-secondary">
-                Notes land below as it finds things. No dev server answered, so there is nothing to
-                show here.
-              </div>
-            </div>
-          )}
-          {!readonly && (
-            <div className="p-2">
-              <StopDrive featureId={featureId} label="Stop the review drive" />
-            </div>
-          )}
-        </>
-      )
-
-    // The human's own drive: the app with its scenarios (drive-scenarios
-    // decision 7). A record looked back at only shows the app.
-    default:
-      return drive?.devUrl ? (
-        projectId && !readonly ? (
-          <ScenarioDrive projectId={projectId} featureId={featureId} drive={{ ...drive, devUrl: drive.devUrl }} />
-        ) : (
-          <DrivePanel featureId={featureId} url={drive.devUrl} readonly={readonly} />
-        )
-      ) : (
-        <div className="p-6 text-sm text-text-secondary">
-          The dev server is up but has not printed an address yet — its output is under the stage.
-        </div>
-      )
-  }
 }

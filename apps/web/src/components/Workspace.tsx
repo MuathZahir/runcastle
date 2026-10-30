@@ -7,8 +7,8 @@ import { useToast } from '../lib/toast'
 import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
-import { availableViews, hasPlan, PANEL_VIEW_LABEL, reviewRan, type PanelView } from '../lib/feature-ui/panel'
-import {
+import { availableViews, hasPlan, PANEL_VIEW_LABEL, panelTabs, type PanelView } from '../lib/feature-ui/panel'
+import { Button,
   DimLine,
   IconButton,
   Page,
@@ -17,10 +17,11 @@ import {
   cx,
   type MetaItem,
 } from '../ui'
-import { IconX, ProgressIcon } from '../icons'
+import { IconPlay, IconX, ProgressIcon } from '../icons'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
+import type { FeatureFull } from '../lib/api'
 import {
   activeSession,
   defaultBaseBranch,
@@ -50,15 +51,16 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
-import { ReviewBody } from './bodies/ReviewBody'
-import { ShippedBody } from './bodies/ShippedBody'
-import { TicketsBody } from './bodies/tickets/TicketsBody'
-import { RunBody } from './bodies/RunBody'
+import { TicketsView } from './bodies/tickets/TicketsView'
 import { DesignView, useDesignPath } from './design/DesignView'
+import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
+import { FeatureFacts } from './inspector/FeatureFacts'
+import { DriveChatNotice } from './review/DriveChatNotice'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
+import { useStandingNotices } from './workspace/use-standing-notices'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
@@ -78,7 +80,7 @@ import {
   mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
-import { ScenarioMenuItems } from './review/ScenarioMenuItems'
+import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -110,10 +112,11 @@ function useNowPast(deadline: number | undefined): number {
  *              (the status's primary), "…" with everything else — Merge &
  *              ship among it — and the panel toggle
  *   the chat — the feature's live session (`FeatureChat`), filling the page,
- *              with the page's notices atop it
- *   one panel — on the right when open, one view at a time: Plan, Work,
- *              Review, Details, and Design or Drive while they run
- *              (tickets-and-review-are-tools-not-phases decision 8)
+ *              with the page's notices atop it and its standing warnings on
+ *              the composer's notice strip
+ *   one panel — on the right when open, one view at a time: Plan, Tickets,
+ *              Details, and Design or Drive while they run
+ *              (the-feature-s-right-panel decisions 14, 17)
  *
  * There is no Go and no phase: the agent starts rounds from the chat. The
  * panel opens from the header's toggle (at its last view), from the agent's
@@ -187,7 +190,7 @@ export function Workspace({
   const laterLaps = deferredScope(specQ.data?.content)
   // A preparation dry run or another feature's drive can hold this project's
   // drive slot (decision 9), which only the server's drive info knows; the
-  // review view polls the same key, so this is one fetch.
+  // chat's standing warnings read this same answer.
   const projectId = q.data?.feature.projectId
   const driveQ = trpc.feature.driveInfo.useQuery(
     { projectId: projectId ?? '' },
@@ -252,20 +255,23 @@ export function Workspace({
   // view: the agent's `show_panel` and the preview's Open in design open it
   // before its server is up, and the view itself starts the server.
   const isDriving = driving?.featureId === featureId
+  // A Test drive click is the drive's page at once, before the server answers.
+  const [driveStarting, setDriveStarting] = useState(false)
   const requested = viewProp === 'chat' ? null : viewProp
   const designOpenable = !!q.data && !isDraft && !shipped
+  const driveActive = isDriving || driveStarting || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle')
   const views = q.data
     ? availableViews({
         isDraft,
         hasPlan: hasPlan(q.data),
         hasTickets: q.data.tickets.length > 0,
-        hasReview: declared || reviewRan(q.data.tickets),
         shipped,
         designRunning: !!designQ.data?.running || (designOpenable && requested === 'design'),
-        driveActive: isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle'),
+        driveActive,
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
+  const tabs = panelTabs(views)
   // The agent's `show_panel` and `emit_tickets`, for a view this feature offers.
   // Work is taken on trust: `emit_tickets` opens it the moment it stores them,
   // and the panel shows it once the refetched feature has the tickets.
@@ -274,7 +280,8 @@ export function Workspace({
       views.includes(request.view) ||
       (request.view === 'work' && !!q.data && !isDraft) ||
       (request.view === 'design' && designOpenable)
-    if (offered) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
+    // A drive is the page: the agent does not take the human away from it.
+    if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
@@ -359,8 +366,6 @@ export function Workspace({
       // A drive takes and releases the branch and stamps the timeline; the bar
       // and the review body read all of it back through these queries.
       invalidate()
-      // The human's Test drive: the drive it started opens beside the chat.
-      if (vars.action === 'start' && res.ok) panel.dispatch({ type: 'follow', click: 'testDrive' })
       // The project's own setup/teardown command failed. Surfaced first and as
       // an error: everything below is advisory, but a failed setup means the
       // app you are about to open probably is not running. The command's output
@@ -466,6 +471,15 @@ export function Workspace({
   // agent identically (decisions #10) — and so the bar's primary can end a live
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
+  // What the Review view warned about, standing on the chat's notice strip (decision 21).
+  const standing = useStandingNotices({
+    full: q.data,
+    events,
+    conflict,
+    drive: driveQ.data,
+    driveUp: driveActive,
+    resolveConflict,
+  })
 
   const [deleteOpener, setDeleteOpener] = useState<RefObject<HTMLButtonElement | null> | null>(null)
   const archive = trpc.feature.archive.useMutation({
@@ -562,17 +576,25 @@ export function Workspace({
   const openChat = () => landOnChat()
 
   /** Start this feature's drive on a scenario, or on the blank app with `null`. */
-  const startDrive = (scenario: string | null) =>
+  const startDrive = (scenario: string | null) => {
+    setDriveStarting(true)
+    panel.dispatch({ type: 'follow', click: 'testDrive' })
     testDrive.mutate(
       { featureId, action: 'start', ...(scenario ? { scenario } : {}) },
       {
         onSuccess: (res) => {
           invalidate()
           if (res.ok && res.branch) onDriveChange({ featureId, branch: res.branch })
-          else if (!res.ok) toast.push(res.deniedReason ?? 'test drive denied')
+          else if (!res.ok) {
+            toast.push(res.deniedReason ?? 'test drive denied')
+            panel.dispatch({ type: 'close' })
+          }
         },
+        onError: () => panel.dispatch({ type: 'close' }),
+        onSettled: () => setDriveStarting(false),
       },
     )
+  }
 
   const runAction = (kind: ActionKind) => {
     switch (kind) {
@@ -629,6 +651,8 @@ export function Workspace({
             onSuccess: () => {
               invalidate()
               onDriveChange(null)
+              // Stop lands on the chat at once, not when the drive's poll catches up.
+              if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
             },
           },
         )
@@ -757,11 +781,13 @@ export function Workspace({
         now,
       })
   const actionsBusy = busy || stopAgent.isPending
+  // Stop waits for the start: a second mutate would drop the first's callbacks.
+  const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
     kind: 'testDriveStart' as const,
     label: testDriveLabel(startMenu.defaultScenario, 'Start test drive'),
     menuLabel: 'Choose a scenario',
-    menu: <ScenarioMenuItems menu={startMenu} onPick={startDrive} />,
+    picker: <ScenarioPickerContent menu={startMenu} onPick={startDrive} align="end" />,
   }
   // The one header row's share of the status line's actions (decision 12):
   // one button, the rest for "⋯".
@@ -798,10 +824,18 @@ export function Workspace({
   )
   // What the strip used to stack under the header goes atop the chat column
   // instead (decision 12): notices, not another bar.
-  const chatAlerts = (resumeAlert || drivePrereqsNotice) && (
+  const chatAlerts = (
     <>
       {resumeAlert}
       {drivePrereqsNotice}
+      {!shipped && (
+        <DriveChatNotice
+          featureId={featureId}
+          driving={isDriving}
+          stopping={driveStopping}
+          onStop={() => runAction('testDriveStop')}
+        />
+      )}
     </>
   )
 
@@ -826,30 +860,49 @@ export function Workspace({
     </FeatureHeader>
   )
 
-  // Plan, Work and Review are documents under the title and its facts; the
-  // decisions and spec pane fills its view and scrolls itself, and the
-  // data-heavy ones (the run's lanes, the review's evidence, the ledger) take
-  // the wide column — save the shipped record, which reads as a document.
+  // A view is a panel column, not a page (the-feature-s-right-panel decisions
+  // 2, 4): no repeated title, 24px sides. Plan lays itself out to the view's
+  // full height, its bar on top; the rest scroll with the panel.
   const documentView = (v: PanelView, content: ReactNode) => {
     // Rises in once per navigation — feature, view — never on a refetch.
     const routeKey = `${featureId}:${v}`
-    if (v === 'plan' && !full.preview)
+    if (v === 'plan')
       return (
-        <div key={routeKey} className="flex min-h-0 min-w-0 flex-1 flex-col px-8 pt-8 animate-rise-in">
-          <div className="shrink-0 pb-5">{bodyHeader}</div>
-          <div className="flex min-h-0 min-w-0 flex-1 pb-6">{content}</div>
+        <div key={routeKey} className="h-full min-h-0 animate-rise-in">
+          {content}
         </div>
       )
     return (
-      <Page width={v === 'review' && shipped ? 'default' : 'wide'} routeKey={routeKey}>
-        {bodyHeader}
-        <div className="mt-10">{content}</div>
-      </Page>
+      <div key={routeKey} className="px-6 pt-5 pb-10 animate-rise-in">
+        {content}
+      </div>
     )
   }
-  const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
+  const detailsFacts = (
+    <FeatureFacts
+      feature={feature}
+      when={mergedAt ? { label: 'Merged', value: relTimeAgo(mergedAt) } : { label: 'Started', value: relTimeAgo(feature.createdAt) }}
+      dependsOn={full.dependsOn}
+      blocks={full.blocks}
+    />
+  )
+
+  const openDoc = (relPath: string) => panel.dispatch({ type: 'openDoc', doc: relPath })
+  // A doc opened in a view is read in that view's place (decision 7), its way
+  // back the view itself; one the feature no longer has gives the view back.
+  const reading = panel.state.doc ? full.docs.find((doc) => doc.relPath === panel.state.doc) : undefined
 
   const panelView = (v: PanelView) => {
+    if (reading)
+      return (
+        <DocReader
+          key={`${featureId}:${v}:${reading.relPath}`}
+          featureId={featureId}
+          doc={reading}
+          backLabel={labelOf(v)}
+          onBack={() => panel.dispatch({ type: 'closeDoc' })}
+        />
+      )
     switch (v) {
       case 'plan':
         return documentView(
@@ -863,31 +916,8 @@ export function Workspace({
           />,
         )
       case 'work':
-        // The run's live lanes above the ledger, which groups every ticket under
-        // the round that ran it.
-        return documentView(
-          v,
-          <div className="flex flex-col gap-10">
-            {run && <RunBody featureId={featureId} runId={run.id} />}
-            <TicketsBody featureId={featureId} />
-          </div>,
-        )
-      case 'review':
-        // Once merged, the record of what shipped (today's Outcome) is the review.
-        return documentView(
-          v,
-          shipped ? (
-            <ShippedBody full={full} />
-          ) : (
-            <ReviewBody
-              full={full}
-              driving={driving}
-              conflict={conflict}
-              {...(views.includes('work') ? { onOpenWork: () => openView('work') } : {})}
-              {...(views.includes('drive') ? { onOpenDrive: () => openView('drive') } : {})}
-            />
-          ),
-        )
+        // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
+        return documentView(v, <TicketsView featureId={featureId} onOpenDoc={openDoc} />)
       case 'design':
         return (
           <DesignView
@@ -896,13 +926,24 @@ export function Workspace({
             {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
           />
         )
+      // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
       case 'drive':
-        return <FeatureDriveView full={full} />
+        return null
       case 'details':
-        return <DetailsView featureId={featureId} />
+        return (
+          <DetailsView
+            featureId={featureId}
+            facts={detailsFacts}
+            onOpenDoc={openDoc}
+          />
+        )
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // The drive stays mounted while it runs, so the app is as it was left on the
+  // way back.
+  const onDrive = shown === 'drive'
+  const driveMounted = views.includes('drive')
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({
@@ -921,6 +962,18 @@ export function Workspace({
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+      {driveMounted && (
+        <ScenarioChatContext.Provider value={column.scenario}>
+          <FeatureDriveView
+            full={full}
+            hidden={!onDrive}
+            stopping={driveStopping}
+            onBack={() => panel.dispatch({ type: 'close' })}
+            onStop={() => runAction('testDriveStop')}
+          />
+        </ScenarioChatContext.Provider>
+      )}
+      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
           at most one action, "⋯" and the panel toggle. */}
@@ -950,16 +1003,24 @@ export function Workspace({
             )}
             {headerRow.action && (
               <span className="mr-1 flex">
-                <HeaderAction
-                  action={headerRow.action}
-                  busy={actionsBusy}
-                  onAction={runAction}
-                  split={testDriveSplit}
-                />
+                {/* Stop is the drive page's, and said over the chat; from here the
+                    one step is back to the drive (decision 13). */}
+                {headerRow.action.kind === 'testDriveStop' && views.includes('drive') ? (
+                  <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' })}>
+                    Back to the drive
+                  </Button>
+                ) : (
+                  <HeaderAction
+                    action={headerRow.action}
+                    busy={actionsBusy}
+                    onAction={runAction}
+                    split={testDriveSplit}
+                  />
+                )}
               </span>
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
-            <PanelToggle open={!!shown} views={views} onToggle={() => panel.dispatch({ type: 'toggle', views })} />
+            <PanelToggle open={!!shown} views={tabs} onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })} />
           </>
         }
       />
@@ -983,6 +1044,7 @@ export function Workspace({
                   column={column}
                   events={events}
                   alerts={chatAlerts}
+                  standing={standing}
                   hidden={chatHidden}
                   start={async () => {
                     // The opening waits for the message that started it: one prompt, one answer.
@@ -995,10 +1057,11 @@ export function Workspace({
                 />
               }
               panel={
-                shown && (
+                shown &&
+                shown !== 'drive' && (
                   <FeaturePanel
                     view={shown}
-                    views={views}
+                    views={tabs}
                     label={labelOf}
                     path={designPath}
                     onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
@@ -1026,6 +1089,7 @@ export function Workspace({
           </ScenarioChatContext.Provider>
         </>
       )}
+      </div>
 
       <StopAgentDialog
         open={confirmStop}

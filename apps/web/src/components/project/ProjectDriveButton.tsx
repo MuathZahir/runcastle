@@ -1,14 +1,14 @@
 import type { ProjectDriveCard } from '../../lib/project-drive'
 import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
-import { IconPlay, IconShield } from '../../icons'
+import { IconArrowRight, IconPlay, IconShield } from '../../icons'
 import { Button, SplitButton } from '../../ui'
-import { ScenarioMenuItems } from '../review/ScenarioMenuItems'
+import { ScenarioPickerContent } from '../review/ScenarioPicker'
 
 /**
  * The Orchestrator's door to a project drive, in its header: Test drive with
- * its scenarios behind the caret, disabled with its reason while another drive
- * holds the slot, or Prepare drive with no command set. Nothing on a born-empty
- * project, or while this project's drive runs: the panel toggle is the way to it.
+ * the scenario picker on its caret, disabled with its reason while another
+ * drive holds the slot; Prepare drive with no command set; Back to the drive
+ * while this project's drive runs; nothing on a born-empty project.
  */
 export function ProjectDriveButton({
   card,
@@ -16,6 +16,7 @@ export function ProjectDriveButton({
   scenarios,
   onStart,
   onPrepare,
+  onReturn,
 }: {
   card: ProjectDriveCard
   starting: boolean
@@ -25,6 +26,8 @@ export function ProjectDriveButton({
   onStart: (scenario: string | null) => void
   /** Neither command is set: preparation is where they are established. */
   onPrepare: () => void
+  /** This project's drive is live: back to its page. */
+  onReturn: () => void
 }) {
   if (card.state === 'prepare') {
     return (
@@ -33,7 +36,14 @@ export function ProjectDriveButton({
       </Button>
     )
   }
-  if (card.state !== 'ready' && card.state !== 'blocked') return null
+  if (card.state === 'running') {
+    return (
+      <Button size="sm" variant="ghost" icon={<IconArrowRight />} className="mr-1" onClick={onReturn}>
+        Back to the drive
+      </Button>
+    )
+  }
+  if (card.state === 'hidden') return null
   return (
     // A project drive has no feature to own a scenario, so the main click is
     // always the blank app (drive-scenarios decision 7).
@@ -47,7 +57,7 @@ export function ProjectDriveButton({
       title={card.state === 'blocked' ? card.reason : 'Run everything that has shipped and jot what you notice'}
       onClick={() => onStart(null)}
       menuLabel="Choose a scenario"
-      menu={<ScenarioMenuItems menu={scenarios} onPick={onStart} />}
+      picker={<ScenarioPickerContent menu={scenarios} onPick={onStart} align="end" />}
     >
       Test drive
     </SplitButton>

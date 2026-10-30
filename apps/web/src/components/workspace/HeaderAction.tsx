@@ -20,7 +20,7 @@ export function HeaderAction({
   busy: boolean
   onAction: (kind: ActionKind) => void
   /** Test drive's scenarios, behind a caret when this is Test drive. */
-  split?: { kind: ActionKind; label: string; menu: ReactNode; menuLabel: string }
+  split?: { kind: ActionKind; label: string; picker: ReactNode; menuLabel: string }
 }) {
   const variant: ButtonVariant = action.danger ? 'danger' : action.kind === 'merge' ? 'secondary' : 'primary'
   const props = {
@@ -32,7 +32,7 @@ export function HeaderAction({
     onClick: () => onAction(action.kind),
   }
   return split?.kind === action.kind ? (
-    <SplitButton {...props} menu={split.menu} menuLabel={split.menuLabel}>
+    <SplitButton {...props} picker={split.picker} menuLabel={split.menuLabel}>
       {split.label}
     </SplitButton>
   ) : (

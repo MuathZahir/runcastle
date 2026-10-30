@@ -12,7 +12,7 @@ import { isPanelView, panelViewOf, type PanelView } from './feature-ui/panel'
  * agreeing in both directions.
  *
  * This module is the pure half: format and parse, no DOM, no react. Transient
- * overlays — the ⌘K palette, Settings, DocPeek, the Draft form, the read-only
+ * overlays — the ⌘K palette, Settings, the Draft form, the read-only
  * phase pin — are deliberately *not* representable here. They stay out of the
  * URL and out of history, so Back never means "close the popup".
  */
@@ -57,8 +57,13 @@ export type AppLocation =
   | { kind: 'home' }
   /** A project, landing on its restored feature (or its home). */
   | { kind: 'project'; projectId: string }
-  /** A feature inside a project, addressed by slug; no `view` is its Work view. */
-  | { kind: 'feature'; projectId: string; featureSlug: string; view?: FeatureSegment }
+  /**
+   * A feature inside a project, addressed by slug; no `view` is its Work view.
+   * `namesWork` marks an address that says Work out loud (`/work`, or a retired
+   * tab that became it): a bare path restores the remembered view on landing,
+   * this one does not.
+   */
+  | { kind: 'feature'; projectId: string; featureSlug: string; view?: FeatureSegment; namesWork?: true }
   /** A project's conversation: the Orchestrator, on its latest chat. */
   | { kind: 'chat'; projectId: string }
   /** Every conversation the project has had. */
@@ -74,6 +79,14 @@ export function featureViewOf(location: { view?: FeatureSegment }): FeatureView 
 /** The project a location is inside, or null for the portfolio home. */
 export function projectIdOf(location: AppLocation): string | null {
   return location.kind === 'home' ? null : location.projectId
+}
+
+/**
+ * The view a feature address insists on when the app lands on it, or undefined
+ * for a bare path, which leaves it to what the browser remembers.
+ */
+export function addressedView(location: { view?: FeatureSegment; namesWork?: true }): FeatureView | undefined {
+  return location.namesWork ? 'work' : location.view
 }
 
 /** Whether two locations are one page, whatever view of it each names: a feature's views share its chat column. */
@@ -142,7 +155,7 @@ export function parsePath(path: string): AppLocation | null {
   // on Work; the retired `/preview` on Plan.
   const featureSlug = parts[3]
   const retired = parts.length === 5 && parts[2] === 'f' && featureSlug && segment ? parseFeatureView(segment) : null
-  if (featureSlug && retired === 'work') return { kind: 'feature', projectId, featureSlug }
+  if (featureSlug && retired === 'work') return { kind: 'feature', projectId, featureSlug, namesWork: true }
   if (featureSlug && retired === 'plan') return { kind: 'feature', projectId, featureSlug, view: retired }
   return null
 }

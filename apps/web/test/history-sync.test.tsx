@@ -22,7 +22,7 @@ describe('useHistorySync', () => {
   /** A location, an overlay, and a place to say what popstate handed back. */
   function Harness({ start = null }: { start?: AppLocation | null }) {
     const [location, setLocation] = useState<AppLocation | null>(start)
-    // Stands in for the palette / Settings / DocPeek / Draft / the phase pin:
+    // Stands in for the palette / Settings / Draft / the phase pin:
     // real UI state that is deliberately not addressable.
     const [overlay, setOverlay] = useState(false)
     const [popped, setPopped] = useState<string>('—')

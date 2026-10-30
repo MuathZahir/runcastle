@@ -173,7 +173,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 |---|---|---|
 | `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
-| `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
+| `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret) or `picker` (a `ComboboxContent`, for choices that are values), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu` or a `Combobox`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
 | `Kbd` | children, `className`. | One key or a short chord. |
 | `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. For inline busy states — a pending button, a dialog step; a content area loads as a `Skeleton`. |
@@ -202,7 +202,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `List` | `divided`, `label`, `className`, children. | `divided` rules rows with `border-subtle`. |
 | `PropertyList` | `items: { label, value, sub?, leading? \| tone? \| phase?, mono? }[]`. | Two quiet columns. |
 | `MetaLine` | `items: ({ text?, strong?, tone? \| icon? \| phase?, mono?, title? } \| false \| null)[]`. | One line of 2–4 facts. |
-| `Tabs` | `items: { id, label, icon?, count?, disabled?, panelId? }[]`, `value`, `onChange`, `size` `sm` · `md`, `label`. | ARIA tablist, roving tabindex, ←/→/Home/End. |
+| `Tabs` | `items: { id, label, icon?, count?, disabled?, panelId?, tooltip? }[]`, `value`, `onChange`, `size` `sm` · `md`, `label`. | ARIA tablist, roving tabindex, ←/→/Home/End. `tooltip` names a tab whose word can hide (the panel's icon-only tabs); the label stays its accessible name. |
 | `Disclosure` | `title`, `icon`, `aside`, `defaultOpen`, `bare`, `size` `md` · `sm`, `index` / `animate` (entrance stagger), `onToggle`, `className`, `bodyClassName`, children. | Closed by default; animated height; rotating chevron. `md`: a 40px section row with a rule above. `sm`: a compact 12px line (tool calls, "What the engine reported", a defect's detail), no rule, the title wraps. |
 | `SegmentedControl` | `items: { value, label, icon?, disabled? }[]`, `value`, `onChange`, `label` (the group's name), `size` `sm` · `md`, `id`, `className`. | One of a few values, all visible (Theme). A radio group: roving tabindex, arrows / Home / End move *and* choose; the raised thumb slides. |
 | `Checkbox` | `checked`, `onChange(checked)`, `label`, `disabled`, `size` `sm` · `md`, `id`, `aria-label`, `className`. | A native checkbox on the tokens (`border-strong` box; `primary` fill + check when on); the label toggles it. No raw `type="checkbox"` elsewhere. |
@@ -235,7 +235,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
 
 **Other**: `DimLine`, `FailureNote` (`danger-subtle` notice about a path),
-`BranchMenu`, `RoundSections`, `NoteThumbnail`, `BARE_BUTTON`.
+`BranchMenu`, `NoteThumbnail`, `BARE_BUTTON`.
 
 ### Dialog
 
@@ -321,10 +321,26 @@ the phase-body dispatch and the action switch; these moved out:
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
-| `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's view switcher, the folded strip, the topbar's view buttons, and `usePanel` (the size remembered per browser). The pure model is `lib/feature-ui/panel.ts`. |
+| `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's views as `Tabs` (an inactive tab's word hides under ~520px of panel, its `tooltip` naming it), the folded strip, the header's panel toggle, and `usePanel` (the size remembered per browser; the open doc, dropped once another view shows). The pure model is `lib/feature-ui/panel.ts`. |
+| `PanelViewBar.tsx` | The 40px bar atop a view with parts of its own: small `Tabs` or a way back on the left, facts and actions on the right. Plan's Preview · Decisions · Spec and the doc reader's "← view" use it; no view adds a second row of tabs. |
+
+The views themselves are panel columns (24px sides, no repeated feature title), not pages:
+
+| File | What it is |
+|---|---|
+| `components/DocReader.tsx` | `DocReader`: a feature doc read in place of the view it was opened from (`panel.state.doc`), its bar "← view" › title and open full window, then the path and age line and `DocProse` at the reading width. `ProseSkeleton` is a doc's first read. Docs never open in a dialog of their own. |
+| `components/bodies/PlanBody.tsx` | Plan: one `PanelViewBar` of Preview, Decisions and Spec; `PreviewPanel` fills the rest edge to edge, the docs read as `DocProse`. |
+| `components/bodies/tickets/TicketsView.tsx` | Tickets: one list, earlier rounds folded to a line each, the current round's tickets as the sidebar's two-line row that opens in place to a card. Its "…" holds the list's controls and the feature's docs. |
+| `components/inspector/Inspector.tsx` | `DetailsView`: one column — `FeatureFacts`, the docs (`Knowledge`, by title and age), Activity closed. |
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
 | `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice strip on its composer. A main chat nobody started is an empty thread whose first message starts it. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
+
+A test drive is one page for a feature and for the Orchestrator:
+`components/review/DrivePage.tsx` frames `DriveStage` (the drive's states) beside
+`DriveNotes` (the rail, hook-free), and `drive-note-stores.ts` is the two note
+stores as the one shape it reads. `ScenarioPicker.tsx` is the one way a scenario
+is picked. Reference: `preview/drive.html`, `preview/project-drive.html`.
 
 Every agent conversation — each feature's chat, side threads, scenario and Fix-it
 chats, the project's chats and the preparation chat — is a thread rendered by

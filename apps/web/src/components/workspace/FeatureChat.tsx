@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
-import type { ChatNoticeTarget } from '../../lib/chat-notices'
+import type { ChatNoticeTarget, StandingNotice } from '../../lib/chat-notices'
 import { mainChatInbox } from '../../lib/composer-inbox'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
@@ -24,6 +24,7 @@ export function FeatureChat({
   column,
   events,
   alerts,
+  standing,
   hidden,
   start,
   onView,
@@ -34,6 +35,8 @@ export function FeatureChat({
   events: readonly EventRow[]
   /** The page's dismissible notices, at the top of the column (a failed resume, a drive's prerequisites). */
   alerts?: ReactNode
+  /** The warnings that stand on the notice strip while their condition holds (a merge conflict, a refused review drive). */
+  standing?: readonly StandingNotice[]
   /** The panel has the whole row. */
   hidden: boolean
   /** Start the feature's main chat; answers with its thread. */
@@ -63,7 +66,7 @@ export function FeatureChat({
       {...(isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
       notices={alerts}
     >
-      <FeatureNoticeDeck events={events} tickets={full.tickets} active onView={onView} />
+      <FeatureNoticeDeck events={events} tickets={full.tickets} standing={standing} active onView={onView} />
     </ThreadColumn>
   )
 }

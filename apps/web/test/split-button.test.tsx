@@ -2,8 +2,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SplitButton } from '../src/ui'
+import { ComboboxContent, ComboboxItem, ComboboxList } from '../src/ui/combobox'
 import { DropdownMenuItem, DropdownMenuLabel } from '../src/ui/dropdown-menu'
-import { openMenu } from './floating'
+import { openList, openMenu } from './floating'
 
 /**
  * The split button (drive-scenarios decision 7): one click stays one click on
@@ -34,6 +35,25 @@ describe('SplitButton', () => {
     )
     return { onDefault, onPick }
   }
+
+  it('opens a searchable list from the caret when handed a picker', () => {
+    render(
+      <SplitButton
+        onClick={vi.fn()}
+        menuLabel="Choose a scenario"
+        picker={
+          <ComboboxContent>
+            <ComboboxList label="Scenarios">
+              <ComboboxItem>Expired coupon</ComboboxItem>
+            </ComboboxList>
+          </ComboboxContent>
+        }
+      >
+        Test drive
+      </SplitButton>,
+    )
+    expect(openList(screen.getByRole('button', { name: 'Choose a scenario' }))).toEqual(['Expired coupon'])
+  })
 
   it('runs the default on the main click without opening the menu', () => {
     const { onDefault, onPick } = renderSplit()

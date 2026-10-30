@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { cx } from './floating'
+import { Tooltip } from './tooltip'
 
 /** One tab: `id` (the value), `label`, optional leading `icon` and trailing `count`. */
 export interface TabItem<T extends string = string> {
@@ -11,6 +12,11 @@ export interface TabItem<T extends string = string> {
   disabled?: boolean
   /** Id of the panel this tab shows, for `aria-controls`. */
   panelId?: string
+  /**
+   * Shown on hover and focus, for a tab whose word may be hidden (an icon-only
+   * tab in a narrow panel). The label stays the accessible name.
+   */
+  tooltip?: string
 }
 
 const TAB_SIZE = {
@@ -26,6 +32,9 @@ const TAB_SIZE = {
  * A real ARIA tablist: `role="tab"` + `aria-selected`, a roving tabindex (only
  * the selected tab is in the Tab order), and ←/→/Home/End move to and select a
  * neighbour (automatic activation). Controlled: `value` + `onChange`.
+ *
+ * An item's `tooltip` names a tab whose word can hide (icon-only in a narrow
+ * panel) on hover and focus; its label stays the accessible name.
  *
  * Props: `items`, `value`, `onChange`, `size` (`sm` 24 · `md` 28, default),
  * `label` (the tablist's accessible name), `className`.
@@ -68,7 +77,7 @@ export function Tabs<T extends string>({
     <div role="tablist" aria-label={label} onKeyDown={onKeyDown} className={cx('flex items-center gap-0.5', className)}>
       {items.map((it, i) => {
         const selected = it.id === value
-        return (
+        const tab = (
           <button
             key={it.id}
             ref={(el) => {
@@ -96,6 +105,13 @@ export function Tabs<T extends string>({
               <span className="text-xs font-normal text-text-tertiary tabular-nums">{it.count}</span>
             )}
           </button>
+        )
+        return it.tooltip ? (
+          <Tooltip key={it.id} label={it.tooltip}>
+            {tab}
+          </Tooltip>
+        ) : (
+          tab
         )
       })}
     </div>

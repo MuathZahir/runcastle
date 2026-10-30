@@ -11,8 +11,7 @@ import { BURNS_SKELETON } from '../src/components/settings/BurnsPage'
 import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
 import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
-import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
-import { TicketsSkeleton } from '../src/components/bodies/tickets/TicketsBody'
+import { ProseSkeleton } from '../src/components/DocReader'
 
 /**
  * Every content area loads as a skeleton shaped like what it is loading — not
@@ -33,7 +32,6 @@ const SITES: Array<[string, string, string]> = [
   ['the project settings', settings(PROJECT_SKELETON), 'Loading settings…'],
   ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
   ['an artifact pane', renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' })), 'Loading spec.md…'],
-  ['the tickets body', render(TicketsSkeleton), 'Loading tickets…'],
 ]
 
 describe.each(SITES)('%s while it loads', (_site, html, label) => {
@@ -86,10 +84,6 @@ describe('the skeletons are shaped like their content', () => {
     const html = renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' }))
     expect(count(html, 'paragraph')).toBe(2)
   })
-
-  it('the tickets body: rows shaped like ticket rows', () => {
-    expect(count(render(TicketsSkeleton), 'ticket-row')).toBe(4)
-  })
 })
 
 describe('no content area uses the old loading line', () => {
@@ -101,9 +95,8 @@ describe('no content area uses the old loading line', () => {
     expect(offenders).toEqual([])
   })
 
-  // DocPeek's "Loading {title}…" stays: a popover over the page, not a content area.
-  it('renders an undelayed "Loading…" line only in the doc peek popover', () => {
+  it('renders an undelayed "Loading…" line nowhere', () => {
     const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<DimLine>Loading'))
-    expect(offenders.map((f) => f.replaceAll('\\', '/'))).toEqual(['components/DocPeek.tsx'])
+    expect(offenders).toEqual([])
   })
 })

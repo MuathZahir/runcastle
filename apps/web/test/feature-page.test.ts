@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow } from '@runcastle/core'
@@ -81,6 +81,7 @@ const ticket = (seq: number, over: Partial<Ticket> = {}): Ticket =>
 const doc = (name: string) => ({ relPath: `docs/features/demo/${name}`, title: name })
 
 interface PageOptions {
+  driving?: { featureId: string; branch: string } | null
   view?: FeatureView
   status?: FeatureFull['feature']['status']
   onViewChange?: (view: FeatureView) => void
@@ -105,7 +106,7 @@ function setup({ status = 'active', preview = false, tickets = [], docs = [], ru
   store.touched.clear()
 }
 
-function workspace({ view = 'chat', onViewChange = () => undefined }: PageOptions) {
+function workspace({ view = 'chat', onViewChange = () => undefined, driving = null }: PageOptions) {
   return createElement(
     QueryClientProvider,
     { client: new QueryClient() },
@@ -114,7 +115,7 @@ function workspace({ view = 'chat', onViewChange = () => undefined }: PageOption
       view,
       onViewChange,
       guidance: false,
-      driving: null,
+      driving,
       onDriveChange: () => undefined,
     }),
   )
@@ -195,7 +196,6 @@ describe('the chat-first feature page', () => {
   it('never shows a view the feature’s facts do not offer, whatever the address says', () => {
     expect(page({ view: 'drive' })).not.toContain('data-panel')
     expect(page({ view: 'work' })).not.toContain('data-panel')
-    expect(page({ view: 'review' })).not.toContain('data-panel')
     expect(page({ view: 'plan' })).not.toContain('data-panel')
   })
 
@@ -208,7 +208,7 @@ describe('the chat-first feature page', () => {
   })
 
   it('makes no call to Go, its warnings, the human’s burn or the agentic review', () => {
-    page({ tickets: [ticket(1)], queries: READY, view: 'review' })
+    page({ tickets: [ticket(1)], queries: READY, view: 'details' })
     page({ tickets: [ticket(1)], view: 'work' })
     for (const retired of ['feature.go', 'feature.goWarnings', 'feature.burn', 'feature.agenticReview']) {
       expect(store.touched.has(retired)).toBe(false)
@@ -217,18 +217,33 @@ describe('the chat-first feature page', () => {
 })
 
 describe('the panel’s views', () => {
-  it('shows the plan preview in Plan, with decisions.md and spec.md one click away', () => {
-    const panel = panelOf(page({ view: 'plan', preview: true, docs: [doc('brief.md'), doc('decisions.md'), doc('spec.md')] }))
-    expect(panel).toContain('Preview')
-    expect(panel).toContain('decisions.md</span></button>')
-    expect(panel).toContain('spec.md</span></button>')
-    expect(panel).not.toContain('brief.md</span></button>')
+  it('switches the views by tabs in the panel’s header, Review never among them', () => {
+    const panel = panelOf(page({ view: 'plan', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('spec.md')] }))
+    const views = panel.slice(at(panel, 'aria-label="Panel views"'), at(panel, 'aria-label="Fold the panel"'))
+    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(3)
+    expect(views).toContain('Tickets')
+    expect(views).toContain('Details')
+    expect(views).not.toContain('Review')
   })
 
-  it('shows the decisions in Plan before a preview exists, with the docs menu', () => {
+  it('shows the plan preview in Plan, with Decisions and Spec as tabs beside it and no repeated title', () => {
+    const docs = [doc('brief.md'), doc('decisions.md'), doc('spec.md')]
+    const panel = panelOf(page({ view: 'plan', preview: true, docs, queries: { 'docs.read': { content: '<p>the show</p>' } } }))
+    const bar = panel.slice(at(panel, 'role="tablist" aria-label="Plan"'))
+    expect(bar).toContain('Preview</button>')
+    expect(bar).toContain('Decisions</button>')
+    expect(bar).toContain('Spec</button>')
+    expect(bar).not.toContain('brief.md')
+    expect(panel).toContain('<iframe')
+    expect(panel).not.toContain('<h1')
+  })
+
+  it('reads the decisions in Plan before a preview exists, in the panel and not a dialog', () => {
     const panel = panelOf(page({ view: 'plan', docs: [doc('decisions.md')] }))
-    expect(panel).toContain('Decisions so far')
-    expect(panel).toContain('aria-label="Docs — showing decisions.md"')
+    expect(panel).not.toContain('Preview</button>')
+    expect(panel).toContain('Decisions</button>')
+    expect(panel).not.toContain('role="dialog"')
+    expect(panel).not.toContain('<iframe')
   })
 
   it('shows the ticket ledger in Work, with no Go above it', () => {
@@ -238,38 +253,24 @@ describe('the panel’s views', () => {
     expect(panel).not.toMatch(/>Go</)
     expect(panel).not.toContain('Go anyway')
   })
-
-  it('puts the run’s lanes above the ledger in Work while a run exists', () => {
-    const runs = [{ id: 'run_1', featureId: 'f1', workflow: 'ticket-burner', status: 'running', startedAt: 1 }] as FeatureFull['runs']
-    const withRun = panelOf(page({ view: 'work', tickets: [ticket(1)], runs }))
-    const without = panelOf(page({ view: 'work', tickets: [ticket(1)] }))
-    expect(withRun.length).toBeGreaterThan(without.length)
-    expect(at(withRun, 'aria-label="Tickets"')).toBeGreaterThan(at(without, 'aria-label="Tickets"'))
-  })
-
-  it('shows the review in Review, with no Agentic review button', () => {
-    const panel = panelOf(page({ view: 'review', tickets: [ticket(1)], queries: READY }))
-    expect(panel).toContain('data-tier="work"')
-    expect(panel).not.toContain('Agentic review')
-  })
-
-  it('shows what shipped in Review once merged', () => {
-    const panel = panelOf(page({ view: 'review', status: 'shipped' }))
-    expect(panel).toContain('data-tier="status"')
-    expect(panel).not.toContain('Agentic review')
-  })
 })
 
 describe('what opens the panel', () => {
-  it('opens the drive after a test drive starts, and not after one stops or is denied', () => {
+  it('opens the drive on the Test drive click, before the server answers', () => {
+    const onViewChange = vi.fn()
+    setup({ queries: READY })
+    render(workspace({ onViewChange }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
+    expect(onViewChange).toHaveBeenCalledWith('drive')
+  })
+
+  it('opens nothing when a test drive lands, or stops', () => {
     const onViewChange = vi.fn()
     page({ onViewChange, queries: READY })
     const testDrive = store.mutations.get('feature.testDrive')
-    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
-    testDrive?.onSuccess?.({ ok: false }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).not.toHaveBeenCalled()
     testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).toHaveBeenCalledWith('drive')
+    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
+    expect(onViewChange).not.toHaveBeenCalled()
   })
 
   it('opens nothing on any other mutation landing', () => {
@@ -282,6 +283,16 @@ describe('what opens the panel', () => {
     expect(onViewChange).not.toHaveBeenCalled()
   })
 
+  // the-feature-s-right-panel decision 20: Review was the one place to write notes.
+  it('says a merged feature’s Details was merged, with its time', () => {
+    const shipped = { id: 1, projectId: 'p1', featureId: 'f1', ts: Date.now() - 3 * 3_600_000, type: 'feature.shipped', message: 'shipped' } as EventRow
+    setup({ status: 'shipped', queries: { 'events.list': [shipped] } })
+    const view = render(workspace({ view: 'details' }))
+    const facts = view.container.querySelector('[data-panel]')?.textContent ?? ''
+    expect(facts).toContain('Merged')
+    expect(facts).toContain('3h ago')
+  })
+
   it('opens Work on the panel.show emit_tickets raises, even before the refetched feature has the tickets', () => {
     const event = (id: number, type: string, data?: unknown): EventRow =>
       ({ id, projectId: 'p1', featureId: 'f1', ts: id, type, message: type, data }) as EventRow
@@ -291,5 +302,35 @@ describe('what opens the panel', () => {
     store.queries.set('events.list', [event(1, 'session.started'), event(2, 'panel.show', { view: 'work' })])
     act(() => view.rerender(workspace({ onViewChange })))
     expect(onViewChange).toHaveBeenCalledWith('work')
+  })
+})
+
+/** test-drive-looks-the-part decisions 13, 19, 20: while on a drive, the drive is the page. */
+describe('the drive page', () => {
+  const driving = { featureId: 'f1', branch: 'feature/f1' }
+
+  it('takes the page in place of the header, the chat and the panel', () => {
+    const html = page({ view: 'drive', driving })
+    expect(html).toContain('data-drive-page')
+    expect(html).toContain('>Stop drive<')
+    expect(html).toContain('aria-label="Back to the chat"')
+    expect(html).not.toContain('data-panel')
+    // The header and the chat stay mounted under it, hidden.
+    expect(at(html, 'class="hidden"')).toBeGreaterThan(-1)
+    expect(html.slice(0, at(html, 'class="hidden"'))).not.toContain('<header')
+  })
+
+  it('stays mounted behind the chat page, with the way back in the header', () => {
+    const html = page({ view: 'chat', driving })
+    expect(html).toMatch(/class="[^"]*hidden[^"]*" data-drive-page/)
+    expect(headerOf(html)).toContain('Back to the drive')
+    expect(headerOf(html)).not.toContain('Stop drive')
+    // Over the chat: the agent is held, and how to let it go.
+    expect(html).toContain('the agent can’t start a round')
+    expect(html).toContain('>Stop drive<')
+  })
+
+  it('is not there with no drive', () => {
+    expect(page({ view: 'chat' })).not.toContain('data-drive-page')
   })
 })

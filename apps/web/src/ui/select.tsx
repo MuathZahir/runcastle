@@ -81,6 +81,16 @@ export const SELECT_GHOST =
   'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text ' +
   'data-[state=open]:bg-surface-selected data-[state=open]:text-text disabled:cursor-not-allowed disabled:text-text-disabled'
 
+/**
+ * The ghost look at full control height, for the one value a toolbar is about
+ * (the drive's scenario). Unlike a `Button` it may shrink: its words are what
+ * gives way in a narrow bar.
+ */
+export const SELECT_BAR =
+  'h-(--control-h) max-w-80 min-w-0 rounded-md px-2.5 text-sm font-medium ' +
+  'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover ' +
+  'data-[state=open]:bg-surface-selected disabled:cursor-not-allowed disabled:text-text-disabled'
+
 export function SelectTrigger({
   className,
   children,

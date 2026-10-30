@@ -3,9 +3,10 @@ import {
   INITIAL_PANEL,
   PANEL_VIEWS,
   availableViews,
+  panelTabs,
   hasPlan,
   panelReducer,
-  reviewRan,
+  panelViewOf,
   type PanelAction,
   type PanelFacts,
   type PanelState,
@@ -15,12 +16,17 @@ import {
  * tickets-and-review-are-tools-not-phases decision 8: the views a feature
  * offers come from facts, never a phase, and the panel's transitions.
  */
+describe('panelTabs', () => {
+  it('leaves the drive out: it is the page, not a tab', () => {
+    expect(panelTabs(['plan', 'work', 'details', 'design', 'drive'])).toEqual(['plan', 'work', 'details', 'design'])
+  })
+})
+
 describe('availableViews', () => {
   const none: PanelFacts = {
     isDraft: false,
     hasPlan: false,
     hasTickets: false,
-    hasReview: false,
     shipped: false,
     designRunning: false,
     driveActive: false,
@@ -33,40 +39,45 @@ describe('availableViews', () => {
   it('offers each view once its fact holds, in the switcher’s order', () => {
     expect(availableViews({ ...none, hasPlan: true })).toEqual(['plan', 'details'])
     expect(availableViews({ ...none, hasTickets: true })).toEqual(['work', 'details'])
-    expect(availableViews({ ...none, hasReview: true })).toEqual(['review', 'details'])
-    expect(availableViews({ ...none, shipped: true })).toEqual(['review', 'details'])
     expect(availableViews({ ...none, designRunning: true })).toEqual(['details', 'design'])
     expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'drive'])
   })
 
-  it('lists plan, work, review, details, design, drive when every fact holds', () => {
-    const all = { isDraft: false, hasPlan: true, hasTickets: true, hasReview: true, shipped: false, designRunning: true, driveActive: true }
-    expect(availableViews(all)).toEqual(['plan', 'work', 'review', 'details', 'design', 'drive'])
+  it('adds no view for a ship (decision 14)', () => {
+    expect(availableViews({ ...none, shipped: true })).toEqual(['details'])
+  })
+
+  it('lists plan, tickets, details, design, drive when every fact holds', () => {
+    const all = { isDraft: false, hasPlan: true, hasTickets: true, shipped: true, designRunning: true, driveActive: true }
+    expect(availableViews(all)).toEqual(['plan', 'work', 'details', 'design', 'drive'])
   })
 
   it('gives a draft no panel at all', () => {
-    const all = { isDraft: true, hasPlan: true, hasTickets: true, hasReview: true, shipped: false, designRunning: true, driveActive: true }
+    const all = { isDraft: true, hasPlan: true, hasTickets: true, shipped: false, designRunning: true, driveActive: true }
     expect(availableViews(all)).toEqual([])
   })
 
-  it('has no phase-keyed body and no separate preview view', () => {
-    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'review', 'details', 'design', 'drive'])
+  it('has no phase-keyed body, no separate preview view and no Review', () => {
+    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'details', 'design', 'drive'])
   })
 })
 
-describe('the facts behind Plan and Review', () => {
+describe('panelViewOf', () => {
+  it('reads the retired body, preview and review names as Tickets and Plan', () => {
+    expect(panelViewOf('body')).toBe('work')
+    expect(panelViewOf('preview')).toBe('plan')
+    expect(panelViewOf('review')).toBe('work')
+    expect(panelViewOf('nonsense')).toBeNull()
+  })
+})
+
+describe('the facts behind Plan', () => {
   it('has a plan with a preview, decisions.md or spec.md, and none with only the brief', () => {
     const doc = (relPath: string) => ({ relPath })
     expect(hasPlan({ docs: [doc('docs/features/x/brief.md')] })).toBe(false)
     expect(hasPlan({ preview: { relPath: 'preview.html' }, docs: [] })).toBe(true)
     expect(hasPlan({ docs: [doc('docs/features/x/decisions.md')] })).toBe(true)
     expect(hasPlan({ docs: [doc('docs/features/x/spec.md')] })).toBe(true)
-  })
-
-  it('counts a review ticket that ran, not one still pending or cancelled, nor a work ticket', () => {
-    expect(reviewRan([{ kind: 'review', status: 'pending' }, { kind: 'review', status: 'cancelled' }])).toBe(false)
-    expect(reviewRan([{ kind: 'implementation', status: 'done' }])).toBe(false)
-    for (const status of ['burning', 'done', 'failed']) expect(reviewRan([{ kind: 'review', status }])).toBe(true)
   })
 })
 
@@ -181,5 +192,39 @@ describe('panelReducer', () => {
     expect(panelReducer(folded, { type: 'open', view: 'design', origin: 'agent' }).collapsed).toBe(false)
     // Nothing open, nothing to fold.
     expect(run({ type: 'collapse' }).collapsed).toBe(false)
+  })
+})
+
+describe('a doc read in the panel (the-feature-s-right-panel decision 7)', () => {
+  const run = (...actions: PanelAction[]): PanelState => actions.reduce(panelReducer, INITIAL_PANEL)
+  const reading = run({ type: 'open', view: 'details', origin: 'human' }, { type: 'openDoc', doc: 'notes/a.md' })
+
+  it('reads the doc in the open view, and the way back returns to that view', () => {
+    expect(reading).toMatchObject({ view: 'details', doc: 'notes/a.md' })
+    const back = panelReducer(reading, { type: 'closeDoc' })
+    expect(back.view).toBe('details')
+    expect(back.doc).toBeUndefined()
+  })
+
+  it('unfolds a folded panel to show the doc', () => {
+    const folded = run({ type: 'open', view: 'work', origin: 'human' }, { type: 'collapse' })
+    expect(panelReducer(folded, { type: 'openDoc', doc: 'spec.md' })).toMatchObject({ doc: 'spec.md', collapsed: false })
+  })
+
+  it('opens nothing with no view on show', () => {
+    expect(run({ type: 'openDoc', doc: 'spec.md' }).doc).toBeUndefined()
+  })
+
+  it('drops the doc on a switch, even to the same view, and on close', () => {
+    expect(panelReducer(reading, { type: 'switch', view: 'work' }).doc).toBeUndefined()
+    expect(panelReducer(reading, { type: 'switch', view: 'details' }).doc).toBeUndefined()
+    expect(panelReducer(reading, { type: 'close' }).doc).toBeUndefined()
+    expect(panelReducer(reading, { type: 'toggle', views: ['details'] }).doc).toBeUndefined()
+  })
+
+  it('drops the doc when another view opens, and keeps it when the open view is asked for again', () => {
+    expect(panelReducer(reading, { type: 'open', view: 'design', origin: 'agent' }).doc).toBeUndefined()
+    expect(panelReducer(reading, { type: 'follow', click: 'testDrive' }).doc).toBeUndefined()
+    expect(panelReducer(reading, { type: 'open', view: 'details', origin: 'agent' }).doc).toBe('notes/a.md')
   })
 })

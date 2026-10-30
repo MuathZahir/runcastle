@@ -10,6 +10,7 @@ import { workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
   insideProject,
+  addressedView,
   featureViewOf,
   locationFor,
   parsePath,
@@ -60,7 +61,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     startPreparation,
     setCmdk,
   } = ws
-  const [driving, setDriving] = useState<DriveState | null>(null)
+  const [startedDrive, setDriving] = useState<DriveState | null>(null)
   const [newChatRequest, setNewChatRequest] = useState(0)
   // Note capture is shell state for one reason: it is mounted HERE, so it exists
   // on every in-project screen and on none of the portfolio home (decisions #2).
@@ -105,6 +106,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // The one drive query every drive surface polls, read for the titlebar pill.
   const slot = trpc.feature.driveInfo.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data
   const projectDrive = isThisProjectDrive(slot, projectId) ? slot : null
+  // The drive this shell started, or the feature drive the server says is up:
+  // after a reload, or the review agent's, the way back to it is the same.
+  const driving = startedDrive ?? (slot?.featureId ? { featureId: slot.featureId, branch: slot.branch } : null)
 
   const features = list.data
 
@@ -161,10 +165,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else if (addressed?.kind === 'conversations') openConversations()
     else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
-      // A view in the address wins; a bare feature path restores the remembered
-      // one — which, after a reload, is the view the path was showing anyway.
+      // A view in the address wins, Work included when the address names it; a
+      // bare feature path restores the remembered one — which, after a reload,
+      // is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
-      if (named) openFeature(named.id, addressed.view)
+      if (named) openFeature(named.id, addressedView(addressed))
       else openFeature(landingFeature(features)?.id ?? null)
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)
@@ -337,6 +342,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenSettings={() => ws.openSettings()}
             projectDriveBranch={projectDrive?.branch ?? null}
             onOpenProjectDrive={openDrive}
+            onOpenFeatureDrive={(featureId) => openFeature(featureId, 'drive')}
             driving={driving}
             onDriveChange={setDriving}
           />
