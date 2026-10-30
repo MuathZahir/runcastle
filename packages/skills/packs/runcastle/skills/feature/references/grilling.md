@@ -1,7 +1,7 @@
 # Grilling, and recording what was decided
 
-Load this when the human's intent is unclear and you are about to interview
-them, or when you are about to write or change `decisions.md`.
+Load this when you are about to interview the human on anything the brief did
+not settle, or when you are about to write or change `decisions.md`.
 
 ## Context hygiene is the whole game
 

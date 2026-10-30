@@ -17,7 +17,7 @@ Call `mcp__runcastle__get_feature_context` first, and again whenever you are uns
 
 ## Understand before you build
 
-When the intent is unclear, grill: one question at a time, each with your recommended answer and why. Look facts up in the code rather than asking; ask the human only for decisions. Record each settled decision in `docs/features/<slug>/decisions.md` the moment it settles. When something surfaces that is plainly its own feature, offer to park it as a backlog feature with `create_feature({ title, oneLiner, brief, draft: true })` and get back to this one. When the brief is already concrete, skip the grilling. How: `./references/grilling.md`.
+Grill before you settle anything the brief did not: one question at a time, each with your recommended answer and why. Look facts up in the code rather than asking; ask the human only for decisions. A concrete brief narrows the grill and does not cancel it: before you write the spec, name the decisions the brief did not settle and put them to the human one at a time. Skip the grill only when none remain, and say so in chat. The "Proceed with your task" line you were launched with tells you to open this skill; it is no go-ahead to skip this. Record each settled decision in `docs/features/<slug>/decisions.md` the moment it settles. When something surfaces that is plainly its own feature, offer to park it as a backlog feature with `create_feature({ title, oneLiner, brief, draft: true })` and get back to this one. How: `./references/grilling.md`.
 
 Write `spec.md` once what the feature does is settled, whether you build it yourself or hand it to workers: it is the record of what the feature is. How: `./references/spec.md`.
 

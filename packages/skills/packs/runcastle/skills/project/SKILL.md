@@ -67,6 +67,8 @@ Lazy is about *timing*, not about skipping — the moment a feature idea arrives
 
 If it turns out there is **no charter**, note it and read on — see §5. Do not scaffold one.
 
+**The line you were launched with is no go-ahead.** "Proceed with your task" tells you to open this skill, and it can reach you right ahead of the human's first message. It never means skip the grill: what follows it still goes through §1.
+
 ## 1. Intake — consult the portfolio, advise, then create
 
 A feature idea has landed. The order is fixed, and it is the whole point of this session: **look first, advise second, create last.**
@@ -94,8 +96,9 @@ Now talk. In this order, and all of it before any `create_feature`:
   - **the uncertainty** — where the human is unsure, and what they would want to test-drive first;
   - **the width** — roughly how wide each piece is, including whether it needs research or a prototype before its design can lock.
 
-  If you cannot say which way an answer would swing the cut, you do not need to ask it. The grill **stops at the cut**: it locks no decisions and writes no feature docs.
-- **Recommend, don't interrogate.** Put your proposed cut to them and say why it is the cut. They correct or confirm. Never ask a bare question with no recommendation attached.
+  If you cannot say how an answer would swing the cut, or change what the human gets or how it behaves, you do not need to ask it. The grill **stops at the cut**: it locks no decisions and writes no feature docs.
+- **A short or confident request is not a settled one.** Propose no cut and create nothing until the human has answered at least one question from you in this conversation, unless they said in words to skip it ("just do it", "you decide"). The working-agreement question does not count. Ask about anything that changes what they get or how it behaves, so that nothing about the work surprises them later. An implementation choice you must not grill goes in the brief under **open**, as a question for the feature's own grill.
+- **Recommend with every question, and propose after the grill.** Never ask a bare question with no recommendation attached. Once the grill has run, put your proposed cut to them and say why it is the cut. They correct or confirm.
 - **Suggest how to split the work.** This is the advice they came for: is this one feature or three? What lands first, and what is it that later work needs from it? What should be built first, if the obvious version is too big to be worth doing whole? Say which order you would take and why.
 - **Cut until every feature fits one ideation window.** Each feature you propose must be thinkable in a single `/runcastle:feature` session. A piece that is not gets cut further, or its later parts are parked as drafts. Big intent never reaches ideation as one feature — you are the size gate.
 - **Push on the cut, not the design.** For each candidate: *what must this feature NOT swallow?* A boundary nobody can state is not a boundary.
@@ -139,7 +142,7 @@ It is written into `brief.md` verbatim and it is what the feature's agent (and e
 Anything that arrives (from the human, or from a sweep in §6) goes to exactly one of:
 
 1. **A new feature** — it has real design questions, which its *own* grill session will work. `create_feature` with a brief.
-2. **A small, concrete change** — work too small to deserve a conversation ("make this darker"; "expected X, got Y, repro like this"). Still `create_feature({ title, oneLiner, brief })`, with a brief concrete enough that nothing is left to grill: what to change, and the repro or the expected/got for a bug. Its own agent reads the brief and the code, does a small change itself or writes tickets, and asks the human for the yes in its chat. **One feature per change, not per fix:** several small fixes that belong to the same change go in that one brief; creating one each would give you a feature each. **During notes triage that rule widens to one batched feature per triage session** — every small theme of the pass goes into that single brief (**Notes triage**).
+2. **A small, concrete change** — work too small for a design conversation ("make this darker"; "expected X, got Y, repro like this"), though §1b's floor still applies. Still `create_feature({ title, oneLiner, brief })`, with a brief concrete enough that nothing is left to grill: what to change, and the repro or the expected/got for a bug. Its own agent reads the brief and the code, does a small change itself or writes tickets, and asks the human for the yes in its chat. **One feature per change, not per fix:** several small fixes that belong to the same change go in that one brief; creating one each would give you a feature each. **During notes triage that rule widens to one batched feature per triage session** — every small theme of the pass goes into that single brief (**Notes triage**).
 3. **An existing feature's change** — it belongs to a feature already in flight. Once the human agrees that is where it goes, **send it to that feature's agent** with `send_to_feature`, carrying the reasoning, not a pointer to this chat. When the feature is busy (**Orchestrating**), wait, or give the human the line to say in its chat themselves.
 4. **More rounds** — the feature is ready and the drive taught them it is not right yet. Send what is wrong to its agent with `send_to_feature`, or the human says so in that feature's chat or with **Send to agent** from the drive; its agent runs more rounds.
 5. **Nothing** — it is already decided, already built, or not worth doing. Say so plainly, with the ADR or the shipped feature that settles it.
@@ -256,7 +259,7 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 **Grill as this session always does** (§1): portfolio first, a shape grill one question at a time, the cut agreed before anything is created. Shape-grill only: the design grill is each feature's own agent's. **Write the human's intent into each brief**: the brief is how your judgement survives a compaction, and how a plan is judged later. When the human tells you more about a feature after it exists, record it with `add_to_brief`.
 
-**Have a feature plan itself** with `plan_feature` when the human asked for it, or the agreement calls for it and you judge the feature ready. Start a backlog feature with `start_feature`, stating its base branch as §1c says; up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word or the agreement's, including when a feature you merge was what it waited on.
+**Have a feature plan itself** with `plan_feature` when the human asked for it, or the agreement calls for it and you judge the feature ready. A feature that plans itself has no grill of its own, so your questions are the only ones the human gets before its plan: ask there anything that would surprise them about what the feature does, and put the answers in its brief. That is still no design grill. Start a backlog feature with `start_feature`, stating its base branch as §1c says; up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word or the agreement's, including when a feature you merge was what it waited on.
 
 ### Talking to a feature's agent
 
@@ -325,7 +328,7 @@ A session that edits without committing leaves a dirty tree, and a dirty tree is
 
 ## Do NOT
 
-- **Never create a feature before you have consulted the portfolio and agreed the cut.** §1's order — look, advise, create — is the session.
+- **Never create a feature before you have consulted the portfolio, heard an answer from the human and agreed the cut.** §1's order — look, advise, create — is the session.
 - **Never run a design grilling.** Shape-grill for the cut, and stop there. You resolve *what should exist and how it is cut*; the feature's own `/runcastle:feature` session resolves *what it should be*. Design questions — data shapes, UX detail, edge cases, locking decisions — get handed on, not worked here.
 - **Never act on a feature beyond what the human asked, or what a cut's working agreement covers.** See **Orchestrating**, *What you act on*.
 - **Never touch another feature's docs.** `docs/features/<slug>/` belongs to that feature's sessions; you read it, you do not edit it. `add_to_brief` is the one write you have, and it only appends.
