@@ -26,3 +26,9 @@ export function pickOption(trigger: HTMLElement, option: string | RegExp): void 
   fireEvent.click(trigger)
   fireEvent.click(screen.getByRole('option', { name: option }))
 }
+
+/** The rows of the `Combobox` a click on `trigger` opens, as they read out. */
+export function openList(trigger: HTMLElement): string[] {
+  fireEvent.click(trigger)
+  return screen.getAllByRole('option').map((row) => row.textContent ?? '')
+}

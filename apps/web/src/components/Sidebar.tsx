@@ -93,6 +93,8 @@ export interface SidebarProps {
   /** The branch this project's live project drive is driving, or null. */
   projectDriveBranch?: string | null
   onOpenProjectDrive?: () => void
+  /** The feature drive's card: back to that drive's page. */
+  onOpenFeatureDrive?: (featureId: string) => void
   /** The feature test drive this shell started, or null. */
   driving?: DriveState | null
   onDriveChange?: (d: DriveState | null) => void
@@ -680,6 +682,7 @@ function SidebarFoot({
   onOpenSettings,
   projectDriveBranch = null,
   onOpenProjectDrive,
+  onOpenFeatureDrive,
   driving = null,
   onDriveChange,
 }: SidebarProps) {
@@ -717,8 +720,8 @@ function SidebarFoot({
         <DriveCard
           label="Test drive"
           detail={drivenTitle ?? <span className="font-mono">{driving.branch}</span>}
-          title={`Driving ${driving.branch} — back to its feature`}
-          onOpen={() => onSelect(driving.featureId)}
+          title={`Driving ${driving.branch} — back to the drive`}
+          onOpen={() => (onOpenFeatureDrive ?? onSelect)(driving.featureId)}
           onStop={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
           stopping={stopDrive.isPending}
         />

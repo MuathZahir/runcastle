@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Disclosure, StatusLabel } from '../../ui'
-import { IconRefresh, IconStop, IconTerminal } from '../../icons'
+import { IconAlert, IconRefresh, IconTerminal } from '../../icons'
 import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
 import { DRIVE_INSTRUCTIONS_SCOPE_NOTE } from '../../lib/settings'
@@ -13,13 +13,9 @@ import { TerminalView } from '../TerminalView'
 
 /**
  * The test drive's pieces that are not the app itself: the project's drive
- * instructions, the stop control, the setup failure, and the footer strip under
- * the stage (decision 20).
- *
- * They used to be cards stacked down the review page, each deriving what the
- * drive was doing for itself; they are now the contents of the evidence stage's
- * drive states, laid out from the server's one drive-state value. The app on the
- * stage is {@link DrivePanel}'s.
+ * instructions, the setup failure, the moments a drive passes through, and the
+ * status line under the app (decision 20). The stage that lays them out from
+ * the server's one drive-state value is `DriveStage`.
  */
 
 /**
@@ -57,36 +53,7 @@ export function DriveInstructions({ text }: { text?: string | null }) {
 }
 
 /**
- * Stop, wherever the stage needs to offer it: a bare checkout the human is done
- * inspecting, a drive whose setup failed, or a drive the review agent is holding
- * (decisions #10 — `stop` is deliberately purpose-blind, so the human can
- * reclaim the slot from a review agent that died holding it).
- */
-export function StopDrive({ featureId, label }: { featureId: string; label: string }) {
-  const utils = trpc.useUtils()
-  const toast = useToast()
-  const stop = trpc.feature.testDrive.useMutation({
-    onSuccess: () => {
-      void utils.feature.driveInfo.invalidate()
-      void utils.feature.get.invalidate({ id: featureId })
-    },
-    onError: (e) => toast.push(e.message),
-  })
-
-  return (
-    <Button
-      className="self-start"
-      icon={<IconStop />}
-      loading={stop.isPending}
-      onClick={() => stop.mutate({ featureId, action: 'stop' })}
-    >
-      {label}
-    </Button>
-  )
-}
-
-/**
- * The setup-failure state, rendered where the video would be (decision 20).
+ * The setup-failure state, rendered where the app would be (decision 20).
  *
  * A drive whose setup command failed used to be a toast on the click that caused
  * it and then a panel claiming "driving now" — the human left mid-review holding
@@ -99,12 +66,12 @@ export function StopDrive({ featureId, label }: { featureId: string; label: stri
 export function DriveSetupFailed({
   featureId,
   failure,
-  readonly,
+  onToChat,
 }: {
   featureId: string
   failure: DriveFailure
-  /** History explains what went wrong; it never offers to go and fix it. */
-  readonly: boolean
+  /** The fix runs in a chat: go to the chat page for it. */
+  onToChat?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -115,6 +82,7 @@ export function DriveSetupFailed({
       void utils.feature.get.invalidate({ id: featureId })
       void utils.events.invalidate()
       landOnChat()
+      onToChat?.()
     },
     onError: (e) => toast.push(e.message),
   })
@@ -130,19 +98,15 @@ export function DriveSetupFailed({
         </>
       }
     >
-      {!readonly && (
-        <div className="flex items-center gap-2">
-          {failure.canFix && (
-            <Button
-              icon={<IconRefresh />}
-              loading={fix.isPending}
-              onClick={() => fix.mutate({ featureId })}
-            >
-              Fix drive
-            </Button>
-          )}
-          <StopDrive featureId={featureId} label="Stop test drive" />
-        </div>
+      {failure.canFix && (
+        <Button
+          className="self-start"
+          icon={<IconRefresh />}
+          loading={fix.isPending}
+          onClick={() => fix.mutate({ featureId })}
+        >
+          Fix drive
+        </Button>
       )}
     </DriveFailureReport>
   )
@@ -164,9 +128,11 @@ export function DriveFailureReport({
   children?: ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    // Left-aligned in the centred window: a command and its output read
+    // down a margin, not around a centre line.
+    <div className="flex w-full max-w-[64ch] flex-col gap-3 self-center">
       <div className="flex flex-col gap-1.5">
-        <StatusLabel tone="danger" size="sm" strong>
+        <StatusLabel tone="danger" icon={<IconAlert />} size="sm" strong>
           Drive setup failed
         </StatusLabel>
         <div className="text-sm text-pretty text-text-secondary">{explanation}</div>
@@ -184,17 +150,21 @@ export function DriveFailureReport({
 }
 
 /**
- * The strip under the stage while any drive is up: which server, which branch,
- * and its output one click away (decision 20's footer chrome).
+ * The drive window's status line, under the page (test-drive-looks-the-part
+ * decision 2): which server, which branch, the address, and its output one
+ * click away — the output opening as a drawer between the page and this line.
  *
- * The dev-server chip only claims a server when one was really spawned — a chip
+ * The dev-server mark only claims a server when one was really spawned — a mark
  * over a process that was never started is the lie findings F22 is about — and
- * the URL stays plain text until the readiness poll says something answered, so
- * a link here is always a link that loads.
+ * the address stays plain text until the readiness poll says something answered.
+ *
+ * `where` is a project drive's checkout folder and identity (decision 5),
+ * moved here from under the page title.
  */
 export function DriveFooter({
   branch,
   drive,
+  where,
 }: {
   branch: string
   drive?: {
@@ -203,18 +173,37 @@ export function DriveFooter({
     devReady?: boolean
     devReadyTimedOut?: boolean
   }
+  where?: { text: string; title: string }
 }) {
   const [expanded, setExpanded] = useState(false)
   const open = openApp(drive)
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary">
-        {drive?.devPaneId && <StatusLabel tone="live">Dev server</StatusLabel>}
-        <span className="truncate font-mono">{branch}</span>
+    <>
+      {expanded && drive?.devPaneId && (
+        <div className="relative h-60 shrink-0 overflow-hidden border-t border-border-subtle bg-surface-inset animate-fade-in">
+          <ErrorBoundary label="dev terminal">
+            <TerminalView sessionId={drive.devPaneId} />
+          </ErrorBoundary>
+        </div>
+      )}
+      <div className="flex h-8 shrink-0 items-center gap-3 overflow-hidden border-t border-border-subtle px-3 text-xs text-text-tertiary">
+        {drive?.devPaneId && (
+          <span className="shrink-0">
+            <StatusLabel tone="live">Dev server</StatusLabel>
+          </span>
+        )}
+        <span className="max-w-48 shrink-0 truncate font-mono" title={branch}>
+          {branch}
+        </span>
         {open && (
-          <span className="truncate font-mono">
+          <span className="min-w-0 shrink-[2] truncate font-mono" title={open.state === 'ready' ? open.url : undefined}>
             {open.state === 'ready' ? open.url : openAppWaitingLabel(open)}
+          </span>
+        )}
+        {where && (
+          <span className="min-w-0 shrink-[3] truncate font-mono" title={where.title}>
+            {where.text}
           </span>
         )}
         <span className="flex-1" />
@@ -226,18 +215,48 @@ export function DriveFooter({
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
           >
-            {expanded ? 'Hide output' : 'Show output'}
+            {expanded ? 'Hide output' : 'Output'}
           </Button>
         )}
       </div>
+    </>
+  )
+}
 
-      {expanded && drive?.devPaneId && (
-        <div className="relative h-105 min-h-65 overflow-hidden rounded-md bg-surface-inset animate-rise-in">
-          <ErrorBoundary label="dev terminal">
-            <TerminalView sessionId={drive.devPaneId} />
-          </ErrorBoundary>
-        </div>
-      )}
+/**
+ * The drive window while there is no page to show (decision 3): the same head
+ * the app will have, naming the state, the moment itself centred where the app
+ * will appear, and the status line under
+ * it. The feature drive and the project drive both draw every in-between state
+ * through this, so the two read as one product.
+ */
+export function DriveStateWindow({
+  state,
+  leading,
+  trailing,
+  footer,
+  children,
+}: {
+  /** The head's words: a `StatusLabel`. */
+  state: ReactNode
+  leading?: ReactNode
+  trailing?: ReactNode
+  footer?: ReactNode
+  /** The moment: an `EmptyState`, or a failure report. */
+  children: ReactNode
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex h-(--topbar-h) shrink-0 items-center gap-1 border-b border-border-subtle px-2">
+        {leading}
+        <span className="min-w-0 truncate px-1.5">{state}</span>
+        <span className="flex-1" />
+        {trailing}
+      </div>
+      <div className="flex min-h-65 flex-1 flex-col items-center justify-center overflow-auto bg-surface-inset px-8 py-10">
+        {children}
+      </div>
+      {footer}
     </div>
   )
 }

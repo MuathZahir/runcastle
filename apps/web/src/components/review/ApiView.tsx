@@ -35,14 +35,12 @@ export function ApiView({
   calls,
   scenario,
   strip,
-  toolbar,
   onRun,
 }: {
   projectId: string
   calls: ScenarioMenu
   scenario: DriveScenario | undefined
   strip: ReactNode
-  toolbar: ReactNode
   onRun: (file: string) => void
 }) {
   const toast = useToast()
@@ -75,11 +73,9 @@ export function ApiView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
-      <div className="flex flex-wrap items-center gap-2 p-3">
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">{toolbar}</div>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 pb-3 md:flex-row md:overflow-hidden">
+    // In the drive window, in the page's place (test-drive-looks-the-part
+    // decision 2): the window's toolbar is this view's toolbar too.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto bg-surface-inset p-4 md:flex-row md:overflow-hidden">
         <nav aria-label="Calls" className="flex shrink-0 flex-col gap-3 md:w-60 md:overflow-auto">
           <CallSection title="This feature" entries={calls.own} current={current} onPick={pick} />
           <CallSection title={calls.othersLabel} entries={calls.others} current={current} onPick={pick} />
@@ -107,7 +103,6 @@ export function ApiView({
             </>
           )}
         </section>
-      </div>
     </div>
   )
 }

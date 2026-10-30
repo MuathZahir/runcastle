@@ -173,7 +173,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 |---|---|---|
 | `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
-| `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
+| `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret) or `picker` (a `ComboboxContent`, for choices that are values), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu` or a `Combobox`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
 | `Kbd` | children, `className`. | One key or a short chord. |
 | `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. For inline busy states — a pending button, a dialog step; a content area loads as a `Skeleton`. |
@@ -325,6 +325,12 @@ the phase-body dispatch and the action switch; these moved out:
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
 | `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice strip on its composer. A main chat nobody started is an empty thread whose first message starts it. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
+
+A test drive is one page for a feature and for the Orchestrator:
+`components/review/DrivePage.tsx` frames `DriveStage` (the drive's states) beside
+`DriveNotes` (the rail, hook-free), and `drive-note-stores.ts` is the two note
+stores as the one shape it reads. `ScenarioPicker.tsx` is the one way a scenario
+is picked. Reference: `preview/drive.html`, `preview/project-drive.html`.
 
 Every agent conversation — each feature's chat, side threads, scenario and Fix-it
 chats, the project's chats and the preparation chat — is a thread rendered by

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { ClipboardEvent, KeyboardEvent, ReactNode } from 'react'
 import { rankNames, rankPaths } from '@runcastle/core'
 import type { Attachment, SlashCommand, ThreadState } from '../../../lib/chat-thread'
@@ -43,6 +43,11 @@ export function Composer({
   footer,
   meter,
   workingSince,
+  label = 'Message',
+  sendLabel = 'Send',
+  sendIcon = <IconSend />,
+  multiple = true,
+  inputRef,
 }: {
   value: string
   onChange: (v: string) => void
@@ -69,8 +74,18 @@ export function Composer({
   meter?: ReactNode
   /** When the running turn began: "Working 1m 18s" sits beside Stop while it runs. */
   workingSince?: number
+  /** The field's name, for a box that is not a message (a drive's note). */
+  label?: string
+  /** What the send button is called and wears, likewise. */
+  sendLabel?: string
+  sendIcon?: ReactNode
+  /** Whether Attach takes several images at once. */
+  multiple?: boolean
+  /** The field, for a caller that focuses it (a selected area landing in the box). */
+  inputRef?: RefObject<HTMLTextAreaElement | null>
 }) {
-  const area = useRef<HTMLTextAreaElement>(null)
+  const own = useRef<HTMLTextAreaElement>(null)
+  const area = inputRef ?? own
   const picker = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState(0)
 
@@ -227,7 +242,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             placeholder={suggestion ? '' : working ? 'Steer the agent — this joins the running turn' : placeholder}
-            aria-label="Message"
+            aria-label={label}
             className="block w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 font-sans text-base text-text outline-none placeholder:text-text-tertiary"
           />
           {suggestion && !value && (
@@ -246,7 +261,7 @@ export function Composer({
               ref={picker}
               type="file"
               accept="image/*"
-              multiple
+              multiple={multiple}
               hidden
               onChange={(e) => {
                 takeImages(e.target.files)
@@ -255,9 +270,9 @@ export function Composer({
             />
             {working && <IconButton label="Stop" kbd="Esc" icon={<IconStop />} size="md" variant="secondary" onClick={onStop} />}
             <IconButton
-              label={working ? 'Send into the running turn' : 'Send'}
+              label={working ? 'Send into the running turn' : sendLabel}
               kbd="Enter"
-              icon={<IconSend />}
+              icon={sendIcon}
               size="md"
               variant={canSend ? 'primary' : 'ghost'}
               disabled={!canSend}

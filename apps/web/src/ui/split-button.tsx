@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { IconChevronDown } from '../icons'
 import { Button, type ButtonSize, type ButtonVariant } from './button'
+import { Combobox, ComboboxTrigger } from './combobox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from './dropdown-menu'
 import { cx } from './floating'
 
@@ -15,6 +16,10 @@ import { cx } from './floating'
  * `variant`, `size` and `disabled`; `loading` spins the main half and disables
  * both, so nothing can start twice. A 1px seam separates them, so neither half
  * states a border of its own beside the other.
+ *
+ * When the choices are values rather than actions — a scenario to start on —
+ * pass `picker` instead of `menu`: a `ComboboxContent`, which the caret opens as
+ * a searchable list (test-drive-looks-the-part decision 1).
  */
 export function SplitButton({
   variant = 'secondary',
@@ -25,6 +30,7 @@ export function SplitButton({
   title,
   onClick,
   menu,
+  picker,
   menuLabel,
   className,
   children,
@@ -40,7 +46,9 @@ export function SplitButton({
   /** The default action. */
   onClick: () => void
   /** The menu's items. */
-  menu: ReactNode
+  menu?: ReactNode
+  /** Or a `ComboboxContent`, for choices that are values (a scenario): the caret opens it. */
+  picker?: ReactNode
   /** The caret's accessible name, e.g. "Choose a scenario". */
   menuLabel: string
   /** Placement only (the className rule, STYLE.md). */
@@ -48,6 +56,17 @@ export function SplitButton({
   /** The main half's label. */
   children: ReactNode
 }) {
+  const caret = (
+    <Button
+      variant={variant}
+      size={size}
+      attached="end"
+      aria-label={menuLabel}
+      title={menuLabel}
+      disabled={disabled || loading}
+      icon={<IconChevronDown />}
+    />
+  )
   return (
     <span className={cx('inline-flex shrink-0 items-stretch gap-px', className)}>
       <Button
@@ -62,20 +81,17 @@ export function SplitButton({
       >
         {children}
       </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant={variant}
-            size={size}
-            attached="end"
-            aria-label={menuLabel}
-            title={menuLabel}
-            disabled={disabled || loading}
-            icon={<IconChevronDown />}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
-      </DropdownMenu>
+      {picker ? (
+        <Combobox>
+          <ComboboxTrigger asChild>{caret}</ComboboxTrigger>
+          {picker}
+        </Combobox>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>{caret}</DropdownMenuTrigger>
+          <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </span>
   )
 }

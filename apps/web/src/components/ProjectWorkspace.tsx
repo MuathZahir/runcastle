@@ -22,7 +22,7 @@ import { TestDriveCard } from './project/TestDriveCard'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
-import { useProjectDrive } from '../lib/use-project-drive'
+import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
 
 /**
  * The project workspace (decision 20) — what the rail's pinned row swaps in,
@@ -154,7 +154,7 @@ export function ProjectWorkspace({
   // The panel: the views this page offers, and the one open. Untouched, the
   // Notes inbox is open beside the resting list while something waits in it;
   // the human's own toggle wins from then on.
-  const views = projectViews({ driveActive: !!drive, hasNotes })
+  const views = projectViews({ driveActive: !!drive || projectDrive.starting, hasNotes })
   const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
   const wanted = picked === undefined ? (resting && openNotes > 0 ? 'details' : null) : picked
   const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
@@ -187,12 +187,22 @@ export function ProjectWorkspace({
     drive: projectDrive.slot,
     projectId,
   })
-  // The human's Test drive: the drive it started opens in the panel. The topbar
+  // The human's Test drive: the click is the drive's page at once. The topbar
   // starts the blank app, as the card's main click does.
-  const startDrive = (scenario: string | null = null): void =>
-    projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
+  const startDrive = (scenario: string | null = null): void => {
+    panel.dispatch({ type: 'follow', click: 'testDrive' })
+    projectDrive.start(scenario, () => panel.dispatch({ type: 'close' }))
+  }
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // The drive stays mounted while it runs, so the app is as it was left on the
+  // way back (test-drive-looks-the-part decision 13).
+  const onDrive = shown === 'drive'
+  const shownDrive: SlotDrive | null =
+    drive ??
+    (projectDrive.starting
+      ? ({ state: 'idle', branch: branchesQ.data?.current ?? '', holderLabel: '', devReady: false, devConfigured: true } as SlotDrive)
+      : null)
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   // The Orchestrator's chats live in the sidebar, under its card
   // (threads-in-the-sidebar); its "All N conversations" is this page at rest.
@@ -241,21 +251,6 @@ export function ProjectWorkspace({
 
   const panelView = (view: PanelView) => {
     switch (view) {
-      case 'drive':
-        return drive ? (
-          <ProjectDriveView
-            projectId={projectId}
-            repoPath={project?.repoPath}
-            drive={drive}
-            // Stop lands on the Notes inbox, where the drive's notes are
-            // waiting. No summary, no prompt: the inbox is the exit.
-            onStop={() =>
-              projectDrive.stop(() => panel.dispatch(hasNotes ? { type: 'switch', view: 'details' } : { type: 'close' }))
-            }
-            stopping={projectDrive.stopping}
-            onOpenPreparation={() => onOpenPreparation?.()}
-          />
-        ) : null
       case 'details':
         return (
           <div className="px-6 py-5">
@@ -276,6 +271,26 @@ export function ProjectWorkspace({
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      {shownDrive && (
+        <ScenarioChatContext.Provider value={scenarioChat}>
+          <ProjectDriveView
+            projectId={projectId}
+            repoPath={project?.repoPath}
+            drive={shownDrive}
+            hidden={!onDrive}
+            onBack={() => panel.dispatch({ type: 'close' })}
+            // Stop lands on the Notes inbox, where the drive's notes are
+            // waiting. No summary, no prompt: the inbox is the exit.
+            onStop={() =>
+              projectDrive.stop(() => panel.dispatch(hasNotes ? { type: 'switch', view: 'details' } : { type: 'close' }))
+            }
+            // Stop waits for the start: a second mutate would drop the first's callbacks.
+            stopping={projectDrive.stopping || projectDrive.starting}
+            onOpenPreparation={() => onOpenPreparation?.()}
+          />
+        </ScenarioChatContext.Provider>
+      )}
+      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The one header row (design-mode decision 12): the project, then the
           chat in front named as plain text (threads-in-the-sidebar decision 6);
           at most one action; the panel toggle. */}
@@ -288,8 +303,13 @@ export function ProjectWorkspace({
         actions={
           <>
             {/* The resting page's Test drive card is behind a live chat, so the
-                topbar carries its start until a drive is up — then the panel
-                toggle is the way to it. */}
+                topbar carries its start until a drive is up, and then the way
+                back to it. */}
+            {drive && (
+              <Button size="sm" variant="ghost" icon={<IconPlay />} className="mr-1" onClick={() => openView('drive')}>
+                Back to the drive
+              </Button>
+            )}
             {!resting && (driveCard.state === 'ready' || driveCard.state === 'blocked') && (
               <Button
                 size="sm"
@@ -342,7 +362,8 @@ export function ProjectWorkspace({
             </>
           }
           panel={
-            shown && (
+            shown &&
+            shown !== 'drive' && (
               <FeaturePanel
                 view={shown}
                 views={views}
@@ -370,6 +391,7 @@ export function ProjectWorkspace({
           onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
         />
       </ScenarioChatContext.Provider>
+      </div>
     </section>
   )
 }

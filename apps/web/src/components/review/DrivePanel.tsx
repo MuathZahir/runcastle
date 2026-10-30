@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Button, IconButton, StatusLabel, TextArea, cx } from '../../ui'
+import { IconButton, StatusLabel, cx } from '../../ui'
 import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
-import { trpc } from '../../trpc'
-import { mainChatInbox, putInInbox } from '../../lib/composer-inbox'
 import { useToast } from '../../lib/toast'
 import {
   cropRect,
@@ -11,22 +9,19 @@ import {
   tabCaptureSupported,
   type Rect,
 } from '../../lib/capture'
-import { uploadProjectNoteScreenshot } from '../../lib/project-notes'
-import { uploadScreenshot } from '../../lib/reviews'
-import { saveAnnotatedNote } from '../../lib/walkthrough'
 import { frameSize, readPreviewWidth, writePreviewWidth, type PreviewWidth } from '../../lib/preview-width'
 import { WidthMenu } from './WidthMenu'
 
 /**
- * The app itself, on the evidence stage, with the video's annotate-and-attach
+ * The app itself, in the drive's window, with the video's annotate-and-attach
  * loop pointed at it (decisions 7b, 17, 39).
  *
  * The dev server is a plain cross-origin iframe — no proxy — because the capture
  * reads *composited pixels*, which makes it agnostic to what the dev server is
  * (Vite, HMR sockets, absolute URLs: all irrelevant). What reads them is tab
  * self-capture: one native "share this tab" prompt per drive session, then every
- * drag-select crops the current stream frame and ships the PNG down the note
- * screenshot pipeline exactly as a walkthrough annotation's baked frame does.
+ * drag-select crops the current stream frame and hands the PNG to `onCapture`:
+ * the note box on a drive, the chat's composer on the design view.
  *
  * Chromium-only, and that is designed for rather than worked around: elsewhere —
  * and when an app refuses to embed at all — the panel is `Open app ↗` beside the
@@ -57,39 +52,19 @@ function nextStreamFrame(video: HTMLVideoElement): Promise<void> {
   })
 }
 
-/**
- * Where a capture lands: a feature drive writes the feature's test note, a
- * project drive writes a project note (project-level-test-drive decision 1),
- * and the design view puts it in the feature chat's composer as an image
- * (chat-as-web-components decision 5) — never a note.
- */
-type CaptureTarget =
-  | { featureId: string; projectId?: undefined; sendTo?: 'note' | 'chat' }
-  | { projectId: string; featureId?: undefined; sendTo?: undefined }
-
-/** The words that differ between a drive, whose capture is a note, and the design view, whose capture is a message. */
+/** The words that differ between a drive and the design view. */
 const CAPTURE_COPY = {
   note: {
     frameTitle: 'the app on this branch',
     open: 'Open app',
     cannotCapture: 'This browser can’t capture its own tab — paste a screenshot into a note instead',
     cannotEmbed: 'Can’t embed? Open the app and paste a screenshot into a note.',
-    askLabel: 'what’s wrong here?',
-    ask: 'What’s wrong here? Optional — the picture is the note.',
-    send: 'Save note',
-    sending: 'Saving…',
-    failed: 'the note could not be saved',
   },
   chat: {
     frameTitle: 'the design preview',
     open: 'Open in a new tab',
     cannotCapture: 'This browser can’t capture its own tab — tell the chat instead',
     cannotEmbed: 'Can’t embed? Open it in a new tab.',
-    askLabel: 'what should change?',
-    ask: 'What should change? Optional — the picture shows where.',
-    send: 'Send to chat',
-    sending: 'Sending…',
-    failed: 'the selection could not be sent',
   },
 } as const
 
@@ -126,33 +101,45 @@ export function DrivePanel({
   url,
   /** The review agent is holding this drive — the human watches (decision 20). */
   agentDriving = false,
-  /** Looking back at a shipped feature: the app is shown, nothing is written. */
-  readonly = false,
   frameKey = '',
   leading,
   toolbar,
+  trailing,
+  strip,
+  cover,
+  footer,
   width,
-  ...target
-}: CaptureTarget & {
+  onCapture,
+  copy = 'note',
+}: {
   url: string
   agentDriving?: boolean
-  readonly?: boolean
   /**
    * Remounts the frame when it changes — a scenario's landing id, so landing on
    * the same entry URL twice still reloads the app (drive-scenarios decision 7).
    */
   frameKey?: string
-  /** Controls for the toolbar, before its own (the design view's Back). */
+  /** Controls first in the toolbar (the design view's Back). */
   leading?: ReactNode
-  /** More controls for the toolbar, after its own (the Scenario menu, the design server's menu). */
+  /** What the page is on, at the toolbar's left after `leading` (the scenario control, App | API). */
   toolbar?: ReactNode
+  /** Controls after the page tools, at the toolbar's far right (the design server's menu). */
+  trailing?: ReactNode
+  /** Under the toolbar, above the page: a scenario's progress or failure, a hint (decision 4). */
+  strip?: ReactNode
+  /** Shown in the page's place, the page kept mounted under it and its tools put away (the API view). */
+  cover?: ReactNode
+  /** Under the page, inside the window: the drive's status line and its output. */
+  footer?: ReactNode
   /** The screen width the agent asked to show (`show_panel`'s `width`), over the remembered one. */
   width?: number
+  /** Where a selected area goes. Without it there is no Select area. */
+  onCapture?: (png: Blob) => void
+  /** Which words the frame says things in. */
+  copy?: keyof typeof CAPTURE_COPY
 }) {
   const toast = useToast()
-  const copy = CAPTURE_COPY[target.sendTo ?? 'note']
-  const utils = trpc.useUtils()
-  const add = trpc.notes.add.useMutation()
+  const words = CAPTURE_COPY[copy]
 
   const panelRef = useRef<HTMLDivElement>(null)
   const frame = useFrameWidth(width, panelRef)
@@ -162,18 +149,14 @@ export function DrivePanel({
   const tapRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // Capture writes a note, so a history view has no business offering it
-  // (decision 33a) — and neither has a browser that cannot read its own tab.
+  // A browser that cannot read its own tab has nothing to offer.
   const [canCapture] = useState(
-    () => !readonly && tabCaptureSupported(typeof navigator === 'undefined' ? undefined : navigator),
+    () => !!onCapture && tabCaptureSupported(typeof navigator === 'undefined' ? undefined : navigator),
   )
   const [arming, setArming] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [marquee, setMarquee] = useState<Rect | null>(null)
   const anchor = useRef<{ x: number; y: number } | null>(null)
-  const [shot, setShot] = useState<{ png: Blob; preview: string } | null>(null)
-  const [text, setText] = useState('')
-  const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [slow, setSlow] = useState(false)
   // The iframe reloads by remount: `location.reload()` across origins throws,
@@ -200,10 +183,6 @@ export function DrivePanel({
     },
     [],
   )
-
-  // One owner for the preview URL: whoever replaces or clears `shot` releases
-  // the one it displaced, unmount included.
-  useEffect(() => () => URL.revokeObjectURL(shot?.preview ?? ''), [shot])
 
   /** Attach the stream if this is the session's first capture, then arm the drag. */
   const armSelection = async (): Promise<void> => {
@@ -281,15 +260,7 @@ export function DrivePanel({
       toast.push('the selected region could not be turned into a picture')
       return
     }
-    if (target.sendTo === 'chat') {
-      // A request to the agent: the crop goes straight into the main chat's
-      // composer as an image, and the human writes the message there
-      // (chat-as-web-components decision 5).
-      putInInbox(mainChatInbox(target.featureId), [new File([png], 'selection.png', { type: 'image/png' })])
-      return
-    }
-    setText('')
-    setShot({ png, preview: URL.createObjectURL(png) })
+    onCapture?.(png)
   }
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
@@ -316,94 +287,65 @@ export function DrivePanel({
     if (isCapturable(selection)) void grab(selection)
   }
 
-  const discard = (): void => {
-    setShot(null)
-    setText('')
-  }
-
-  const save = async (): Promise<void> => {
-    if (!shot || saving) return
-    setSaving(true)
-    // Both stores require text; the picture is the observation here, so a
-    // wordless capture still says what it is (the same floor the walkthrough
-    // overlay takes, decision 24c).
-    const noteText = text.trim() || 'Screenshot from the test drive'
-    try {
-      let saved: { uploadError?: string }
-      if (target.projectId !== undefined) {
-        const projectId = target.projectId
-        saved = await saveAnnotatedNote({
-          createNote: () => utils.client.projectNotes.add.mutate({ projectId, text: noteText }),
-          uploadScreenshot: (noteId) => uploadProjectNoteScreenshot(noteId, shot.png),
-        })
-        void utils.projectNotes.invalidate()
-      } else {
-        const featureId = target.featureId
-        saved = await saveAnnotatedNote({
-          createNote: () => add.mutateAsync({ featureId, text: noteText }),
-          uploadScreenshot: (noteId) => uploadScreenshot(noteId, shot.png),
-        })
-        void utils.notes.list.invalidate({ featureId })
-      }
-      if (saved.uploadError) {
-        toast.push(`the note was saved, but its screenshot was not: ${saved.uploadError}`)
-      }
-      discard()
-    } catch (e) {
-      toast.push(e instanceof Error ? e.message : copy.failed)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const group = 'flex shrink-0 items-center gap-0.5'
-  const notice = 'min-w-0 truncate px-1'
+  const notice = 'min-w-0 truncate px-1.5 text-xs text-text-tertiary'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
-      {/* Every control in one bar above the app, covering none of it
-          (design-mode decision 12's one-row rule, for the panes): a page's
-          heading, or a small component, renders exactly where a floating
-          toolbar would sit. */}
+    // The drive's window (test-drive-looks-the-part decisions 2, 12): flush with
+    // what surrounds it, the head above the page at the full height left, and
+    // whatever the caller puts above the page (`strip`) and under it (`footer`).
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Every control in one bar above the page, covering none of it
+          (design-mode decision 12's one-row rule): what the page is on the
+          left, the tools that act on it on the right. The bar never wraps; the
+          left side's words give way first (decision 10). */}
       <div
         role="toolbar"
         aria-label="Page controls"
-        className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border-subtle bg-surface-raised p-1"
+        className="flex h-(--topbar-h) shrink-0 items-center gap-1 border-b border-border-subtle px-2"
       >
-        <div className={group}>
-          {leading}
-          {canCapture ? (
-            <IconButton
-              label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
-              icon={<IconSelectArea />}
-              active={selecting}
-              disabled={arming}
-              tooltipSide="bottom"
-              onClick={() => void armSelection()}
-            />
-          ) : null}
-          <IconButton
-            label="Reload"
-            icon={<IconRefresh />}
-            tooltipSide="bottom"
-            onClick={() => setGeneration((g) => g + 1)}
-          />
-          <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
-          <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
-        </div>
-        {toolbar && <div className={cx(group, 'min-w-0 shrink')}>{toolbar}</div>}
-        {!canCapture && !readonly && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotCapture}</span>}
+        {leading}
+        {toolbar && <div className="flex min-w-0 shrink items-center gap-1">{toolbar}</div>}
         {agentDriving && (
-          <span className={notice}>
-            <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
+          <span className="min-w-0 truncate px-1.5">
+            <StatusLabel tone="live">Review agent driving</StatusLabel>
           </span>
         )}
-        {!loaded && slow && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotEmbed}</span>}
+        {!cover && onCapture && !canCapture && <span className={notice}>{words.cannotCapture}</span>}
+        {!cover && !loaded && slow && <span className={notice}>{words.cannotEmbed}</span>}
+        <span className="flex-1" />
+        {!cover && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            {canCapture ? (
+              <IconButton
+                label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
+                icon={<IconSelectArea />}
+                active={selecting}
+                disabled={arming}
+                tooltipSide="bottom"
+                onClick={() => void armSelection()}
+              />
+            ) : null}
+            <IconButton
+              label="Reload"
+              icon={<IconRefresh />}
+              tooltipSide="bottom"
+              onClick={() => setGeneration((g) => g + 1)}
+            />
+            <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
+            <IconButton label={words.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+          </div>
+        )}
+        {trailing}
       </div>
+      {strip}
+      {cover}
       {/* The stage: the frame and every layer over it. The selection is
           measured against this box, so a crop is of the frame alone — and,
           since a crop reads on-screen pixels, of the frame as drawn, scaled. */}
-      <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={panelRef}
+        className={cx('relative min-h-0 flex-1 flex-col overflow-hidden bg-surface-inset', cover ? 'hidden' : 'flex')}
+      >
         {/* At a screen width the page lays out at that width and is drawn
             shrunk to the pane, so it wraps as it would on that screen; at Fit
             it lays out at the pane's own width. */}
@@ -421,7 +363,7 @@ export function DrivePanel({
                 }
           }
           src={url}
-          title={copy.frameTitle}
+          title={words.frameTitle}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           onLoad={() => setLoaded(true)}
         />
@@ -449,41 +391,12 @@ export function DrivePanel({
           </div>
         )}
 
-        {shot && (
-          <div className="absolute inset-x-3 bottom-3 z-20 flex items-end gap-3 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
-            <img
-              className="h-14 w-24 rounded-md bg-surface-inset object-contain"
-              src={shot.preview}
-              alt="the region you selected"
-            />
-            <TextArea
-              rows={2}
-              aria-label={copy.askLabel}
-              className="min-w-0 flex-1 resize-none"
-              placeholder={copy.ask}
-              value={text}
-              autoFocus
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                e.preventDefault()
-                void save()
-              }}
-            />
-            <Button variant="ghost" onClick={discard}>
-              Discard
-            </Button>
-            <Button variant="primary" loading={saving} onClick={() => void save()}>
-              {saving ? copy.sending : copy.send}
-            </Button>
-          </div>
-        )}
-
         {/* The tab's own pixels, never shown: the panel reads frames off it. In
             the document rather than detached, because that is what the spike
             proved; absent entirely where there is nothing to capture from. */}
         {canCapture && <video ref={tapRef} muted playsInline className="hidden" />}
       </div>
+      {footer}
     </div>
   )
 }

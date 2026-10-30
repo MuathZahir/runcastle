@@ -4,14 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote, ScenarioEntry, ThreadEntry } from '@runcastle/core'
 import type { ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
-import { openMenu } from './floating'
+import { openList, openMenu } from './floating'
 
 /**
  * The project drive on the project workspace (project-level-test-drive
  * decisions 4, 7): the Test drive card on the resting page, starting a drive
- * hands the body to the drive view with the notes rail, Project page steps
- * back while the drive runs, Stop returns to rest, and a live chat shares the
- * body through a Chat | Drive switch.
+ * makes the drive the page with its notes rail (test-drive-looks-the-part
+ * decision 13), the back arrow steps back while the drive runs, Stop lands on
+ * the Notes inbox.
  *
  * Tier 2: what is asserted is what a click does to the body — which pieces
  * are hidden and which mutation went out — none of which a static string shows.
@@ -120,8 +120,6 @@ vi.mock('../src/trpc', () => {
         dismiss: { useMutation: mutation },
         reopen: { useMutation: mutation },
       },
-      // DrivePanel's feature-note door, mounted but unused on a project drive.
-      notes: { add: { useMutation: mutation } },
       feature: {
         list: { useQuery: () => ({ data: [] }) },
         driveInfo: { useQuery: () => ({ data: slot }) },
@@ -239,6 +237,13 @@ function restShown(): boolean {
 /** The panel beside the chat column, when one is open. */
 const panel = (): HTMLElement | null => document.querySelector('[data-panel]')
 
+/** The drive page, mounted while a drive runs, and on show or not. */
+const drivePage = (): HTMLElement | null => document.querySelector('[data-drive-page]')
+const onDrive = (): boolean => {
+  const page = drivePage()
+  return page !== null && shown(page)
+}
+
 function mount(
   api: ProjectTalkApi = talk(),
   props: { onOpenPreparation?: () => void; driveRequest?: number } = {},
@@ -342,29 +347,29 @@ describe('the Test drive card', () => {
 })
 
 describe('driving from the project page', () => {
-  it('starts a drive into the panel beside the chat list, then stops back to the Notes inbox', () => {
+  it('starts a drive as the page, then stops back to the Notes inbox', () => {
     const { rerender } = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
     expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
     rerender()
 
-    // the chat column keeps the resting list; the drive opens in the panel
-    expect(restShown()).toBe(true)
-    const drivePanel = panel()!
-    expect(within(drivePanel).getByRole('region', { name: 'Drive' })).toBeTruthy()
-    const header = within(drivePanel).getByRole('heading', { name: 'Driving main' })
-    expect(shown(header)).toBe(true)
+    // the drive replaces the chat column and the panel
+    expect(onDrive()).toBe(true)
+    expect(restShown()).toBe(false)
+    expect(panel()).toBeNull()
+    const page = drivePage()!
+    expect(page.textContent).toContain('Driving main')
     expect(screen.getByText('/home/you/journal-app @ 1882e87')).toBeTruthy()
-    expect(within(drivePanel).getByTitle('the app on this branch')).toBeTruthy()
+    expect(within(page).getByTitle('the app on this branch')).toBeTruthy()
     expect(screen.getByText(/^dev server$/i)).toBeTruthy()
-    const rail = within(drivePanel).getByRole('complementary', { name: 'Notes' })
+    const rail = within(page).getByRole('complementary', { name: 'Notes' })
     expect(within(rail).getByText('already reported')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop drive' }))
     expect(testDrive).toHaveBeenLastCalledWith({ projectId: 'proj_1', action: 'stop' })
     rerender()
     expect(restShown()).toBe(true)
-    expect(screen.queryByRole('heading', { name: 'Driving main' })).toBeNull()
+    expect(drivePage()).toBeNull()
     // the drive's notes are waiting in the inbox
     expect(within(panel()!).getAllByRole('region', { name: 'Notes' }).length).toBeGreaterThan(0)
   })
@@ -377,25 +382,27 @@ describe('driving from the project page', () => {
     expect(restShown()).toBe(true)
   })
 
-  it('opens the running drive in the panel, and closes the panel while the drive keeps running', () => {
+  it('opens the running drive as the page, and steps back while the drive keeps running', () => {
     slot = LIVE
     const { rerender } = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
-    expect(restShown()).toBe(true)
+    expect(onDrive()).toBe(true)
+    expect(restShown()).toBe(false)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close the panel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
     rerender()
-    expect(screen.queryByRole('heading', { name: 'Driving main' })).toBeNull()
+    expect(restShown()).toBe(true)
     expect(screen.getByRole('region', { name: 'Test drive' }).textContent).toContain('Running')
     expect(testDrive).not.toHaveBeenCalled()
+    // Still mounted, hidden: the app stays as it was left.
+    expect(drivePage()).not.toBeNull()
+    expect(onDrive()).toBe(false)
 
-    // the header's panel toggle reopens it at the drive, its last view
-    fireEvent.click(screen.getByRole('button', { name: /^Show the panel/ }))
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    expect(onDrive()).toBe(true)
   })
 
-  it("lists this drive's notes first, tagged, and saves the composer's note on Enter", async () => {
+  it("lists this drive's notes apart from the older ones, and saves the box's note on Enter", async () => {
     slot = LIVE
     notes = [
       note('already reported', 1_000),
@@ -407,12 +414,9 @@ describe('driving from the project page', () => {
     const thisDrive = within(rail).getByRole('region', { name: 'This drive' })
     const older = within(rail).getByRole('region', { name: 'Already open' })
     expect(within(thisDrive).getByText('streak resets at UTC')).toBeTruthy()
-    expect(within(thisDrive).getByText('drive · main').getAttribute('title')).toBe(
-      'noted while driving main @ 1882e87',
-    )
     expect(within(older).getByText('already reported')).toBeTruthy()
 
-    const box = within(rail).getByRole('textbox', { name: 'New note' })
+    const box = within(rail).getByRole('textbox', { name: 'Note' })
     fireEvent.change(box, { target: { value: 'search has no empty state' } })
     await act(async () => {
       fireEvent.keyDown(box, { key: 'Enter' })
@@ -420,25 +424,14 @@ describe('driving from the project page', () => {
     expect(addNote).toHaveBeenCalledWith({ projectId: 'proj_1', text: 'search has no empty state' })
   })
 
-  // In a narrow panel (~670px at a 50/50 split of 1600px) the notes aside
-  // floats over its row; the header's controls sit above that row, so the
-  // aside can never cover them.
-  it('keeps Stop drive and Hide notes outside the area the notes aside floats over', () => {
+  it('folds the rail from the head, where Stop drive also is', () => {
     slot = LIVE
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    const root = document.querySelector<HTMLElement>('[data-project-drive]')!
-    const rail = within(root).getByRole('complementary', { name: 'Notes' })
-    const asideRow = root.querySelector<HTMLElement>(':scope > .\\@container')!
-    expect(asideRow.contains(rail)).toBe(true)
-    const stop = within(root).getByRole('button', { name: 'Stop drive' })
-    const hide = within(root).getByRole('button', { name: 'Hide notes' })
-    expect(asideRow.contains(stop)).toBe(false)
-    expect(asideRow.contains(hide)).toBe(false)
-
-    fireEvent.click(hide)
-    expect(within(root).queryByRole('complementary', { name: 'Notes' })).toBeNull()
-    fireEvent.click(stop)
+    const page = drivePage()!
+    fireEvent.click(within(page).getByRole('button', { name: 'Hide notes' }))
+    expect(within(page).queryByRole('complementary', { name: 'Notes' })).toBeNull()
+    fireEvent.click(within(page).getByRole('button', { name: 'Stop drive' }))
     expect(testDrive).toHaveBeenLastCalledWith({ projectId: 'proj_1', action: 'stop' })
   })
 
@@ -456,15 +449,15 @@ describe('driving from the project page', () => {
     expect(screen.queryByRole('button', { name: 'Fix drive' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Open preparation' }))
     expect(onOpenPreparation).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('textbox', { name: 'New note' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Note' })).toBeTruthy()
   })
 
   it('shows the bare state when setup ran and no dev command is set', () => {
     slot = { ...LIVE, state: 'bare-checkout', devConfigured: false, devUrl: undefined, devPaneId: undefined }
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    expect(screen.getByText('Setup ran — nothing started.')).toBeTruthy()
-    expect(screen.getByRole('textbox', { name: 'New note' })).toBeTruthy()
+    expect(screen.getByText('Branch checked out, nothing started')).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Note' })).toBeTruthy()
   })
 })
 
@@ -576,21 +569,22 @@ describe('New chat with a chat running', () => {
 
 /** design-mode decision 11: the project page is chat-first, in the feature page's pieces. */
 describe('a live project chat', () => {
-  it('fills the chat column, with the drive opening beside it in the panel', () => {
+  it('fills the chat column, and the drive takes the page from it and gives it back', () => {
     slot = LIVE
     mount(talk({ session: liveChat }))
     expect(chatInFront()?.dataset.thread).toBe('sess_1')
     expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /^Show the panel/ }))
-    const drive = document.querySelector<HTMLElement>('[data-project-drive]')!
-    // side by side: the drive in the panel, the chat still in its column
-    expect(shown(drive)).toBe(true)
-    expect(drive.closest('[data-panel]')).toBeTruthy()
-    expect(chatInFront()).toBeTruthy()
-    expect(screen.getByRole('separator', { name: 'Resize the panel' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
+    expect(onDrive()).toBe(true)
+    expect(shown(chatInFront()!)).toBe(false)
+    expect(screen.queryByRole('separator', { name: 'Resize the panel' })).toBeNull()
     expect(testDrive).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
+    expect(onDrive()).toBe(false)
+    expect(shown(chatInFront()!)).toBe(true)
 
     // the project crumb steps back to the chat list
     fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
@@ -713,22 +707,22 @@ describe('a live project chat', () => {
     expect(toggle.textContent).toContain('1')
     fireEvent.click(toggle)
     expect(document.querySelector('[data-panel]')?.textContent).toContain('Notes')
-    expect(document.querySelector('[data-project-drive]')).toBeNull()
+    expect(drivePage()).toBeNull()
   })
 
-  it('starts the project test drive from the topbar without leaving the chat', () => {
+  it('starts the project test drive from the topbar, and goes back to it from there', () => {
     const { rerender } = mount(talk({ session: liveChat }))
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
     expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
     rerender()
 
-    // the drive opens in the panel beside the chat, which stays in front
-    expect(document.querySelector('[data-project-drive]')!.closest('[data-panel]')).toBeTruthy()
-    expect(chatInFront()).toBeTruthy()
-    expect(restShown()).toBe(false)
-    // once it is up, the panel toggle is the way to it
+    // the drive takes the page from the chat
+    expect(onDrive()).toBe(true)
+    expect(shown(chatInFront()!)).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
+    // once it is up, the topbar's button is the way back to it
     expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
-    expect(screen.getByRole('button', { name: /^Hide the panel/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Back to the drive' })).toBeTruthy()
   })
 
   it('names the holder on a disabled topbar Test drive while another drive has the slot', () => {
@@ -759,17 +753,14 @@ describe('scenarios on a project drive', () => {
   it('lists every scenario by group, Blank app last, and starts on the one picked', () => {
     scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
     mount()
-    openMenu(screen.getByRole('button', { name: 'Choose a scenario' }))
-
-    const menu = screen.getByRole('menu')
-    expect(menu.textContent).not.toContain('This feature')
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
-      'Signed outAuth',
-      'Feature at reviewReview',
+    expect(openList(screen.getByRole('button', { name: 'Choose a scenario' }))).toEqual([
+      'Signed out',
+      'Feature at review',
       'Smoke',
       'Blank app',
     ])
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Feature at review/ }))
+    expect(screen.getByRole('listbox').textContent).not.toContain('This feature')
+    fireEvent.click(screen.getByRole('option', { name: /Feature at review/ }))
     expect(testDrive).toHaveBeenCalledWith({
       projectId: 'proj_1',
       action: 'start',
@@ -780,17 +771,16 @@ describe('scenarios on a project drive', () => {
   it('offers only Blank app with no scenario runner set', () => {
     scenarios = { runnerConfigured: false, scenarios: SCENARIOS }
     mount()
-    openMenu(screen.getByRole('button', { name: 'Choose a scenario' }))
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Blank app'])
+    expect(openList(screen.getByRole('button', { name: 'Choose a scenario' }))).toEqual(['Blank app'])
   })
 
-  it('carries the Scenario menu in the running drive, which runs the one picked without a restart', () => {
+  it('carries the scenario control in the running drive, which runs the one picked without a restart', () => {
     scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
     slot = LIVE
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    openMenu(screen.getByRole('button', { name: 'Scenario' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Smoke/ }))
+    openList(within(drivePage()!).getByRole('button', { name: /Blank app/ }))
+    fireEvent.click(screen.getByRole('option', { name: /Smoke/ }))
 
     expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: '.runcastle/scenarios/smoke.ts' })
     expect(testDrive).not.toHaveBeenCalled()
@@ -801,7 +791,7 @@ describe('the titlebar drive pill', () => {
   it('brings a live drive to the front', () => {
     slot = LIVE
     mount(talk(), { driveRequest: 1 })
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
+    expect(onDrive()).toBe(true)
     expect(runScenario).not.toHaveBeenCalled()
     expect(testDrive).not.toHaveBeenCalled()
   })
