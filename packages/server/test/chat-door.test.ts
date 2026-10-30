@@ -100,6 +100,19 @@ describe('the Chat door on an open chat', () => {
     return { host, fake }
   }
 
+  it('gives two opens at once one chat and one briefing', async () => {
+    const { fake } = fakeHost()
+    const feature = await featureIn('ideate', 'two-tabs')
+    const [first, second] = await Promise.all([
+      launchSession(ctx, { featureId: feature.id, kind: 'chat' }),
+      launchSession(ctx, { featureId: feature.id, kind: 'chat' }),
+    ])
+    cleanup.push(sessionDir(first.sessionId))
+    expect(second.sessionId).toBe(first.sessionId)
+    expect(listSessionsByFeature(ctx, feature.id).filter((s) => s.kind === 'chat')).toHaveLength(1)
+    await vi.waitFor(() => expect(sentToAgent(fake)).toHaveLength(1))
+  })
+
   /** The text of each `session/prompt` the agent received. */
   function sentToAgent(fake: FakeAcp): string[] {
     return fake.processes.flatMap((p) =>

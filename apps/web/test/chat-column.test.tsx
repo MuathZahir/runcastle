@@ -99,7 +99,7 @@ const nav = {
   cancelOpen: () => {},
 }
 
-type PageProps = { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions'] }
+type PageProps = { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions']; worked?: boolean }
 
 /** The feature page beside the project sidebar, as the project shell lays them out. */
 function Page(props: PageProps) {
@@ -124,7 +124,7 @@ function Page(props: PageProps) {
 }
 
 /** The page's column beside its drive panel, its threads published and named, as Workspace does it. */
-function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions = [] }: PageProps) {
+function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions = [], worked = false }: PageProps) {
   const column = useFeatureChatColumn({ featureId, sessions, driveSessionId })
   usePublishSidebarThreads({
     scope: { featureId },
@@ -136,7 +136,8 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
       ? { errand: { threadId: column.scenario.sessionId, close: column.scenario.close } }
       : {}),
   })
-  const full = { ...fixture({ id: featureId }), sessions, tickets: [] } as FeatureFull
+  // A feature with history: a new one starts its chat by itself (feature-chat-start.test.tsx).
+  const full = { ...fixture({ id: featureId }), sessions, tickets: [], runs: worked ? [{ id: 'run_1' }] : [] } as unknown as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
       <header data-thread-name="">{column.threads.find((t) => t.id === column.current)?.title}</header>
@@ -393,7 +394,7 @@ describe('the open feature’s threads in the sidebar', () => {
 
   it('offers no Rename or Export for a feature chat nobody has started', async () => {
     const api = server({ threads: [] })
-    render(<Page />, { wrapper: api.Wrapper })
+    render(<Page worked />, { wrapper: api.Wrapper })
     await waitFor(() => expect(within(sidebar()).getByRole('button', { name: 'New thread' })).toBeTruthy())
     featureMenu()
     expect(screen.queryByRole('menuitem', { name: 'Rename the chat…' })).toBeNull()
@@ -402,7 +403,7 @@ describe('the open feature’s threads in the sidebar', () => {
 
   it('shows a feature chat nobody started as an empty thread, and its first Send starts it', async () => {
     const api = server({ threads: [] })
-    render(<Page />, { wrapper: api.Wrapper })
+    render(<Page worked />, { wrapper: api.Wrapper })
     // named "New chat" until something is said in it, never by its kind (decision 14)
     expect(threadName().textContent).toBe('New chat')
     expect(within(column()).getByText('New thread')).toBeTruthy()
@@ -412,11 +413,11 @@ describe('the open feature’s threads in the sidebar', () => {
     expect(within(column()).getByText('Plan the export')).toBeTruthy()
   })
 
-  // Decision 12. No test renders the whole feature page, so its `start` is read
-  // from source: the launch holds its opening for the first message.
-  it('starts the feature chat with its opening held for the first message', () => {
+  // No test renders the whole feature page, so its `start` is read from source:
+  // the launch holds its opening as the chat asks (feature-chat-start.test.tsx).
+  it('starts the feature chat with its opening held as the chat asks', () => {
     const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
-    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening: true \}\)/)
+    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening \}\)/)
   })
 })
 

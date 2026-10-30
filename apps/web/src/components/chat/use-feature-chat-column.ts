@@ -17,6 +17,8 @@ export interface FeatureChatColumn {
   threads: ThreadEntry[]
   /** The feature's main chat thread; null while nobody has started it. */
   main: string | null
+  /** The thread list has been read, so a null `main` means there is none. */
+  listRead: boolean
   /**
    * Whether the main chat is working, waiting on the human or idle, as the
    * thread list reads its log; undefined while the list does not hold it.
@@ -105,6 +107,7 @@ export function useFeatureChatColumn({
     scenario,
     threads,
     main,
+    listRead: listQ.data !== undefined,
     mainState: listed.find((t) => t.id === main)?.state,
     inFront,
     pending: pending !== null,
