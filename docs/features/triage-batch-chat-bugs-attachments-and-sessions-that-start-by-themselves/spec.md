@@ -31,7 +31,7 @@ This is read-side, so old threads render right with no migration. The server kee
 
 `splitTurn` resets the turn's `calls` and `subagents` maps. A later update for a call or subagent from before the split therefore looks like a new step: it adds a segment after the agent's words, the words stop being the trailing text, and the fold shows them as narration under "Worked for…". A blank row appears too. Both cases were reproduced with the real fold.
 
-The fix: a split starts a new work and answer pair but keeps those two maps for the whole turn. A late update lands on its original row, including a row in the part already settled before the split, and adds no segment. Its status there ends up correct at the turn's end.
+The fix: a split starts a new work and answer pair but keeps those two maps for the whole turn. A late update lands on its original row, including a row in the part already settled before the split, and adds no segment. Its status there ends up correct at the turn's end. An untitled update for a call of an earlier turn (a background command finishing later) shows nothing, for the same reason.
 
 ### 3. The report on the missing answer
 
@@ -51,12 +51,12 @@ A small browser-side store holds pending attachments per thread, keyed exactly a
 
 The web starts the chat through the existing launch (`feature.launchSession`, with `holdOpening` off), so the briefing is the thread's first prompt and the agent speaks first. All of these must hold:
 
-- the main chat column is in front and on screen;
+- the main chat column is in front and on screen, in a visible browser tab;
 - the thread list has been read and shows no main chat;
 - the feature is started, and neither shipped nor archived;
 - the feature has no sessions of any kind, no tickets and no rounds.
 
-A guard keeps it to one start per page open. The server also re-checks for an existing main chat after its worktree step, so two tabs cannot create two chats. If the human presses Send while the start is in flight, Send waits on the same start and its message joins the opening turn. A refused start shows its message once and leaves the empty chat, whose first Send tries again.
+A guard keeps it to one start per page open. The server also runs a feature's launches one at a time, so two tabs cannot create two chats or race for the worktree. If the human presses Send while the start is in flight, Send waits on the same start and its message joins the opening turn. A refused start shows its message once and leaves the empty chat. The next open of the chat tries once more, and the first Send tries too.
 
 When the thread gets its id, draft text and attachments saved under the unstarted key move to the thread's key. This is the one place the key changes, so the first-Send path uses it too.
 

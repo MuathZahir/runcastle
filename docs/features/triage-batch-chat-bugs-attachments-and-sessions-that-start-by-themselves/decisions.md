@@ -20,7 +20,7 @@ Planned without the human (a self-planning run, 2026-10-30). Each decision below
 
 ## 4. The grouped tool rows stay as they are
 **Decision:** No change is planned to how tool rows are worded or grouped, beyond the blank row decision 2 removes. The build runs real logged turns through the grouping and reads the result, and fixes what reads wrong.
-**Why:** The brief asked for a check against real tool titles. All 2,047 settled rows in this machine's logs have a title, and only one is the adapter's generic placeholder ("Read File"). The placeholders "Terminal" and "Preparing file…" appear only while a call runs.
+**Why:** The brief asked for a check against real tool titles. All 2,047 settled rows in this machine's logs have a title, and only one is the adapter's generic placeholder ("Read File"). The placeholders "Terminal" and "Preparing file…" appear only while a call runs. The build then ran 89 real turns through the grouping (1,019 single rows and 365 groups), and every line read right.
 **Assumed.** Alternative: rework the wording for in-flight rows, which the brief's "no redesign of the chat" argues against.
 **Challenged:** Counting titles does not show that grouped rows read correctly, and the brief's worry is that the card shipped without being tried on real turns. The read of real turns above comes from this.
 
@@ -51,16 +51,18 @@ Planned without the human (a self-planning run, 2026-10-30). Each decision below
 **Assumed.** Alternative: one ticket per file-disjoint group, burned in parallel.
 
 ## 10. "Opened" means the human can see the chat
-**Decision:** The start in decision 6 fires only when the main chat column is on screen, the thread list has been read and shows no main chat, and the feature is started and neither shipped nor archived. Nothing on the server or in the orchestrator starts it, and a page whose panel covers the chat waits until the chat shows.
+**Decision:** The start in decision 6 fires only when the main chat column is on screen in a visible browser tab, the thread list has been read and shows no main chat, and the feature is started and neither shipped nor archived. Nothing on the server or in the orchestrator starts it, and a page whose panel covers the chat waits until the chat shows.
 **Why:** The brief says not to start an agent for a feature nobody has opened. Waiting for the thread list stops a slow read from starting a second chat for a feature that has one.
 **Assumed.** Alternative: start on opening the feature page, whatever is on screen.
 **Challenged:** A chat on screen in a hidden browser tab still counts, so the rule should also require the tab to be visible.
+**Changed by the orchestrator:** It asked for the tab check if it cost a line or two, and it does.
 
 ## 11. One start, and a failed start falls back to today's screen
-**Decision:** A feature's chat starts once, however many tabs or re-renders ask, and a second ask reuses the first. If the start is refused (the runtime is not ready, say), the chat stays on today's empty screen with the refusal shown once, with no automatic retry. The first Send tries again.
+**Decision:** A feature's chat starts once, however many tabs or re-renders ask, and a second ask reuses the first. If the start is refused (the runtime is not ready, say), the chat stays on today's empty screen with the refusal shown once, and it tries again the next time the chat is opened, once per open. The first Send tries too.
 **Why:** A loop of refused starts would be noise. The empty chat already works, so it is the natural fallback.
-**Assumed.** Alternative: retry once on each new open of the chat, showing any refusal once.
+**Assumed.** Alternative: no automatic retry, leaving the first Send to try again.
 **Challenged:** If the runtime was not ready on the first open but is on the second, a retry works. With no retry the human is back to typing "Hi", which is the bug being fixed.
+**Changed by the orchestrator:** The plan had no automatic retry. The orchestrator took the challenger's side, because a chat refused once would otherwise need a typed message after the runtime is ready.
 
 ## 12. A draft moves with the chat as it starts
 **Decision:** When the chat gets its thread, any draft text and pending attachments saved for the unstarted chat move to that thread. The chat still starts when a draft exists. A message sent while the agent is opening joins that turn and shows as sent into the running turn.
