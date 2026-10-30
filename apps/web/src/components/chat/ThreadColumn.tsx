@@ -75,7 +75,7 @@ export function ThreadColumn({
   notices?: ReactNode
   /** The region's accessible name. */
   label?: string
-  /** What floats over the thread (the notice deck), clear of the composer. */
+  /** What sits on the foot's top edge, above the composer or an ask: the notice strip. */
   children?: ReactNode
 }) {
   const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}) })
@@ -144,6 +144,18 @@ export function ThreadColumn({
       {...(view.suggestion ? { suggestion: view.suggestion } : {})}
       // No onStopTask: both adapters keep stopping a background command for JetBrains AIR clients.
       top={<PlanStrip plan={view.plan} tasks={view.tasks} />}
+      {...(view.turnStartedAt ? { workingSince: view.turnStartedAt } : {})}
+      meter={
+        view.context && (
+          <ContextMeter
+            context={view.context}
+            limits={t.usage?.limits ?? []}
+            {...(t.usage?.plan ? { plan: t.usage.plan } : {})}
+            onCompact={t.compact}
+            onOpen={t.refreshUsage}
+          />
+        )
+      }
       footer={
         t.model && (
           <ModelControls
@@ -174,33 +186,18 @@ export function ThreadColumn({
         <ChatThread
           items={view.items}
           state={view.state}
-          {...(view.turnStartedAt ? { workingSince: view.turnStartedAt } : {})}
           actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
           onDropImages={t.attach}
           emptyHint={emptyHint}
           loading={t.loading}
           footer={
             <div className="flex flex-col gap-1.5">
+              {children && <div className="mb-0.5 empty:hidden">{children}</div>}
               {footer}
-              {!ask && (meta || view.context) && (
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs text-text-tertiary">{meta}</span>
-                  {view.context && (
-                    <ContextMeter
-                      context={view.context}
-                      limits={t.usage?.limits ?? []}
-                      {...(t.usage?.plan ? { plan: t.usage.plan } : {})}
-                      onCompact={t.compact}
-                      onOpen={t.refreshUsage}
-                    />
-                  )}
-                </div>
-              )}
+              {!ask && meta && <span className="px-4 text-xs text-text-tertiary">{meta}</span>}
             </div>
           }
         />
-        {/* Clear of the composer floating at the thread's foot. */}
-        {children && <div className="pointer-events-none absolute inset-x-0 top-0 bottom-44 [&>*]:pointer-events-auto">{children}</div>}
       </div>
     </section>
   )

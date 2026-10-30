@@ -17,6 +17,7 @@ import {
 } from '../../../icons'
 import { BARE_BUTTON, Spinner, cx } from '../../../ui'
 import { Markdown } from '../../Markdown'
+import { INSET, WELL } from './surfaces'
 
 const KIND_ICON: Record<ToolKind, (p: { size?: number; className?: string }) => ReactNode> = {
   read: IconDoc,
@@ -206,18 +207,8 @@ function Steps({ steps }: { steps: WorkStep[] }) {
     <div className="flex min-w-0 flex-col gap-1">
       {steps.map((s) => {
         switch (s.kind) {
-          case 'tools': {
-            const calls = s.calls.filter((c) => !foldedAway(c))
-            return (
-              calls.length > 0 && (
-                <ol key={s.id} className="m-0 flex list-none flex-col p-0">
-                  {calls.map((c) => (
-                    <CallRow key={c.id} call={c} />
-                  ))}
-                </ol>
-              )
-            )
-          }
+          case 'tools':
+            return <Calls key={s.id} calls={s.calls} />
           case 'thought':
             return <Thought key={s.id} seconds={s.seconds} text={s.text} />
           case 'narration':
@@ -248,33 +239,190 @@ function Thought({ seconds, text }: { seconds: number; text: string }) {
   )
 }
 
+/**
+ * A subagent the turn delegated to, as a card (the-chat-looks-the-part
+ * decision 13): it is its own piece of work, not one more line. Its head says
+ * what it was asked and how many calls it made; while it runs, the call in
+ * flight shows under the head; opened, every call, grouped as the turn's are.
+ */
 function Subagent({ title, status, calls }: { title: string; status: ToolCall['status']; calls: ToolCall[] }) {
   const [open, setOpen] = useState(false)
   const running = status === 'in_progress' || status === 'pending'
+  const shown = calls.filter((c) => !foldedAway(c))
+  const inFlight = running ? shown.findLast((c) => c.status === 'in_progress' || c.status === 'pending') : undefined
   return (
-    <Fold
-      open={open}
-      onToggle={() => setOpen(!open)}
-      head={
-        <>
-          {running ? <Spinner size="sm" /> : <IconOrchestrator size={14} className="shrink-0 text-icon" />}
-          <span className={cx('min-w-0 truncate', running && 'text-shimmer')}>
-            Subagent · <span className="text-text-secondary">{title}</span>
-          </span>
-          <span className="shrink-0 text-xs tabular-nums text-text-tertiary">
-            {calls.length} {calls.length === 1 ? 'call' : 'calls'}
-          </span>
-        </>
-      }
-    >
-      <ol className="m-0 flex list-none flex-col border-l border-border-subtle p-0 pl-4">
-        {calls
-          .filter((c) => !foldedAway(c))
-          .map((c) => (
+    <div className={cx(WELL, 'my-1.5 flex min-w-0 flex-col overflow-hidden')}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={cx(
+          BARE_BUTTON,
+          'group/fold flex h-10 min-w-0 cursor-pointer items-center gap-2 px-3 text-left text-sm',
+          'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover',
+        )}
+      >
+        {/* One spinner per moment: the call in flight under the head has it, so the head keeps its glyph. */}
+        {running && !inFlight ? <Spinner size="sm" /> : <IconOrchestrator size={14} className="shrink-0 text-icon" />}
+        <span className="shrink-0 text-text-tertiary">Subagent</span>
+        <span className={cx('min-w-0 truncate', running ? 'text-shimmer' : 'text-text-secondary')}>{title}</span>
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-text-tertiary">
+          {shown.length} {shown.length === 1 ? 'call' : 'calls'}
+        </span>
+        <IconChevronRight
+          size={13}
+          className={cx('shrink-0 text-icon transition-transform duration-(--dur-2) ease-app', open && 'rotate-90')}
+        />
+      </button>
+      {open ? (
+        <div className="border-t border-border-subtle px-3 py-1.5 animate-fade-in">
+          <Calls calls={calls} />
+        </div>
+      ) : (
+        inFlight && (
+          <ol className="m-0 list-none border-t border-border-subtle px-3 py-0.5">
+            <CallRow call={inFlight} />
+          </ol>
+        )
+      )}
+    </div>
+  )
+}
+
+/** Which calls fold together when they come one after another: looking around, changing files, running commands. */
+type Family = 'explore' | 'change' | 'run'
+const FAMILY: Partial<Record<ToolKind, Family>> = {
+  read: 'explore',
+  search: 'explore',
+  fetch: 'explore',
+  edit: 'change',
+  delete: 'change',
+  move: 'change',
+  execute: 'run',
+}
+
+/** A call's family, or none for a call that reads as its own sentence (an MCP tool, a skill, a review). */
+function familyOf(call: ToolCall): Family | undefined {
+  if (MCP_TITLE.test(call.title) || SENTENCE_TITLE.test(call.title) || WEB_SEARCH.test(call.title) || call.title === REVIEW_TITLE) return undefined
+  return FAMILY[call.kind]
+}
+
+type CallRun = { kind: 'one'; call: ToolCall } | { kind: 'group'; family: Family; calls: ToolCall[] }
+
+/** Calls in order, two or more of one family in a row folded into one run (decision 12). */
+export function groupCalls(calls: ToolCall[]): CallRun[] {
+  const runs: CallRun[] = []
+  for (const call of calls.filter((c) => !foldedAway(c))) {
+    const family = familyOf(call)
+    const last = runs.at(-1)
+    if (family && last?.kind === 'group' && last.family === family) last.calls.push(call)
+    else if (family && last?.kind === 'one' && familyOf(last.call) === family)
+      runs[runs.length - 1] = { kind: 'group', family, calls: [last.call, call] }
+    else runs.push({ kind: 'one', call })
+  }
+  return runs
+}
+
+/** How a group reads, per kind inside it: [done, doing, noun, nouns]. */
+const GROUP_WORDS: Partial<Record<ToolKind, [string, string, string, string]>> = {
+  read: ['Read', 'Reading', 'file', 'files'],
+  search: ['Searched for', 'Searching for', 'pattern', 'patterns'],
+  fetch: ['Fetched', 'Fetching', 'page', 'pages'],
+  edit: ['Edited', 'Editing', 'file', 'files'],
+  delete: ['Deleted', 'Deleting', 'file', 'files'],
+  move: ['Moved', 'Moving', 'file', 'files'],
+  execute: ['Ran', 'Running', 'command', 'commands'],
+}
+
+const isRunning = (c: ToolCall): boolean => c.status === 'in_progress' || c.status === 'pending'
+
+/**
+ * A group's words: "Read 3 files, searched for 2 patterns", "Edited 5 files".
+ * A file read or edited twice counts once. A kind with a call in flight reads
+ * in the present: "Reading 4 files".
+ */
+export function groupText(calls: ToolCall[]): string {
+  const kinds = [...new Set(calls.map((c) => c.kind))]
+  return kinds
+    .map((kind, i) => {
+      const words = GROUP_WORDS[kind]
+      const of = calls.filter((c) => c.kind === kind)
+      if (!words) return ''
+      // A file read in two ranges ("a.ts (1 - 5)", "a.ts (6 - 10)") is one file.
+      const fileOf = (c: ToolCall) => c.diff?.path ?? callText(c, false).target.replace(/\s+\(\d+\s*-\s*\d+\)$/, '')
+      const n = words[2] === 'file' ? new Set(of.map(fileOf)).size : of.length
+      const verb = of.some(isRunning) ? words[1] : words[0]
+      const said = `${verb} ${n} ${n === 1 ? words[2] : words[3]}`
+      return i === 0 ? said : said.charAt(0).toLowerCase() + said.slice(1)
+    })
+    .filter(Boolean)
+    .join(', ')
+}
+
+const FAMILY_ICON: Record<Family, (p: { size?: number; className?: string }) => ReactNode> = {
+  explore: IconSearch,
+  change: IconPencil,
+  run: IconTerminal,
+}
+
+/**
+ * A run of calls of one family as one line, as Claude Code reads them:
+ * "Edited 5 files +40 −12", opening to each call. While one is in flight the
+ * line names it, so you see what is happening without opening it.
+ */
+function CallGroup({ family, calls }: { family: Family; calls: ToolCall[] }) {
+  const [open, setOpen] = useState(false)
+  const Icon = FAMILY_ICON[family]
+  const inFlight = calls.findLast(isRunning)
+  const failed = calls.filter((c) => c.status === 'failed').length
+  const diffs = calls.flatMap((c) => c.diff?.lines ?? [])
+  return (
+    <li className="flex min-w-0 flex-col animate-fade-in">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={cx(
+          BARE_BUTTON,
+          'group/call -mx-2 flex h-7 min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-sm',
+          'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover',
+        )}
+      >
+        {inFlight ? <Spinner size="sm" /> : <Icon size={14} className="shrink-0 text-icon" />}
+        <span className={cx('shrink-0', inFlight ? 'text-shimmer' : 'text-text-tertiary')}>{groupText(calls)}</span>
+        {inFlight && (
+          <span className="min-w-0 truncate font-mono text-xs text-text-secondary">{callText(inFlight, true).target}</span>
+        )}
+        {family === 'change' && diffs.length > 0 && (
+          <Delta added={diffs.filter((l) => l.op === '+').length} removed={diffs.filter((l) => l.op === '-').length} />
+        )}
+        {failed > 0 && <span className="shrink-0 text-danger-text">· {failed} failed</span>}
+        <IconChevronRight
+          size={13}
+          className={cx('shrink-0 text-icon opacity-60 transition-all duration-(--dur-2) ease-app group-hover/call:opacity-100', open && 'rotate-90 opacity-100')}
+        />
+      </button>
+      {open && (
+        <ol className="m-0 mt-0.5 mb-1 flex list-none flex-col border-l border-border-subtle p-0 pl-4 animate-fade-in">
+          {calls.map((c) => (
             <CallRow key={c.id} call={c} />
           ))}
-      </ol>
-    </Fold>
+        </ol>
+      )}
+    </li>
+  )
+}
+
+/** A step's calls: single calls as rows, runs of one family as one line each. */
+function Calls({ calls }: { calls: ToolCall[] }) {
+  const runs = groupCalls(calls)
+  if (runs.length === 0) return null
+  return (
+    <ol className="m-0 flex list-none flex-col p-0">
+      {runs.map((r) =>
+        r.kind === 'one' ? <CallRow key={r.call.id} call={r.call} /> : <CallGroup key={r.calls[0].id} family={r.family} calls={r.calls} />,
+      )}
+    </ol>
   )
 }
 
@@ -354,7 +502,7 @@ export function Delta({ added, removed }: { added: number; removed: number }) {
 
 function Output({ text }: { text: string }) {
   return (
-    <pre className="m-0 mt-1 mb-2 max-h-64 overflow-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs leading-[18px] whitespace-pre-wrap text-text-secondary ring-1 ring-inset ring-border-subtle">
+    <pre className={cx(INSET, 'm-0 mt-1 mb-2 max-h-64 overflow-auto px-3 py-2 font-mono text-xs leading-[18px] whitespace-pre-wrap text-text-secondary')}>
       {text}
     </pre>
   )
@@ -374,7 +522,7 @@ const DIFF_GUTTER = {
 
 export function DiffView({ lines }: { lines: DiffLine[] }) {
   return (
-    <div className="mt-1 mb-2 max-h-80 overflow-auto rounded-md bg-surface-inset py-1.5 font-mono text-xs leading-[20px] ring-1 ring-inset ring-border-subtle">
+    <div className={cx(INSET, 'mt-1 mb-2 max-h-80 overflow-auto py-1.5 font-mono text-xs leading-[20px]')}>
       {lines.map((l, i) => (
         <div key={i} className={cx('flex min-w-max border-l-2 pr-3 pl-2.5', DIFF_LINE[l.op], DIFF_GUTTER[l.op])}>
           <span className="w-4 shrink-0 select-none text-text-tertiary">{l.op === ' ' ? '' : l.op === '-' ? '−' : '+'}</span>
@@ -411,7 +559,7 @@ export function ChangesCard({ files }: { files: FileChange[] }) {
   const added = files.reduce((n, f) => n + f.added, 0)
   const removed = files.reduce((n, f) => n + f.removed, 0)
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg bg-[color-mix(in_oklab,var(--color-text)_2.5%,transparent)] ring-1 ring-inset ring-border-subtle">
+    <div className={cx(WELL, 'flex flex-col overflow-hidden')}>
       <button
         type="button"
         aria-expanded={open}

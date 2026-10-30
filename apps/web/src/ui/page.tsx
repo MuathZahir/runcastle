@@ -31,13 +31,19 @@ export interface Crumb {
  * The breadcrumb in a topbar: parents in `text-tertiary` (clickable when they
  * have `onClick`/`href`), the current item in `text` medium, separated by a
  * quiet chevron. Truncates the current item first.
+ *
+ * `trail`: the last item trails the one before it rather than being the page
+ * (the thread in front, after the feature it belongs to): the item before it
+ * reads in `text` medium, the last in quiet `text-secondary`.
  */
-export function Crumbs({ items, className }: { items: Crumb[]; className?: string }) {
+export function Crumbs({ items, className, trail }: { items: Crumb[]; className?: string; trail?: boolean }) {
   return (
     <nav aria-label="Breadcrumb" className={cx('flex min-w-0 items-center', className)}>
       <ol className="m-0 flex min-w-0 list-none items-center gap-1 p-0 text-sm">
         {items.map((c, i) => {
           const last = i === items.length - 1
+          const trailing = trail && items.length > 1
+          const lead = trailing ? i === items.length - 2 : last
           const content = (
             <>
               {c.icon && <span className="inline-flex shrink-0 text-icon [&>svg]:size-3.5">{c.icon}</span>}
@@ -46,7 +52,8 @@ export function Crumbs({ items, className }: { items: Crumb[]; className?: strin
           )
           const itemClass = cx(
             'inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5',
-            last ? 'font-medium text-text' : 'shrink-0 text-text-tertiary',
+            lead ? 'font-medium text-text' : trailing && last ? 'text-text-secondary' : 'text-text-tertiary',
+            !last && 'shrink-0',
           )
           return (
             <li key={i} className={cx('flex min-w-0 items-center gap-1', !last && 'shrink-0')}>
@@ -91,6 +98,7 @@ export const SidebarDoorContext = createContext<ReactNode>(null)
 export function PageTopbar({
   leading,
   crumbs,
+  trail,
   status,
   tabs,
   actions,
@@ -98,6 +106,8 @@ export function PageTopbar({
 }: {
   leading?: ReactNode
   crumbs?: Crumb[]
+  /** The last crumb trails the one before it (see {@link Crumbs}). */
+  trail?: boolean
   status?: ReactNode
   tabs?: ReactNode
   actions?: ReactNode
@@ -115,7 +125,7 @@ export function PageTopbar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {door}
         {leading}
-        {crumbs && <Crumbs items={crumbs} className={status ? 'shrink-0 max-w-[60%]' : undefined} />}
+        {crumbs && <Crumbs items={crumbs} trail={trail} className={status ? 'shrink-0 max-w-[60%]' : undefined} />}
         {status && <div className="flex min-w-0 flex-1 items-center">{status}</div>}
       </div>
       {tabs && <div className="flex shrink-0 items-center">{tabs}</div>}

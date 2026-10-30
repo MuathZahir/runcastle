@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
-import type { ThreadItem, ThreadState } from '../../../lib/chat-thread'
+import type { FileChange, ThreadItem, ThreadState } from '../../../lib/chat-thread'
 import {
   IconAlert,
   IconArrowRight,
@@ -17,6 +17,7 @@ import {
 } from '../../../icons'
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import { Markdown } from '../../Markdown'
+import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
 /** What a message's hover actions ask of the thread. */
@@ -42,7 +43,6 @@ export interface MessageActions {
 export function ChatThread({
   items,
   state,
-  workingSince,
   emptyHint,
   loading,
   actions,
@@ -51,8 +51,6 @@ export function ChatThread({
 }: {
   items: ThreadItem[]
   state: ThreadState
-  /** When the current turn began, for the elapsed time beside "Working". */
-  workingSince?: number
   emptyHint?: ReactNode
   /** The thread's history is still being read: an empty thread is not yet a new one. */
   loading?: boolean
@@ -66,13 +64,20 @@ export function ChatThread({
   const content = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [footH, setFootH] = useState(160)
+  // The scrollbar's width, so the floating foot lines up with the column above it.
+  const [gutter, setGutter] = useState(0)
   const [dragging, setDragging] = useState(false)
 
   useLayoutEffect(() => {
     const el = foot.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setFootH(el.offsetHeight))
+    const sc = scroller.current
+    if (!el || !sc) return
+    const ro = new ResizeObserver(() => {
+      setFootH(el.offsetHeight)
+      setGutter(sc.offsetWidth - sc.clientWidth)
+    })
     ro.observe(el)
+    ro.observe(sc)
     return () => ro.disconnect()
   }, [])
 
@@ -143,8 +148,12 @@ export function ChatThread({
         }
       }}
     >
-      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 [scrollbar-gutter:stable]">
-        <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col gap-6 pt-8" style={{ paddingBottom: footH + 24 }}>
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 overflow-y-auto px-6 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:var(--color-border-strong)_transparent]"
+      >
+        <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col pt-8" style={{ paddingBottom: footH + 56 }}>
           {items.length === 0 && loading ? (
             <p role="status" className="m-0 flex items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary">
               <Spinner />
@@ -155,14 +164,35 @@ export function ChatThread({
               <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />
             </div>
           ) : (
-            items.map((item) => <Item key={item.id} item={item} actions={actions} locked={state !== 'idle'} />)
+            items.map((item, i) => {
+              // A changes card belongs to the answer before it: the answer draws it,
+              // so its hover actions hang under the card, not over it.
+              if (item.kind === 'changes' && items[i - 1]?.kind === 'agent') return null
+              const next = items[i + 1]
+              return (
+                <div key={item.id} className={cx('flex min-w-0 flex-col', i > 0 && (opensTurn(item) ? 'mt-8' : 'mt-3'))}>
+                  <Item
+                    item={item}
+                    actions={actions}
+                    locked={state !== 'idle'}
+                    {...(item.kind === 'agent' && next?.kind === 'changes' ? { changes: next.files } : {})}
+                  />
+                </div>
+              )
+            })
           )}
-          {state === 'working' && <WorkingLine since={workingSince} />}
         </div>
       </div>
 
-      <div ref={foot} className="pointer-events-none absolute inset-x-0 bottom-0 px-6 pb-4">
-        <div className="absolute inset-x-0 -top-10 bottom-0 bg-[linear-gradient(to_bottom,transparent,var(--color-surface)_40px)]" />
+      {/* The thread passes under the header softly, as it passes under the composer. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-[linear-gradient(to_bottom,var(--color-surface),transparent)]"
+        style={{ right: gutter }}
+      />
+
+      <div ref={foot} className="pointer-events-none absolute inset-x-0 bottom-0 pb-4 pl-6" style={{ paddingRight: 24 + gutter }}>
+        <div className="absolute inset-x-0 -top-6 bottom-0 bg-[linear-gradient(to_bottom,transparent,var(--color-surface)_24px)]" />
         <div className="pointer-events-auto relative mx-auto w-full max-w-(--content-max)">
           {!atBottom && (
             <IconButton
@@ -189,7 +219,18 @@ export function ChatThread({
   )
 }
 
-function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageActions; locked: boolean }) {
+function Item({
+  item,
+  actions,
+  locked,
+  changes,
+}: {
+  item: ThreadItem
+  actions?: MessageActions
+  locked: boolean
+  /** The changes card that follows an answer, drawn inside it. */
+  changes?: FileChange[]
+}) {
   switch (item.kind) {
     case 'user':
       return item.from === 'runcastle' ? (
@@ -200,12 +241,12 @@ function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageAc
     case 'work':
       return <WorkBlock steps={item.steps} seconds={item.seconds} live={item.live} />
     case 'agent':
-      return <AgentMessage item={item} actions={actions} />
+      return <AgentMessage item={item} actions={actions} {...(changes ? { changes } : {})} />
     case 'changes':
       return <ChangesCard files={item.files} />
     case 'answered':
       return (
-        <p className="m-0 -mt-2 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
+        <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
           {item.denied ? <IconX size={14} className="shrink-0 text-icon" /> : <IconCheck size={14} className="shrink-0 text-icon" />}
           <span className="shrink-0">{item.what}</span>
           <span className="min-w-0 truncate text-text-secondary">{item.answer}</span>
@@ -213,7 +254,7 @@ function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageAc
       )
     case 'stopped':
       return (
-        <p className="m-0 -mt-2 flex items-center gap-1.5 text-sm text-text-tertiary">
+        <p className="m-0 flex items-center gap-1.5 text-sm text-text-tertiary">
           <IconStop size={13} className="shrink-0 text-icon" />
           Stopped by you
         </p>
@@ -232,6 +273,15 @@ function Item({ item, actions, locked }: { item: ThreadItem; actions?: MessageAc
     case 'notice':
       return <Divider>{item.text}</Divider>
   }
+}
+
+/**
+ * Whether an item opens a turn (decision 2): your message, runcastle's, or a
+ * divider takes a turn's air above it; the rest of a turn — the work, the
+ * answer, its changes, an answered ask — sits close under what it follows.
+ */
+function opensTurn(item: ThreadItem): boolean {
+  return item.kind === 'user' || item.kind === 'compacted' || item.kind === 'model' || item.kind === 'notice'
 }
 
 function Divider({ children }: { children: ReactNode }) {
@@ -292,7 +342,7 @@ function UserMessage({
   const [undoFiles, setUndoFiles] = useState(true)
   if (editing) {
     return (
-      <div className="ml-auto flex w-full max-w-[85%] flex-col gap-2 rounded-lg bg-surface-raised p-3 shadow-popover animate-pop-in">
+      <div className={cx(RAISED, 'ml-auto flex w-full max-w-[85%] flex-col gap-2 p-3 animate-pop-in')}>
         <textarea
           autoFocus
           value={draft}
@@ -340,7 +390,7 @@ function UserMessage({
         </div>
       )}
       {item.text && (
-        <div className="max-w-[85%] rounded-lg bg-[color-mix(in_oklab,var(--color-text)_6%,var(--color-surface))] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_5%,transparent)] ring-1 ring-inset ring-border-subtle">
+        <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>
           {item.text}
         </div>
       )}
@@ -375,10 +425,24 @@ function UserMessage({
   )
 }
 
-function AgentMessage({ item, actions }: { item: Extract<ThreadItem, { kind: 'agent' }>; actions?: MessageActions }) {
+/**
+ * The agent's answer, and the changes card its turn made when there is one
+ * (the-chat-looks-the-part decision 11): one block, so the hover actions hang
+ * under the card rather than over it.
+ */
+function AgentMessage({
+  item,
+  actions,
+  changes,
+}: {
+  item: Extract<ThreadItem, { kind: 'agent' }>
+  actions?: MessageActions
+  changes?: FileChange[]
+}) {
   return (
-    <div className="group/msg relative flex flex-col animate-fade-in">
+    <div className="group/msg relative flex flex-col gap-3 animate-fade-in">
       <Markdown source={item.text} size="base" tone="primary" breaks />
+      {changes && <ChangesCard files={changes} />}
       <Actions align="start">
         <CopyButton text={item.text} />
         {actions?.onBranch && (
@@ -423,7 +487,7 @@ function RuncastleLine({ text: tagged }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
     <p className={cx('m-0 flex min-w-0 gap-2 text-sm text-text-tertiary', open ? 'items-start' : 'items-center')}>
-      <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-accent-text ring-1 ring-inset ring-[color-mix(in_oklab,var(--color-accent)_28%,transparent)]">
+      <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-accent-subtle text-accent-text">
         <IconOrchestrator size={12} />
       </span>
       <span className={cx('min-w-0', open && 'whitespace-pre-wrap break-words')}>
@@ -442,26 +506,6 @@ function RuncastleLine({ text: tagged }: { text: string }) {
           </>
         )}
       </span>
-    </p>
-  )
-}
-
-function WorkingLine({ since }: { since?: number }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  const secs = since ? Math.max(0, Math.round((now - since) / 1000)) : null
-  return (
-    <p role="status" className="m-0 flex items-center gap-2 text-sm text-text-tertiary">
-      <Spinner />
-      <span className="text-shimmer">Working</span>
-      {secs !== null && (
-        <span className="tabular-nums">{secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`}</span>
-      )}
-      <span className="text-text-disabled">·</span>
-      <span>Esc to stop</span>
     </p>
   )
 }
