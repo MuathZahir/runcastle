@@ -74,7 +74,7 @@ export function SettingsRail({
       <div className="flex-1" />
       <div className="flex min-w-0 flex-col gap-0.5 px-2.5 pt-3">
         <span className="text-xs text-text-tertiary">This project is</span>
-        <span className="truncate font-mono text-xs text-text-secondary" title={projectName}>
+        <span className="truncate text-xs text-text-secondary" title={projectName}>
           {projectName}
         </span>
       </div>
