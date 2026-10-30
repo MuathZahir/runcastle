@@ -170,7 +170,7 @@ export function ChatThread({
               if (item.kind === 'changes' && items[i - 1]?.kind === 'agent') return null
               const next = items[i + 1]
               return (
-                <div key={item.id} className={cx('flex min-w-0 flex-col', i > 0 && (opensTurn(item) ? 'mt-8' : 'mt-3'))}>
+                <div key={item.id} className={cx('flex min-w-0 flex-col', i > 0 && (opensTurn(item) ? 'mt-10' : 'mt-3'))}>
                   <Item
                     item={item}
                     actions={actions}
@@ -295,16 +295,18 @@ function Divider({ children }: { children: ReactNode }) {
 }
 
 /**
- * A message's actions, shown on hover or focus within it. They hang just under
- * the message without taking room, so a thread's rhythm is its messages alone.
+ * A message's actions, shown on hover or focus within it. They take no room,
+ * so a thread's rhythm is its messages alone: an answer's hang under it, on
+ * the turn's 12px step (`start`); yours sit beside your bubble (`beside`),
+ * because what follows it in the turn is only 12px away.
  */
-function Actions({ align, children }: { align: 'start' | 'end'; children: ReactNode }) {
+function Actions({ align, children }: { align: 'start' | 'beside'; children: ReactNode }) {
   return (
     <div
       className={cx(
-        'absolute top-full z-1 flex gap-0.5 pt-0.5 opacity-0 transition-opacity duration-(--dur-1) ease-app',
+        'absolute z-1 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-1) ease-app',
         'group-hover/msg:opacity-100 group-focus-within/msg:opacity-100',
-        align === 'end' ? 'right-0' : '-left-1.5',
+        align === 'beside' ? 'right-full bottom-1.5 pr-1.5' : 'top-full -left-1.5 pt-2',
       )}
     >
       {children}
@@ -375,10 +377,27 @@ function UserMessage({
       </div>
     )
   }
+  const buttons = !item.starting && !item.steered && (
+    <Actions align="beside">
+      <CopyButton text={item.text} />
+      {actions?.onBranch && (
+        <IconButton label="Branch into a new thread from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
+      )}
+      {actions?.onEdit && (
+        <IconButton
+          label={locked ? 'Edit — stop the turn first' : 'Edit and rewind to here'}
+          icon={<IconPencil />}
+          size="sm"
+          disabled={locked}
+          onClick={() => setEditing(true)}
+        />
+      )}
+    </Actions>
+  )
   return (
-    <div className="group/msg relative flex flex-col items-end gap-1.5 animate-rise-in">
+    <div className="group/msg flex flex-col items-end gap-1.5 animate-rise-in">
       {item.images && item.images.length > 0 && (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="relative flex flex-wrap justify-end gap-2">
           {item.images.map((img) => (
             <img
               key={img.id}
@@ -387,11 +406,13 @@ function UserMessage({
               className="max-h-44 max-w-64 rounded-lg object-cover ring-1 ring-border-subtle"
             />
           ))}
+          {!item.text && buttons}
         </div>
       )}
       {item.text && (
-        <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>
-          {item.text}
+        <div className="relative max-w-[85%]">
+          <div className={cx(WELL, 'px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{item.text}</div>
+          {buttons}
         </div>
       )}
       {item.starting ? (
@@ -399,27 +420,13 @@ function UserMessage({
           <Spinner size="sm" />
           <span className="text-shimmer">Starting the agent…</span>
         </span>
-      ) : item.steered ? (
-        <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
-          <IconArrowRight size={12} className="text-icon" />
-          Sent into the running turn
-        </span>
       ) : (
-        <Actions align="end">
-          <CopyButton text={item.text} />
-          {actions?.onBranch && (
-            <IconButton label="Branch into a new thread from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
-          )}
-          {actions?.onEdit && (
-            <IconButton
-              label={locked ? 'Edit — stop the turn first' : 'Edit and rewind to here'}
-              icon={<IconPencil />}
-              size="sm"
-              disabled={locked}
-              onClick={() => setEditing(true)}
-            />
-          )}
-        </Actions>
+        item.steered && (
+          <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
+            <IconArrowRight size={12} className="text-icon" />
+            Sent into the running turn
+          </span>
+        )
       )}
     </div>
   )

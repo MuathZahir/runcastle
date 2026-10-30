@@ -132,7 +132,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .b.you.new{background:color-mix(in oklab,var(--color-text) 9%,var(--color-surface));box-shadow:inset 0 0 0 1px var(--color-border-subtle)}
 .b.work{width:30%;height:10px;background:var(--color-border-strong);opacity:.6}
 .b.ans{width:92%}
-.g24{height:24px}.g12{height:12px}.g32{height:32px}
+.g24{height:24px}.g12{height:12px}.g32{height:40px}
 .comp{margin-top:auto;padding-top:16px}
 .tab{margin:0 12px;height:16px;border:1px solid var(--color-border);border-bottom:0;border-radius:8px 8px 0 0;background:var(--color-surface-inset)}
 .box{height:44px;border-radius:var(--radius-lg);background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border)}
@@ -206,7 +206,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
           </div>
         </div>
         <ul class="notes">
-          <li>A turn sits together, 12px; a new turn after 32px. <a class="pin" data-d="2">2</a></li>
+          <li>A turn sits together, 12px; a new turn after 40px. <a class="pin" data-d="2">2</a></li>
           <li>Your message keeps today's bubble. <a class="pin" data-d="3">3</a></li>
           <li>One composer box: task list on top, the meter beside Send, one column edge. <a class="pin" data-d="4">4</a></li>
         </ul>
@@ -323,7 +323,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['This pass keeps the approved chat and restyles it', 'You approved this shape three days ago; the brief asks for the shared style and the layout fixed, not a new direction. Every chat gets it through the one chat column.'],
-    ['A turn is the unit of space', 'Today every item is 24px from the next, so a long thread reads as an even list. Now a turn sits together (12px) and a new one starts after 32px.'],
+    ['A turn is the unit of space', 'Today every item is 24px from the next, so a long thread reads as an even list. Now a turn sits together (12px) and a new one starts after 40px.'],
     ['Your message keeps today\'s bubble', 'You compared the card, the well and today\'s bubble and chose today\'s.'],
     ['The composer is one object', 'The task list moves inside the box, the meter beside Send; three stacked pieces on three grounds become one box.'],
     ['The header leads with the feature\'s name; the thread trails it', 'You chose it over today\'s emphasis. Needs one opt-in flag on the shared breadcrumb.'],
@@ -339,7 +339,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The last message\'s buttons clear the composer', 'Scrolled to the bottom, copy and branch were under the composer\'s fade. The thread keeps room for them and the fade is shorter.'],
     ['Three materials, one per job', 'Six hand-mixed container styles become three: raised floats over the thread (composer, asks, notices), the well sits in it (your message, changed files, subagents), inset holds code.'],
     ['"/" lists commands and skills anywhere in the message', 'You found the list only opened at the very start. Now "/" after a space opens it, as "@" does for files.'],
-    ['Notices sit on the composer\'s top edge', 'The floating deck in the corner is gone: notices are one line on the composer, where your eye already is, covering no message; older ones fold behind "+2 more".']
+    ['Notices sit on the composer\'s top edge', 'The floating deck in the corner is gone: notices are one line on the composer, where your eye already is, covering no message; older ones fold behind "+2 more".'],
+    ['Hover buttons keep the turn\'s rhythm', 'An answer\'s buttons sit 12px under it, and a new turn starts after 40px to clear them. Yours sit beside your bubble, where they cover nothing.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

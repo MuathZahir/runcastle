@@ -179,7 +179,7 @@ document, under **one header row**:
   thread (your message, a turn's changed files, a subagent); **inset** is
   code-shaped and sits inside those two (a command, output, a diff, an attached
   image). Raised and well catch one 1px highlight on their top edge. Space
-  follows the conversation: 12px inside a turn, 32px before a new one. Thread,
+  follows the conversation: 12px inside a turn, 40px before a new one. Thread,
   composer and asks share one 760 column edge.
   - **Work reads quietly**: settled, a turn folds to "Worked for 3m 43s". Calls
     of one family in a row are one line ("Edited 5 files +40 −12", "Read 3

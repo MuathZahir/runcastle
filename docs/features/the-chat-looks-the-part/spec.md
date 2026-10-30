@@ -29,7 +29,7 @@ What the human sees:
 
 - **Turns, not a list.** The parts of one turn sit 12px apart: your message,
   the work line, the answer, the changed-files card and an answered ask. A turn
-  starts after 32px. Your message, runcastle's own line and the dividers
+  starts after 40px. Your message, runcastle's own line and the dividers
   ("Now on …", "Conversation compacted", a notice line) each start one.
 - **One column edge.** The thread, the composer and every ask dock share one
   760px column. The floating foot is padded by the thread's measured scrollbar
@@ -66,7 +66,8 @@ What the human sees:
   24px, so they are never under it.
 - **An answer and its changes are one block.** When a turn ends with a
   changed-files card, the answer draws the card under its text, 12px down, and
-  the answer's hover actions hang under the card. Before, they floated in the
+  the answer's hover actions hang 12px under the card. Your own message's
+  actions sit beside your bubble. Before, they floated in the
   gap between the answer and the card (the human's "Weird spacing" note).
 - **The composer is one box.** The task list and the background commands are
   its top section, under a hairline. The context meter is the first control on

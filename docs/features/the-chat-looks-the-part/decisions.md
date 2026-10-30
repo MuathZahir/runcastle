@@ -8,7 +8,7 @@ them over several passes, and confirmed the plan on 2026-10-30.
 **Why:** The human approved that shape three days ago after asking for "t3code's level"; the brief asks for the shared style applied and the chat's own layout fixed, not a new direction.
 
 ## 2. A turn is the unit of space
-**Decision:** Space in the thread follows the conversation: the parts of one turn (your message, the agent's work line, its answer, the changed-files card, an answered-ask line) sit close together, 12px apart, and a new turn starts after 32px of air. Dividers ("Now on Sonnet 5.5", "Conversation compacted") take the same air as a new turn.
+**Decision:** Space in the thread follows the conversation: the parts of one turn (your message, the agent's work line, its answer, the changed-files card, an answered-ask line) sit close together, 12px apart, and a new turn starts after 40px of air. Dividers ("Now on Sonnet 5.5", "Conversation compacted") take the same air as a new turn.
 **Why:** Today every item is 24px from the next, so an answer sits as far from its own question as from the next one, and a long thread reads as an even list rather than a conversation.
 
 ## 3. Your message keeps today's bubble
@@ -76,3 +76,7 @@ them over several passes, and confirmed the plan on 2026-10-30.
 ## 18. Notices sit on the composer's top edge
 **Decision:** What happens while you are in the chat (a round finished, a ticket failed, the plan is ready) no longer floats as a deck of cards in the chat's corner. It is a strip on the top edge of the composer, in the composer's raised material, above the composer or above whatever the agent is asking: one line with the phase glyph, the title, a short reason, its action and ✕. Older notices fold behind "+2 more" on that line and open above it, oldest at the top. A notice still leaves by its action, by ✕, or, for a confirmation of your own click, by itself. Notices stay short-lived, as today: they are not written into the thread's history. Supersedes: 6.
 **Why:** The human disliked the floating deck's position: "we can put them in a more clever way now that the chat is not a terminal." The composer is where the eye already is, and the strip covers no message. Notices only cover what happens while the chat is open, so writing them into the conversation would make them vanish on reload.
+
+## 19. Hover buttons keep the turn's rhythm
+**Decision:** An answer's hover buttons sit 12px under the answer or its changed-files card, the same step as everything else in a turn, and a new turn starts after 40px (was 32px) so they clear it. Your own message's buttons sit beside your bubble, on its left, instead of under it.
+**Why:** The human, on a test drive: the spacing above the buttons looked weird. Under your own message, what follows is only 12px away, so buttons hanging there would sit on a short answer's first line.
