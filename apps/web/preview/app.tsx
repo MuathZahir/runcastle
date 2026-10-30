@@ -16,7 +16,7 @@ import { PROJECT_ID, withShell } from '../../../.runcastle/preview/shell-fakes'
 import { busyFeatures } from './sidebar-data'
 
 /**
- * The whole app — the real sidebar beside the real project page — on sample
+ * The whole app — the real sidebar beside the real Conversations page — on sample
  * data, to judge the shared look across the frame (docs/features/
  * the-whole-app-matches-the-sidebar). A dead end on purpose: links and
  * navigation do nothing here, and every write is refused.
@@ -60,7 +60,7 @@ function Root() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ToastProvider>
-            <AppAt path={`/p/${PROJECT_ID}/chat`} />
+            <AppAt path={`/p/${PROJECT_ID}/conversations`} />
           </ToastProvider>
         </TooltipProvider>
       </QueryClientProvider>

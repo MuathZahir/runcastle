@@ -593,7 +593,7 @@ export function ThreadListMore({ label, icon, onClick }: { label: string; icon: 
 /**
  * The open feature's or the Orchestrator's threads in the order given, five
  * and then the rest: a feature's open in place ("Show N more"); the
- * Orchestrator's are its page's conversation list (`more`, "All N conversations").
+ * Orchestrator's are the Conversations page (`more`, "All N conversations").
  */
 export function SidebarThreadList({
   threads,
@@ -604,7 +604,7 @@ export function SidebarThreadList({
   label = 'Threads',
 }: {
   threads: readonly ThreadEntry[]
-  /** The thread in front, or null when none is (the Orchestrator page at rest). */
+  /** The thread in front, or null when none is (the Conversations page). */
   current: string | null
   onOpen: (id: string) => void
   actionsFor: (t: ThreadEntry) => FeatureAction[]
@@ -711,9 +711,7 @@ export function OrchestratorCard({
           aria-current={active ? 'page' : undefined}
           className={cx('flex w-full cursor-pointer items-center gap-3 py-2.5 pl-2.5 text-left', toggles ? 'pr-9' : 'pr-2.5')}
         >
-          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset">
-            <IconOrchestrator size={18} />
-          </span>
+          <OrchestratorTile />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-md font-semibold tracking-tight text-text">Orchestrator</span>
             <span className="truncate text-xs text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]">
@@ -887,6 +885,20 @@ const HALFTONE_MASK = (() => {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' stroke='black' stroke-linecap='round'>${paths}</svg>`
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
 })()
+
+/** The hub in its accent tile: the Orchestrator's card, and larger, its empty chat. */
+export function OrchestratorTile({ large = false }: { large?: boolean }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex shrink-0 items-center justify-center bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset',
+        large ? 'size-14 rounded-lg' : 'size-9 rounded-md',
+      )}
+    >
+      <IconOrchestrator size={large ? 26 : 18} />
+    </span>
+  )
+}
 
 /**
  * Behind the sidebar's head: a static halftone, dots shrinking away from the

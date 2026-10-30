@@ -83,7 +83,7 @@ function threadActions(t: ThreadEntry): FeatureAction[] {
   ]
 }
 
-/** What is open: a feature with a thread in front, or the Orchestrator (null: its page at rest). */
+/** What is open: a feature with a thread in front, or the Orchestrator (null: Conversations). */
 type Open = { kind: 'feature'; featureId: string; thread: string } | { kind: 'orchestrator'; thread: string | null }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ function Panel({ open }: { open: Open }) {
       />
       <div className="flex flex-1 items-center justify-center text-sm text-text-tertiary">
         {open.kind === 'orchestrator' && !open.thread
-          ? 'The Orchestrator page at rest: New chat, the drive and every conversation'
+          ? 'The Conversations page: every conversation'
           : 'The chat column for the thread named above'}
       </div>
     </section>

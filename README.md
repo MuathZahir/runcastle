@@ -200,7 +200,7 @@ a new feature, a batch of quick changes, another lap on an existing feature, or
 nothing.
 
 <p align="center">
-  <img src="site/assets/screens/project.png" alt="The project home: Talk it through and Test drive, past chats, and the Notes panel with three open notes and a Triage 3 button" width="100%" />
+  <img src="site/assets/screens/project.png" alt="The Orchestrator: the project's chats, and the Notes panel with three open notes and a Triage 3 button" width="100%" />
 </p>
 
 ---

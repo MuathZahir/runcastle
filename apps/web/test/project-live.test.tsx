@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ThreadEntry } from '@runcastle/core'
+import type { SessionBranchApi } from '../src/lib/use-session-branch'
 import { fakeTrpc } from './fake-trpc'
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -10,10 +11,18 @@ vi.mock('../src/lib/live', async (importOriginal) => ({
   useLivePoll: () => false,
 }))
 
-const { ConversationList } = await import('../src/components/project/ConversationList')
 const { ProjectChat } = await import('../src/components/project/ProjectChat')
 
 const at = 1_700_000_000_000
+
+const landing: SessionBranchApi = {
+  value: 'main',
+  branches: ['main', 'develop'],
+  detected: 'main',
+  missing: false,
+  pick: () => {},
+  picking: false,
+}
 
 /** The project's server: one chat with history, and a new empty one. */
 function server() {
@@ -40,7 +49,7 @@ describe('a project chat', () => {
 
   it('opens at once as its thread, finished or not, with the landing branch under the composer and no End session', async () => {
     const api = server()
-    render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing="main" />, { wrapper: api.Wrapper })
+    render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
 
     const chat = screen.getByRole('region', { name: 'Project chat' })
     expect(await screen.findByText('Three features: capture, triage, export.')).toBeTruthy()
@@ -49,27 +58,59 @@ describe('a project chat', () => {
     expect(screen.queryByRole('button', { name: /End session|Resume/ })).toBeNull()
   })
 
-  it('sends the first message of a new, empty chat to its own thread', async () => {
+  it('offers the landing branch as a menu only while nothing has been said', async () => {
     const api = server()
-    render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing="main" />, { wrapper: api.Wrapper })
+    render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
+    expect(await screen.findByRole('button', { name: /Lands on main/ })).toBeTruthy()
+    cleanup()
+
+    render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
+    await screen.findByText('Three features: capture, triage, export.')
+    expect(screen.queryByRole('button', { name: /Lands on main/ })).toBeNull()
+  })
+
+  it('asks what we are building while nothing has been said', async () => {
+    const api = server()
+    render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
+    expect(await screen.findByRole('heading', { name: 'What are we building?' })).toBeTruthy()
+    expect(screen.queryByText('New thread')).toBeNull()
+  })
+
+  it('starts a project’s first chat on its first message, and the question gives way', async () => {
+    const api = server()
+    function FirstChat() {
+      const [threadId, setThreadId] = useState<string | null>(null)
+      return (
+        <ProjectChat
+          threadId={threadId}
+          start={async () => 'th_new'}
+          startsAs={{ projectId: 'proj_1', kind: 'project' }}
+          onStarted={setThreadId}
+          onOpenThread={() => {}}
+          landing={landing}
+        />
+      )
+    }
+    render(<FirstChat />, { wrapper: api.Wrapper })
+    expect(await screen.findByRole('heading', { name: 'What are we building?' })).toBeTruthy()
+    expect(api.inputs('thread.send')).toEqual([])
 
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'A notes inbox for the project' } })
     fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
 
     expect(await screen.findByText('A notes inbox for the project')).toBeTruthy()
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'A notes inbox for the project' }]))
+    expect(screen.queryByRole('heading', { name: 'What are we building?' })).toBeNull()
   })
-})
 
-describe('the resting list', () => {
-  afterEach(cleanup)
+  it('sends the first message of a new, empty chat to its own thread', async () => {
+    const api = server()
+    render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
 
-  it('opens a chat as its thread from its row', () => {
-    const opened: string[] = []
-    const chat: ThreadEntry = { id: 'th_1', title: 'New chat', role: 'project', state: 'working', createdAt: at, updatedAt: at, runtime: 'claude-code' }
-    render(<ConversationList threads={[chat]} pending={false} onOpen={(id) => opened.push(id)} />)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'A notes inbox for the project' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
 
-    fireEvent.click(screen.getByRole('button', { name: /New chat/ }))
-    expect(opened).toEqual(['th_1'])
+    expect(await screen.findByText('A notes inbox for the project')).toBeTruthy()
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'A notes inbox for the project' }]))
   })
 })

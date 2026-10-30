@@ -119,7 +119,7 @@ describe('useProjectTalk', () => {
   })
 })
 
-describe('the project workspace at rest', () => {
+describe('the project workspace', () => {
   const talk = (over: Partial<ReturnType<typeof useProjectTalk>> = {}): ReturnType<typeof useProjectTalk> => ({
     session: null,
     state: 'none',
@@ -128,29 +128,23 @@ describe('the project workspace at rest', () => {
     ...over,
   })
 
-  /** The inbox is the panel's Notes view (design-mode decision 11), open while something waits in it. */
-  it('opens the Notes panel beside the chat list while a note is open, and folds it on request', () => {
+  /** The inbox is the panel's Notes view (design-mode decision 11); the chat stays whole until asked. */
+  it('leaves the panel shut on arrival while a note is open, and opens Notes from the toggle', () => {
     render(<ProjectWorkspace projectId="proj_1" talk={talk()} />)
 
     const panel = (): HTMLElement | null => document.querySelector('[data-panel]')
-    expect(within(panel()!).getAllByRole('region', { name: 'Notes' }).length).toBeGreaterThan(0)
-    // the chat list comes first, the panel beside it
-    expect(screen.getByText('Talk it through').compareDocumentPosition(panel()!)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    )
-
-    const toggle = screen.getByRole('button', { name: 'Hide the panel (1)' })
-    expect(toggle.getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(toggle)
     expect(panel()).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Show the panel (1)' }))
-    expect(panel()).toBeTruthy()
+    expect(within(panel()!).getAllByRole('region', { name: 'Notes' }).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the panel (1)' }))
+    expect(panel()).toBeNull()
   })
 
   it('triages straight away when no chat is open', () => {
     const api = talk()
     render(<ProjectWorkspace projectId="proj_1" talk={api} />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show the panel (1)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
     expect(api.triage).toHaveBeenCalledTimes(1)
   })
@@ -160,8 +154,7 @@ describe('the project workspace at rest', () => {
     const api = talk({ session: live })
     render(<ProjectWorkspace projectId="proj_1" talk={api} />)
 
-    // the live conversation owns the body; the inbox is a step back from it
-    fireEvent.click(screen.getByRole('button', { name: 'acme' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show the panel (1)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
     expect(api.triage).toHaveBeenCalledTimes(1)
     expect(screen.queryByText(/already open|End it and start new/)).toBeNull()

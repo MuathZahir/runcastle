@@ -14,15 +14,15 @@ export interface SidebarThreads {
   scope: { featureId: string } | { projectId: string }
   /** Every thread the page can show, stand-ins included, in any order. */
   threads: readonly ThreadEntry[]
-  /** The thread in front; null when none is (the Orchestrator page at rest). */
+  /** The thread in front; null when none is (the Conversations page). */
   current: string | null
   pick: (threadId: string) => void
   /** New thread: a side thread on a feature, a new chat on the project. */
   newThread: () => void
   /** The drive's scenario chat while its errand is open: its row's menu closes it. */
   errand?: { threadId: string; close: () => void }
-  /** The Orchestrator page at rest, where every conversation is listed ("All N conversations"). */
-  rest?: () => void
+  /** The Conversations page, where every conversation is listed ("All N conversations"). */
+  allConversations?: () => void
 }
 
 const Published = createContext<SidebarThreads | null>(null)

@@ -7,9 +7,9 @@ import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 import { openList, openMenu } from './floating'
 
 /**
- * The project drive on the project workspace (project-level-test-drive
- * decisions 4, 7): the Test drive card on the resting page, starting a drive
- * makes the drive the page with its notes rail (test-drive-looks-the-part
+ * The project drive on the Orchestrator (project-level-test-drive decisions 4,
+ * 7): the Test drive button in its header, starting a drive makes the drive
+ * the page with its notes rail (test-drive-looks-the-part
  * decision 13), the back arrow steps back while the drive runs, Stop lands on
  * the Notes inbox.
  *
@@ -228,12 +228,6 @@ afterEach(() => {
 /** Is this element in a part of the body the human can see? */
 const shown = (el: HTMLElement): boolean => el.closest('[hidden], .hidden') === null
 
-/** Is the resting page — its New chat card — what fills the chat column? */
-function restShown(): boolean {
-  const card = screen.queryByText('Talk it through')
-  return card !== null && shown(card)
-}
-
 /** The panel beside the chat column, when one is open. */
 const panel = (): HTMLElement | null => document.querySelector('[data-panel]')
 
@@ -246,7 +240,13 @@ const onDrive = (): boolean => {
 
 function mount(
   api: ProjectTalkApi = talk(),
-  props: { onOpenPreparation?: () => void; driveRequest?: number } = {},
+  props: {
+    onOpenPreparation?: () => void
+    driveRequest?: number
+    conversations?: boolean
+    onOpenConversations?: () => void
+    onCloseConversations?: () => void
+  } = {},
 ) {
   const view = render(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />)
   return { rerender: () => view.rerender(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />) }
@@ -256,42 +256,48 @@ function mount(
  * The page beside the project sidebar, as the project shell lays them out: the
  * Orchestrator's chats list in its card (threads-in-the-sidebar).
  */
-function mountWithSidebar(api: ProjectTalkApi = talk()) {
-  const nav = {
-    // Named apart from the page's own crumb, so the two never share a button name.
-    projects: [{ id: 'proj_1', name: 'nav-project', repoPath: '/repo' }],
-    loading: false,
-    doctorError: null,
-    recheckDoctor: () => {},
-    view: 'project' as const,
-    currentProjectId: 'proj_1',
-    currentProject: { id: 'proj_1', name: 'nav-project', repoPath: '/repo' },
-    goHome: () => {},
-    enterProject: () => {},
-    showOpen: () => {},
-    cancelOpen: () => {},
-  }
+function mountWithSidebar(
+  api: ProjectTalkApi = talk(),
+  page: { conversations?: boolean; onCloseConversations?: () => void } = {},
+) {
   const tree = () => (
     <SidebarThreadsProvider>
       <div data-sidebar="">
-        <Sidebar
-          projectId="proj_1"
-          nav={nav}
-          view="project"
-          selectedFeatureId={null}
-          onSelect={() => {}}
-          onSelectProject={() => {}}
-          onNewChat={() => {}}
-          onDraft={() => {}}
-          onOpenPreparation={() => {}}
-        />
+        <SidebarFor />
       </div>
-      <ProjectWorkspace projectId="proj_1" talk={api} />
+      <ProjectWorkspace projectId="proj_1" talk={api} {...page} />
     </SidebarThreadsProvider>
   )
   const view = render(tree())
   return { rerender: () => view.rerender(tree()) }
 }
+
+const sidebarNav = {
+  projects: [{ id: 'proj_1', name: 'nav-project', repoPath: '/repo' }],
+  loading: false,
+  doctorError: null,
+  recheckDoctor: () => {},
+  view: 'project' as const,
+  currentProjectId: 'proj_1',
+  currentProject: { id: 'proj_1', name: 'nav-project', repoPath: '/repo' },
+  goHome: () => {},
+  enterProject: () => {},
+  showOpen: () => {},
+  cancelOpen: () => {},
+}
+const SidebarFor = () => (
+  <Sidebar
+    projectId="proj_1"
+    nav={sidebarNav}
+    view="project"
+    selectedFeatureId={null}
+    onSelect={() => {}}
+    onSelectProject={() => {}}
+    onNewChat={() => {}}
+    onDraft={() => {}}
+    onOpenPreparation={() => {}}
+  />
+)
 
 const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
 /** The Orchestrator's chats as its card lists them: each row's title, in order. */
@@ -305,27 +311,12 @@ const chatRow = (title: string): HTMLElement =>
 /** The header's name for the chat in front: the breadcrumb's last item. */
 const chatName = (): string => document.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent ?? ''
 
-describe('the Test drive card', () => {
-  it('sits under New chat and keeps the plan in a closed Drive setup disclosure', () => {
+describe('the header drive door', () => {
+  it('is a quiet Test drive in the header, around every chat', () => {
     mount()
-    const card = screen.getByRole('region', { name: 'Test drive' })
-    const talkHeading = screen.getByText('Talk it through')
-    expect(talkHeading.compareDocumentPosition(card)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
-
-    // read once, then known: collapsed until asked for
-    const setup = within(card).getByText('Drive setup').closest('details')
-    expect(setup?.open).toBe(false)
-    const text = setup?.textContent ?? ''
-    expect(text).toContain('main')
-    expect(text).toContain('your checkout, as it is — no branch switch')
-    expect(text).toContain('project-drive')
-    expect(text).toContain('bun run drive:setup')
-    expect(text).toContain('bun run dev')
-    // the unset stop command, with the way to set it
-    expect(text).toContain('Nothing set')
-    // secondary: New chat stays the page's one primary
-    const button = within(card).getByRole('button', { name: 'Test drive' })
-    expect(button.getAttribute('data-variant')).toBe('secondary')
+    const button = screen.getByRole('button', { name: 'Test drive' })
+    expect(button.getAttribute('data-variant')).toBe('ghost')
+    expect(button.closest('header')).not.toBeNull()
   })
 
   it('opens preparation when neither a setup nor a dev command is set', () => {
@@ -340,9 +331,14 @@ describe('the Test drive card', () => {
   it('is disabled and names the holder while another drive has the slot', () => {
     slot = { ...LIVE, projectDrive: undefined, projectId: undefined, holderLabel: 'a test drive of feature/x' }
     mount()
-    const card = screen.getByRole('region', { name: 'Test drive' })
-    expect((within(card).getByRole('button', { name: 'Test drive' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(card.textContent).toContain('A test drive of feature/x is running')
+    const button = screen.getByRole('button', { name: 'Test drive' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(button.title).toBe('A test drive of feature/x is running')
+  })
+
+  it('offers nothing on a born-empty project', () => {
+    render(<ProjectWorkspace projectId="proj_1" talk={talk()} empty />)
+    expect(screen.queryByRole('button', { name: /Test drive|Prepare drive/ })).toBeNull()
   })
 })
 
@@ -355,7 +351,6 @@ describe('driving from the project page', () => {
 
     // the drive replaces the chat column and the panel
     expect(onDrive()).toBe(true)
-    expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
     const page = drivePage()!
     expect(page.textContent).toContain('Driving main')
@@ -368,37 +363,36 @@ describe('driving from the project page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop drive' }))
     expect(testDrive).toHaveBeenLastCalledWith({ projectId: 'proj_1', action: 'stop' })
     rerender()
-    expect(restShown()).toBe(true)
+    expect(shown(chatInFront()!)).toBe(true)
     expect(drivePage()).toBeNull()
     // the drive's notes are waiting in the inbox
     expect(within(panel()!).getAllByRole('region', { name: 'Notes' }).length).toBeGreaterThan(0)
   })
 
-  it('toasts a refusal and stays at rest', () => {
+  it('toasts a refusal and stays on the chat', () => {
     testDriveResult = { ok: false, deniedReason: 'A test drive of feature/x is running — stop it first' }
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
     expect(toast).toHaveBeenCalledWith('A test drive of feature/x is running — stop it first')
-    expect(restShown()).toBe(true)
+    expect(onDrive()).toBe(false)
+    expect(shown(chatInFront()!)).toBe(true)
   })
 
   it('opens the running drive as the page, and steps back while the drive keeps running', () => {
     slot = LIVE
     const { rerender } = mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     expect(onDrive()).toBe(true)
-    expect(restShown()).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
     rerender()
-    expect(restShown()).toBe(true)
-    expect(screen.getByRole('region', { name: 'Test drive' }).textContent).toContain('Running')
+    expect(shown(chatInFront()!)).toBe(true)
     expect(testDrive).not.toHaveBeenCalled()
     // Still mounted, hidden: the app stays as it was left.
     expect(drivePage()).not.toBeNull()
     expect(onDrive()).toBe(false)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     expect(onDrive()).toBe(true)
   })
 
@@ -409,7 +403,7 @@ describe('driving from the project page', () => {
       note('streak resets at UTC', 6_000, { driveBranch: 'main', driveCommit: '1882e87' }),
     ]
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     const rail = screen.getByRole('complementary', { name: 'Notes' })
     const thisDrive = within(rail).getByRole('region', { name: 'This drive' })
     const older = within(rail).getByRole('region', { name: 'Already open' })
@@ -427,7 +421,7 @@ describe('driving from the project page', () => {
   it('folds the rail from the head, where Stop drive also is', () => {
     slot = LIVE
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     const page = drivePage()!
     fireEvent.click(within(page).getByRole('button', { name: 'Hide notes' }))
     expect(within(page).queryByRole('complementary', { name: 'Notes' })).toBeNull()
@@ -443,7 +437,7 @@ describe('driving from the project page', () => {
     }
     const onOpenPreparation = vi.fn()
     mount(talk(), { onOpenPreparation })
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     expect(screen.getByText('Drive setup failed')).toBeTruthy()
     expect(screen.getByText('port in use')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Fix drive' })).toBeNull()
@@ -455,7 +449,7 @@ describe('driving from the project page', () => {
   it('shows the bare state when setup ran and no dev command is set', () => {
     slot = { ...LIVE, state: 'bare-checkout', devConfigured: false, devUrl: undefined, devPaneId: undefined }
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     expect(screen.getByText('Branch checked out, nothing started')).toBeTruthy()
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeTruthy()
   })
@@ -475,28 +469,99 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
 const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Project chat' })
 
 /**
- * A finished project chat is a thread like any other (chat-as-web-components
- * decision 7): it opens at once, with no Resume and nothing to end.
+ * The Orchestrator is its chat (the-orchestrator-s-page decisions 10, 13, 14):
+ * it opens on the latest conversation, or a new one, with no page in between.
  */
-describe('a finished project chat', () => {
-  it('opens as its thread from the list, named in the header, with no Resume', () => {
-    threads = [entry('sess_old', 'Plan the audit')]
+describe('opening the Orchestrator', () => {
+  it('opens the chat with the most recent activity, a finished one included, with no Resume', () => {
+    threads = [entry('sess_a', 'Started first', 1_000), { ...entry('sess_b', 'Plan the audit', 3_000), createdAt: 500 }, entry('sess_c', 'Quiet', 2_000)]
     mount()
-    fireEvent.click(screen.getByRole('button', { name: /Plan the audit/ }))
-
-    expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(chatInFront()?.dataset.thread).toBe('sess_b')
     expect(chatName()).toBe('Plan the audit')
-    expect(screen.queryByRole('button', { name: 'Thread' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Resume|Reopen/ })).toBeNull()
   })
 
-  it('steps back to the project page from its crumb', () => {
-    threads = [entry('sess_old', 'Plan the audit')]
+  it('never lands on a drive’s scenario chat', () => {
+    threads = [{ ...entry('sess_s', 'New scenario', 9_000), role: 'scenario' }, entry('sess_a', 'Plan the audit', 1_000)]
     mount()
-    fireEvent.click(screen.getByRole('button', { name: /Plan the audit/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
-    expect(restShown()).toBe(true)
+    expect(chatInFront()?.dataset.thread).toBe('sess_a')
+  })
+
+  it('stays on the chat in front while another posts', () => {
+    threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_b', 'An older idea', 1_000)]
+    const { rerender } = mount()
+    threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_b', 'An older idea', 9_000)]
+    rerender()
+    expect(chatInFront()?.dataset.thread).toBe('sess_a')
+  })
+
+  it('waits for the list, showing no chat until it knows the latest', () => {
+    threads = [entry('sess_a', 'Plan the audit')]
+    threadsAnswered = false
+    const { rerender } = mount()
     expect(chatInFront()).toBeNull()
+    threadsAnswered = true
+    rerender()
+    expect(chatInFront()?.dataset.thread).toBe('sess_a')
+  })
+
+  it('opens a new, empty chat on a project with none, writing nothing', () => {
+    mount()
+    expect(chatInFront()?.dataset.thread).toBe('new')
+    expect(chatName()).toBe('New chat')
+    expect(threadNew).not.toHaveBeenCalled()
+  })
+
+  it('leaves the panel shut with open notes waiting', () => {
+    threads = [entry('sess_a', 'Plan the audit')]
+    mount()
+    expect(panel()).toBeNull()
+  })
+})
+
+/** the-orchestrator-s-page decisions 12, 18: every chat, on a page of its own. */
+describe('the Conversations page', () => {
+  it('replaces the chat, named in the header, and Orchestrator goes back to it', () => {
+    threads = [entry('sess_a', 'Plan the audit')]
+    const onCloseConversations = vi.fn()
+    mount(talk(), { conversations: true, onCloseConversations })
+    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
+    expect(chatInFront()).toBeNull()
+    expect(chatName()).toBe('Conversations')
+    fireEvent.click(screen.getByRole('button', { name: 'Orchestrator' }))
+    expect(onCloseConversations).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves for the chat a row opens', () => {
+    threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_old', 'An older idea')]
+    const onCloseConversations = vi.fn()
+    mount(talk(), { conversations: true, onCloseConversations })
+    fireEvent.click(screen.getByTitle('An older idea'))
+    expect(onCloseConversations).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays out of the way of a pick made from a chat', () => {
+    threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_old', 'An older idea')]
+    const onCloseConversations = vi.fn()
+    mountWithSidebar(talk(), { onCloseConversations })
+    fireEvent.click(within(sidebar()).getByTitle('An older idea'))
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(onCloseConversations).not.toHaveBeenCalled()
+  })
+
+  it('opens from the sidebar’s last row, past its five', () => {
+    threads = Array.from({ length: 7 }, (_, i) => entry(`sess_${i}`, `Chat ${i}`, i + 1))
+    const onOpenConversations = vi.fn()
+    render(
+      <SidebarThreadsProvider>
+        <div data-sidebar="">
+          <SidebarFor />
+        </div>
+        <ProjectWorkspace projectId="proj_1" talk={talk()} onOpenConversations={onOpenConversations} />
+      </SidebarThreadsProvider>,
+    )
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'All 7 conversations' }))
+    expect(onOpenConversations).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -509,19 +574,6 @@ describe('New chat with a chat running', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
   }
 
-  it('opens an empty new thread from the New chat row, with no notice', () => {
-    running()
-    mount(talk({ session: liveChat }))
-    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
-
-    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(chatInFront()?.dataset.thread).toBe('th_new')
-    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
-    // named "New chat" until something is said in it, never by its kind
-    expect(chatName()).toBe('New chat')
-  })
-
   // The project page's New door (ProjectShell, the sidebar's Create menu) asks through `newChatRequest`.
   it('opens an empty new thread from the New door too', () => {
     running()
@@ -532,37 +584,40 @@ describe('New chat with a chat running', () => {
     expect(consumed).toHaveBeenCalled()
   })
 
-  it('opens an empty new thread from the Orchestrator’s "+" the same way', () => {
+  it('opens an empty new thread from the Orchestrator’s "+" the same way, with no notice', () => {
     running()
     mountWithSidebar(talk({ session: liveChat }))
     fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
+    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
+    // named "New chat" until something is said in it, never by its kind
+    expect(chatName()).toBe('New chat')
   })
 
-  it('lists the same threads, names and states on the page as in the Orchestrator’s card', () => {
+  it('lists the same threads, names and states on Conversations as in the Orchestrator’s card', () => {
     threads = [
       { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
       { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting' },
       entry('sess_old', 'An older idea'),
     ]
-    mountWithSidebar(talk({ session: liveChat }))
+    mountWithSidebar(talk({ session: liveChat }), { conversations: true })
     // Newest started first (decision 3): these were started in the order of their last move.
     expect(orchestratorChats()).toEqual(['Audit the journal', 'Cut the export idea', 'An older idea'])
     expect(chatRow('Audit the journal').querySelector('[data-progress]')).not.toBeNull()
     expect(within(chatRow('Cut the export idea')).getByLabelText('Waiting for you')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
-    const onPage = [...document.querySelectorAll('[aria-label="Chats"] [data-list-row]')].map((row) => row.textContent ?? '')
+    const groups = ['Active', 'Earlier'].flatMap((name) => screen.queryAllByRole('region', { name }))
+    const rows = groups.flatMap((g) => within(g).getAllByRole('button')).map((b) => b.textContent ?? '')
 
-    expect(onPage).toHaveLength(3)
+    expect(rows).toHaveLength(3)
     const expected = [
-      ['Audit the journal', 'working'],
       ['Cut the export idea', 'waiting for you'],
+      ['Audit the journal', 'working'],
       ['An older idea', 'd'],
     ]
     expected.forEach(([name, state], i) => {
-      expect(onPage[i]).toContain(name)
-      expect(onPage[i]).toContain(state)
+      expect(rows[i]).toContain(name)
+      expect(rows[i]).toContain(state)
     })
   })
 })
@@ -573,7 +628,6 @@ describe('a live project chat', () => {
     slot = LIVE
     mount(talk({ session: liveChat }))
     expect(chatInFront()?.dataset.thread).toBe('sess_1')
-    expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
@@ -585,11 +639,6 @@ describe('a live project chat', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
     expect(onDrive()).toBe(false)
     expect(shown(chatInFront()!)).toBe(true)
-
-    // the project crumb steps back to the chat list
-    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
-    expect(restShown()).toBe(true)
-    expect(chatInFront()).toBeNull()
   })
 
   it('lists every chat of the project in the Orchestrator’s card, each opening its thread, and "+" selects a new one', () => {
@@ -620,14 +669,13 @@ describe('a live project chat', () => {
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
   })
 
-  it('opens the chat a reloaded or pasted link names, not the overview, even when the list answers late', async () => {
+  it('opens the chat a reloaded or pasted link names, not the latest, even when the list answers late', async () => {
     window.history.replaceState(null, '', '/p/proj_1/chat?thread=sess_old')
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
     threadsAnswered = false
     const { rerender } = mount(talk({ session: liveChat }))
-    // Pending: neither the resting list nor the running chat, and the link stays.
+    // Pending: not the running chat, and the link stays.
     expect(screen.getByRole('region', { name: 'Chat' }).getAttribute('aria-busy')).toBe('true')
-    expect(restShown()).toBe(false)
     expect(chatInFront()).toBeNull()
     await act(() => new Promise((r) => setTimeout(r, 10)))
     expect(window.location.search).toBe('?thread=sess_old')
@@ -778,7 +826,7 @@ describe('scenarios on a project drive', () => {
     scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
     slot = LIVE
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     openList(within(drivePage()!).getByRole('button', { name: /Blank app/ }))
     fireEvent.click(screen.getByRole('option', { name: /Smoke/ }))
 

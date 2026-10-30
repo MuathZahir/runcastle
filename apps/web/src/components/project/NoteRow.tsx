@@ -12,7 +12,7 @@ import { ListRow, cx } from '../../ui'
  * A `ListRow` (`as="li"`, `wrap` — a note is prose, so its text wraps instead
  * of truncating — and `actionsOverlay`), with the hover ground a static row
  * does not otherwise take, so the verbs read as this note's. Shared by the two
- * lists of project notes — the Notes aside on the project page and the project
+ * lists of project notes — the Notes panel on the Orchestrator and the project
  * drive's — so a note reads the same in both.
  */
 export function NoteRow({

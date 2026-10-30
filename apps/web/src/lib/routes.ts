@@ -64,8 +64,10 @@ export type AppLocation =
    * this one does not.
    */
   | { kind: 'feature'; projectId: string; featureSlug: string; view?: FeatureSegment; namesWork?: true }
-  /** A project's conversation. */
+  /** A project's conversation: the Orchestrator, on its latest chat. */
   | { kind: 'chat'; projectId: string }
+  /** Every conversation the project has had. */
+  | { kind: 'conversations'; projectId: string }
   /** A project's preparation. */
   | { kind: 'prepare'; projectId: string }
 
@@ -102,6 +104,8 @@ export function pathFor(location: AppLocation): string {
       return project
     case 'chat':
       return `${project}/chat`
+    case 'conversations':
+      return `${project}/conversations`
     case 'prepare':
       return `${project}/prepare`
     case 'feature': {
@@ -138,6 +142,7 @@ export function parsePath(path: string): AppLocation | null {
   if (!projectId) return null
   if (parts.length === 2) return { kind: 'project', projectId }
   if (parts.length === 3 && parts[2] === 'chat') return { kind: 'chat', projectId }
+  if (parts.length === 3 && parts[2] === 'conversations') return { kind: 'conversations', projectId }
   if (parts.length === 3 && parts[2] === 'prepare') return { kind: 'prepare', projectId }
   if (parts.length === 4 && parts[2] === 'f' && parts[3]) {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
@@ -162,7 +167,7 @@ export function parsePath(path: string): AppLocation | null {
  */
 export type InProjectLocation = Extract<
   AppLocation,
-  { kind: 'feature' | 'chat' | 'prepare' }
+  { kind: 'feature' | 'chat' | 'conversations' | 'prepare' }
 >
 
 /**
@@ -190,6 +195,8 @@ export function locationFor(state: {
   /** Preparation was opened deliberately — the persisted per-project flag. */
   preparing: boolean
   projectSelected: boolean
+  /** The Orchestrator's Conversations page, rather than its chat. */
+  conversations?: boolean
   /** The selected feature's slug, or null when none is selected. */
   featureSlug: string | null
   /** The selected feature's view; Work when omitted. */
@@ -197,7 +204,7 @@ export function locationFor(state: {
 }): AppLocation {
   const { projectId, featureView = 'work' } = state
   if (state.preparing) return { kind: 'prepare', projectId }
-  if (state.projectSelected) return { kind: 'chat', projectId }
+  if (state.projectSelected) return { kind: state.conversations ? 'conversations' : 'chat', projectId }
   if (state.featureSlug) {
     const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const
     return featureView === 'work' ? feature : { ...feature, view: featureView }

@@ -50,7 +50,9 @@ export function ThreadColumn({
   draftKey,
   inbox,
   emptyHint,
+  empty,
   meta,
+  startMeta,
   notices,
   label = 'Chat',
   children,
@@ -69,8 +71,12 @@ export function ThreadColumn({
   /** The composer inbox whose images land in this composer (a design crop). */
   inbox?: string
   emptyHint?: ReactNode
+  /** Instead of the plain "New thread" while nothing has been said. */
+  empty?: ReactNode
   /** The quiet line under the composer: where the agent works ("Feature worktree · feature/x"). */
   meta?: ReactNode
+  /** That line while nothing has been said here: what can still be chosen before the first message. */
+  startMeta?: ReactNode
   /** Lines above the thread (a failed resume, a drive's prerequisites). */
   notices?: ReactNode
   /** The region's accessible name. */
@@ -99,6 +105,7 @@ export function ThreadColumn({
   }, [inbox, attach])
 
   const ask = view.ask
+  const line = startMeta && !t.loading && view.items.length === 0 ? startMeta : meta
   const decline = () => ask && t.answer(ask, { kind: 'decline' })
   const footer = ask ? (
     ask.kind === 'approval' ? (
@@ -189,12 +196,13 @@ export function ThreadColumn({
           actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
           onDropImages={t.attach}
           emptyHint={emptyHint}
+          {...(empty ? { empty } : {})}
           loading={t.loading}
           footer={
             <div className="flex flex-col gap-1.5">
               {children && <div className="mb-0.5 empty:hidden">{children}</div>}
               {footer}
-              {!ask && meta && <span className="px-4 text-xs text-text-tertiary">{meta}</span>}
+              {!ask && line && <span className="px-4 text-xs text-text-tertiary">{line}</span>}
             </div>
           }
         />

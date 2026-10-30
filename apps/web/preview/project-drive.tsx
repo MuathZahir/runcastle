@@ -7,9 +7,9 @@ import '../src/styles.css'
 import { TooltipProvider } from '../src/ui/tooltip'
 import { ToastProvider } from '../src/lib/toast'
 import { applyStoredTheme } from '../src/lib/theme'
-import { Page as PageColumn } from '../src/ui'
+import { PageTopbar } from '../src/ui'
 import { ProjectDriveView } from '../src/components/project/ProjectDriveView'
-import { TestDriveCard } from '../src/components/project/TestDriveCard'
+import { ProjectDriveButton } from '../src/components/project/ProjectDriveButton'
 import { scenarioMenu } from '../src/lib/feature-ui/scenarios'
 import type { SlotDrive } from '../src/lib/use-project-drive'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
@@ -19,7 +19,7 @@ import { Api, MomentBar, useClickAfterLoad, useMoment } from './drive-kit'
 
 /**
  * The Orchestrator's test drive (docs/features/test-drive-looks-the-part): the
- * project page's Test drive row with its scenario picker, and the project drive
+ * header's Test drive with its scenario picker, and the project drive
  * as the page, the same page a feature's drive is. Real components over faked
  * server answers; a dead end on purpose.
  */
@@ -39,7 +39,7 @@ const noop = () => {}
 interface Moment {
   key: string
   label: string
-  /** The live drive, or null for the resting page with its Test drive row. */
+  /** The live drive, or null for the header's Test drive before one. */
   drive: SlotDrive | null
   click?: string
 }
@@ -70,21 +70,20 @@ function Body({ moment }: { moment: Moment }) {
   useClickAfterLoad(moment.click)
   if (!moment.drive) {
     return (
-      <div className="flex min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface">
-        <PageColumn routeKey="rest">
-          <h1 className="m-0 mb-8 text-xl font-semibold text-text">{project.name}</h1>
-          <TestDriveCard
-            card={{ state: 'ready' }}
-            branch="main"
-            setupCommand="bun run db:reset"
-            devCommand="bun run dev"
-            starting={false}
-            scenarios={scenarioMenu(SCENARIOS, { withOwnSection: false, runnerConfigured: true })}
-            onStart={noop}
-            onPrepare={noop}
-            onReturn={noop}
-          />
-        </PageColumn>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+        <PageTopbar
+          crumbs={[{ label: 'Orchestrator' }]}
+          actions={
+            <ProjectDriveButton
+              card={{ state: 'ready' }}
+              starting={false}
+              scenarios={scenarioMenu(SCENARIOS, { withOwnSection: false, runnerConfigured: true })}
+              onStart={noop}
+              onPrepare={noop}
+              onReturn={noop}
+            />
+          }
+        />
       </div>
     )
   }

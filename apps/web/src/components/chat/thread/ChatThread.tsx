@@ -44,6 +44,7 @@ export function ChatThread({
   items,
   state,
   emptyHint,
+  empty,
   loading,
   actions,
   onDropImages,
@@ -52,6 +53,8 @@ export function ChatThread({
   items: ThreadItem[]
   state: ThreadState
   emptyHint?: ReactNode
+  /** What a thread with nothing in it shows instead of the plain "New thread". */
+  empty?: ReactNode
   /** The thread's history is still being read: an empty thread is not yet a new one. */
   loading?: boolean
   actions?: MessageActions
@@ -161,7 +164,7 @@ export function ChatThread({
             </p>
           ) : items.length === 0 ? (
             <div className="pt-[12vh]">
-              <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />
+              {empty ?? <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />}
             </div>
           ) : (
             items.map((item, i) => {

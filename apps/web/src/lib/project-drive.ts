@@ -3,7 +3,7 @@ import { holderSentence } from './feature-ui/drive'
 
 /**
  * The project drive's derivations (project-level-test-drive decisions 4, 5, 7):
- * what the Test drive card offers, and how the notes rail splits the inbox
+ * what the Test drive button offers, and how the notes rail splits the inbox
  * around the live drive. Pure — the card and the rail render what these say.
  */
 
@@ -16,7 +16,7 @@ export interface SlotHolder {
 }
 
 /**
- * The Test drive card's state. `blocked` carries the reason the disabled button
+ * The Test drive button's state. `blocked` carries the reason the disabled button
  * states — the holding drive, named the way every other refusal names it.
  */
 /** The fixed identity every project drive runs as (project-level-test-drive decision 8). */

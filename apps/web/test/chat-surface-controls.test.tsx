@@ -63,7 +63,8 @@ afterEach(() => {
 describe('the model controls on every chat surface', () => {
   it('the project chat shows effort and fast mode, and its first message carries what the human picked', async () => {
     const api = server()
-    render(<ProjectChat threadId="th_project" onOpenThread={() => undefined} />, { wrapper: api.Wrapper })
+    const landing = { value: 'main', branches: ['main'], detected: 'main', missing: false, pick: () => undefined, picking: false }
+    render(<ProjectChat threadId="th_project" onOpenThread={() => undefined} landing={landing} />, { wrapper: api.Wrapper })
     await expectControls()
     fireEvent.click(screen.getByRole('button', { name: 'Fast mode' }))
     send('Plan the audit')

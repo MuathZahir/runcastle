@@ -13,13 +13,6 @@ import { sessionActive } from './feature-ui'
  * state are unit-testable the way the rest of `lib/` is.
  */
 
-/**
- * The runcastle-owned branch the project session works on (decision 18). Mirrors
- * `PROJECT_BRANCH` in `packages/server/src/services/git.ts`; it is chrome here —
- * the UI states the branch, it never sends it.
- */
-export const PROJECT_BRANCH = 'runcastle/project'
-
 /** What the pinned row's indicator and the workspace's session panel render. */
 export type ProjectSessionState = 'none' | 'launching' | 'live'
 
