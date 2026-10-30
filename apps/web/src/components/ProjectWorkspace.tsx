@@ -32,6 +32,9 @@ import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
  * run at once (decision 14).
  */
 
+/** The column of a chat started here, kept as it gets its id: its first message is already in it. */
+const NEW_CHAT_KEY = 'new'
+
 export function ProjectWorkspace({
   projectId,
   talk,
@@ -105,7 +108,7 @@ export function ProjectWorkspace({
   // The same key the Notes card reads, so knowing whether to offer it is free.
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The drive's scenario errands open their chat in this column too.
-  const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
+  const scenarioChat = useScenarioChat(drive?.scenarioSessionId, (id) => open(id))
   const toast = useToast()
 
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
@@ -139,7 +142,7 @@ export function ProjectWorkspace({
   // A pick from anywhere leaves the Conversations page for that chat.
   const open = (threadId: string): void => {
     setFront(threadId)
-    onCloseConversations?.()
+    if (conversations) onCloseConversations?.()
   }
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
   // Every new-chat door — New chat, the shell's New, the sidebar's "+" —
@@ -162,9 +165,8 @@ export function ProjectWorkspace({
 
   // The panel: the views this page offers, and the one open. It opens when asked.
   const views = projectViews({ driveActive: !!drive || projectDrive.starting, hasNotes })
-  const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
-  const wanted = picked ?? null
-  const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
+  const [picked, setPicked] = useState<PanelView | null>(null)
+  const panel = usePanel(picked && views.includes(picked) ? picked : null, (v) => setPicked(v === 'chat' ? null : v))
   const tabs = panelTabs(views)
   const shown = panel.state.view
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
@@ -219,13 +221,13 @@ export function ProjectWorkspace({
     current: conversations ? null : (inFront ?? (unstarted ? UNSTARTED_CHAT : null)),
     pick: (id) => {
       if (id !== UNSTARTED_CHAT) open(id)
-      else onCloseConversations?.()
+      else if (conversations) onCloseConversations?.()
     },
     newThread: newChat,
     ...(scenarioChat.sessionId && scenarioChat.listed
       ? { errand: { threadId: scenarioChat.sessionId, close: scenarioChat.close } }
       : {}),
-    ...(onOpenConversations ? { rest: onOpenConversations } : {}),
+    ...(onOpenConversations ? { allConversations: onOpenConversations } : {}),
   })
   const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : unstarted ? NEW_CHAT_NAME : undefined
 
@@ -309,7 +311,7 @@ export function ProjectWorkspace({
           chat={
             // One thread in front, or the Conversations page.
             <>
-              {conversations && !chatHidden && <ConversationsPage threads={listed} onOpen={open} />}
+              {conversations && !chatHidden && <ConversationsPage threads={listed} pending={listQ.isPending} onOpen={open} />}
               {!conversations && opening && !chatHidden && <ThreadOpening />}
               {!conversations && inFront && !chatHidden &&
                 (scenarioInFront ? (
@@ -322,7 +324,7 @@ export function ProjectWorkspace({
                   />
                 ) : (
                   <ProjectChat
-                    key={inFront === started ? 'new' : inFront}
+                    key={inFront === started ? NEW_CHAT_KEY : inFront}
                     threadId={inFront}
                     {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
                     onOpenThread={open}
@@ -331,7 +333,7 @@ export function ProjectWorkspace({
                 ))}
               {!conversations && unstarted && !chatHidden && (
                 <ProjectChat
-                  key="new"
+                  key={NEW_CHAT_KEY}
                   threadId={null}
                   start={async () => (await startChat.mutateAsync({ projectId })).threadId}
                   startsAs={{ projectId, kind: 'project' }}

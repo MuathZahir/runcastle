@@ -388,7 +388,7 @@ export function Sidebar(props: SidebarProps) {
                     current={projectThreads.current}
                     onOpen={projectThreads.pick}
                     actionsFor={threadActionsFor}
-                    {...(projectThreads.rest ? { more: projectThreads.rest } : {})}
+                    {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
                   />
                 ),
                 folded: fold.folded(orchestratorFold),

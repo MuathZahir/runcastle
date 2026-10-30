@@ -256,7 +256,10 @@ function mount(
  * The page beside the project sidebar, as the project shell lays them out: the
  * Orchestrator's chats list in its card (threads-in-the-sidebar).
  */
-function mountWithSidebar(api: ProjectTalkApi = talk(), page: { conversations?: boolean } = {}) {
+function mountWithSidebar(
+  api: ProjectTalkApi = talk(),
+  page: { conversations?: boolean; onCloseConversations?: () => void } = {},
+) {
   const tree = () => (
     <SidebarThreadsProvider>
       <div data-sidebar="">
@@ -535,6 +538,15 @@ describe('the Conversations page', () => {
     mount(talk(), { conversations: true, onCloseConversations })
     fireEvent.click(screen.getByTitle('An older idea'))
     expect(onCloseConversations).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays out of the way of a pick made from a chat', () => {
+    threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_old', 'An older idea')]
+    const onCloseConversations = vi.fn()
+    mountWithSidebar(talk(), { onCloseConversations })
+    fireEvent.click(within(sidebar()).getByTitle('An older idea'))
+    expect(chatInFront()?.dataset.thread).toBe('sess_old')
+    expect(onCloseConversations).not.toHaveBeenCalled()
   })
 
   it('opens from the sidebar’s last row, past its five', () => {

@@ -22,7 +22,7 @@ export interface SidebarThreads {
   /** The drive's scenario chat while its errand is open: its row's menu closes it. */
   errand?: { threadId: string; close: () => void }
   /** The Conversations page, where every conversation is listed ("All N conversations"). */
-  rest?: () => void
+  allConversations?: () => void
 }
 
 const Published = createContext<SidebarThreads | null>(null)

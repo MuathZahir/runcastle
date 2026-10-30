@@ -40,7 +40,8 @@ text after that, and a row in Settings as before (decision 17).
 chat: Active first (waiting on you, then working), then Today, Yesterday, This
 week, This month, Earlier, by last activity (decisions 6, 7). A row opens its
 chat. Back returns to the list; a reload stays on it. Picking any thread, or
-starting a new one, leaves the page.
+starting a new one, leaves the page. The drive page and the Notes panel open over
+it and leave it where it was.
 
 It reads as a ledger (decision 19). From a content width of 1000px the dates hang
 in a sticky rail left of the column, with a hairline across each group; narrower,
@@ -80,7 +81,8 @@ them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
   its match, the no-match state.
 - **`conversationGroup`** (new, pure): each group's boundaries, and a working chat
   from last month landing in Active.
-- **`ProjectDriveButton`** (new, rendered alone): each drive state.
+- **The header's drive door** (`ProjectDriveButton`, through `ProjectWorkspace`):
+  each drive state.
 - **`ThreadColumn`** (existing): `startMeta` and `empty` show while the chat is
   empty and give way once it is not.
 

@@ -1,8 +1,8 @@
 import type { ThreadEntry } from '../../lib/chat-thread'
 import type { SessionBranchApi } from '../../lib/use-session-branch'
-import { IconOrchestrator } from '../../icons'
 import { BranchMenu } from '../../ui'
 import { ThreadColumn } from '../chat/ThreadColumn'
+import { OrchestratorTile } from '../SidebarParts'
 
 /**
  * A project conversation in the Orchestrator's chat column (design-mode
@@ -66,9 +66,7 @@ export function ProjectChat({
 function OrchestratorOpening() {
   return (
     <div className="flex animate-rise-in flex-col items-center gap-4 text-center">
-      <span className="inline-flex size-14 items-center justify-center rounded-lg bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset">
-        <IconOrchestrator size={26} />
-      </span>
+      <OrchestratorTile large />
       <div className="flex flex-col gap-1.5">
         <h2 className="m-0 text-xl font-semibold tracking-tight text-text">What are we building?</h2>
         <p className="m-0 max-w-[44ch] text-sm text-pretty text-text-tertiary">

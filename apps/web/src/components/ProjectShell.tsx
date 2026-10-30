@@ -57,6 +57,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     select,
     selectView,
     selectProject,
+    showProject,
     openConversations,
     startPreparation,
     setCmdk,
@@ -80,7 +81,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // workspace itself, or with the card scrolled off (decisions #16).
   const [inboxRequest, setInboxRequest] = useState(0)
   const openInbox = () => {
-    selectProject()
+    showProject()
     setInboxRequest((request) => request + 1)
   }
   const consumeInboxRequest = () => setInboxRequest(0)
@@ -88,7 +89,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // drive brought to the front (project-level-test-drive decision 4).
   const [driveRequest, setDriveRequest] = useState(0)
   const openDrive = () => {
-    selectProject()
+    showProject()
     setDriveRequest((request) => request + 1)
   }
   const consumeDriveRequest = () => setDriveRequest(0)
@@ -288,7 +289,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         inboxRequest={inboxRequest}
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
-        conversations={ws.projectSelected && ws.conversations}
+        conversations={ws.conversations}
         onOpenConversations={ws.openConversations}
         onCloseConversations={ws.selectProject}
         onOpenPreparation={ws.startPreparation}

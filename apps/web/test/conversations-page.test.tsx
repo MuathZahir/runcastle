@@ -37,17 +37,17 @@ afterEach(() => {
 
 describe('conversationGroup', () => {
   const at = (updatedAt: number) => conversationGroup({ state: 'idle', updatedAt }, NOW)
-  const midnight = new Date(2026, 9, 30).getTime()
+  const midnight = (daysBack: number) => new Date(2026, 9, 30 - daysBack).getTime()
 
   it('files an idle chat by the calendar day of its last activity', () => {
-    expect(at(midnight)).toBe('Today')
-    expect(at(midnight - 1)).toBe('Yesterday')
-    expect(at(midnight - DAY)).toBe('Yesterday')
-    expect(at(midnight - DAY - 1)).toBe('This week')
-    expect(at(midnight - 6 * DAY)).toBe('This week')
-    expect(at(midnight - 6 * DAY - 1)).toBe('This month')
-    expect(at(midnight - 29 * DAY)).toBe('This month')
-    expect(at(midnight - 29 * DAY - 1)).toBe('Earlier')
+    expect(at(midnight(0))).toBe('Today')
+    expect(at(midnight(0) - 1)).toBe('Yesterday')
+    expect(at(midnight(1))).toBe('Yesterday')
+    expect(at(midnight(1) - 1)).toBe('This week')
+    expect(at(midnight(7))).toBe('This week')
+    expect(at(midnight(7) - 1)).toBe('This month')
+    expect(at(midnight(30))).toBe('This month')
+    expect(at(midnight(30) - 1)).toBe('Earlier')
   })
 
   it('keeps a live chat Active whatever its age', () => {
@@ -117,6 +117,13 @@ describe('ConversationsPage', () => {
     mount([chat({ id: 'th_1' })])
     fireEvent.click(screen.getByTitle('Read the audit handoff'))
     expect(opened).toEqual(['th_1'])
+  })
+
+  it('says nothing about the count until the list answers', () => {
+    render(<ConversationsPage threads={[]} pending onOpen={() => {}} now={NOW} />)
+    expect(screen.getByRole('status').textContent).toContain('Loading conversations')
+    expect(screen.queryByText('No conversations yet')).toBeNull()
+    expect(document.body.textContent).not.toContain('0 conversations')
   })
 
   it('says a project with no chats has none', () => {

@@ -1,11 +1,9 @@
-import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useState, type CSSProperties, type ReactNode } from 'react'
 import { IconMessage, IconSearch } from '../../icons'
-import { EmptyState, Page, PageHeader, TextField, cx } from '../../ui'
+import { EmptyState, Page, PageHeader, Skeleton, SkeletonBar, TextField, cx } from '../../ui'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { threadStateWords } from '../chat/thread/ThreadState'
 import { SidebarBackdrop, ThreadGlyph } from '../SidebarParts'
-
-const DAY = 86_400_000
 
 /** The groups a conversation can fall in, in the order they list. */
 type Group = 'Active' | 'Today' | 'Yesterday' | 'This week' | 'This month' | 'Earlier'
@@ -17,13 +15,13 @@ const ORDER: Group[] = ['Active', 'Today', 'Yesterday', 'This week', 'This month
  */
 export function conversationGroup(t: Pick<ThreadEntry, 'state' | 'updatedAt'>, now: number): Group {
   if (t.state !== 'idle') return 'Active'
-  const midnight = new Date(now)
-  midnight.setHours(0, 0, 0, 0)
-  const today = midnight.getTime()
-  if (t.updatedAt >= today) return 'Today'
-  if (t.updatedAt >= today - DAY) return 'Yesterday'
-  if (t.updatedAt >= today - 6 * DAY) return 'This week'
-  if (t.updatedAt >= today - 29 * DAY) return 'This month'
+  const today = new Date(now)
+  // Midnight, the given number of days back: calendar days, whatever the clocks did.
+  const since = (days: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - days).getTime()
+  if (t.updatedAt >= since(0)) return 'Today'
+  if (t.updatedAt >= since(1)) return 'Yesterday'
+  if (t.updatedAt >= since(7)) return 'This week'
+  if (t.updatedAt >= since(30)) return 'This month'
   return 'Earlier'
 }
 
@@ -39,7 +37,7 @@ function marked(title: string, query: string): ReactNode {
   return (
     <>
       {title.slice(0, at)}
-      <mark className="rounded-[2px] bg-accent-subtle text-accent-text">{title.slice(at, at + query.length)}</mark>
+      <mark className="rounded-sm bg-accent-subtle text-accent-text">{title.slice(at, at + query.length)}</mark>
       {title.slice(at + query.length)}
     </>
   )
@@ -98,10 +96,13 @@ function ConversationRow({
  */
 export function ConversationsPage({
   threads,
+  pending = false,
   onOpen,
   now: nowProp,
 }: {
   threads: readonly ThreadEntry[]
+  /** Still fetching for the first time — distinct from "there are none". */
+  pending?: boolean
   onOpen: (threadId: string) => void
   now?: number
 }) {
@@ -109,17 +110,15 @@ export function ConversationsPage({
   const now = nowProp ?? Date.now()
   const q = query.trim()
 
-  const groups = useMemo(() => {
-    const sorted = [...threads]
-      .filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => waitingFirst(a) - waitingFirst(b) || b.updatedAt - a.updatedAt)
-    const by = new Map<Group, ThreadEntry[]>()
-    for (const t of sorted) {
-      const g = conversationGroup(t, now)
-      by.set(g, [...(by.get(g) ?? []), t])
-    }
-    return ORDER.flatMap((g) => (by.has(g) ? [{ group: g, rows: by.get(g)! }] : []))
-  }, [threads, q, now])
+  const by = new Map<Group, ThreadEntry[]>()
+  const sorted = [...threads]
+    .filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => waitingFirst(a) - waitingFirst(b) || b.updatedAt - a.updatedAt)
+  for (const t of sorted) {
+    const g = conversationGroup(t, now)
+    by.set(g, [...(by.get(g) ?? []), t])
+  }
+  const groups = ORDER.flatMap((g) => (by.has(g) ? [{ group: g, rows: by.get(g)! }] : []))
 
   const waiting = threads.filter((t) => t.state === 'waiting').length
   const working = threads.filter((t) => t.state === 'working').length
@@ -130,11 +129,15 @@ export function ConversationsPage({
         <SidebarBackdrop />
         <PageHeader
           title="Conversations"
-          meta={[
-            { text: `${threads.length} ${threads.length === 1 ? 'conversation' : 'conversations'}` },
-            waiting > 0 ? { tone: 'warning', text: `${waiting} waiting for you` } : null,
-            working > 0 ? { tone: 'live', text: `${working} working` } : null,
-          ]}
+          meta={
+            pending
+              ? undefined
+              : [
+                  { text: `${threads.length} ${threads.length === 1 ? 'conversation' : 'conversations'}` },
+                  waiting > 0 ? { tone: 'warning', text: `${waiting} waiting for you` } : null,
+                  working > 0 ? { tone: 'live', text: `${working} working` } : null,
+                ]
+          }
           actions={
             <TextField
               icon={<IconSearch />}
@@ -149,7 +152,15 @@ export function ConversationsPage({
             />
           }
         />
-        {threads.length === 0 ? (
+        {pending ? (
+          <Skeleton label="Loading conversations" className="mt-8">
+            <div className="flex flex-col gap-4 px-2.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <SkeletonBar key={i} className="h-4 w-3/4 rounded-sm" />
+              ))}
+            </div>
+          </Skeleton>
+        ) : threads.length === 0 ? (
           <EmptyState icon={<IconMessage />} title="No conversations yet" hint="A new chat starts from the Orchestrator." className="mt-12" />
         ) : groups.length === 0 ? (
           <EmptyState compact icon={<IconSearch />} title="No conversation matches" hint={`Nothing titled “${q}”.`} className="mt-8" />
@@ -169,8 +180,8 @@ export function ConversationsPage({
                 >
                   <h2
                     className={cx(
-                      'm-0 self-start px-2.5 text-xs font-medium text-text-tertiary @min-[1000px]:sticky @min-[1000px]:top-4 @min-[1000px]:px-0 @min-[1000px]:leading-10',
-                      active && 'text-text-secondary',
+                      'm-0 self-start px-2.5 text-xs font-medium @min-[1000px]:sticky @min-[1000px]:top-4 @min-[1000px]:px-0 @min-[1000px]:leading-10',
+                      active ? 'text-text-secondary' : 'text-text-tertiary',
                     )}
                   >
                     {group}
@@ -184,7 +195,7 @@ export function ConversationsPage({
                   >
                     {rows.map((t, r) => (
                       <Fragment key={t.id}>
-                        {r > 0 && <span aria-hidden className="mr-2.5 ml-[34px] h-px bg-border-subtle" />}
+                        {r > 0 && <span aria-hidden className="mr-2.5 ml-9 h-px bg-border-subtle" />}
                         <ConversationRow thread={t} now={now} query={q} onOpen={onOpen} />
                       </Fragment>
                     ))}

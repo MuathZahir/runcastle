@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionBranchApi } from '../src/lib/use-session-branch'
 import { fakeTrpc } from './fake-trpc'
@@ -73,6 +74,33 @@ describe('a project chat', () => {
     render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
     expect(await screen.findByRole('heading', { name: 'What are we building?' })).toBeTruthy()
     expect(screen.queryByText('New thread')).toBeNull()
+  })
+
+  it('starts a project’s first chat on its first message, and the question gives way', async () => {
+    const api = server()
+    function FirstChat() {
+      const [threadId, setThreadId] = useState<string | null>(null)
+      return (
+        <ProjectChat
+          threadId={threadId}
+          start={async () => 'th_new'}
+          startsAs={{ projectId: 'proj_1', kind: 'project' }}
+          onStarted={setThreadId}
+          onOpenThread={() => {}}
+          landing={landing}
+        />
+      )
+    }
+    render(<FirstChat />, { wrapper: api.Wrapper })
+    expect(await screen.findByRole('heading', { name: 'What are we building?' })).toBeTruthy()
+    expect(api.inputs('thread.send')).toEqual([])
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'A notes inbox for the project' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+
+    expect(await screen.findByText('A notes inbox for the project')).toBeTruthy()
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_new', text: 'A notes inbox for the project' }]))
+    expect(screen.queryByRole('heading', { name: 'What are we building?' })).toBeNull()
   })
 
   it('sends the first message of a new, empty chat to its own thread', async () => {

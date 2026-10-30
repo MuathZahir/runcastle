@@ -147,6 +147,8 @@ export interface WorkspaceApi {
   selectView: (view: FeatureView) => void
   /** Select the pinned project row — the project workspace fills the body. */
   selectProject: () => void
+  /** The project workspace, on whichever of its pages is up: a door that opens something over it. */
+  showProject: () => void
   openConversations: () => void
   /** Open the Draft door's overlay in the workspace. */
   startDraft: () => void
@@ -210,6 +212,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCreating(false)
     setPreparing(false)
     setProjectSelected(false)
+    setConversations(false)
     setCmdk(false)
   }, [])
 
@@ -218,6 +221,13 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const selectProject = useCallback(() => {
     setProjectSelected(true)
     setConversations(false)
+    setCreating(false)
+    setPreparing(false)
+    setCmdk(false)
+  }, [])
+
+  const showProject = useCallback(() => {
+    setProjectSelected(true)
     setCreating(false)
     setPreparing(false)
     setCmdk(false)
@@ -243,12 +253,14 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCreating(true)
     setPreparing(false)
     setProjectSelected(false)
+    setConversations(false)
     setCmdk(false)
   }, [])
   const startPreparation = useCallback(() => {
     setPreparing(true)
     setCreating(false)
     setProjectSelected(false)
+    setConversations(false)
     setCmdk(false)
   }, [])
   // Opening settings closes the palette so only one overlay is up at a time.
@@ -274,6 +286,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     selectView,
     selectProject,
+    showProject,
     openConversations,
     startDraft,
     startPreparation,
