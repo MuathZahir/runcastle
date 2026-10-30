@@ -83,11 +83,17 @@ describe('docs watcher', () => {
     return listAfter(ctx, feature.id).filter((e) => e.type === 'docs.changed')
   }
 
+  /** The first event, however busy the machine, then time for a stray second to land. */
+  async function firstEventThenSettle(): Promise<void> {
+    await vi.waitFor(() => expect(docsEvents().length).toBeGreaterThan(0))
+    await sleep(SETTLE_MS)
+  }
+
   it('turns a doc write into one event that also publishes on the live bus', async () => {
     await startArmed(ctx, feature)
 
     writeFileSync(join(docsDir, 'spec.md'), '# spec\n', 'utf8')
-    await sleep(SETTLE_MS)
+    await firstEventThenSettle()
 
     const events = docsEvents()
     expect(events).toHaveLength(1)
@@ -108,7 +114,7 @@ describe('docs watcher', () => {
       writeFileSync(join(docsDir, 'spec.md'), `# spec ${i}\n`, 'utf8')
       writeFileSync(join(docsDir, 'decisions.md'), `# decisions ${i}\n`, 'utf8')
     }
-    await sleep(SETTLE_MS)
+    await firstEventThenSettle()
 
     const events = docsEvents()
     expect(events).toHaveLength(1)
@@ -135,7 +141,7 @@ describe('docs watcher', () => {
     expect(docsWatchCount()).toBe(1)
 
     writeFileSync(join(docsDir, 'spec.md'), '# spec\n', 'utf8')
-    await sleep(SETTLE_MS)
+    await firstEventThenSettle()
 
     expect(docsEvents()).toHaveLength(1)
   })
@@ -163,7 +169,7 @@ describe('docs watcher', () => {
     await startArmed(ctx, feature)
 
     writeFileSync(join(docsDir, 'preview.html'), '<!doctype html>', 'utf8')
-    await sleep(SETTLE_MS)
+    await firstEventThenSettle()
 
     const events = listAfter(ctx, feature.id).filter((e) => e.type === 'docs.changed')
     expect(events).toHaveLength(1)

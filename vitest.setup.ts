@@ -22,10 +22,32 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll } from 'vitest'
+import { afterAll, vi } from 'vitest'
 
 for (const key of Object.keys(process.env)) {
   if (key.startsWith('RUNCASTLE_')) delete process.env[key]
+}
+
+/**
+ * The same win32 allowance `vitest.config.ts` gives `testTimeout`, for the two
+ * 1s waits no config key reaches: `vi.waitFor` and Testing Library's `findBy*`
+ * and `waitFor`. A fake agent or a first render during a full parallel run can
+ * take longer than that on win32, which failed a different test each run with
+ * nothing wrong in it. It stays under `testTimeout` so a real hang reports the
+ * assertion, not the test's timeout.
+ */
+if (process.platform === 'win32') {
+  const WAIT_BUDGET_MS = 10_000
+  const waitFor = vi.waitFor
+  vi.waitFor = ((callback, options) =>
+    waitFor(callback, {
+      timeout: WAIT_BUDGET_MS,
+      ...(typeof options === 'number' ? { timeout: options } : options),
+    })) as typeof vi.waitFor
+  if ('document' in globalThis) {
+    const { configure } = await import('@testing-library/dom')
+    configure({ asyncUtilTimeout: WAIT_BUDGET_MS })
+  }
 }
 
 /**
