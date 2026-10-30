@@ -162,7 +162,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>The feature&rsquo;s right panel, step by step</h1>
-  <p class="lede">The panel beside the chat, simplified: three views as tabs (Plan, Tickets, Details), no repeated title, the plan preview filling its view, docs read in the panel, one plain list of tickets that looks like the sidebar, and the notes moved into the drive. Review is gone. First planned without you; reworked after your look on 29 October.</p>
+  <p class="lede">The panel beside the chat, simplified: three views as tabs (Plan, Tickets, Details), no repeated title, the plan preview filling its view, docs read in the panel, one plain list of tickets that looks like the sidebar, and Review gone. The drive is left to its own feature. First planned without you; reworked after your look on 29 October.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-feature-s-right-panel-step-by-step/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -205,7 +205,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <h3>Three views, and Review gone <a class="pin" data-d="14">14</a></h3>
     <p class="hint">Where everything Review held now lives.</p>
     <div class="flow">
-      <span class="st">Notes for the agent, Send to agent</span><span class="ar">&rarr;</span><span class="st">Drive, under the app <a class="pin" data-d="16">16</a></span>
+      <span class="st">Notes for the agent, Send to agent</span><span class="ar">&rarr;</span><span class="st">Details, until the drive takes them <a class="pin" data-d="20">20</a></span>
     </div>
     <div class="flow">
       <span class="st">Findings, the walkthrough</span><span class="ar">&rarr;</span><span class="st">the review ticket&rsquo;s row <a class="pin" data-d="15">15</a></span>
@@ -245,14 +245,6 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <button data-open-design="/preview/feature-panel.html?step=ready">Open in design</button>
 </div>
 <!-- /screen:tickets-ready -->
-<!-- screen:drive-notes -->
-<div class="designed">
-  <h3>Drive with notes <a class="pin" data-d="16">16</a></h3>
-  <p>The drive&rsquo;s stage (its dev server still starting here), and under it the notes, the composer and Send to agent.</p>
-  <p class="mono">src/components/review/FeatureDriveView.tsx · preview /preview/feature-panel.html?step=drive</p>
-  <button data-open-design="/preview/feature-panel.html?step=drive">Open in design</button>
-</div>
-<!-- /screen:drive-notes -->
 <!-- screen:plan-view -->
 <div class="designed">
   <h3>Plan, with a preview <a class="pin" data-d="5">5</a> <a class="pin" data-d="6">6</a></h3>
@@ -319,7 +311,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>Nothing parked. The draft &ldquo;The panel&rsquo;s round, review and shipped views&rdquo; is folded back in and should be deleted</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>The chat column and the test drive&rsquo;s own look (their own features)</li>
+      <li><i class="dot"></i>The chat column and the test drive&rsquo;s own look (their own features), including moving the notes into the drive</li>
       <li><i class="dot"></i>The shared theme and building blocks</li>
       <li><i class="dot"></i>The activity feed&rsquo;s rows</li>
       <li><i class="dot"></i>New behaviour: every action kept is one the panel already had</li>
@@ -333,12 +325,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
 
-      <p class="hint">Three worker tickets, then one review that drives the panel. The designs are committed first, so workers connect them without restyling.</p>
+      <p class="hint">Round 1 now: Tickets, then the frame and docs. Round 2 once &ldquo;The chat looks the part&rdquo; has merged and this branch has main: retiring Review, whose warnings go into the chat&rsquo;s new notice strip, then a review. The designs are committed, so workers connect them without restyling.</p>
       <dl class="hoodgrid">
         <dt>#1 Tickets</dt><dd>TicketsView takes every action RunBody and TicketsBody had (stop, retry, model, edit, cancel, set aside, the live log, one model for all); the review ticket&rsquo;s findings and walkthrough; RunBody, the run lanes and the ledger retire.</dd>
-        <dt>#2 Review retired</dt><dd>Review never offered, /review lands on Tickets; its notices move atop the chat; ReviewBody, ShippedBody and their bands retire; notes in the drive; Merged and the outcome in Details.</dd>
-        <dt>#3 Frame and docs</dt><dd>The open doc in the panel&rsquo;s state and the reader in every view; DocPeek and the grill pane retire; Tabs gets a tooltip; DESIGN.md and STYLE.md. After #2, which edits the same panel model.</dd>
-        <dt>#4 Review</dt><dd>Drives Plan, Tickets, Details and a drive with notes against these criteria.</dd>
+        <dt>#3 Frame and docs</dt><dd>The open doc in the panel&rsquo;s state and the reader in every view; DocPeek and the grill pane retire; Tabs gets a tooltip; DESIGN.md and STYLE.md.</dd>
+        <dt>#5 Review retired (round 2)</dt><dd>Review removed from the panel model, /review lands on Tickets; its notices in the chat&rsquo;s strip; ReviewBody, ShippedBody and their bands retire; notes in Details unless the drive already has them; Merged in Details.</dd>
+        <dt>#6 Review (round 2)</dt><dd>Drives Plan, Tickets and Details against these criteria.</dd>
       </dl>
 
     </div>
@@ -370,16 +362,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['This feature takes the round, review and shipped views back', 'Your simplification removes most of what made them big. The parked draft should be deleted.'],
     ['The Review view is retired', 'You asked whether it was needed. The status line says when to drive; the rest belongs with the drive or the tickets.'],
     ['What Review held goes where it is used, or goes', 'Notices atop the chat, findings and walkthrough on the review ticket, the shipped record in Details; the rounds trail goes.', 'assumed'],
-    ['Notes for the agent live in the drive', 'You: they belong in the drive panel. Under the app, so a half-width panel keeps the app its whole width.', 'assumed'],
+    ['Notes for the agent live in the drive', 'Superseded by 20.', 'assumed'],
     ['Work becomes Tickets', 'Tickets is the word the rest of the app uses, and a ticket outlives its worker.', 'assumed'],
     ['Tickets is one list: the current round, earlier rounds folded above', 'Your words. No Run section, no run timeline, no history picker.'],
-    ['A ticket is a sidebar row', 'Two lines, the state in words; opens in place into a card with its actions and detail.', 'assumed']
+    ['A ticket is a sidebar row', 'Two lines, the state in words; opens in place into a card with its actions and detail.', 'assumed'],
+    ['The drive is left alone; until it takes the notes, they sit in Details', 'Another feature is working on the drive, and Review was the only home for writing notes and Send to agent.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [15, 'A small “Review” section at the top of Tickets for the findings and the walkthrough.', 'Findings now sit one click deep, on the review ticket’s row.'],
-    [16, 'Notes beside the app, as the project drive keeps them.', 'Beside, they squeezed the app to a sliver in a half panel. “Test drive looks the part” planned no notes column; the two need reconciling.'],
+    [20, 'No notes anywhere until the drive feature lands; you report in the chat.', 'A stopgap you did not ask for, kept so notes taken in a drive can still reach the agent. One prop to remove.'],
     [19, 'One-line rows with the state as a trailing word, restyled.', 'Two-line rows are roomier but show fewer tickets per screen.'],
     [3, 'Keep today’s menu, restyled.', 'Tabs were taken out of the page’s header row once before. Try the Tweak.', 'challenged'],
     [7, 'Keep the doc dialog, restyled.', 'The biggest change in how docs are shown, and the one the brief named first.']

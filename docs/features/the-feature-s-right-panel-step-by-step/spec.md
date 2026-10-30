@@ -82,12 +82,12 @@ build connects them without restyling.
   offered and an address naming it lands on Tickets. `ReviewBody`,
   `ShippedBody` and the review bands only they used retire. The conflict
   alert, the refused-drive card, the nothing-verified alert and the
-  project-drive-blocking notice render in the chat's notice deck
-  (`FeatureChat`), where the page's other notices are. The shipped record's
+  project-drive-blocking notice render in the chat's notice strip
+  ("The chat looks the part"), where the page's other notices are. The shipped record's
   facts are Details': "Merged" from the shipped time, the outcome doc first.
 - **Notes for now** (decision 20): `DetailsView` takes a `notes` node; the
   page passes `OpenWork` (notes only, no findings) while a drive is up or the
-  agent has declared ready. `OpenWork`, `NoteComposer`, `SendToAgent`,
+  agent has declared ready, unless the drive has taken the notes by then. `OpenWork`, `NoteComposer`, `SendToAgent`,
   `WorkList` and `NotesRail` stay for the drive's feature to mount.
 - **The doc reader** (decision 7): `PanelState` gains the open doc (a
   relPath), cleared on a view switch or close; an open doc unfolds a folded
@@ -101,6 +101,13 @@ build connects them without restyling.
 - **The design guide**: `DESIGN.md` §"The feature page: chat-first" and
   `STYLE.md` describe the three views, the tabs, the panel column, the view
   bar, the reader and the ticket row.
+
+**Order** (the orchestrator's merge order, 2026-10-30): this feature lands last
+of the four screen features. Round 1 builds Tickets and the frame and docs. The
+retirement of Review waits for "The chat looks the part" to merge and this
+branch to merge main, because its warnings go into that feature's notice strip
+on the composer's top edge, not today's notice deck. On this branch Review is
+already not offered, so nothing ships until that round has landed.
 
 ## Seams
 
