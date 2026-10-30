@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow } from '@runcastle/core'
@@ -81,6 +81,7 @@ const ticket = (seq: number, over: Partial<Ticket> = {}): Ticket =>
 const doc = (name: string) => ({ relPath: `docs/features/demo/${name}`, title: name })
 
 interface PageOptions {
+  driving?: { featureId: string; branch: string } | null
   view?: FeatureView
   status?: FeatureFull['feature']['status']
   onViewChange?: (view: FeatureView) => void
@@ -105,7 +106,7 @@ function setup({ status = 'active', preview = false, tickets = [], docs = [], ru
   store.touched.clear()
 }
 
-function workspace({ view = 'chat', onViewChange = () => undefined }: PageOptions) {
+function workspace({ view = 'chat', onViewChange = () => undefined, driving = null }: PageOptions) {
   return createElement(
     QueryClientProvider,
     { client: new QueryClient() },
@@ -114,7 +115,7 @@ function workspace({ view = 'chat', onViewChange = () => undefined }: PageOption
       view,
       onViewChange,
       guidance: false,
-      driving: null,
+      driving,
       onDriveChange: () => undefined,
     }),
   )
@@ -255,15 +256,21 @@ describe('the panel’s views', () => {
 })
 
 describe('what opens the panel', () => {
-  it('opens the drive after a test drive starts, and not after one stops or is denied', () => {
+  it('opens the drive on the Test drive click, before the server answers', () => {
+    const onViewChange = vi.fn()
+    setup({ queries: READY })
+    render(workspace({ onViewChange }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
+    expect(onViewChange).toHaveBeenCalledWith('drive')
+  })
+
+  it('opens nothing when a test drive lands, or stops', () => {
     const onViewChange = vi.fn()
     page({ onViewChange, queries: READY })
     const testDrive = store.mutations.get('feature.testDrive')
-    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
-    testDrive?.onSuccess?.({ ok: false }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).not.toHaveBeenCalled()
     testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).toHaveBeenCalledWith('drive')
+    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
+    expect(onViewChange).not.toHaveBeenCalled()
   })
 
   it('opens nothing on any other mutation landing', () => {
@@ -295,5 +302,35 @@ describe('what opens the panel', () => {
     store.queries.set('events.list', [event(1, 'session.started'), event(2, 'panel.show', { view: 'work' })])
     act(() => view.rerender(workspace({ onViewChange })))
     expect(onViewChange).toHaveBeenCalledWith('work')
+  })
+})
+
+/** test-drive-looks-the-part decisions 13, 19, 20: while on a drive, the drive is the page. */
+describe('the drive page', () => {
+  const driving = { featureId: 'f1', branch: 'feature/f1' }
+
+  it('takes the page in place of the header, the chat and the panel', () => {
+    const html = page({ view: 'drive', driving })
+    expect(html).toContain('data-drive-page')
+    expect(html).toContain('>Stop drive<')
+    expect(html).toContain('aria-label="Back to the chat"')
+    expect(html).not.toContain('data-panel')
+    // The header and the chat stay mounted under it, hidden.
+    expect(at(html, 'class="hidden"')).toBeGreaterThan(-1)
+    expect(html.slice(0, at(html, 'class="hidden"'))).not.toContain('<header')
+  })
+
+  it('stays mounted behind the chat page, with the way back in the header', () => {
+    const html = page({ view: 'chat', driving })
+    expect(html).toMatch(/class="[^"]*hidden[^"]*" data-drive-page/)
+    expect(headerOf(html)).toContain('Back to the drive')
+    expect(headerOf(html)).not.toContain('Stop drive')
+    // Over the chat: the agent is held, and how to let it go.
+    expect(html).toContain('the agent can’t start a round')
+    expect(html).toContain('>Stop drive<')
+  })
+
+  it('is not there with no drive', () => {
+    expect(page({ view: 'chat' })).not.toContain('data-drive-page')
   })
 })

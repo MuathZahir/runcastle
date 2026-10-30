@@ -17,7 +17,7 @@ export const SLUG = 'the-whole-app-matches-the-sidebar'
 export const FEATURE_ID = 'feat_panel'
 export const TITLE = 'The whole app matches the sidebar'
 
-export type Step = 'early' | 'plan' | 'docs' | 'reader' | 'tickets' | 'round' | 'ready' | 'shipped'
+export type Step = 'early' | 'plan' | 'docs' | 'reader' | 'tickets' | 'round' | 'ready' | 'drive' | 'shipped'
 
 export const STEPS: { key: Step; label: string; view: string; doc?: string }[] = [
   { key: 'early', label: 'Plan, early', view: 'plan' },
@@ -27,6 +27,7 @@ export const STEPS: { key: Step; label: string; view: string; doc?: string }[] =
   { key: 'tickets', label: 'Tickets', view: 'work' },
   { key: 'round', label: 'Round 2 running', view: 'work' },
   { key: 'ready', label: 'Ready', view: 'work' },
+  { key: 'drive', label: 'Driving', view: 'drive' },
   { key: 'shipped', label: 'Shipped', view: 'details' },
 ]
 
@@ -124,7 +125,7 @@ const docSummaries = Object.keys(DOCS)
 export function fullAt(step: Step): Full {
   const shipped = step === 'shipped'
   const running = step === 'round'
-  const ran = step === 'round' || step === 'ready' || step === 'shipped'
+  const ran = step === 'round' || step === 'ready' || step === 'drive' || step === 'shipped'
   const item = listItem({ id: FEATURE_ID, slug: SLUG, status: shipped ? 'shipped' : 'active', lastActivityAt: now - 4 * min })
   return {
     feature: {
@@ -166,7 +167,7 @@ export function fullAt(step: Step): Full {
 }
 
 export function roundsAt(step: Step) {
-  if (step !== 'round' && step !== 'ready' && step !== 'shipped') return []
+  if (step !== 'round' && step !== 'ready' && step !== 'drive' && step !== 'shipped') return []
   const running = step === 'round'
   return [
     { round: 1, runId: 'run_0', status: 'succeeded', ticketSeqs: [1, 2, 3, 4], landed: [1, 2, 3, 4], failed: [], gates: { ok: true, failed: [] }, startedAt: now - 70 * min, finishedAt: now - 52 * min },

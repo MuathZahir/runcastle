@@ -84,6 +84,16 @@ export function availableViews(facts: PanelFacts): PanelView[] {
 }
 
 /**
+ * The views the panel's own tabs and toggle deal in. A drive is the page, not
+ * something the panel shows (test-drive-looks-the-part): it stays among the
+ * offered views so the shell can stand on it, but it is entered from the
+ * header, the sidebar's drive card or Test drive, never from a tab.
+ */
+export function panelTabs(views: readonly PanelView[]): PanelView[] {
+  return views.filter((view) => view !== 'drive')
+}
+
+/**
  * The views the project page's panel offers (design-mode decision 11): the
  * project drive while one is up, and the Notes inbox as its details once the
  * project has jotted a note.

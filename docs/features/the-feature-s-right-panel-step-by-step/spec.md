@@ -23,7 +23,7 @@ reads like full-window pages squeezed into half a window, and it says too much:
 ## Approach
 
 **For the human.** The panel has three views, as tabs: **Plan**, **Tickets**
-and **Details**, plus **Design** and **Drive** while they run. No view repeats
+and **Details**, plus **Design** while it runs. No view repeats
 the feature's title; each starts with its own content in a 24px column.
 
 - **Plan**: one bar with Preview, Decisions (with its count) and Spec; the part
@@ -87,9 +87,9 @@ build connects them without restyling.
   strip (decision 21): `NoticeStrip` takes rows that hold while their condition
   does, with an optional action. The shipped record's
   facts are Details': "Merged" from the shipped time, the outcome doc first.
-- **Notes** (decision 23): not this feature's. `OpenWork`, `NoteComposer`,
-  `SendToAgent`, `WorkList` and `NotesRail` stay for test drive to take; whatever
-  it leaves unused goes when this branch merges its change.
+- **Notes** (decisions 23, 24): the drive's rail, built by test drive. This
+  feature's old pieces (`OpenWork`, `NoteComposer`, `WorkList`, `NotesRail`) are
+  gone. The panel's tabs and toggle leave the drive out (`panelTabs`).
 - **The doc reader** (decision 7): `PanelState` gains the open doc (a
   relPath), cleared on a view switch or close; an open doc unfolds a folded
   panel. The view on show renders `DocReader` in its place with "← <view>".
@@ -138,7 +138,4 @@ has landed.
 
 ## Open questions
 
-- Test drive merges before this feature. This branch takes its change when it
-  lands, and the panel's Drive tab follows whatever it decides. If it has not
-  landed when the rest is done, the orchestrator is told; nothing is built
-  around it.
+None.

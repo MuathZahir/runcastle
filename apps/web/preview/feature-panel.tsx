@@ -72,10 +72,15 @@ const fakes = withShell({
     get: () => full,
     rounds: () => roundsAt(step.key) as never,
     readyDeclarations: () =>
-      (step.key === 'ready'
+      (step.key === 'ready' || step.key === 'drive'
         ? [{ id: 'rd_1', featureId: FEATURE_ID, runId: 'run_1', scenario: 'Every screen beside the sidebar', createdAt: Date.now() - 3 * 60_000 }]
         : []) as never,
-    driveInfo: () => null,
+    // The drive step: this feature's drive up, its dev server still coming, so
+    // no live app is needed behind the page.
+    driveInfo: () =>
+      (step.key === 'drive'
+        ? { state: 'starting', featureId: FEATURE_ID, branch: full.feature.branch, holderLabel: TITLE, devReady: false, devConfigured: true, startedAt: Date.now() - 40_000 }
+        : null) as never,
     driveScenarios: () => [] as never,
     sessions: () => [] as never,
     mergeDelta: () => ({ commits: 8, files: 27 }) as never,

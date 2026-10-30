@@ -7,8 +7,8 @@ import { useToast } from '../lib/toast'
 import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
-import { availableViews, hasPlan, PANEL_VIEW_LABEL, type PanelView } from '../lib/feature-ui/panel'
-import {
+import { availableViews, hasPlan, PANEL_VIEW_LABEL, panelTabs, type PanelView } from '../lib/feature-ui/panel'
+import { Button,
   DimLine,
   IconButton,
   Page,
@@ -17,7 +17,7 @@ import {
   cx,
   type MetaItem,
 } from '../ui'
-import { IconX, ProgressIcon } from '../icons'
+import { IconPlay, IconX, ProgressIcon } from '../icons'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
@@ -56,6 +56,7 @@ import { DesignView, useDesignPath } from './design/DesignView'
 import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
+import { DriveChatNotice } from './review/DriveChatNotice'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
@@ -79,7 +80,7 @@ import {
   mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
-import { ScenarioMenuItems } from './review/ScenarioMenuItems'
+import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -254,9 +255,11 @@ export function Workspace({
   // view: the agent's `show_panel` and the preview's Open in design open it
   // before its server is up, and the view itself starts the server.
   const isDriving = driving?.featureId === featureId
+  // A Test drive click is the drive's page at once, before the server answers.
+  const [driveStarting, setDriveStarting] = useState(false)
   const requested = viewProp === 'chat' ? null : viewProp
   const designOpenable = !!q.data && !isDraft && !shipped
-  const driveActive = isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle')
+  const driveActive = isDriving || driveStarting || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle')
   const views = q.data
     ? availableViews({
         isDraft,
@@ -268,6 +271,7 @@ export function Workspace({
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
+  const tabs = panelTabs(views)
   // The agent's `show_panel` and `emit_tickets`, for a view this feature offers.
   // Work is taken on trust: `emit_tickets` opens it the moment it stores them,
   // and the panel shows it once the refetched feature has the tickets.
@@ -276,7 +280,8 @@ export function Workspace({
       views.includes(request.view) ||
       (request.view === 'work' && !!q.data && !isDraft) ||
       (request.view === 'design' && designOpenable)
-    if (offered) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
+    // A drive is the page: the agent does not take the human away from it.
+    if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
@@ -361,8 +366,6 @@ export function Workspace({
       // A drive takes and releases the branch and stamps the timeline; the bar
       // and the review body read all of it back through these queries.
       invalidate()
-      // The human's Test drive: the drive it started opens beside the chat.
-      if (vars.action === 'start' && res.ok) panel.dispatch({ type: 'follow', click: 'testDrive' })
       // The project's own setup/teardown command failed. Surfaced first and as
       // an error: everything below is advisory, but a failed setup means the
       // app you are about to open probably is not running. The command's output
@@ -573,17 +576,25 @@ export function Workspace({
   const openChat = () => landOnChat()
 
   /** Start this feature's drive on a scenario, or on the blank app with `null`. */
-  const startDrive = (scenario: string | null) =>
+  const startDrive = (scenario: string | null) => {
+    setDriveStarting(true)
+    panel.dispatch({ type: 'follow', click: 'testDrive' })
     testDrive.mutate(
       { featureId, action: 'start', ...(scenario ? { scenario } : {}) },
       {
         onSuccess: (res) => {
           invalidate()
           if (res.ok && res.branch) onDriveChange({ featureId, branch: res.branch })
-          else if (!res.ok) toast.push(res.deniedReason ?? 'test drive denied')
+          else if (!res.ok) {
+            toast.push(res.deniedReason ?? 'test drive denied')
+            panel.dispatch({ type: 'close' })
+          }
         },
+        onError: () => panel.dispatch({ type: 'close' }),
+        onSettled: () => setDriveStarting(false),
       },
     )
+  }
 
   const runAction = (kind: ActionKind) => {
     switch (kind) {
@@ -640,6 +651,8 @@ export function Workspace({
             onSuccess: () => {
               invalidate()
               onDriveChange(null)
+              // Stop lands on the chat at once, not when the drive's poll catches up.
+              if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
             },
           },
         )
@@ -768,11 +781,13 @@ export function Workspace({
         now,
       })
   const actionsBusy = busy || stopAgent.isPending
+  // Stop waits for the start: a second mutate would drop the first's callbacks.
+  const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
     kind: 'testDriveStart' as const,
     label: testDriveLabel(startMenu.defaultScenario, 'Start test drive'),
     menuLabel: 'Choose a scenario',
-    menu: <ScenarioMenuItems menu={startMenu} onPick={startDrive} />,
+    picker: <ScenarioPickerContent menu={startMenu} onPick={startDrive} align="end" />,
   }
   // The one header row's share of the status line's actions (decision 12):
   // one button, the rest for "⋯".
@@ -809,10 +824,18 @@ export function Workspace({
   )
   // What the strip used to stack under the header goes atop the chat column
   // instead (decision 12): notices, not another bar.
-  const chatAlerts = (resumeAlert || drivePrereqsNotice) && (
+  const chatAlerts = (
     <>
       {resumeAlert}
       {drivePrereqsNotice}
+      {!shipped && (
+        <DriveChatNotice
+          featureId={featureId}
+          driving={isDriving}
+          stopping={driveStopping}
+          onStop={() => runAction('testDriveStop')}
+        />
+      )}
     </>
   )
 
@@ -903,8 +926,9 @@ export function Workspace({
             {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
           />
         )
+      // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
       case 'drive':
-        return <FeatureDriveView full={full} />
+        return null
       case 'details':
         return (
           <DetailsView
@@ -916,6 +940,10 @@ export function Workspace({
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // The drive stays mounted while it runs, so the app is as it was left on the
+  // way back.
+  const onDrive = shown === 'drive'
+  const driveMounted = views.includes('drive')
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({
@@ -934,6 +962,18 @@ export function Workspace({
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+      {driveMounted && (
+        <ScenarioChatContext.Provider value={column.scenario}>
+          <FeatureDriveView
+            full={full}
+            hidden={!onDrive}
+            stopping={driveStopping}
+            onBack={() => panel.dispatch({ type: 'close' })}
+            onStop={() => runAction('testDriveStop')}
+          />
+        </ScenarioChatContext.Provider>
+      )}
+      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
           at most one action, "⋯" and the panel toggle. */}
@@ -963,16 +1003,24 @@ export function Workspace({
             )}
             {headerRow.action && (
               <span className="mr-1 flex">
-                <HeaderAction
-                  action={headerRow.action}
-                  busy={actionsBusy}
-                  onAction={runAction}
-                  split={testDriveSplit}
-                />
+                {/* Stop is the drive page's, and said over the chat; from here the
+                    one step is back to the drive (decision 13). */}
+                {headerRow.action.kind === 'testDriveStop' && views.includes('drive') ? (
+                  <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' })}>
+                    Back to the drive
+                  </Button>
+                ) : (
+                  <HeaderAction
+                    action={headerRow.action}
+                    busy={actionsBusy}
+                    onAction={runAction}
+                    split={testDriveSplit}
+                  />
+                )}
               </span>
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
-            <PanelToggle open={!!shown} views={views} onToggle={() => panel.dispatch({ type: 'toggle', views })} />
+            <PanelToggle open={!!shown} views={tabs} onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })} />
           </>
         }
       />
@@ -1009,10 +1057,11 @@ export function Workspace({
                 />
               }
               panel={
-                shown && (
+                shown &&
+                shown !== 'drive' && (
                   <FeaturePanel
                     view={shown}
-                    views={views}
+                    views={tabs}
                     label={labelOf}
                     path={designPath}
                     onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
@@ -1040,6 +1089,7 @@ export function Workspace({
           </ScenarioChatContext.Provider>
         </>
       )}
+      </div>
 
       <StopAgentDialog
         open={confirmStop}

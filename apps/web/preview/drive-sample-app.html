@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shop — checkout</title>
+    <!-- A stand-in for the app under test in the drive previews: a plain shop
+         checkout, deliberately not runcastle's look, so the frame around it reads. -->
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f7f9; }
+      header { display: flex; align-items: center; gap: 24px; padding: 14px 32px; background: #fff; border-bottom: 1px solid #e3e6ea; }
+      header b { font-size: 18px; color: #3b5bdb; }
+      header nav { display: flex; gap: 18px; color: #57606a; font-size: 14px; }
+      main { max-width: 960px; margin: 32px auto; padding: 0 32px; display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+      .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 20px; }
+      h1 { font-size: 24px; margin: 0 0 16px; }
+      .item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eef0f2; }
+      .item:last-child { border: 0; }
+      .muted { color: #6e7781; font-size: 13px; }
+      input { width: 100%; padding: 9px 11px; border: 1px solid #c9ced4; border-radius: 6px; font: inherit; }
+      .err { margin-top: 8px; color: #c92a2a; font-size: 13px; }
+      .row { display: flex; justify-content: space-between; margin: 8px 0; }
+      button { width: 100%; margin-top: 16px; padding: 11px; border: 0; border-radius: 6px; background: #3b5bdb; color: #fff; font: 600 15px system-ui; }
+    </style>
+  </head>
+  <body>
+    <header><b>Shop</b><nav><span>Catalogue</span><span>Orders</span><span>Account</span></nav></header>
+    <main>
+      <section class="card">
+        <h1>Your cart</h1>
+        <div class="item"><span>Linen shirt <span class="muted">· M · blue</span></span><span>$48.00</span></div>
+        <div class="item"><span>Canvas tote</span><span>$22.00</span></div>
+        <div class="item"><span>Wool socks <span class="muted">· 2 pairs</span></span><span>$18.00</span></div>
+      </section>
+      <aside class="card">
+        <label class="muted" for="c">Coupon</label>
+        <input id="c" value="SPRING10" />
+        <div class="err">This coupon expired on 1 October.</div>
+        <div class="row"><span>Subtotal</span><span>$88.00</span></div>
+        <div class="row muted"><span>Shipping</span><span>$6.00</span></div>
+        <div class="row"><b>Total</b><b>$94.00</b></div>
+        <button>Pay $94.00</button>
+      </aside>
+    </main>
+  </body>
+</html>

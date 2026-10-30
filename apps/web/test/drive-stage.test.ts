@@ -1,50 +1,39 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DriveState, TestNote } from '@runcastle/core'
-import type { ReviewArtifacts } from '../src/lib/reviews'
+import type { DriveState } from '@runcastle/core'
 
 /**
- * The stage's six drive states (decision 20) — tier 1, because what is asked
- * here is which words and which controls each state puts where the video would
- * be, and all of that is in the emitted markup.
+ * The drive's states (decision 20), one stage for a feature's drive and the
+ * Orchestrator's (test-drive-looks-the-part decision 3) — tier 1, because what
+ * is asked here is which words and which controls each state puts where the app
+ * will be, and all of that is in the emitted markup.
  *
  * The capture chain itself is not tested here: `getDisplayMedia` exists in no
  * test environment, so the arithmetic between the drag and the PNG is extracted
- * into `lib/capture.ts` and pinned in `capture.test.ts`, and the chain around it
- * was proven end to end by the spike (decision 39).
+ * into `lib/capture.ts` and pinned in `capture.test.ts`.
  */
 vi.mock('../src/trpc', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
   return {
     trpc: {
       useUtils: () => ({
-        notes: { list: { invalidate: vi.fn() } },
         feature: { driveInfo: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } },
         events: { invalidate: vi.fn() },
       }),
-      notes: { add: { useMutation: mutation } },
-      feature: { testDrive: { useMutation: mutation }, fixDrive: { useMutation: mutation } },
+      feature: {
+        fixDrive: { useMutation: mutation },
+        runScenario: { useMutation: mutation },
+        openScenarioChat: { useMutation: mutation },
+        driveScenarios: { useQuery: () => ({ data: { runnerConfigured: true, scenarios: [] } }) },
+      },
     },
   }
 })
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
+vi.mock('../src/lib/land-on-chat', () => ({ useLandOnChat: () => () => undefined }))
 
-const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
-
-const RECORDING: ReviewArtifacts = {
-  ticketId: 'tkt_1',
-  seq: 4,
-  passKind: 'review',
-  reviewMode: null,
-  reviewVerdict: null,
-  reviewVerdictReason: null,
-  reviewedCommit: 'abc1234def',
-  completedAt: 1000,
-  landedSince: 0,
-  hasVideo: true,
-  videoUrl: '/api/reviews/ticket/tkt_1/walkthrough.webm',
-}
+const { DriveStage } = await import('../src/components/review/DriveStage')
 
 const SERVING = {
   branch: 'feature/x',
@@ -55,18 +44,18 @@ const SERVING = {
 
 const FAILURE = { command: 'bun setup', outcome: 'exited 3', output: 'port 5432 in use', canFix: true }
 
-const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): string =>
+const render = (props: Partial<Parameters<typeof DriveStage>[0]> = {}): string =>
   renderToStaticMarkup(
-    createElement(EvidenceStage, {
+    createElement(DriveStage, {
+      projectId: 'proj_1',
       featureId: 'ftr_1',
       branch: 'feature/x',
-      recordings: [RECORDING],
-      notes: [] as TestNote[],
-      readonly: false,
-      driveState: 'idle' as DriveState,
-      dryRun: false,
+      driveState: 'serving' as DriveState,
+      drive: SERVING,
       failure: null,
-      expand: { expanded: false, set: () => undefined },
+      leading: createElement('i', null, 'the way back'),
+      trailing: createElement('i', null, 'stop and toggle'),
+      onCapture: () => undefined,
       ...props,
     }),
   )
@@ -81,68 +70,84 @@ const asChromium = (): void => {
   })
 }
 
+describe('before the server has answered', () => {
+  it('says the drive is starting, in the same head', () => {
+    const html = render({ driveState: 'idle', drive: undefined })
+    expect(html).toContain('Starting the test drive')
+    expect(html).toContain('the way back')
+    expect(html).toContain('stop and toggle')
+  })
+
+  it('says a preparation dry run is holding the drive rather than offering one', () => {
+    expect(render({ driveState: 'idle', drive: undefined, dryRun: true })).toContain(
+      'A preparation dry run is holding the drive',
+    )
+  })
+})
+
 describe('the stage while the drive is starting', () => {
   it('says the dev server is coming up rather than showing an empty frame', () => {
     const html = render({ driveState: 'starting', drive: { branch: 'feature/x' } })
     expect(html).toContain('Starting the dev server')
-    expect(html).not.toContain('walkthrough.webm')
+    expect(html).not.toContain('<iframe')
   })
 
-  it('carries the footer, so the boot output is one click away from the first second', () => {
-    const html = render({ driveState: 'starting', drive: SERVING })
-    expect(html).toContain('Show output')
+  it('carries the status line, so the boot output is one click away from the first second', () => {
+    expect(render({ driveState: 'starting' })).toContain('>Output<')
   })
 })
 
 describe('the stage while the dev server is serving', () => {
-  it('embeds the app and offers the ways out of it', () => {
-    const html = render({ driveState: 'serving', drive: SERVING })
+  it('embeds the app, under a head with the page’s two ends', () => {
+    const html = render()
     expect(html).toContain('<iframe')
     expect(html).toContain('src="http://localhost:5173"')
     expect(html).toContain('sandbox="allow-scripts allow-same-origin allow-forms allow-popups"')
     expect(html).toContain('aria-label="Open app"')
     expect(html).toContain('aria-label="Reload"')
+    expect(html).toContain('the way back')
+    expect(html).toContain('stop and toggle')
   })
 
   it('offers Select area on a browser that can capture its own tab', () => {
     asChromium()
-    const html = render({ driveState: 'serving', drive: SERVING })
+    const html = render()
     expect(html).toContain('aria-label="Select area"')
     expect(html).not.toContain('paste a screenshot into a note instead')
   })
 
   it('falls back to Open app and the paste hint where the tab cannot be captured', () => {
-    const html = render({ driveState: 'serving', drive: SERVING })
+    const html = render()
     expect(html).not.toContain('aria-label="Select area"')
     expect(html).toContain('paste a screenshot into a note instead')
     expect(html).toContain('aria-label="Open app"')
   })
 
-  /** Decision 33a: a history view shows the app and writes nothing. */
-  it('drops Select area on a readonly view even where the tab could be captured', () => {
-    asChromium()
-    const html = render({ driveState: 'serving', drive: SERVING, readonly: true })
-    expect(html).toContain('<iframe')
-    expect(html).not.toContain('aria-label="Select area"')
-  })
-
-  it('footers the dev-server chip, the branch and its output', () => {
-    const html = render({ driveState: 'serving', drive: SERVING })
+  it('puts the dev server, the branch and the output in the status line', () => {
+    const html = render()
     expect(html).toMatch(/dev server/i)
     expect(html).toContain('feature/x')
-    expect(html).toContain('Show output')
+    expect(html).toContain('>Output<')
+  })
+
+  it('adds the checkout on a project drive', () => {
+    const html = render({ featureId: undefined, where: { text: '/repo @ abc', title: '/repo @ abc · runs as project-drive' } })
+    expect(html).toContain('/repo @ abc')
+  })
+
+  it('says it is waiting when the server has printed no address yet', () => {
+    expect(render({ drive: { branch: 'feature/x' } })).toContain('Waiting for an address')
   })
 })
 
 describe('the stage over a bare checkout', () => {
   const bare = { driveState: 'bare-checkout' as DriveState, drive: { branch: 'feature/x' } }
 
-  it('says nothing started, points at the setting, and offers the stop', () => {
+  it('says nothing started and points at the setting', () => {
     const html = render(bare)
-    expect(html).toContain('Branch checked out — nothing started')
+    expect(html).toContain('Branch checked out, nothing started')
     expect(html).toContain('This project has no dev command')
     expect(html).toContain('Set one in Settings')
-    expect(html).toContain('>Stop test drive<')
   })
 
   it('never claims a server it did not start', () => {
@@ -166,47 +171,32 @@ describe('the stage over a failed setup', () => {
     expect(html).toContain('port 5432 in use')
   })
 
-  it('offers Fix drive and the stop beside it', () => {
+  it('offers Fix drive on a feature, and never a second Stop', () => {
     const html = render(failed)
     expect(html).toContain('>Fix drive<')
-    expect(html).toContain('>Stop test drive<')
+    expect(html).not.toContain('Stop test drive')
+  })
+
+  it('offers the project drive’s own way out in its place', () => {
+    const html = render({ ...failed, featureId: undefined, failureExit: () => createElement('b', null, 'Open preparation') })
+    expect(html).toContain('Open preparation')
+    expect(html).not.toContain('>Fix drive<')
   })
 })
 
 describe('the stage while the review agent drives', () => {
   const agent = { driveState: 'review-agent-driving' as DriveState, drive: SERVING }
 
-  it('shows the app under a banner naming whose hands are on it', () => {
+  it('keeps the app in view, and the head says whose hands are on it', () => {
     const html = render(agent)
     expect(html).toContain('<iframe')
-    expect(html).toContain('Review agent driving — notes land as it finds things')
-  })
-
-  it('offers the purpose-blind stop, so the human can take the wheel back', () => {
-    expect(render(agent)).toContain('>Stop the review drive<')
+    expect(html).toContain('Review agent driving')
+    expect(html).toContain('stop and toggle')
   })
 
   it('says so plainly when the agent’s drive printed no address to show', () => {
     const html = render({ ...agent, drive: { branch: 'feature/x' } })
     expect(html).toMatch(/review agent driving/i)
-    expect(html).toContain('there is nothing to show here')
-  })
-})
-
-describe('the stage at rest', () => {
-  it('gives the recording back when the drive stops', () => {
-    expect(render({ driveState: 'idle' })).toContain('walkthrough.webm')
-  })
-
-  /**
-   * Decision 8 killed the lead sentence and the explainer with it: the page
-   * leads with state and one action, and what a drive does is learned by taking
-   * one rather than read about beforehand.
-   */
-  it('explains nothing about test drives — the copy is gone, not demoted', () => {
-    const html = render({ driveState: 'idle' })
-    expect(html).not.toContain('A test drive checks this branch out')
-    expect(html).not.toContain('What a test drive does')
-    expect(html).not.toContain('puts you back on the branch you were on')
+    expect(html).toContain('No dev server answered')
   })
 })

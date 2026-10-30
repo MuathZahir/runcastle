@@ -169,8 +169,16 @@ document, under **one header row**:
   sidebar lists the threads. An errand's open brings its chat to the front;
   picking the feature chat or closing the errand goes back. Alerts about the
   page (a failed resume, a drive's missing prerequisites) sit atop the chat,
-  never as another bar. The drive keeps the whole panel — no chat docks inside
-  it.
+  never as another bar.
+- **The drive is the one exception to chat-first**: while the human is on a
+  drive it replaces the header, the chat and the panel, on a feature and on
+  the Orchestrator alike (`DrivePage`; preview `preview/drive.html`). The app
+  runs flush, its column headed by one row (back, what is driven, the scenario,
+  the tools, Stop, the rail toggle) above the app and a thin status line under
+  it. Beside it the Notes aside, and no chat: New scenario and Fix it, and Send
+  to the agent, go back to the chat page. The drive stays mounted behind that
+  page, so the app is as it was left; the sidebar's drive card and the
+  header's Back to the drive return to it.
 - **Inside a thread** (`components/chat/thread/`; preview `preview/chat.html`).
   Every container is one of three materials (`thread/surfaces.ts`), by what it
   is, never styled by hand: **raised** floats over the thread (the composer, a
@@ -199,7 +207,7 @@ document, under **one header row**:
     one line cannot hold (a file list, a raw message) in its tooltip.
 - **One panel** on the right, one view at a time (the-feature-s-right-panel
   decisions 2–9, 14, 17–19): **Plan**, **Tickets** and **Details**, plus
-  **Design** and **Drive** while they run. Its 44px header switches them
+  **Design** while it runs. The drive is not a view: it is the page. Its 44px header switches them
   with `Tabs` (icon and word), fold (to a 40px strip) and close; in a
   panel narrower than ~520px the tabs other than the open one keep only
   their icon, named by a tooltip. No menu-shaped switcher.
@@ -243,10 +251,10 @@ The **project page** takes the same pieces and the same one-header rule
 switcher, the crumb after the project's, listing the past chats by title and
 age, each opening its read-only transcript, its menu holding the landing
 branch and End session — or, with none running or after the project crumb,
-the chat list with New chat and Test drive. The panel holds the project drive
-and the Notes inbox (its details); the header offers Test drive while a chat
-is in front and no drive is up, and the panel toggle, which counts the open
-notes.
+the chat list with New chat and Test drive. The panel holds the Notes inbox
+(its details); the header offers Test drive while a chat is in front and no
+drive is up, Back to the drive while one is, and the panel toggle, which
+counts the open notes. The drive is the page here too.
 
 ## Colour
 

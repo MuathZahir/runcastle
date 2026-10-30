@@ -139,3 +139,9 @@ detail below is the planner's reading of it, the decision is marked assumed.*
 **Why:** The stopgap existed only because notes had no home, and now they have one by the human's own choice of direction.
 **Assumed.** Alternative: keep the stopgap in Details until test drive has landed.
 **Changed by the orchestrator:** relayed from "Test drive looks the part"; the human chose direction A but has not yet said yes to building it.
+
+## 24. The drive is a page, so the panel has no Drive tab
+**Decision:** The panel's tabs and its show-the-panel toggle leave the drive out, on the feature page and the project page. The drive is entered from Start test drive, the header's Back to the drive and the sidebar's drive card, and left by its own back button. Test drive built its own notes in the drive's rail, so this feature's kept pieces (`OpenWork`, `NoteComposer`, `WorkList`, `NotesRail`) are deleted, and with them the "all good" send; only the two helpers the drive reads stay in `SendToAgent`. Supersedes: 3 and 12, for the Drive tab.
+**Why:** "Test drive looks the part" merged with the drive as a full page, and the human chose that direction. A tab to a page that replaces the panel would close the panel it sits in.
+**Assumed.** Alternative: keep Drive as a tab that jumps to the page.
+**Changed by the orchestrator:** the instruction came with the merge of test drive.

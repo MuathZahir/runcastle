@@ -3,6 +3,7 @@ import {
   INITIAL_PANEL,
   PANEL_VIEWS,
   availableViews,
+  panelTabs,
   hasPlan,
   panelReducer,
   panelViewOf,
@@ -15,6 +16,12 @@ import {
  * tickets-and-review-are-tools-not-phases decision 8: the views a feature
  * offers come from facts, never a phase, and the panel's transitions.
  */
+describe('panelTabs', () => {
+  it('leaves the drive out: it is the page, not a tab', () => {
+    expect(panelTabs(['plan', 'work', 'details', 'design', 'drive'])).toEqual(['plan', 'work', 'details', 'design'])
+  })
+})
+
 describe('availableViews', () => {
   const none: PanelFacts = {
     isDraft: false,

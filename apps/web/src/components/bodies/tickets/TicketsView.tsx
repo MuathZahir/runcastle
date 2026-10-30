@@ -252,13 +252,9 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
           <div className="flex min-h-0 flex-1 flex-col p-5">
             <EvidenceStage
               featureId={featureId}
-              branch={feature.branch}
               recordings={[watching]}
               notes={[]}
               readonly
-              driveState="idle"
-              dryRun={false}
-              failure={null}
             />
           </div>
         )}
