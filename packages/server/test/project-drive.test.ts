@@ -67,12 +67,16 @@ function captureEnv(file: string): string {
     : `echo "$RUNCASTLE_SLUG $RUNCASTLE_ID $RUNCASTLE_BRANCH $DB_NAME" > "${file}"`
 }
 
-/** A setup hook that records its identity to `file`, then writes `drive.env`. */
+/**
+ * A setup hook that records its identity to `file`, then writes `drive.env`.
+ * `DB_NAME` is left out of the record: nothing has set it yet, and `cmd` prints
+ * an unset variable as written where a POSIX shell prints nothing.
+ */
 function setupCommand(file: string): string {
   const envFile = join('.runcastle', 'drive.env')
   return WIN
-    ? `${captureEnv(file)} & mkdir .runcastle & echo DB_NAME=app_%RUNCASTLE_ID%> "${envFile}"`
-    : `${captureEnv(file)} && mkdir -p .runcastle && echo "DB_NAME=app_$RUNCASTLE_ID" > "${envFile}"`
+    ? `echo %RUNCASTLE_SLUG% %RUNCASTLE_ID% %RUNCASTLE_BRANCH%> "${file}" & mkdir .runcastle & echo DB_NAME=app_%RUNCASTLE_ID%> "${envFile}"`
+    : `echo "$RUNCASTLE_SLUG $RUNCASTLE_ID $RUNCASTLE_BRANCH" > "${file}" && mkdir -p .runcastle && echo "DB_NAME=app_$RUNCASTLE_ID" > "${envFile}"`
 }
 
 function ptyAvailable(): boolean {

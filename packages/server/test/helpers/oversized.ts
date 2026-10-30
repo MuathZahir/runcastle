@@ -43,8 +43,13 @@ export const OVERSIZED = {
   digestChars: 8_000,
   findings: 7,
   findingDetailChars: 2_800,
-  /** Extra open findings on the `backlogged` shape — enough to move settled rows out. */
-  backlogFindings: 12,
+  /**
+   * Extra open findings on the `backlogged` shape: enough to move settled rows
+   * out, while some rows stay. Each finding costs about 11 rows, so this sits
+   * mid-band: 8 moves no rows, and 12 moves them all once a long Windows temp
+   * path is counted in `notInlined`.
+   */
+  backlogFindings: 10,
   docs: {
     'brief.md': 7_500,
     'decisions.md': 83_000,

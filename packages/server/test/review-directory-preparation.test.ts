@@ -87,8 +87,8 @@ describe('review directory preparation', () => {
 
     expect(() => prepareReviewDirectory('/reviews/ticket-7', { fs })).not.toThrow()
     expect(removed).toEqual([
-      '/reviews/ticket-7.stale-100',
-      '/reviews/ticket-7.stale-200',
+      join('/reviews', 'ticket-7.stale-100'),
+      join('/reviews', 'ticket-7.stale-200'),
       '/reviews/ticket-7',
     ])
   })
