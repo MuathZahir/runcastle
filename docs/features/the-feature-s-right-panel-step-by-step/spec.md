@@ -38,17 +38,17 @@ the feature's title; each starts with its own content in a 24px column.
 - **Details**: one column: the feature's facts (branch, started or merged,
   what it waits on, what waits on it), its docs by title and age (the outcome
   first once merged), then Activity, closed.
-- **Drive**: the running app, and under it the notes for the agent with Send
-  to agent.
+- **Drive** is untouched here: another feature is working on it (decision 20).
 - **Review is gone.** Its notices sit atop the chat; its findings and
-  recording are the review ticket's; the shipped record is Details.
+  recording are the review ticket's; the shipped record is Details. The notes
+  for the agent sit in Details, under the docs, until the drive takes them.
 - **Docs** are read in the panel, in the view they were opened from, with a
   way back, never in a dialog.
 
 **Designed in design mode** (left uncommitted for the human's yes). The
 preview page `apps/web/preview/feature-panel.html` (+ `feature-panel.tsx`,
 `feature-panel-data.ts`) renders the real app on sample data at each step:
-`?step=early|plan|docs|reader|tickets|round|ready|drive|shipped`, with a theme
+`?step=early|plan|docs|reader|tickets|round|ready|shipped`, with a theme
 switch and a Tweaks menu (view tabs: icon and word, or icons only). The real
 components behind it, changed in place:
 
@@ -59,7 +59,6 @@ components behind it, changed in place:
   new `inspector/FeatureFacts`;
 - new `bodies/tickets/TicketsView` (`TicketsView`, `splitRounds`, the row and
   the folded round);
-- `review/FeatureDriveView` (notes under the app);
 - `lib/feature-ui/panel.ts` (Review never offered; Work labelled Tickets);
 - `Workspace` (`documentView`: no repeated header, the panel column; Work
   renders `TicketsView`; Details gets `FeatureFacts`).
@@ -86,8 +85,10 @@ build connects them without restyling.
   project-drive-blocking notice render in the chat's notice deck
   (`FeatureChat`), where the page's other notices are. The shipped record's
   facts are Details': "Merged" from the shipped time, the outcome doc first.
-- **Notes in the drive** (decision 16): `FeatureDriveView` renders `OpenWork`
-  (notes, composer, Send to agent) under the stage, notes only.
+- **Notes for now** (decision 20): `DetailsView` takes a `notes` node; the
+  page passes `OpenWork` (notes only, no findings) while a drive is up or the
+  agent has declared ready. `OpenWork`, `NoteComposer`, `SendToAgent`,
+  `WorkList` and `NotesRail` stay for the drive's feature to mount.
 - **The doc reader** (decision 7): `PanelState` gains the open doc (a
   relPath), cleared on a view switch or close; an open doc unfolds a folded
   panel. The view on show renders `DocReader` in its place with "← <view>".
@@ -99,7 +100,7 @@ build connects them without restyling.
   names itself on hover and to a screen reader.
 - **The design guide**: `DESIGN.md` §"The feature page: chat-first" and
   `STYLE.md` describe the three views, the tabs, the panel column, the view
-  bar, the reader, the ticket row and notes in the drive.
+  bar, the reader and the ticket row.
 
 ## Seams
 
@@ -115,23 +116,18 @@ build connects them without restyling.
 - **`TicketsView` actions** (tier 2, replacing `test/run-body-model.test.tsx`
   and friends): stop, retry, model, edit and cancel reach the same tRPC calls
   `RunBody` and `TicketsBody` made.
-- **`PlanBody`, `DetailsView`, `DocReader`, `FeatureDriveView`** (tier 1/2):
-  tabs per existing doc; doc order and facts; reader back; notes under the
-  stage.
+- **`PlanBody`, `DetailsView`, `DocReader`** (tier 1/2): tabs per existing
+  doc; doc order and facts; reader back; the notes shown only when passed.
 
 ## Out of scope
 
-- The chat column ("The chat looks the part") and the test drive's own look
-  ("Test drive looks the part"); this feature only places the notes under the
-  drive's stage.
+- The chat column ("The chat looks the part") and the drive view ("Test drive
+  looks the part"), including moving the notes into it.
 - The shared theme and building blocks, beyond `Tabs`' tooltip.
 - The activity feed's rows; the plan preview's own content.
 - New behaviour: every action kept is one the panel already had.
 
 ## Open questions
 
-- "Test drive looks the part" decided the feature drive keeps no notes column
-  (its decision 9, assumed). Decision 16 here follows the human's newer word;
-  that feature's plan should be updated to match.
-- The parked draft "The panel's round, review and shipped views" is superseded
-  (decision 13) and should be deleted; a feature session cannot delete it.
+- When the drive's feature mounts the notes, remove them from Details (one
+  prop, decision 20).
