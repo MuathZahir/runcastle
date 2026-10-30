@@ -59,3 +59,7 @@ Planned without the human (2026-10-29). Every decision below is marked
 **Decision:** The brief's open question (what else about the drive looks wrong) is put to the human with the designed screens, at the design checkpoint. Decisions 2 to 5 are this plan's guesses at it, and change if the human points elsewhere.
 **Why:** Nobody was present to ask, and the working agreement already has the human look at each feature's designs before it builds.
 **Assumed.** Alternative: wait to design until the human answers.
+
+## 12. The drive window is flush with its surroundings
+**Decision:** The drive window loses the inset card: no margin, edge or corners. The app and its toolbar run to the edges around them.
+**Why:** The human looked at both on the preview and said flush seems better (2026-10-30).
