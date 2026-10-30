@@ -191,7 +191,7 @@ export function Workspace({
   const laterLaps = deferredScope(specQ.data?.content)
   // A preparation dry run or another feature's drive can hold this project's
   // drive slot (decision 9), which only the server's drive info knows; the
-  // review view polls the same key, so this is one fetch.
+  // chat's standing warnings read this same answer.
   const projectId = q.data?.feature.projectId
   const driveQ = trpc.feature.driveInfo.useQuery(
     { projectId: projectId ?? '' },
