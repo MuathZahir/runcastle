@@ -88,7 +88,7 @@ export function NextStepBar({
    * `onAction(kind)` and `menu` the rows behind the caret. In the "More" menu,
    * where a menu cannot nest, it stays a plain item under the same label.
    */
-  split?: { kind: ActionKind; label: string; menu: ReactNode; menuLabel: string }
+  split?: { kind: ActionKind; label: string; picker: ReactNode; menuLabel: string }
 }) {
   const secondary = ns.secondary
   // Disabled actions, in button order, each with the reason it cannot fire.
@@ -113,7 +113,7 @@ export function NextStepBar({
         disabled={busy || !!a.disabled}
         title={a.disabled ?? a.hint}
         onClick={() => onAction(a.kind)}
-        menu={split.menu}
+        picker={split.picker}
         menuLabel={split.menuLabel}
       >
         {label}

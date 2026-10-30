@@ -126,7 +126,7 @@ describe('the next-step bar’s Test drive', () => {
         guidance: false,
         busy: false,
         onAction: () => undefined,
-        split: { kind: 'testDriveStart', label: 'Test drive · Expired coupon', menu: null, menuLabel: 'Choose a scenario' },
+        split: { kind: 'testDriveStart', label: 'Test drive · Expired coupon', picker: null, menuLabel: 'Choose a scenario' },
       }),
     )
     expect(html).toContain('Test drive · Expired coupon')

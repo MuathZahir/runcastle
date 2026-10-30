@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { DriveState, ReviewFinding, TestNote } from '@runcastle/core'
+import type { ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 
@@ -111,13 +111,9 @@ function bands(readonly: boolean): ReactNode[] {
     createElement(EvidenceStage, {
       key: 'stage',
       featureId: 'ftr_1',
-      branch: 'feature/x',
       recordings: [RECORDING],
       notes: [NOTE],
       readonly,
-      driveState: 'idle',
-      dryRun: false,
-      failure: null,
     }),
     createElement(ConflictAlert, {
       key: 'conflict',
@@ -180,22 +176,6 @@ const LIVE_CONTROLS = [
   'aria-label="Note actions"',
 ]
 
-/** The stage while a drive of this feature is up — its own set of controls. */
-const drivingStage = (readonly: boolean, driveState: DriveState = 'setup-failed'): string =>
-  renderToStaticMarkup(
-    createElement(EvidenceStage, {
-      featureId: 'ftr_1',
-      branch: 'feature/x',
-      recordings: [RECORDING],
-      notes: [],
-      readonly,
-      driveState,
-      drive: { branch: 'feature/x' },
-      dryRun: false,
-      failure: { command: 'bun setup', outcome: 'exited 3', output: 'boom', canFix: true },
-    }),
-  )
-
 describe('the review bands under readonly', () => {
   it('offers every one of those controls while the feature is still being worked on', () => {
     const html = render(false)
@@ -226,27 +206,5 @@ describe('the review bands under readonly', () => {
 
   it('states the deferred scope as history rather than as an instruction', () => {
     expect(render(true)).toContain('still deferred when this feature shipped')
-  })
-
-  /**
-   * The drive's own controls live in the stage now (decision 20), so they answer
-   * the same one flag: readonly keeps the account of the failure and drops both
-   * offers to act on it.
-   */
-  it('keeps the drive`s account and drops its actions on a readonly view', () => {
-    const live = drivingStage(false)
-    expect(live).toContain('>Fix drive<')
-    expect(live).toContain('>Stop test drive<')
-
-    const history = drivingStage(true)
-    expect(history).toContain('Drive setup failed')
-    expect(history).toContain('bun setup')
-    expect(history).not.toContain('>Fix drive<')
-    expect(history).not.toContain('>Stop test drive<')
-  })
-
-  it('drops the review drive`s own stop on a readonly view', () => {
-    expect(drivingStage(false, 'review-agent-driving')).toContain('>Stop the review drive<')
-    expect(drivingStage(true, 'review-agent-driving')).not.toContain('>Stop the review drive<')
   })
 })

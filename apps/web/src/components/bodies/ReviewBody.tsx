@@ -278,15 +278,10 @@ export function ReviewBody({
   const stage = stageMounted ? (
     <EvidenceStage
       featureId={feature.id}
-      projectId={feature.projectId}
-      branch={feature.branch}
       recordings={recordings}
       picked={picked}
       notes={notes.data ?? []}
       readonly={readonly}
-      driveState="idle"
-      dryRun={false}
-      failure={null}
       expand={expand}
       handleRef={walkthroughHandle}
       onStageRecording={setStaged}

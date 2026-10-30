@@ -8,6 +8,7 @@ import { IconArrowLeft, IconMore, IconPen, IconRefresh, IconTerminal } from '../
 import { DrivePanel } from '../review/DrivePanel'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
+import { mainChatInbox, putInInbox } from '../../lib/composer-inbox'
 
 export interface DesignViewProps {
   featureId: string
@@ -133,10 +134,15 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
       </DropdownMenu>
     )
     return (
-      <div className="flex h-full min-h-0 flex-col gap-2 p-3">
+      <div className="flex h-full min-h-0 flex-col">
         <DrivePanel
-          featureId={featureId}
-          sendTo="chat"
+          copy="chat"
+          // A request to the agent: the crop goes straight into the main chat's
+          // composer as an image, and the human writes the message there
+          // (chat-as-web-components decision 5).
+          onCapture={(png) =>
+            putInInbox(mainChatInbox(featureId), [new File([png], 'selection.png', { type: 'image/png' })])
+          }
           frameKey={String(homeCount)}
           url={designFrameUrl(status.data.url, shownPath)}
           leading={
@@ -147,11 +153,11 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
               onClick={home}
             />
           }
-          toolbar={serverMenu}
+          trailing={serverMenu}
           {...(width !== undefined ? { width } : {})}
         />
         {showOutput && paneId && (
-          <div className="relative h-60 min-h-40 shrink-0 overflow-hidden rounded-md bg-surface-inset animate-rise-in">
+          <div className="relative h-60 min-h-40 shrink-0 overflow-hidden border-t border-border-subtle bg-surface-inset animate-rise-in">
             <ErrorBoundary label="design server output">
               <TerminalView sessionId={paneId} />
             </ErrorBoundary>

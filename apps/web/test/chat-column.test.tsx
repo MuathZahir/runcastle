@@ -7,7 +7,7 @@ import type { DriveScenario, ThreadEntry, ThreadEvent } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import { fakeTrpc, type FakeHandlers } from './fake-trpc'
 import { full as fixture, listItem } from './fixtures'
-import { openMenu } from './floating'
+import { openMenu, openList } from './floating'
 
 /**
  * The feature page's chat column (chat-as-web-components decision 7) and its
@@ -203,8 +203,8 @@ const featureMenu = (): void => {
   openMenu(within(open).getByRole('button', { name: 'Feature actions' }))
 }
 const newScenario = (): void => {
-  openMenu(screen.getByRole('button', { name: 'Scenario' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
+  openList(screen.getByRole('button', { name: /Blank app/ }))
+  fireEvent.click(screen.getByRole('option', { name: 'New scenario' }))
 }
 
 describe('the open feature’s threads in the sidebar', () => {

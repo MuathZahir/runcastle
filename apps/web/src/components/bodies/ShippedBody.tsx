@@ -114,16 +114,12 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
           {recordings.length > 0 && (
             <EvidenceStage
               featureId={feature.id}
-              branch={feature.branch}
               recordings={recordings}
               picked={staged}
               // No open-work band on this page, so no marker on the scrub bar has
               // a row to jump to; the recording plays as the record it is.
               notes={[]}
               readonly
-              driveState="idle"
-              dryRun={false}
-              failure={null}
             />
           )}
         </section>

@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { DriveScenario } from '@runcastle/core'
 import { Button, IconButton, LINK, SegmentedControl, StatusLabel, cx } from '../../ui'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../ui/dropdown-menu'
-import { IconChevronDown, IconPlus, IconTerminal, IconX } from '../../icons'
+import { IconTerminal, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { callMenu, hasCalls } from '../../lib/feature-ui/api-call'
@@ -10,7 +9,7 @@ import { scenarioFailureLine, scenarioMenu, scenarioTarget, showsScenarioNudge }
 import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ApiView } from './ApiView'
 import { DrivePanel } from './DrivePanel'
-import { ScenarioMenuItems } from './ScenarioMenuItems'
+import { ScenarioControl } from './ScenarioPicker'
 
 /** The live drive as the scenario controls read it — `driveInfo`'s slice. */
 export interface ScenarioDriveInfo {
@@ -26,8 +25,8 @@ export interface ScenarioDriveInfo {
  * 8): the Scenario menu in the panel's toolbar switches scenario without a
  * restart, the panel follows each landing, a running scenario shows its output
  * and a failed one its actual error with Fix it. ＋ New scenario and Fix it open
- * the scenario chat in the page's chat column (design-mode decision 9), so the
- * drive keeps the whole panel the result lands in. Lap 2 (decisions 11, 14): an
+ * the scenario chat on the page's chat column (design-mode decision 9), with the
+ * drive left running behind it (test-drive-looks-the-part decision 18). Lap 2 (decisions 11, 14): an
  * App | API toggle when some scenario has a call, and the Blank app nudge while
  * the project has none.
  *
@@ -38,10 +37,23 @@ export function ScenarioDrive({
   projectId,
   featureId,
   drive,
+  leading,
+  trailing,
+  footer,
+  onCapture,
+  onToChat,
 }: {
   projectId: string
   featureId?: string
   drive: ScenarioDriveInfo
+  /** The head's two ends: the way back, and Stop with the notes toggle. */
+  leading?: ReactNode
+  trailing?: ReactNode
+  /** The window's status line, under the page. */
+  footer?: ReactNode
+  onCapture?: (png: Blob) => void
+  /** An errand opened a chat: it lives on the chat page, so go there. */
+  onToChat?: () => void
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -66,6 +78,7 @@ export function ScenarioDrive({
     onSuccess: (res) => {
       refresh()
       chat?.opened(res.sessionId)
+      onToChat?.()
     },
     onError: (e) => toast.push(e.message),
   })
@@ -124,35 +137,20 @@ export function ScenarioDrive({
     />
   )
 
-  const scenarioMenuControl = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="ghost" title="Land on another scenario, or write a new one">
-          {scenario && !blank ? `Scenario: ${scenario.name}` : 'Scenario'}
-          <IconChevronDown />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <ScenarioMenuItems menu={menu} onPick={pick} />
-        <DropdownMenuSeparator />
-        <DropdownMenuItem icon={<IconPlus />} onSelect={newScenario}>
-          New scenario
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
   const toolbar = (
     <>
+      <ScenarioControl menu={menu} scenario={scenario} blank={blank} onPick={pick} onNew={newScenario} />
       {viewToggle}
-      {scenarioMenuControl}
     </>
   )
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+  // Under the toolbar, inside the window (decision 4): the scenario's run and
+  // the hint, read where the app is rather than above the frame.
+  const above = (
+    <>
       {!api && strip}
       {nudge && (
-        <p className="m-0 flex items-center gap-2 px-1 text-xs text-text-tertiary">
+        <p className="m-0 flex shrink-0 items-center gap-2 border-b border-border-subtle py-1 pr-1.5 pl-4 text-xs text-text-tertiary">
           <span className="min-w-0 flex-1">
             Setting this up by hand every time?{' '}
             <button type="button" className={cx(LINK, 'font-medium')} onClick={newScenario}>
@@ -162,32 +160,32 @@ export function ScenarioDrive({
           <IconButton size="sm" label="Hide this hint" icon={<IconX />} onClick={() => setNudgeHiddenFor(driveKey)} />
         </p>
       )}
-      {api && (
-        <ApiView
-          projectId={projectId}
-          calls={callMenu(menu)}
-          scenario={scenario}
-          strip={strip}
-          toolbar={toolbar}
-          onRun={pick}
-        />
-      )}
-      <div className={api ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
-        <DrivePanel
-          {...(featureId ? { featureId } : { projectId })}
-          url={target.url}
-          frameKey={target.key}
-          toolbar={toolbar}
-        />
-      </div>
-    </div>
+    </>
+  )
+
+  return (
+    <DrivePanel
+      url={target.url}
+      frameKey={target.key}
+      leading={leading}
+      toolbar={toolbar}
+      trailing={trailing}
+      strip={above}
+      footer={footer}
+      onCapture={onCapture}
+      cover={
+        api && (
+          <ApiView projectId={projectId} calls={callMenu(menu)} scenario={scenario} strip={strip} onRun={pick} />
+        )
+      }
+    />
   )
 }
 
 /** The live output of a scenario on its way to landing (decision 7). */
 function ScenarioRunning({ scenario }: { scenario: DriveScenario }) {
   return (
-    <div className="flex flex-col gap-1 rounded-md bg-surface-inset px-3 py-2" role="status">
+    <div className="flex shrink-0 flex-col gap-1 border-b border-border-subtle px-4 py-2.5" role="status">
       <StatusLabel spinning size="sm">
         Running {scenario.name}…
       </StatusLabel>
@@ -215,10 +213,10 @@ export function ScenarioFailed({
   onFix: () => void
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-md bg-danger-subtle px-3 py-2 text-sm" role="alert">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-border-subtle bg-danger-subtle px-4 py-3 text-sm" role="alert">
       <span className="font-medium text-danger-text">{scenarioFailureLine(scenario)}</span>
       {scenario.failure?.outputTail && (
-        <pre className="m-0 max-h-40 overflow-auto rounded-md bg-surface-inset px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-text-secondary">
+        <pre className="m-0 max-h-40 overflow-auto rounded-md bg-surface-inset px-2.5 py-2 font-mono text-xs whitespace-pre-wrap text-text-secondary">
           {scenario.failure.outputTail}
         </pre>
       )}

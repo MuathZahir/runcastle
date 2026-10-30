@@ -174,9 +174,17 @@ document, under **one header row**:
   An errand's open brings its chat to the front; picking the feature chat or
   closing the errand goes back. Every live terminal stays mounted behind the
   one in front. Notices (a failed resume, a drive's missing prerequisites,
-  what to test) sit atop the chat, never as another bar. The drive keeps the
-  whole panel — no chat docks inside it, and the review body only points at
-  a live drive.
+  what to test) sit atop the chat, never as another bar. The review body only
+  points at a live drive.
+- **The drive is the one exception to chat-first**: while the human is on a
+  drive it replaces the header, the chat and the panel, on a feature and on
+  the Orchestrator alike (`DrivePage`; preview `preview/drive.html`). The app
+  runs flush, its column headed by one row (back, what is driven, the scenario,
+  the tools, Stop, the rail toggle) above the app and a thin status line under
+  it. Beside it the Notes aside, and no chat: New scenario and Fix it, and Send
+  to the agent, go back to the chat page. The drive stays mounted behind that
+  page, so the app is as it was left; the sidebar's drive card and the
+  header's Back to the drive return to it.
 - **One panel** on the right, one view at a time: the phase body (title,
   meta and the body as a page column), the plan preview, the design, a
   drive, or the details. Its 44px header holds a switcher over the views
@@ -195,10 +203,10 @@ The **project page** takes the same pieces and the same one-header rule
 switcher, the crumb after the project's, listing the past chats by title and
 age, each opening its read-only transcript, its menu holding the landing
 branch and End session — or, with none running or after the project crumb,
-the chat list with New chat and Test drive. The panel holds the project drive
-and the Notes inbox (its details); the header offers Test drive while a chat
-is in front and no drive is up, and the panel toggle, which counts the open
-notes.
+the chat list with New chat and Test drive. The panel holds the Notes inbox
+(its details); the header offers Test drive while a chat is in front and no
+drive is up, Back to the drive while one is, and the panel toggle, which
+counts the open notes. The drive is the page here too.
 
 ## Colour
 

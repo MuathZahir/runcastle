@@ -3,7 +3,7 @@ import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
 import { IconArrowRight, IconPlay, IconShield, IconTerminal } from '../../icons'
 import { Button, Disclosure, PropertyList, SplitButton, StatusLabel } from '../../ui'
 import type { PropertyItem } from '../../ui'
-import { ScenarioMenuItems } from '../review/ScenarioMenuItems'
+import { ScenarioPickerContent } from '../review/ScenarioPicker'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ActionRow } from './ActionRow'
 
@@ -91,7 +91,7 @@ export function TestDriveCard({
               title={card.state === 'blocked' ? card.reason : undefined}
               onClick={() => onStart(null)}
               menuLabel="Choose a scenario"
-              menu={<ScenarioMenuItems menu={scenarios} onPick={onStart} />}
+              picker={<ScenarioPickerContent menu={scenarios} onPick={onStart} align="end" />}
             >
               Test drive
             </SplitButton>

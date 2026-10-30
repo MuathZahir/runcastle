@@ -330,6 +330,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenSettings={() => ws.openSettings()}
             projectDriveBranch={projectDrive?.branch ?? null}
             onOpenProjectDrive={openDrive}
+            onOpenFeatureDrive={(featureId) => openFeature(featureId, 'drive')}
             driving={driving}
             onDriveChange={setDriving}
           />

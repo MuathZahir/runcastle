@@ -8,7 +8,7 @@ import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
 import { availableViews, hasPlan, PANEL_VIEW_LABEL, reviewRan, type PanelView } from '../lib/feature-ui/panel'
-import {
+import { Button,
   DimLine,
   IconButton,
   Page,
@@ -17,7 +17,7 @@ import {
   cx,
   type MetaItem,
 } from '../ui'
-import { IconX, ProgressIcon } from '../icons'
+import { IconPlay, IconX, ProgressIcon } from '../icons'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
@@ -56,6 +56,7 @@ import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { DesignView, useDesignPath } from './design/DesignView'
 import { DetailsView } from './inspector/Inspector'
+import { DriveChatNotice } from './review/DriveChatNotice'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
@@ -78,7 +79,7 @@ import {
   mainChatWorking,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
-import { ScenarioMenuItems } from './review/ScenarioMenuItems'
+import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -629,6 +630,8 @@ export function Workspace({
             onSuccess: () => {
               invalidate()
               onDriveChange(null)
+              // Stop lands on the chat at once, not when the drive's poll catches up.
+              if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
             },
           },
         )
@@ -757,11 +760,13 @@ export function Workspace({
         now,
       })
   const actionsBusy = busy || stopAgent.isPending
+  const driveStarting = testDrive.isPending && testDrive.variables?.action === 'start'
+  const driveStopping = testDrive.isPending && testDrive.variables?.action === 'stop'
   const testDriveSplit = {
     kind: 'testDriveStart' as const,
     label: testDriveLabel(startMenu.defaultScenario, 'Start test drive'),
     menuLabel: 'Choose a scenario',
-    menu: <ScenarioMenuItems menu={startMenu} onPick={startDrive} />,
+    picker: <ScenarioPickerContent menu={startMenu} onPick={startDrive} align="end" />,
   }
   // The one header row's share of the status line's actions (decision 12):
   // one button, the rest for "⋯".
@@ -798,10 +803,18 @@ export function Workspace({
   )
   // What the strip used to stack under the header goes atop the chat column
   // instead (decision 12): notices, not another bar.
-  const chatAlerts = (resumeAlert || drivePrereqsNotice) && (
+  const chatAlerts = (
     <>
       {resumeAlert}
       {drivePrereqsNotice}
+      {!shipped && (
+        <DriveChatNotice
+          featureId={featureId}
+          driving={isDriving}
+          stopping={driveStopping}
+          onStop={() => runAction('testDriveStop')}
+        />
+      )}
     </>
   )
 
@@ -896,13 +909,18 @@ export function Workspace({
             {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
           />
         )
+      // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
       case 'drive':
-        return <FeatureDriveView full={full} />
+        return null
       case 'details':
         return <DetailsView featureId={featureId} />
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // The drive takes the page at the click, before the server has answered, and
+  // stays mounted while it runs, so the app is as it was left on the way back.
+  const onDrive = shown === 'drive' || driveStarting
+  const driveMounted = views.includes('drive') || driveStarting
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({
@@ -921,6 +939,18 @@ export function Workspace({
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+      {driveMounted && (
+        <ScenarioChatContext.Provider value={column.scenario}>
+          <FeatureDriveView
+            full={full}
+            hidden={!onDrive}
+            stopping={driveStopping}
+            onBack={() => panel.dispatch({ type: 'close' })}
+            onStop={() => runAction('testDriveStop')}
+          />
+        </ScenarioChatContext.Provider>
+      )}
+      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
           at most one action, "⋯" and the panel toggle. */}
@@ -949,12 +979,20 @@ export function Workspace({
             )}
             {headerRow.action && (
               <span className="mr-1 flex">
-                <HeaderAction
-                  action={headerRow.action}
-                  busy={actionsBusy}
-                  onAction={runAction}
-                  split={testDriveSplit}
-                />
+                {/* Stop is the drive page's, and said over the chat; from here the
+                    one step is back to the drive (decision 13). */}
+                {headerRow.action.kind === 'testDriveStop' && views.includes('drive') ? (
+                  <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => openView('drive')}>
+                    Back to the drive
+                  </Button>
+                ) : (
+                  <HeaderAction
+                    action={headerRow.action}
+                    busy={actionsBusy}
+                    onAction={runAction}
+                    split={testDriveSplit}
+                  />
+                )}
               </span>
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
@@ -994,7 +1032,8 @@ export function Workspace({
                 />
               }
               panel={
-                shown && (
+                shown &&
+                shown !== 'drive' && (
                   <FeaturePanel
                     view={shown}
                     views={views}
@@ -1025,6 +1064,7 @@ export function Workspace({
           </ScenarioChatContext.Provider>
         </>
       )}
+      </div>
 
       <StopAgentDialog
         open={confirmStop}
