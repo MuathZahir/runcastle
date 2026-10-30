@@ -277,16 +277,6 @@ describe('what opens the panel', () => {
   })
 
   // the-feature-s-right-panel decision 20: Review was the one place to write notes.
-  it('shows the notes for the agent in Details once the agent declared ready, and not before', () => {
-    expect(panelOf(page({ view: 'details', queries: READY }))).toContain('Notes for the agent')
-    expect(panelOf(page({ view: 'details' }))).not.toContain('Notes for the agent')
-  })
-
-  it('shows the notes in Details while a drive of the feature is up', () => {
-    const drive = { 'feature.driveInfo': { state: 'serving', featureId: 'f1', holderLabel: 'a drive' } }
-    expect(panelOf(page({ view: 'details', queries: drive }))).toContain('Notes for the agent')
-  })
-
   it('says a merged feature’s Details was merged, with its time', () => {
     const shipped = { id: 1, projectId: 'p1', featureId: 'f1', ts: Date.now() - 3 * 3_600_000, type: 'feature.shipped', message: 'shipped' } as EventRow
     setup({ status: 'shipped', queries: { 'events.list': [shipped] } })

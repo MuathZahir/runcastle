@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  featureViewOf,
+  addressedView, featureViewOf,
   insideProject,
   locationFor,
   parsePath,
@@ -54,7 +54,7 @@ describe('parsePath', () => {
   })
 
   it("reads the retired Tickets tab's path, the retired body and a hand-typed work as the feature's Work", () => {
-    const work = { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' }
+    const work = { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', namesWork: true }
     expect(parsePath('/p/proj_a/f/flow-redesign-shell/tickets')).toEqual(work)
     expect(parsePath('/p/proj_a/f/flow-redesign-shell/body')).toEqual(work)
     expect(parsePath('/p/proj_a/f/flow-redesign-shell/work')).toEqual(work)
@@ -66,7 +66,20 @@ describe('parsePath', () => {
       kind: 'feature',
       projectId: 'proj_a',
       featureSlug: 'flow-redesign-shell',
+      namesWork: true,
     })
+  })
+
+  // A bare path restores the remembered view on landing; these must not.
+  it('lands an address that names Work on Work, and leaves a bare one to what is remembered', () => {
+    const at = (path: string) => {
+      const location = parsePath(path)
+      return location?.kind === 'feature' ? addressedView(location) : null
+    }
+    expect(at('/p/proj_a/f/slug/review')).toBe('work')
+    expect(at('/p/proj_a/f/slug/work')).toBe('work')
+    expect(at('/p/proj_a/f/slug/details')).toBe('details')
+    expect(at('/p/proj_a/f/slug')).toBeUndefined()
   })
 
   // tickets-and-review-are-tools-not-phases decision 8: the preview folded into Plan.

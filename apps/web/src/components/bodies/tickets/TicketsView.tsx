@@ -454,7 +454,8 @@ function TicketItem({
     // A review lands no code: its row says what it did, not a commit.
     state === 'done' && !review && ticket.commits[0] ? shortSha(ticket.commits[0]) : null,
     state === 'done' && duration ? `${Math.round(duration / 60_000)}m` : null,
-    (state === 'failed' || state === 'launch-failed') && ticket.error ? ticket.error.split('\n')[0] : null,
+    // Open, the card says the failure in full; not twice.
+    !open && (state === 'failed' || state === 'launch-failed') && ticket.error ? ticket.error.split('\n')[0] : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -693,7 +694,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
             <LaneTranscript ticketId={ticket.id} bootEvents={controls.bootEvents(ticket)} runtime={controls.runtime(ticket)} />
           </ErrorBoundary>
         </Part>
-      ) : ticket.digest ? (
+      ) : ticket.digest && ticket.digest.trim() !== ticket.error?.trim() ? (
         <Part title={ticket.kind === 'review' ? 'What the review found' : 'What the worker said'}>
           <Markdown source={ticket.digest} />
         </Part>

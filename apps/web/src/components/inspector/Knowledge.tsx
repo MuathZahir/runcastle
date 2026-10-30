@@ -41,13 +41,17 @@ export function Knowledge({ docs, onOpen }: { docs: DocSummary[]; onOpen: (doc: 
         <List label="Feature docs" className="-mx-3">
           {ordered.map((doc, i) => {
             const folder = folderOf(doc.relPath)
+            const title = doc.title || basename(doc.relPath)
+            // Two docs with one title: only the file name tells them apart.
+            const shared = ordered.some((d) => d !== doc && (d.title || basename(d.relPath)) === title)
+            const where = shared ? doc.relPath : folder
             return (
               <ListRow
                 key={doc.relPath}
                 index={i}
                 leading={<IconDoc />}
-                title={doc.title || basename(doc.relPath)}
-                {...(folder ? { description: folder } : {})}
+                title={title}
+                {...(where ? { description: where } : {})}
                 tooltip={doc.relPath}
                 meta={doc.updatedAt !== undefined ? relTimeAgo(doc.updatedAt) : undefined}
                 onClick={() => onOpen(doc)}

@@ -91,6 +91,11 @@ describe('the details', () => {
     expect(rowTitles(document)).toEqual(['Outcome', 'Brief', 'Decisions', 'Spec', 'Notes'])
   })
 
+  it('tells two docs with one title apart by their paths', () => {
+    render(createElement(Knowledge, { docs: [doc('a/plan.md', 'Plan'), doc('b/plan.md', 'Plan'), doc('spec.md', 'Spec')], onOpen: () => undefined }))
+    expect(rowTitles(document)).toEqual(['Spec', 'Plan' + 'a/plan.md', 'Plan' + 'b/plan.md'])
+  })
+
   it('states the branch, when it started and the features on either side of it', () => {
     const dep = { featureId: 'f0', slug: 'base', title: 'The base', status: 'active', satisfied: false, upNext: false } as DependencyRef
     render(

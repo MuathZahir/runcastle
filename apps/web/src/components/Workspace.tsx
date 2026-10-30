@@ -60,8 +60,6 @@ import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { useStandingNotices } from './workspace/use-standing-notices'
-import { OpenWork } from './review/OpenWork'
-import { partitionWork } from './review/WorkList'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
@@ -912,12 +910,6 @@ export function Workspace({
           <DetailsView
             featureId={featureId}
             facts={detailsFacts}
-            // Review was the one place to write notes and send them; until the
-            // drive takes them they sit here, open on Review's condition
-            // (decision 20): a drive of this feature is up, or the agent declared ready.
-            {...(!shipped && (driveActive || declared)
-              ? { notes: <DetailsNotes featureId={featureId} tickets={full.tickets} driveActive={driveActive} /> }
-              : {})}
             onOpenDoc={openDoc}
           />
         )
@@ -1103,26 +1095,5 @@ export function Workspace({
         />
       )}
     </section>
-  )
-}
-
-/**
- * The notes for the agent in Details (decision 20): the human's notes, the
- * composer and Send to agent — no findings, which are the review ticket's
- * row, and no stage to jump into.
- */
-function DetailsNotes({
-  featureId,
-  tickets,
-  driveActive,
-}: {
-  featureId: string
-  tickets: FeatureFull['tickets']
-  driveActive: boolean
-}) {
-  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
-  const { attention } = partitionWork({ findings: [], notes: notes.data ?? [], tickets, openDefects: [] })
-  return (
-    <OpenWork featureId={featureId} rows={attention} readonly={false} onStage={null} driveActive={driveActive} notesOpen />
   )
 }
