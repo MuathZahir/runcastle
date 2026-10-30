@@ -39,10 +39,8 @@ import {
   IconMore,
   IconPencil,
   IconPlay,
-  IconRefresh,
   IconStop,
   IconTerminal,
-  IconUndo,
   IconX,
 } from '../../../icons'
 import { ErrorBoundary } from '../../ErrorBoundary'
@@ -87,8 +85,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   // row, so a model chosen here reaches every ticket a run has not started yet.
   const edit = trpc.ticket.edit.useMutation(onMutated)
   const stop = trpc.ticket.stop.useMutation(onMutated)
-  const retry = trpc.ticket.retry.useMutation(onMutated)
-  // Cancel and set aside are one call: the server kills a live agent first.
+  // The server kills a live agent first.
   const cancel = trpc.ticket.cancel.useMutation(onMutated)
   // Resolve in terminal lands on the Chat tab, where the session it opens is.
   const landOnChat = useLandOnChat(featureId)
@@ -99,7 +96,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
       landOnChat()
     },
   })
-  const busy = edit.isPending || stop.isPending || retry.isPending || cancel.isPending || launch.isPending
+  const busy = edit.isPending || stop.isPending || cancel.isPending || launch.isPending
 
   if (!full.data) return null
   const feature = full.data.feature
@@ -122,23 +119,12 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const terminalBlocked = !!runningRun || full.data.sessions.some(sessionActive)
 
   const onStopped = (r: { stopped: boolean; swept: boolean; confirmed: boolean }) => {
-    if (r.swept) toast.push('no live agent — the lane was orphaned; marked failed, retry to resume it', 'info')
+    if (r.swept) toast.push('no live agent — the lane was orphaned; marked failed', 'info')
     else if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
     // The kill ran out of time: the ticket still reads stopped, so this is the
     // only place the human hears that it may not be.
     else if (!r.confirmed) toast.push(STOP_TIMEOUT)
   }
-  const retryTicket = (ticket: Ticket) =>
-    retry.mutate(
-      { ticketId: ticket.id },
-      {
-        onSuccess: (r) => {
-          if (r.resolvingConflict) toast.push(`resolving ticket #${ticket.seq}'s conflict with an agent`, 'info')
-          else if (r.resumedFrom)
-            toast.push(`resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`, 'info')
-        },
-      },
-    )
   const controls: TicketControls = {
     roster,
     busy,
@@ -147,14 +133,6 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
     stopping: stop.isPending ? stop.variables?.ticketId : undefined,
     cancelling: cancel.isPending ? cancel.variables?.ticketId : undefined,
     stop: (ticket) => stop.mutate({ ticketId: ticket.id }, { onSuccess: onStopped }),
-    retry: retryTicket,
-    // ADR-0006 refuses `ticket.retry` while a run is live, so the composed
-    // gesture is offered only once no run is: mid-run the model menu alone is
-    // the control. The edit lands first and the burn resolves the row it wrote.
-    retryOn: runningRun
-      ? undefined
-      : (ticket, model) => edit.mutate({ ticketId: ticket.id, model }, { onSuccess: () => retryTicket(ticket) }),
-    retryFresh: (ticket) => retry.mutate({ ticketId: ticket.id, fresh: true }),
     setModel: (ticket, model) => edit.mutate({ ticketId: ticket.id, model }),
     // Awaited by the card so the editor stays open, with the human's text, when
     // the save fails; the mutation's own handler raises the error toast.
@@ -162,15 +140,15 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
       await edit.mutateAsync({ ticketId: ticket.id, ...patch })
       toast.push('ticket updated', 'success')
     },
+    // A failed ticket is the agent's to retry (the-feature-s-right-panel
+    // decision 22), so the human's one way to drop it is the same Cancel.
     cancel: (ticket) =>
-      cancel.mutate({ ticketId: ticket.id }, { onSuccess: () => toast.push('ticket cancelled', 'success') }),
-    setAside: (ticket) =>
       cancel.mutate(
-        { ticketId: ticket.id, reason: 'set aside from the Tickets view' },
+        { ticketId: ticket.id },
         {
           onSuccess: (r) => {
-            toast.push(`ticket #${ticket.seq} set aside — it stays visible as unfinished work at review`, 'info')
-            // The waive killed a live agent and the kill ran out of time.
+            toast.push('ticket cancelled', 'success')
+            // The cancel killed a live agent and the kill ran out of time.
             if (!r.confirmed) toast.push(STOP_TIMEOUT)
           },
         },
@@ -298,17 +276,12 @@ interface TicketControls {
   featureBranch: string
   /** The ticket whose stop is in flight — it resolves once the agent is confirmed dead. */
   stopping: string | undefined
-  /** The ticket whose cancel or set-aside is in flight — a live agent is killed first. */
+  /** The ticket whose cancel is in flight — a live agent is killed first. */
   cancelling: string | undefined
   stop: (ticket: Ticket) => void
-  retry: (ticket: Ticket) => void
-  /** Absent while a run is live, where `ticket.retry` is refused (ADR-0006). */
-  retryOn: ((ticket: Ticket, model: string) => void) | undefined
-  retryFresh: (ticket: Ticket) => void
   setModel: (ticket: Ticket, model: string) => void
   save: (ticket: Ticket, patch: TicketPatch) => Promise<void>
   cancel: (ticket: Ticket) => void
-  setAside: (ticket: Ticket) => void
   resolveInTerminal: (ticket: Ticket, files: string[]) => void
   copySha: (sha: string) => void
   watch: (recording: ReviewArtifacts) => void
@@ -541,19 +514,16 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: LaneState; controls: TicketControls }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirming, setConfirming] = useState<Confirm | null>(null)
+  const [confirming, setConfirming] = useState(false)
   // The server's own editable set (`assertMutable`): a stopped ticket is a failed row.
   const editable = ticket.status === 'pending' || ticket.status === 'failed'
-  const retryable = state === 'failed' || state === 'launch-failed' || state === 'stopped'
   // A landing conflict is not a normal failure: the ticket IS implemented and
-  // its commits are safe on the attempt branch, so Retry means "resolve it".
+  // its commits are safe on the attempt branch, waiting to be resolved.
   const conflict = ticket.status === 'failed' ? ticket.conflictFiles : undefined
   const { busy } = controls
   const review = ticket.kind === 'review' && state === 'done'
   const recording = review ? controls.recording(ticket) : undefined
   const findings = review ? controls.findings(ticket) : []
-  // A pending ticket is cancelled; a failed one is set aside — the same call.
-  const drop: Confirm = retryable ? 'set-aside' : 'cancel'
 
   if (editing)
     return (
@@ -578,8 +548,10 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
     <div className="flex flex-col gap-4 pt-1 pr-3 pb-4 pl-10.5 animate-fade-in">
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-danger-subtle px-3 py-2 text-sm text-text-secondary">
-          <span className="mr-auto">{CONFIRM[confirming].body(ticket.seq)}</span>
-          <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+          <span className="mr-auto">
+            Cancel #{ticket.seq}? Tickets that depend on it treat it as done. Its text stays in the list.
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
             Keep it
           </Button>
           <Button
@@ -587,13 +559,11 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
             variant="danger"
             disabled={busy}
             onClick={() => {
-              if (confirming === 'fresh') controls.retryFresh(ticket)
-              else if (confirming === 'set-aside') controls.setAside(ticket)
-              else controls.cancel(ticket)
-              setConfirming(null)
+              controls.cancel(ticket)
+              setConfirming(false)
             }}
           >
-            {CONFIRM[confirming].label}
+            Cancel
           </Button>
         </div>
       ) : (
@@ -612,32 +582,6 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               {controls.stopping === ticket.id ? 'Stopping…' : 'Stop'}
             </Button>
           )}
-          {retryable && (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<IconRefresh />}
-              disabled={busy}
-              title={
-                conflict
-                  ? 'run an agent that merges the feature branch into this ticket’s branch and resolves the conflict'
-                  : 'retry this ticket — continues from any commits preserved by previous attempts'
-              }
-              onClick={() => controls.retry(ticket)}
-            >
-              {conflict ? 'Resolve with agent' : 'Retry'}
-            </Button>
-          )}
-          {retryable && controls.retryOn && (
-            <ModelMenu
-              value=""
-              roster={controls.roster}
-              label="Retry on…"
-              ticketKind={ticket.kind}
-              disabled={busy}
-              onChange={(model) => controls.retryOn?.(ticket, model)}
-            />
-          )}
           {conflict && (
             <Button
               size="sm"
@@ -652,11 +596,6 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               onClick={() => controls.resolveInTerminal(ticket, conflict)}
             >
               Resolve in terminal
-            </Button>
-          )}
-          {retryable && (
-            <Button size="sm" variant="ghost" icon={<IconUndo />} disabled={busy} onClick={() => setConfirming('fresh')}>
-              Retry fresh
             </Button>
           )}
           {recording && (
@@ -685,9 +624,9 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               icon={<IconX />}
               loading={controls.cancelling === ticket.id}
               disabled={busy}
-              onClick={() => setConfirming(drop)}
+              onClick={() => setConfirming(true)}
             >
-              {CONFIRM[drop].label}
+              Cancel
             </Button>
           )}
         </div>
@@ -777,26 +716,6 @@ function FindingsPart({ findings }: { findings: readonly ReviewFinding[] }) {
       </ul>
     </Part>
   )
-}
-
-/** What an opened ticket asks before a step it cannot take back. */
-type Confirm = 'cancel' | 'set-aside' | 'fresh'
-
-const CONFIRM: Record<Confirm, { label: string; body: (seq: number) => string }> = {
-  cancel: {
-    label: 'Cancel',
-    body: (seq) => `Cancel #${seq}? Tickets that depend on it treat it as done. Its text stays in the list.`,
-  },
-  'set-aside': {
-    label: 'Set aside',
-    body: (seq) =>
-      `Set #${seq} aside? It stops asking to be retried and is carried into review as unfinished work. Tickets that depend on it treat it as done.`,
-  },
-  fresh: {
-    label: 'Retry fresh',
-    body: (seq) =>
-      `Start #${seq} over? Any commits preserved from previous attempts are discarded and the ticket is redone from the feature branch tip.`,
-  },
 }
 
 /**

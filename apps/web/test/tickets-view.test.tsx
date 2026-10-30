@@ -8,9 +8,7 @@ import { laneFacts } from '../src/lib/feature-ui/run'
  * The panel's Tickets view (the-feature-s-right-panel decisions 17–19): which
  * round is the current one, what a row says, and what an opened ticket's
  * actions reach. Tier 2 because a click is not a string; tRPC is the true
- * boundary and the only thing stubbed, recording each call in order — retry on
- * a model is `ticket.edit` THEN `ticket.retry`, since the burn resolves the row
- * the edit just wrote.
+ * boundary and the only thing stubbed, recording each call in order.
  */
 const server = vi.hoisted(() => ({
   calls: [] as { call: string; input: Record<string, unknown> }[],
@@ -70,7 +68,6 @@ vi.mock('../src/trpc', () => ({ trpc: {
   findings: { listByFeature: { useQuery: () => ({ data: { findings: server.findings } }) } },
   ticket: {
     edit: { useMutation: mutation('ticket.edit') },
-    retry: { useMutation: mutation('ticket.retry') },
     stop: { useMutation: mutation('ticket.stop', { stopped: true, swept: false, confirmed: true }) },
     cancel: { useMutation: mutation('ticket.cancel', { confirmed: true }) },
   },
@@ -230,42 +227,23 @@ describe('an opened ticket’s actions', () => {
     expect(within(open(3)).getByRole('button', { name: /Stopping/ })).toBeTruthy()
   })
 
-  it('retries a failed ticket', () => {
-    mount()
-    fireEvent.click(within(open(2)).getByRole('button', { name: 'Retry' }))
-    expect(calls()).toEqual(['ticket.retry'])
-    expect(server.calls[0].input).toEqual({ ticketId: 't2' })
-  })
-
-  it('retries on another model as an edit, then a retry — only with no run live', () => {
-    mount()
-    pick(open(2), 'Retry on…', /gpt-5.6-sol/)
-    expect(server.calls.filter((c) => c.call !== 'invalidate')).toEqual([
-      { call: 'ticket.edit', input: { ticketId: 't2', model: 'gpt-5.6-sol' } },
-      { call: 'ticket.retry', input: { ticketId: 't2' } },
-    ])
-    cleanup()
-    server.runs = [{ id: 'r1', status: 'running', startedAt: 0 }]
-    mount()
-    expect(within(open(2)).queryByRole('combobox', { name: 'Retry on…' })).toBeNull()
-  })
-
-  it('retries fresh only behind a confirm', () => {
+  // the-feature-s-right-panel decision 22: a failed ticket is the agent's to retry.
+  it('offers a failed ticket no Retry: the model picker, Edit and Cancel', () => {
     mount()
     const card = open(2)
-    fireEvent.click(within(card).getByRole('button', { name: 'Retry fresh' }))
+    for (const name of [/^Retry/, 'Resolve with agent', 'Set aside']) expect(within(card).queryByRole('button', { name })).toBeNull()
+    expect(within(card).queryByRole('combobox', { name: 'Retry on…' })).toBeNull()
+    expect(within(card).getByRole('combobox', { name: 'Ticket model' })).toBeTruthy()
+    expect(within(card).getByRole('button', { name: 'Edit' })).toBeTruthy()
+  })
+
+  it('cancels a failed ticket only behind a confirm', () => {
+    mount()
+    const card = open(2)
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }))
     expect(calls()).toEqual([])
-    expect(card.textContent).toContain('Start #2 over?')
-    fireEvent.click(within(card).getByRole('button', { name: 'Retry fresh' }))
-    expect(server.calls[0]).toEqual({ call: 'ticket.retry', input: { ticketId: 't2', fresh: true } })
-  })
-
-  it('sets a failed ticket aside', () => {
-    mount()
-    const card = open(2)
-    fireEvent.click(within(card).getByRole('button', { name: 'Set aside' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Set aside' }))
-    expect(server.calls[0]).toEqual({ call: 'ticket.cancel', input: { ticketId: 't2', reason: 'set aside from the Tickets view' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }))
+    expect(server.calls[0]).toEqual({ call: 'ticket.cancel', input: { ticketId: 't2' } })
   })
 
   it('names a landing conflict’s files and opens a terminal to resolve it', () => {
@@ -273,7 +251,7 @@ describe('an opened ticket’s actions', () => {
     mount()
     const card = open(2)
     expect(card.textContent).toContain('src/a.ts')
-    expect(within(card).getByRole('button', { name: 'Resolve with agent' })).toBeTruthy()
+    expect(within(card).queryByRole('button', { name: 'Resolve with agent' })).toBeNull()
     fireEvent.click(within(card).getByRole('button', { name: 'Resolve in terminal' }))
     expect(server.calls[0]).toMatchObject({
       call: 'feature.launchSession',
