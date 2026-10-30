@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import type { RoundGroup } from './lib/feature-ui'
 import { IconChevronDown, IconChevronRight, IconX } from './icons'
 import { Button, IconButton, Spinner } from './ui/button'
 import {
@@ -676,72 +675,6 @@ export function BranchMenu({
         </ComboboxList>
       </ComboboxContent>
     </Combobox>
-  )
-}
-
-const ROUND_HEAD = 'flex items-center gap-2 py-2 text-xs font-medium'
-
-/**
- * Rows under `Round N` headers — the ticket ledger and the run lanes, grouped
- * by the round that ran them (decision 16), with the tickets no round has held
- * yet under "Not yet dispatched". The latest round and the undispatched rows
- * are always-open sections; earlier rounds are a `<details>` (with a rotating
- * chevron and an animated height) that opens on a click. Before any round has
- * run there are no headers at all.
- *
- * A surface that frames its rows passes `headClassName` for its headers.
- */
-export function RoundSections<T>({
-  groups,
-  meta,
-  headClassName,
-  children,
-}: {
-  groups: RoundGroup<T>[]
-  /** One line about what a round holds, shown beside its number. */
-  meta: (group: RoundGroup<T>) => string
-  /** Extra utilities on each header, for a surface that frames its rows. */
-  headClassName?: string
-  children: (rows: T[]) => ReactNode
-}) {
-  const latest = groups.findLast((g) => g.round !== null)
-  if (!latest) return <>{children(groups.flatMap((g) => g.rows))}</>
-
-  return (
-    <>
-      {groups.map((g) => {
-        const key = g.round ?? 'pending'
-        const head = (
-          <>
-            <span>{g.round === null ? 'Not yet dispatched' : `Round ${g.round}`}</span>
-            <span className="font-normal text-text-tertiary">{meta(g)}</span>
-          </>
-        )
-        return g === latest || g.round === null ? (
-          <section key={key}>
-            <div className={cx(ROUND_HEAD, headClassName, 'text-text-secondary')}>{head}</div>
-            {children(g.rows)}
-          </section>
-        ) : (
-          <details className="group/round" data-disclosure="" key={key}>
-            <summary
-              className={cx(
-                ROUND_HEAD,
-                headClassName,
-                'cursor-pointer list-none text-text-tertiary hover:text-text [&::-webkit-details-marker]:hidden',
-              )}
-            >
-              <IconChevronRight
-                size={12}
-                className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/round:rotate-90"
-              />
-              {head}
-            </summary>
-            {children(g.rows)}
-          </details>
-        )
-      })}
-    </>
   )
 }
 

@@ -12,7 +12,6 @@ import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
 import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
 import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
-import { TicketsSkeleton } from '../src/components/bodies/tickets/TicketsBody'
 
 /**
  * Every content area loads as a skeleton shaped like what it is loading — not
@@ -33,7 +32,6 @@ const SITES: Array<[string, string, string]> = [
   ['the project settings', settings(PROJECT_SKELETON), 'Loading settings…'],
   ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
   ['an artifact pane', renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' })), 'Loading spec.md…'],
-  ['the tickets body', render(TicketsSkeleton), 'Loading tickets…'],
 ]
 
 describe.each(SITES)('%s while it loads', (_site, html, label) => {
@@ -85,10 +83,6 @@ describe('the skeletons are shaped like their content', () => {
   it('an artifact pane: paragraphs of prose', () => {
     const html = renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' }))
     expect(count(html, 'paragraph')).toBe(2)
-  })
-
-  it('the tickets body: rows shaped like ticket rows', () => {
-    expect(count(render(TicketsSkeleton), 'ticket-row')).toBe(4)
   })
 })
 

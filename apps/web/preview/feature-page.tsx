@@ -11,12 +11,11 @@ import { Button, cx, DimLine, IconButton } from '../src/ui'
 import { PageTopbar } from '../src/ui/page'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
 import { FeaturePanel, PanelSplit, PanelToggle } from '../src/components/workspace/FeaturePanel'
-import { TicketLedger } from '../src/components/bodies/tickets/TicketLedger'
 import { IconMore, IconPlay, IconStop, ProgressIcon } from '../src/icons'
 import { PANEL_VIEW_LABEL, type PanelView } from '../src/lib/feature-ui/panel'
 import { applyStoredTheme, useTheme } from '../src/lib/theme'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
-import { MOMENTS, roster, tickets, TITLE, type Moment, type MomentSample } from './feature-page-data'
+import { MOMENTS, TITLE, type Moment, type MomentSample } from './feature-page-data'
 
 /**
  * The feature page once tickets and review are tools, not phases
@@ -55,23 +54,11 @@ function viewLabel(view: PanelView): string {
   return PANEL_VIEW_LABEL[view]
 }
 
-/** What each view holds. Only Tickets is drawn for real: the others are today's bodies, unchanged. */
-function ViewBody({ view, moment }: { view: PanelView; moment: MomentSample }) {
-  if (view === 'work' && moment.ledger)
-    return (
-      <div className="px-6 py-6">
-        <h2 className="m-0 mb-2 text-lg font-semibold text-text">Work</h2>
-        <TicketLedger tickets={tickets(moment.ledger)} rounds={moment.ledger === 'pending' ? [] : [{ round: 1, ticketSeqs: [1, 2, 3] }]} roster={roster} docs={[]} sandbox="docker" defaultModel="claude-sonnet-5-5" onModel={noop} onBulkModel={noop} onCancel={noop} />
-        <p className="mt-4 text-sm text-text-tertiary">
-          {moment.ledger === 'burning'
-            ? 'A running ticket opens its live log here — today’s Run view, folded into Work.'
-            : 'No Go here: the agent asks in the chat, and starts the round when you say yes.'}
-        </p>
-      </div>
-    )
+/** What each view holds, in words. The ticket ledger it drew is retired: see feature-panel.html. */
+function ViewBody({ view }: { view: PanelView; moment: MomentSample }) {
   const today: Record<string, string> = {
     plan: 'The plan preview, with the decisions and the spec one click away inside it.',
-    work: 'Nothing yet: tickets appear here when the agent makes them.',
+    work: 'The one-list Tickets view — drawn in feature-panel.html.',
     review: 'Ready declarations, the review’s findings and evidence — and what shipped, once merged.',
     drive: 'The test drive, while it runs.',
     design: 'The design server, while it runs.',

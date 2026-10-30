@@ -181,11 +181,6 @@ export function latestRoundTickets<T extends { seq: number }>(
   return tickets.filter((t) => seqs.has(t.seq))
 }
 
-/** The round the trail and its figures call a run by, from its id. */
-export function roundNumberOf(rounds: readonly Pick<RoundSummary, 'round' | 'runId'>[], runId: string): number | null {
-  return rounds.find((r) => r.runId === runId)?.round ?? null
-}
-
 // --- what the latest round landed, in prose ---------------------------------
 
 export interface TicketAccount {

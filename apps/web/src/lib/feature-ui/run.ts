@@ -37,31 +37,6 @@ export interface LaneTicketFigure {
   reviewVerdict?: 'verified' | 'unverified' | null
 }
 
-export interface UnrunnableGateFigure {
-  command: string
-  error: string
-}
-
-/** One report per command, even when every ticket encountered the same missing runtime. */
-export function unrunnableGates(
-  events: readonly { type: string; data?: unknown }[],
-): UnrunnableGateFigure[] {
-  const gates = new Map<string, UnrunnableGateFigure>()
-  for (const event of events) {
-    if (
-      event.type !== 'ticket.gate_unrunnable' ||
-      typeof event.data !== 'object' ||
-      event.data === null
-    ) continue
-    const { command, error } = event.data as { command?: unknown; error?: unknown }
-    if (typeof command !== 'string' || typeof error !== 'string') continue
-    if (command.trim() && error.trim() && !gates.has(command.trim())) {
-      gates.set(command.trim(), { command: command.trim(), error: error.trim() })
-    }
-  }
-  return [...gates.values()]
-}
-
 export type LaneState = 'pending' | 'burning' | 'done' | 'failed' | 'stopped' | 'launch-failed' | 'waived'
 
 // Both stops read as stopped, not failed: the human's, and the run halt that
@@ -251,59 +226,7 @@ function toolArgs(text: string): string {
   return flat.length > 300 ? `${flat.slice(0, 300)}…` : flat
 }
 
-// --- how the lanes are grouped and what the feed says about them ------------
-
-/** A ticket as {@link laneBands} orders it. */
-export interface LaneBandTicket {
-  seq: number
-  kind?: string
-  passKind?: string
-  originFindingId?: string
-}
-
-export type LaneBandKind = 'plain' | 'review-fixes' | 'verification'
-
-export interface LaneBand<T> {
-  kind: LaneBandKind
-  /** Header over the band. Absent on `plain`, which is just the run's tickets. */
-  title?: string
-  rows: T[]
-}
-
-/**
- * The run's lanes in bands (decisions #14b, #42b). A run that fixes its own
- * review findings grows mid-flight: the review lane mints fix tickets and the
- * scheduler appends a verification pass behind them. Rendered flat those arrive
- * as unlabelled extra lanes, so they are banded — the fix wave under the review
- * lane that minted it, the verification pass after the wave it verifies.
- *
- * A fix ticket is one carrying an `originFindingId` emitted AFTER the review
- * lane; a promotion from an earlier lap's triage has the same marker but a lower
- * seq, and belongs with the ordinary lanes it burns alongside.
- */
-export function laneBands<T extends LaneBandTicket>(tickets: readonly T[]): LaneBand<T>[] {
-  const ordered = [...tickets].sort((a, b) => a.seq - b.seq)
-  const review = ordered.filter((t) => t.kind === 'review' && t.passKind !== 'verification').at(-1)
-  const verification = ordered.filter((t) => t.kind === 'review' && t.passKind === 'verification')
-  const fixes = review ? ordered.filter((t) => t.originFindingId && t.seq > review.seq) : []
-  const banded = new Set<T>([...verification, ...fixes])
-  const plain = ordered.filter((t) => !banded.has(t))
-  // What the pass verifies: the wave it follows, or — after a batch-promote that
-  // never ran a review of its own — the implementation tickets that landed.
-  const verifying = fixes.length || plain.filter((t) => t.kind !== 'review').length
-
-  const bands: LaneBand<T>[] = []
-  if (plain.length > 0) bands.push({ kind: 'plain', rows: plain })
-  if (fixes.length > 0) bands.push({ kind: 'review-fixes', title: 'Review fixes', rows: fixes })
-  if (verification.length > 0) {
-    bands.push({
-      kind: 'verification',
-      title: `Verifying ${verifying} fixes — recording a fresh walkthrough`,
-      rows: verification,
-    })
-  }
-  return bands
-}
+// --- what the feed says about the lanes ------------------------------------
 
 /** One event as the lane derivations read it. */
 interface LaneEvent {
@@ -338,26 +261,4 @@ export function laneFacts(events: readonly LaneEvent[]): Map<string, LaneFacts> 
     else if (hadOutput) known.hadOutput = true
   }
   return facts
-}
-
-/**
- * The seq the header names when this run is one ticket's retry rather than a
- * whole burn (decision #14c) — `retryTicket` resets only its target (plus that
- * target's failed blockers) and burns again, so a solo retry is a run with
- * exactly one lane still to finish beside lanes that already have.
- *
- * The `ticket.retry` event is what distinguishes it from an ordinary burn's
- * last lane: it is emitted by the retry verb and by nothing else.
- */
-export function soloRetrySeq(
-  tickets: readonly (LaneTicketFigure & { id: string })[],
-  events: readonly LaneEvent[],
-): number | undefined {
-  if (tickets.length < 2) return undefined
-  const unfinished = tickets.filter((t) => ['pending', 'burning'].includes(laneState(t)))
-  if (unfinished.length !== 1) return undefined
-  const retried = events.some(
-    (e) => e.type === 'ticket.retry' && e.ticketId === unfinished[0].id,
-  )
-  return retried ? unfinished[0].seq : undefined
 }
