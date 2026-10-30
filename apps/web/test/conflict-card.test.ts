@@ -2,7 +2,6 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { ConflictCard, ConflictResolvedLine } from '../src/components/review/ConflictCard'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
 import {
   conflictResolveEnded,
@@ -11,75 +10,10 @@ import {
 } from '../src/lib/feature-ui'
 
 /**
- * The alert slot's resident (decisions 30b/30d). Tier 1: everything the card
- * decides is which words and which controls it puts on the page, and the one
- * derivation behind its new state is a pure function tested beside it.
- */
-const conflict = { base: 'main', files: ['index.html', 'src/App.tsx'], at: 1_760_000_000_000 }
-
-const render = (props: Partial<Parameters<typeof ConflictCard>[0]> = {}): string =>
-  renderToStaticMarkup(
-    createElement(ConflictCard, {
-      branch: 'feature/greetings-pages',
-      conflict,
-      readonly: false,
-      liveSessionId: null,
-      resolveEnded: false,
-      busy: false,
-      onResolve: () => undefined,
-      ...props,
-    }),
-  )
-
-describe('ConflictCard', () => {
-  it('states what conflicted, lists the files, and offers the agent', () => {
-    const html = render()
-    expect(html).toContain('Merge conflict')
-    expect(html).toContain('main')
-    expect(html).toContain('feature/greetings-pages')
-    expect(html).toContain('index.html')
-    expect(html).toContain('src/App.tsx')
-    expect(html).toContain('Resolve with agent')
-  })
-
-  /** A red panel with no date reads as "right now" (findings F8). */
-  it('says when the conflict was recorded', () => {
-    expect(render()).toContain('recorded ')
-  })
-
-  /** Decisions #10: the affordance never hides — with a session live it compounds. */
-  it('offers to end a live session on the way in rather than vanishing', () => {
-    const html = render({ liveSessionId: 'ses_1' })
-    expect(html).toContain('End session &amp; resolve')
-    expect(html).toContain('One terminal per feature')
-  })
-
-  /** Decision 33a: a history view never launches an agent. */
-  it('renders nothing at all under readonly', () => {
-    expect(render({ readonly: true })).toBe('')
-  })
-
-  describe('after a resolve session ended without landing the merge (decision 30d)', () => {
-    it('says so, rather than standing unchanged as if the button did nothing', () => {
-      expect(render({ resolveEnded: true })).toContain(
-        'The resolve session ended but the merge hasn’t landed — resolve by hand or retry.',
-      )
-    })
-
-    it('keeps Resolve with agent as the primary — retry lives on the bar', () => {
-      const html = render({ resolveEnded: true })
-      expect(html).toContain('Resolve with agent')
-      expect(html).not.toContain('Retry')
-    })
-
-    it('says nothing of the sort while no resolve has been attempted', () => {
-      expect(render()).not.toContain('resolve by hand or retry')
-    })
-  })
-})
-
-/**
- * The derivation behind that state. There is no negative event to look for —
+ * The derivations behind the merge conflict's standing row on the chat's
+ * notice strip (decisions 30b/30d; the-feature-s-right-panel decision 21).
+ *
+ * Whether a resolve session ended without landing. There is no negative event to look for —
  * `merge.resolved` is emitted only when the server's best-effort probe sees the
  * merge landed — so the fact is "a resolve-conflict session ended and no
  * resolution followed".
@@ -133,19 +67,6 @@ describe('conflictResolveEnded', () => {
   it('is false after a burn, which retires the conflict the resolve was for', () => {
     const burn = event(3, 'burn.started')
     expect(conflictResolveEnded([conflicted, resolveEnded, burn], sessions)).toBe(false)
-  })
-})
-
-/** What the card steps down to once git says the conflict is resolved. */
-describe('ConflictResolvedLine', () => {
-  it('reads as one short line with nothing to click', () => {
-    const html = renderToStaticMarkup(createElement(ConflictResolvedLine, { readonly: false }))
-    expect(html).toContain('Conflict resolved — ready to merge')
-    expect(html).not.toContain('<button')
-  })
-
-  it('renders nothing under readonly', () => {
-    expect(renderToStaticMarkup(createElement(ConflictResolvedLine, { readonly: true }))).toBe('')
   })
 })
 

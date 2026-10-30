@@ -202,7 +202,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `List` | `divided`, `label`, `className`, children. | `divided` rules rows with `border-subtle`. |
 | `PropertyList` | `items: { label, value, sub?, leading? \| tone? \| phase?, mono? }[]`. | Two quiet columns. |
 | `MetaLine` | `items: ({ text?, strong?, tone? \| icon? \| phase?, mono?, title? } \| false \| null)[]`. | One line of 2–4 facts. |
-| `Tabs` | `items: { id, label, icon?, count?, disabled?, panelId? }[]`, `value`, `onChange`, `size` `sm` · `md`, `label`. | ARIA tablist, roving tabindex, ←/→/Home/End. |
+| `Tabs` | `items: { id, label, icon?, count?, disabled?, panelId?, tooltip? }[]`, `value`, `onChange`, `size` `sm` · `md`, `label`. | ARIA tablist, roving tabindex, ←/→/Home/End. `tooltip` names a tab whose word can hide (the panel's icon-only tabs); the label stays its accessible name. |
 | `Disclosure` | `title`, `icon`, `aside`, `defaultOpen`, `bare`, `size` `md` · `sm`, `index` / `animate` (entrance stagger), `onToggle`, `className`, `bodyClassName`, children. | Closed by default; animated height; rotating chevron. `md`: a 40px section row with a rule above. `sm`: a compact 12px line (tool calls, "What the engine reported", a defect's detail), no rule, the title wraps. |
 | `SegmentedControl` | `items: { value, label, icon?, disabled? }[]`, `value`, `onChange`, `label` (the group's name), `size` `sm` · `md`, `id`, `className`. | One of a few values, all visible (Theme). A radio group: roving tabindex, arrows / Home / End move *and* choose; the raised thumb slides. |
 | `Checkbox` | `checked`, `onChange(checked)`, `label`, `disabled`, `size` `sm` · `md`, `id`, `aria-label`, `className`. | A native checkbox on the tokens (`border-strong` box; `primary` fill + check when on); the label toggles it. No raw `type="checkbox"` elsewhere. |
@@ -235,7 +235,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
 
 **Other**: `DimLine`, `FailureNote` (`danger-subtle` notice about a path),
-`BranchMenu`, `RoundSections`, `NoteThumbnail`, `BARE_BUTTON`.
+`BranchMenu`, `NoteThumbnail`, `BARE_BUTTON`.
 
 ### Dialog
 
@@ -321,7 +321,17 @@ the phase-body dispatch and the action switch; these moved out:
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
-| `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's view switcher, the folded strip, the topbar's view buttons, and `usePanel` (the size remembered per browser). The pure model is `lib/feature-ui/panel.ts`. |
+| `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's views as `Tabs` (an inactive tab's word hides under ~520px of panel, its `tooltip` naming it), the folded strip, the header's panel toggle, and `usePanel` (the size remembered per browser; the open doc, dropped once another view shows). The pure model is `lib/feature-ui/panel.ts`. |
+| `PanelViewBar.tsx` | The 40px bar atop a view with parts of its own: small `Tabs` or a way back on the left, facts and actions on the right. Plan's Preview · Decisions · Spec and the doc reader's "← view" use it; no view adds a second row of tabs. |
+
+The views themselves are panel columns (24px sides, no repeated feature title), not pages:
+
+| File | What it is |
+|---|---|
+| `components/DocReader.tsx` | `DocReader`: a feature doc read in place of the view it was opened from (`panel.state.doc`), its bar "← view" › title and open full window, then the path and age line and `DocProse` at the reading width. `ProseSkeleton` is a doc's first read. Docs never open in a dialog of their own. |
+| `components/bodies/PlanBody.tsx` | Plan: one `PanelViewBar` of Preview, Decisions and Spec; `PreviewPanel` fills the rest edge to edge, the docs read as `DocProse`. |
+| `components/bodies/tickets/TicketsView.tsx` | Tickets: one list, earlier rounds folded to a line each, the current round's tickets as the sidebar's two-line row that opens in place to a card. Its "…" holds the list's controls and the feature's docs. |
+| `components/inspector/Inspector.tsx` | `DetailsView`: one column — `FeatureFacts`, the docs (`Knowledge`, by title and age), Activity closed. |
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
 | `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice strip on its composer. A main chat nobody started is an empty thread whose first message starts it. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |

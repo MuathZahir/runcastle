@@ -196,7 +196,6 @@ describe('the chat-first feature page', () => {
   it('never shows a view the feature’s facts do not offer, whatever the address says', () => {
     expect(page({ view: 'drive' })).not.toContain('data-panel')
     expect(page({ view: 'work' })).not.toContain('data-panel')
-    expect(page({ view: 'review' })).not.toContain('data-panel')
     expect(page({ view: 'plan' })).not.toContain('data-panel')
   })
 
@@ -209,7 +208,7 @@ describe('the chat-first feature page', () => {
   })
 
   it('makes no call to Go, its warnings, the human’s burn or the agentic review', () => {
-    page({ tickets: [ticket(1)], queries: READY, view: 'review' })
+    page({ tickets: [ticket(1)], queries: READY, view: 'details' })
     page({ tickets: [ticket(1)], view: 'work' })
     for (const retired of ['feature.go', 'feature.goWarnings', 'feature.burn', 'feature.agenticReview']) {
       expect(store.touched.has(retired)).toBe(false)
@@ -218,18 +217,33 @@ describe('the chat-first feature page', () => {
 })
 
 describe('the panel’s views', () => {
-  it('shows the plan preview in Plan, with decisions.md and spec.md one click away', () => {
-    const panel = panelOf(page({ view: 'plan', preview: true, docs: [doc('brief.md'), doc('decisions.md'), doc('spec.md')] }))
-    expect(panel).toContain('Preview')
-    expect(panel).toContain('decisions.md</span></button>')
-    expect(panel).toContain('spec.md</span></button>')
-    expect(panel).not.toContain('brief.md</span></button>')
+  it('switches the views by tabs in the panel’s header, Review never among them', () => {
+    const panel = panelOf(page({ view: 'plan', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('spec.md')] }))
+    const views = panel.slice(at(panel, 'aria-label="Panel views"'), at(panel, 'aria-label="Fold the panel"'))
+    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(3)
+    expect(views).toContain('Tickets')
+    expect(views).toContain('Details')
+    expect(views).not.toContain('Review')
   })
 
-  it('shows the decisions in Plan before a preview exists, with the docs menu', () => {
+  it('shows the plan preview in Plan, with Decisions and Spec as tabs beside it and no repeated title', () => {
+    const docs = [doc('brief.md'), doc('decisions.md'), doc('spec.md')]
+    const panel = panelOf(page({ view: 'plan', preview: true, docs, queries: { 'docs.read': { content: '<p>the show</p>' } } }))
+    const bar = panel.slice(at(panel, 'role="tablist" aria-label="Plan"'))
+    expect(bar).toContain('Preview</button>')
+    expect(bar).toContain('Decisions</button>')
+    expect(bar).toContain('Spec</button>')
+    expect(bar).not.toContain('brief.md')
+    expect(panel).toContain('<iframe')
+    expect(panel).not.toContain('<h1')
+  })
+
+  it('reads the decisions in Plan before a preview exists, in the panel and not a dialog', () => {
     const panel = panelOf(page({ view: 'plan', docs: [doc('decisions.md')] }))
-    expect(panel).toContain('Decisions so far')
-    expect(panel).toContain('aria-label="Docs — showing decisions.md"')
+    expect(panel).not.toContain('Preview</button>')
+    expect(panel).toContain('Decisions</button>')
+    expect(panel).not.toContain('role="dialog"')
+    expect(panel).not.toContain('<iframe')
   })
 
   it('shows the ticket ledger in Work, with no Go above it', () => {
@@ -238,26 +252,6 @@ describe('the panel’s views', () => {
     expect(panel).toContain('Ticket 1')
     expect(panel).not.toMatch(/>Go</)
     expect(panel).not.toContain('Go anyway')
-  })
-
-  it('puts the run’s lanes above the ledger in Work while a run exists', () => {
-    const runs = [{ id: 'run_1', featureId: 'f1', workflow: 'ticket-burner', status: 'running', startedAt: 1 }] as FeatureFull['runs']
-    const withRun = panelOf(page({ view: 'work', tickets: [ticket(1)], runs }))
-    const without = panelOf(page({ view: 'work', tickets: [ticket(1)] }))
-    expect(withRun.length).toBeGreaterThan(without.length)
-    expect(at(withRun, 'aria-label="Tickets"')).toBeGreaterThan(at(without, 'aria-label="Tickets"'))
-  })
-
-  it('shows the review in Review, with no Agentic review button', () => {
-    const panel = panelOf(page({ view: 'review', tickets: [ticket(1)], queries: READY }))
-    expect(panel).toContain('data-tier="work"')
-    expect(panel).not.toContain('Agentic review')
-  })
-
-  it('shows what shipped in Review once merged', () => {
-    const panel = panelOf(page({ view: 'review', status: 'shipped' }))
-    expect(panel).toContain('data-tier="status"')
-    expect(panel).not.toContain('Agentic review')
   })
 })
 
@@ -287,6 +281,16 @@ describe('what opens the panel', () => {
       options.onSuccess?.({ ok: true, files: [], confirmed: true }, { featureId: 'f1' })
     }
     expect(onViewChange).not.toHaveBeenCalled()
+  })
+
+  // the-feature-s-right-panel decision 20: Review was the one place to write notes.
+  it('says a merged feature’s Details was merged, with its time', () => {
+    const shipped = { id: 1, projectId: 'p1', featureId: 'f1', ts: Date.now() - 3 * 3_600_000, type: 'feature.shipped', message: 'shipped' } as EventRow
+    setup({ status: 'shipped', queries: { 'events.list': [shipped] } })
+    const view = render(workspace({ view: 'details' }))
+    const facts = view.container.querySelector('[data-panel]')?.textContent ?? ''
+    expect(facts).toContain('Merged')
+    expect(facts).toContain('3h ago')
   })
 
   it('opens Work on the panel.show emit_tickets raises, even before the refetched feature has the tickets', () => {

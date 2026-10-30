@@ -10,7 +10,7 @@ import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/
 import { useToast } from '../lib/toast'
 import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
-import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
+import { projectViewLabel, panelTabs, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from './chat/ThreadColumn'
 import { ConversationList } from './project/ConversationList'
@@ -158,6 +158,7 @@ export function ProjectWorkspace({
   const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
   const wanted = picked === undefined ? (resting && openNotes > 0 ? 'details' : null) : picked
   const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
+  const tabs = panelTabs(views)
   const shown = panel.state.view
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
@@ -326,9 +327,9 @@ export function ProjectWorkspace({
             )}
             <PanelToggle
               open={!!shown}
-              views={views}
+              views={tabs}
               badge={openNotes}
-              onToggle={() => panel.dispatch({ type: 'toggle', views })}
+              onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
             />
           </>
         }
@@ -366,7 +367,7 @@ export function ProjectWorkspace({
             shown !== 'drive' && (
               <FeaturePanel
                 view={shown}
-                views={views}
+                views={tabs}
                 label={projectViewLabel}
                 onSwitch={(view) => panel.dispatch({ type: 'switch', view })}
                 onCollapse={() => panel.dispatch({ type: 'collapse' })}

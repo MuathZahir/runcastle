@@ -119,7 +119,7 @@ describe('noticeFor', () => {
       title: 'Review ready',
       subtitle: 'Agentic review — lap 1',
       actionLabel: 'View review',
-      target: 'review',
+      target: 'work',
     })
   })
 

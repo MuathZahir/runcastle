@@ -4,18 +4,19 @@ import { relTimeAgo } from '../lib/format'
 import { PREVIEW_ESCAPE_MESSAGE, PREVIEW_SANDBOX, openDesignPath, previewDocument } from '../lib/preview-frame'
 import { useTheme } from '../lib/theme'
 import { useFeatureDoc } from '../lib/use-feature-doc'
-import { IconExpand, IconX } from '../icons'
-import { Dialog, DimLine, IconButton, PageSection, Skeleton, SkeletonBar, cx } from '../ui'
+import { IconX } from '../icons'
+import { Dialog, DimLine, IconButton, Skeleton, SkeletonBar, cx } from '../ui'
 
 /**
  * The plan preview (plan-preview decisions 6, 7, 9): the feature's
- * `preview.html`, led by its written time and a control that opens it full
- * window, in a frame that runs the file's scripts and allows nothing else.
- * The caller renders it only when the feature has a preview — a feature with
- * none shows no panel and no placeholder.
+ * `preview.html` in a frame that runs the file's scripts and allows nothing
+ * else. It fills the Plan view under its bar, edge to edge, with one scrollbar,
+ * its own (the-feature-s-right-panel decision 5); `fullWindow` lays the same
+ * page over the whole window. The caller renders it only when the feature has a
+ * preview.
  *
  * It refreshes through the shared `docs.read` key, which every pushed event
- * already invalidates; `live={false}` (the read-only Planning view) reads once.
+ * already invalidates; `live={false}` reads once.
  *
  * A designed screen's Open in design button (design-mode decision 7) posts out
  * of the frame; `onOpenDesign` receives its path.
@@ -24,33 +25,30 @@ export function PreviewPanel({
   featureId,
   preview,
   live = true,
+  fullWindow = false,
+  onFullWindow = () => {},
   onOpenDesign,
 }: {
   featureId: string
   preview: NonNullable<FeatureFull['preview']>
   live?: boolean
+  fullWindow?: boolean
+  onFullWindow?: (open: boolean) => void
   onOpenDesign?: (path: string) => void
 }) {
   const doc = useFeatureDoc(featureId, preview.relPath, { live })
   const { resolved } = useTheme()
-  const [fullWindow, setFullWindow] = useState(false)
   const srcDoc = doc.content === undefined ? undefined : previewDocument(doc.content, resolved)
   const updated = preview.updatedAt === undefined ? null : `updated ${relTimeAgo(preview.updatedAt)}`
 
   return (
-    <PageSection
-      title="Preview"
-      action={
-        <>
-          {updated && <span className="mr-1 text-xs text-text-tertiary">{updated}</span>}
-          <IconButton label="Open full window" icon={<IconExpand />} onClick={() => setFullWindow(true)} />
-        </>
-      }
-    >
+    <>
       {doc.failed ? (
-        <DimLine>Could not read {preview.relPath}.</DimLine>
+        <div className="px-6 pt-4">
+          <DimLine>Could not read {preview.relPath}.</DimLine>
+        </div>
       ) : srcDoc === undefined ? (
-        <Skeleton label="Loading the preview" className="h-[60vh] min-h-[360px] rounded-lg border border-border p-4">
+        <Skeleton label="Loading the preview" className="min-h-0 flex-1 px-6 pt-6">
           <SkeletonBar className="h-4 w-1/2" />
           <SkeletonBar className="mt-3 h-3 w-2/3" />
         </Skeleton>
@@ -58,12 +56,12 @@ export function PreviewPanel({
         <PreviewFrame
           srcDoc={srcDoc}
           onOpenDesign={onOpenDesign}
-          className="h-[60vh] min-h-[360px] w-full rounded-lg border border-border"
+          className="min-h-0 w-full flex-1 border-t border-border-subtle"
         />
       )}
       <Dialog
         open={fullWindow}
-        onClose={() => setFullWindow(false)}
+        onClose={() => onFullWindow(false)}
         labelledBy="preview-full-title"
         size="full"
         className="flex h-[86vh] flex-col overflow-hidden"
@@ -73,16 +71,16 @@ export function PreviewPanel({
             Preview
           </h2>
           <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{updated}</span>
-          <IconButton label="Close" size="sm" icon={<IconX />} onClick={() => setFullWindow(false)} />
+          <IconButton label="Close" size="sm" icon={<IconX />} onClick={() => onFullWindow(false)} />
         </div>
         {srcDoc !== undefined && (
           <PreviewFrame
             srcDoc={srcDoc}
-            onEscape={() => setFullWindow(false)}
+            onEscape={() => onFullWindow(false)}
             onOpenDesign={
               onOpenDesign &&
               ((path) => {
-                setFullWindow(false)
+                onFullWindow(false)
                 onOpenDesign(path)
               })
             }
@@ -90,7 +88,7 @@ export function PreviewPanel({
           />
         )}
       </Dialog>
-    </PageSection>
+    </>
   )
 }
 

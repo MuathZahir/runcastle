@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { activityLine, eventLabel, eventLevel, isLapDivider, stripMarkdown } from '../src/lib/activity'
+import { activityLine, eventLabel, eventLevel, eventWarns, isLapDivider, stripMarkdown } from '../src/lib/activity'
 
 /**
  * Findings F10.5 / F18 — the activity feed leaked agent internals (`Bash cd
@@ -274,5 +274,14 @@ describe('a self-planning run ending', () => {
   it('is labelled as a self-planning run, not by its slug', () => {
     expect(eventLabel('session.self_plan_ended')).toBe('self-planning run')
     expect(eventLabel('session.pty_exited')).toBe('session · pty exited')
+  })
+})
+
+describe('eventWarns', () => {
+  it('flags an oversized payload and a warning payload, nothing else', () => {
+    expect(eventWarns({ data: { warning: true } })).toBe(true)
+    expect(eventWarns({ data: { oversized: true } })).toBe(true)
+    expect(eventWarns({ data: { warning: false, bytes: 1 } })).toBe(false)
+    expect(eventWarns({ data: undefined })).toBe(false)
   })
 })

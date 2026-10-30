@@ -30,7 +30,6 @@ vi.mock('../src/lib/live', () => ({ useLivePoll: () => false, useLiveStatus: () 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
 
 const { PlanBody } = await import('../src/components/bodies/PlanBody')
-const { GrillBody } = await import('../src/components/bodies/grill/GrillBody')
 
 const feature = { id: 'f1', projectId: 'p1', slug: 'x', title: 'X', status: 'active' } as Feature
 
@@ -59,25 +58,35 @@ const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(elemen
 const plan = (full: FeatureFull) => markup(createElement(PlanBody, { full, onOpenDesign: () => undefined }))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
 
+/** The bar's tabs, in order, the selected one marked `*`. */
+function tabs(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*role="tab" aria-selected="(true|false)"[^>]*>(.*?)<\/button>/g)].map(
+    ([, selected, inner]) => `${(inner ?? '').replace(/<[^>]+>/g, '')}${selected === 'true' ? '*' : ''}`,
+  )
+}
+
 /**
- * tickets-and-review-are-tools-not-phases decision 8: the Plan view leads with
- * the plan preview, the decisions and the spec one click away inside it; with
- * no preview yet, it is the decisions or the spec themselves.
+ * the-feature-s-right-panel decisions 5, 6: the plan is three documents, so
+ * the Plan view is one bar of tabs — Preview once one exists, then Decisions
+ * and Spec — and the part on show fills the rest, never a doc in a dialog.
  */
 describe('the Plan view', () => {
-  it('leads with the preview once one exists, the plan docs one click away above it', () => {
+  it('leads with the preview once one exists, the decisions and the spec tabs beside it', () => {
     const html = plan(fullWith({ preview: PREVIEW, docs: ['brief.md', 'decisions.md', 'spec.md'] }))
+    expect(tabs(html)).toEqual(['Preview*', 'Decisions', 'Spec'])
     expect(html).toContain('<iframe')
-    expect(html).toContain('decisions.md</span></button>')
-    expect(html).toContain('spec.md</span></button>')
-    expect(html).not.toContain('brief.md</span></button>')
-    expect(html.indexOf('spec.md</span></button>')).toBeLessThan(html.indexOf('<iframe'))
+    expect(html).not.toContain('role="dialog"')
   })
 
-  it('is the decisions or spec pane, exactly, before a preview exists', () => {
-    const grill = fullWith()
-    expect(plan(grill)).toBe(markup(createElement(GrillBody, { full: grill })))
-    expect(plan(grill)).not.toContain('<iframe')
+  it('has no Preview tab before a preview exists, and reads the decisions as prose', () => {
+    const html = plan(fullWith())
+    expect(tabs(html)).toEqual(['Decisions*', 'Spec'])
+    expect(html).not.toContain('<iframe')
+    expect(html).toContain('>Decisions</h1>')
+  })
+
+  it('leads with the spec once it is written and no preview exists', () => {
+    expect(tabs(plan(fullWith({ docs: ['decisions.md', 'spec.md'] })))).toEqual(['Decisions', 'Spec*'])
   })
 })
 

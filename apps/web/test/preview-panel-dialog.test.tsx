@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { FeatureFull } from '../src/lib/api'
 
 vi.mock('../src/trpc', () => ({
   trpc: { docs: { read: { useQuery: () => ({ data: { content: '<!doctype html><p>the show</p>' }, isLoading: false, error: null }) } } },
@@ -8,13 +9,27 @@ vi.mock('../src/trpc', () => ({
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
 
 const { PreviewPanel } = await import('../src/components/PreviewPanel')
+const { PlanBody } = await import('../src/components/bodies/PlanBody')
 
-/** plan-preview decision 6: one control opens the preview full window. Tier 2 — the dialog portals and Escape reads focus. */
+const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() }
+/** The Plan view on a feature with a preview: its bar holds the open-full-window button. */
+const plan = (onOpenDesign: (path: string) => void = () => undefined) =>
+  render(
+    <PlanBody
+      full={{ feature: { id: 'f1' }, docs: [{ relPath: 'decisions.md', title: 'Decisions' }], preview: PREVIEW } as unknown as FeatureFull}
+      onOpenDesign={onOpenDesign}
+    />,
+  )
+
+/**
+ * plan-preview decision 6: one control on the Plan view's bar opens the
+ * preview full window. Tier 2 — the dialog portals and Escape reads focus.
+ */
 describe('PreviewPanel full window', () => {
   afterEach(cleanup)
 
   it('opens a dialog holding the same locked-down frame, and Escape closes it', () => {
-    render(<PreviewPanel featureId="f1" preview={{ relPath: 'preview.html', updatedAt: Date.now() }} />)
+    plan()
     expect(screen.queryByRole('dialog')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
@@ -28,7 +43,7 @@ describe('PreviewPanel full window', () => {
   })
 
   it('closes on Escape pressed inside the frame, heard only from that frame', () => {
-    render(<PreviewPanel featureId="f1" preview={{ relPath: 'preview.html', updatedAt: Date.now() }} />)
+    plan()
     fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
     const frame = screen.getByRole('dialog').querySelector('iframe')!
     expect(frame.contentWindow).not.toBeNull()
@@ -80,13 +95,7 @@ describe('PreviewPanel Open in design', () => {
 
   it('closes the full window as it opens the design view from there', () => {
     const onOpenDesign = vi.fn()
-    render(
-      <PreviewPanel
-        featureId="f1"
-        preview={{ relPath: 'preview.html', updatedAt: Date.now() }}
-        onOpenDesign={onOpenDesign}
-      />,
-    )
+    plan(onOpenDesign)
     fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
     const frame = screen.getByRole('dialog').querySelector('iframe')!
 

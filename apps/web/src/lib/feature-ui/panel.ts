@@ -7,23 +7,27 @@
  */
 
 /**
- * What the panel can show, one at a time: four fixed views — Plan, Work,
- * Review, Details — and Design and Drive while they run
- * (tickets-and-review-are-tools-not-phases decision 8).
+ * What the panel can show, one at a time: three fixed views — Plan, Tickets
+ * (`work`), Details — and Design and Drive while they run
+ * (the-feature-s-right-panel decisions 14, 17).
  */
-export type PanelView = 'plan' | 'work' | 'review' | 'details' | 'design' | 'drive'
+export type PanelView = 'plan' | 'work' | 'details' | 'design' | 'drive'
 
 /** Every view, in the order the switcher and the topbar list them. */
-export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'review', 'details', 'design', 'drive']
+export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'details', 'design', 'drive']
 
 export function isPanelView(value: string): value is PanelView {
   return (PANEL_VIEWS as readonly string[]).includes(value)
 }
 
-/** The retired views' names, and the fixed view each became: the phase body's tickets, the plan preview. */
-const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan' }
+/**
+ * The retired views' names, and the fixed view each became: the phase body's
+ * tickets, the plan preview, and Review, whose findings are the review
+ * ticket's row now (the-feature-s-right-panel decision 15).
+ */
+const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan', review: 'work' }
 
-/** A view name read from an address or an event, the retired `body` and `preview` mapped onto Work and Plan. */
+/** A view name read from an address or an event, the retired `body`, `preview` and `review` mapped onto Tickets and Plan. */
 export function panelViewOf(value: string): PanelView | null {
   return isPanelView(value) ? value : (RETIRED_VIEWS[value] ?? null)
 }
@@ -47,8 +51,6 @@ export interface PanelFacts {
   hasPlan: boolean
   /** The feature has any ticket. */
   hasTickets: boolean
-  /** Any ready declaration, or any review ticket that ran. */
-  hasReview: boolean
   shipped: boolean
   /** A design server runs for the feature. */
   designRunning: boolean
@@ -64,15 +66,9 @@ export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: str
   return !!full.preview || full.docs.some((doc) => PLAN_DOCS.some((name) => doc.relPath.endsWith(name)))
 }
 
-/** Whether any review ticket has run — started, landed or failed. */
-export function reviewRan(tickets: readonly { kind?: string; status: string }[]): boolean {
-  return tickets.some((ticket) => ticket.kind === 'review' && ticket.status !== 'pending' && ticket.status !== 'cancelled')
-}
-
 /**
  * The views a feature offers right now, each once it has something to show:
- * Plan once there is a plan to read, Work once there is a ticket, Review once
- * the agent declared ready, a review ran or the feature shipped, Details
+ * Plan once there is a plan to read, Tickets once there is a ticket, Details
  * always, and Design and Drive only while they run.
  */
 export function availableViews(facts: PanelFacts): PanelView[] {
@@ -80,12 +76,21 @@ export function availableViews(facts: PanelFacts): PanelView[] {
   const offered: Record<PanelView, boolean> = {
     plan: facts.hasPlan,
     work: facts.hasTickets,
-    review: facts.hasReview || facts.shipped,
     details: true,
     design: facts.designRunning,
     drive: facts.driveActive,
   }
   return PANEL_VIEWS.filter((view) => offered[view])
+}
+
+/**
+ * The views the panel's own tabs and toggle deal in. A drive is the page, not
+ * something the panel shows (test-drive-looks-the-part): it stays among the
+ * offered views so the shell can stand on it, but it is entered from the
+ * header, the sidebar's drive card or Test drive, never from a tab.
+ */
+export function panelTabs(views: readonly PanelView[]): PanelView[] {
+  return views.filter((view) => view !== 'drive')
 }
 
 /**
@@ -134,8 +139,7 @@ export function panelShowRequest(
 
 export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
   plan: 'Plan',
-  work: 'Work',
-  review: 'Review',
+  work: 'Tickets',
   design: 'Design',
   drive: 'Drive',
   details: 'Details',
@@ -155,6 +159,11 @@ export interface PanelState {
   collapsed: boolean
   /** The view last on show — where the header's panel toggle reopens it (decision 12). */
   last?: PanelView
+  /**
+   * The feature doc (a relPath) read in place of the open view's body
+   * (the-feature-s-right-panel decision 7); its way back is that view.
+   */
+  doc?: string
 }
 
 /** Where a fresh browser starts: an even split. */
@@ -179,6 +188,10 @@ export type PanelAction =
    * at its last view — the first of `views` when that one is not offered now.
    */
   | { type: 'toggle'; views: readonly PanelView[] }
+  /** Read a doc in the open view (decision 7): it unfolds a folded panel, since the click asked to see it. */
+  | { type: 'openDoc'; doc: string }
+  /** The reader's way back: the open view's own body again. */
+  | { type: 'closeDoc' }
 
 /** A share inside 0..1; anything non-finite reads as the even split. */
 export function clampShare(share: number): number {
@@ -204,9 +217,10 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
     case 'follow':
       return withView(state, FOLLOWS[action.click], 'runcastle')
     case 'switch':
-      return withView(state, action.view, 'human')
+      // Even the open view's own tab: the click asks for the view, not the doc.
+      return withView(withoutDoc(state), action.view, 'human')
     case 'close': {
-      const { path: _path, width: _width, origin: _origin, ...rest } = state
+      const { path: _path, width: _width, origin: _origin, doc: _doc, ...rest } = state
       // The view the shell opened (the address bar, the palette) counts as last too.
       const last = state.view ?? state.last
       return { ...rest, view: null, collapsed: false, ...(last ? { last } : {}) }
@@ -224,17 +238,26 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       const view = state.last && action.views.includes(state.last) ? state.last : action.views[0]
       return view ? withView(state, view, 'human') : state
     }
+    case 'openDoc':
+      return state.view ? { ...state, doc: action.doc, collapsed: false } : state
+    case 'closeDoc':
+      return withoutDoc(state)
   }
+}
+
+function withoutDoc(state: PanelState): PanelState {
+  const { doc: _doc, ...rest } = state
+  return rest
 }
 
 /**
  * The design path outlives a switch to another view, so coming back to design
  * — by the switcher or the topbar — lands where it was; only a new design
- * path replaces it.
+ * path replaces it. An open doc belongs to its view, so another view drops it.
  */
 function withView(state: PanelState, view: PanelView, origin: PanelOrigin, path?: string): PanelState {
   return {
-    ...state,
+    ...(view === state.view ? state : withoutDoc(state)),
     view,
     last: view,
     origin,

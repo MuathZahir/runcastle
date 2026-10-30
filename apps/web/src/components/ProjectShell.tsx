@@ -10,6 +10,7 @@ import { workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
   insideProject,
+  addressedView,
   featureViewOf,
   locationFor,
   parsePath,
@@ -162,10 +163,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
-      // A view in the address wins; a bare feature path restores the remembered
-      // one — which, after a reload, is the view the path was showing anyway.
+      // A view in the address wins, Work included when the address names it; a
+      // bare feature path restores the remembered one — which, after a reload,
+      // is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
-      if (named) openFeature(named.id, addressed.view)
+      if (named) openFeature(named.id, addressedView(addressed))
       else openFeature(landingFeature(features)?.id ?? null)
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)

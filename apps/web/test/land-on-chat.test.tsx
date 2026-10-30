@@ -184,7 +184,7 @@ describe('every launch site lands', () => {
     const sites = files(SRC).filter((f) => LAUNCH.test(readFileSync(f, 'utf8')))
     expect(sites.map(rel).sort()).toEqual([
       'components/Workspace.tsx',
-      'components/bodies/RunBody.tsx',
+      'components/bodies/tickets/TicketsView.tsx',
       'components/review/drive-parts.tsx',
       'lib/use-resolve-conflict.ts',
     ])
