@@ -16,7 +16,7 @@ const SIDE_HINT = 'A fresh conversation on this feature, beside the feature chat
  * thread in front — the main chat, a side thread or a scenario chat — through
  * `ThreadColumn`. Opening it never launches anything; a main chat nobody has
  * started is an empty thread whose first message starts it (`start`, the
- * feature's chat launch). The notice deck floats over it while it is in view.
+ * feature's chat launch). The notice strip sits on its composer while it is in view.
  * Its thread list is the sidebar's, under the feature's row (threads-in-the-sidebar).
  */
 export function FeatureChat({
@@ -30,7 +30,7 @@ export function FeatureChat({
 }: {
   full: FeatureFull
   column: FeatureChatColumn
-  /** The feature's event log, which feeds the notice deck over the chat. */
+  /** The feature's event log, which feeds the notice strip on the composer. */
   events: readonly EventRow[]
   /** The page's dismissible notices, at the top of the column (a failed resume, a drive's prerequisites). */
   alerts?: ReactNode

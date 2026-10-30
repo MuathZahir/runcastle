@@ -225,7 +225,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | Primitive | Props | Notes |
 |---|---|---|
 | `PageTopbar` | `crumbs` (`Crumb[]`) or `leading`; `tabs`; `actions`. | 44px, `border-subtle` under it. |
-| `Crumbs` | `items: { label, icon?, onClick?, href?, mono? }[]`. | Last item is the current page. |
+| `Crumbs` | `items: { label, icon?, onClick?, href?, mono? }[]`; `trail`. | Last item is the current page. With `trail` (also on `PageTopbar`) the last item is a quiet part of the one before it: the thread after its feature. |
 | `Page` | `width` `default` 760 · `wide` 1040; `routeKey`; `className`; children. | The scrolling, centred column; rises in once per `routeKey`. |
 | `PageHeader` | `title`, `meta` (MetaLine items or a node), `actions`, children. | Title once, 22/28. |
 | `PageSection` | `title`, `action`, `id`, `className`, children. | 16/24 heading; separated by 40px of air. |
@@ -333,18 +333,18 @@ The views themselves are panel columns (24px sides, no repeated feature title), 
 | `components/bodies/tickets/TicketsView.tsx` | Tickets: one list, earlier rounds folded to a line each, the current round's tickets as the sidebar's two-line row that opens in place to a card. Its "…" holds the list's controls and the feature's docs. |
 | `components/inspector/Inspector.tsx` | `DetailsView`: one column — `FeatureFacts`, the docs (`Knowledge`, by title and age), Activity closed. |
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
-| `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice deck floating over it. A main chat nobody started is an empty thread whose first message starts it. |
+| `FeatureChat.tsx` | The page's chat column: the thread in front (the main chat, a side thread or a scenario chat) through `ThreadColumn`, the notice strip on its composer. A main chat nobody started is an empty thread whose first message starts it. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 
 Every agent conversation — each feature's chat, side threads, scenario and Fix-it
 chats, the project's chats and the preparation chat — is a thread rendered by
 `src/components/chat/ThreadColumn.tsx`: the approved components in
-`src/components/chat/thread/` (reference: `preview/chat.html`) wired to the
+`src/components/chat/thread/` (reference: `preview/chat.html`; their containers
+take one of the three materials in `thread/surfaces.ts`) wired to the
 `thread` API by `src/lib/use-thread.ts`, which folds the thread's log with core's
 `foldThread` and reads only what follows its cursor on a `thread` live signal.
-Wiring connects those components; it never restyles them. The header's
-`ThreadSwitcher` lists every thread of the page, and renames or exports the one in
-front through `useThreadMenu`. xterm (`TerminalView`) is left
+Wiring connects those components; it never restyles them. The sidebar lists every
+thread of the page; the header only names the one in front. xterm (`TerminalView`) is left
 only for program output: the design server, the drive's dev pane and the
 Settings AFK terminals. No phase body holds a terminal.
 

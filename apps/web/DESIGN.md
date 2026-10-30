@@ -155,11 +155,10 @@ document, under **one header row**:
 ```
 
 - **The header row** is the topbar and nothing else: the phase glyph and the
-  title, then the status line as quiet text (a dot, "Planning with you",
+  title, the thread in front in quieter type, then the status line as quiet text (a dot, "Planning with you",
   "Working · Round 3", "Ready for you · Test drive ▸ …") — it replaces the
-  stepper and the next-step sentence on this page. On the right: the
-  **session switcher**, at most **one** action button, "…", and the panel
-  toggle. The one button is the status's primary (Start test drive, Stop
+  stepper and the next-step sentence on this page. On the right: at most
+  **one** action button, "…", and the panel toggle. The one button is the status's primary (Start test drive, Stop
   drive, Stop) or, with none, Merge & ship when the next step offers it;
   every other action waits in "…", a disabled one with its reason as its
   title. No feature strip, no stepper row, no button per panel view, no tabs
@@ -170,17 +169,34 @@ document, under **one header row**:
   and "Go anyway…" — only for an unfinished plan — is a small link under
   that reason. Uncommitted design work has no way past.
 - **The chat** fills the content panel below the header, and stays the same
-  element whatever the panel does. It has no header row of its own: the
-  **session switcher** (decision 9) in the page header names it and lists the
-  feature chat and the scenario chat while a drive errand (New scenario,
-  Fix it) is live. Its menu holds what a chat header would: End session, the
-  "one transcript per feature" note, and a scenario chat's errand and close.
-  An errand's open brings its chat to the front; picking the feature chat or
-  closing the errand goes back. Every live terminal stays mounted behind the
-  one in front. Notices (a failed resume, a drive's missing prerequisites,
-  what to test) sit atop the chat, never as another bar. The drive keeps the
-  whole panel — no chat docks inside it, and the review body only points at
-  a live drive.
+  element whatever the panel does. It has no header row of its own: the page
+  header names the thread in front, quieter than the feature's title, and the
+  sidebar lists the threads. An errand's open brings its chat to the front;
+  picking the feature chat or closing the errand goes back. Alerts about the
+  page (a failed resume, a drive's missing prerequisites) sit atop the chat,
+  never as another bar. The drive keeps the whole panel — no chat docks inside
+  it.
+- **Inside a thread** (`components/chat/thread/`; preview `preview/chat.html`).
+  Every container is one of three materials (`thread/surfaces.ts`), by what it
+  is, never styled by hand: **raised** floats over the thread (the composer, a
+  message being edited, an ask, the notice strip); the **well** sits in the
+  thread (your message, a turn's changed files, a subagent); **inset** is
+  code-shaped and sits inside those two (a command, output, a diff, an attached
+  image). Raised and well catch one 1px highlight on their top edge. Space
+  follows the conversation: 12px inside a turn, 40px before a new one. Thread,
+  composer and asks share one 760 column edge.
+  - **Work reads quietly**: settled, a turn folds to "Worked for 3m 43s". Calls
+    of one family in a row are one line ("Edited 5 files +40 −12", "Read 3
+    files, searched for 1 pattern", "Ran 3 commands") that opens to each call;
+    while one is in flight the line names it. A subagent is a well card.
+  - **One spinner at a time**: the call in flight. The composer says "Working
+    1m 18s" beside Stop, and its edge carries the travelling light.
+  - **The composer is one box**: the task list and background commands are its
+    top section, the context meter (a short bar and a percentage) sits in its
+    footer, and the working caption sits under it.
+  - **Notices** (a round finished, a ticket failed, the plan is ready) are a
+    strip on the top edge of the composer or an ask, one line each, older ones
+    behind "+N more". They never cover a message.
 - **One panel** on the right, one view at a time (the-feature-s-right-panel
   decisions 2–9, 14, 17–19): **Plan**, **Tickets** and **Details**, plus
   **Design** and **Drive** while they run. Its 44px header switches them
