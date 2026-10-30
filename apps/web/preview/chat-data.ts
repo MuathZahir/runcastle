@@ -210,7 +210,35 @@ const WORKING: ThreadItem[] = [
         id: 't2',
         calls: [
           call({ id: 'c5', kind: 'edit', title: 'src/server/note-document.tsx', diff: DOC_DIFF }),
+          call({ id: 'c5b', kind: 'edit', title: 'src/server/markdown-blocks.ts', diff: { path: 'src/server/markdown-blocks.ts', lines: [{ op: '+', text: 'export function toBlocks(md: string) {' }, { op: '+', text: '  return fromMarkdown(md).children' }, { op: '+', text: '}' }] } }),
+          call({ id: 'c5c', kind: 'edit', title: 'src/server/export.ts', diff: { path: 'src/server/export.ts', lines: [{ op: '-', text: '  body: note.body,' }, { op: '+', text: '  body: toBlocks(note.body),' }] } }),
+          call({ id: 'c6a', kind: 'execute', title: 'bun run typecheck' }),
           call({ id: 'c6', kind: 'execute', title: 'bun test src/server/export.test.ts', status: 'in_progress' }),
+        ],
+      },
+    ],
+  },
+]
+
+/** A turn whose subagent is still at work: its call in flight shows under the card's head. */
+const SUBAGENT: ThreadItem[] = [
+  ...HISTORY,
+  {
+    kind: 'work',
+    id: 'w3',
+    seconds: 0,
+    live: true,
+    steps: [
+      { kind: 'thought', id: 'th3', seconds: 3, text: 'Check how the web app already renders Markdown before choosing a parser.' },
+      {
+        kind: 'subagent',
+        id: 's2',
+        title: 'Find how the web app renders Markdown',
+        status: 'in_progress',
+        calls: [
+          call({ id: 's2a', kind: 'search', title: 'react-markdown' }),
+          call({ id: 's2b', kind: 'read', title: 'src/app/Markdown.tsx' }),
+          call({ id: 's2c', kind: 'read', title: 'src/app/NoteView.tsx', status: 'in_progress' }),
         ],
       },
     ],
@@ -411,6 +439,7 @@ const TERMINAL_ERA: ThreadItem[] = [
 
 export type Moment =
   | 'working'
+  | 'subagent'
   | 'approval'
   | 'edit-approval'
   | 'question'
@@ -449,6 +478,7 @@ const CTX: ContextUsage = { used: 61_400, size: 1_000_000, costUsd: 1.84 }
 
 export const MOMENTS: MomentSample[] = [
   { key: 'working', label: 'Working', items: WORKING, state: 'working', plan: PLAN, tasks: TASKS, context: CTX, thread: 'main' },
+  { key: 'subagent', label: 'Subagent running', items: SUBAGENT, state: 'working', context: CTX, thread: 'main' },
   { key: 'approval', label: 'Approval', items: ASKING, state: 'waiting', ask: APPROVAL, context: CTX, thread: 'main' },
   { key: 'edit-approval', label: 'Edit approval', items: ASKING, state: 'waiting', ask: EDIT_APPROVAL, context: CTX, thread: 'main' },
   { key: 'question', label: 'Questions', items: HISTORY.slice(0, 3), state: 'waiting', ask: QUESTIONS, context: CTX, thread: 'main' },
@@ -475,10 +505,10 @@ export const MOMENTS: MomentSample[] = [
 export function threads(current: Moment): ThreadEntry[] {
   const main = MOMENTS.find((m) => m.key === current)
   return [
-    { id: 'main', title: 'Feature chat', role: 'main', state: main?.thread === 'main' ? main.state : 'idle', updatedAt: NOW - 1 * MIN, runtime: 'claude-code' },
-    { id: 'side1', title: 'Why is the PDF font blurry?', role: 'side', state: 'waiting', updatedAt: NOW - 12 * MIN, runtime: 'claude-code' },
-    { id: 'scen', title: 'Scenario: a note with 40 pages', role: 'scenario', state: 'idle', updatedAt: NOW - 3 * 60 * MIN, runtime: 'claude-code' },
-    { id: 'old', title: 'Planning (before web chat)', role: 'main', state: 'idle', updatedAt: NOW - 4 * 24 * 60 * MIN, runtime: 'claude-code' },
-    ...(current === 'new' ? [{ id: 'new', title: 'New thread', role: 'side' as const, state: 'idle' as const, updatedAt: NOW, runtime: 'claude-code' as const }] : []),
+    { id: 'main', title: 'Feature chat', role: 'main', state: main?.thread === 'main' ? main.state : 'idle', createdAt: NOW - 5 * 24 * 60 * MIN, updatedAt: NOW - 1 * MIN, runtime: 'claude-code' },
+    { id: 'side1', title: 'Why is the PDF font blurry?', role: 'side', state: 'waiting', createdAt: NOW - 5 * 24 * 60 * MIN, updatedAt: NOW - 12 * MIN, runtime: 'claude-code' },
+    { id: 'scen', title: 'Scenario: a note with 40 pages', role: 'scenario', state: 'idle', createdAt: NOW - 5 * 24 * 60 * MIN, updatedAt: NOW - 3 * 60 * MIN, runtime: 'claude-code' },
+    { id: 'old', title: 'Planning (before web chat)', role: 'main', state: 'idle', createdAt: NOW - 5 * 24 * 60 * MIN, updatedAt: NOW - 4 * 24 * 60 * MIN, runtime: 'claude-code' },
+    ...(current === 'new' ? [{ id: 'new', title: 'New thread', role: 'side' as const, state: 'idle' as const, createdAt: NOW - 5 * 24 * 60 * MIN, updatedAt: NOW, runtime: 'claude-code' as const }] : []),
   ]
 }

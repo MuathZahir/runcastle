@@ -18,9 +18,11 @@ import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
-import { ThreadSwitcher } from '../src/components/chat/thread/ThreadSwitcher'
+import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
+import { NoticeStrip } from '../src/components/chat/NoticeStrip'
+import type { ChatNotice } from '../src/lib/chat-notices'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
-import { CODEX_MODELS, COMMANDS, FILES, LIMITS, MODELS, MOMENTS, NOW, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
+import { CODEX_MODELS, COMMANDS, FILES, LIMITS, MODELS, MOMENTS, PLAN, TITLE, threads, type Moment, type MomentSample } from './chat-data'
 
 /**
  * The chat column once it is web components, not a terminal
@@ -241,7 +243,7 @@ function useThread(moment: MomentSample, goNew: () => void) {
   }
 }
 
-function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void }) {
+function ChatColumn({ moment, goNew, notices }: { moment: MomentSample; goNew: () => void; notices: boolean }) {
   const t = useThread(moment, goNew)
   const footer = t.ask ? (
     t.ask.kind === 'approval' ? (
@@ -283,6 +285,8 @@ function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void
       suggestion={t.suggestion}
       autoFocus={['composing', 'mention', 'new', 'idle'].includes(moment.key)}
       top={<PlanStrip plan={t.plan} tasks={t.tasks} onStopTask={(id) => t.setTasks((ts) => ts.filter((x) => x.id !== id))} />}
+      meter={<ContextMeter context={t.context} limits={LIMITS} plan="Claude Max" onCompact={t.compact} />}
+      workingSince={t.since}
       footer={
         <ModelControls
           runtime={moment.runtime ?? 'claude-code'}
@@ -298,23 +302,18 @@ function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void
     />
   )
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-surface">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-surface">
       <ChatThread
         items={t.items}
         state={t.state}
-        workingSince={t.since}
         actions={{ onEdit: t.edit, onBranch: t.branch, canUndoFiles: true }}
         onDropImages={t.attach}
         emptyHint="A fresh conversation on this feature, beside the feature chat. It knows the feature, its docs and its tickets."
         footer={
           <div className="flex flex-col gap-1.5">
+            {notices && <Notices />}
             {footer}
-            {!t.ask && (
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-text-tertiary">Feature worktree · feature/export-notes-as-pdf</span>
-                <ContextMeter context={t.context} limits={LIMITS} plan="Claude Max" onCompact={t.compact} />
-              </div>
-            )}
+            {!t.ask && <span className="px-4 text-xs text-text-tertiary">Feature worktree · feature/export-notes-as-pdf</span>}
           </div>
         }
       />
@@ -322,18 +321,39 @@ function ChatColumn({ moment, goNew }: { moment: MomentSample; goNew: () => void
   )
 }
 
-function FeaturePage({ moment, panel, setMoment }: { moment: MomentSample; panel: boolean; setMoment: (m: Moment) => void }) {
+/** Sample notices, as the feature raises them on the composer's top edge (decision 18). */
+const NOTICES: ChatNotice[] = [
+  { kind: 'ticket-failed', hue: 'danger', title: 'Ticket 3 failed', subtitle: 'typecheck failed in src/server/export.ts', actionLabel: 'Open the work', target: 'work', count: 2, eventId: 3 },
+  { kind: 'run', hue: 'building', title: 'Round 1 finished', subtitle: '3 of 3 tickets landed, checks green', actionLabel: 'See the round', target: 'work', count: 1, eventId: 2 },
+  { kind: 'preview', hue: 'planning', title: 'The plan is ready', subtitle: 'Decisions, spec and the preview to look at', actionLabel: 'Open the plan', target: 'plan', count: 1, eventId: 1 },
+]
+
+/** The strip on the foot's top edge, as ThreadColumn places its children. */
+function Notices() {
+  const [notices, setNotices] = useState(NOTICES)
+  return <NoticeStrip notices={notices} onAct={noop} onDismiss={(k) => setNotices((ns) => ns.filter((n) => n.kind !== k))} />
+}
+
+function FeaturePage({
+  moment,
+  panel,
+  setMoment,
+  notices,
+}: {
+  moment: MomentSample
+  panel: boolean
+  setMoment: (m: Moment) => void
+  notices: boolean
+}) {
   const [open, setOpen] = useState(panel)
   useEffect(() => setOpen(panel), [panel])
-  const pick = (id: string) => {
-    const to = MOMENTS.find((m) => m.thread === id)
-    if (to) setMoment(to.key)
-  }
+  const inFront = threads(moment.key).find((t) => t.id === moment.thread)
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-clip rounded-lg border border-border-subtle bg-canvas" aria-label={TITLE}>
       <PageTopbar
-        crumbs={[{ label: TITLE }]}
-        status={<ThreadSwitcher threads={threads(moment.key)} current={moment.thread} onPick={pick} onNew={() => setMoment('new')} now={NOW} />}
+        crumbs={[{ label: TITLE }, ...(inFront ? [{ label: inFront.title }] : [])]}
+        trail
+        status={<FeatureStatusLine status={{ kind: 'talking', label: 'Talking with you' }} />}
         actions={
           <>
             <IconButton label="More — Merge & ship is here" icon={<IconMore />} />
@@ -342,7 +362,7 @@ function FeaturePage({ moment, panel, setMoment }: { moment: MomentSample; panel
         }
       />
       <PanelSplit
-        chat={<ChatColumn key={moment.key} moment={moment} goNew={() => setMoment('new')} />}
+        chat={<ChatColumn key={moment.key} moment={moment} goNew={() => setMoment('new')} notices={notices} />}
         panel={
           open && (
             <FeaturePanel view="work" views={['work', 'design']} label={(v) => PANEL_VIEW_LABEL[v]} onSwitch={noop} onCollapse={() => setOpen(false)} onClose={() => setOpen(false)}>
@@ -366,6 +386,7 @@ function Page() {
     () => MOMENTS.find((m) => m.key === new URLSearchParams(location.search).get('moment'))?.key ?? 'working',
   )
   const [panel, setPanel] = useState(false)
+  const [notices, setNotices] = useState(() => new URLSearchParams(location.search).has('notices'))
   const theme = useTheme()
   const current = MOMENTS.find((m) => m.key === moment) ?? MOMENTS[0]
   const chip = (on: boolean) =>
@@ -385,6 +406,9 @@ function Page() {
             </button>
           ))}
           <span className="ml-auto" />
+          <button type="button" onClick={() => setNotices(!notices)} className={chip(notices)}>
+            Notices
+          </button>
           <button type="button" onClick={() => setPanel(!panel)} className={chip(panel)}>
             Panel open
           </button>
@@ -394,7 +418,7 @@ function Page() {
         </>,
       )}
       <div className="flex min-h-0 flex-1 p-3">
-        <FeaturePage key={moment} moment={current} panel={panel} setMoment={setMoment} />
+        <FeaturePage key={moment} moment={current} panel={panel} setMoment={setMoment} notices={notices} />
       </div>
     </div>
   )

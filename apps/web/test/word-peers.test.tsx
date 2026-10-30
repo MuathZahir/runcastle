@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { NoticeDeck } from '../src/components/chat/NoticeDeck'
-import { PHASE_NAME } from '../src/icons'
+import { NoticeStrip } from '../src/components/chat/NoticeStrip'
 import type { ChatNotice } from '../src/lib/chat-notices'
 import { Field } from '../src/ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../src/ui/dropdown-menu'
@@ -31,20 +30,13 @@ const TICKETS: ChatNotice = {
 describe('word peers', () => {
   afterEach(cleanup)
 
-  it('gives a chat notice card its words in the peer and its glyphs in the hue', () => {
-    render(<NoticeDeck notices={[TICKETS]} onAct={() => {}} onDismiss={() => {}} />)
-    fireEvent.mouseEnter(screen.getByRole('status'))
+  it('gives a chat notice its glyph in the hue and leaves its words neutral', () => {
+    render(<NoticeStrip notices={[TICKETS]} onAct={() => {}} onDismiss={() => {}} />)
 
-    expect(classes(screen.getByText(PHASE_NAME.tickets))).toContain('text-phase-tickets-text')
-    expect(classes(screen.getByLabelText('3 times'))).toContain('text-phase-tickets-text')
-    const action = screen.getByRole('button', { name: 'View tickets' })
-    expect(classes(action)).toContain('text-phase-tickets-text')
-    expect(classes(action)).not.toContain('text-phase-tickets')
-    expect(classes(action.querySelector('svg'))).toContain('text-phase-tickets')
-
-    const chip = screen.getByRole('article').querySelector('[data-phase="tickets"]')!.parentElement
-    expect(classes(chip)).toContain('text-phase-tickets')
-    expect(classes(chip)).not.toContain('text-phase-tickets-text')
+    expect(classes(screen.getByRole('button', { name: 'View tickets' }))).not.toContain('text-phase-tickets-text')
+    const glyph = screen.getByRole('article').querySelector('[data-phase="tickets"]')!.parentElement
+    expect(classes(glyph)).toContain('text-phase-tickets')
+    expect(classes(glyph)).not.toContain('text-phase-tickets-text')
   })
 
   it('gives a danger menu item its label in the peer and its icon in the hue', () => {
