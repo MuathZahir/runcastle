@@ -54,11 +54,13 @@ The web starts the chat through the existing launch (`feature.launchSession`, wi
 - the main chat column is in front and on screen, in a visible browser tab;
 - the thread list has been read and shows no main chat;
 - the feature is started, and neither shipped nor archived;
-- the feature has no sessions of any kind, no tickets and no rounds.
+- the feature has no sessions of any kind, no tickets and no rounds;
+- its brief is on disk, because a feature reads as active before its docs are written;
+- the page is not launching this chat itself (a Start, or a self-planning run).
 
 A guard keeps it to one start per page open. The server also runs a feature's launches one at a time, so two tabs cannot create two chats or race for the worktree. If the human presses Send while the start is in flight, Send waits on the same start and its message joins the opening turn. A refused start shows its message once and leaves the empty chat. The next open of the chat tries once more, and the first Send tries too.
 
-When the thread gets its id, draft text and attachments saved under the unstarted key move to the thread's key. This is the one place the key changes, so the first-Send path uses it too.
+Once the main chat has a thread, draft text and attachments saved under the unstarted key move to the thread's key, whenever its column next mounts or sees the id. That also covers a column that was gone as the thread started. A self-start leaves the human on a thread they picked meanwhile.
 
 The comment in `FeatureChat` that says opening never launches anything gets updated. Side threads, project chats and the preparation chat do not change.
 
