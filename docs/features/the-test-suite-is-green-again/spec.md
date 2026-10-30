@@ -18,6 +18,8 @@ Lowering the fixture's extra findings from 12 to 10 moves it to the middle of th
 
 **The review directory test.** `prepareReviewDirectory` builds sibling paths with `join`, as the project requires, so Windows gets backslashes. The test hard-coded forward slashes. Its expected sibling paths are built with `join` too. The third entry is the path the test passed in and stays verbatim.
 
+**The waits under load.** With those three fixed, each full run failed something else, in files that pass alone: `vi.waitFor` and Testing Library waits stopped at their 1-second default, and `docs-watch` read its result after a fixed sleep. `vitest.setup.ts` gives both kinds of wait 10 seconds on Windows, the same allowance `vitest.config.ts` gives `testTimeout`. An explicit budget still wins, and other platforms keep the default. The `docs-watch` tests that expect an event now wait for it, then keep the old settle time, so a duplicate still fails them. The tests that expect no event keep their fixed sleep.
+
 ## Seams
 
 All existing; none are new.
@@ -31,7 +33,6 @@ All existing; none are new.
 
 - **The server's behaviour when open defects alone cross the ceiling.** The to-do never moves, so about 20 full-size open findings at once would spill the reply. The real measured maximum is about 20,000 characters of findings, a third of the ceiling, so no one has hit this. It is noted, not fixed.
 - **A Windows test run in any check.** The cheapest version is turning on the suite for Windows in the hand-run platform check. It is a separate decision.
-- **The flaky `self-plan-launch` file.** It passed in both full runs on main. If it fails on the final run, the lead looks for a quick fix; with none, the hand-over says so and does not call the suite green.
 - **New tests.** This feature repairs three; it adds no coverage.
 
 ## Open questions

@@ -189,7 +189,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <p class="why">The code uses Windows path separators correctly. The test assumed forward slashes.</p>
   </div>
 
-  <p class="hint" style="margin-top:14px">Finish line: the whole suite passes on this Windows machine, by the brief's command and by plain <span class="mono">bun run test</span>, and Linux CI stays green. <a class="pin" data-d="5">5</a> A failure of the flaky file is reported, not called green. <a class="pin" data-d="7">7</a> The lead does it directly, no tickets. <a class="pin" data-d="6">6</a></p>
+  <p class="hint" style="margin-top:14px">Finish line: the whole suite passes on this Windows machine, by the brief's command and by plain <span class="mono">bun run test</span>, and Linux CI stays green. <a class="pin" data-d="5">5</a> A failure of the flaky file is reported, not called green. <a class="pin" data-d="7">7</a> Waits get 10 seconds on Windows, because each full run failed a different test at the 1-second default. <a class="pin" data-d="9">9</a> The lead does it directly, no tickets. <a class="pin" data-d="6">6</a></p>
 </section>
 
 <!-- 3 · what was decided (built from the list in the script below) -->
@@ -209,7 +209,6 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>Any change to server code</li>
       <li><i class="dot"></i>The reply limit when open findings alone pass 60K; the real maximum is about a third of that <a class="pin" data-d="3">3</a></li>
-      <li><i class="dot"></i>The flaky self-plan-launch file, unless a fix is quick <a class="pin" data-d="7">7</a></li>
       <li><i class="dot"></i>New test coverage</li>
     </ul></div>
   </div>
@@ -220,11 +219,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-      <p class="hint">Three files change, by a few lines each. Reproduced on main at 4f103ff2.</p>
+      <p class="hint">Five files change, by a few lines each. Reproduced on main at 4f103ff2.</p>
       <ul>
         <li class="mono">packages/server/test/project-drive.test.ts: setup hook captures identity only</li>
         <li class="mono">packages/server/test/helpers/oversized.ts: backlogFindings 12 to 10, with the reason</li>
         <li class="mono">packages/server/test/review-directory-preparation.test.ts: expected paths use join</li>
+        <li class="mono">vitest.setup.ts: vi.waitFor and Testing Library waits get 10s on Windows</li>
+        <li class="mono">packages/server/test/docs-watch.test.ts: tests that expect an event wait for it</li>
       </ul>
       <p class="hint" style="margin-top:8px">Size measured with the test's own temp path and slug: at 12, 0 rows and 45 moved out; at 10, 22 rows and 23 moved out. The reply stays under 60,000 characters in both.</p>
     </div>
@@ -248,7 +249,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Green means the whole suite on this Windows machine, with Linux CI still green', 'Agents run plain bun run test, so both it and the brief\'s command must pass. Ubuntu CI cannot see these failures.', 'assumed'],
     ['The lead makes these changes itself, with no tickets and no review agent', 'A handful of lines in three files. Nothing runs in parallel or needs another reader.', 'assumed'],
     ['The flaky self-plan-launch file stays out, and a failure of it is not explained away', 'It passed in both full runs on main. If it fails at the end, the lead looks for a quick fix or reports it and does not call the suite green.', 'assumed'],
-    ['Windows stays out of the automated checks for now', 'Changing a check is a different decision from fixing these tests. The hand-run platform check is the cheapest later step.', 'assumed']
+    ['Windows stays out of the automated checks for now', 'Changing a check is a different decision from fixing these tests. The hand-run platform check is the cheapest later step.', 'assumed'],
+    ['Tests that wait get more time on Windows, and docs-watch stops guessing', 'The quick fix decision 7 allowed, reaching past the three tests in the brief. Failures moved between tests under load at 1-second budgets. A real hang still fails, 9 seconds later.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

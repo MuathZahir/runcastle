@@ -42,3 +42,8 @@ Planned with no human present. Every decision is assumed until the human confirm
 **Decision:** This feature adds no Windows test run anywhere. The cheapest later step is turning on the suite for Windows in the hand-run platform check, which costs nothing per push.
 **Why:** The push CI is deliberately one job on one platform. Changing either check is a different decision from fixing these tests, and GitHub's Windows machines may fail for reasons of their own.
 **Assumed.** Alternative: add the Windows suite to the hand-run check in this feature, so this kind of failure can be caught before a release.
+
+## 9. Tests that wait get more time on Windows, and `docs-watch` stops guessing
+**Decision:** `vitest.setup.ts` gives `vi.waitFor` and Testing Library's `findBy*` and `waitFor` 10 seconds on Windows, not their 1-second default. An explicit budget still wins, and Linux and macOS keep the default. The four `docs-watch` tests that expect an event now wait for it, then keep the old settle time to catch a duplicate. This reaches past the three tests in the brief, because the suite was not green without it.
+**Why:** This is the quick fix decision 7 allowed. With the three tests fixed, each full run failed something else: `self-plan-launch`, then `thread-launch`, then `chat-column` and `docs-watch`. The files pass alone and the failures came and went with machine load, so the cause is time budgets, not behaviour. `vitest.config.ts` already widens `testTimeout` on Windows for the same reason. A real hang still fails, 9 seconds later.
+**Assumed.** Alternative: patch only the tests that failed, which leaves the other calls sharing that default to fail the same way later.
