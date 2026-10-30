@@ -140,18 +140,18 @@ describe('FirstRunWizard', () => {
     open([identity('ok'), ...codexSignedIn])
     click('Set up runcastle')
     click('Continue')
-    expect(screen.getByRole('heading', { name: 'Run burns unattended?' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Run workers unattended?' })).toBeTruthy()
 
     click('Back')
     expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
   })
 
-  it('asks about unattended burns instead of showing their settings card', () => {
+  it('asks about unattended workers instead of showing their settings card', () => {
     open([identity('ok'), ...codexSignedIn])
     click('Set up runcastle')
     click('Continue')
 
-    expect(screen.getByText(/An AFK burn is a burn you walk away from/)).toBeTruthy()
+    expect(screen.getByText(/Workers run a round’s tickets in containers/)).toBeTruthy()
     expect(screen.queryByText('Ready for unattended workers')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to your first project' })).toBeNull()
   })

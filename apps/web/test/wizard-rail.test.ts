@@ -19,14 +19,14 @@ const render = (current: 'identity' | 'runtimes' | 'afk', identity: ProbeLike) =
 describe('WizardRail', () => {
   it('names every step, whichever one is showing', () => {
     const html = render('runtimes', unset)
-    for (const label of ['Git identity', 'Coding agents', 'AFK burns', 'First project']) {
+    for (const label of ['Git identity', 'Coding agents', 'Unattended workers', 'First project']) {
       expect(html).toContain(label)
     }
   })
 
   it('marks the current step, and the ones behind and ahead of it', () => {
     const html = render('runtimes', unset)
-    expect(html).toMatch(/data-state="current"[^>]*aria-current="step"[^>]*class="[^"]*bg-surface-selected/)
+    expect(html).toMatch(/data-state="current"[^>]*aria-current="step"[^>]*class="[^"]*\bcard\b/)
     expect(html).toContain('data-state="done"')
     expect(html).toContain('data-state="todo"')
     // One current step, and it is the one showing.
