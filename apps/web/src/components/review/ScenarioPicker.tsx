@@ -1,8 +1,7 @@
-import type { DriveScenario, ScenarioEntry } from '@runcastle/core'
+import type { DriveScenario } from '@runcastle/core'
 import { BARE_BUTTON, Spinner, StatusDot, cx } from '../../ui'
 import {
   Combobox,
-  ComboboxAction,
   ComboboxContent,
   ComboboxEmpty,
   ComboboxGroup,
@@ -11,8 +10,10 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from '../../ui/combobox'
+import { FLOATING_SEPARATOR } from '../../ui/floating'
+import { SELECT_BAR } from '../../ui/select'
 import { IconChevronDown, IconPlus } from '../../icons'
-import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
+import { scenarioGroups, type ScenarioMenu } from '../../lib/feature-ui/scenarios'
 
 /**
  * The one way a scenario is picked (test-drive-looks-the-part decision 1): the
@@ -27,20 +28,6 @@ import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
 
 /** More scenarios than this and the list opens with a search box. */
 export const SEARCH_FROM = 8
-
-/** The scenarios grouped as the list shows them: "This feature", the project's groups, then the ungrouped. */
-export function scenarioGroups(menu: ScenarioMenu): { heading: string; entries: ScenarioEntry[] }[] {
-  const groups: { heading: string; entries: ScenarioEntry[] }[] = []
-  if (menu.own.length > 0) groups.push({ heading: 'This feature', entries: menu.own })
-  // `others` is already ordered group by group, the ungrouped last.
-  for (const s of menu.others) {
-    const heading = s.group ?? (groups.length > 0 ? 'Other' : menu.othersLabel)
-    const last = groups[groups.length - 1]
-    if (last && last.heading === heading && last.heading !== 'This feature') last.entries.push(s)
-    else groups.push({ heading, entries: [s] })
-  }
-  return groups
-}
 
 /**
  * The list itself, for a {@link Combobox} the caller owns — the split button's
@@ -86,15 +73,17 @@ export function ScenarioPickerContent({
           </ComboboxGroup>
         ))}
         <ComboboxGroup>
-          {count > 0 && <div className="mx-2 my-1 h-px bg-border-subtle" role="separator" />}
+          {count > 0 && <div className={FLOATING_SEPARATOR} role="separator" />}
           <ComboboxItem value="Blank app" current={current === null} onSelect={() => onPick(null)}>
             Blank app
           </ComboboxItem>
           {onNew && (
-            <ComboboxAction value="New scenario" onSelect={onNew}>
-              <IconPlus size={14} />
-              New scenario
-            </ComboboxAction>
+            <ComboboxItem value="New scenario" onSelect={onNew}>
+              <span className="flex items-center gap-2">
+                <IconPlus size={14} className="text-icon" />
+                New scenario
+              </span>
+            </ComboboxItem>
           )}
         </ComboboxGroup>
       </ComboboxList>
@@ -109,16 +98,6 @@ function ScenarioGlyph({ scenario }: { scenario: DriveScenario | undefined }) {
   if (scenario?.status === 'landed') return <StatusDot tone="success" label="landed" />
   return <StatusDot tone="neutral" />
 }
-
-/**
- * The trigger: a ghost control at the toolbar's height that, unlike a `Button`,
- * may shrink — the scenario's name is what gives way in a narrow panel.
- */
-const SCENARIO_TRIGGER = cx(
-  BARE_BUTTON,
-  'flex h-(--control-h) min-w-0 max-w-80 items-center gap-2 rounded-md px-2.5 text-sm font-medium',
-  'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover data-[state=open]:bg-surface-selected',
-)
 
 /**
  * The running drive's scenario control, first in the window's toolbar
@@ -139,26 +118,26 @@ export function ScenarioControl({
   onPick: (file: string | null) => void
   onNew: () => void
 }) {
-  const on = scenario && !blank ? scenario : undefined
+  const shown = scenario && !blank ? scenario : undefined
   return (
     <Combobox>
       <ComboboxTrigger asChild>
         <button
           type="button"
           data-scenario-trigger=""
-          title={on ? `Scenario: ${on.name} — ${on.file}` : 'Land on a scenario, or write a new one'}
-          className={SCENARIO_TRIGGER}
+          title={shown ? `Scenario: ${shown.name} — ${shown.file}` : 'Land on a scenario, or write a new one'}
+          className={cx(BARE_BUTTON, SELECT_BAR, 'flex items-center gap-2')}
         >
           <span className="flex size-3.5 shrink-0 items-center justify-center">
-            <ScenarioGlyph scenario={on} />
+            <ScenarioGlyph scenario={shown} />
           </span>
-          <span className={cx('min-w-0 truncate', on ? 'text-text' : 'text-text-secondary')}>
-            {on ? on.name : 'Blank app'}
+          <span className={cx('min-w-0 truncate', shown ? 'text-text' : 'text-text-secondary')}>
+            {shown ? shown.name : 'Blank app'}
           </span>
           <IconChevronDown size={14} className="shrink-0 text-icon" />
         </button>
       </ComboboxTrigger>
-      <ScenarioPickerContent menu={menu} current={on ? on.file : null} onPick={onPick} onNew={onNew} />
+      <ScenarioPickerContent menu={menu} current={shown ? shown.file : null} onPick={onPick} onNew={onNew} />
     </Combobox>
   )
 }

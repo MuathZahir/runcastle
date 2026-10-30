@@ -253,6 +253,8 @@ export function Workspace({
   // view: the agent's `show_panel` and the preview's Open in design open it
   // before its server is up, and the view itself starts the server.
   const isDriving = driving?.featureId === featureId
+  // A Test drive click is the drive's page at once, before the server answers.
+  const [driveStarting, setDriveStarting] = useState(false)
   const requested = viewProp === 'chat' ? null : viewProp
   const designOpenable = !!q.data && !isDraft && !shipped
   const views = q.data
@@ -263,7 +265,7 @@ export function Workspace({
         hasReview: declared || reviewRan(q.data.tickets),
         shipped,
         designRunning: !!designQ.data?.running || (designOpenable && requested === 'design'),
-        driveActive: isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle'),
+        driveActive: isDriving || driveStarting || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle'),
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
@@ -275,7 +277,8 @@ export function Workspace({
       views.includes(request.view) ||
       (request.view === 'work' && !!q.data && !isDraft) ||
       (request.view === 'design' && designOpenable)
-    if (offered) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
+    // A drive is the page: the agent does not take the human away from it.
+    if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
@@ -360,8 +363,6 @@ export function Workspace({
       // A drive takes and releases the branch and stamps the timeline; the bar
       // and the review body read all of it back through these queries.
       invalidate()
-      // The human's Test drive: the drive it started opens beside the chat.
-      if (vars.action === 'start' && res.ok) panel.dispatch({ type: 'follow', click: 'testDrive' })
       // The project's own setup/teardown command failed. Surfaced first and as
       // an error: everything below is advisory, but a failed setup means the
       // app you are about to open probably is not running. The command's output
@@ -563,17 +564,25 @@ export function Workspace({
   const openChat = () => landOnChat()
 
   /** Start this feature's drive on a scenario, or on the blank app with `null`. */
-  const startDrive = (scenario: string | null) =>
+  const startDrive = (scenario: string | null) => {
+    setDriveStarting(true)
+    panel.dispatch({ type: 'follow', click: 'testDrive' })
     testDrive.mutate(
       { featureId, action: 'start', ...(scenario ? { scenario } : {}) },
       {
         onSuccess: (res) => {
           invalidate()
           if (res.ok && res.branch) onDriveChange({ featureId, branch: res.branch })
-          else if (!res.ok) toast.push(res.deniedReason ?? 'test drive denied')
+          else if (!res.ok) {
+            toast.push(res.deniedReason ?? 'test drive denied')
+            panel.dispatch({ type: 'close' })
+          }
         },
+        onError: () => panel.dispatch({ type: 'close' }),
+        onSettled: () => setDriveStarting(false),
       },
     )
+  }
 
   const runAction = (kind: ActionKind) => {
     switch (kind) {
@@ -760,8 +769,8 @@ export function Workspace({
         now,
       })
   const actionsBusy = busy || stopAgent.isPending
-  const driveStarting = testDrive.isPending && testDrive.variables?.action === 'start'
-  const driveStopping = testDrive.isPending && testDrive.variables?.action === 'stop'
+  // Stop waits for the start: a second mutate would drop the first's callbacks.
+  const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
     kind: 'testDriveStart' as const,
     label: testDriveLabel(startMenu.defaultScenario, 'Start test drive'),
@@ -917,10 +926,10 @@ export function Workspace({
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
-  // The drive takes the page at the click, before the server has answered, and
-  // stays mounted while it runs, so the app is as it was left on the way back.
-  const onDrive = shown === 'drive' || driveStarting
-  const driveMounted = views.includes('drive') || driveStarting
+  // The drive stays mounted while it runs, so the app is as it was left on the
+  // way back.
+  const onDrive = shown === 'drive'
+  const driveMounted = views.includes('drive')
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({

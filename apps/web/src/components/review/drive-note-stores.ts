@@ -25,13 +25,15 @@ function driveNote(note: TestNote | ProjectNote): DriveNote {
     text: note.text,
     when: relTime(note.createdAt),
     ...(note.screenshotUrl ? { picture: note.screenshotUrl } : {}),
-    ...('author' in note && note.author === 'agent' ? { by: 'Review agent' } : {}),
   }
 }
 
-/** A feature's notes: its open ones, what went to the agent, and the Send that goes there. */
+/**
+ * A feature's notes on the rail: the human's own, open ones apart from what went
+ * to the agent. The review agent's findings stay on the Review step.
+ */
 export function featureNoteList(notes: readonly TestNote[]): { open: TestNote[]; sent: TestNote[] } {
-  const live = oldestFirst(notes).filter((n) => n.status === 'open' || n.status === 'carried')
+  const live = oldestFirst(notes).filter((n) => n.author === 'human' && (n.status === 'open' || n.status === 'carried'))
   return { open: live.filter((n) => n.sentAt === undefined), sent: live.filter((n) => n.sentAt !== undefined) }
 }
 

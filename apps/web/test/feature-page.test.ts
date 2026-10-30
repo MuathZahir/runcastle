@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow } from '@runcastle/core'
@@ -262,15 +262,21 @@ describe('the panel’s views', () => {
 })
 
 describe('what opens the panel', () => {
-  it('opens the drive after a test drive starts, and not after one stops or is denied', () => {
+  it('opens the drive on the Test drive click, before the server answers', () => {
+    const onViewChange = vi.fn()
+    setup({ queries: READY })
+    render(workspace({ onViewChange }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
+    expect(onViewChange).toHaveBeenCalledWith('drive')
+  })
+
+  it('opens nothing when a test drive lands, or stops', () => {
     const onViewChange = vi.fn()
     page({ onViewChange, queries: READY })
     const testDrive = store.mutations.get('feature.testDrive')
-    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
-    testDrive?.onSuccess?.({ ok: false }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).not.toHaveBeenCalled()
     testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'start' })
-    expect(onViewChange).toHaveBeenCalledWith('drive')
+    testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
+    expect(onViewChange).not.toHaveBeenCalled()
   })
 
   it('opens nothing on any other mutation landing', () => {

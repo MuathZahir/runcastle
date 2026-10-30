@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { Button, Disclosure, IconButton, SectionLabel, TextArea, cx } from '../../ui'
-import { IconImage, IconInbox, IconPencil, IconSend, IconTrash } from '../../icons'
+import { Button, Disclosure, EmptyState, IconButton, SectionLabel, TextArea, cx } from '../../ui'
+import { IconCheck, IconImage, IconInbox, IconPencil, IconSend, IconTrash } from '../../icons'
 
 /**
  * The notes beside a test drive (test-drive-looks-the-part decisions 14, 15):
@@ -19,8 +19,6 @@ export interface DriveNote {
   picture?: string
   /** "4m", "now": the note's age. */
   when: string
-  /** Who wrote it, when it was not the human ("Review agent"). */
-  by?: string
 }
 
 export interface DriveNoteActions {
@@ -94,7 +92,7 @@ function NoteEditor({
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" disabled={!text.trim()} onClick={save}>
+        <Button size="sm" icon={<IconCheck />} disabled={!text.trim()} onClick={save}>
           Save
         </Button>
       </div>
@@ -143,16 +141,13 @@ export function DriveNoteRow({
                 <Button size="sm" variant="ghost" onClick={() => setMode('rest')}>
                   Keep
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => actions.onDelete(note.id)}>
+                <Button size="sm" variant="danger" icon={<IconTrash />} onClick={() => actions.onDelete(note.id)}>
                   Delete
                 </Button>
               </>
             ) : (
               <>
-                <span className="min-w-0 flex-1 truncate">
-                  {note.by ? `${note.by} · ` : ''}
-                  {note.when}
-                </span>
+                <span className="min-w-0 flex-1 truncate">{note.when}</span>
                 {!readonly && <Actions onEdit={() => setMode('edit')} onDelete={() => setMode('delete')} />}
               </>
             )}
@@ -209,13 +204,12 @@ export function DriveNotes({
           </section>
         )}
         {nothing ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-            <IconInbox size={20} className="text-icon" />
-            <p className="m-0 text-md font-medium text-text">Nothing noted yet</p>
-            <p className="m-0 text-sm text-pretty text-text-tertiary">
-              Select an area of the app, paste a screenshot, or just type.
-            </p>
-          </div>
+          <EmptyState
+            className="h-full"
+            icon={<IconInbox />}
+            title="Nothing noted yet"
+            hint="Select an area of the app, paste a screenshot, or just type."
+          />
         ) : (
           <section aria-label="This drive">
             {!!earlier?.notes.length && <SectionLabel className="px-4 pt-3">This drive</SectionLabel>}
@@ -237,14 +231,23 @@ export function DriveNotes({
  * way to send it. Nothing at all with no notes: a drive with nothing to say
  * sends nothing (decision 16).
  */
-export function SendNotesLine({ count, onSend }: { count: number; onSend: () => void }) {
+export function SendNotesLine({
+  count,
+  onSend,
+  primary = true,
+}: {
+  count: number
+  onSend: () => void
+  /** Steps down while the box below holds the one primary: a note being written. */
+  primary?: boolean
+}) {
   if (count === 0) return null
   return (
     <div className="flex items-center gap-2 px-1">
       <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">
         {count} {count === 1 ? 'note' : 'notes'} ready
       </span>
-      <Button size="sm" variant="primary" icon={<IconSend />} onClick={onSend}>
+      <Button size="sm" variant={primary ? 'primary' : 'secondary'} icon={<IconSend />} onClick={onSend}>
         Send to the agent
       </Button>
     </div>

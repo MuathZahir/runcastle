@@ -178,7 +178,7 @@ describe('the stage over a failed setup', () => {
   })
 
   it('offers the project drive’s own way out in its place', () => {
-    const html = render({ ...failed, featureId: undefined, failed: () => createElement('b', null, 'Open preparation') })
+    const html = render({ ...failed, featureId: undefined, failureExit: () => createElement('b', null, 'Open preparation') })
     expect(html).toContain('Open preparation')
     expect(html).not.toContain('>Fix drive<')
   })

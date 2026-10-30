@@ -7,7 +7,7 @@ import { DRIVE_HOLDS_THE_AGENT, unsentNotes } from './SendToAgent'
 /**
  * The one line a feature's chat page says about its drive: while one runs, that
  * the agent is held and how to let it go (test-drive-looks-the-part decision
- * 20); after it, the notes that were never sent (decision 13).
+ * 20); after it, any notes not sent yet (decision 13).
  */
 export function DriveChatNotice({
   featureId,
@@ -33,9 +33,9 @@ export function DriveChatNotice({
   const unsent = unsentNotes(notes.data ?? []).length
   if (!driving && unsent === 0) return null
   return (
-    <div className="card flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-secondary">
+    <div className="flex items-center gap-3 px-1 text-sm text-text-secondary">
       <span className="min-w-0 flex-1 text-pretty">
-        {driving ? DRIVE_HOLDS_THE_AGENT : `${unsent} ${unsent === 1 ? 'note' : 'notes'} from your drive, not sent yet`}
+        {driving ? DRIVE_HOLDS_THE_AGENT : `${unsent} ${unsent === 1 ? 'note' : 'notes'} not sent yet`}
       </span>
       {driving ? (
         <Button size="sm" icon={<IconStop />} loading={stopping} onClick={onStop}>

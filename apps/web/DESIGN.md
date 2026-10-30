@@ -147,7 +147,7 @@ document, under **one header row**:
 ├─────────────────────────────────────┬┬────────────────────────────────────┤
 │ the chat (fills the page)           ││ panel: [Tickets ▾]  path     › ✕   │
 │                                     ││  one view: body · preview ·        │
-│                                     ││  design · drive · details          │
+│                                     ││  design · details                  │
 └─────────────────────────────────────┴┴────────────────────────────────────┘
 ```
 
@@ -186,8 +186,8 @@ document, under **one header row**:
   page, so the app is as it was left; the sidebar's drive card and the
   header's Back to the drive return to it.
 - **One panel** on the right, one view at a time: the phase body (title,
-  meta and the body as a page column), the plan preview, the design, a
-  drive, or the details. Its 44px header holds a switcher over the views
+  meta and the body as a page column), the plan preview, the design
+  or the details. Its 44px header holds a switcher over the views
   the state offers, fold (to a 40px strip) and close. The divider drags
   either side down to nothing; double-click toggles an even split and the
   panel full; the size is remembered per browser. Under ~1100px of content

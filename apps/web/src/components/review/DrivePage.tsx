@@ -1,6 +1,5 @@
 import { useContext, useRef, useState, type ReactNode } from 'react'
-import { AsideLayout, Aside, Button, IconButton, cx } from '../../ui'
-import { SidebarDoorContext } from '../../ui/page'
+import { AsideLayout, Aside, Button, IconButton, SidebarDoorContext, cx } from '../../ui'
 import { IconArrowLeft, IconPanelRight, IconPlus, IconStop } from '../../icons'
 import { toPngBlob } from '../../lib/reviews'
 import { useToast } from '../../lib/toast'
@@ -144,7 +143,9 @@ export function DrivePage({
                 onPicture={store.onPicture}
                 foot={
                   <>
-                    {store.send && <SendNotesLine count={store.send.count} onSend={store.send.run} />}
+                    {store.send && (
+                      <SendNotesLine count={store.send.count} onSend={store.send.run} primary={!draft.trim() && !staged} />
+                    )}
                     <Composer
                       value={draft}
                       onChange={setDraft}

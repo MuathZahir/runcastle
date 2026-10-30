@@ -89,3 +89,13 @@ after that confirmation.
 **Decision:** Stopping a project drive opens the Notes inbox beside the chat, as it does today, instead of the one-line notice a feature gets. Narrows 13.
 **Why:** The inbox already shows the notes and the way to sort them, so a second door to it would say the same thing.
 **Assumed.** Alternative: the same one-line notice as a feature.
+
+## 22. Decision 10's width step is dropped
+**Decision:** The head stays one row by shortening what is driven and the scenario's name. The screen-width control keeps its full label. Supersedes: the width step of 10.
+**Why:** The head now runs across the page rather than a side panel, so it has the room.
+**Assumed.** Alternative: drop the scale from the label in a narrow window.
+
+## 23. Leaving for another feature reloads the app on return
+**Decision:** The app stays as it was left while the human stays on the same feature or Orchestrator page. Going to another page and coming back reloads it at the scenario's address, and ends tab sharing and any unsaved note.
+**Why:** Keeping it alive across pages means moving the drive up into the app's shell, a larger change than this feature's look and layout. The drive itself keeps running.
+**Assumed.** Alternative: move the drive into the shell so it survives every page change.

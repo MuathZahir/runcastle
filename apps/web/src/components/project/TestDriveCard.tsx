@@ -1,4 +1,4 @@
-import type { ProjectDriveCard } from '../../lib/project-drive'
+import { PROJECT_DRIVE_SLUG, type ProjectDriveCard } from '../../lib/project-drive'
 import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
 import { IconArrowRight, IconPlay, IconShield, IconTerminal } from '../../icons'
 import { Button, Disclosure, PropertyList, SplitButton, StatusLabel } from '../../ui'
@@ -6,9 +6,6 @@ import type { PropertyItem } from '../../ui'
 import { ScenarioPickerContent } from '../review/ScenarioPicker'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ActionRow } from './ActionRow'
-
-/** The fixed identity every project drive runs as (decision 8). */
-const PROJECT_DRIVE_SLUG = 'project-drive'
 
 /**
  * The resting page's door to a project drive (project-level-test-drive

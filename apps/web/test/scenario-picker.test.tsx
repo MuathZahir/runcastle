@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ScenarioEntry } from '@runcastle/core'
 import { Combobox, ComboboxTrigger } from '../src/ui/combobox'
-import { ScenarioPickerContent, scenarioGroups } from '../src/components/review/ScenarioPicker'
-import { scenarioMenu } from '../src/lib/feature-ui/scenarios'
+import { ScenarioPickerContent } from '../src/components/review/ScenarioPicker'
+import { scenarioGroups, scenarioMenu } from '../src/lib/feature-ui/scenarios'
 import { openList } from './floating'
 
 /**

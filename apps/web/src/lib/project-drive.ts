@@ -19,6 +19,9 @@ export interface SlotHolder {
  * The Test drive card's state. `blocked` carries the reason the disabled button
  * states — the holding drive, named the way every other refusal names it.
  */
+/** The fixed identity every project drive runs as (project-level-test-drive decision 8). */
+export const PROJECT_DRIVE_SLUG = 'project-drive'
+
 export type ProjectDriveCard =
   | { state: 'hidden' }
   | { state: 'prepare' }

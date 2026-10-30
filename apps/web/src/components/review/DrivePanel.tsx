@@ -110,7 +110,7 @@ export function DrivePanel({
   footer,
   width,
   onCapture,
-  copy: words = 'note',
+  copy = 'note',
 }: {
   url: string
   agentDriving?: boolean
@@ -139,7 +139,7 @@ export function DrivePanel({
   copy?: keyof typeof CAPTURE_COPY
 }) {
   const toast = useToast()
-  const copy = CAPTURE_COPY[words]
+  const words = CAPTURE_COPY[copy]
 
   const panelRef = useRef<HTMLDivElement>(null)
   const frame = useFrameWidth(width, panelRef)
@@ -310,8 +310,8 @@ export function DrivePanel({
             <StatusLabel tone="live">Review agent driving</StatusLabel>
           </span>
         )}
-        {!cover && onCapture && !canCapture && <span className={notice}>{copy.cannotCapture}</span>}
-        {!cover && !loaded && slow && <span className={notice}>{copy.cannotEmbed}</span>}
+        {!cover && onCapture && !canCapture && <span className={notice}>{words.cannotCapture}</span>}
+        {!cover && !loaded && slow && <span className={notice}>{words.cannotEmbed}</span>}
         <span className="flex-1" />
         {!cover && (
           <div className="flex shrink-0 items-center gap-0.5">
@@ -332,7 +332,7 @@ export function DrivePanel({
               onClick={() => setGeneration((g) => g + 1)}
             />
             <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
-            <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+            <IconButton label={words.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
           </div>
         )}
         {trailing}
@@ -363,7 +363,7 @@ export function DrivePanel({
                 }
           }
           src={url}
-          title={copy.frameTitle}
+          title={words.frameTitle}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           onLoad={() => setLoaded(true)}
         />

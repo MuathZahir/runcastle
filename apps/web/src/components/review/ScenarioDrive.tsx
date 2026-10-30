@@ -22,7 +22,7 @@ export interface ScenarioDriveInfo {
 
 /**
  * A human's running drive with its scenarios (drive-scenarios decisions 3, 7,
- * 8): the Scenario menu in the panel's toolbar switches scenario without a
+ * 8): the scenario control in the head switches scenario without a
  * restart, the panel follows each landing, a running scenario shows its output
  * and a failed one its actual error with Fix it. ＋ New scenario and Fix it open
  * the scenario chat on the page's chat column (design-mode decision 9), with the

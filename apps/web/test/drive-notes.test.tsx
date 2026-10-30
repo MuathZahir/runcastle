@@ -145,13 +145,14 @@ describe('Send', () => {
     expect(container.textContent).toBe('')
   })
 
-  it('files a feature’s notes: open ones oldest first, sent ones apart, finished ones gone', () => {
+  it('files a feature’s notes: the human’s open ones oldest first, sent ones apart, the rest gone', () => {
     const { open, sent } = featureNoteList([
       note('newer', { createdAt: 2_000 }),
       note('older', { createdAt: 1_000 }),
       note('gone', { sentAt: 3_000 }),
       note('done', { status: 'done' }),
       note('promoted', { status: 'promoted' }),
+      note('a finding', { author: 'agent' }),
     ])
     expect(open.map((n) => n.id)).toEqual(['older', 'newer'])
     expect(sent.map((n) => n.id)).toEqual(['gone'])
@@ -230,7 +231,7 @@ describe('the line over the chat', () => {
   it('offers what was left unsent once the drive has stopped', () => {
     notes = [note('n1'), note('n2')]
     line(false)
-    expect(screen.getByText('2 notes from your drive, not sent yet')).toBeTruthy()
+    expect(screen.getByText('2 notes not sent yet')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' }))
     expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
   })

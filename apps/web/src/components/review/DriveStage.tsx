@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import type { DriveScenario, DriveState } from '@runcastle/core'
-import { Spinner, StatusLabel } from '../../ui'
+import { EmptyState, Spinner, StatusLabel } from '../../ui'
 import { IconClock, IconShield, IconTerminal } from '../../icons'
 import { driveView, type DriveFailure } from '../../lib/feature-ui'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { DrivePanel } from './DrivePanel'
 import { ScenarioDrive } from './ScenarioDrive'
-import { DriveFooter, DriveMoment, DriveSetupFailed, DriveStateWindow } from './drive-parts'
+import { DriveFooter, DriveSetupFailed, DriveStateWindow } from './drive-parts'
 
 /** The active drive as the stage reads it; whose it is comes from the server's `driveState`. */
 export interface StageDrive {
@@ -40,7 +40,7 @@ export function DriveStage({
   drive,
   dryRun = false,
   failure,
-  failed,
+  failureExit,
   where,
   leading,
   trailing,
@@ -57,7 +57,7 @@ export function DriveStage({
   dryRun?: boolean
   failure: DriveFailure | null
   /** A project drive's way out of a failed setup; a feature drive offers Fix drive itself. */
-  failed?: (failure: DriveFailure) => ReactNode
+  failureExit?: (failure: DriveFailure) => ReactNode
   /** A project drive's checkout and identity, for the status line (decision 5). */
   where?: { text: string; title: string }
   leading?: ReactNode
@@ -68,7 +68,7 @@ export function DriveStage({
   onToChat?: () => void
 }) {
   const footer = <DriveFooter branch={drive?.branch ?? branch} drive={drive} where={where} />
-  const window = (state: ReactNode, moment: ReactNode, withFooter = true) => (
+  const frame = (state: ReactNode, moment: ReactNode, withFooter = true) => (
     <DriveStateWindow state={state} leading={leading} trailing={trailing} footer={withFooter ? footer : undefined}>
       {moment}
     </DriveStateWindow>
@@ -76,61 +76,67 @@ export function DriveStage({
 
   if (driveState === 'idle') {
     return dryRun
-      ? window(
+      ? frame(
           <StatusLabel tone="neutral">Drive held</StatusLabel>,
-          <DriveMoment icon={<IconShield />} title="A preparation dry run is holding the drive">
-            It is proving this project’s drive commands on your machine. Stop it from Preparation, and
-            this branch can take the wheel.
-          </DriveMoment>,
+          <EmptyState
+            icon={<IconShield />}
+            title="A preparation dry run is holding the drive"
+            hint={<>It is proving this project’s drive commands on your machine. Stop it from Preparation, and this branch can take the wheel.</>}
+          />,
           false,
         )
-      : window(
+      : frame(
           <StatusLabel spinning>Starting</StatusLabel>,
-          <DriveMoment icon={<Spinner />} title="Starting the test drive">
-            Checking the branch out.
-          </DriveMoment>,
+          <EmptyState
+            icon={<Spinner />}
+            title="Starting the test drive"
+            hint={<>Checking the branch out.</>}
+          />,
           false,
         )
   }
 
   switch (driveView(driveState).stageKind) {
     case 'starting':
-      return window(
+      return frame(
         <StatusLabel spinning>Starting</StatusLabel>,
-        <DriveMoment icon={<Spinner />} title="Starting the dev server">
-          The branch is checked out and the project’s dev command is running. The app appears here as
-          soon as it answers; its output is under the window.
-        </DriveMoment>,
+        <EmptyState
+            icon={<Spinner />}
+            title="Starting the dev server"
+            hint={<>The branch is checked out and the project’s dev command is running. The app appears here as soon as it answers; its output is under the window.</>}
+          />,
       )
 
     // The state is derived FROM the failure server-side, so `failure` is
     // present here; the guard keeps a wire that disagrees with itself from
     // rendering an empty window.
     case 'failed':
-      return window(
+      return frame(
         <StatusLabel tone="danger">Setup failed</StatusLabel>,
         failure ? (
-          failed ? (
-            failed(failure)
+          failureExit ? (
+            failureExit(failure)
           ) : featureId ? (
-            <DriveSetupFailed featureId={featureId} failure={failure} />
+            <DriveSetupFailed featureId={featureId} failure={failure} onToChat={onToChat} />
           ) : null
         ) : (
-          <DriveMoment icon={<IconTerminal />} title="The drive’s setup command failed">
-            Its output is in the timeline.
-          </DriveMoment>
+          <EmptyState
+            icon={<IconTerminal />}
+            title="The drive’s setup command failed"
+            hint={<>Its output is in the timeline.</>}
+          />
         ),
       )
 
     // Nothing was meant to start, so nothing is claimed to have (findings F22).
     case 'bare':
-      return window(
+      return frame(
         <StatusLabel tone="neutral">Nothing started</StatusLabel>,
-        <DriveMoment icon={<IconTerminal />} title="Branch checked out, nothing started">
-          This project has no dev command.{' '}
-          <SettingsLink location={{ page: 'project', field: 'devCommand' }}>Set one in Settings</SettingsLink>{' '}
-          and the next drive boots the app right here.
-        </DriveMoment>,
+        <EmptyState
+            icon={<IconTerminal />}
+            title="Branch checked out, nothing started"
+            hint={<>This project has no dev command.{' '} <SettingsLink location={{ page: 'project', field: 'devCommand' }}>Set one in Settings</SettingsLink>{' '} and the next drive boots the app right here.</>}
+          />,
       )
 
     // The review agent is at the wheel: the app shows exactly as the human's
@@ -148,11 +154,13 @@ export function DriveStage({
             onCapture={onCapture}
           />
         ) : (
-          window(
+          frame(
             <StatusLabel tone="live">Review agent driving</StatusLabel>,
-            <DriveMoment icon={<IconClock />} title="No dev server answered">
-              The review agent is driving this branch. Its notes land as it finds things.
-            </DriveMoment>,
+            <EmptyState
+            icon={<IconClock />}
+            title="No dev server answered"
+            hint={<>The review agent is driving this branch. Its notes land as it finds things.</>}
+          />,
           )
         )
       }
@@ -172,11 +180,13 @@ export function DriveStage({
       onToChat={onToChat}
     />
   ) : (
-    window(
+    frame(
       <StatusLabel tone="live">Running</StatusLabel>,
-      <DriveMoment icon={<IconClock />} title="Waiting for an address">
-        The dev server is up but has not printed an address yet. Its output is under the window.
-      </DriveMoment>,
+      <EmptyState
+            icon={<IconClock />}
+            title="Waiting for an address"
+            hint={<>The dev server is up but has not printed an address yet. Its output is under the window.</>}
+          />,
     )
   )
 }

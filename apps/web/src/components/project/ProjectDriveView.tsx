@@ -1,4 +1,5 @@
 import { driveFailure } from '../../lib/feature-ui'
+import { PROJECT_DRIVE_SLUG } from '../../lib/project-drive'
 import type { SlotDrive } from '../../lib/use-project-drive'
 import { IconShield } from '../../icons'
 import { Button } from '../../ui'
@@ -6,9 +7,6 @@ import { DrivePage } from '../review/DrivePage'
 import { DriveStage } from '../review/DriveStage'
 import { DriveFailureReport } from '../review/drive-parts'
 import { useProjectDriveNotes } from '../review/drive-note-stores'
-
-/** The fixed identity every project drive runs as (project-level-test-drive decision 8). */
-const PROJECT_DRIVE_SLUG = 'project-drive'
 
 /**
  * A project drive as the page (test-drive-looks-the-part decision 13): the same
@@ -67,7 +65,7 @@ export function ProjectDriveView({
           // Preparation, not Fix drive: that opens an agent scoped to a
           // feature, and preparation is where a project's drive commands are
           // repaired and proven (project-level-test-drive decision 7).
-          failed={(failure) => (
+          failureExit={(failure) => (
             <DriveFailureReport
               failure={failure}
               explanation={
@@ -78,7 +76,7 @@ export function ProjectDriveView({
                 </>
               }
             >
-              <Button className="self-start" variant="primary" icon={<IconShield />} onClick={onOpenPreparation}>
+              <Button className="self-start" icon={<IconShield />} onClick={onOpenPreparation}>
                 Open preparation
               </Button>
             </DriveFailureReport>

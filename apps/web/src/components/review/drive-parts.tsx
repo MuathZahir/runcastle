@@ -66,9 +66,12 @@ export function DriveInstructions({ text }: { text?: string | null }) {
 export function DriveSetupFailed({
   featureId,
   failure,
+  onToChat,
 }: {
   featureId: string
   failure: DriveFailure
+  /** The fix runs in a chat: go to the chat page for it. */
+  onToChat?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -79,6 +82,7 @@ export function DriveSetupFailed({
       void utils.feature.get.invalidate({ id: featureId })
       void utils.events.invalidate()
       landOnChat()
+      onToChat?.()
     },
     onError: (e) => toast.push(e.message),
   })
@@ -238,7 +242,7 @@ export function DriveStateWindow({
   leading?: ReactNode
   trailing?: ReactNode
   footer?: ReactNode
-  /** The moment: a {@link DriveMoment}, or a failure report. */
+  /** The moment: an `EmptyState`, or a failure report. */
   children: ReactNode
 }) {
   return (
@@ -253,28 +257,6 @@ export function DriveStateWindow({
         {children}
       </div>
       {footer}
-    </div>
-  )
-}
-
-/** One in-between moment, centred in the window: an icon, what is happening, what to do, at most one action. */
-export function DriveMoment({
-  icon,
-  title,
-  children,
-  action,
-}: {
-  icon: ReactNode
-  title: ReactNode
-  children?: ReactNode
-  action?: ReactNode
-}) {
-  return (
-    <div className="flex max-w-[52ch] flex-col items-center gap-2 text-center">
-      <span className="mb-1 text-icon [&>svg]:size-5">{icon}</span>
-      <div className="text-md font-medium text-text">{title}</div>
-      {children && <div className="text-sm text-pretty text-text-secondary">{children}</div>}
-      {action && <div className="mt-3 flex items-center gap-2">{action}</div>}
     </div>
   )
 }

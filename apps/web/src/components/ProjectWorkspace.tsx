@@ -154,7 +154,7 @@ export function ProjectWorkspace({
   // The panel: the views this page offers, and the one open. Untouched, the
   // Notes inbox is open beside the resting list while something waits in it;
   // the human's own toggle wins from then on.
-  const views = projectViews({ driveActive: !!drive, hasNotes })
+  const views = projectViews({ driveActive: !!drive || projectDrive.starting, hasNotes })
   const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
   const wanted = picked === undefined ? (resting && openNotes > 0 ? 'details' : null) : picked
   const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
@@ -187,16 +187,17 @@ export function ProjectWorkspace({
     drive: projectDrive.slot,
     projectId,
   })
-  // The human's Test drive: the drive it started opens in the panel. The topbar
+  // The human's Test drive: the click is the drive's page at once. The topbar
   // starts the blank app, as the card's main click does.
-  const startDrive = (scenario: string | null = null): void =>
-    projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
+  const startDrive = (scenario: string | null = null): void => {
+    panel.dispatch({ type: 'follow', click: 'testDrive' })
+    projectDrive.start(scenario, () => panel.dispatch({ type: 'close' }))
+  }
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
-  // The drive takes the page at the click, before the server has answered, and
-  // stays mounted while it runs, so the app is as it was left on the way back
-  // (test-drive-looks-the-part decision 13).
-  const onDrive = shown === 'drive' || projectDrive.starting
+  // The drive stays mounted while it runs, so the app is as it was left on the
+  // way back (test-drive-looks-the-part decision 13).
+  const onDrive = shown === 'drive'
   const shownDrive: SlotDrive | null =
     drive ??
     (projectDrive.starting
@@ -283,7 +284,8 @@ export function ProjectWorkspace({
             onStop={() =>
               projectDrive.stop(() => panel.dispatch(hasNotes ? { type: 'switch', view: 'details' } : { type: 'close' }))
             }
-            stopping={projectDrive.stopping}
+            // Stop waits for the start: a second mutate would drop the first's callbacks.
+            stopping={projectDrive.stopping || projectDrive.starting}
             onOpenPreparation={() => onOpenPreparation?.()}
           />
         </ScenarioChatContext.Provider>
