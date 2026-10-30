@@ -1,8 +1,10 @@
 # Decisions — The Orchestrator's page
 
-Planned without the human (a headless planning run, 2026-10-29). Every
-decision below is the lead's own pick and carries the alternative it was
-chosen over; the human confirms or changes them on the plan preview.
+Decisions 1 to 9 were planned without the human (a headless planning run,
+2026-10-29) around a redesigned overview page. The human looked at that design
+and rejected the page itself (2026-10-30): it looks bad and everything on it
+already lives somewhere else. Decisions 10 onward replace that plan. Each old
+decision says what replaced it; 6 and 7 still stand, on the Conversations page.
 
 "The page at rest" means the Orchestrator page with no chat in front: what the
 sidebar's Orchestrator card, its "All N conversations" row and the project
@@ -23,6 +25,7 @@ opens it is what makes the page feel like a place.
 **Challenged:** Every project's page would carry the same title, so nothing
 large says which project you are in when you switch; put the project in the
 crumb ("runcastle › Orchestrator") instead.
+**Superseded by:** 18.
 
 ## 2. The two doors become buttons on the title's line
 **Decision:** "Talk it through" and "Test drive" stop being two stacked rows
@@ -45,6 +48,7 @@ under the title, as on a draft feature's page; at the page's width the sentence
 pushed the buttons onto a line of their own, so it was dropped.
 **Assumed.** Alternative: keep the two door rows and only tidy them (shorter
 hints, one alignment).
+**Superseded by:** 11 and 16.
 
 ## 3. Drive setup moves to the foot of the page
 **Decision:** The "Drive setup" disclosure (the checkout a drive runs, the
@@ -54,6 +58,7 @@ to the bottom of the page, under the conversations.
 Test drive row it sat between the actions and the list the human came for.
 **Assumed.** Alternative: drop it from this page and leave the commands to
 Settings and Preparation.
+**Superseded by:** 16.
 
 ## 4. Notes sit on the page at rest, not in the side panel
 **Decision:** While the project has notes, the page at rest shows a "Notes"
@@ -75,6 +80,7 @@ redundant (the panel stops opening by itself and stops offering Notes at rest),
 which the brief rules out; it also gives notes two homes, and the View link
 goes to a different place depending on whether a chat is open. Keep notes in
 the panel and restyle them, or ask the human.
+**Superseded by:** 15.
 
 ## 5. The conversation list stays, as the page's full history
 **Decision:** The page keeps its list of every project chat. The sidebar lists
@@ -87,6 +93,7 @@ sends the rest here; there are about 80 chats in this repo. Removing the list
 would strand them.
 **Assumed.** Alternative: drop the list and let the sidebar's list open in place
 to show every chat, as a feature's "Show N more" does.
+**Superseded by:** 12.
 
 ## 6. Conversations are grouped by when they were last active
 **Decision:** The list is split under small headings: Today, Yesterday, This
@@ -122,6 +129,7 @@ as today.
 **Why:** Raised by the challenger: it is the first thing a new user sees, and
 empty headings over nothing read as broken.
 **Assumed.** Alternative: a larger centred welcome with New chat as its button.
+**Superseded by:** 14.
 
 ## 9. Around a chat, the page is the crumb, the chat and the panel
 **Decision:** With a chat in front, nothing of the page at rest shows: the
@@ -133,3 +141,53 @@ there is the same list, in the same look, as the page's section.
 keeps around a chat. Today's layout is already right; what changes is the crumb
 (decision 1) and the notes' look.
 **Assumed.** Alternative: keep the page's buttons in a slim strip above the chat.
+**Superseded by:** 10 and 18.
+
+## 10. The Orchestrator opens its latest chat, as a feature opens its chat
+**Decision:** Clicking the sidebar's Orchestrator card opens a chat straight away, the way a feature opens its chat. There is no page in between.
+**Why:** The human, on seeing the redesigned overview: "clicking the orchestrator does like any other feature, just opens the latest chat."
+
+## 11. The overview page goes
+**Decision:** The page at rest is removed: the title block, "Talk it through", the Test drive row and the list below them. Nothing replaces it as a landing place.
+**Why:** The human: "I don't think this overview page is needed. It looks bad and everything is already there somewhere else."
+Supersedes: 2.
+
+## 12. A separate Conversations page holds the full history
+**Decision:** "All N conversations" at the foot of the sidebar's list opens a page of its own, at its own address, so Back and reload work. It holds a title, a filter and every chat, and nothing else: no New chat button, no notes, no drive. Rows keep the groups of decisions 6 and 7. The sidebar's row appears only past five chats, as today, so a project with five or fewer never needs this page.
+**Why:** The human suggested it ("maybe we just need to create a separate conversations page"). The sidebar stops at five, and about 80 chats would otherwise be out of reach.
+**Assumed.** Alternative: let the sidebar's list open in place, as a feature's "Show N more" does; at 80 rows it would push every feature out of sight.
+Supersedes: 5.
+
+## 13. "Latest" means the chat with the most recent activity
+**Decision:** On arrival the Orchestrator opens the project chat with the most recent activity. It picks once: a chat you are reading stays in front while others post. Scenario chats from a drive are never picked. A link or reload that names a chat opens that chat.
+**Why:** It matches "where I left off", and it also lands on a chat that has just answered. Picking once keeps the screen from jumping under you.
+**Assumed.** Alternative: the chat you last had open, remembered per project, even if another has been active since.
+
+## 14. A project with no chats opens on a new, empty chat
+**Decision:** With no chats the Orchestrator shows an empty chat with the composer ready. It writes nothing until the first message, as a new feature's main chat does.
+**Why:** It is the same door as every other time, and it says what a chat is for. A new project gets a composer rather than a page explaining one.
+**Assumed.** Alternative: an empty state with a New chat button.
+Supersedes: 8.
+
+## 15. Notes stay in the side panel and open only when asked
+**Decision:** Notes stay the panel's Notes view, reached from the header's panel toggle, which shows the open count. The panel no longer opens by itself on arrival: it opened beside the overview, and a chat should stay whole until you ask. The note capture's View still opens it, and stopping a drive still lands on it.
+**Why:** The human's point that everything already lives elsewhere: the panel, its count and the sidebar card's "N notes" are already there. No new home is needed.
+**Assumed.** Alternative: open the panel by itself whenever open notes wait.
+Supersedes: 4.
+
+## 16. Test drive moves wholly into the header; Drive setup goes
+**Decision:** The header's Test drive button gains the scenario menu it only had on the overview. It also shows "Prepare drive" while no command is set, so that door is not lost. Disabled, it gives its reason as a tooltip. The "Drive setup" disclosure is removed: the commands are in Settings, and a drive shows its branch once it runs.
+**Why:** The header already carries Test drive around every chat; these are the two things only the overview had.
+**Assumed.** Alternative: keep Drive setup as a popover on the Test drive button.
+Supersedes: 2, 3.
+
+## 17. The landing branch is chosen under an empty chat's composer
+**Decision:** Today's "Lands on main" line under the composer becomes a menu while the chat is empty, the moment the choice applies. Once a message is sent it is plain text again. It stays a row in Settings too.
+**Why:** The overview held the only quick way to change it. Under an empty composer it sits beside what it decides, as it did beside New chat.
+**Assumed.** Alternative: Settings only.
+
+## 18. The header reads "Orchestrator › chat title"
+**Decision:** The header leads with the Orchestrator's mark and name, as a feature's leads with its own, then the chat's title as plain text. On the Conversations page it reads "Orchestrator › Conversations", and Orchestrator there goes back to the chat.
+**Why:** It names what you clicked, as a feature's header does. The project's name stays in the sidebar's switcher.
+**Assumed.** Alternative: keep the project's name there.
+Supersedes: 1, 9.

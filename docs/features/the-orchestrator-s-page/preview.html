@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Orchestrator's page preview</title>
+<title>The Orchestrator preview</title>
 <style>
 /* ---- runcastle theme: dark is the default, light is a full peer.
    The app sets data-theme on <html>; opened as a file, the OS setting decides.
@@ -123,31 +123,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 }
 
 /* ---- the show's own styles go below this line ---- */
-.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:14px}
-.ba h3{margin-bottom:8px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
-.wire{padding:18px 20px 22px;display:flex;flex-direction:column;gap:6px;min-height:430px}
-.w-row{display:flex;align-items:center;gap:8px;min-height:22px}
-.w-title{font-size:16px;font-weight:600}
-.w-tile{width:22px;height:22px;border-radius:5px;background:var(--color-accent-subtle);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--color-accent) 40%,transparent)}
-.w-sq{width:22px;height:22px;border-radius:5px;background:var(--color-surface-hover);flex:none}
-.w-facts{font-size:11px;color:var(--color-text-tertiary)}
-.w-btn{height:20px;padding:0 8px;border-radius:5px;border:1px solid var(--color-border);font-size:11px;display:inline-flex;align-items:center;color:var(--color-text-secondary);white-space:nowrap}
-.w-btn.p{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
-.w-ghost{font-size:11px;color:var(--color-text-tertiary);white-space:nowrap}
-.w-h{font-weight:600;margin-top:12px;display:flex;align-items:center;gap:6px}
-.w-h small{font-weight:400;color:var(--color-text-tertiary);font-size:11px}
-.w-g{font-size:11px;color:var(--color-text-tertiary);margin-top:6px}
-.w-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-secondary);min-height:20px}
-.w-line i{width:6px;height:6px;border-radius:9px;background:var(--color-text-disabled);flex:none}
-.w-line i.w{background:var(--color-warning)}
-.w-line span:last-child{margin-left:auto;color:var(--color-text-tertiary);font-size:11px}
-.w-sep{border-top:1px solid var(--color-border-subtle);margin:8px 0 2px}
-.w-hint{font-size:11px;color:var(--color-text-tertiary)}
-.right{margin-left:auto;display:flex;gap:6px;align-items:center}
-.dim{opacity:.5}
+.moved{width:100%;border-collapse:collapse;margin-top:12px}
+.moved td{padding:8px;border-bottom:1px solid var(--color-border-subtle);vertical-align:middle}
+.moved td:first-child{color:var(--color-text-secondary);width:34%}
+.moved td:nth-child(2){width:24px;color:var(--color-text-tertiary)}
 .hoodlist{margin:8px 0 0;padding-left:18px;color:var(--color-text-secondary)}
 .hoodlist li{margin:4px 0}
-@media (max-width:760px){.ba{grid-template-columns:1fr}}
+.designs{display:grid;gap:10px;margin-top:14px}
 </style>
 </head>
 <body>
@@ -159,8 +141,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 <!-- 1 · what this is -->
 <header id="what">
-  <h1>The Orchestrator's page</h1>
-  <p class="lede">The page the sidebar's Orchestrator card opens, made calm: the buttons on the title's line, then notes, then every conversation grouped by when it was last active.</p>
+  <h1>The Orchestrator</h1>
+  <p class="lede">Clicking the Orchestrator opens its latest chat, like any feature. The overview page goes; a separate Conversations page holds the full history.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-orchestrator-s-page/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -170,57 +152,44 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 2 · the show -->
 <section id="show">
   <h2>The show</h2>
-  <p class="hint">Before and after, at rest (no chat in front). The real screen is below the sketch: open it in design.</p>
-  <div class="ba">
-    <div>
-      <h3>Today</h3>
-      <div class="screen"><div class="wire">
-        <div class="w-row"><span class="w-title">runcastle</span></div>
-        <div class="w-facts">runcastle/project · lands on main</div>
-        <div class="w-sep"></div>
-        <div class="w-row"><span class="w-sq"></span><span><b>Talk it through</b><br><span class="w-hint">Bring a raw idea; the chat checks it…</span></span><span class="right"><span class="w-ghost">landing on main ▾</span><span class="w-btn p">New chat</span></span></div>
-        <div class="w-sep"></div>
-        <div class="w-row"><span class="w-sq"></span><span><b>Test drive</b><br><span class="w-hint">Run everything that has shipped…</span></span><span class="right"><span class="w-btn">Test drive ▾</span></span></div>
-        <div class="w-row w-ghost">› Drive setup</div>
-        <div class="w-h">Chats</div>
-        <div class="w-line"><i class="w"></i><span>Cut the UI work into seven features</span><span>waiting for you</span></div>
-        <div class="w-line"><i></i><span>Plan the changelog release flow</span><span>2h</span></div>
-        <div class="w-line"><i class="w"></i><span>Why did the burn of #14 stall?</span><span>waiting for you</span></div>
-        <div class="w-line dim"><i></i><span>… ten, then Show 70 more</span><span></span></div>
-        <div class="w-hint" style="margin-top:auto">Notes open by themselves in a side panel.</div>
-      </div></div>
-    </div>
-    <div>
-      <h3>After</h3>
-      <div class="screen"><div class="wire">
-        <div class="w-row"><span class="w-tile"></span><span class="w-title">Orchestrator</span><a class="pin" data-d="1">1</a><span class="right"><span class="w-btn">Test drive ▾</span><span class="w-ghost">landing on main ▾</span><span class="w-btn p">New chat</span><a class="pin" data-d="2">2</a></span></div>
-        <div class="w-facts">runcastle · runcastle/project</div>
-        <div class="w-h">Notes <small>6 open</small><a class="pin" data-d="4">4</a><span class="right"><span class="w-btn">Triage 6</span></span></div>
-        <div class="w-line"><i></i><span>The Working shelf’s light keeps going</span><span>20m</span></div>
-        <div class="w-line"><i></i><span>Merge dialog: the branch name wraps</span><span>45m</span></div>
-        <div class="w-line dim"><i></i><span>… five, then Show N more · 2 triaged</span><span></span></div>
-        <div class="w-h">Conversations <small>18</small><a class="pin" data-d="5">5</a><span class="right"><span class="w-btn" style="width:90px">Filter</span></span></div>
-        <div class="w-g">Active <a class="pin" data-d="7">7</a></div>
-        <div class="w-line"><i class="w"></i><span>Cut the UI work into seven features</span><span>waiting for you</span></div>
-        <div class="w-line"><i class="w"></i><span>Why did the burn of #14 stall?</span><span>waiting for you</span></div>
-        <div class="w-g">Today · Yesterday · This week · This month · Earlier <a class="pin" data-d="6">6</a></div>
-        <div class="w-line"><i></i><span>Plan the changelog release flow</span><span>2h</span></div>
-        <div class="w-sep"></div>
-        <div class="w-row w-ghost">› Drive setup <a class="pin" data-d="3">3</a></div>
-      </div></div>
-    </div>
-  </div>
-  <p class="hint" style="margin-top:10px">With no chats yet, an empty state takes the list's place <a class="pin" data-d="8">8</a>. Around a chat, the header reads "Orchestrator › chat title" and nothing above shows <a class="pin" data-d="9">9</a>.</p>
-
-  <div class="sub">
-<!-- screen:orchestrator-page -->
+  <p class="hint">Three real screens, then where everything on the old page went.</p>
+  <div class="designs">
+<!-- screen:orchestrator-chat -->
 <div class="designed">
-  <h3>The Orchestrator page at rest</h3>
-  <p>Real sidebar and real page components; chats, notes and the drive slot are sample data. Four samples on its top bar (busy project, a few chats and no notes, drive slot taken, new project), both themes, and a Tweaks menu at the bottom right with the two looks still open: the accent tile beside the title or none, and conversations grouped by date or flat.</p>
-  <p class="mono">apps/web/src/components/ProjectWorkspace.tsx · project/OrchestratorDoors.tsx · project/DriveSetup.tsx · project/ConversationList.tsx · project/NotesCard.tsx · preview /preview/orchestrator.html</p>
-  <button data-open-design="/preview/orchestrator.html">Open in design</button>
+  <h3>Opens the latest chat <a class="pin" data-d="10">10</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="18">18</a></h3>
+  <p>The real sidebar, header and chat column; the chats and notes are sample data.</p>
+  <p class="mono">src/components/ProjectWorkspace.tsx · project/ProjectChat.tsx · project/ProjectDriveButton.tsx · preview /preview/orchestrator.html?sample=latest</p>
+  <button data-open-design="/preview/orchestrator.html?sample=latest">Open in design</button>
 </div>
-<!-- /screen:orchestrator-page -->
+<!-- /screen:orchestrator-chat -->
+<!-- screen:conversations-page -->
+<div class="designed">
+  <h3>Conversations <a class="pin" data-d="12">12</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
+  <p>Real components, sample chats. In the app it opens from the sidebar's "All N conversations".</p>
+  <p class="mono">src/components/project/ConversationsPage.tsx · preview /preview/orchestrator.html?sample=conversations</p>
+  <button data-open-design="/preview/orchestrator.html?sample=conversations">Open in design</button>
+</div>
+<!-- /screen:conversations-page -->
+<!-- screen:no-chats -->
+<div class="designed">
+  <h3>No chats yet <a class="pin" data-d="14">14</a> <a class="pin" data-d="17">17</a></h3>
+  <p>The same chat column, empty, with the landing branch as a menu under the composer and Prepare drive in the header.</p>
+  <p class="mono">src/components/project/ProjectChat.tsx · chat/ThreadColumn.tsx · preview /preview/orchestrator.html?sample=new</p>
+  <button data-open-design="/preview/orchestrator.html?sample=new">Open in design</button>
+</div>
+<!-- /screen:no-chats -->
+  </div>
+  <div class="sub">
+    <h3>Where the old page's things went</h3>
+    <table class="moved">
+      <tr><td>New chat</td><td>→</td><td>The sidebar's "+" and the Create menu, already there</td></tr>
+      <tr><td>Test drive and its scenarios</td><td>→</td><td>The header, always <a class="pin" data-d="16">16</a></td></tr>
+      <tr><td>Prepare drive</td><td>→</td><td>The header, in the same place <a class="pin" data-d="16">16</a></td></tr>
+      <tr><td>Drive setup</td><td>→</td><td>Gone; the commands are in Settings <a class="pin" data-d="16">16</a></td></tr>
+      <tr><td>Landing branch</td><td>→</td><td>Under an empty chat's composer, and Settings <a class="pin" data-d="17">17</a></td></tr>
+      <tr><td>Notes</td><td>→</td><td>The panel, as today; opens only when asked <a class="pin" data-d="15">15</a></td></tr>
+      <tr><td>List of chats</td><td>→</td><td>The sidebar's five, then Conversations <a class="pin" data-d="12">12</a></td></tr>
+    </table>
   </div>
 </section>
 
@@ -239,11 +208,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>Nothing deferred</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>The chat column ("The chat looks the part")</li>
-      <li><i class="dot"></i>The project drive screen ("Test drive looks the part")</li>
+      <li><i class="dot"></i>The chat column's own look</li>
+      <li><i class="dot"></i>The project drive screen</li>
       <li><i class="dot"></i>The shared theme and building blocks</li>
-      <li><i class="dot"></i>The sidebar's Orchestrator card and its list</li>
-      <li><i class="dot"></i>Archiving, pinning or renaming chats here</li>
+      <li><i class="dot"></i>Archiving, pinning or renaming chats on Conversations</li>
+      <li><i class="dot"></i>A command palette entry for Conversations</li>
     </ul></div>
   </div>
 </section>
@@ -253,16 +222,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-      <p class="hint">The page at rest is composed in the project workspace from these pieces, top to bottom:</p>
       <ul class="hoodlist">
-        <li><span class="mono">PageHeader</span>: the mark, "Orchestrator", the facts line, and <span class="mono">OrchestratorDoors</span> (new) on the title's line: the drive's states, the landing menu, New chat, and a caption hung beneath.</li>
-        <li><span class="mono">NotesCard</span> gains a section form for the page; the panel's form stays. <span class="mono">NoteDot</span> gains a narrow column for lists with no pictures.</li>
-        <li><span class="mono">ConversationList</span> groups by the pure <span class="mono">conversationGroup(thread, now)</span>; a filter past five; no Show more.</li>
-        <li><span class="mono">DriveSetup</span> (new): the disclosure lifted out of the old Test drive card.</li>
-        <li>The panel: at rest it offers only a running drive and never opens by itself; around a chat it offers Notes as today. The note capture's View and a drive's Stop land accordingly.</li>
-        <li>Deleted: <span class="mono">NewChatCard</span>, <span class="mono">TestDriveCard</span>, <span class="mono">ActionRow</span>, their still-true tests moved to the new pieces. DESIGN.md's project-page paragraph rewritten.</li>
+        <li>The project workspace loses its resting state: what is in front is a chat, an unstarted chat, or the Conversations page.</li>
+        <li><span class="mono">conversations</span> is a new address beside <span class="mono">chat</span>, so Back and reload work.</li>
+        <li>New: <span class="mono">ConversationsPage</span> with the pure <span class="mono">conversationGroup</span>, and <span class="mono">ProjectDriveButton</span>.</li>
+        <li><span class="mono">ThreadColumn</span> gains <span class="mono">startMeta</span>; <span class="mono">ProjectChat</span> gains the unstarted form a feature's main chat has.</li>
+        <li>Deleted: <span class="mono">NewChatCard</span>, <span class="mono">TestDriveCard</span>, <span class="mono">ActionRow</span>, <span class="mono">ConversationList</span>; their still-true tests move.</li>
       </ul>
-      <p class="hint" style="margin-top:10px">Built by the lead in this checkout, no workers: the design already lives in the real components, so what is left is tests, deletions, the docs paragraph and a check of View and drive stop.</p>
+      <p class="hint" style="margin-top:10px">Built by the lead in this checkout, no workers: the behaviour already runs in the design. What is left is tests, deletions and the design guide.</p>
     </div>
   </details>
 </section>
@@ -277,23 +244,32 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['The page is called the Orchestrator, as the sidebar calls it', "The project's name showed three times in one view, while the card you clicked says Orchestrator. The project's name moves to the facts line.", 'assumed'],
-    ["The two doors become buttons on the title's line", 'Two rows of tile, title, hint and controls were most of the page and said what the buttons say. The landing menu stays beside New chat, the choice it argues.', 'assumed'],
-    ['Drive setup moves to the foot of the page', 'It is read once and then known; it sat between the actions and the list you came for.', 'assumed'],
-    ['Notes sit on the page at rest, not in the side panel', 'The page has a wide empty column; opening a second column for a few one-line notes splits one screen in two. Around a chat, the panel keeps Notes.', 'assumed'],
-    ["The conversation list stays, as the page's full history", 'The sidebar lists five and sends "All N conversations" here; removing the list would strand about 80 chats.', 'assumed'],
-    ['Conversations are grouped by when they were last active', 'At 80 chats a flat list behind Show more is a wall; dates are how people look for an old chat. Every chat is listed.', 'assumed'],
-    ['Chats that are working or waiting sit above the date groups', 'By date alone, a chat waiting on you since last week would sit below newer idle ones.', 'assumed'],
-    ['A project with no chats yet invites the first one', 'It is the first thing a new user sees; empty headings over nothing read as broken.', 'assumed'],
-    ['Around a chat, the page is the crumb, the chat and the panel', "Today's layout is already right there; what changes is the crumb and the notes' look.", 'assumed']
+    ['The page is called the Orchestrator, as the sidebar calls it', 'Replaced by 18.', 'replaced'],
+    ["The two doors become buttons on the title's line", 'Replaced by 11 and 16: the page itself goes.', 'replaced'],
+    ['Drive setup moves to the foot of the page', 'Replaced by 16.', 'replaced'],
+    ['Notes sit on the page at rest, not in the side panel', 'Replaced by 15.', 'replaced'],
+    ["The conversation list stays, as the page's full history", 'Replaced by 12.', 'replaced'],
+    ['Conversations are grouped by when they were last active', 'Still stands, on the Conversations page. At 80 chats a flat list is a wall; dates are how people look for an old chat.', 'assumed'],
+    ['Chats that are working or waiting sit above the date groups', 'Still stands, on the Conversations page. By date alone, a chat waiting on you since last week would sit below newer idle ones.', 'assumed'],
+    ['A project with no chats yet invites the first one', 'Replaced by 14.', 'replaced'],
+    ['Around a chat, the page is the crumb, the chat and the panel', 'Replaced by 10 and 18.', 'replaced'],
+    ['The Orchestrator opens its latest chat, as a feature opens its chat', 'Your call: it opens like any other feature.'],
+    ['The overview page goes', 'Your call: it looks bad and everything on it already lives somewhere else.'],
+    ['A separate Conversations page holds the full history', 'Your suggestion. The sidebar stops at five, and about 80 chats would otherwise be out of reach.', 'assumed'],
+    ['"Latest" means the chat with the most recent activity', 'It matches where you left off. It picks once, so the screen never jumps under you.', 'assumed'],
+    ['A project with no chats opens on a new, empty chat', 'The same door as every other time, and nothing is written until the first message.', 'assumed'],
+    ['Notes stay in the side panel and open only when asked', 'The panel, its count and the sidebar card already say it. A chat stays whole until you ask.', 'assumed'],
+    ['Test drive moves wholly into the header; Drive setup goes', 'The header already carries Test drive; its scenarios and Prepare drive were the only parts the overview alone had.', 'assumed'],
+    ["The landing branch is chosen under an empty chat's composer", 'The overview held the only quick way to change it; this sits beside what it decides.', 'assumed'],
+    ['The header reads "Orchestrator › chat title"', "It names what you clicked, as a feature's header does.", 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [4, 'Keep Notes in the side panel, opened by itself at rest, and only restyle it.', 'It changes where notes live and when the panel opens, which the brief may count as new behaviour. The challenger disagreed.', 'challenged'],
-    [2, 'Keep the two door rows and only tidy them.', "The biggest change to the page's look; the explanation under each door goes.", ''],
-    [1, "Keep the project's name as crumb and title.", "Every project's page gets the same title; the challenger would put the project in the crumb.", 'challenged'],
-    [6, 'A flat list, newest first, ten then Show N more.', 'A look as much as a choice: the Tweaks menu flips it to flat so you can compare.', '']
+    [16, 'Keep Drive setup as a popover on the Test drive button.', 'Removes the only view of the drive commands outside Settings.', ''],
+    [15, 'Open the panel by itself whenever open notes wait.', 'Waiting notes become easier to miss: only a count on the toggle and the sidebar card say so.', ''],
+    [13, 'The chat you last had open, remembered per project.', 'If another chat posted since, you land on that one rather than where you were.', ''],
+    [17, 'Settings only.', 'A small addition to the composer line, to keep a choice the overview gave one click away.', '']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
