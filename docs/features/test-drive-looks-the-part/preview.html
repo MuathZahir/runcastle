@@ -153,7 +153,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>Test drive looks the part</h1>
-  <p class="lede">The test drive becomes one calm window that fills the panel, the same on a feature and on the project, and a scenario is picked from one searchable list wherever it is chosen. Look and layout only; the drive behaves as today.</p>
+  <p class="lede">While you drive, the drive is the page: the app flush beside a rail of notes, with the chat one tab away, the same on a feature and in the Orchestrator. A scenario is picked from one searchable list wherever it is chosen.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/test-drive-looks-the-part/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -163,10 +163,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 2 · the show -->
 <section id="show">
   <h2>The show</h2>
-  <p class="hint">Planned without you. The screens below are real components in the worktree, waiting for your look.</p>
+  <p class="hint">Start with the drive page: it is the whole flow, clickable.</p>
 
   <div class="sub">
-    <h3>The running drive: three bands become one window <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a></h3>
+    <h3>The running drive: the app and its notes are the page <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a> <a class="pin" data-d="15">15</a></h3>
     <div class="ba">
       <div><h3>Today</h3>
         <div class="wire">
@@ -179,12 +179,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         </div>
       </div>
       <div><h3>Planned</h3>
-        <div class="wire">
-          <div class="win">
-            <div class="tb"><span class="dot live"></span><b style="color:var(--color-text);font-weight:500">Two coupons stacked &#8964;</b> App | API<span class="grow"></span>select &middot; reload &middot; 1440 &middot; open</div>
-            <div class="st">Running Two coupons stacked&hellip; its output, inside the window</div>
-            <div class="app">the app, at the panel&rsquo;s full height</div>
-            <div class="sl"><span>&#9679; Dev server</span><span>branch</span><span>address</span><span class="grow"></span><span>Output</span></div>
+        <div class="wire" style="flex-direction:row;gap:0;padding:0;overflow:hidden">
+          <div class="win" style="border-radius:0;box-shadow:none">
+            <div class="tb"><span class="dot live"></span><b style="color:var(--color-text);font-weight:500">Two coupons stacked &#8964;</b><span class="grow"></span>tools &middot; Stop</div>
+            <div class="st">Running&hellip; its output, inside the window</div>
+            <div class="app">the app, flush</div>
+            <div class="sl"><span>&#9679; Dev server</span><span>branch</span><span class="grow"></span><span>Output</span></div>
+          </div>
+          <div style="width:34%;border-left:1px solid var(--color-border-subtle);display:flex;flex-direction:column">
+            <div class="tb" style="height:34px;display:flex;align-items:center;padding:0 10px;border-bottom:1px solid var(--color-border-subtle)"><b style="color:var(--color-text);font-weight:500">Notes</b>&nbsp;&nbsp;Chat</div>
+            <div style="flex:1;padding:10px">picture, words, age, edit, delete</div>
+            <div style="padding:10px;border-top:1px solid var(--color-border-subtle)">the chat&rsquo;s box</div>
           </div>
         </div>
       </div>
@@ -203,11 +208,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>Designed screens <a class="pin" data-d="3">3</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="9">9</a> <a class="pin" data-d="10">10</a></h3>
-    <p class="hint">Each page has a moment bar across the top. Where the drive lives is open: compare the three directions below.</p>
+    <p class="hint">Each page has a moment bar across the top. The two older pages show every drive state.</p>
     <div class="designed" style="margin-top:12px">
-      <h3>Where the drive lives</h3>
-      <p>One clickable flow in three directions, on a feature and in the Orchestrator. A comparison composed in the preview; nothing in the app changes until one is picked.</p>
-      <p class="mono">preview /preview/drive-page.html</p>
+      <h3>The drive page</h3>
+      <p>Press Test drive, select an area, add, edit and delete notes, leave, come back, Stop; on a feature and in the Orchestrator. The notes and the box are real components; the page around them is composed in the preview, and the notes are sample data.</p>
+      <p class="mono">src/components/review/DriveNotes.tsx &middot; preview /preview/drive-page.html</p>
       <button data-open-design="/preview/drive-page.html">Open in design</button>
     </div>
     <div class="designed-grid">
@@ -276,10 +281,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="sub">
       <p class="hint">I build this myself after your yes: the designs are already the real components, so what is left is small.</p>
       <ul style="color:var(--color-text-secondary);margin:10px 0 0;padding-left:18px">
-        <li>New: a shared drive stage both drives render, and a scenario picker on the shared searchable list.</li>
+        <li>New: the drive page in both workspaces, a shared drive stage, a scenario picker on the shared searchable list, and one notes rail wired to both note stores.</li>
         <li>The drive frame gains slots above the page, in its place (the API view) and under it; the design view moves its server menu to the far right.</li>
         <li>The split button may open a searchable list instead of an action menu.</li>
-        <li>Left to do: drop the recording stage&rsquo;s unreachable live-drive branches, delete the old scenario menu rows, update the 13 tests that read the old markup, add tests for the picker and the stage, note the window in DESIGN.md and STYLE.md.</li>
+        <li>Left to do: drop the recording stage&rsquo;s unreachable live-drive branches, delete the old scenario menu rows, update the 13 tests that read the old markup, add tests for the picker, the stage and the notes, note the window in DESIGN.md and STYLE.md.</li>
         <li>Checks: the web typecheck and the whole test suite green before I say ready.</li>
       </ul>
     </div>
@@ -307,16 +312,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Notes stay where they are', 'Look and layout only: the project drive keeps its notes aside, the feature drive its captures as test notes.', 'assumed'],
     ['In a narrow panel the toolbar shrinks, never wraps', 'A second row would cover the app; the scenario\u2019s name gives way first, no tool folds away.', 'assumed'],
     ['The human\u2019s other complaints are asked at the design checkpoint', 'Nobody was here to ask what else looks wrong; decisions 2 to 5 are guesses at it.', 'assumed'],
-    ['The drive window is flush with its surroundings', 'You looked at both and said flush seems better.']
+    ['The drive window is flush with its surroundings', 'You looked at both and said flush seems better.'],
+    ['The drive takes over the page, with notes and chat in one rail', 'You picked this from three directions. It replaces decisions 5 and 9 and the panel part of 2.'],
+    ['One notes rail for both drives, evidence first', 'The notes looked bad and had no delete; the app\u2019s own were uneven between the two drives.'],
+    ['The note box is the chat\u2019s composer', 'One better box for the whole app, taking pasted, attached and selected pictures.'],
+    ['Nothing in the rail says \u201call good\u201d', 'You do not want it. Send shows only while unsent notes exist.'],
+    ['A note keeps one picture', 'More would need a storage change. Many pictures are many notes.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [6, 'Copy the frame so the design view keeps today\u2019s look', 'It goes beyond the brief, and the design view is where other features\u2019 designs are judged. The challenger flagged it.', 'challenged'],
-    [2, 'Keep the 16:9 stage; or put the address in the toolbar and drop the status line', 'The biggest change of look, and the challenger would have dropped the status line.', 'challenged'],
-    [1, 'Keep the action menu, now capped and scrolling; or a list down the side of the drive', 'The brief left \u201cis a dropdown even right\u201d to you.'],
-    [11, 'Wait for your answer before designing', 'What else bothers you about the drive is yours to say; this plan guessed.'],
-    [7, 'Restyle the recording player here too', 'Until the right-panel feature lands, the recording player and the drive window will look different.']
+    [17, 'Several pictures on a note, with the storage change that needs', 'You asked for images, not how many; this is the limit the server has today.'],
+    [6, 'Copy the frame so the design view keeps today\u2019s look', 'It goes beyond the brief, and the design view is where other features\u2019 designs are judged.', 'challenged'],
+    [7, 'Restyle the recording player here too', 'Until the right-panel feature lands, the recording player and the drive will look different.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

@@ -63,3 +63,24 @@ Planned without the human (2026-10-29). Every decision below is marked
 ## 12. The drive window is flush with its surroundings
 **Decision:** The drive window loses the inset card: no margin, edge or corners. The app and its toolbar run to the edges around them.
 **Why:** The human looked at both on the preview and said flush seems better (2026-10-30).
+
+## 13. The drive takes over the page, with notes and chat in one rail
+**Decision:** While the human is on a drive, the drive replaces the page's chat, on a feature and in the Orchestrator alike. The app runs flush beside a 360px rail that opens on Notes, with Chat one tab away; New scenario and Fix it open that tab. The toolbar is the head of the app's column, level with the rail's tabs, so there is no second band. Test drive changes the page at once and shows Starting in place. The back arrow returns to the chat with the drive still running; the sidebar's drive card and a "Back to the drive" button in the page's header return to it. Stop drive goes back to the chat, with one line saying how many notes are unsent. Supersedes: 5, 9, and the panel part of 2.
+**Why:** The human picked this from three clickable directions. Today a feature's note box is in the Review view, so writing a note means leaving the app, and the side panel leaves the app about half the width. While a feature's drive runs the agent cannot start a round, so the chat is mostly quiet then.
+
+## 14. One notes rail for both drives, evidence first
+**Decision:** The feature's drive and the Orchestrator's draw the same notes: a picture across the rail's full width, the words under it at row size, the note's age, and Edit and Delete in the row, always visible and quiet until the pointer is on the note. Edit works in place and can add or replace the picture. Delete asks in the row, not in a dialog. New notes land at the bottom, beside the box. Sent notes fold into one line.
+**Why:** The human said the notes looked bad and had no delete. The app's own were uneven: a feature's keep edit and delete in a menu, and the Orchestrator's drive rail has neither.
+
+## 15. The note box is the chat's composer
+**Decision:** Notes are written in the same box as the chat: it grows with the text and takes a pasted, attached or selected picture. Select area puts its crop in this box with the cursor ready, in place of the panel that floated over the app.
+**Why:** The human found the input basic and could not add images. One box for the whole app means nothing to learn and nothing to keep in step.
+
+## 16. Nothing in the rail says "all good"
+**Decision:** The rail offers Send only while unsent notes exist. With none, there is no button and nothing is sent.
+**Why:** The human does not want it. The Review step's own wording belongs to "The feature's right panel, step by step".
+
+## 17. A note keeps one picture
+**Decision:** A note carries one picture; adding another replaces it, and many pictures are many notes.
+**Why:** The server stores a note's picture under the note's id, so more would need a storage change, which this look-and-layout feature does not take on.
+**Assumed.** Alternative: several pictures on a note, with the storage change that needs.
