@@ -19,6 +19,9 @@ link or reload naming a chat opens that chat. Scenario chats are never picked. A
 project with no chats opens on a new, empty chat that writes nothing until its
 first message (decision 14). The overview is gone.
 
+An empty Orchestrator chat shows the hub in its enlarged accent tile, "What are
+we building?" and one line on what the chat does (decision 20).
+
 **The header** reads "Orchestrator › chat title" (decision 18). On its right,
 always: Test drive with its scenario menu, or Prepare drive with no command set,
 or nothing on a born-empty project or while this project's drive runs; then the
@@ -38,6 +41,13 @@ week, This month, Earlier, by last activity (decisions 6, 7). A row opens its
 chat. Back returns to the list; a reload stays on it. Picking any thread, or
 starting a new one, leaves the page.
 
+It reads as a ledger (decision 19). From a content width of 1000px the dates hang
+in a sticky rail left of the column, with a hairline across each group; narrower,
+they sit over their rows. Active chats sit in the Working bay's material, lit
+while an agent works. A line under the title counts the conversations, those
+waiting and those working. The filter marks its match. The sidebar's halftone
+sits behind the head.
+
 **Shape.** The look lives in the real components, with a preview page beside
 them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
 
@@ -47,8 +57,9 @@ them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
   The shell's workspace state gains a flag with it, under the project selection.
 - New pieces: `ConversationsPage`, with the pure `conversationGroup(thread, now)`,
   and `ProjectDriveButton`.
-- `ThreadColumn` gains `startMeta`, the line under the composer while nothing
-  has been said. `ProjectChat` gains the unstarted form, as a feature's main
+- `ThreadColumn` and `ChatThread` gain `empty`, which replaces the plain "New
+  thread". `ThreadColumn` gains `startMeta`, the line under the composer while
+  nothing has been said. `ProjectChat` gains the unstarted form, as a feature's main
   chat has.
 - Deleted: `NewChatCard`, `TestDriveCard`, `ActionRow`, `ConversationList`.
   Their still-true test assertions move to the new pieces.
@@ -64,12 +75,13 @@ them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
 - **`routes`** (existing, pure): `conversations` formats and parses;
   `locationFor` names it.
 - **`ConversationsPage`** (new, rendered alone with a fixed `now`): group order,
-  Active ordering, the filter narrowing every group, the no-match state.
+  Active ordering, the counts line, the filter narrowing every group and marking
+  its match, the no-match state.
 - **`conversationGroup`** (new, pure): each group's boundaries, and a working chat
   from last month landing in Active.
 - **`ProjectDriveButton`** (new, rendered alone): each drive state.
-- **`ThreadColumn`** (existing): `startMeta` shows while the chat is empty and
-  gives way to `meta` once it is not.
+- **`ThreadColumn`** (existing): `startMeta` and `empty` show while the chat is
+  empty and give way once it is not.
 
 ## Out of scope
 

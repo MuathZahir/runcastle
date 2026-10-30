@@ -164,16 +164,16 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- /screen:orchestrator-chat -->
 <!-- screen:conversations-page -->
 <div class="designed">
-  <h3>Conversations <a class="pin" data-d="12">12</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
-  <p>Real components, sample chats. In the app it opens from the sidebar's "All N conversations".</p>
+  <h3>Conversations <a class="pin" data-d="12">12</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a> <a class="pin" data-d="19">19</a></h3>
+  <p>Real components, sample chats. A ledger: dates in a rail that stays in view, active chats on top. Try the filter, and narrow the window. In the app it opens from the sidebar's "All N conversations".</p>
   <p class="mono">src/components/project/ConversationsPage.tsx · preview /preview/orchestrator.html?sample=conversations</p>
   <button data-open-design="/preview/orchestrator.html?sample=conversations">Open in design</button>
 </div>
 <!-- /screen:conversations-page -->
 <!-- screen:no-chats -->
 <div class="designed">
-  <h3>No chats yet <a class="pin" data-d="14">14</a> <a class="pin" data-d="17">17</a></h3>
-  <p>The same chat column, empty, with the landing branch as a menu under the composer and Prepare drive in the header.</p>
+  <h3>No chats yet <a class="pin" data-d="14">14</a> <a class="pin" data-d="17">17</a> <a class="pin" data-d="20">20</a></h3>
+  <p>The same chat column, empty: "What are we building?", the landing branch as a menu under the composer, and Prepare drive in the header.</p>
   <p class="mono">src/components/project/ProjectChat.tsx · chat/ThreadColumn.tsx · preview /preview/orchestrator.html?sample=new</p>
   <button data-open-design="/preview/orchestrator.html?sample=new">Open in design</button>
 </div>
@@ -261,7 +261,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Notes stay in the side panel and open only when asked', 'The panel, its count and the sidebar card already say it. A chat stays whole until you ask.', 'assumed'],
     ['Test drive moves wholly into the header; Drive setup goes', 'The header already carries Test drive; its scenarios and Prepare drive were the only parts the overview alone had.', 'assumed'],
     ["The landing branch is chosen under an empty chat's composer", 'The overview held the only quick way to change it; this sits beside what it decides.', 'assumed'],
-    ['The header reads "Orchestrator › chat title"', "It names what you clicked, as a feature's header does.", 'assumed']
+    ['The header reads "Orchestrator › chat title"', "It names what you clicked, as a feature's header does.", 'assumed'],
+    ['The Conversations page reads as a ledger', 'You asked for /frontend-design. The fonts and colours stay, since the design guide sets them, so the character comes from the layout and from what the sidebar already moves.', 'assumed'],
+    ['An empty Orchestrator chat asks "What are we building?"', 'With the overview gone, this is the first thing a new project shows.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
@@ -269,7 +271,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [16, 'Keep Drive setup as a popover on the Test drive button.', 'Removes the only view of the drive commands outside Settings.', ''],
     [15, 'Open the panel by itself whenever open notes wait.', 'Waiting notes become easier to miss: only a count on the toggle and the sidebar card say so.', ''],
     [13, 'The chat you last had open, remembered per project.', 'If another chat posted since, you land on that one rather than where you were.', ''],
-    [17, 'Settings only.', 'A small addition to the composer line, to keep a choice the overview gave one click away.', '']
+    [17, 'Settings only.', 'A small addition to the composer line, to keep a choice the overview gave one click away.', ''],
+    [19, 'A plain list with a small heading over each group.', 'A look only you can judge. The hanging date rail is the boldest choice here.', '']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

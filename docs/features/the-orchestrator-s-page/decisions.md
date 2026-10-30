@@ -191,3 +191,13 @@ Supersedes: 2, 3.
 **Why:** It names what you clicked, as a feature's header does. The project's name stays in the sidebar's switcher.
 **Assumed.** Alternative: keep the project's name there.
 Supersedes: 1, 9.
+
+## 19. The Conversations page reads as a ledger
+**Decision:** On a wide panel the dates hang in a rail left of the column and stay in view as their rows scroll by, with a hairline across each group; on a narrow panel they sit over their rows. Active chats sit on top in the Working bay's material, its edge lit while an agent works, with "waiting for you" in amber and "working" shimmering. Under the title, one line counts the conversations, those waiting and those working. The filter marks its match in each title. The halftone behind the sidebar's head sits behind the page's.
+**Why:** The human asked for /frontend-design on these screens. The fonts and colours stay, since DESIGN.md sets them for the whole app, so the character comes from the layout and from reusing what the sidebar already moves. It also makes a long history easy to scan.
+**Assumed.** Alternative: a plain list with a small heading over each group.
+
+## 20. An empty Orchestrator chat asks "What are we building?"
+**Decision:** An empty Orchestrator chat shows the hub in its accent tile, enlarged, with "What are we building?" and one line on what the chat does, in place of the plain "New thread". Every new Orchestrator chat shows it. A feature's side thread keeps the plain one.
+**Why:** The human asked for /frontend-design. With the overview gone, this is the first thing a new project shows.
+**Assumed.** Alternative: keep the plain "New thread".
