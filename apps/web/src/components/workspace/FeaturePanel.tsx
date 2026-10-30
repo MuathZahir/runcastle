@@ -11,7 +11,6 @@ import type { FeatureView } from '../../lib/routes'
 import { IconButton, Tabs, cx } from '../../ui'
 import {
   IconArrowLeft,
-  IconCheck,
   IconChevronRight,
   IconDoc,
   IconInfo,
@@ -33,7 +32,6 @@ import {
 export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
   plan: <IconDoc />,
   work: <IconList />,
-  review: <IconCheck />,
   design: <IconPen />,
   drive: <IconPlay />,
   details: <IconInfo />,

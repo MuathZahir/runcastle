@@ -6,6 +6,7 @@ import {
   type ChatNoticeKind,
   type ChatNoticeTarget,
   type NoticeTicket,
+  type StandingNotice,
 } from '../../lib/chat-notices'
 import { NoticeStrip } from './NoticeStrip'
 
@@ -27,6 +28,7 @@ import { NoticeStrip } from './NoticeStrip'
 export function FeatureNoticeDeck({
   events,
   tickets,
+  standing = [],
   active,
   onView,
 }: {
@@ -34,6 +36,8 @@ export function FeatureNoticeDeck({
   events: readonly EventRow[]
   /** The feature's tickets — how a `ticket.done` is recognised as a review pass. */
   tickets: readonly NoticeTicket[]
+  /** The warnings that stand above the event notices while their condition holds. */
+  standing?: readonly StandingNotice[]
   /** The Chat tab is in front. */
   active: boolean
   /** Switch the feature to the tab a notice points at. */
@@ -80,6 +84,7 @@ export function FeatureNoticeDeck({
   return (
     <NoticeStrip
       notices={deck}
+      standing={standing}
       onAct={act}
       onDismiss={(kind) => dispatch({ type: 'dismiss', kind })}
     />

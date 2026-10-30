@@ -1,15 +1,10 @@
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { ReviewDriveDeniedCard } from '../src/components/review/ReviewDriveDeniedCard'
 import { reviewDriveDenial } from '../src/lib/feature-ui'
 
 /**
- * The banner a review drive's dirty-tree refusal raises, and the derivation
- * that decides whether it is still standing. Tier 1: the banner's whole
- * behaviour is the words and the controls it puts on the page, and the
- * lifecycle behind it is a pure function over the feed.
+ * The derivation that decides whether a review drive's dirty-tree refusal is
+ * still standing on the chat's notice strip: a pure function over the feed.
  */
 const event = (over: Partial<EventRow> = {}): EventRow => ({
   id: 1,
@@ -97,66 +92,5 @@ describe('reviewDriveDenial', () => {
       const again = event({ id: 2, ts: 1_760_000_002_000 })
       expect(reviewDriveDenial([event(), again], [], 1)?.eventId).toBe(2)
     })
-  })
-})
-
-const DENIAL = {
-  eventId: 1,
-  at: 1_760_000_000_000,
-  dirtyFiles: ['a.ts', 'b.ts'],
-  message: 'review drive denied — 2 uncommitted file(s) in the working tree: a.ts, b.ts',
-}
-
-const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}): string =>
-  renderToStaticMarkup(
-    createElement(ReviewDriveDeniedCard, {
-      denial: DENIAL,
-      readonly: false,
-      onDismiss: () => undefined,
-      ...props,
-    }),
-  )
-
-describe('ReviewDriveDeniedCard', () => {
-  it('says the drive was refused and names the files, with Dismiss its one control', () => {
-    const html = render()
-    expect(html).toContain('Review couldn’t drive')
-    expect(html).toContain('a.ts')
-    expect(html).toContain('b.ts')
-    expect(html).toContain('Dismiss')
-  })
-
-  /** Another review is the agent's to run (tickets-and-review-are-tools-not-phases decision 12). */
-  it('offers no review button: the human asks the agent', () => {
-    const html = render()
-    expect(html).not.toContain('Agentic review')
-    expect(html).toContain('ask the agent for another review')
-  })
-
-  /** A red panel with no date reads as "right now" (as ConflictCard's does). */
-  it('says when the drive was refused', () => {
-    expect(render()).toContain('denied ')
-  })
-
-  it('says what the review delivered instead, so the banner is not a failure report', () => {
-    expect(render()).toContain('repo-only')
-  })
-
-  /** Decision 33a: a history view offers no live control. */
-  it('renders nothing at all under readonly', () => {
-    expect(render({ readonly: true })).toBe('')
-  })
-
-  /** The review did not fail — it fell back — so this is the accent notice
-   *  with an amber glyph, not the conflict notice's red ground. */
-  it('reads as a warning rather than a failure', () => {
-    const html = render()
-    expect(html).toContain('bg-accent-subtle')
-    expect(html).toContain('text-warning')
-    expect(html).not.toContain('bg-danger-subtle')
-  })
-
-  it('falls back to the server’s sentence when the event carried no file list', () => {
-    expect(render({ denial: { ...DENIAL, dirtyFiles: [] } })).toContain('uncommitted file(s)')
   })
 })

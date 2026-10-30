@@ -1,5 +1,3 @@
-import type { RunStatus } from '@runcastle/core'
-
 export interface BurnInterruption {
   runId: string
   landedTickets: number
@@ -55,61 +53,6 @@ export function laneState(ticket: LaneTicketFigure): LaneState {
   if (ticket.status === 'done') return 'done'
   if (ticket.status === 'burning' || ticket.status === 'running') return 'burning'
   return 'pending'
-}
-
-export function verdictStrip(ticket: LaneTicketFigure): { text: string; hint?: string } | null {
-  if (!['failed', 'launch-failed'].includes(laneState(ticket))) return null
-  const error = ticket.error?.trim() || 'The ticket did not complete.'
-  const text = /agent made no commits/i.test(error)
-    ? 'The burner verifies commits landed on the ticket branch — none did'
-    : laneState(ticket) === 'launch-failed' ? 'The agent sandbox never started.' : error
-  const hint = /windows|path too long|long path/i.test(error) ? 'A long Windows path may have prevented the sandbox mount.' : undefined
-  return { text, ...(hint ? { hint } : {}) }
-}
-
-export function summaryCounts(tickets: readonly LaneTicketFigure[]) {
-  return {
-    done: tickets.filter((t) => laneState(t) === 'done').length,
-    failed: tickets.filter((t) => ['failed', 'launch-failed'].includes(laneState(t))).length,
-    stopped: tickets.filter((t) => laneState(t) === 'stopped').length,
-    waived: tickets.filter((t) => laneState(t) === 'waived').length,
-  }
-}
-
-export function runHeadline(
-  tickets: readonly LaneTicketFigure[],
-  // A run that has stopped speaks in the past tense — the record view reads
-  // terminal lanes, and "Burning 3 tickets" over three settled ones is the same
-  // kind of lie the redesign is removing everywhere else.
-  run: { status?: RunStatus } = {},
-  retryOf?: number,
-): string {
-  if (retryOf !== undefined) return `Retrying #${retryOf}`
-  // Ahead of the all-green line below, because it is the case that line used to
-  // get wrong: a review pass that verified nothing still lands `done`, so every
-  // lane reads green and the run announced a clean sweep over it. The verdict
-  // outranks the counts — the run succeeded, but nothing was verified.
-  const unverified = tickets.some(
-    (t) => t.kind === 'review' && t.reviewVerdict === 'unverified',
-  )
-  if (run.status === 'succeeded' && unverified) return 'Succeeded-unverified · nothing verified'
-  const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
-  const fixes = tickets.filter((t) => t.reviewFix).length
-  // The all-green beat a run is held on screen for after it succeeds (#15a) —
-  // and what a clean run's record says ever after.
-  if (run.status === 'succeeded' && tickets.length > 0 && summaryCounts(tickets).done === tickets.length)
-    return `All ${tickets.length} ticket${tickets.length === 1 ? '' : 's'} landed`
-  // The review pass is not work (simplify-the-pages decision 2): its lane says
-  // its own state, so the counts below never restate it.
-  const counts = summaryCounts(tickets.filter((t) => t.kind !== 'review'))
-  const verb = run.status && run.status !== 'running' ? 'Ran' : 'Running'
-  const parts = [`${verb} ${implementation} ticket${implementation === 1 ? '' : 's'}`]
-  if (fixes) parts.push(`+${fixes} fixes from review`)
-  if (counts.done) parts.push(`${counts.done} done`)
-  if (counts.failed) parts.push(`${counts.failed} failed`)
-  if (counts.stopped) parts.push(`${counts.stopped} stopped`)
-  if (counts.waived) parts.push(`${counts.waived} waived`)
-  return parts.join(' · ')
 }
 
 /** The project's own ticket history, as `ticket.durationStats` reports it. */

@@ -7,23 +7,27 @@
  */
 
 /**
- * What the panel can show, one at a time: four fixed views — Plan, Work,
- * Review, Details — and Design and Drive while they run
- * (tickets-and-review-are-tools-not-phases decision 8).
+ * What the panel can show, one at a time: three fixed views — Plan, Tickets
+ * (`work`), Details — and Design and Drive while they run
+ * (the-feature-s-right-panel decisions 14, 17).
  */
-export type PanelView = 'plan' | 'work' | 'review' | 'details' | 'design' | 'drive'
+export type PanelView = 'plan' | 'work' | 'details' | 'design' | 'drive'
 
 /** Every view, in the order the switcher and the topbar list them. */
-export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'review', 'details', 'design', 'drive']
+export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'details', 'design', 'drive']
 
 export function isPanelView(value: string): value is PanelView {
   return (PANEL_VIEWS as readonly string[]).includes(value)
 }
 
-/** The retired views' names, and the fixed view each became: the phase body's tickets, the plan preview. */
-const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan' }
+/**
+ * The retired views' names, and the fixed view each became: the phase body's
+ * tickets, the plan preview, and Review, whose findings are the review
+ * ticket's row now (the-feature-s-right-panel decision 15).
+ */
+const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan', review: 'work' }
 
-/** A view name read from an address or an event, the retired `body` and `preview` mapped onto Work and Plan. */
+/** A view name read from an address or an event, the retired `body`, `preview` and `review` mapped onto Tickets and Plan. */
 export function panelViewOf(value: string): PanelView | null {
   return isPanelView(value) ? value : (RETIRED_VIEWS[value] ?? null)
 }
@@ -47,8 +51,6 @@ export interface PanelFacts {
   hasPlan: boolean
   /** The feature has any ticket. */
   hasTickets: boolean
-  /** Any ready declaration, or any review ticket that ran. */
-  hasReview: boolean
   shipped: boolean
   /** A design server runs for the feature. */
   designRunning: boolean
@@ -64,15 +66,9 @@ export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: str
   return !!full.preview || full.docs.some((doc) => PLAN_DOCS.some((name) => doc.relPath.endsWith(name)))
 }
 
-/** Whether any review ticket has run — started, landed or failed. */
-export function reviewRan(tickets: readonly { kind?: string; status: string }[]): boolean {
-  return tickets.some((ticket) => ticket.kind === 'review' && ticket.status !== 'pending' && ticket.status !== 'cancelled')
-}
-
 /**
  * The views a feature offers right now, each once it has something to show:
- * Plan once there is a plan to read, Work once there is a ticket, Review once
- * the agent declared ready, a review ran or the feature shipped, Details
+ * Plan once there is a plan to read, Tickets once there is a ticket, Details
  * always, and Design and Drive only while they run.
  */
 export function availableViews(facts: PanelFacts): PanelView[] {
@@ -80,8 +76,6 @@ export function availableViews(facts: PanelFacts): PanelView[] {
   const offered: Record<PanelView, boolean> = {
     plan: facts.hasPlan,
     work: facts.hasTickets,
-    // Retired (the-feature-s-right-panel decision 14): its notes are the drive's, its findings the review ticket's.
-    review: false,
     details: true,
     design: facts.designRunning,
     drive: facts.driveActive,
@@ -136,7 +130,6 @@ export function panelShowRequest(
 export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
   plan: 'Plan',
   work: 'Tickets',
-  review: 'Review',
   design: 'Design',
   drive: 'Drive',
   details: 'Details',

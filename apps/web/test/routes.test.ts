@@ -60,6 +60,15 @@ describe('parsePath', () => {
     expect(parsePath('/p/proj_a/f/flow-redesign-shell/work')).toEqual(work)
   })
 
+  // the-feature-s-right-panel decision 15: Review's findings are the review ticket's row.
+  it('lands the retired Review address on Tickets', () => {
+    expect(parsePath('/p/proj_a/f/flow-redesign-shell/review')).toEqual({
+      kind: 'feature',
+      projectId: 'proj_a',
+      featureSlug: 'flow-redesign-shell',
+    })
+  })
+
   // tickets-and-review-are-tools-not-phases decision 8: the preview folded into Plan.
   it('reads the retired preview address as the feature’s Plan', () => {
     expect(parsePath('/p/proj_a/f/flow-redesign-shell/preview')).toEqual({
@@ -80,7 +89,7 @@ describe('parsePath', () => {
   })
 
   it('names every panel view but Work by its own segment', () => {
-    for (const view of ['plan', 'review', 'design', 'drive', 'details'] as const) {
+    for (const view of ['plan', 'design', 'drive', 'details'] as const) {
       expect(parsePath(`/p/proj_a/f/slug/${view}`)).toEqual({
         kind: 'feature',
         projectId: 'proj_a',

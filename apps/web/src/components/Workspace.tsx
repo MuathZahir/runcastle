@@ -7,7 +7,7 @@ import { useToast } from '../lib/toast'
 import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
-import { availableViews, hasPlan, PANEL_VIEW_LABEL, reviewRan, type PanelView } from '../lib/feature-ui/panel'
+import { availableViews, hasPlan, PANEL_VIEW_LABEL, type PanelView } from '../lib/feature-ui/panel'
 import {
   DimLine,
   IconButton,
@@ -21,6 +21,7 @@ import { IconX, ProgressIcon } from '../icons'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
+import type { FeatureFull } from '../lib/api'
 import {
   activeSession,
   defaultBaseBranch,
@@ -50,8 +51,6 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
-import { ReviewBody } from './bodies/ReviewBody'
-import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsView } from './bodies/tickets/TicketsView'
 import { DesignView, useDesignPath } from './design/DesignView'
 import { DocReader } from './DocReader'
@@ -60,6 +59,9 @@ import { FeatureFacts } from './inspector/FeatureFacts'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
+import { useStandingNotices } from './workspace/use-standing-notices'
+import { OpenWork } from './review/OpenWork'
+import { partitionWork } from './review/WorkList'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
@@ -111,10 +113,11 @@ function useNowPast(deadline: number | undefined): number {
  *              (the status's primary), "…" with everything else — Merge &
  *              ship among it — and the panel toggle
  *   the chat — the feature's live session (`FeatureChat`), filling the page,
- *              with the page's notices atop it
- *   one panel — on the right when open, one view at a time: Plan, Work,
- *              Review, Details, and Design or Drive while they run
- *              (tickets-and-review-are-tools-not-phases decision 8)
+ *              with the page's notices atop it and its standing warnings on
+ *              the composer's notice strip
+ *   one panel — on the right when open, one view at a time: Plan, Tickets,
+ *              Details, and Design or Drive while they run
+ *              (the-feature-s-right-panel decisions 14, 17)
  *
  * There is no Go and no phase: the agent starts rounds from the chat. The
  * panel opens from the header's toggle (at its last view), from the agent's
@@ -255,15 +258,15 @@ export function Workspace({
   const isDriving = driving?.featureId === featureId
   const requested = viewProp === 'chat' ? null : viewProp
   const designOpenable = !!q.data && !isDraft && !shipped
+  const driveActive = isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle')
   const views = q.data
     ? availableViews({
         isDraft,
         hasPlan: hasPlan(q.data),
         hasTickets: q.data.tickets.length > 0,
-        hasReview: declared || reviewRan(q.data.tickets),
         shipped,
         designRunning: !!designQ.data?.running || (designOpenable && requested === 'design'),
-        driveActive: isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle'),
+        driveActive,
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
@@ -467,6 +470,15 @@ export function Workspace({
   // agent identically (decisions #10) — and so the bar's primary can end a live
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
+  // What the Review view warned about, standing on the chat's notice strip (decision 21).
+  const standing = useStandingNotices({
+    full: q.data,
+    events,
+    conflict,
+    drive: driveQ.data,
+    driveUp: driveActive,
+    resolveConflict,
+  })
 
   const [deleteOpener, setDeleteOpener] = useState<RefObject<HTMLButtonElement | null> | null>(null)
   const archive = trpc.feature.archive.useMutation({
@@ -853,7 +865,6 @@ export function Workspace({
       blocks={full.blocks}
     />
   )
-  const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
   const openDoc = (relPath: string) => panel.dispatch({ type: 'openDoc', doc: relPath })
   // A doc opened in a view is read in that view's place (decision 7), its way
@@ -886,22 +897,6 @@ export function Workspace({
       case 'work':
         // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
         return documentView(v, <TicketsView featureId={featureId} onOpenDoc={openDoc} />)
-      case 'review':
-        // Once merged, the record of what shipped (today's Outcome) is the review.
-        return documentView(
-          v,
-          shipped ? (
-            <ShippedBody full={full} />
-          ) : (
-            <ReviewBody
-              full={full}
-              driving={driving}
-              conflict={conflict}
-              {...(views.includes('work') ? { onOpenWork: () => openView('work') } : {})}
-              {...(views.includes('drive') ? { onOpenDrive: () => openView('drive') } : {})}
-            />
-          ),
-        )
       case 'design':
         return (
           <DesignView
@@ -913,7 +908,19 @@ export function Workspace({
       case 'drive':
         return <FeatureDriveView full={full} />
       case 'details':
-        return <DetailsView featureId={featureId} facts={detailsFacts} onOpenDoc={openDoc} />
+        return (
+          <DetailsView
+            featureId={featureId}
+            facts={detailsFacts}
+            // Review was the one place to write notes and send them; until the
+            // drive takes them they sit here, open on Review's condition
+            // (decision 20): a drive of this feature is up, or the agent declared ready.
+            {...(!shipped && (driveActive || declared)
+              ? { notes: <DetailsNotes featureId={featureId} tickets={full.tickets} driveActive={driveActive} /> }
+              : {})}
+            onOpenDoc={openDoc}
+          />
+        )
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
@@ -997,6 +1004,7 @@ export function Workspace({
                   column={column}
                   events={events}
                   alerts={chatAlerts}
+                  standing={standing}
                   hidden={chatHidden}
                   start={async () => {
                     // The opening waits for the message that started it: one prompt, one answer.
@@ -1095,5 +1103,26 @@ export function Workspace({
         />
       )}
     </section>
+  )
+}
+
+/**
+ * The notes for the agent in Details (decision 20): the human's notes, the
+ * composer and Send to agent — no findings, which are the review ticket's
+ * row, and no stage to jump into.
+ */
+function DetailsNotes({
+  featureId,
+  tickets,
+  driveActive,
+}: {
+  featureId: string
+  tickets: FeatureFull['tickets']
+  driveActive: boolean
+}) {
+  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  const { attention } = partitionWork({ findings: [], notes: notes.data ?? [], tickets, openDefects: [] })
+  return (
+    <OpenWork featureId={featureId} rows={attention} readonly={false} onStage={null} driveActive={driveActive} notesOpen />
   )
 }

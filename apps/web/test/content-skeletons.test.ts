@@ -95,9 +95,8 @@ describe('no content area uses the old loading line', () => {
     expect(offenders).toEqual([])
   })
 
-  // DocPeek's "Loading {title}…" stays: a popover over the page, not a content area.
-  it('renders an undelayed "Loading…" line only in the doc peek popover', () => {
+  it('renders an undelayed "Loading…" line nowhere', () => {
     const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<DimLine>Loading'))
-    expect(offenders.map((f) => f.replaceAll('\\', '/'))).toEqual(['components/DocPeek.tsx'])
+    expect(offenders).toEqual([])
   })
 })

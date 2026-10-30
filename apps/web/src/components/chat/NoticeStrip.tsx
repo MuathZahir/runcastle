@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { IconAlert, IconX, PhaseIcon } from '../../icons'
 import { BARE_BUTTON, Button, cx, IconButton } from '../../ui'
-import type { ChatNotice, ChatNoticeHue, ChatNoticeKind } from '../../lib/chat-notices'
+import type { ChatNotice, ChatNoticeHue, ChatNoticeKind, StandingNotice } from '../../lib/chat-notices'
 import { RAISED } from './thread/surfaces'
 
 /**
@@ -24,10 +24,14 @@ function hueIcon(hue: ChatNoticeHue): ReactNode {
 export interface NoticeStripProps {
   /** Newest first, as `deckReducer` keeps them. */
   notices: readonly ChatNotice[]
+  /** The warnings that hold while their condition does, above the notices and never folded. */
+  standing?: readonly StandingNotice[]
   /** The notice's action: the caller opens the panel view it points at. */
   onAct: (kind: ChatNoticeKind) => void
   onDismiss: (kind: ChatNoticeKind) => void
 }
+
+const DIVIDED = 'border-b border-border-subtle'
 
 /**
  * What happened while you were in the chat (a round finished, a ticket
@@ -36,10 +40,15 @@ export interface NoticeStripProps {
  * One line: the newest notice with its action; older ones fold behind
  * "+N more" and open above it, oldest at the top. A notice leaves by its
  * action, by ✕, or — a confirmation of your own click — by itself.
+ *
+ * Above them, the standing rows (the-feature-s-right-panel decision 21): a
+ * merge conflict, a refused review drive. Each shows while its condition
+ * holds and goes when it ends, so none folds and none has a ✕ unless it can
+ * be waved away.
  */
-export function NoticeStrip({ notices, onAct, onDismiss }: NoticeStripProps) {
+export function NoticeStrip({ notices, standing = [], onAct, onDismiss }: NoticeStripProps) {
   const [open, setOpen] = useState(false)
-  if (notices.length === 0) return null
+  if (notices.length === 0 && standing.length === 0) return null
   const [newest, ...older] = notices
   return (
     <div
@@ -48,38 +57,53 @@ export function NoticeStrip({ notices, onAct, onDismiss }: NoticeStripProps) {
       aria-label="Chat notifications"
       className={cx(RAISED, 'flex flex-col overflow-hidden animate-rise-in')}
     >
+      {standing.map((row, i) => (
+        <NoticeRow
+          key={row.key}
+          hue={row.hue}
+          title={row.title}
+          subtitle={row.subtitle}
+          {...(row.tooltip ? { tooltip: row.tooltip } : {})}
+          {...(row.action ? { action: row.action } : {})}
+          {...(row.onDismiss ? { onDismiss: row.onDismiss } : {})}
+          {...(newest || i < standing.length - 1 ? { className: DIVIDED } : {})}
+        />
+      ))}
       {open &&
         [...older].reverse().map((n) => (
-          <NoticeRow key={`${n.kind}-${n.eventId}`} notice={n} onAct={onAct} onDismiss={onDismiss} className="border-b border-border-subtle" />
+          <EventRow key={`${n.kind}-${n.eventId}`} notice={n} onAct={onAct} onDismiss={onDismiss} className={DIVIDED} />
         ))}
-      <NoticeRow
-        // A bump re-keys the row, so it rises in again.
-        key={`${newest.kind}-${newest.eventId}`}
-        notice={newest}
-        onAct={onAct}
-        onDismiss={onDismiss}
-        aside={
-          older.length > 0 && (
-            <button
-              type="button"
-              aria-expanded={open}
-              onClick={() => setOpen(!open)}
-              className={cx(
-                BARE_BUTTON,
-                'h-6 shrink-0 cursor-pointer rounded-md px-1.5 text-xs tabular-nums text-text-tertiary',
-                'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary',
-              )}
-            >
-              {open ? 'Show less' : `+${older.length} more`}
-            </button>
-          )
-        }
-      />
+      {newest && (
+        <EventRow
+          // A bump re-keys the row, so it rises in again.
+          key={`${newest.kind}-${newest.eventId}`}
+          notice={newest}
+          onAct={onAct}
+          onDismiss={onDismiss}
+          aside={
+            older.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => setOpen(!open)}
+                className={cx(
+                  BARE_BUTTON,
+                  'h-6 shrink-0 cursor-pointer rounded-md px-1.5 text-xs tabular-nums text-text-tertiary',
+                  'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary',
+                )}
+              >
+                {open ? 'Show less' : `+${older.length} more`}
+              </button>
+            )
+          }
+        />
+      )}
     </div>
   )
 }
 
-function NoticeRow({
+/** An event's notice: always its action and its ✕, both answered by kind. */
+function EventRow({
   notice,
   onAct,
   onDismiss,
@@ -94,22 +118,63 @@ function NoticeRow({
   className?: string
 }) {
   return (
-    <article data-hue={notice.hue} className={cx('flex h-11 min-w-0 items-center gap-2.5 pr-2 pl-3.5 text-sm animate-fade-in', className)}>
-      <span aria-hidden="true" className={cx('grid shrink-0 place-items-center', HUE[notice.hue])}>
-        {hueIcon(notice.hue)}
+    <NoticeRow
+      hue={notice.hue}
+      title={notice.title}
+      count={notice.count}
+      subtitle={notice.subtitle}
+      aside={aside}
+      action={{ label: notice.actionLabel, onClick: () => onAct(notice.kind) }}
+      onDismiss={() => onDismiss(notice.kind)}
+      {...(className ? { className } : {})}
+    />
+  )
+}
+
+function NoticeRow({
+  hue,
+  title,
+  count = 1,
+  subtitle,
+  tooltip,
+  aside,
+  action,
+  onDismiss,
+  className,
+}: {
+  hue: ChatNoticeHue
+  title: string
+  count?: number
+  subtitle: string
+  tooltip?: string
+  aside?: ReactNode
+  action?: StandingNotice['action']
+  onDismiss?: () => void
+  className?: string
+}) {
+  return (
+    <article
+      data-hue={hue}
+      title={tooltip}
+      className={cx('flex h-11 min-w-0 items-center gap-2.5 pr-2 pl-3.5 text-sm animate-fade-in', className)}
+    >
+      <span aria-hidden="true" className={cx('grid shrink-0 place-items-center', HUE[hue])}>
+        {hueIcon(hue)}
       </span>
-      <span className="shrink-0 font-medium text-text">{notice.title}</span>
-      {notice.count > 1 && (
-        <span aria-label={`${notice.count} times`} className="shrink-0 text-xs tabular-nums text-text-tertiary">
-          ×{notice.count}
+      <span className="shrink-0 font-medium text-text">{title}</span>
+      {count > 1 && (
+        <span aria-label={`${count} times`} className="shrink-0 text-xs tabular-nums text-text-tertiary">
+          ×{count}
         </span>
       )}
-      <span className="min-w-0 flex-1 truncate text-text-secondary">{notice.subtitle}</span>
+      <span className="min-w-0 flex-1 truncate text-text-secondary">{subtitle}</span>
       {aside}
-      <Button size="sm" onClick={() => onAct(notice.kind)} className="shrink-0">
-        {notice.actionLabel}
-      </Button>
-      <IconButton label="Dismiss" size="sm" icon={<IconX size={12} />} onClick={() => onDismiss(notice.kind)} />
+      {action && (
+        <Button size="sm" disabled={action.disabled} onClick={action.onClick} className="shrink-0">
+          {action.label}
+        </Button>
+      )}
+      {onDismiss && <IconButton label="Dismiss" size="sm" icon={<IconX size={12} />} onClick={onDismiss} />}
     </article>
   )
 }

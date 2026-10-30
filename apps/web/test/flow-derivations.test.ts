@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { driveView, type DriveState } from '../src/lib/feature-ui/drive'
-import { burnExpectation, laneState, repoRelative, runHeadline, stripProtocolTokens, summaryCounts, verdictStrip } from '../src/lib/feature-ui/run'
+import { burnExpectation, laneState, repoRelative, stripProtocolTokens } from '../src/lib/feature-ui/run'
 
 describe('drive view', () => {
   const states: DriveState[] = ['idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving']
@@ -19,16 +19,6 @@ describe('run derivations', () => {
     expect(laneState({ seq: 1, status: 'failed', error: 'stopped: run halted (usage limit reached)' })).toBe('stopped')
     expect(laneState({ seq: 1, status: 'failed', error: 'docker mount failed', hadOutput: false })).toBe('launch-failed')
     expect(laneState({ seq: 1, status: 'cancelled' })).toBe('waived')
-    expect(summaryCounts([{ seq: 1, status: 'failed', error: 'orphaned — run ended' }, { seq: 2, status: 'failed', error: 'boom' }])).toMatchObject({ stopped: 1, failed: 1 })
-  })
-  it('explains verdicts and known launch causes', () => {
-    expect(verdictStrip({ seq: 1, status: 'failed', error: 'agent made no commits' })?.text).toContain('none did')
-    expect(verdictStrip({ seq: 1, status: 'failed', error: 'docker mount failed: Windows path too long', hadOutput: false })?.hint).toContain('Windows')
-  })
-  it('writes honest headlines', () => {
-    const tickets = [{ seq: 1, status: 'done' }, { seq: 2, status: 'failed', error: 'boom' }, { seq: 3, status: 'failed', error: 'stopped by user' }, { seq: 4, status: 'done', reviewFix: true }]
-    expect(runHeadline(tickets)).toBe('Running 3 tickets · +1 fixes from review · 2 done · 1 failed · 1 stopped')
-    expect(runHeadline(tickets, {}, 4)).toBe('Retrying #4')
   })
   it('cleans transcript protocol and sandbox paths', () => {
     expect(stripProtocolTokens('done\n<promise>COMPLETE</promise>')).toBe('done')

@@ -5,7 +5,7 @@ import {
   availableViews,
   hasPlan,
   panelReducer,
-  reviewRan,
+  panelViewOf,
   type PanelAction,
   type PanelFacts,
   type PanelState,
@@ -20,7 +20,6 @@ describe('availableViews', () => {
     isDraft: false,
     hasPlan: false,
     hasTickets: false,
-    hasReview: false,
     shipped: false,
     designRunning: false,
     driveActive: false,
@@ -37,39 +36,41 @@ describe('availableViews', () => {
     expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'drive'])
   })
 
-  it('never offers Review: a ready declaration or a ship adds no view (decision 14)', () => {
-    expect(availableViews({ ...none, hasReview: true })).toEqual(['details'])
+  it('adds no view for a ship (decision 14)', () => {
     expect(availableViews({ ...none, shipped: true })).toEqual(['details'])
   })
 
   it('lists plan, tickets, details, design, drive when every fact holds', () => {
-    const all = { isDraft: false, hasPlan: true, hasTickets: true, hasReview: true, shipped: true, designRunning: true, driveActive: true }
+    const all = { isDraft: false, hasPlan: true, hasTickets: true, shipped: true, designRunning: true, driveActive: true }
     expect(availableViews(all)).toEqual(['plan', 'work', 'details', 'design', 'drive'])
   })
 
   it('gives a draft no panel at all', () => {
-    const all = { isDraft: true, hasPlan: true, hasTickets: true, hasReview: true, shipped: false, designRunning: true, driveActive: true }
+    const all = { isDraft: true, hasPlan: true, hasTickets: true, shipped: false, designRunning: true, driveActive: true }
     expect(availableViews(all)).toEqual([])
   })
 
-  it('has no phase-keyed body and no separate preview view', () => {
-    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'review', 'details', 'design', 'drive'])
+  it('has no phase-keyed body, no separate preview view and no Review', () => {
+    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'details', 'design', 'drive'])
   })
 })
 
-describe('the facts behind Plan and Review', () => {
+describe('panelViewOf', () => {
+  it('reads the retired body, preview and review names as Tickets and Plan', () => {
+    expect(panelViewOf('body')).toBe('work')
+    expect(panelViewOf('preview')).toBe('plan')
+    expect(panelViewOf('review')).toBe('work')
+    expect(panelViewOf('nonsense')).toBeNull()
+  })
+})
+
+describe('the facts behind Plan', () => {
   it('has a plan with a preview, decisions.md or spec.md, and none with only the brief', () => {
     const doc = (relPath: string) => ({ relPath })
     expect(hasPlan({ docs: [doc('docs/features/x/brief.md')] })).toBe(false)
     expect(hasPlan({ preview: { relPath: 'preview.html' }, docs: [] })).toBe(true)
     expect(hasPlan({ docs: [doc('docs/features/x/decisions.md')] })).toBe(true)
     expect(hasPlan({ docs: [doc('docs/features/x/spec.md')] })).toBe(true)
-  })
-
-  it('counts a review ticket that ran, not one still pending or cancelled, nor a work ticket', () => {
-    expect(reviewRan([{ kind: 'review', status: 'pending' }, { kind: 'review', status: 'cancelled' }])).toBe(false)
-    expect(reviewRan([{ kind: 'implementation', status: 'done' }])).toBe(false)
-    for (const status of ['burning', 'done', 'failed']) expect(reviewRan([{ kind: 'review', status }])).toBe(true)
   })
 })
 

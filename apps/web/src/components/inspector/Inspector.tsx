@@ -20,10 +20,17 @@ import { Knowledge } from './Knowledge'
 export function DetailsView({
   featureId,
   facts,
+  notes,
   onOpenDoc,
 }: {
   featureId: string
   facts?: ReactNode
+  /**
+   * The notes for the agent, under the docs, while the drive has not taken
+   * them (the-feature-s-right-panel decision 20); the page passes them only
+   * while they are open.
+   */
+  notes?: ReactNode
   onOpenDoc: (relPath: string) => void
 }) {
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
@@ -44,6 +51,7 @@ export function DetailsView({
       ) : (
         <Knowledge docs={full.data.docs} onOpen={(doc) => onOpenDoc(doc.relPath)} />
       )}
+      {notes && <div className="mt-10">{notes}</div>}
       <Disclosure
         className="mt-10"
         title="Activity" icon={<IconActivity />} aside={events.length > 0 ? String(Math.min(events.length, 50)) : undefined}>

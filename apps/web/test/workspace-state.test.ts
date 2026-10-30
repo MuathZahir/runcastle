@@ -116,12 +116,12 @@ describe('useWorkspace — per-feature view memory', () => {
 
   it('starts on the restored feature’s remembered view across a reload', () => {
     localStorage.setItem('runcastle.selected.v1:proj_1', 'feat_a')
-    localStorage.setItem('runcastle.feature.tab:feat_a', 'review')
+    localStorage.setItem('runcastle.feature.tab:feat_a', 'details')
     const { result } = renderHook(() => useWorkspace('proj_1'))
     expect(result.current.selectedFeatureId).toBe('feat_a')
-    expect(result.current.featureView).toBe('review')
+    expect(result.current.featureView).toBe('details')
     // Mounting is not a choice: nothing remembered is overwritten by it.
-    expect(localStorage.getItem('runcastle.feature.tab:feat_a')).toBe('review')
+    expect(localStorage.getItem('runcastle.feature.tab:feat_a')).toBe('details')
   })
 
   it('still navigates when storage throws', () => {

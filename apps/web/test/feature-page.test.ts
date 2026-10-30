@@ -195,7 +195,6 @@ describe('the chat-first feature page', () => {
   it('never shows a view the feature’s facts do not offer, whatever the address says', () => {
     expect(page({ view: 'drive' })).not.toContain('data-panel')
     expect(page({ view: 'work' })).not.toContain('data-panel')
-    expect(page({ view: 'review' })).not.toContain('data-panel')
     expect(page({ view: 'plan' })).not.toContain('data-panel')
   })
 
@@ -208,7 +207,7 @@ describe('the chat-first feature page', () => {
   })
 
   it('makes no call to Go, its warnings, the human’s burn or the agentic review', () => {
-    page({ tickets: [ticket(1)], queries: READY, view: 'review' })
+    page({ tickets: [ticket(1)], queries: READY, view: 'details' })
     page({ tickets: [ticket(1)], view: 'work' })
     for (const retired of ['feature.go', 'feature.goWarnings', 'feature.burn', 'feature.agenticReview']) {
       expect(store.touched.has(retired)).toBe(false)
@@ -275,6 +274,26 @@ describe('what opens the panel', () => {
       options.onSuccess?.({ ok: true, files: [], confirmed: true }, { featureId: 'f1' })
     }
     expect(onViewChange).not.toHaveBeenCalled()
+  })
+
+  // the-feature-s-right-panel decision 20: Review was the one place to write notes.
+  it('shows the notes for the agent in Details once the agent declared ready, and not before', () => {
+    expect(panelOf(page({ view: 'details', queries: READY }))).toContain('Notes for the agent')
+    expect(panelOf(page({ view: 'details' }))).not.toContain('Notes for the agent')
+  })
+
+  it('shows the notes in Details while a drive of the feature is up', () => {
+    const drive = { 'feature.driveInfo': { state: 'serving', featureId: 'f1', holderLabel: 'a drive' } }
+    expect(panelOf(page({ view: 'details', queries: drive }))).toContain('Notes for the agent')
+  })
+
+  it('says a merged feature’s Details was merged, with its time', () => {
+    const shipped = { id: 1, projectId: 'p1', featureId: 'f1', ts: Date.now() - 3 * 3_600_000, type: 'feature.shipped', message: 'shipped' } as EventRow
+    setup({ status: 'shipped', queries: { 'events.list': [shipped] } })
+    const view = render(workspace({ view: 'details' }))
+    const facts = view.container.querySelector('[data-panel]')?.textContent ?? ''
+    expect(facts).toContain('Merged')
+    expect(facts).toContain('3h ago')
   })
 
   it('opens Work on the panel.show emit_tickets raises, even before the refetched feature has the tickets', () => {

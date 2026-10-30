@@ -41,19 +41,7 @@ import {
   unresolvedMergeConflict,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
-import { runHeadline } from '../src/lib/feature-ui/run'
 import { full, listItem } from './fixtures'
-
-describe('run headline review verdict', () => {
-  it('does not present an unverified successful review as clean success', () => {
-    expect(
-      runHeadline(
-        [{ seq: 3, status: 'done', kind: 'review', reviewVerdict: 'unverified' }],
-        { status: 'succeeded' },
-      ),
-    ).toBe('Succeeded-unverified · nothing verified')
-  })
-})
 
 /**
  * Every cutting form prefills Branch-from with the branch the project is
