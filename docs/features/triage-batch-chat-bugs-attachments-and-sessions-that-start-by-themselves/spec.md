@@ -56,7 +56,8 @@ The web starts the chat through the existing launch (`feature.launchSession`, wi
 - the feature is started, and neither shipped nor archived;
 - the feature has no sessions of any kind, no tickets and no rounds;
 - its brief is on disk, because a feature reads as active before its docs are written;
-- the page is not launching this chat itself (a Start, or a self-planning run).
+- the page is not launching this chat itself (a Start, or a self-planning run);
+- the human opened the feature. The app's own landing on a project's top feature does not count, until the human picks that feature.
 
 A guard keeps it to one start per page open. The server also runs a feature's launches one at a time, so two tabs cannot create two chats or race for the worktree. If the human presses Send while the start is in flight, Send waits on the same start and its message joins the opening turn. A refused start shows its message once and leaves the empty chat. The next open of the chat tries once more, and the first Send tries too.
 

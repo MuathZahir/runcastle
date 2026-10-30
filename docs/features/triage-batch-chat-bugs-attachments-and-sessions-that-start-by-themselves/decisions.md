@@ -51,7 +51,7 @@ Planned without the human (a self-planning run, 2026-10-30). Each decision below
 **Assumed.** Alternative: one ticket per file-disjoint group, burned in parallel.
 
 ## 10. "Opened" means the human can see the chat
-**Decision:** The start in decision 6 fires only when the main chat column is on screen in a visible browser tab, the thread list has been read and shows no main chat, the feature is started and neither shipped nor archived, its brief is on disk, and the page is not launching the chat itself. Nothing on the server or in the orchestrator starts it, and a page whose panel covers the chat waits until the chat shows.
+**Decision:** The start in decision 6 fires only when the main chat column is on screen in a visible browser tab, the thread list has been read and shows no main chat, the feature is started and neither shipped nor archived, its brief is on disk, and the page is not launching the chat itself. The human must have opened the feature: a link, a click or a restored selection counts, and the app landing on its top feature by itself does not. Nothing on the server or in the orchestrator starts it, and a page whose panel covers the chat waits until the chat shows.
 **Why:** The brief says not to start an agent for a feature nobody has opened. Waiting for the thread list stops a slow read from starting a second chat for a feature that has one.
 **Assumed.** Alternative: start on opening the feature page, whatever is on screen.
 **Challenged:** A chat on screen in a hidden browser tab still counts, so the rule should also require the tab to be visible.
