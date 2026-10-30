@@ -105,6 +105,7 @@ export function ThreadColumn({
   }, [inbox, attach])
 
   const ask = view.ask
+  const line = startMeta && !t.loading && view.items.length === 0 ? startMeta : meta
   const decline = () => ask && t.answer(ask, { kind: 'decline' })
   const footer = ask ? (
     ask.kind === 'approval' ? (
@@ -201,11 +202,7 @@ export function ThreadColumn({
             <div className="flex flex-col gap-1.5">
               {children && <div className="mb-0.5 empty:hidden">{children}</div>}
               {footer}
-              {!ask && (startMeta && view.items.length === 0 ? startMeta : meta) && (
-                <span className="px-4 text-xs text-text-tertiary">
-                  {startMeta && view.items.length === 0 ? startMeta : meta}
-                </span>
-              )}
+              {!ask && line && <span className="px-4 text-xs text-text-tertiary">{line}</span>}
             </div>
           }
         />

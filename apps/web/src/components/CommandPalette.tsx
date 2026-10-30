@@ -44,7 +44,7 @@ export interface CommandPaletteProps {
   onOpenSettings: () => void
   /** Give the panel over to preparation (findings, evidence, the conversation). */
   onOpenPreparation: () => void
-  /** Give the panel over to the project home — its conversation list. */
+  /** Give the panel over to the Orchestrator, on its latest chat. */
   onOpenProjectChat: () => void
   /** Open the note capture popover — the third door onto it (decisions #3). */
   onOpenNote: () => void

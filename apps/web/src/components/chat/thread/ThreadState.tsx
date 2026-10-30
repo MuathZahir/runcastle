@@ -15,9 +15,8 @@ function ago(at: number, now = Date.now()): string {
 }
 
 /**
- * A thread's state as its mark (decision 14), the same in the header's thread
- * list and the project page's chat list: a spinner while it works, a dot while
- * it waits on you, nothing idle.
+ * A thread's state as its mark (decision 14), the same on every list of
+ * threads: a spinner while it works, a dot while it waits on you, nothing idle.
  */
 export function ThreadStateMark({ state }: { state: ThreadState }) {
   if (state === 'working') return <Spinner size="sm" />

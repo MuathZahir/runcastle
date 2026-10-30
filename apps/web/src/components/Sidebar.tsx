@@ -79,9 +79,9 @@ export interface SidebarProps {
   view: WorkspaceView
   selectedFeatureId: string | null
   onSelect: (featureId: string | null) => void
-  /** The project home (its conversations, notes and drive). */
+  /** The Orchestrator: the project's latest chat. */
   onSelectProject: () => void
-  /** New — open the project home on a fresh conversation. */
+  /** New — open the Orchestrator on a fresh conversation. */
   onNewChat: () => void
   /** Draft — open the overlay that parks an idea without cutting anything. */
   onDraft: () => void
@@ -188,7 +188,7 @@ export function Sidebar(props: SidebarProps) {
   // No interval of its own: every write to the pile emits a project event, and
   // the stream invalidates this key with the rest (lib/live.ts).
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
-  // Same query key the project page's chat list polls.
+  // Same query key the Orchestrator's chat list polls.
   const chats = chatsState(trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? [])
   const features = list.data ?? []
   const { inbox, lanes } = sidebarLanes(features)

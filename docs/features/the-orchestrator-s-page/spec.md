@@ -23,13 +23,14 @@ An empty Orchestrator chat shows the hub in its enlarged accent tile, "What are
 we building?" and one line on what the chat does (decision 20).
 
 **The header** reads "Orchestrator › chat title" (decision 18). On its right,
-always: Test drive with its scenario menu, or Prepare drive with no command set,
-or nothing on a born-empty project or while this project's drive runs; then the
-panel toggle with the open notes count (decision 16).
+always: Test drive with the shared scenario picker on its caret, Prepare drive
+with no command set, Back to the drive while this project's drive runs, or
+nothing on a born-empty project; then the panel toggle with the open notes count
+(decisions 16, 21).
 
-**The panel** holds the project drive and Notes as today, and opens only when
-asked: from the toggle, the note capture's View, a drive starting or a drive
-stopping onto Notes (decision 15).
+**The panel** holds Notes and opens only when asked: from the toggle, the note
+capture's View, or a drive stopping onto Notes (decision 15). The drive is the
+page, as it is for a feature.
 
 **The landing branch** is a menu under the composer while a chat is empty, plain
 text after that, and a row in Settings as before (decision 17).
@@ -52,7 +53,7 @@ sits behind the head.
 them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
 
 - The project workspace loses its resting state. What is in front is a chat, an
-  unstarted chat, or the Conversations page.
+  unstarted chat, or the Conversations page; the drive page sits over any of them.
 - `conversations` is a new location kind in the address scheme, beside `chat`.
   The shell's workspace state gains a flag with it, under the project selection.
 - New pieces: `ConversationsPage`, with the pure `conversationGroup(thread, now)`,
@@ -93,4 +94,4 @@ them (`/preview/orchestrator.html`; samples `latest`, `conversations`, `new`).
 
 ## Open questions
 
-None. Decisions marked assumed are the human's to change.
+None.

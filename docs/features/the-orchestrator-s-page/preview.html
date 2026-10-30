@@ -183,11 +183,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <h3>Where the old page's things went</h3>
     <table class="moved">
       <tr><td>New chat</td><td>→</td><td>The sidebar's "+" and the Create menu, already there</td></tr>
-      <tr><td>Test drive and its scenarios</td><td>→</td><td>The header, always <a class="pin" data-d="16">16</a></td></tr>
+      <tr><td>Test drive and its scenarios</td><td>→</td><td>The header, with the shared picker <a class="pin" data-d="16">16</a> <a class="pin" data-d="21">21</a></td></tr>
       <tr><td>Prepare drive</td><td>→</td><td>The header, in the same place <a class="pin" data-d="16">16</a></td></tr>
       <tr><td>Drive setup</td><td>→</td><td>Gone; the commands are in Settings <a class="pin" data-d="16">16</a></td></tr>
       <tr><td>Landing branch</td><td>→</td><td>Under an empty chat's composer, and Settings <a class="pin" data-d="17">17</a></td></tr>
-      <tr><td>Notes</td><td>→</td><td>The panel, as today; opens only when asked <a class="pin" data-d="15">15</a></td></tr>
+      <tr><td>Notes</td><td>→</td><td>The panel; opens only when asked <a class="pin" data-d="15">15</a></td></tr>
       <tr><td>List of chats</td><td>→</td><td>The sidebar's five, then Conversations <a class="pin" data-d="12">12</a></td></tr>
     </table>
   </div>
@@ -249,31 +249,26 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Drive setup moves to the foot of the page', 'Replaced by 16.', 'replaced'],
     ['Notes sit on the page at rest, not in the side panel', 'Replaced by 15.', 'replaced'],
     ["The conversation list stays, as the page's full history", 'Replaced by 12.', 'replaced'],
-    ['Conversations are grouped by when they were last active', 'Still stands, on the Conversations page. At 80 chats a flat list is a wall; dates are how people look for an old chat.', 'assumed'],
-    ['Chats that are working or waiting sit above the date groups', 'Still stands, on the Conversations page. By date alone, a chat waiting on you since last week would sit below newer idle ones.', 'assumed'],
+    ['Conversations are grouped by when they were last active', 'Still stands, on the Conversations page. At 80 chats a flat list is a wall; dates are how people look for an old chat.'],
+    ['Chats that are working or waiting sit above the date groups', 'Still stands, on the Conversations page. By date alone, a chat waiting on you since last week would sit below newer idle ones.'],
     ['A project with no chats yet invites the first one', 'Replaced by 14.', 'replaced'],
     ['Around a chat, the page is the crumb, the chat and the panel', 'Replaced by 10 and 18.', 'replaced'],
     ['The Orchestrator opens its latest chat, as a feature opens its chat', 'Your call: it opens like any other feature.'],
     ['The overview page goes', 'Your call: it looks bad and everything on it already lives somewhere else.'],
-    ['A separate Conversations page holds the full history', 'Your suggestion. The sidebar stops at five, and about 80 chats would otherwise be out of reach.', 'assumed'],
-    ['"Latest" means the chat with the most recent activity', 'It matches where you left off. It picks once, so the screen never jumps under you.', 'assumed'],
-    ['A project with no chats opens on a new, empty chat', 'The same door as every other time, and nothing is written until the first message.', 'assumed'],
-    ['Notes stay in the side panel and open only when asked', 'The panel, its count and the sidebar card already say it. A chat stays whole until you ask.', 'assumed'],
-    ['Test drive moves wholly into the header; Drive setup goes', 'The header already carries Test drive; its scenarios and Prepare drive were the only parts the overview alone had.', 'assumed'],
-    ["The landing branch is chosen under an empty chat's composer", 'The overview held the only quick way to change it; this sits beside what it decides.', 'assumed'],
-    ['The header reads "Orchestrator › chat title"', "It names what you clicked, as a feature's header does.", 'assumed'],
-    ['The Conversations page reads as a ledger', 'You asked for /frontend-design. The fonts and colours stay, since the design guide sets them, so the character comes from the layout and from what the sidebar already moves.', 'assumed'],
-    ['An empty Orchestrator chat asks "What are we building?"', 'With the overview gone, this is the first thing a new project shows.', 'assumed']
+    ['A separate Conversations page holds the full history', 'Your suggestion. The sidebar stops at five, and about 80 chats would otherwise be out of reach.'],
+    ['"Latest" means the chat with the most recent activity', 'It matches where you left off. It picks once, so the screen never jumps under you.'],
+    ['A project with no chats opens on a new, empty chat', 'The same door as every other time, and nothing is written until the first message.'],
+    ['Notes stay in the side panel and open only when asked', 'The panel, its count and the sidebar card already say it. A chat stays whole until you ask.'],
+    ['Test drive moves wholly into the header; Drive setup goes', 'The header already carries Test drive; its scenarios and Prepare drive were the only parts the overview alone had.'],
+    ["The landing branch is chosen under an empty chat's composer", 'The overview held the only quick way to change it; this sits beside what it decides.'],
+    ['The header reads "Orchestrator › chat title"', "It names what you clicked, as a feature's header does."],
+    ['The Conversations page reads as a ledger', 'You asked for /frontend-design. The fonts and colours stay, since the design guide sets them, so the character comes from the layout and from what the sidebar already moves.'],
+    ['An empty Orchestrator chat asks "What are we building?"', 'With the overview gone, this is the first thing a new project shows.'],
+    ["The header's drive door follows "Test drive looks the part"", 'That feature merged first and made the drive a page and the scenario list one picker. The orchestrator asked for this; a second list would be a copy.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [16, 'Keep Drive setup as a popover on the Test drive button.', 'Removes the only view of the drive commands outside Settings.', ''],
-    [15, 'Open the panel by itself whenever open notes wait.', 'Waiting notes become easier to miss: only a count on the toggle and the sidebar card say so.', ''],
-    [13, 'The chat you last had open, remembered per project.', 'If another chat posted since, you land on that one rather than where you were.', ''],
-    [17, 'Settings only.', 'A small addition to the composer line, to keep a choice the overview gave one click away.', ''],
-    [19, 'A plain list with a small heading over each group.', 'A look only you can judge. The hanging date rail is the boldest choice here.', '']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

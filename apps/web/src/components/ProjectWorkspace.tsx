@@ -157,7 +157,6 @@ export function ProjectWorkspace({
   const newChatRef = useRef(newChat)
   newChatRef.current = newChat
 
-  const projectName = project?.name ?? 'This project'
   const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
   const hasNotes = (notesQ.data ?? []).length > 0
 

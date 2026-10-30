@@ -288,7 +288,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         inboxRequest={inboxRequest}
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
-        conversations={ws.conversations}
+        conversations={ws.projectSelected && ws.conversations}
         onOpenConversations={ws.openConversations}
         onCloseConversations={ws.selectProject}
         onOpenPreparation={ws.startPreparation}

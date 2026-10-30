@@ -593,7 +593,7 @@ export function ThreadListMore({ label, icon, onClick }: { label: string; icon: 
 /**
  * The open feature's or the Orchestrator's threads in the order given, five
  * and then the rest: a feature's open in place ("Show N more"); the
- * Orchestrator's are its page's conversation list (`more`, "All N conversations").
+ * Orchestrator's are the Conversations page (`more`, "All N conversations").
  */
 export function SidebarThreadList({
   threads,
@@ -604,7 +604,7 @@ export function SidebarThreadList({
   label = 'Threads',
 }: {
   threads: readonly ThreadEntry[]
-  /** The thread in front, or null when none is (the Orchestrator page at rest). */
+  /** The thread in front, or null when none is (the Conversations page). */
   current: string | null
   onOpen: (id: string) => void
   actionsFor: (t: ThreadEntry) => FeatureAction[]

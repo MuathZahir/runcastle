@@ -17,7 +17,7 @@ import { DriveTag, NoteDot, NoteRow } from './NoteRow'
  *
  * Notes are never cards in the rail: a jotted observation is not a third kind of
  * thing beside drafts and features, it is raw material. So the inbox is the
- * project page's one aside (DESIGN.md: one aside, opened on demand), read right
+ * Orchestrator's panel (DESIGN.md: one aside, opened on demand), read right
  * before triage starts and in the same place triage starts from — a separate
  * route would split one job across two screens. This component is the aside's
  * body; the page owns the Aside frame and its toggle.

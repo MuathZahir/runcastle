@@ -97,7 +97,7 @@ before adding.
     14px), the age; a hairline from the title column divides one row from the
     next. The thread in front is the card (`rounded-md`, nested in its
     feature's card); hover is `surface-hover`, as on every row. Five rows, then "Show N
-    more" (a feature) or "All N conversations" (the Orchestrator's page). The
+    more" (a feature) or "All N conversations" (the Conversations page). The
     open row carries a fold chevron, and "+" and "…" on hover. A row's hover
     controls and the marks under them show and hide on the same conditions
     (hover or keyboard focus), so they never overlap.
@@ -246,15 +246,23 @@ document, under **one header row**:
   opens it. A pinned earlier phase says so atop its body, with the way back.
 - A **draft** has no chat: its body is the page, the next step in its header.
 
-The **project page** takes the same pieces and the same one-header rule
-(decisions 11, 12): its chat column holds the live project chat — the
-switcher, the crumb after the project's, listing the past chats by title and
-age, each opening its read-only transcript, its menu holding the landing
-branch and End session — or, with none running or after the project crumb,
-the chat list with New chat and Test drive. The panel holds the Notes inbox
-(its details); the header offers Test drive while a chat is in front and no
-drive is up, Back to the drive while one is, and the panel toggle, which
-counts the open notes. The drive is the page here too.
+The **Orchestrator** takes the same pieces and the same one-header rule
+(the-orchestrator-s-page): it is its chat, as a feature is. The sidebar's card
+opens the chat with the most recent activity, once, or a new one on a project
+with none, whose first message starts it; there is no page in between. The
+header reads "Orchestrator › chat title", then Test drive with the scenario
+picker on its caret, Prepare drive with no command set, or Back to the drive
+while one runs, then the panel toggle, which counts the open notes. The panel
+holds the Notes inbox and opens only when asked. The drive is the page here too.
+While nothing has been said, the chat shows the hub in a large accent tile and
+"What are we building?", and the line under the composer is the landing
+branch's menu.
+
+**Conversations** is a page of its own, opened by "All N conversations": every
+chat of the project, as a ledger. From 1000px of content the dates hang in a
+sticky rail left of the column, with a hairline across each group; narrower,
+they sit over their rows. Active chats sit on top in the Working bay's material,
+waiting before working. Rows are the sidebar thread row's three columns at 40px.
 
 ## Colour
 

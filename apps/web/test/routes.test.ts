@@ -20,6 +20,7 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'home' },
   { kind: 'project', projectId: 'proj_a' },
   { kind: 'chat', projectId: 'proj_a' },
+  { kind: 'conversations', projectId: 'proj_a' },
   { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'chat' },
@@ -32,6 +33,7 @@ describe('pathFor', () => {
       '/',
       '/p/proj_a',
       '/p/proj_a/chat',
+      '/p/proj_a/conversations',
       '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
       '/p/proj_a/f/flow-redesign-shell/chat',
@@ -189,6 +191,14 @@ describe('locationFor', () => {
       projectId: 'proj_a',
       featureSlug: 'x',
     })
+  })
+
+  it('names the Conversations page, under the project selection only', () => {
+    expect(locationFor({ ...base, projectSelected: true, conversations: true })).toEqual({
+      kind: 'conversations',
+      projectId: 'proj_a',
+    })
+    expect(locationFor({ ...base, conversations: true, featureSlug: 'x' }).kind).toBe('feature')
   })
 
   it("carries the selected feature's view, and none for Work", () => {

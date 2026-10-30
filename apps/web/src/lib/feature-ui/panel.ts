@@ -94,7 +94,7 @@ export function panelTabs(views: readonly PanelView[]): PanelView[] {
 }
 
 /**
- * The views the project page's panel offers (design-mode decision 11): the
+ * The views the Orchestrator's panel offers (design-mode decision 11): the
  * project drive while one is up, and the Notes inbox as its details once the
  * project has jotted a note.
  */
@@ -102,7 +102,7 @@ export function projectViews({ driveActive, hasNotes }: { driveActive: boolean; 
   return [...(driveActive ? (['drive'] as const) : []), ...(hasNotes ? (['details'] as const) : [])]
 }
 
-/** What the project page calls its views: its details are the Notes inbox. */
+/** What the Orchestrator calls its views: its details are the Notes inbox. */
 export function projectViewLabel(view: PanelView): string {
   return view === 'details' ? 'Notes' : PANEL_VIEW_LABEL[view]
 }
