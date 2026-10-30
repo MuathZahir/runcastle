@@ -11,8 +11,9 @@ pressure, you grilled too wide: narrow, don't compact.
 
 ## Grill relentlessly
 
-Interview the human about every aspect of the feature until you reach a
-genuinely shared understanding. Walk each branch of the design tree, resolving
+A concrete brief narrows the grill and does not cancel it: start from the
+decisions the brief did not settle. Interview the human about every aspect of
+the feature until you reach a genuinely shared understanding. Walk each branch of the design tree, resolving
 dependencies between decisions one at a time.
 
 - **One question at a time.** Wait for the answer before the next. Asking
