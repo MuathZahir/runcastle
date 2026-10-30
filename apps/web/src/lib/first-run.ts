@@ -47,7 +47,7 @@ export interface WizardStepRow {
 const SETUP_ORDER: { key: SetupStep; label: string }[] = [
   { key: 'identity', label: 'Git identity' },
   { key: 'runtimes', label: 'Coding agents' },
-  { key: 'afk', label: 'AFK burns' },
+  { key: 'afk', label: 'Unattended workers' },
   { key: 'project', label: 'First project' },
 ]
 

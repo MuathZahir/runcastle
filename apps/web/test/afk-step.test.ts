@@ -17,8 +17,8 @@ const render = () =>
 describe('AfkStep', () => {
   it('asks a question, explains it in one line, and offers two answers', () => {
     const html = render()
-    expect(html).toContain('Run burns unattended?')
-    expect(html).toContain('An AFK burn is a burn you walk away from')
+    expect(html).toContain('Run workers unattended?')
+    expect(html).toContain('Workers run a round’s tickets in containers')
     expect(html).toContain('Set up now')
     expect(html).toContain('Skip for now')
   })

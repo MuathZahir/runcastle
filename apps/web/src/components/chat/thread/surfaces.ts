@@ -5,7 +5,8 @@
  *
  * - `RAISED` floats over the thread: where you type (the composer, a message
  *   being edited), what the agent waits on you for (an ask), what calls you
- *   (a notice card). The raised ground and one soft shadow.
+ *   (a notice card). The raised ground and the popover elevation, the same
+ *   edge every menu and dialog catches.
  * - `WELL` sits in the thread: what was said and done — your message, the
  *   changes a turn made, a subagent's work. A see-through tint of the text
  *   colour and a hairline edge.
@@ -13,13 +14,14 @@
  *   diff, an attached image. The inset ground and a hairline, at the smaller
  *   radius so it nests.
  *
- * Raised and well both catch the same 1px highlight on their top edge, so they
- * read as one family. Each string is spelled whole so Tailwind can see it.
+ * Raised (from the theme's elevation) and well both catch the same 1px
+ * highlight on their top edge, so they read as one family. Each string is
+ * spelled whole so Tailwind can see it.
  */
 
 /** Floats over the thread. */
 export const RAISED =
-  'rounded-lg bg-surface-raised shadow-[var(--elevation-popover),inset_0_1px_0_color-mix(in_oklab,var(--color-text)_6%,transparent)]'
+  'rounded-lg bg-surface-raised shadow-popover'
 
 /** Sits in the thread. */
 export const WELL =

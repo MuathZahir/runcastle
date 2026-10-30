@@ -122,7 +122,7 @@ const PREPARATION_TERMS =
  * words for having a conversation, not only to its own name.
  */
 const PROJECT_CHAT_TERMS =
-  'project chat talk ask conversation conversations idea intake discuss advice new chat'
+  'orchestrator project chat talk ask conversation conversations idea intake discuss advice new chat'
 
 /**
  * Whether an action row's terms answer `q` (already trimmed+lowercased).

@@ -28,7 +28,7 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 | `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
 | `--text-*` | `xs` 12/16 · `sm` 13/20 controls · `md` **14/20, every row** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-md`, `text-xl` |
 | `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, items in a menu, rows inside a card) · `lg` 10 (cards, rows and tabs on their own, panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
-| `--shadow-*` | `popover`, `dialog` — floating layers only | `shadow-popover` |
+| `--shadow-*` | `popover`, `dialog` — floating layers only; both carry the raised material's 1px top highlight | `shadow-popover` |
 | `--ease-*` | `app` (state changes), `out-app` (entering) | `ease-out-app` |
 | `--animate-*` | `rise-in`, `fade-in`, `pop-in`, `dialog-in`, `backdrop-in`, `slide-in-right`, `toast-in`, `breathe`, `spin` | `animate-rise-in` |
 
@@ -239,12 +239,14 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 
 ### Dialog
 
-Every overlay in the app runs its mechanics through `Dialog`. Do not hand-roll
-another one. Its look: `surface-raised`, `rounded-lg`, `shadow-dialog`, the
+Every overlay in the app runs its mechanics through `Dialog`, bar one. The
+command palette keeps its own overlay, because its Escape handling depends on it
+when it sits above Settings; it wears the same look. Do not hand-roll another one. Its look: `surface-raised`, `rounded-lg`, `shadow-dialog`, the
 backdrop fading in (`bg-scrim`) and the panel rising (`animate-dialog-in`).
 Compose the content with `DialogHeader` (`title`, `description`, `onClose` →
 close IconButton, `id` for `labelledBy`), `DialogBody` and `DialogFooter`
-(actions right-aligned, one primary last; `start` slot on the left).
+(actions right-aligned, one primary last; `start` slot on the left; a hairline
+over it only when the body above scrolls).
 
 What it owns: a portal into `<body>`, `role="dialog"` + `aria-modal`, Escape,
 backdrop dismissal, focus on open and focus restore on close, and — with

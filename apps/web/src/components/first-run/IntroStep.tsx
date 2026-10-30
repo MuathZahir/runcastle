@@ -1,5 +1,6 @@
 import { PHASE_ORDER, PHASE_TIP } from '../../lib/feature-ui'
 import { IconArrowRight, LogoMark, PHASE_NAME, PhaseIcon } from '../../icons'
+import { AccentTile } from '../SidebarParts'
 import { Button } from '../../ui'
 import { StepActions, StepHeading } from './StepLayout'
 
@@ -10,16 +11,19 @@ import { StepActions, StepHeading } from './StepLayout'
  * read about.
  *
  * The one screen with no Back and no rail — there is nothing behind it, and
- * setup has not started. It has a little more presence than a step (the mark,
- * a slightly larger lead) and nothing else.
+ * setup has not started. It has a little more presence than a step — the mark
+ * in the accent tile the Orchestrator's empty chat opens on, the same first
+ * moment — and nothing else.
  */
 export function IntroStep({ onNext }: { onNext: () => void }) {
   return (
     <>
-      <LogoMark size={32} variant="solid" className="mb-6" />
+      <AccentTile large className="mb-6">
+        <LogoMark size={26} />
+      </AccentTile>
       <StepHeading title="Your coding agent, driven through a pipeline">
-        Describe a feature and runcastle runs the agent sessions that carry it from idea to merged,
-        stopping at each gate until you say go.
+        Describe a feature and runcastle runs the agent sessions that carry it from idea to merged.
+        You test-drive the result and decide when it ships.
       </StepHeading>
       <ol className="m-0 mt-8 flex list-none flex-col p-0">
         {PHASE_ORDER.map((phase, i) => (

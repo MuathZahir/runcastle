@@ -38,10 +38,9 @@ describe('the Draft door', () => {
 })
 
 /**
- * The card is the Dialog parts — a header, the fields, a footer under a
- * divider — so its rhythm is theirs. What is ours: the fields keep one step
- * between them, and the footer has as much room under its divider as the
- * header has above its title.
+ * The card is the Dialog parts — a header, the fields, a footer — so its rhythm
+ * is theirs. What is ours: the fields keep one step between them, and the
+ * footer carries no divider, because nothing above it scrolls.
  */
 describe('the rhythm of the draft card', () => {
   afterEach(cleanup)
@@ -61,7 +60,7 @@ describe('the rhythm of the draft card', () => {
     return {
       // The Title label's Field, and the stack that Field sits in.
       fields: container.querySelector('label')!.parentElement!.parentElement!,
-      footer: container.querySelector('[class~="border-t"]')!,
+      container,
     }
   }
 
@@ -70,10 +69,9 @@ describe('the rhythm of the draft card', () => {
     expect(step(fields, 'gap')).toBe(4)
   })
 
-  it('gives the footer a divider and room under it', () => {
-    const { footer } = card()
-    expect(footer.className).toContain('border-border-subtle')
-    expect(footer.classList.contains('pt-4')).toBe(true)
+  it('draws no divider over the footer: nothing above it scrolls', () => {
+    const { container } = card()
+    expect(container.querySelector('[class~="border-t"]')).toBeNull()
   })
 
   it('has one primary, and it is Add to backlog', () => {

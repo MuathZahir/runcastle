@@ -75,7 +75,6 @@ export function ParkDraftMode({
         </Field>
       </DialogBody>
       <DialogFooter
-        className="mt-2 border-t border-border-subtle pt-4"
         start={
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <IconBranch size={14} className="shrink-0 text-icon" />

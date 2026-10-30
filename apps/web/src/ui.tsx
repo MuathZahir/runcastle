@@ -448,7 +448,7 @@ export function Dialog({
         {typeof children === 'function' ? children(dismiss) : children}
         {confirming && (
           <div
-            className="m-4 flex items-center gap-2 rounded-md bg-surface-hover px-3 py-2 animate-fade-in"
+            className="card m-4 flex items-center gap-2 rounded-md px-3 py-2 animate-fade-in"
             role="alert"
           >
             <span className="flex-1 text-sm text-text">{discardPrompt}</span>

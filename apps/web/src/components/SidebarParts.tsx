@@ -889,13 +889,31 @@ const HALFTONE_MASK = (() => {
 /** The hub in its accent tile: the Orchestrator's card, and larger, its empty chat. */
 export function OrchestratorTile({ large = false }: { large?: boolean }) {
   return (
+    <AccentTile large={large}>
+      <IconOrchestrator size={large ? 26 : 18} />
+    </AccentTile>
+  )
+}
+
+/** The accent tile a first moment's mark sits in: the Orchestrator's hub, the app's own mark on first run. */
+export function AccentTile({
+  large = false,
+  className,
+  children,
+}: {
+  large?: boolean
+  className?: string
+  children: ReactNode
+}) {
+  return (
     <span
       className={cx(
         'inline-flex shrink-0 items-center justify-center bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] ring-inset',
         large ? 'size-14 rounded-lg' : 'size-9 rounded-md',
+        className,
       )}
     >
-      <IconOrchestrator size={large ? 26 : 18} />
+      {children}
     </span>
   )
 }

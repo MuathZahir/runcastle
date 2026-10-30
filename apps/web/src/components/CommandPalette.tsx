@@ -4,12 +4,13 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
 import { shortcut } from '../lib/platform'
 import { useTheme } from '../lib/theme'
-import { cx, Kbd } from '../ui'
+import { cx, EmptyState, Kbd } from '../ui'
 import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL } from '../ui/floating'
 import {
   IconFolder,
   IconHome,
   IconMoon,
+  IconOrchestrator,
   IconPanelLeft,
   IconPanelRight,
   IconPencil,
@@ -164,8 +165,8 @@ export function CommandPalette(props: CommandPaletteProps) {
         // answer to the words someone types looking to start one.
         kind: 'projectChat',
         shows: matchesProjectChat(q),
-        glyph: <IconHome />,
-        label: 'Project chat',
+        glyph: <IconOrchestrator />,
+        label: 'Orchestrator',
         run: onOpenProjectChat,
       },
       {
@@ -194,7 +195,7 @@ export function CommandPalette(props: CommandPaletteProps) {
         kind: 'theme',
         shows: finds(q, `toggle theme dark light appearance ${nextTheme}`),
         glyph: theme.resolved === 'dark' ? <IconSun /> : <IconMoon />,
-        label: `Toggle theme — switch to ${nextTheme}`,
+        label: `Switch to ${nextTheme} theme`,
         run: theme.toggle,
       },
       ...(onToggleSidebar
@@ -354,7 +355,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             aria-label="Search features, projects, or jump to"
           />
         </div>
-        <div role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <div role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5 [scrollbar-width:thin]">
           {/* A group with nothing in it says nothing — not an empty heading. */}
           {filteredFeatures.length > 0 && group('Features')}
           {filteredFeatures.map((f, i) =>
@@ -395,7 +396,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             ),
           )}
 
-          {rows.length === 0 && <div className="p-6 text-center text-sm text-text-tertiary">No matches</div>}
+          {rows.length === 0 && <EmptyState compact icon={<IconSearch />} title="No matches" />}
         </div>
         <div className="flex shrink-0 items-center gap-4 border-t border-border-subtle px-4 py-2 text-xs text-text-tertiary">
           <span className="flex items-center gap-1.5">

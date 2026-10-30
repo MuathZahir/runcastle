@@ -10,7 +10,7 @@ import { cx } from '../../ui'
  * A slim vertical list in the manner of a `NavItem` column: each step a 32px
  * row with a progress glyph borrowed from the phase shapes — a filled check for
  * a step behind you, the ring-and-dot for the one you are on, a dashed ring for
- * what is ahead. The current row wears `surface-selected`, nothing else.
+ * what is ahead. The current row wears the card, nothing else.
  *
  * A step the host satisfied before the user arrived keeps its place AND says
  * what was found, beneath its label, because a step that was quietly crossed
@@ -29,7 +29,7 @@ const STEP_GLYPH: Record<StepState, PhaseIconPhase> = {
 const STEP_TEXT: Record<StepState, string> = {
   passed: 'text-text-secondary',
   done: 'text-text-secondary',
-  current: 'bg-surface-selected font-medium text-text',
+  current: 'card font-medium text-text',
   todo: 'text-text-tertiary',
 }
 

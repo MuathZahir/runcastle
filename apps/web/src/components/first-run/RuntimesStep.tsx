@@ -116,7 +116,7 @@ function RuntimeRow({ runtime }: { runtime: RuntimeReadiness }) {
       )}
       {runtime.talkReady && !runtime.afkReady && (
         <span className="basis-full text-right text-xs text-text-tertiary">
-          Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
+          Signed in for sessions you watch. Unattended workers on {runtime.label} also need its key —
           the next step sets that up.
         </span>
       )}
