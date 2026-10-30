@@ -59,7 +59,6 @@ function ViewBody({ view }: { view: PanelView; moment: MomentSample }) {
   const today: Record<string, string> = {
     plan: 'The plan preview, with the decisions and the spec one click away inside it.',
     work: 'The one-list Tickets view — drawn in feature-panel.html.',
-    review: 'Ready declarations, the review’s findings and evidence — and what shipped, once merged.',
     drive: 'The test drive, while it runs.',
     design: 'The design server, while it runs.',
     details: 'Timeline, branch, sessions.',

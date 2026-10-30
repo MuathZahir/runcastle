@@ -12,7 +12,7 @@ import { isPanelView, panelViewOf, type PanelView } from './feature-ui/panel'
  * agreeing in both directions.
  *
  * This module is the pure half: format and parse, no DOM, no react. Transient
- * overlays — the ⌘K palette, Settings, DocPeek, the Draft form, the read-only
+ * overlays — the ⌘K palette, Settings, the Draft form, the read-only
  * phase pin — are deliberately *not* representable here. They stay out of the
  * URL and out of history, so Back never means "close the popup".
  */

@@ -163,11 +163,6 @@ document, under **one header row**:
   every other action waits in "…", a disabled one with its reason as its
   title. No feature strip, no stepper row, no button per panel view, no tabs
   (the views' tabs are the panel's own header, below).
-- **Go is on the tickets view**, not in the header: planning's body carries
-  it as its primary above the ticket list, since it starts the burn of what
-  is listed. Gated, it is disabled with the reason as a `caption` beneath it,
-  and "Go anyway…" — only for an unfinished plan — is a small link under
-  that reason. Uncommitted design work has no way past.
 - **The chat** fills the content panel below the header, and stays the same
   element whatever the panel does. It has no header row of its own: the page
   header names the thread in front, quieter than the feature's title, and the
@@ -196,7 +191,12 @@ document, under **one header row**:
     footer, and the working caption sits under it.
   - **Notices** (a round finished, a ticket failed, the plan is ready) are a
     strip on the top edge of the composer or an ask, one line each, older ones
-    behind "+N more". They never cover a message.
+    behind "+N more". They never cover a message. Above them stand the
+    warnings that hold while their condition does (a merge conflict, a
+    refused review drive, a review that verified nothing, another drive
+    holding the slot): the same one-line row, never folded, an action only
+    where the warning has one, a ✕ only where it can be waved away, and what
+    one line cannot hold (a file list, a raw message) in its tooltip.
 - **One panel** on the right, one view at a time (the-feature-s-right-panel
   decisions 2–9, 14, 17–19): **Plan**, **Tickets** and **Details**, plus
   **Design** and **Drive** while they run. Its 44px header switches them
