@@ -56,6 +56,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     select,
     selectView,
     selectProject,
+    openConversations,
     startPreparation,
     setCmdk,
   } = ws
@@ -157,6 +158,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     const addressed = insideProject(urlAtMount, projectId)
 
     if (addressed?.kind === 'chat') selectProject()
+    else if (addressed?.kind === 'conversations') openConversations()
     else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
       // A view in the address wins; a bare feature path restores the remembered
@@ -184,6 +186,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     openFeature,
     selectView,
     selectProject,
+    openConversations,
     startPreparation,
   ])
 
@@ -202,7 +205,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const featureView = selectedFeature?.status === 'draft' ? 'work' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
-      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
+      ? locationFor({ projectId, preparing, projectSelected, conversations: ws.conversations, featureSlug: selectedSlug, featureView })
       : null
 
   useHistorySync(location, (popped) => {
@@ -213,6 +216,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     const inside = insideProject(popped, projectId)
     if (!inside) select(null) // a bare `/p/<id>`: the project home
     else if (inside.kind === 'chat') selectProject()
+    else if (inside.kind === 'conversations') openConversations()
     else if (inside.kind === 'prepare') startPreparation()
     else {
       // The popped path says exactly which view — a bare one is Work, not
@@ -279,6 +283,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         inboxRequest={inboxRequest}
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
+        conversations={ws.conversations}
+        onOpenConversations={ws.openConversations}
+        onCloseConversations={ws.selectProject}
         onOpenPreparation={ws.startPreparation}
         driveRequest={driveRequest}
         onConsumeDriveRequest={consumeDriveRequest}

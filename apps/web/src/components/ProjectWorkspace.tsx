@@ -1,48 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
-import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
-import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
+import { IconOrchestrator } from '../icons'
 import { useLivePoll } from '../lib/live'
-import { Button, Page, PageHeader, PageTopbar } from '../ui'
-import { NEW_CHAT_NAME, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
+import { PageTopbar } from '../ui'
+import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
 import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from './chat/ThreadColumn'
-import { ConversationList } from './project/ConversationList'
-import { NewChatCard } from './project/NewChatCard'
+import { ConversationsPage } from './project/ConversationsPage'
 import { NotesCard } from './project/NotesCard'
 import { ProjectChat } from './project/ProjectChat'
+import { ProjectDriveButton } from './project/ProjectDriveButton'
 import { ProjectDriveView } from './project/ProjectDriveView'
-import { TestDriveCard } from './project/TestDriveCard'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive } from '../lib/use-project-drive'
 
 /**
- * The project workspace (decision 20) — what the rail's pinned row swaps in,
- * the one surface in the shell bound to a project rather than a feature: the
- * project's CONVERSATIONS, and the door to a new one.
- *
- * Chat-first, in the feature page's own pieces (design-mode decision 11): the
- * chat column on the left, and on its right one resizable panel holding the
- * project drive or the Notes inbox (the project page's details).
- *
- * The column at rest is three pieces and nothing else (decisions.md #6): a
- * header naming the branch this chat runs on and the branch its work lands on,
- * the two doors (New chat — the page's one primary — and Test drive) as quiet
- * rows, and the list of chats. The chat's own greeting says what it knows; the
- * landing branch lives in a menu beside the button it argues (decisions.md #3).
- *
- * A list, not a thread, is the resting state (decision 5). A chat in front
- * fills the column as a thread (chat-as-web-components decision 7); every chat
- * of the project lists in the sidebar under the Orchestrator (threads-in-the-sidebar), and the project
- * crumb steps back to the list. Any number of chats run at once (decision 14).
+ * The Orchestrator: what the sidebar's card opens, the one surface in the shell
+ * bound to a project rather than a feature. Like a feature, it is its chat
+ * (the-orchestrator-s-page): it opens on the latest conversation, or on a new
+ * one when the project has none, with one resizable panel on the right holding
+ * the project drive or the Notes inbox. Every chat of the project lists in the
+ * sidebar, and past its five, on the Conversations page. Any number of chats
+ * run at once (decision 14).
  */
 
 export function ProjectWorkspace({
@@ -53,6 +40,9 @@ export function ProjectWorkspace({
   inboxRequest = 0,
   onConsumeInboxRequest,
   empty = false,
+  conversations = false,
+  onOpenConversations,
+  onCloseConversations,
   onOpenPreparation,
   driveRequest = 0,
   onConsumeDriveRequest,
@@ -64,8 +54,13 @@ export function ProjectWorkspace({
   /** Capture's View asked for the Notes inbox (decisions #16). */
   inboxRequest?: number
   onConsumeInboxRequest?: () => void
-  /** Born-empty: nothing to drive, so no Test drive card (drive decision 7). */
+  /** Born-empty: nothing to drive, so no Test drive (drive decision 7). */
   empty?: boolean
+  /** The Conversations page is open instead of a chat. */
+  conversations?: boolean
+  onOpenConversations?: () => void
+  /** Back to the chats, from the Conversations page. */
+  onCloseConversations?: () => void
   /** Open the preparation workspace — where drive commands are established. */
   onOpenPreparation?: () => void
   /** The titlebar's drive pill asked for the project drive. */
@@ -77,8 +72,6 @@ export function ProjectWorkspace({
   const projectsQ = trpc.project.list.useQuery()
   const project = projectsQ.data?.find((p) => p.id === projectId)
   const landing = useSessionBranch(projectId)
-  // The same key the landing menu reads, so the checkout's branch is free.
-  const branchesQ = trpc.project.branches.useQuery({ projectId, includeFeatureBranches: true })
   const projectDrive = useProjectDrive(projectId)
   const drive = projectDrive.drive
   // What a project drive can land on (drive-scenarios decision 7): every
@@ -89,10 +82,8 @@ export function ProjectWorkspace({
     withOwnSection: false,
     runnerConfigured: (scenariosQ.data?.runnerConfigured ?? false) && !!project?.devCommand?.trim(),
   })
-  // What is in front of the chat column: `undefined` follows the newest running
-  // chat (the resting list when none runs), `null` is the list, an id is that thread.
   // Every chat of the project, finished ones included (chat-as-web-components
-  // decision 7) — the resting list and the switcher both read it, so both show
+  // decision 7) — the sidebar and the Conversations page both read it, so both show
   // the same names and states (decision 14). Invalidated by every `thread`
   // live signal (lib/live.ts).
   const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
@@ -103,7 +94,7 @@ export function ProjectWorkspace({
     front,
     pick: setFront,
     pending,
-  } = useAddressedThread<null | undefined>(
+  } = useAddressedThread<undefined>(
     undefined,
     listQ.data
       ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id)
@@ -116,11 +107,20 @@ export function ProjectWorkspace({
   const toast = useToast()
 
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
-  // While the address's chat is pending, nothing is in front and the list is not shown either.
+  // While the address's chat is pending, nothing is in front.
   const opening = pending !== null
-  const inFront = opening ? null : front === undefined || closedErrand ? fallback : front
-  useThreadInUrl(opening ? undefined : inFront)
-  const resting = inFront === null && !opening
+  // Arriving, or an errand's chat closing, lands on the latest conversation.
+  // Once: a chat in front stays there while others post.
+  const landingOnLatest = !opening && !!listQ.data && (front === undefined || closedErrand)
+  const latest = landingOnLatest ? (newestThread(listed, 'project') ?? fallback) : null
+  if (landingOnLatest && (latest !== null || closedErrand)) setFront(latest ?? undefined)
+  const inFront = opening || closedErrand ? null : (front ?? null)
+  // A project with no chats opens on a new one, which its first message starts.
+  const unstarted = !opening && !inFront && !!listQ.data && !latest
+  const inView = conversations ? null : inFront
+  useThreadInUrl(opening ? undefined : inView)
+  // The chat started here keeps its column: the first message is already in it.
+  const [started, setStarted] = useState<string | null>(null)
   // The sidebar and the header always name what is in front, before the list has it.
   const threads = withStandIns(
     listed,
@@ -130,20 +130,28 @@ export function ProjectWorkspace({
             ? standIn(inFront, scenarioChatLabel(scenarioChat.errand), 'scenario')
             : standIn(inFront, NEW_CHAT_NAME, 'project'),
         ]
-      : [],
+      : unstarted
+        ? [standIn(UNSTARTED_CHAT, NEW_CHAT_NAME, 'project')]
+        : [],
   )
+  // A pick from anywhere leaves the Conversations page for that chat.
+  const open = (threadId: string): void => {
+    setFront(threadId)
+    onCloseConversations?.()
+  }
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
   // Every new-chat door — New chat, the shell's New, the sidebar's "+" —
   // opens an empty thread, whatever else is running (decision 14); its first
   // message starts it.
   const create = trpc.thread.new.useMutation({
     onSuccess: ({ threadId }) => {
-      setFront(threadId)
+      open(threadId)
       void utils.thread.list.invalidate({ projectId })
     },
     onError: (e) => toast.push(e.message),
   })
   const newChat = (): void => create.mutate({ projectId })
+  const startChat = trpc.thread.new.useMutation()
   const newChatRef = useRef(newChat)
   newChatRef.current = newChat
 
@@ -151,12 +159,10 @@ export function ProjectWorkspace({
   const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
   const hasNotes = (notesQ.data ?? []).length > 0
 
-  // The panel: the views this page offers, and the one open. Untouched, the
-  // Notes inbox is open beside the resting list while something waits in it;
-  // the human's own toggle wins from then on.
+  // The panel: the views this page offers, and the one open. It opens when asked.
   const views = projectViews({ driveActive: !!drive, hasNotes })
   const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
-  const wanted = picked === undefined ? (resting && openNotes > 0 ? 'details' : null) : picked
+  const wanted = picked ?? null
   const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
   const shown = panel.state.view
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
@@ -187,57 +193,29 @@ export function ProjectWorkspace({
     drive: projectDrive.slot,
     projectId,
   })
-  // The human's Test drive: the drive it started opens in the panel. The topbar
-  // starts the blank app, as the card's main click does.
+  // The human's Test drive: the drive it started opens in the panel.
   const startDrive = (scenario: string | null = null): void =>
     projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   // The Orchestrator's chats live in the sidebar, under its card
-  // (threads-in-the-sidebar); its "All N conversations" is this page at rest.
+  // (threads-in-the-sidebar); its "All N conversations" is the Conversations page.
   usePublishSidebarThreads({
     scope: { projectId },
     threads,
-    current: inFront,
-    pick: setFront,
+    current: conversations ? null : (inFront ?? (unstarted ? UNSTARTED_CHAT : null)),
+    pick: (id) => {
+      if (id !== UNSTARTED_CHAT) open(id)
+      else onCloseConversations?.()
+    },
     newThread: newChat,
     ...(scenarioChat.sessionId && scenarioChat.listed
       ? { errand: { threadId: scenarioChat.sessionId, close: scenarioChat.close } }
       : {}),
-    rest: () => setFront(null),
+    ...(onOpenConversations ? { rest: onOpenConversations } : {}),
   })
-  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : undefined
-
-  const restPage = (
-    <div className={resting && !chatHidden ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting || chatHidden}>
-      <Page routeKey={`project-${projectId}`}>
-        <PageHeader
-          title={projectName}
-          meta={[
-            { icon: <IconBranch />, text: PROJECT_BRANCH, mono: true, title: 'the branch project chats run on' },
-            landing.value ? { icon: <IconArrowRight />, text: `lands on ${landing.value}` } : null,
-          ]}
-        />
-        <div className="mt-8">
-          <NewChatCard landing={landing} onStart={newChat} starting={create.isPending} />
-          <TestDriveCard
-            card={driveCard}
-            branch={drive?.branch ?? (branchesQ.data?.current || null)}
-            setupCommand={project?.driveSetupCommand}
-            devCommand={project?.devCommand}
-            stopCommand={project?.driveStopCommand}
-            starting={projectDrive.starting}
-            scenarios={startScenarios}
-            onStart={startDrive}
-            onPrepare={() => onOpenPreparation?.()}
-            onReturn={() => openView('drive')}
-          />
-        </div>
-        <ConversationList threads={listed} pending={listQ.isPending} onOpen={setFront} />
-      </Page>
-    </div>
-  )
+  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : unstarted ? NEW_CHAT_NAME : undefined
 
   const panelView = (view: PanelView) => {
     switch (view) {
@@ -265,7 +243,7 @@ export function ProjectWorkspace({
               reveal={inboxRequest > 0}
               onRevealed={onConsumeInboxRequest}
               // Its own new thread, beside any chat already running (decision 14).
-              onTriage={() => talk.triage(setFront)}
+              onTriage={() => talk.triage(open)}
             />
           </div>
         )
@@ -276,34 +254,28 @@ export function ProjectWorkspace({
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      {/* The one header row (design-mode decision 12): the project, then the
-          chat in front named as plain text (threads-in-the-sidebar decision 6);
-          at most one action; the panel toggle. */}
+      {/* The one header row (design-mode decision 12): the Orchestrator, then
+          the chat in front named as plain text (threads-in-the-sidebar decision
+          6); at most one action; the panel toggle. */}
       <PageTopbar
         crumbs={[
-          { label: projectName, icon: <IconFolder />, ...(resting ? {} : { onClick: () => setFront(null) }) },
-          ...(inFrontTitle && !resting ? [{ label: inFrontTitle }] : []),
+          {
+            label: 'Orchestrator',
+            icon: <IconOrchestrator size={14} />,
+            ...(conversations ? { onClick: () => onCloseConversations?.() } : {}),
+          },
+          ...(conversations ? [{ label: 'Conversations' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
         trail
         actions={
           <>
-            {/* The resting page's Test drive card is behind a live chat, so the
-                topbar carries its start until a drive is up — then the panel
-                toggle is the way to it. */}
-            {!resting && (driveCard.state === 'ready' || driveCard.state === 'blocked') && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<IconPlay />}
-                className="mr-1"
-                loading={projectDrive.starting}
-                disabled={driveCard.state === 'blocked' || projectDrive.starting}
-                title={driveCard.state === 'blocked' ? driveCard.reason : undefined}
-                onClick={() => startDrive()}
-              >
-                Test drive
-              </Button>
-            )}
+            <ProjectDriveButton
+              card={driveCard}
+              starting={projectDrive.starting}
+              scenarios={startScenarios}
+              onStart={startDrive}
+              onPrepare={() => onOpenPreparation?.()}
+            />
             <PanelToggle
               open={!!shown}
               views={views}
@@ -317,28 +289,42 @@ export function ProjectWorkspace({
       <ScenarioChatContext.Provider value={scenarioChat}>
         <PanelSplit
           chat={
-            // One thread in front, or the resting list; the switcher picks.
+            // One thread in front, or the Conversations page.
             <>
-              {restPage}
-              {opening && !chatHidden && <ThreadOpening />}
-              {inFront && !chatHidden &&
+              {conversations && !chatHidden && <ConversationsPage threads={listed} onOpen={open} />}
+              {!conversations && opening && !chatHidden && <ThreadOpening />}
+              {!conversations && inFront && !chatHidden &&
                 (scenarioInFront ? (
                   <ThreadColumn
                     key={inFront}
                     label="Scenario chat"
                     threadId={inFront}
-                    onOpenThread={setFront}
+                    onOpenThread={open}
                     emptyHint={scenarioErrandHint(scenarioChat.errand)}
                   />
                 ) : (
                   <ProjectChat
-                    key={inFront}
+                    key={inFront === started ? 'new' : inFront}
                     threadId={inFront}
                     {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
-                    onOpenThread={setFront}
-                    {...(landing.value ? { landing: landing.value } : {})}
+                    onOpenThread={open}
+                    landing={landing}
                   />
                 ))}
+              {!conversations && unstarted && !chatHidden && (
+                <ProjectChat
+                  key="new"
+                  threadId={null}
+                  start={async () => (await startChat.mutateAsync({ projectId })).threadId}
+                  startsAs={{ projectId, kind: 'project' }}
+                  onStarted={(id) => {
+                    setStarted(id)
+                    open(id)
+                  }}
+                  onOpenThread={open}
+                  landing={landing}
+                />
+              )}
             </>
           }
           panel={

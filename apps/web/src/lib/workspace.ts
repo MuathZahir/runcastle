@@ -105,6 +105,8 @@ export interface WorkspaceApi {
    * is still the one you come back to when you leave the project workspace.
    */
   projectSelected: boolean
+  /** With `projectSelected`: its Conversations page is open, not its chat. */
+  conversations: boolean
   /**
    * The selected feature's view — the panel view beside its chat, or the chat
    * alone. Shell state rather than the page's, so the address bar can name it
@@ -145,6 +147,7 @@ export interface WorkspaceApi {
   selectView: (view: FeatureView) => void
   /** Select the pinned project row — the project workspace fills the body. */
   selectProject: () => void
+  openConversations: () => void
   /** Open the Draft door's overlay in the workspace. */
   startDraft: () => void
   /** Give the workspace over to preparation. */
@@ -178,6 +181,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
+  const [conversations, setConversations] = useState(false)
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -213,6 +217,15 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // deselection, so leaving it puts you back on the feature you were reading.
   const selectProject = useCallback(() => {
     setProjectSelected(true)
+    setConversations(false)
+    setCreating(false)
+    setPreparing(false)
+    setCmdk(false)
+  }, [])
+
+  const openConversations = useCallback(() => {
+    setProjectSelected(true)
+    setConversations(true)
     setCreating(false)
     setPreparing(false)
     setCmdk(false)
@@ -251,6 +264,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   return {
     selectedFeatureId,
     projectSelected,
+    conversations,
     featureView,
     creating,
     preparing,
@@ -260,6 +274,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     selectView,
     selectProject,
+    openConversations,
     startDraft,
     startPreparation,
     cancelCreate,
