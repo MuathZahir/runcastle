@@ -25,7 +25,7 @@ export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
   return (
     <>
-      <StepHeading title="Run burns unattended?">{AFK_BURN_EXPLAINER}</StepHeading>
+      <StepHeading title="Run workers unattended?">{AFK_BURN_EXPLAINER}</StepHeading>
 
       {settingUp && (
         <div className="mt-8 animate-rise-in">

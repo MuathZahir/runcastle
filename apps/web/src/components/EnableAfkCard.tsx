@@ -134,7 +134,7 @@ export function EnableAfkCard({
         <span
           aria-hidden
           className={cx(
-            'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover [&>svg]:size-4',
+            'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center [&>svg]:size-4',
             allReady ? 'text-success' : 'text-icon',
           )}
         >
@@ -345,7 +345,7 @@ export function ChecklistRow({
             <StatusLabel tone="warning">{status ?? 'Needed'}</StatusLabel>
           )}
         </div>
-        <div className="mt-0.5 truncate font-mono text-xs text-text-tertiary" title={detail}>
+        <div className="mt-0.5 font-mono text-xs break-words text-text-tertiary" title={detail}>
           {detail}
         </div>
       </div>

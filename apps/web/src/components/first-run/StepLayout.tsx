@@ -14,10 +14,12 @@ import { Button, cx } from '../../ui'
  */
 
 /**
- * The calm centred column a first-contact screen sits in, inside the content
- * panel the app shell draws around it (DESIGN.md §Frame) — the step `rail` on
- * its left when there is one. `stepKey` re-keys the content so each step enters on its own: sliding in
- * from the right going forward, rising in place going back.
+ * The calm column a first-contact screen sits in, inside the content panel the
+ * app shell draws around it (DESIGN.md §Frame) — the step `rail` on its left
+ * when there is one. It hangs from a fixed height rather than the middle of the
+ * window, so the rail stays put as steps of different heights come and go.
+ * `stepKey` re-keys the content so each step enters on its own: sliding in from
+ * the right going forward, rising in place going back.
  */
 export function SetupFrame({
   rail,
@@ -33,10 +35,10 @@ export function SetupFrame({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-full" onKeyDown={onKeyDown}>
+    <div className="min-h-full" onKeyDown={onKeyDown}>
       <div
         className={cx(
-          'm-auto grid w-full gap-12 px-8 py-12',
+          'mx-auto grid w-full gap-12 px-8 pt-[14vh] pb-12',
           rail ? 'max-w-[860px] grid-cols-[176px_minmax(0,1fr)]' : 'max-w-[560px]',
         )}
       >

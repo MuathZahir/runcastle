@@ -166,7 +166,7 @@ describe('matchesPreparation', () => {
 
 describe('matchesProjectChat', () => {
   it('answers to the words an idea is brought in by', () => {
-    for (const q of ['talk', 'ask', 'chat', 'project chat', 'conversation', 'idea', 'discuss'])
+    for (const q of ['orchestrator', 'talk', 'ask', 'chat', 'project chat', 'conversation', 'idea', 'discuss'])
       expect(matchesProjectChat(q)).toBe(true)
   })
 

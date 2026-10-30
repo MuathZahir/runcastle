@@ -110,7 +110,7 @@ export function SettingsDialog({
             height it asked for and so never scrolls, and the panel's
             `overflow-hidden` cuts off the rest. */}
         <section className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] bg-surface">
-          <div className="min-h-0 overflow-x-hidden overflow-y-auto px-8 pt-9 pb-12">
+          <div className="min-h-0 overflow-x-hidden overflow-y-auto px-8 pt-9 pb-12 [scrollbar-width:thin]">
             {/* Keyed on the page, so switching pages cross-fades and rises once
                 — never on a refetch or a keystroke in the filter. */}
             <div key={page} className="animate-rise-in">

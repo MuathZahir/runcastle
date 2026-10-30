@@ -153,9 +153,11 @@ export function ProjectCard({
           <MetaLine
             className="flex-nowrap"
             items={[
-              { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },
+              stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: stats.needsYou === 1 ? 'needs you' : 'need you' },
               stats.activeRuns > 0 && { tone: 'live', strong: stats.activeRuns, text: 'running' },
-              stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: 'needs you' },
+              stats.total === 0
+                ? { text: 'No features yet' }
+                : { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },
             ]}
           />
         )

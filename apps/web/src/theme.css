@@ -211,8 +211,8 @@
 /* ---- per-theme values that are not colours Tailwind can own ---- */
 :root {
   color-scheme: dark;
-  --elevation-popover: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 24px -6px rgba(0, 0, 0, 0.6);
-  --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 24px 64px -12px rgba(0, 0, 0, 0.75);
+  --elevation-popover: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 24px -6px rgba(0, 0, 0, 0.6), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
+  --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 24px 64px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
   /* Disclosures animate their height (DESIGN.md §Motion). */
   interpolate-size: allow-keywords;
 }
@@ -264,8 +264,8 @@
   --color-phase-implementation: #d4621a;
   --color-phase-implementation-text: #ac4b0a;
   --color-scrim: rgb(22 26 36 / 0.28);
-  --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
-  --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22);
+  --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
+  --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
 }
 
 /* For the frame of a theme switch (lib/theme.ts), nothing transitions: the

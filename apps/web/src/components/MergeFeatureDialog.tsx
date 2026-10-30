@@ -1,4 +1,4 @@
-import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, SectionLabel } from '../ui'
+import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, FailureNote, SectionLabel } from '../ui'
 import { IconAlert, IconGitMerge, IconRefresh } from '../icons'
 import type { MergeSummary } from '../lib/feature-ui'
 
@@ -150,9 +150,9 @@ export function MergeConfirmation({
           {/* The loudest thing in the dialog, above the green rows rather than
               instead of them: the human still sees what lands IF it lands. */}
           {summary.conflictRow && (
-            <p className="mt-1 mb-2 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
-              {summary.conflictRow}
-            </p>
+            <div className="mt-1 mb-2">
+              <FailureNote message={summary.conflictRow} />
+            </div>
           )}
           {summary.rows.map((row) => (
             <CheckLine key={row.key} row={row} />
