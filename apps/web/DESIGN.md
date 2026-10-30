@@ -118,9 +118,12 @@ before adding.
 - **Page column**: centred, `max-w-(--content-max)` (760) for document-like pages,
   `max-w-(--content-wide)` (1040) for data-heavy ones (run lanes, review evidence).
   Padding 48 top / 32 sides / 64 bottom. Sections are separated by 32–40px of
-  space and a `title` heading — not by cards.
+  space and a `title` heading — not by cards. A view in the feature page's
+  panel is not a page: it is a 24px panel column (§The feature page).
 - **Aside** (320–400px): slides in from the right inside the content panel, with
-  its own 44px header (title + close). One at a time.
+  its own 44px header (title + close). One at a time. The feature page's
+  panel is its own thing — a resizable split with views as tabs — not an
+  aside.
 
 ## Page anatomy (every page)
 
@@ -145,9 +148,9 @@ document, under **one header row**:
 ```
 ┌ 44: ◔ title · ● Planning with you ···· [Feature chat ▾] [Merge & ship] ⋯ ◧ ┐
 ├─────────────────────────────────────┬┬────────────────────────────────────┤
-│ the chat (fills the page)           ││ panel: [Tickets ▾]  path     › ✕   │
-│                                     ││  one view: body · preview ·        │
-│                                     ││  design · drive · details          │
+│ the chat (fills the page)           ││ ▤ Plan  ☰ Tickets  ⓘ Details   › ✕ │
+│                                     ││ 40: [Preview][Decisions 12][Spec]  │
+│                                     ││  the view, a 24px panel column     │
 └─────────────────────────────────────┴┴────────────────────────────────────┘
 ```
 
@@ -159,7 +162,8 @@ document, under **one header row**:
   toggle. The one button is the status's primary (Start test drive, Stop
   drive, Stop) or, with none, Merge & ship when the next step offers it;
   every other action waits in "…", a disabled one with its reason as its
-  title. No feature strip, no stepper row, no button per panel view, no tabs.
+  title. No feature strip, no stepper row, no button per panel view, no tabs
+  (the views' tabs are the panel's own header, below).
 - **Go is on the tickets view**, not in the header: planning's body carries
   it as its primary above the ticket list, since it starts the burn of what
   is listed. Gated, it is disabled with the reason as a `caption` beneath it,
@@ -177,10 +181,38 @@ document, under **one header row**:
   what to test) sit atop the chat, never as another bar. The drive keeps the
   whole panel — no chat docks inside it, and the review body only points at
   a live drive.
-- **One panel** on the right, one view at a time: the phase body (title,
-  meta and the body as a page column), the plan preview, the design, a
-  drive, or the details. Its 44px header holds a switcher over the views
-  the state offers, fold (to a 40px strip) and close. The divider drags
+- **One panel** on the right, one view at a time (the-feature-s-right-panel
+  decisions 2–9, 14, 17–19): **Plan**, **Tickets** and **Details**, plus
+  **Design** and **Drive** while they run. Its 44px header switches them
+  with `Tabs` (icon and word), fold (to a 40px strip) and close; in a
+  panel narrower than ~520px the tabs other than the open one keep only
+  their icon, named by a tooltip. No menu-shaped switcher.
+  - **A view is a panel column, not a page**: 24px sides, no centred page
+    column, and no repeated title — the header row already names the
+    feature, so a view starts with its own content. Sections inside keep the
+    16px `title` heading, separated by space.
+  - A view with parts of its own puts them on one 40px **`PanelViewBar`**
+    at its top: small `Tabs` (or a way back) on the left, its facts and
+    actions on the right. Plan's bar is Preview, Decisions (with its count)
+    and Spec; the preview fills the rest edge to edge with one scrollbar,
+    its own, and decisions and spec read as prose.
+  - **Docs are read in place, never in a dialog**: a doc opened in a view
+    (Details' docs list, the Tickets "…" menu) takes that view's body —
+    `DocReader`, its bar "← Details" (the view's name) › title, then the
+    path and age as one quiet line and the prose at the reading width. Open
+    full window, on the reader's bar, is the one dialog a doc gets. A view
+    switch or close drops the doc; the chat stays beside it.
+  - **Tickets is one list**: earlier rounds folded to one line each at the
+    top, the current round's tickets below, each **the sidebar's two-line
+    row** — `#seq` and the title at 14px, then a 12px line of a status glyph,
+    the state in words ("Running · 4m", "Landed · a1b2c3d") and the model,
+    the running words shimmering. A row opens in place into a card with its
+    actions as small quiet buttons. The list's own controls sit in "…".
+  - **Details is one column**: the feature's facts (`PropertyList`: the
+    branch, started or merged, what it waits on and what waits on it), its
+    docs by title and age, then Activity, closed.
+
+  The divider drags
   either side down to nothing; double-click toggles an even split and the
   panel full; the size is remembered per browser. Under ~1100px of content
   width the panel floats over the chat (`shadow-dialog`).
