@@ -694,7 +694,8 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
             <LaneTranscript ticketId={ticket.id} bootEvents={controls.bootEvents(ticket)} runtime={controls.runtime(ticket)} />
           </ErrorBoundary>
         </Part>
-      ) : ticket.digest && ticket.digest.trim() !== ticket.error?.trim() ? (
+      ) : // A review that failed never ran: its digest only repeats the error above.
+      ticket.digest && !(ticket.kind === 'review' && state === 'failed') ? (
         <Part title={ticket.kind === 'review' ? 'What the review found' : 'What the worker said'}>
           <Markdown source={ticket.digest} />
         </Part>
