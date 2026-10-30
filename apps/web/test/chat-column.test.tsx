@@ -99,7 +99,7 @@ const nav = {
   cancelOpen: () => {},
 }
 
-type PageProps = { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions']; worked?: boolean }
+type PageProps = { featureId?: string; driveSessionId?: string; scenario?: DriveScenario; sessions?: FeatureFull['sessions']; worked?: boolean; onSelect?: (id: string | null) => void }
 
 /** The feature page beside the project sidebar, as the project shell lays them out. */
 function Page(props: PageProps) {
@@ -111,7 +111,7 @@ function Page(props: PageProps) {
           nav={nav}
           view="feature"
           selectedFeatureId={props.featureId ?? 'feat_1'}
-          onSelect={() => {}}
+          onSelect={props.onSelect ?? (() => {})}
           onSelectProject={() => {}}
           onNewChat={() => {}}
           onDraft={() => {}}
@@ -147,7 +147,7 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
           column={column}
           events={[]}
           hidden={false}
-          launching={false}
+          holdStart={false}
           start={async () => 'th_started'}
           onView={() => {}}
         />
@@ -400,6 +400,15 @@ describe('the open feature’s threads in the sidebar', () => {
     featureMenu()
     expect(screen.queryByRole('menuitem', { name: 'Rename the chat…' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: 'Export the chat as Markdown' })).toBeNull()
+  })
+
+  it('counts a click on the open feature’s row as opening it while its chat has no thread', async () => {
+    const api = server({ threads: [] })
+    const onSelect = vi.fn()
+    render(<Page worked onSelect={onSelect} />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(within(sidebar()).getByRole('button', { name: 'New thread' })).toBeTruthy())
+    fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0])
+    expect(onSelect).toHaveBeenCalledWith('feat_1')
   })
 
   it('shows a feature chat nobody started as an empty thread, and its first Send starts it', async () => {

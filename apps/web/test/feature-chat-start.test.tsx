@@ -35,10 +35,10 @@ function server(extra: FakeHandlers = {}) {
 
 const NEW_FEATURE = { sessions: [], tickets: [], runs: [], docs: [{ relPath: 'brief.md', title: 'Brief' }] } as unknown as Partial<FeatureFull>
 
-function Chat({ over = NEW_FEATURE, hidden = false, launching = false, start }: { over?: Partial<FeatureFull>; hidden?: boolean; launching?: boolean; start: Start }) {
+function Chat({ over = NEW_FEATURE, hidden = false, holdStart = false, start }: { over?: Partial<FeatureFull>; hidden?: boolean; holdStart?: boolean; start: Start }) {
   const full = { ...fixture({ id: 'feat_1' }), ...NEW_FEATURE, ...over } as FeatureFull
   const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: full.sessions, driveSessionId: undefined })
-  return <FeatureChat full={full} column={column} events={[]} hidden={hidden} launching={launching} start={start} onView={() => {}} />
+  return <FeatureChat full={full} column={column} events={[]} hidden={hidden} holdStart={holdStart} start={start} onView={() => {}} />
 }
 
 const settle = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
@@ -115,10 +115,10 @@ describe('a new feature’s chat', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
-  it('stays out of the way of the page’s own launch', async () => {
+  it('holds while the page says so: the app landed here by itself, or the page is launching it', async () => {
     const api = server()
     const start = vi.fn<Start>(async () => 'th_started')
-    const { rerender } = render(<Chat start={start} launching />, { wrapper: api.Wrapper })
+    const { rerender } = render(<Chat start={start} holdStart />, { wrapper: api.Wrapper })
     await settle()
     expect(start).not.toHaveBeenCalled()
     rerender(<Chat start={start} />)
@@ -133,7 +133,7 @@ describe('a new feature’s chat', () => {
     function Picking() {
       const full = { ...fixture({ id: 'feat_1' }), ...NEW_FEATURE } as FeatureFull
       column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
-      return <FeatureChat full={full} column={column} events={[]} hidden={false} launching={false} start={start} onView={() => {}} />
+      return <FeatureChat full={full} column={column} events={[]} hidden={false} holdStart={false} start={start} onView={() => {}} />
     }
     render(<Picking />, { wrapper: api.Wrapper })
     await waitFor(() => expect(start).toHaveBeenCalledOnce())

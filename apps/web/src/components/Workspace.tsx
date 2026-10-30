@@ -130,6 +130,7 @@ export function Workspace({
   onViewChange,
   guidance,
   driving,
+  landedOn = false,
   onDriveChange,
   onDeleted,
 }: {
@@ -139,6 +140,8 @@ export function Workspace({
   onViewChange: (view: FeatureView) => void
   guidance: boolean
   driving: DriveState | null
+  /** The app landed on this feature by itself; the human has not opened it. */
+  landedOn?: boolean
   onDriveChange: (d: DriveState | null) => void
   /**
    * The feature was deleted from this page's own menu: leave it. Without one,
@@ -1046,7 +1049,7 @@ export function Workspace({
                   alerts={chatAlerts}
                   standing={standing}
                   hidden={chatHidden}
-                  launching={start.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
+                  holdStart={landedOn || start.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
                   start={async ({ holdOpening }) => {
                     // Started by a message, the opening waits for it: one prompt, one answer.
                     const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening })

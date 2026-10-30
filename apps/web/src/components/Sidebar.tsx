@@ -316,10 +316,11 @@ export function Sidebar(props: SidebarProps) {
         f={f}
         active={open}
         // The open feature's row brings its main chat to the front (decision 8).
+        // One nobody has started has no thread yet, so the click is still an open of the feature.
         onSelect={(id) => {
           const main = own && ordered.find((t) => t.role === 'main')
           if (main) own.pick(main.id)
-          else onSelect(id)
+          if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
         }}
         actions={[...actionsFor(f), ...soleActions]}
         nested={nested}

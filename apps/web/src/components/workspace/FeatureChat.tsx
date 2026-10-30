@@ -45,7 +45,7 @@ export function FeatureChat({
   alerts,
   standing,
   hidden,
-  launching,
+  holdStart,
   start,
   onView,
 }: {
@@ -59,8 +59,8 @@ export function FeatureChat({
   standing?: readonly StandingNotice[]
   /** The panel has the whole row. */
   hidden: boolean
-  /** The page is launching this feature's chat itself (a Start, a self-planning run): the chat stays out of its way. */
-  launching: boolean
+  /** The chat must not start itself now: the human has not opened it, or the page is launching it (a Start, a self-planning run). */
+  holdStart: boolean
   /** Start the feature's main chat, holding its opening for the first message or (`holdOpening: false`) saying it now; answers with its thread. */
   start: (opts: { holdOpening: boolean }) => Promise<string>
   /** Open the panel view a notice points at. */
@@ -86,7 +86,7 @@ export function FeatureChat({
   // Once per open of the page, so a refused start tries again on the next open (decision 11).
   const asked = useRef(false)
   const shown = !hidden && !column.pending && tabVisible && isMain
-  const opens = shown && !launching && column.listRead && column.main === null && startsItself(full)
+  const opens = shown && !holdStart && column.listRead && column.main === null && startsItself(full)
   useEffect(() => {
     if (!opens || asked.current) return
     asked.current = true
