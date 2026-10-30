@@ -156,7 +156,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>The chat looks the part</h1>
-  <p class="lede">The chat you approved, restyled on the shared look and with its layout fixed: turns instead of an even list, calls grouped like Claude Code's, subagents as cards, one spinner at a time, one composer box, calm notice cards. Every chat gets it, the Orchestrator's too. Planned without you; I build it myself, no tickets.</p>
+  <p class="lede">The chat you approved, restyled on the shared look and with its layout fixed: turns instead of an even list, calls grouped like Claude Code's, subagents as cards, one spinner at a time, one composer box, notices on the composer's top edge. Every chat gets it, the Orchestrator's too. Planned without you; I build it myself, no tickets.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-chat-looks-the-part/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -244,10 +244,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- /screen:chat-subagent -->
 <!-- screen:chat-notices -->
 <div class="designed">
-  <h3>Notice cards</h3>
-  <p>Three sample cards over the chat; hover the deck to fan them out. <a class="pin" data-d="6">6</a></p>
-  <p class="mono">src/components/chat/NoticeDeck.tsx · preview /preview/chat.html?moment=idle&amp;notices</p>
-  <button data-open-design="/preview/chat.html?moment=idle&amp;notices">Open in design</button>
+  <h3>Notices on the composer</h3>
+  <p>Three sample notices in the strip on the composer's top edge; click "+2 more" to open the older ones. Try it on the Approval moment too. <a class="pin" data-d="18">18</a></p>
+  <p class="mono">src/components/chat/NoticeStrip.tsx · ThreadColumn.tsx · preview /preview/chat.html?moment=working&amp;notices</p>
+  <button data-open-design="/preview/chat.html?moment=working&amp;notices">Open in design</button>
 </div>
 <!-- /screen:chat-notices -->
 <!-- screen:chat-asking -->
@@ -337,14 +337,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['One spinner at a time; "Working" moves into the composer', 'The two circling spinners looked weird. The thread\'s Working line goes; "Working 1m 18s" sits beside Stop; the meter becomes a bar so it no longer looks like a spinner.'],
     ['The last message\'s buttons clear the composer', 'Scrolled to the bottom, copy and branch were under the composer\'s fade. The thread keeps room for them and the fade is shorter.'],
     ['Three materials, one per job', 'Six hand-mixed container styles become three: raised floats over the thread (composer, asks, notices), the well sits in it (your message, changed files, subagents), inset holds code.'],
-    ['"/" lists commands and skills anywhere in the message', 'You found the list only opened at the very start. Now "/" after a space opens it, as "@" does for files.']
+    ['"/" lists commands and skills anywhere in the message', 'You found the list only opened at the very start. Now "/" after a space opens it, as "@" does for files.'],
+    ['Notices sit on the composer\'s top edge', 'The floating deck in the corner is gone: notices are one line on the composer, where your eye already is, covering no message; older ones fold behind "+2 more".']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [1, 'A bolder new direction (a name and mark on every message, or both sides as bubbles), drawn beside this one.', 'The brief says to show directions, plural; I offered one direction. The challenger disagreed.', 'challenged'],
-    [4, 'Keep the task list as a tab on the box and the meter under it.', 'It moves controls you may be used to finding.'],
-    [6, 'Keep the coloured cards, or keep a coloured left edge, so a failed run is hard to miss.', 'They call you to act; calmer cards could be missed. The challenger wanted one stronger mark.', 'challenged']
+    [4, 'Keep the task list as a tab on the box and the meter under it.', 'It moves controls you may be used to finding.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

@@ -37,7 +37,7 @@ What the human sees:
   app's thin, quiet one. The thread fades as it passes under the header, the
   same way it fades under the composer.
 - **Three materials, one per job.** Raised floats over the thread (the
-  composer, a message being edited, an ask, a notice card). The well sits in
+  composer, a message being edited, an ask, the notice strip). The well sits in
   the thread (your message, a turn's changed files, a subagent). Inset is
   code-shaped, inside the other two (a command, output, a diff, an attached
   image). Raised and well share a 1px top highlight. They are defined once in
@@ -73,11 +73,12 @@ What the human sees:
   its footer's right, before attach, Stop and Send. The working caption ("Feature
   worktree · feature/x") stays under the box. While an ask docks, the ask
   replaces the whole box, as it does today.
-- **The notice cards are calm.** The cards keep their place, their stacking and
-  their words. The eyebrow is in sentence case and keeps its phase colour. The
-  glyph sits in the neutral well. The glow is gone. The title is medium weight.
-  The count is plain tertiary text. The action is the shared small secondary
-  button.
+- **Notices sit on the composer's top edge.** What happens while you are in
+  the chat (a round finished, a ticket failed, the plan is ready) is a strip in
+  the raised material on the foot's top edge, above the composer or an ask:
+  one line with the phase glyph, title, reason, action and ✕. Older notices
+  fold behind "+N more" and open above it. They stay short-lived and cover no
+  message.
 - **The header leads with the feature.** Over a chat, the feature's title (or
   the project's name) reads in full-strength medium type. The thread in front
   follows it in quiet secondary type, then the status line. The header's
@@ -104,9 +105,11 @@ The shape of it:
   grouped list.
 - The chat column (`ThreadColumn`) passes the context meter to the composer's
   `meter` slot. Under the box it shows only the working caption.
-- The notice deck (`NoticeDeck`) keeps its stacking behaviour. Only the card's
-  look changes, and its hue map shrinks to the glyph colour and the eyebrow's
-  word colour.
+- The notice deck (`NoticeDeck`) is replaced by the notice strip
+  (`NoticeStrip`), same props and the same reducer behind it
+  (`FeatureNoticeDeck`, `deckReducer`); no stacking or peeking. The chat column
+  (`ThreadColumn`) renders its `children` in the foot above the composer or the
+  ask, instead of floating them over the thread.
 - The shared breadcrumb (`Crumbs`) and the page header row (`PageTopbar`) gain
   an optional `trail` flag. With it, the item before the last reads as the page
   and the last reads quietly. This is the one change to a shared building block.
@@ -130,8 +133,8 @@ No server, schema or API change.
   edited twice counts once, a call in flight turns its kind's verb present.
 - **Static markup of the thread pieces** (existing tier-1 tests in
   `apps/web/test/`): the composer's markup shows the plan strip and the meter
-  inside its box. The notice card's markup has no uppercase class, no glow layer
-  and a shared button. `Crumbs` with `trail` marks the item before the last as
+  inside its box. The notice strip shows the newest notice with its action
+  and folds the rest behind "+N more"; the old deck tests become strip tests. `Crumbs` with `trail` marks the item before the last as
   the lead. Existing tests that pinned the old classes are updated, not deleted.
 - **The chat column in a real DOM** (existing tier-2 test,
   `test/chat-column.test.tsx`): it still sends, steers, answers and branches
