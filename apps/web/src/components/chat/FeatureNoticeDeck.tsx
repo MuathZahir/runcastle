@@ -7,11 +7,12 @@ import {
   type ChatNoticeTarget,
   type NoticeTicket,
 } from '../../lib/chat-notices'
-import { NoticeDeck } from './NoticeDeck'
+import { NoticeStrip } from './NoticeStrip'
 
 /**
- * The notice deck over a feature's Chat tab (one-chat-layout-everywhere
- * decisions 3, 4, 10), fed from the feature's event log.
+ * The feature chat's notices (one-chat-layout-everywhere decisions 3, 4, 10),
+ * fed from the feature's event log and shown as the strip on the composer's
+ * top edge (the-chat-looks-the-part decision 18).
  *
  * Only events that happen while the tab is in front raise a notice: on any
  * other tab the page already updates live, and nothing that happened before
@@ -19,7 +20,7 @@ import { NoticeDeck } from './NoticeDeck'
  * is by the event's own time, not by what the log has loaded yet, because the
  * log fills in its whole history on mount.
  *
- * Cards leave by their action, which switches to the tab that shows the
+ * Notices leave by their action, which switches to the tab that shows the
  * change, or by ✕ — and one that only confirms the human's own click ("Test
  * drive running") by itself, after its `expiresAfterMs`.
  */
@@ -77,7 +78,7 @@ export function FeatureNoticeDeck({
   }
 
   return (
-    <NoticeDeck
+    <NoticeStrip
       notices={deck}
       onAct={act}
       onDismiss={(kind) => dispatch({ type: 'dismiss', kind })}

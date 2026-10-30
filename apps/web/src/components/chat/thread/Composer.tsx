@@ -5,6 +5,7 @@ import type { Attachment, SlashCommand, ThreadState } from '../../../lib/chat-th
 import { IconDoc, IconPaperclip, IconSend, IconStop, IconX } from '../../../icons'
 import { BARE_BUTTON, IconButton, Kbd, cx } from '../../../ui'
 import { DOCK } from './AskDock'
+import { INSET } from './surfaces'
 
 /** The textarea grows to this many pixels, then scrolls. */
 const MAX_HEIGHT = 280
@@ -40,6 +41,8 @@ export function Composer({
   autoFocus,
   top,
   footer,
+  meter,
+  workingSince,
 }: {
   value: string
   onChange: (v: string) => void
@@ -58,16 +61,20 @@ export function Composer({
   suggestion?: string
   placeholder?: string
   autoFocus?: boolean
-  /** Pinned on the box's top edge: the plan strip. */
+  /** The box's top section: the plan strip (decision 4 of the-chat-looks-the-part). */
   top?: ReactNode
-  /** The footer's left side: the model picker. Right of it sit attach, the meter and send. */
+  /** The footer's left side: the model picker. Right of it sit the meter, attach and send. */
   footer?: ReactNode
+  /** The context meter, first of the footer's right side. */
+  meter?: ReactNode
+  /** When the running turn began: "Working 1m 18s" sits beside Stop while it runs. */
+  workingSince?: number
 }) {
   const area = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState(0)
 
-  const slash = /^\/(\S*)$/.exec(value)
+  const slash = /(?:^|\s)\/(\S*)$/.exec(value)
   const at = /(?:^|\s)@(\S*)$/.exec(value)
   const suggest: Suggest | null = slash
     ? { kind: 'command', query: slash[1], items: rankNames(commands, (c) => c.name, slash[1]) }
@@ -90,8 +97,8 @@ export function Composer({
 
   const take = (i: number) => {
     if (!suggest) return
-    if (suggest.kind === 'command') onChange(`/${suggest.items[i].name} `)
-    else onChange(`${value.slice(0, value.length - suggest.query.length)}${suggest.items[i]} `)
+    const before = value.slice(0, value.length - suggest.query.length)
+    onChange(suggest.kind === 'command' ? `${before}${suggest.items[i].name} ` : `${before}${suggest.items[i]} `)
     area.current?.focus()
   }
 
@@ -149,13 +156,13 @@ export function Composer({
 
   return (
     <div className="flex flex-col">
-      {top}
       <div className={cx(DOCK, 'animate-none', working && 'orbit-light')}>
+        {top}
         {listing && suggest && (
           <ul
             role="listbox"
             aria-label={suggest.kind === 'command' ? 'Commands' : 'Files'}
-            className="m-0 flex max-h-64 list-none flex-col overflow-y-auto border-b border-border-subtle p-1 animate-fade-in"
+            className="m-0 flex max-h-64 list-none flex-col overflow-y-auto border-b border-border-subtle p-1 [scrollbar-width:thin] [scrollbar-color:var(--color-border-strong)_transparent] animate-fade-in"
           >
             {suggest.items.map((item, i) => {
               const name = typeof item === 'string' ? item : `/${item.name}`
@@ -169,7 +176,7 @@ export function Composer({
                     className={cx(
                       BARE_BUTTON,
                       'flex h-8 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 text-left text-sm',
-                      i === active ? 'bg-[color-mix(in_oklab,var(--color-text)_8%,transparent)]' : '',
+                      i === active ? 'bg-surface-hover' : '',
                     )}
                   >
                     {typeof item === 'string' ? (
@@ -195,7 +202,7 @@ export function Composer({
             {attachments.map((a) => (
               <div
                 key={a.id}
-                className="group relative size-16 overflow-hidden rounded-md bg-surface-inset ring-1 ring-border-subtle animate-pop-in"
+                className={cx(INSET, 'group relative size-16 overflow-hidden animate-pop-in')}
               >
                 <img src={a.src} alt={a.name} className="size-full object-cover" />
                 <IconButton
@@ -233,6 +240,7 @@ export function Composer({
         <div className="flex items-center gap-1 px-2 pt-1 pb-2">
           {footer}
           <span className="ml-auto flex items-center gap-1">
+            {working ? <WorkingClock since={workingSince} /> : meter}
             <IconButton label="Attach images" icon={<IconPaperclip />} size="md" onClick={() => picker.current?.click()} />
             <input
               ref={picker}
@@ -259,5 +267,28 @@ export function Composer({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * While a turn runs, what the thread's "Working" line used to say, said once
+ * beside Stop (the-chat-looks-the-part decision 14): no spinner of its own —
+ * the call in flight already spins in the thread, and the box's edge carries
+ * the travelling light. The meter steps aside for it until the turn ends.
+ */
+function WorkingClock({ since }: { since?: number | undefined }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const secs = since ? Math.max(0, Math.round((now - since) / 1000)) : null
+  return (
+    <span role="status" className="flex items-center gap-1.5 px-1.5 text-xs text-text-tertiary">
+      <span className="text-shimmer">Working</span>
+      {secs !== null && (
+        <span className="tabular-nums">{secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`}</span>
+      )}
+    </span>
   )
 }

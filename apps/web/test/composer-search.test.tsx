@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Composer } from '../src/components/chat/thread/Composer'
 
 /**
@@ -24,6 +24,18 @@ function listed(value: string, files: string[] = []): string[] {
 describe('the composer search', () => {
   it('lists an exact prefix above a word-start match above a loose one', () => {
     expect(listed('/comp')).toEqual(['/compact', '/caveman-compress', '/recompute'])
+  })
+
+  it('opens the commands after a space, not inside a word', () => {
+    expect(listed('please use /comp')).toEqual(['/compact', '/caveman-compress', '/recompute'])
+    expect(listed('see src/comp')).toEqual([])
+  })
+
+  it('takes a command in mid-message and keeps the words before it', () => {
+    const onChange = vi.fn()
+    render(<Composer value="please use /comp" onChange={onChange} state="idle" onSend={() => {}} commands={COMMANDS} />)
+    fireEvent.click(within(screen.getByRole('listbox')).getByText('/compact'))
+    expect(onChange).toHaveBeenCalledWith('please use /compact ')
   })
 
   it('finds files by scattered letters, the file name first', () => {

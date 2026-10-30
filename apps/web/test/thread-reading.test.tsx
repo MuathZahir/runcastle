@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEntry, ThreadItem, ToolCall } from '../src/lib/chat-thread'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
@@ -24,7 +24,8 @@ afterEach(() => {
 const call = (title: string, kind: ToolCall['kind'], status: ToolCall['status'] = 'completed'): ToolCall => ({ id: title, kind, title, status })
 
 function rows(calls: ToolCall[]): string[] {
-  render(<WorkBlock live seconds={0} steps={[{ kind: 'tools', id: 's', calls }]} />)
+  // One step per call: how calls of a kind fold together is call-groups.test.ts.
+  render(<WorkBlock live seconds={0} steps={calls.map((c, i) => ({ kind: 'tools', id: `s${i}`, calls: [c] }))} />)
   return screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
 }
 
@@ -91,6 +92,20 @@ describe('a tool row', () => {
 
   it('says the in-flight verb while it runs', () => {
     expect(rows([call('Read src/a.ts', 'read', 'in_progress')])).toEqual(['Readingsrc/a.ts'])
+  })
+})
+
+describe('a turn in the thread', () => {
+  it('draws an answer and its changes as one block, its actions under the card', () => {
+    const items: ThreadItem[] = [
+      { kind: 'agent', id: 'a', text: 'Done.' },
+      { kind: 'changes', id: 'c', files: [{ path: 'src/a.ts', added: 1, removed: 0, lines: [] }] },
+    ]
+    render(<ChatThread items={items} state="idle" footer={null} />)
+    const card = screen.getByRole('button', { name: /1 changed file/ })
+    const block = card.closest('[class*="group/msg"]') as HTMLElement
+    expect(block.textContent).toContain('Done.')
+    expect(within(block).getByRole('button', { name: 'Copy' })).toBeTruthy()
   })
 })
 
