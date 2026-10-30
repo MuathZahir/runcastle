@@ -205,7 +205,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <h3>Three views, and Review gone <a class="pin" data-d="14">14</a></h3>
     <p class="hint">Where everything Review held now lives.</p>
     <div class="flow">
-      <span class="st">Notes for the agent, Send to agent</span><span class="ar">&rarr;</span><span class="st">Details, until the drive takes them <a class="pin" data-d="20">20</a></span>
+      <span class="st">Notes for the agent, Send to agent</span><span class="ar">&rarr;</span><span class="st">the drive&rsquo;s rail, in &ldquo;Test drive looks the part&rdquo; <a class="pin" data-d="23">23</a></span>
     </div>
     <div class="flow">
       <span class="st">Findings, the walkthrough</span><span class="ar">&rarr;</span><span class="st">the review ticket&rsquo;s row <a class="pin" data-d="15">15</a></span>
@@ -329,7 +329,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <dl class="hoodgrid">
         <dt>#1 Tickets</dt><dd>TicketsView takes every action RunBody and TicketsBody had (stop, model, edit, cancel, the live log, one model for all); the review ticket&rsquo;s findings and walkthrough; RunBody, the run lanes and the ledger retire.</dd>
         <dt>#3 Frame and docs</dt><dd>The open doc in the panel&rsquo;s state and the reader in every view; DocPeek and the grill pane retire; Tabs gets a tooltip; DESIGN.md and STYLE.md.</dd>
-        <dt>#5 Review retired (round 2)</dt><dd>Review removed from the panel model, /review lands on Tickets; its warnings as standing rows on the chat&rsquo;s strip; human Retry removed again; ReviewBody, ShippedBody and their bands retire; notes in Details unless the drive already has them; Merged in Details.</dd>
+        <dt>#5 Review retired (round 2)</dt><dd>Review removed from the panel model, /review lands on Tickets; its warnings as standing rows on the chat&rsquo;s strip; human Retry removed again; ReviewBody, ShippedBody and their bands retire; Merged in Details.</dd>
         <dt>#6 Review (round 2)</dt><dd>Drives Plan, Tickets and Details against these criteria.</dd>
       </dl>
 
@@ -366,15 +366,16 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Work becomes Tickets', 'Tickets is the word the rest of the app uses, and a ticket outlives its worker.', 'assumed'],
     ['Tickets is one list: the current round, earlier rounds folded above', 'Your words. No Run section, no run timeline, no history picker.'],
     ['A ticket is a sidebar row', 'Two lines, the state in words; opens in place into a card with its actions and detail.', 'assumed'],
-    ['The drive is left alone; until it takes the notes, they sit in Details', 'Another feature is working on the drive, and Review was the only home for writing notes and Send to agent.', 'assumed'],
+    ['The drive is left alone; until it takes the notes, they sit in Details', 'Superseded by 23.', 'assumed'],
     ['Review\u2019s warnings are standing rows on the chat\u2019s notice strip', 'The orchestrator: the strip is where the chat says what needs attention. Rows stand while their condition holds.', 'assumed'],
-    ['Tickets offers no human Retry', 'An earlier feature removed it on purpose: a failed ticket is the agent\u2019s to handle. The design brought it back by mistake.', 'assumed']
+    ['Tickets offers no human Retry', 'An earlier feature removed it on purpose: a failed ticket is the agent\u2019s to handle. The design brought it back by mistake.', 'assumed'],
+    ['Notes do not sit in Details; the drive\u2019s rail is their home', 'You chose direction A for the drive: a full page with Notes in its rail. Test drive merges first.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [15, 'A small “Review” section at the top of Tickets for the findings and the walkthrough.', 'Findings now sit one click deep, on the review ticket’s row.'],
-    [20, 'No notes anywhere until the drive feature lands; you report in the chat.', 'A stopgap you did not ask for, kept so notes taken in a drive can still reach the agent. One prop to remove.'],
+    [23, 'Keep the notes in Details until test drive lands.', 'Relayed by the orchestrator. This branch has no notes of its own until it takes test drive\u2019s change.'],
     [19, 'One-line rows with the state as a trailing word, restyled.', 'Two-line rows are roomier but show fewer tickets per screen.'],
     [3, 'Keep today’s menu, restyled.', 'Tabs were taken out of the page’s header row once before. Try the Tweak.', 'challenged'],
     [7, 'Keep the doc dialog, restyled.', 'The biggest change in how docs are shown, and the one the brief named first.']
