@@ -69,9 +69,9 @@ build connects them without restyling.
 **The shape of the build:**
 
 - **Tickets** (decisions 17–19): `TicketsView` takes over every behaviour
-  `RunBody` and `TicketsBody` had that the human still reaches: stop, retry
-  (on the same or another model, fresh), set aside, resolve a landing conflict
-  in a terminal, reassign the model, edit, cancel, copy a SHA, the live log
+  `RunBody` and `TicketsBody` had that the human still reaches: stop, resolve a
+  landing conflict in a terminal, reassign the model, edit, cancel, copy a SHA,
+  the live log
   (`LaneTranscript` with its boot events), each lane's elapsed and duration,
   and one model for every waiting ticket (the "…" menu). A done review
   ticket's card shows its findings (the feature's findings for that ticket)
@@ -82,8 +82,9 @@ build connects them without restyling.
   offered and an address naming it lands on Tickets. `ReviewBody`,
   `ShippedBody` and the review bands only they used retire. The conflict
   alert, the refused-drive card, the nothing-verified alert and the
-  project-drive-blocking notice render in the chat's notice strip
-  ("The chat looks the part"), where the page's other notices are. The shipped record's
+  project-drive-blocking notice become standing rows on the chat's notice
+  strip (decision 21): `NoticeStrip` takes rows that hold while their condition
+  does, with an optional action. The shipped record's
   facts are Details': "Merged" from the shipped time, the outcome doc first.
 - **Notes for now** (decision 20): `DetailsView` takes a `notes` node; the
   page passes `OpenWork` (notes only, no findings) while a drive is up or the
@@ -106,8 +107,9 @@ build connects them without restyling.
 of the four screen features. Round 1 builds Tickets and the frame and docs. The
 retirement of Review waits for "The chat looks the part" to merge and this
 branch to merge main, because its warnings go into that feature's notice strip
-on the composer's top edge, not today's notice deck. On this branch Review is
-already not offered, so nothing ships until that round has landed.
+on the composer's top edge. The chat has merged and this branch has main. On
+this branch Review is already not offered, so nothing ships until that round
+has landed.
 
 ## Seams
 

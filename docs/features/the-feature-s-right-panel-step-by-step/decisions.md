@@ -95,6 +95,7 @@ detail below is the planner's reading of it, the decision is marked assumed.*
 **Decision:** The merge-conflict, refused-drive and nothing-verified notices move atop the chat with the page's other notices. The review agent's findings and its recorded walkthrough show on the review ticket's own row in Tickets. Once merged, Details says "Merged 3h ago" and the outcome leads its docs. The rounds trail is dropped, since Tickets folds the rounds. The project's drive instructions, the spec's deferred scope and the per-ticket accounts leave the panel: the first lives in the project's settings, the second in the spec, the third on each ticket's row.
 **Why:** Nothing the human acts on is lost, and nothing is said twice. The rounds trail was the "round section" the human said is not needed.
 **Assumed.** Alternative: keep a small "Review" section at the top of Tickets for the findings and the recording.
+**Changed by the orchestrator:** the warnings go into the notice strip on the message box that "The chat looks the part" built, not into a notice area above the chat (decision 21).
 
 ## 16. Notes for the agent live in the drive
 **Decision:** Writing notes while driving, the notes list and Send to agent move from Review into the feature's drive view, under the running app. Notes are about what the human sees in the drive, so they sit where they are seen. Under rather than beside, so a half-width panel keeps the app its whole width. Supersedes: 12, for the Drive view.
@@ -120,3 +121,14 @@ detail below is the planner's reading of it, the decision is marked assumed.*
 **Decision:** This feature does not touch the drive view: the human said to forget it, because another feature is working on it. The notes for the agent do not move there here. The pieces stay (`OpenWork`, `NoteComposer`, `SendToAgent`, `WorkList`, `NotesRail`) so that feature can mount them. Since Review was the only place to write notes and press Send to agent, they show in Details for now, under the docs, under the same condition Review used (a drive is up, or the agent declared ready). Removing them from Details when the drive takes them is one prop. Supersedes: 16.
 **Why:** The human: "Forget about the drive panel (it's being worked on by another feature)." Retiring Review with no other home would leave notes taken in a drive with no way to reach the agent.
 **Assumed.** Alternative: no notes anywhere until the drive feature lands; the human reports in the chat.
+
+## 21. Review's warnings are standing rows on the chat's notice strip
+**Decision:** The merge-conflict, conflict-resolved, refused-drive, nothing-verified and project-drive-blocking warnings show as rows on the notice strip on the message box, in its one-line shape: a title, a short subtitle, an action only where the warning had one. Unlike the strip's event notices they stand while their condition holds and go when it ends. Details a one-liner cannot hold (a conflict's file list, a refusal's raw message) go in the row's tooltip.
+**Why:** The orchestrator, for the merge with "The chat looks the part": the old floating notice deck is gone and the strip is where the chat says what needs attention. The strip's rows came only from events and each needed an action, so it gains this one kind of row.
+**Assumed.** Alternative: keep today's full cards in the area above the thread, which the strip's feature left for page alerts.
+**Changed by the orchestrator:** this placement is the orchestrator's instruction, not yet seen by the human.
+
+## 22. Tickets offers no human Retry
+**Decision:** The opened ticket card does not offer Retry, Retry on another model, Retry fresh or Resolve with agent. A failed ticket keeps what the panel already gave it: the model picker, Edit, Cancel and, for a landing conflict, Resolve in terminal. Supersedes: 19, for "retry".
+**Why:** The human's Retry and Waive were removed on purpose by an earlier feature: a failed ticket is the agent's to handle (tickets-and-review-are-tools-not-phases, decision 12). The planner's design and ticket 1 brought them back by mistake, against this feature's own "no new behaviour" (decision 11).
+**Assumed.** Alternative: keep Retry, as the design the human approved showed it.

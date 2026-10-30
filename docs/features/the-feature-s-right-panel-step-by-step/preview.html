@@ -212,7 +212,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <span class="st">Rounds trail</span><span class="ar">&rarr;</span><span class="st">folded rounds in Tickets <a class="pin" data-d="18">18</a></span>
     </div>
     <div class="flow">
-      <span class="st">Conflict and drive notices</span><span class="ar">&rarr;</span><span class="st">atop the chat</span>
+      <span class="st">Conflict and drive notices</span><span class="ar">&rarr;</span><span class="st">the chat&rsquo;s notice strip <a class="pin" data-d="21">21</a></span>
       <span class="st">Shipped record</span><span class="ar">&rarr;</span><span class="st">Details: Merged, the outcome first</span>
     </div>
   </div>
@@ -325,11 +325,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
 
-      <p class="hint">Round 1 now: Tickets, then the frame and docs. Round 2 once &ldquo;The chat looks the part&rdquo; has merged and this branch has main: retiring Review, whose warnings go into the chat&rsquo;s new notice strip, then a review. The designs are committed, so workers connect them without restyling.</p>
+      <p class="hint">Round 1 now: Tickets, then the frame and docs. Round 2, now the chat has merged: retiring Review, whose warnings go into the chat&rsquo;s new notice strip, then a review. The designs are committed, so workers connect them without restyling.</p>
       <dl class="hoodgrid">
-        <dt>#1 Tickets</dt><dd>TicketsView takes every action RunBody and TicketsBody had (stop, retry, model, edit, cancel, set aside, the live log, one model for all); the review ticket&rsquo;s findings and walkthrough; RunBody, the run lanes and the ledger retire.</dd>
+        <dt>#1 Tickets</dt><dd>TicketsView takes every action RunBody and TicketsBody had (stop, model, edit, cancel, the live log, one model for all); the review ticket&rsquo;s findings and walkthrough; RunBody, the run lanes and the ledger retire.</dd>
         <dt>#3 Frame and docs</dt><dd>The open doc in the panel&rsquo;s state and the reader in every view; DocPeek and the grill pane retire; Tabs gets a tooltip; DESIGN.md and STYLE.md.</dd>
-        <dt>#5 Review retired (round 2)</dt><dd>Review removed from the panel model, /review lands on Tickets; its notices in the chat&rsquo;s strip; ReviewBody, ShippedBody and their bands retire; notes in Details unless the drive already has them; Merged in Details.</dd>
+        <dt>#5 Review retired (round 2)</dt><dd>Review removed from the panel model, /review lands on Tickets; its warnings as standing rows on the chat&rsquo;s strip; human Retry removed again; ReviewBody, ShippedBody and their bands retire; notes in Details unless the drive already has them; Merged in Details.</dd>
         <dt>#6 Review (round 2)</dt><dd>Drives Plan, Tickets and Details against these criteria.</dd>
       </dl>
 
@@ -366,7 +366,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Work becomes Tickets', 'Tickets is the word the rest of the app uses, and a ticket outlives its worker.', 'assumed'],
     ['Tickets is one list: the current round, earlier rounds folded above', 'Your words. No Run section, no run timeline, no history picker.'],
     ['A ticket is a sidebar row', 'Two lines, the state in words; opens in place into a card with its actions and detail.', 'assumed'],
-    ['The drive is left alone; until it takes the notes, they sit in Details', 'Another feature is working on the drive, and Review was the only home for writing notes and Send to agent.', 'assumed']
+    ['The drive is left alone; until it takes the notes, they sit in Details', 'Another feature is working on the drive, and Review was the only home for writing notes and Send to agent.', 'assumed'],
+    ['Review\u2019s warnings are standing rows on the chat\u2019s notice strip', 'The orchestrator: the strip is where the chat says what needs attention. Rows stand while their condition holds.', 'assumed'],
+    ['Tickets offers no human Retry', 'An earlier feature removed it on purpose: a failed ticket is the agent\u2019s to handle. The design brought it back by mistake.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
