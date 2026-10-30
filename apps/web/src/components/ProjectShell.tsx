@@ -127,6 +127,17 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [select, features],
   )
 
+  // The feature the landing chose by itself, until the human opens one: nobody
+  // asked to open it, so its chat does not start itself (decision 10).
+  const [landedOn, setLandedOn] = useState<string | null>(null)
+  const openChosen = useCallback(
+    (featureId: string | null, view?: FeatureView) => {
+      setLandedOn(null)
+      openFeature(featureId, view)
+    },
+    [openFeature],
+  )
+
   // Every session launch under this shell lands on its feature's chat. On the
   // feature already on screen the open panel stays (the launch changes only the
   // chat column); anywhere else it is the chat alone — a view switch like any
@@ -171,10 +182,17 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       // is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
       if (named) openFeature(named.id, addressedView(addressed))
-      else openFeature(landingFeature(features)?.id ?? null)
+      else {
+        const target = landingFeature(features)
+        setLandedOn(target?.id ?? null)
+        openFeature(target?.id ?? null)
+      }
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)
-      if (target) openFeature(target.id)
+      if (target) {
+        setLandedOn(target.id)
+        openFeature(target.id)
+      }
     } else if (selectedFeatureId && !projectSelected && !preparing) {
       // The restored selection: settle the storage guess now the list can say
       // whether a session is live.
@@ -313,6 +331,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onViewChange={ws.selectView}
           guidance={ws.guidance}
           driving={driving}
+          landedOn={landedOn === selectedFeatureId}
           onDriveChange={setDriving}
           // Same exit as the sidebar's delete: drop the stale selection, land
           // on the project home.
@@ -333,7 +352,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             nav={nav}
             view={view}
             selectedFeatureId={ws.selectedFeatureId}
-            onSelect={openFeature}
+            onSelect={openChosen}
             onSelectProject={ws.selectProject}
             onNewChat={newChat}
             onDraft={ws.startDraft}
@@ -364,7 +383,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onClose={() => ws.setCmdk(false)}
         features={features ?? []}
         selectedFeatureId={ws.selectedFeatureId}
-        onSelect={openFeature}
+        onSelect={openChosen}
         onOpenSettings={() => ws.openSettings()}
         onOpenPreparation={ws.startPreparation}
         // The palette navigates, it never launches: this opens the project

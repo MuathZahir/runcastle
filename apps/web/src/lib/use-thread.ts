@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
 import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
 import { useLivePoll } from './live'
+import { attachmentsAt, loadAttachments, moveAttachments, pendingAttachment, subscribeAttachments, updateAttachments } from './pending-attachments'
 import { useToast } from './toast'
 
 /**
@@ -20,11 +21,6 @@ import { useToast } from './toast'
  * chat nobody has talked to) is started by `start` on the first Send, which
  * answers with the new thread's id.
  */
-
-/** An image on its way into a message: shown from a local URL, sent as base64. */
-export interface PendingAttachment extends Attachment {
-  file: Blob
-}
 
 /** A message sent and not yet seen in the log. */
 interface Pending {
@@ -203,16 +199,37 @@ export function useThread({
     },
     [draftAt],
   )
-  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
-  const attach = useCallback((files: readonly File[]) => {
-    setAttachments((as) => [
-      ...as,
-      ...files.map((f) => ({ id: `att${++localSeq}`, name: f.name || 'image.png', src: URL.createObjectURL(f), file: f })),
-    ])
-  }, [])
-  const removeAttachment = useCallback((attachmentId: string) => {
-    setAttachments((as) => as.filter((a) => a.id !== attachmentId))
-  }, [])
+  // Pending images are the thread's as its draft is: kept under the same key.
+  const waiting = () => attachmentsAt(draftAt)
+  const attachments = useSyncExternalStore(subscribeAttachments, waiting, waiting)
+  useEffect(() => void loadAttachments(draftAt), [draftAt])
+  const attach = useCallback(
+    (files: readonly File[]) => {
+      updateAttachments(draftAt, (as) => [...as, ...files.map((f) => pendingAttachment(f, f.name || 'image.png'))])
+    },
+    [draftAt],
+  )
+  const removeAttachment = useCallback(
+    (attachmentId: string) => {
+      updateAttachments(draftAt, (as) => as.filter((a) => a.id !== attachmentId))
+    },
+    [draftAt],
+  )
+  // A chat that has its thread takes what the human left for it while it had
+  // none, whether or not this column was there as it started (decision 12).
+  const unstartedAt = startsAs ? draftKey : undefined
+  useEffect(() => {
+    if (!threadId || !unstartedAt) return
+    const words = readDraft(unstartedAt)
+    if (words) {
+      const kept = readDraft(threadId)
+      const joined = kept ? `${kept}\n\n${words}` : words
+      writeDraft(unstartedAt, '')
+      writeDraft(threadId, joined)
+      setDraftState({ at: threadId, text: joined })
+    }
+    void moveAttachments(unstartedAt, threadId)
+  }, [threadId, unstartedAt])
 
   // ---- the model the next message runs on ----
   // A chat nobody has started is asked about by where it would start, and its
@@ -283,14 +300,14 @@ export function useThread({
     }
     setPending((ps) => [...ps, local])
     setDraft('')
-    setAttachments([])
+    updateAttachments(draftAt, () => [])
+    let to = threadId
     // Only what the human picked rides the message: an untouched control is
     // the server's to resolve (Settings), so a thread nobody picked in follows them.
     try {
       const images = await Promise.all(
         sent.map(async (a) => ({ name: a.name, mimeType: a.file.type || 'image/png', data: await blobBase64(a.file) })),
       )
-      let to = threadId
       if (!to) {
         if (!start) throw new Error('this chat cannot be started from here')
         to = await start()
@@ -309,10 +326,11 @@ export function useThread({
       setPending((ps) => ps.map((p) => (p.localId === local.localId ? { ...p, promptId } : p)))
     } catch (e) {
       setPending((ps) => ps.filter((p) => p.localId !== local.localId))
-      // Give the words back so nothing typed is lost.
-      setDraftState((d) => (d.text ? d : { at: d.at, text: words }))
-      writeDraft(draftAt, words)
-      setAttachments((as) => [...sent, ...as])
+      // Give the words and images back to the thread they came from, so nothing is lost.
+      const back = to ?? draftAt
+      setDraftState((d) => (d.text ? d : { at: back, text: words }))
+      writeDraft(back, words)
+      updateAttachments(back, (as) => [...sent, ...as])
       toast.push(e instanceof Error ? e.message : 'the message could not be sent')
     }
   }

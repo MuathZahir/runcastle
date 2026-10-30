@@ -17,6 +17,8 @@ export interface FeatureChatColumn {
   threads: ThreadEntry[]
   /** The feature's main chat thread; null while nobody has started it. */
   main: string | null
+  /** The thread list has been read, so a null `main` means there is none. */
+  listRead: boolean
   /**
    * Whether the main chat is working, waiting on the human or idle, as the
    * thread list reads its log; undefined while the list does not hold it.
@@ -34,8 +36,8 @@ export interface FeatureChatColumn {
   pick: (id: string) => void
   /** New thread: a side thread, brought to the front. */
   newThread: () => void
-  /** The unstarted main chat got its thread on its first message. */
-  started: (threadId: string) => void
+  /** The unstarted main chat got its thread: on its first message, or (`stayOnPicked`) by itself, which moves no one off a thread they picked. */
+  started: (threadId: string, opts?: { stayOnPicked?: boolean }) => void
 }
 
 /**
@@ -105,15 +107,16 @@ export function useFeatureChatColumn({
     scenario,
     threads,
     main,
+    listRead: listQ.data !== undefined,
     mainState: listed.find((t) => t.id === main)?.state,
     inFront,
     pending: pending !== null,
     current: inFront ?? UNSTARTED_CHAT,
     pick: (id) => setPicked(id === UNSTARTED_CHAT || id === main ? null : id),
     newThread: () => create.mutate({ featureId }),
-    started: (threadId) => {
+    started: (threadId, opts) => {
       setStarted(threadId)
-      setPicked(null)
+      if (!opts?.stayOnPicked) setPicked(null)
       void utils.thread.list.invalidate({ featureId })
     },
   }

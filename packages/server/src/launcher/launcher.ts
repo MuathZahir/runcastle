@@ -312,11 +312,33 @@ function hostSaysHeader(ctx: AppCtx, row: SessionRow, opts: LaunchSessionOptions
  * state, as runcastle's first prompt; a new conversation gets the opening and
  * the state. A self-planning launch (`purpose: 'self-plan'`) marks the thread
  * unattended (the host declines its asks) and opens on its own sentence.
+ *
+ * A feature's launches run one at a time: two opens at once (two tabs on a new
+ * feature) would race for its worktree, and the second must find the chat the
+ * first made.
  */
 export async function launchSession(
   ctx: AppCtx,
   input: LaunchSessionInput,
   opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const before = launches.get(input.featureId)
+  const launch = (before ?? Promise.resolve()).catch(() => undefined).then(() => openMainChat(ctx, input, opts))
+  launches.set(input.featureId, launch)
+  try {
+    return await launch
+  } finally {
+    if (launches.get(input.featureId) === launch) launches.delete(input.featureId)
+  }
+}
+
+/** The launch running for each feature, which the next one waits for. */
+const launches = new Map<string, Promise<LaunchSessionResult>>()
+
+async function openMainChat(
+  ctx: AppCtx,
+  input: LaunchSessionInput,
+  opts: LaunchSessionOptions,
 ): Promise<LaunchSessionResult> {
   if (input.kind === 'drive-fix') {
     throw new GateError(

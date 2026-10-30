@@ -472,9 +472,9 @@ interface Turn {
   id: string
   startedAt: number
   segments: Segment[]
-  /** Subagents by id, for routing their calls. */
+  /** Subagents by id, for routing their calls. A steered message's split keeps them: they run on across it. */
   subagents: Map<string, Extract<Segment, { kind: 'subagent' }>>
-  /** Every call by id, wherever it sits, for updates. */
+  /** Every call by id, wherever it sits, for updates. A split keeps them too. */
   calls: Map<string, ToolCall>
   model?: string
   /** Opened by a `turn_started`; one opened by output alone is no turn anything is known to be running. */
@@ -511,6 +511,14 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
  *   turn runs and folded to "Worked for …" once it ends. Live or settled, the
  *   split is the same, so streaming words show as the answer until a tool call
  *   turns them into narration.
+ * - One subagent, one card: a subagent an earlier turn showed makes no card
+ *   here unless it says it is running again, and one never seen makes none
+ *   from an untitled "finished". A relaunched adapter re-announces every past
+ *   subagent that way as its first turn starts.
+ * - A late update belongs to its row: a call or subagent from before a steered
+ *   message updates where it sits, and adds nothing after the agent's words,
+ *   so it cannot turn them from the answer into narration. An untitled update
+ *   for a call of an earlier turn shows nothing.
  * - An ask mid-turn stays in its turn: an approval's call is the same row as
  *   the tool call it asks about (matched by id, the first title kept), and its
  *   answer's lines follow the turn's one work item, ahead of the answer.
@@ -532,6 +540,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   view.cursor = log.length ? log[log.length - 1].i : -1
 
   let turn: Turn | null = null
+  /** Every subagent and call the thread has shown, in any turn. */
+  const shownSubagents = new Set<string>()
+  const shownCalls = new Set<string>()
   let workIndex = -1
   let answerIndex = -1
   let ask: Ask | undefined
@@ -560,10 +571,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
             return s.text.trim() ? { kind: 'narration', id: s.id, text: s.text } : null
           case 'thought':
             return { kind: 'thought', id: s.id, text: s.text, seconds: Math.max(1, Math.round((s.to - s.from) / 1000)) }
+          // The segment itself, so a late update reaches a part a split settled.
           case 'tools':
-            return { kind: 'tools', id: s.id, calls: s.calls.map((c) => ({ ...c })) }
           case 'subagent':
-            return { kind: 'subagent', id: s.id, title: s.title, status: s.status, calls: s.calls.map((c) => ({ ...c })) }
+            return s
           case 'answered':
             return null
         }
@@ -642,8 +653,6 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.id = String(e.i)
     turn.startedAt = e.at
     turn.segments = []
-    turn.subagents = new Map()
-    turn.calls = new Map()
     workIndex = -1
     answerIndex = -1
   }
@@ -651,6 +660,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   /** A call first seen: under its subagent, else in the turn's run of tool calls. */
   const addCall = (t: Turn, e: ThreadEvent, call: ToolCall, parentId?: string) => {
     t.calls.set(call.id, call)
+    shownCalls.add(call.id)
     const parent = parentId ? t.subagents.get(parentId) : undefined
     if (parent) parent.calls.push(call)
     else {
@@ -737,6 +747,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'tool': {
+        if (!e.call.title && shownCalls.has(e.call.id) && !(turn as Turn | null)?.calls.has(e.call.id)) break
         const t = openTurn(e)
         const known = t.calls.get(e.call.id)
         if (known) {
@@ -750,13 +761,16 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'subagent': {
-        const t = openTurn(e)
-        const known = t.subagents.get(e.id)
+        const known = (turn as Turn | null)?.subagents.get(e.id)
         if (known) {
           if (e.title !== undefined) known.title = e.title
           if (e.status !== undefined) known.status = e.status
         } else {
+          const running = e.status === 'in_progress' || e.status === 'pending'
+          if (!running && (shownSubagents.has(e.id) || !e.title)) break
+          const t = openTurn(e)
           const seg: Extract<Segment, { kind: 'subagent' }> = { kind: 'subagent', id: e.id, title: e.title ?? 'Subagent', status: e.status ?? 'in_progress', calls: [] }
+          shownSubagents.add(e.id)
           t.subagents.set(e.id, seg)
           t.segments.push(seg)
         }

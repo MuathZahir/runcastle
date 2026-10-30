@@ -8,7 +8,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 
 | Skill | Invoked | Does |
 |---|---|---|
-| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills when the intent is unclear, records decisions, writes the spec, builds itself or writes tickets and runs rounds, reviews when it is worth it, hands over the drive; grilling, spec, tickets, rounds, planning alone, the preview and design live in its `references/` |
+| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or writes tickets and runs rounds, reviews when it is worth it, hands over the drive; grilling, spec, tickets, rounds, planning alone, the preview and design live in its `references/` |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:prepare` | entry for `kind=prepare` | *original* — establishes the project's prepared settings and drive machinery with the human |

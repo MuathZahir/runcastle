@@ -130,6 +130,7 @@ export function Workspace({
   onViewChange,
   guidance,
   driving,
+  landedOn = false,
   onDriveChange,
   onDeleted,
 }: {
@@ -139,6 +140,8 @@ export function Workspace({
   onViewChange: (view: FeatureView) => void
   guidance: boolean
   driving: DriveState | null
+  /** The app landed on this feature by itself; the human has not opened it. */
+  landedOn?: boolean
   onDriveChange: (d: DriveState | null) => void
   /**
    * The feature was deleted from this page's own menu: leave it. Without one,
@@ -336,8 +339,8 @@ export function Workspace({
     landOnChat()
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
-  // The main chat's first message starts it (chat-as-web-components decision
-  // 7). Already on the chat, so nothing lands; the thread says why it failed.
+  // The main chat's start, by its first message or by itself on a new feature.
+  // Already on the chat, so nothing lands; the caller says why it failed.
   const startChat = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: () => undefined })
   // Stop, the status row's primary while a round runs (decision 23).
   const [confirmStop, setConfirmStop] = useState(false)
@@ -1046,9 +1049,10 @@ export function Workspace({
                   alerts={chatAlerts}
                   standing={standing}
                   hidden={chatHidden}
-                  start={async () => {
-                    // The opening waits for the message that started it: one prompt, one answer.
-                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening: true })
+                  holdStart={landedOn || start.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
+                  start={async ({ holdOpening }) => {
+                    // Started by a message, the opening waits for it: one prompt, one answer.
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening })
                     return res.sessionId
                   }}
                   onView={(target) => {

@@ -497,6 +497,68 @@ describe('ThreadColumn', () => {
     expect(toasts).toEqual([])
   })
 
+  describe('pending attachments', () => {
+    const png = (name: string) => new File(['png'], name, { type: 'image/png' })
+    const attachVia = async (inbox: string, name: string) => {
+      await act(async () => {
+        putInInbox(inbox, [png(name)])
+        await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+      })
+    }
+
+    it('stay with their thread across switching chats, and never show on another', async () => {
+      const api = server(HISTORY)
+      URL.createObjectURL = vi.fn(() => 'blob:a')
+      const first = render(<ThreadColumn key="a" threadId="att_a" inbox="att-inbox-a" />, { wrapper: api.Wrapper })
+      await screen.findByText('Lined up — it had its own margin.')
+      await attachVia('att-inbox-a', 'a.png')
+      expect(screen.getByRole('img', { name: 'a.png' })).toBeTruthy()
+      first.unmount()
+
+      const other = render(<ThreadColumn key="b" threadId="att_b" />, { wrapper: api.Wrapper })
+      await screen.findByText('Lined up — it had its own margin.')
+      expect(screen.queryByRole('img', { name: 'a.png' })).toBeNull()
+      other.unmount()
+
+      render(<ThreadColumn key="a" threadId="att_a" />, { wrapper: api.Wrapper })
+      expect(screen.getByRole('img', { name: 'a.png' })).toBeTruthy()
+    })
+
+    it('a sent one is gone from its thread when it comes back', async () => {
+      const api = server(HISTORY)
+      URL.createObjectURL = vi.fn(() => 'blob:c')
+      const first = render(<ThreadColumn threadId="att_c" inbox="att-inbox-c" />, { wrapper: api.Wrapper })
+      await screen.findByText('Lined up — it had its own margin.')
+      await attachVia('att-inbox-c', 'c.png')
+      fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+      await waitFor(() => expect(api.inputs('thread.send')).toHaveLength(1))
+      first.unmount()
+      render(<ThreadColumn threadId="att_c" />, { wrapper: api.Wrapper })
+      await screen.findByText('Lined up — it had its own margin.')
+      expect(document.querySelector('button[aria-label^="Remove"]')).toBeNull()
+    })
+
+    it('a failed send puts them back on the thread they came from', async () => {
+      const api = server(HISTORY, {
+        'thread.send': () => {
+          throw new Error('no agent')
+        },
+      })
+      URL.createObjectURL = vi.fn(() => 'blob:d')
+      const first = render(<ThreadColumn threadId="att_d" inbox="att-inbox-d" />, { wrapper: api.Wrapper })
+      await screen.findByText('Lined up — it had its own margin.')
+      await attachVia('att-inbox-d', 'd.png')
+      fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+      first.unmount()
+      const other = render(<ThreadColumn threadId="att_e" />, { wrapper: api.Wrapper })
+      await waitFor(() => expect(toasts).toEqual(['no agent']))
+      expect(screen.queryByRole('img', { name: 'd.png' })).toBeNull()
+      other.unmount()
+      render(<ThreadColumn threadId="att_d" />, { wrapper: api.Wrapper })
+      expect(screen.getByRole('img', { name: 'd.png' })).toBeTruthy()
+    })
+  })
+
   it('takes a crop waiting in its inbox as an image chip and focuses the composer', async () => {
     const api = server(HISTORY)
     URL.createObjectURL = vi.fn(() => 'blob:crop')
