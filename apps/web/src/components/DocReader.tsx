@@ -2,8 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { humanizeTimestamps, relTimeAgo } from '../lib/format'
 import { useFeatureDoc } from '../lib/use-feature-doc'
 import { IconArrowLeft, IconChevronRight, IconDoc, IconExpand, IconX } from '../icons'
-import { Button, Dialog, DimLine, IconButton } from '../ui'
-import { ProseSkeleton } from './bodies/grill/ArtifactPane'
+import { Button, Dialog, DimLine, IconButton, Skeleton, SkeletonBar, cx } from '../ui'
 import { Markdown } from './Markdown'
 import { PanelViewBar } from './workspace/PanelViewBar'
 
@@ -46,6 +45,35 @@ export function DocProse({
   )
 }
 
+/** Line widths for the placeholder prose: a heading, then two paragraphs. */
+const SKELETON_PARAGRAPHS = [
+  ['w-full', 'w-11/12', 'w-4/5', 'w-2/3'],
+  ['w-full', 'w-5/6', 'w-1/2'],
+] as const
+
+/**
+ * A document while its first read is in flight: a heading and two paragraphs
+ * in placeholder bars, one bar per 20px line of `Markdown`.
+ */
+export function ProseSkeleton({ label }: { label: string }) {
+  return (
+    <Skeleton label={label}>
+      <div className="flex h-6 items-center">
+        <SkeletonBar className="h-3.5 w-1/3" />
+      </div>
+      {SKELETON_PARAGRAPHS.map((lines, p) => (
+        <div key={p} className="mt-3" data-skeleton="paragraph">
+          {lines.map((width, i) => (
+            <div key={i} className="flex h-5 items-center">
+              <SkeletonBar className={cx('h-2.5', width)} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </Skeleton>
+  )
+}
+
 /**
  * One doc opened in the panel (decision 7): the view it was opened from gives
  * way to this, with the way back to that view on the bar, the doc's title, its
@@ -60,7 +88,7 @@ export function DocReader({
 }: {
   featureId: string
   doc: { relPath: string; title: string; updatedAt?: number }
-  /** The view the doc was opened from: "Details", "Work". */
+  /** The view the doc was opened from: "Details", "Tickets". */
   backLabel: string
   onBack: () => void
 }) {

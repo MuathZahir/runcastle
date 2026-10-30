@@ -1,11 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { trpc } from '../../trpc'
-import type { DocSummary } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import { cx, DimLine, Disclosure, Skeleton, SkeletonBar } from '../../ui'
 import { IconActivity } from '../../icons'
-import { DocReader } from '../DocReader'
 import { Activity } from './Activity'
 import { Knowledge } from './Knowledge'
 
@@ -13,21 +11,25 @@ import { Knowledge } from './Knowledge'
  * The feature's details, as one of the feature page's panel views
  * (the-feature-s-right-panel decision 9): one column — the feature's facts
  * (`facts`, from the page: the branch, when it started, what it waits on),
- * then its docs, then the activity feed, closed. A doc opened from the list is
- * read in place (decision 7); its way back returns to the list.
+ * then its docs, then the activity feed, closed. A doc opened from the list
+ * (`onOpenDoc`, its relPath) is read in place by the panel (decision 7).
  *
  * Feature-scoped for real (design-mode decision 5): every part is about one
  * feature, so nothing renders it outside a feature view.
  */
-export function DetailsView({ featureId, facts }: { featureId: string; facts?: ReactNode }) {
-  const [reading, setReading] = useState<DocSummary | null>(null)
+export function DetailsView({
+  featureId,
+  facts,
+  onOpenDoc,
+}: {
+  featureId: string
+  facts?: ReactNode
+  onOpenDoc: (relPath: string) => void
+}) {
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   // Mounted here rather than inside Activity, so closing and reopening the
   // section doesn't re-accumulate the feed.
   const events = useEventLog(featureId)
-
-  if (reading)
-    return <DocReader featureId={featureId} doc={reading} backLabel="Details" onBack={() => setReading(null)} />
 
   return (
     <div className="flex flex-col px-6 pt-5 pb-10">
@@ -40,7 +42,7 @@ export function DetailsView({ featureId, facts }: { featureId: string; facts?: R
         // page's offline line covers the outage story.
         <DimLine>{full.error?.message ?? 'Could not load the details'}</DimLine>
       ) : (
-        <Knowledge docs={full.data.docs} onOpen={setReading} />
+        <Knowledge docs={full.data.docs} onOpen={(doc) => onOpenDoc(doc.relPath)} />
       )}
       <Disclosure
         className="mt-10"

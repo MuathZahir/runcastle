@@ -34,6 +34,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconCube,
+  IconDoc,
   IconEye,
   IconMore,
   IconPencil,
@@ -59,7 +60,7 @@ import { TicketEditor, type TicketPatch } from './TicketEditor'
  * waiting to run next. No Run section, no run timeline, no history picker:
  * the round is the list, and Stop is the page header's.
  */
-export function TicketsView({ featureId }: { featureId: string }) {
+export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpenDoc: (relPath: string) => void }) {
   const poll = useLivePoll()
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -246,6 +247,8 @@ export function TicketsView({ featureId }: { featureId: string }) {
             defaultModel={defaultModel}
             waiting={waiting.length}
             onModel={(model) => void bulkModel(model)}
+            docs={full.data.docs}
+            onOpenDoc={onOpenDoc}
           />
         </span>
       </div>
@@ -798,18 +801,23 @@ const CONFIRM: Record<Confirm, { label: string; body: (seq: number) => string }>
 
 /**
  * The list's own controls (decision 19), out of the rows' way: the sandbox
- * and default model as facts, and one model for every waiting ticket.
+ * and default model as facts, one model for every waiting ticket, and the
+ * feature's docs, each read in place in this view (decision 7).
  */
 function ListMenu({
   roster,
   defaultModel,
   waiting,
   onModel,
+  docs,
+  onOpenDoc,
 }: {
   roster: readonly ModelEntry[]
   defaultModel: string | undefined
   waiting: number
   onModel: (model: string) => void
+  docs: readonly { relPath: string; title: string }[]
+  onOpenDoc: (relPath: string) => void
 }) {
   return (
     <DropdownMenu>
@@ -827,6 +835,17 @@ function ListMenu({
             {roster.map((m) => (
               <DropdownMenuItem key={m.id} icon={<IconCube />} onSelect={() => onModel(m.id)}>
                 <span className="font-mono">{m.id}</span>
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+        {docs.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Docs</DropdownMenuLabel>
+            {docs.map((doc) => (
+              <DropdownMenuItem key={doc.relPath} icon={<IconDoc />} onSelect={() => onOpenDoc(doc.relPath)}>
+                {doc.title || doc.relPath.split(/[\\/]/).pop()}
               </DropdownMenuItem>
             ))}
           </>

@@ -54,6 +54,7 @@ import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsView } from './bodies/tickets/TicketsView'
 import { DesignView, useDesignPath } from './design/DesignView'
+import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
 import { FeatureDriveView } from './review/FeatureDriveView'
@@ -854,7 +855,22 @@ export function Workspace({
   )
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
+  const openDoc = (relPath: string) => panel.dispatch({ type: 'openDoc', doc: relPath })
+  // A doc opened in a view is read in that view's place (decision 7), its way
+  // back the view itself; one the feature no longer has gives the view back.
+  const reading = panel.state.doc ? full.docs.find((doc) => doc.relPath === panel.state.doc) : undefined
+
   const panelView = (v: PanelView) => {
+    if (reading)
+      return (
+        <DocReader
+          key={`${featureId}:${v}:${reading.relPath}`}
+          featureId={featureId}
+          doc={reading}
+          backLabel={labelOf(v)}
+          onBack={() => panel.dispatch({ type: 'closeDoc' })}
+        />
+      )
     switch (v) {
       case 'plan':
         return documentView(
@@ -869,7 +885,7 @@ export function Workspace({
         )
       case 'work':
         // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
-        return documentView(v, <TicketsView featureId={featureId} />)
+        return documentView(v, <TicketsView featureId={featureId} onOpenDoc={openDoc} />)
       case 'review':
         // Once merged, the record of what shipped (today's Outcome) is the review.
         return documentView(
@@ -897,7 +913,7 @@ export function Workspace({
       case 'drive':
         return <FeatureDriveView full={full} />
       case 'details':
-        return <DetailsView featureId={featureId} facts={detailsFacts} />
+        return <DetailsView featureId={featureId} facts={detailsFacts} onOpenDoc={openDoc} />
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1

@@ -46,6 +46,12 @@ export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
  */
 export const PANEL_SHARE: RailWidthSpec = { key: 'runcastle.feature.panel', min: 0, max: 1000, default: 500 }
 
+/** The open doc, with the view it was opened in. */
+interface Reading {
+  doc: string
+  view: PanelView
+}
+
 export interface PanelApi {
   state: PanelState
   dispatch: (action: PanelAction) => void
@@ -53,16 +59,25 @@ export interface PanelApi {
 
 /**
  * The panel's state: the open view is `view` (the shell's), everything else
- * — the size, the fold, the design path and who opened it — is held here, the
+ * — the size, the fold, the design path, who opened it and the doc being
+ * read — is held here, the
  * size remembered per browser. A dispatch that changes the view hands it back
  * through `onViewChange`, `chat` for the panel closed.
  */
 export function usePanel(view: PanelView | null, onViewChange: (view: FeatureView) => void): PanelApi {
   const { width, setWidth } = useRailWidth(PANEL_SHARE)
-  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed' | 'last'>>({
+  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed' | 'last'> & { reading?: Reading }>({
     collapsed: INITIAL_PANEL.collapsed,
   })
-  const state: PanelState = { ...rest, view, share: width / PANEL_SHARE.max }
+  const { reading, ...held } = rest
+  // A doc is read in the view it was opened from; once the shell shows
+  // another (the address bar, history), the doc stays behind.
+  const state: PanelState = {
+    ...held,
+    view,
+    share: width / PANEL_SHARE.max,
+    ...(reading && reading.view === view ? { doc: reading.doc } : {}),
+  }
 
   // Read through a ref so `dispatch` is stable: the stream handler and the
   // mutation callbacks that call it outlive the render they were made in.
@@ -72,12 +87,13 @@ export function usePanel(view: PanelView | null, onViewChange: (view: FeatureVie
   const dispatch = useCallback(
     (action: PanelAction) => {
       const before = current.current.state
-      const { view: nextView, share, path, origin, collapsed, last } = panelReducer(before, action)
+      const { view: nextView, share, path, origin, collapsed, last, doc } = panelReducer(before, action)
       setRest({
         collapsed,
         ...(path !== undefined ? { path } : {}),
         ...(origin ? { origin } : {}),
         ...(last ? { last } : {}),
+        ...(doc && nextView ? { reading: { doc, view: nextView } } : {}),
       })
       if (share !== before.share) setWidth(share * PANEL_SHARE.max)
       if (nextView !== before.view) current.current.onViewChange(nextView ?? 'chat')
@@ -239,12 +255,13 @@ export function FeaturePanel({
     <section aria-label={label(view)} className="@container/panel flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-3">
         {/* The views as tabs (decision 3). A narrow panel keeps the open tab's
-            word and only the icons of the others. */}
+            word and only the icons of the others, each named by its tooltip. */}
         <Tabs
           items={views.map((v) => ({
             id: v,
             label: <span className={cx(v !== view && '@max-[520px]/panel:sr-only')}>{label(v)}</span>,
             icon: PANEL_VIEW_ICON[v],
+            ...(v !== view ? { tooltip: label(v) } : {}),
           }))}
           value={view}
           onChange={onSwitch}

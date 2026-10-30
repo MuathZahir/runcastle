@@ -11,7 +11,7 @@ import { BURNS_SKELETON } from '../src/components/settings/BurnsPage'
 import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
 import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
-import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
+import { ProseSkeleton } from '../src/components/DocReader'
 
 /**
  * Every content area loads as a skeleton shaped like what it is loading — not

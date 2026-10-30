@@ -63,7 +63,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
   }),
   feature: {
     rounds: { useQuery: () => ({ data: server.rounds }) },
-    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', branch: 'feature/demo' }, tickets: server.tickets, runs: server.runs, sessions: [] } }) },
+    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', branch: 'feature/demo' }, tickets: server.tickets, runs: server.runs, sessions: [], docs: [{ relPath: 'spec.md', title: 'Spec' }] } }) },
     launchSession: { useMutation: mutation('feature.launchSession') },
   },
   settings: { get: { useQuery: () => ({ data: { fields: [] } }) } },
@@ -110,7 +110,8 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-const mount = () => render(<TicketsView featureId="f1" />)
+const opened: string[] = []
+const mount = () => render(<TicketsView featureId="f1" onOpenDoc={(relPath) => opened.push(relPath)} />)
 const row = (seq: number) => screen.getByText(`#${seq}`).closest('article') as HTMLElement
 const open = (seq: number) => {
   fireEvent.click(within(row(seq)).getAllByRole('button')[0])
@@ -358,5 +359,14 @@ describe('the list menu', () => {
       { call: 'invalidate', input: {} },
     ])
     expect(server.toasts).toEqual(['2 tickets set to gpt-5.6-sol'])
+  })
+
+  it('opens a feature doc by its title, to be read in this view', () => {
+    opened.length = 0
+    mount()
+    const trigger = screen.getByRole('button', { name: 'Ticket list options' })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Spec' }))
+    expect(opened).toEqual(['spec.md'])
   })
 })

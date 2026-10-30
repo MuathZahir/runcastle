@@ -156,6 +156,11 @@ export interface PanelState {
   collapsed: boolean
   /** The view last on show — where the header's panel toggle reopens it (decision 12). */
   last?: PanelView
+  /**
+   * The feature doc (a relPath) read in place of the open view's body
+   * (the-feature-s-right-panel decision 7); its way back is that view.
+   */
+  doc?: string
 }
 
 /** Where a fresh browser starts: an even split. */
@@ -180,6 +185,10 @@ export type PanelAction =
    * at its last view — the first of `views` when that one is not offered now.
    */
   | { type: 'toggle'; views: readonly PanelView[] }
+  /** Read a doc in the open view (decision 7): it unfolds a folded panel, since the click asked to see it. */
+  | { type: 'openDoc'; doc: string }
+  /** The reader's way back: the open view's own body again. */
+  | { type: 'closeDoc' }
 
 /** A share inside 0..1; anything non-finite reads as the even split. */
 export function clampShare(share: number): number {
@@ -205,9 +214,10 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
     case 'follow':
       return withView(state, FOLLOWS[action.click], 'runcastle')
     case 'switch':
-      return withView(state, action.view, 'human')
+      // Even the open view's own tab: the click asks for the view, not the doc.
+      return withView(withoutDoc(state), action.view, 'human')
     case 'close': {
-      const { path: _path, width: _width, origin: _origin, ...rest } = state
+      const { path: _path, width: _width, origin: _origin, doc: _doc, ...rest } = state
       // The view the shell opened (the address bar, the palette) counts as last too.
       const last = state.view ?? state.last
       return { ...rest, view: null, collapsed: false, ...(last ? { last } : {}) }
@@ -225,17 +235,26 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       const view = state.last && action.views.includes(state.last) ? state.last : action.views[0]
       return view ? withView(state, view, 'human') : state
     }
+    case 'openDoc':
+      return state.view ? { ...state, doc: action.doc, collapsed: false } : state
+    case 'closeDoc':
+      return withoutDoc(state)
   }
+}
+
+function withoutDoc(state: PanelState): PanelState {
+  const { doc: _doc, ...rest } = state
+  return rest
 }
 
 /**
  * The design path outlives a switch to another view, so coming back to design
  * — by the switcher or the topbar — lands where it was; only a new design
- * path replaces it.
+ * path replaces it. An open doc belongs to its view, so another view drops it.
  */
 function withView(state: PanelState, view: PanelView, origin: PanelOrigin, path?: string): PanelState {
   return {
-    ...state,
+    ...(view === state.view ? state : withoutDoc(state)),
     view,
     last: view,
     origin,
