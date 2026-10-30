@@ -19,6 +19,108 @@ const prompt = (id: string, text = 'hi', extra: Partial<Extract<ThreadEventBody,
   ...extra,
 })
 
+const work = (v: ReturnType<typeof foldThread>, n = 0) => v.items.filter((x): x is Extract<ThreadItem, { kind: 'work' }> => x.kind === 'work')[n]
+
+describe('foldThread: subagents across turns and late updates', () => {
+  const opened = (id: string, title: string): ThreadEventBody => ({ type: 'subagent', id, title, status: 'in_progress' })
+  const finished = (id: string): ThreadEventBody => ({ type: 'subagent', id, status: 'completed' })
+  const turnOf = (id: string, ...body: ThreadEventBody[]): ThreadEventBody[] => [prompt(id), { type: 'turn_started' }, ...body, { type: 'turn_ended', reason: 'end_turn' }]
+
+  it('a relaunch re-announcing past subagents makes no cards, as the logged burst reads', () => {
+    const v = foldThread(
+      log(
+        { type: 'process', state: 'running' },
+        ...turnOf('p1', opened('s1', 'Summarize the plan'), finished('s1'), { type: 'agent_text', messageId: 'm1', text: 'Done.' }),
+        { type: 'process', state: 'stopped' },
+        prompt('p2'),
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        finished('s1'),
+        { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'ls', status: 'completed' } },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(work(v, 0).steps).toMatchObject([{ kind: 'subagent', title: 'Summarize the plan' }])
+    expect(work(v, 1).steps).toMatchObject([{ kind: 'tools' }])
+  })
+
+  it('an untitled "finished" for a subagent the log never showed makes no card', () => {
+    const v = foldThread(log(...turnOf('p1', finished('s1'), { type: 'agent_text', messageId: 'm1', text: 'Done.' })))
+    expect(kinds(v.items)).toEqual(['user', 'agent'])
+  })
+
+  it('a burst with no turn around it opens none', () => {
+    const v = foldThread(log(...turnOf('p1', opened('s1', 'Find it')), finished('s1')))
+    expect(v.state).toBe('idle')
+    expect(v.items.filter((x) => x.kind === 'work')).toHaveLength(1)
+  })
+
+  it('a subagent that runs again in a later turn gets a card there', () => {
+    const v = foldThread(log(...turnOf('p1', opened('s1', 'Find it')), ...turnOf('p2', { type: 'subagent', id: 's1', status: 'in_progress' })))
+    expect(work(v, 1).steps).toMatchObject([{ kind: 'subagent', status: 'completed' }])
+  })
+
+  it('a call finishing after a steered message stays on its row, and the answer stays in view', () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'in_progress' } },
+        prompt('p2', 'It seems empty', { steered: true }),
+        { type: 'agent_text', messageId: 'm1', text: 'Here is my answer.' },
+        { type: 'tool', call: { id: 'c1', status: 'completed', output: 'ok' } },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'work', 'user', 'agent'])
+    expect(v.items[3]).toMatchObject({ kind: 'agent', text: 'Here is my answer.' })
+    expect(work(v).steps).toMatchObject([{ kind: 'tools', calls: [{ title: 'bun test', status: 'completed', output: 'ok' }] }])
+  })
+
+  it('a subagent finishing after a steered message stays on its card, and its calls join it', () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        opened('s1', 'Find it'),
+        prompt('p2', 'also this', { steered: true }),
+        { type: 'agent_text', messageId: 'm1', text: 'Answer.' },
+        { type: 'tool', parentId: 's1', call: { id: 'c1', kind: 'read', title: 'Read a.ts', status: 'completed' } },
+        finished('s1'),
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'work', 'user', 'agent'])
+    expect(work(v).steps).toMatchObject([{ kind: 'subagent', title: 'Find it', status: 'completed', calls: [{ id: 'c1' }] }])
+  })
+
+  it('a call still running at a steered message settles with its turn', () => {
+    const v = foldThread(
+      log(
+        prompt('p1'),
+        { type: 'process', state: 'running' },
+        { type: 'turn_started' },
+        { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'in_progress' } },
+        prompt('p2', 'more', { steered: true }),
+        { type: 'turn_ended', reason: 'end_turn' },
+      ),
+    )
+    expect(work(v).steps).toMatchObject([{ kind: 'tools', calls: [{ status: 'completed' }] }])
+  })
+
+  it('an untitled update for a call of an earlier turn shows nothing and leaves the answer alone', () => {
+    const v = foldThread(
+      log(
+        ...turnOf('p1', { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'bun dev', status: 'in_progress' } }),
+        ...turnOf('p2', { type: 'agent_text', messageId: 'm1', text: 'Answer.' }, { type: 'tool', call: { id: 'c1', status: 'completed' } }),
+      ),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'work', 'user', 'agent'])
+  })
+})
+
 describe('foldThread', () => {
   it('an empty log is an idle, empty thread', () => {
     const v = foldThread([])
