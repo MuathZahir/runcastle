@@ -22,3 +22,11 @@ Waits on "The whole app matches the sidebar" and "Threads in the sidebar"; start
 ## Working agreement (the human, 2026-10-28)
 
 Checkpoint: the human looks at each feature's designs before it builds. The orchestrator gathers ready designs into one message. Once the human has approved a feature's design, the orchestrator carries it through build, review and merge without asking for a test drive.
+
+## Added by the orchestrator, 2026-10-30
+
+## Merge order with "Test drive looks the part" (orchestrator, 2026-10-30)
+
+"Test drive looks the part" merges before this feature. It replaces the scenario dropdown with one searchable list (`ScenarioPicker`) on the caret of the Test drive button, through an optional picker on the shared split button (`ui/split-button.tsx`), and it makes the drive a full page of its own with a notes rail (notes wait there for the orchestrator on a project drive). The project page's Test drive row (`TestDriveCard.tsx`) gets a small edit there.
+
+This feature's new header Test drive button must use that same picker and that same way into the drive, not a second scenario menu. Take main after test drive lands, and build the header button on it. If it has not landed when this feature is otherwise done, wait for it rather than building a copy.
