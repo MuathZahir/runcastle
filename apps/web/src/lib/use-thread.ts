@@ -215,20 +215,21 @@ export function useThread({
     },
     [draftAt],
   )
-  // A chat that gets its thread keeps what the human left for it (decision 12).
-  const unstartedAt = useRef(threadId ? null : draftAt)
+  // A chat that has its thread takes what the human left for it while it had
+  // none, whether or not this column was there as it started (decision 12).
+  const unstartedAt = startsAs ? draftKey : undefined
   useEffect(() => {
-    const from = unstartedAt.current
-    if (!threadId || from === null) return
-    unstartedAt.current = null
-    const words = readDraft(from)
+    if (!threadId || !unstartedAt) return
+    const words = readDraft(unstartedAt)
     if (words) {
-      writeDraft(from, '')
-      writeDraft(threadId, words)
-      setDraftState({ at: threadId, text: words })
+      const kept = readDraft(threadId)
+      const joined = kept ? `${kept}\n\n${words}` : words
+      writeDraft(unstartedAt, '')
+      writeDraft(threadId, joined)
+      setDraftState({ at: threadId, text: joined })
     }
-    void moveAttachments(from, threadId)
-  }, [threadId])
+    void moveAttachments(unstartedAt, threadId)
+  }, [threadId, unstartedAt])
 
   // ---- the model the next message runs on ----
   // A chat nobody has started is asked about by where it would start, and its

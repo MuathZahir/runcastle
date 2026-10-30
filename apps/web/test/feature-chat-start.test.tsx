@@ -33,12 +33,12 @@ function server(extra: FakeHandlers = {}) {
   })
 }
 
-const NEW_FEATURE = { sessions: [], tickets: [], runs: [] } as unknown as Partial<FeatureFull>
+const NEW_FEATURE = { sessions: [], tickets: [], runs: [], docs: [{ relPath: 'brief.md', title: 'Brief' }] } as unknown as Partial<FeatureFull>
 
-function Chat({ over = NEW_FEATURE, hidden = false, start }: { over?: Partial<FeatureFull>; hidden?: boolean; start: Start }) {
+function Chat({ over = NEW_FEATURE, hidden = false, launching = false, start }: { over?: Partial<FeatureFull>; hidden?: boolean; launching?: boolean; start: Start }) {
   const full = { ...fixture({ id: 'feat_1' }), ...NEW_FEATURE, ...over } as FeatureFull
   const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: full.sessions, driveSessionId: undefined })
-  return <FeatureChat full={full} column={column} events={[]} hidden={hidden} start={start} onView={() => {}} />
+  return <FeatureChat full={full} column={column} events={[]} hidden={hidden} launching={launching} start={start} onView={() => {}} />
 }
 
 const settle = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
@@ -106,12 +106,41 @@ describe('a new feature’s chat', () => {
     ['a feature with tickets', { tickets: [{ id: 't1' }] }],
     ['a feature with a round', { runs: [{ id: 'r1' }] }],
     ['a feature with an older session', { sessions: [{ id: 's1', kind: 'side' }] }],
+    ['a feature whose brief is not written yet', { docs: [] }],
   ])('leaves %s waiting for a first message', async (_, over) => {
     const api = server()
     const start = vi.fn<Start>(async () => 'th_started')
     render(<Chat start={start} over={over as unknown as Partial<FeatureFull>} />, { wrapper: api.Wrapper })
     await settle()
     expect(start).not.toHaveBeenCalled()
+  })
+
+  it('stays out of the way of the page’s own launch', async () => {
+    const api = server()
+    const start = vi.fn<Start>(async () => 'th_started')
+    const { rerender } = render(<Chat start={start} launching />, { wrapper: api.Wrapper })
+    await settle()
+    expect(start).not.toHaveBeenCalled()
+    rerender(<Chat start={start} />)
+    await waitFor(() => expect(start).toHaveBeenCalledOnce())
+  })
+
+  it('leaves the human on a thread they picked while it started', async () => {
+    let started: (id: string) => void = () => undefined
+    const api = server({ 'thread.new': () => ({ threadId: 'th_side' }) })
+    const start = vi.fn<Start>(() => new Promise((resolve) => (started = resolve)))
+    let column: ReturnType<typeof useFeatureChatColumn> | undefined
+    function Picking() {
+      const full = { ...fixture({ id: 'feat_1' }), ...NEW_FEATURE } as FeatureFull
+      column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
+      return <FeatureChat full={full} column={column} events={[]} hidden={false} launching={false} start={start} onView={() => {}} />
+    }
+    render(<Picking />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(start).toHaveBeenCalledOnce())
+    await act(async () => column?.pick('th_side'))
+    await act(async () => started('th_started'))
+    await settle()
+    expect(column?.inFront).toBe('th_side')
   })
 
   it('a refused start says so once and leaves the empty chat, and the next open tries again', async () => {
@@ -144,6 +173,21 @@ describe('a new feature’s chat', () => {
     expect(start).toHaveBeenLastCalledWith({ holdOpening: true })
   })
 
+  it('a Send waiting on a refused start says the refusal once', async () => {
+    let refuse: (e: Error) => void = () => undefined
+    const api = server()
+    const start = vi.fn<Start>(() => new Promise((_, reject) => (refuse = reject)))
+    render(<Chat start={start} />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(start).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'One more thing' } })
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
+    await settle()
+    await act(async () => refuse(new Error('not ready')))
+    await waitFor(() => expect(toasts).toEqual(['not ready']))
+    await settle()
+    expect(toasts).toEqual(['not ready'])
+  })
+
   it('a Send during its start waits on that start and joins the chat', async () => {
     let started: (id: string) => void = () => undefined
     const api = server()
@@ -156,6 +200,16 @@ describe('a new feature’s chat', () => {
     await act(async () => started('th_started'))
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_started', text: 'One more thing' }]))
     expect(start).toHaveBeenCalledOnce()
+  })
+
+  it('a draft left behind reaches the main chat the next time it opens, even if the column was gone as it started', async () => {
+    localStorage.setItem('runcastle.thread.draft:feature:feat_1:main', 'left behind')
+    const api = server({ 'thread.list': () => [{ id: 'th_main', title: 'Chat', role: 'main', state: 'idle', createdAt: 1, updatedAt: 1, runtime: 'claude-code' }] })
+    const start = vi.fn<Start>(async () => 'th_main')
+    render(<Chat start={start} />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(localStorage.getItem('runcastle.thread.draft:th_main')).toBe('left behind'))
+    expect(localStorage.getItem('runcastle.thread.draft:feature:feat_1:main')).toBeNull()
+    expect(start).not.toHaveBeenCalled()
   })
 
   it('a draft left in the unstarted chat moves to the thread it gets', async () => {

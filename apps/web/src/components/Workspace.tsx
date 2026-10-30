@@ -1046,6 +1046,7 @@ export function Workspace({
                   alerts={chatAlerts}
                   standing={standing}
                   hidden={chatHidden}
+                  launching={start.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
                   start={async ({ holdOpening }) => {
                     // Started by a message, the opening waits for it: one prompt, one answer.
                     const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening })

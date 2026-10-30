@@ -36,8 +36,8 @@ export interface FeatureChatColumn {
   pick: (id: string) => void
   /** New thread: a side thread, brought to the front. */
   newThread: () => void
-  /** The unstarted main chat got its thread on its first message. */
-  started: (threadId: string) => void
+  /** The unstarted main chat got its thread: on its first message, or (`stayOnPicked`) by itself, which moves no one off a thread they picked. */
+  started: (threadId: string, opts?: { stayOnPicked?: boolean }) => void
 }
 
 /**
@@ -114,9 +114,9 @@ export function useFeatureChatColumn({
     current: inFront ?? UNSTARTED_CHAT,
     pick: (id) => setPicked(id === UNSTARTED_CHAT || id === main ? null : id),
     newThread: () => create.mutate({ featureId }),
-    started: (threadId) => {
+    started: (threadId, opts) => {
       setStarted(threadId)
-      setPicked(null)
+      if (!opts?.stayOnPicked) setPicked(null)
       void utils.thread.list.invalidate({ featureId })
     },
   }

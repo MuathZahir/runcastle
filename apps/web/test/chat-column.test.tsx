@@ -147,6 +147,7 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
           column={column}
           events={[]}
           hidden={false}
+          launching={false}
           start={async () => 'th_started'}
           onView={() => {}}
         />
