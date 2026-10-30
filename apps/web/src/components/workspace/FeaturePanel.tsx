@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   INITIAL_PANEL,
-  isPanelView,
   panelReducer,
   type PanelAction,
   type PanelState,
@@ -9,8 +8,7 @@ import {
 } from '../../lib/feature-ui/panel'
 import { useRailWidth, type RailWidthSpec } from '../../lib/rail-width'
 import type { FeatureView } from '../../lib/routes'
-import { IconButton, cx } from '../../ui'
-import { SELECT_GHOST, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { IconButton, Tabs, cx } from '../../ui'
 import {
   IconArrowLeft,
   IconCheck,
@@ -238,24 +236,21 @@ export function FeaturePanel({
   children: ReactNode
 }) {
   return (
-    <section aria-label={label(view)} className="flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
+    <section aria-label={label(view)} className="@container/panel flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-3">
-        <Select value={view} onValueChange={(next) => isPanelView(next) && views.includes(next) && onSwitch(next)}>
-          <SelectTrigger aria-label="Panel view" className={cx(SELECT_GHOST, 'text-sm text-text')}>
-            <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[view]}</span>
-            <SelectValue>{label(view)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent align="start" aria-label="Panel view">
-            {views.map((v) => (
-              <SelectItem key={v} value={v}>
-                <span className="flex items-center gap-2">
-                  <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[v]}</span>
-                  {label(v)}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* The views as tabs (decision 3). A narrow panel keeps the open tab's
+            word and only the icons of the others. */}
+        <Tabs
+          items={views.map((v) => ({
+            id: v,
+            label: <span className={cx(v !== view && '@max-[520px]/panel:sr-only')}>{label(v)}</span>,
+            icon: PANEL_VIEW_ICON[v],
+          }))}
+          value={view}
+          onChange={onSwitch}
+          label="Panel views"
+          className="-ml-1 min-w-0"
+        />
         {view === 'design' && path && (
           <span className="min-w-0 truncate font-mono text-xs text-text-tertiary">{path}</span>
         )}

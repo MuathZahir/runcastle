@@ -80,7 +80,8 @@ export function availableViews(facts: PanelFacts): PanelView[] {
   const offered: Record<PanelView, boolean> = {
     plan: facts.hasPlan,
     work: facts.hasTickets,
-    review: facts.hasReview || facts.shipped,
+    // Retired (the-feature-s-right-panel decision 14): its notes are the drive's, its findings the review ticket's.
+    review: false,
     details: true,
     design: facts.designRunning,
     drive: facts.driveActive,
@@ -134,7 +135,7 @@ export function panelShowRequest(
 
 export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
   plan: 'Plan',
-  work: 'Work',
+  work: 'Tickets',
   review: 'Review',
   design: 'Design',
   drive: 'Drive',

@@ -52,10 +52,11 @@ import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
-import { TicketsBody } from './bodies/tickets/TicketsBody'
+import { TicketsView } from './bodies/tickets/TicketsView'
 import { RunBody } from './bodies/RunBody'
 import { DesignView, useDesignPath } from './design/DesignView'
 import { DetailsView } from './inspector/Inspector'
+import { FeatureFacts } from './inspector/FeatureFacts'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
@@ -826,27 +827,32 @@ export function Workspace({
     </FeatureHeader>
   )
 
-  // Plan, Work and Review are documents under the title and its facts; the
-  // decisions and spec pane fills its view and scrolls itself, and the
-  // data-heavy ones (the run's lanes, the review's evidence, the ledger) take
-  // the wide column — save the shipped record, which reads as a document.
+  // A view is a panel column, not a page (the-feature-s-right-panel decisions
+  // 2, 4): no repeated title, 24px sides. Plan lays itself out to the view's
+  // full height, its bar on top; the rest scroll with the panel.
   const documentView = (v: PanelView, content: ReactNode) => {
     // Rises in once per navigation — feature, view — never on a refetch.
     const routeKey = `${featureId}:${v}`
-    if (v === 'plan' && !full.preview)
+    if (v === 'plan')
       return (
-        <div key={routeKey} className="flex min-h-0 min-w-0 flex-1 flex-col px-8 pt-8 animate-rise-in">
-          <div className="shrink-0 pb-5">{bodyHeader}</div>
-          <div className="flex min-h-0 min-w-0 flex-1 pb-6">{content}</div>
+        <div key={routeKey} className="h-full min-h-0 animate-rise-in">
+          {content}
         </div>
       )
     return (
-      <Page width={v === 'review' && shipped ? 'default' : 'wide'} routeKey={routeKey}>
-        {bodyHeader}
-        <div className="mt-10">{content}</div>
-      </Page>
+      <div key={routeKey} className="px-6 pt-5 pb-10 animate-rise-in">
+        {content}
+      </div>
     )
   }
+  const detailsFacts = (
+    <FeatureFacts
+      feature={feature}
+      when={mergedAt ? { label: 'Merged', value: relTimeAgo(mergedAt) } : { label: 'Started', value: relTimeAgo(feature.createdAt) }}
+      dependsOn={full.dependsOn}
+      blocks={full.blocks}
+    />
+  )
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
 
   const panelView = (v: PanelView) => {
@@ -863,15 +869,8 @@ export function Workspace({
           />,
         )
       case 'work':
-        // The run's live lanes above the ledger, which groups every ticket under
-        // the round that ran it.
-        return documentView(
-          v,
-          <div className="flex flex-col gap-10">
-            {run && <RunBody featureId={featureId} runId={run.id} />}
-            <TicketsBody featureId={featureId} />
-          </div>,
-        )
+        // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
+        return documentView(v, <TicketsView featureId={featureId} />)
       case 'review':
         // Once merged, the record of what shipped (today's Outcome) is the review.
         return documentView(
@@ -899,7 +898,7 @@ export function Workspace({
       case 'drive':
         return <FeatureDriveView full={full} />
       case 'details':
-        return <DetailsView featureId={featureId} />
+        return <DetailsView featureId={featureId} facts={detailsFacts} />
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
