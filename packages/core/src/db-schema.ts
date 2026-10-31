@@ -155,6 +155,12 @@ export const features = sqliteTable('features', {
    */
   upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
   /**
+   * The project thread (a session id) that holds this feature
+   * (`threads-hold-features` decision 1): the one thread that hears its news and
+   * may act on it. Null means no thread does, and the feature stays the human's.
+   */
+  heldBy: text('held_by'),
+  /**
    * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
    * null when not stopped. Dispatch is refused while it is set and no human
    * message has arrived since; that message clears it.

@@ -58,6 +58,7 @@ export function seedFeature(
       slug,
       title: overrides.title ?? 'Demo feature',
       oneLiner: overrides.oneLiner ?? 'a demo feature',
+      heldBy: overrides.heldBy ?? null,
       brief: overrides.brief ?? null,
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,

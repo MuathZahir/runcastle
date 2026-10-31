@@ -8,7 +8,7 @@ import { runtimeAdapterFor } from '../launcher/runtimes'
 import type { AcpLaunchSpec, RuntimeLaunchInput } from '../launcher/runtimes/types'
 import * as git from '../services/git'
 import { rosterConfig } from '../services/model-discovery'
-import { orchestratorCatchUp } from '../services/orchestrator-notify'
+import { heldSlugs } from '../services/holding'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
@@ -92,8 +92,8 @@ export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<Runt
           worktreePath,
           base: branchBase,
           openNotes: openProjectNoteCount(ctx, project.id),
-          // A conversation already under way heard what ended as it happened.
-          ...(row.ccSessionId ? {} : { catchUp: orchestratorCatchUp(ctx, project) }),
+          // A thread not yet started holds something only by replacing a capped one.
+          ...(row.ccSessionId ? {} : { held: heldSlugs(ctx, row.id) }),
         },
         // The orchestrator works while the human is away (`one-orchestrator-no-mode` decision 1).
         permissionMode: 'bypassPermissions',
