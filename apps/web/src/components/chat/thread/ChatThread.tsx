@@ -17,6 +17,7 @@ import {
 } from '../../../icons'
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import { Markdown } from '../../Markdown'
+import { ShownFiles } from './ShownFiles'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -247,6 +248,8 @@ function Item({
       return <AgentMessage item={item} actions={actions} {...(changes ? { changes } : {})} />
     case 'changes':
       return <ChangesCard files={item.files} />
+    case 'shown':
+      return <ShownFiles files={item.files} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">

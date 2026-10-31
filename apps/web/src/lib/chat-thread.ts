@@ -19,6 +19,8 @@ export type {
   PlanEntry,
   Question,
   QuestionOption,
+  ShownAs,
+  ShownFile,
   SlashCommand,
   ThreadEntry,
   ThreadEvent,

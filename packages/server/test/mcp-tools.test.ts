@@ -780,8 +780,8 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
     // A scenario session's scope follows its drive, so it gets only the
-    // either-scope note plus its own two tools.
-    expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner'])
+    // either-scope note plus its own two tools and show_file.
+    expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner', 'show_file'])
     for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
       expect(toolsForAudience(audience)).not.toContain('run_scenario')
       expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')

@@ -105,7 +105,7 @@ export function PreviewPanel({
  * Open in design as its own message; both are heard only from this frame's
  * own window.
  */
-function PreviewFrame({
+export function PreviewFrame({
   srcDoc,
   onEscape,
   onOpenDesign,

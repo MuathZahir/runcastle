@@ -555,6 +555,15 @@ export function IconCollapse(p: IconProps) {
   )
 }
 
+/** A file coming down to you (Download). */
+export function IconDownload(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 2.5v7.5M4.800 7 8 10.200 11.200 7M3 13.500h10" />
+    </svg>
+  )
+}
+
 /** A picture (attach, paste a screenshot). */
 export function IconImage(p: IconProps) {
   return (

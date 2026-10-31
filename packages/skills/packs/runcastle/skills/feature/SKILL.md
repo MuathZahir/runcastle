@@ -46,6 +46,8 @@ Before you say ready, always run the project's own checks (its typecheck and its
 
 Pass on any warning `declare_ready` returns.
 
+When you took screenshots of the work, show them in your chat with `show_file` before you say ready, a caption on each. The human may accept the feature from them, and the orchestrator re-shows them from your chat.
+
 ## After a drive
 
 The human tells you what is wrong, in chat or as one message of notes with screenshots attached as files you can read. Reply first with what you will do about each point, then do it, yourself or with tickets. Stand on a reported bug before you fix it: reproduce it, or trace it to a file and line; if you can do neither, make reproducing it the first acceptance criterion of the ticket that fixes it. "All good" is a valid message too.
