@@ -17,6 +17,7 @@ import {
 } from '../../../icons'
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import { Markdown } from '../../Markdown'
+import { ShownFiles, type ShownItem } from './ShownFiles'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -50,7 +51,7 @@ export function ChatThread({
   onDropImages,
   footer,
 }: {
-  items: ThreadItem[]
+  items: (ThreadItem | ShownItem)[]
   state: ThreadState
   emptyHint?: ReactNode
   /** What a thread with nothing in it shows instead of the plain "New thread". */
@@ -228,7 +229,7 @@ function Item({
   locked,
   changes,
 }: {
-  item: ThreadItem
+  item: ThreadItem | ShownItem
   actions?: MessageActions
   locked: boolean
   /** The changes card that follows an answer, drawn inside it. */
@@ -247,6 +248,8 @@ function Item({
       return <AgentMessage item={item} actions={actions} {...(changes ? { changes } : {})} />
     case 'changes':
       return <ChangesCard files={item.files} />
+    case 'shown':
+      return <ShownFiles files={item.files} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
@@ -283,7 +286,7 @@ function Item({
  * divider takes a turn's air above it; the rest of a turn — the work, the
  * answer, its changes, an answered ask — sits close under what it follows.
  */
-function opensTurn(item: ThreadItem): boolean {
+function opensTurn(item: ThreadItem | ShownItem): boolean {
   return item.kind === 'user' || item.kind === 'compacted' || item.kind === 'model' || item.kind === 'notice'
 }
 
