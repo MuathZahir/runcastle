@@ -17,7 +17,7 @@ import {
   toolReportFinding,
   toolReviewDrive,
 } from '../src/mcp/server'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import {
@@ -66,20 +66,8 @@ async function initRepo(dir: string): Promise<void> {
   await g.commit('initial commit')
 }
 
-/** Probe whether node-pty can spawn here (CI without prebuilds cannot). */
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], {
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = process.platform !== 'win32' && ptyAvailable()
+usePipePty()
+const PTY = process.platform !== 'win32'
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 

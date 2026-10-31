@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24' # the PTY sidecar runtime
+          node-version: '24' # vitest runs on it; the product itself does not need Node
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

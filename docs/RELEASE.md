@@ -176,8 +176,7 @@ RUNCASTLE_RELEASE_VERSION=1.0.0 bun run build:pkg
 > `$env:` as above.
 
 This bundles the server + bin (core inlined, deps external), builds the web SPA,
-and vendors drizzle migrations, the hook client, the PTY sidecar, the skills
-pack, the built SPA, and the sandcastle template into `build/`.
+and vendors drizzle migrations, the hook client, the skills pack, the built SPA, and the sandcastle template into `build/`.
 
 Verify before packing (PowerShell):
 
@@ -185,7 +184,7 @@ Verify before packing (PowerShell):
 cd build
 Select-String '"version"|"name"' package.json   # -> "version": "1.0.0", "name": "runcastle"
 bun pm pack                                      # -> runcastle-1.0.0.tgz
-tar tzf runcastle-1.0.0.tgz | Select-String 'bin/runcastle.js|index.js|pty-host.cjs|web/index.html'
+tar tzf runcastle-1.0.0.tgz | Select-String 'bin/runcastle.js|index.js|web/index.html'
 ```
 
 bash equivalent: `grep '"version"' package.json`, `tar tzf … | grep -E …`.
@@ -267,12 +266,9 @@ and only an older install is prompted with `bun add -g runcastle@latest`.
 
 ## Notes / open decisions
 
-- **System `node` is required on Windows** for the PTY sidecar — documented in
-  the README; the doctor reports it.
-- **Linux install** relies on the vendored node-pty prebuild bridge (glibc
-  x64/arm64); musl/Alpine has a documented compile fallback. First-run asserts
-  the PTY native binary actually exists rather than trusting the install exit
-  code.
+- **Run the platform smoke before a release.** The terminal is Bun's own, so a
+  new Bun can change it with no runcastle release involved. The smoke hides Node
+  and opens real terminals on Bun's floor and on the latest Bun, on every OS.
 - Changelog format and release cadence are **not yet decided** (spec §"Further
   Notes"). This runbook covers the mechanical cut only; slot a CHANGELOG in when
   that decision lands.

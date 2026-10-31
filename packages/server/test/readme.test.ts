@@ -23,10 +23,9 @@ describe('README for strangers', () => {
     expect(README).toMatch(/http:\/\/localhost:4512/)
   })
 
-  it('documents prerequisites including the Windows node requirement', () => {
+  it('documents prerequisites, and Node is not one of them', () => {
     expect(README).toMatch(/prerequisit/i)
-    // Windows needs system `node` for the PTY sidecar even though this is a Bun app.
-    expect(README).toMatch(/node[^\n]*(windows|pty|sidecar)/i)
+    expect(README).not.toContain('nodejs.org')
     // A paid Claude plan is required — the free plan has no Claude Code access.
     expect(README).toMatch(/free[^\n]*Claude[^\n]*(no|not)|Claude Code access|paid Claude plan/i)
   })
@@ -62,8 +61,7 @@ describe('README for strangers', () => {
 
   it('covers the troubleshooting notes the setup path can hit', () => {
     expect(README).toMatch(/WSL[^\n]*bind[- ]?mount|bind[- ]?mount[^\n]*WSL/i)
-    expect(README).toMatch(/musl|alpine/i)
-    expect(README).toMatch(/pty\.node|node-pty/i)
+    expect(README).toMatch(/embedded terminal will not start/i)
   })
 
   // The audience greps a new tool for phone-home code. The README has to name
