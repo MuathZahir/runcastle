@@ -84,7 +84,14 @@ Then the drive, in order:
 
 ## Open questions
 
-- **The `0:0`.** Not proven. The code has three routes to it (decisions.md, 3), and the plan closes them without knowing which one happened. The VPS drive's timeline event gives the evidence if it recurs.
+- **The `0:0`.** Its original cause is still not proven. The code has several routes to it (decisions.md, 3), and the plan closes them without knowing which one happened. The timeline's `burn.cache_repaired` event gives the evidence if it recurs.
+- **A warm cache as a non-1000 user.** The VPS burns both started cold in a repo with no dependencies, so reusing a populated cache is untested at UID 1001. The cold-to-warm path passed at UID 1000 on Windows.
+
+Proved on the VPS, on real Ubuntu as UID 1001 with build `1.6.0-local.00eda3fd`:
+
+- `runcastle doctor` passes, under `sg docker` too.
+- A burn on a fresh volume passed: runcastle created it as `1001:1001` with no hand fix.
+- A burn on a volume forced to `0:0` passed: runcastle replaced the volume, and the timeline named the owner it found.
 
 Settled while building:
 
