@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No Node preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.ba-col{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 14px;background:var(--color-surface-raised)}
+.ba-col h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:10px}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.node{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);font-size:12px;white-space:nowrap}
+.node.gone{border-color:var(--color-danger);color:var(--color-danger);background:var(--color-danger-subtle)}
+.node.bun{border-color:var(--color-accent);color:var(--color-accent-text);background:var(--color-accent-subtle)}
+.arrow{color:var(--color-text-tertiary)}
+.ba-col .hint{margin-top:10px}
+.doc{margin-top:12px;font:12px/18px var(--font-mono);background:var(--color-surface-inset);border-radius:var(--radius-md);padding:10px 12px;color:var(--color-text-secondary)}
+.doc .row{display:flex;gap:8px;align-items:center}
+.doc .off{color:var(--color-text-disabled);text-decoration:line-through}
+.grid{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+.grid th{font-weight:400;color:var(--color-text-tertiary);text-align:left;padding:4px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.grid td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary)}
+.grid td.c{white-space:nowrap}
+.grid td.c .dot{margin-right:6px;vertical-align:1px}
+.dot.warn{background:var(--color-warning)}
+.routes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.route{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:8px 10px;background:var(--color-surface-raised)}
+.route b{display:flex;align-items:center;gap:8px;font-weight:500}
+.route p{margin-top:3px;font-size:12px;line-height:17px;color:var(--color-text-secondary)}
+@media (max-width:760px){.ba,.routes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>No Node</h1>
+  <p class="lede">Runcastle runs on Bun alone, so nobody has to install Node.js just to get terminals. Planned without you: every decision below is an assumption until you confirm it.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>Built by the lead, no tickets</span><span class="mono">docs/features/no-node/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">What changes, and what the probes on this machine showed.</p>
+
+  <div class="sub">
+    <h3>What hosts a terminal</h3>
+    <div class="ba">
+      <div class="ba-col">
+        <h3>Today</h3>
+        <div class="chain"><span class="node">Runcastle</span><span class="arrow">→</span><span class="node gone">Node</span><span class="arrow">→</span><span class="node gone">node-pty</span><span class="arrow">→</span><span class="node">your program</span></div>
+        <p class="hint">A second runtime and a native binary, per terminal.</p>
+      </div>
+      <div class="ba-col">
+        <h3>After</h3>
+        <div class="chain"><span class="node bun">Runcastle on Bun</span><span class="arrow">→</span><span class="node">your program</span></div>
+        <p class="hint">Bun's own terminal <a class="pin" data-d="2">2</a>, same minimum Bun <a class="pin" data-d="3">3</a>. The burn image is untouched <a class="pin" data-d="10">10</a>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>runcastle doctor on a clean machine</h3>
+    <div class="ba">
+      <div class="ba-col">
+        <h3>Today</h3>
+        <div class="doc">
+          <div class="row"><i class="dot ok"></i>Bun runtime</div>
+          <div class="row"><i class="dot no"></i>Node.js (PTY sidecar backend)</div>
+          <div class="row"><i class="dot ok"></i>Git</div>
+        </div>
+        <p class="hint">Blocks boot.</p>
+      </div>
+      <div class="ba-col">
+        <h3>After <a class="pin" data-d="6">6</a></h3>
+        <div class="doc">
+          <div class="row"><i class="dot ok"></i>Bun runtime</div>
+          <div class="row"><i class="dot ok"></i>Git</div>
+          <div class="row"><i class="dot ok"></i>Claude Code CLI</div>
+        </div>
+        <p class="hint">No Node line. Boots.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Does your agent need Node? <a class="pin" data-d="1">1</a></h3>
+    <div class="routes">
+      <div class="route"><b><i class="dot ok"></i>Claude, native installer</b><p>No Node. A full turn ran with Node hidden.</p></div>
+      <div class="route"><b><i class="dot ok"></i>Codex, standalone installer</b><p>No Node. A full turn ran on its native binary. Now the advice everywhere <a class="pin" data-d="5">5</a>.</p></div>
+      <div class="route"><b><i class="dot warn"></i>Either agent, through npm</b><p>Still needs Node, because its command is a Node script. With no Node it shows as not ready, with the fix <a class="pin" data-d="11">11</a>.</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What was measured</h3>
+    <p class="hint">Real runs, 2026-10-31. macOS has none yet: the smoke must pass there before ready <a class="pin" data-d="8">8</a> <a class="pin" data-d="13">13</a>.</p>
+    <table class="grid">
+      <tr><th>Check</th><th>Windows</th><th>Linux</th></tr>
+      <tr><td>Keystrokes into a prompt, 20,000 lines of output, exit code</td><td class="c"><i class="dot ok"></i>Pass</td><td class="c"><i class="dot ok"></i>Pass</td></tr>
+      <tr><td>Long run with output and silences</td><td class="c"><i class="dot ok"></i>88s</td><td class="c"><i class="dot ok"></i>80s</td></tr>
+      <tr><td>Resize</td><td class="c"><i class="dot ok"></i>Pass</td><td class="c"><i class="dot ok"></i>Pass</td></tr>
+      <tr><td>Stopping a server's process tree</td><td class="c"><i class="dot ok"></i>Port freed</td><td class="c"><i class="dot ok"></i>Nothing left</td></tr>
+      <tr><td>Ctrl-C to a sign-in style screen</td><td class="c"><i class="dot ok"></i>Pass</td><td class="c"><i class="dot ok"></i>Pass</td></tr>
+      <tr><td>Ctrl-C to a plain command, as a dev server would be <a class="pin" data-d="4">4</a></td><td class="c"><i class="dot no"></i>Fails</td><td class="c"><i class="dot ok"></i>Pass</td></tr>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>Ctrl-C on Windows <a class="pin" data-d="4">4</a></h3>
+    <div class="chain" style="margin-top:12px"><span class="node">Ctrl-C typed</span><span class="arrow">→</span><span class="node">passed to the program</span><span class="arrow">→</span><span class="node">2 seconds</span><span class="arrow">→</span><span class="node">still running? end it</span></div>
+  </div>
+
+  <div class="sub">
+    <h3>A project of your own that needs Node <a class="pin" data-d="9">9</a></h3>
+    <div class="chain" style="margin-top:12px"><span class="node">Clean machine</span><span class="arrow">→</span><span class="node">first drive</span><span class="arrow">→</span><span class="node">"node: not found" in the dev pane</span></div>
+    <p class="hint" style="margin-top:8px">No new check. Contributors working on Runcastle itself keep Node for the tests <a class="pin" data-d="7">7</a>, and Bun is not pinned <a class="pin" data-d="12">12</a>.</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing deferred. One-line install already waits on this feature.</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>How terminals look or behave, beyond the Ctrl-C fallback</li>
+      <li><i class="dot"></i>The install script</li>
+      <li><i class="dot"></i>The burn image</li>
+      <li><i class="dot"></i>Moving the test suite onto Bun</li>
+      <li><i class="dot"></i>A fake <span class="mono">node</span> on PATH for npm-installed agents</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="chain">
+        <span class="node">registry · WebSocket · TerminalView</span><span class="arrow">→</span><span class="node bun">createPtySession</span><span class="arrow">→</span><span class="node bun">Bun.spawn terminal</span>
+      </div>
+      <p class="hint" style="margin-top:10px">Everything above the seam stays as it is.</p>
+      <table class="grid">
+        <tr><th>Deleted</th><th>Changed</th></tr>
+        <tr><td>node-pty, <span class="mono">pty-sidecar.ts</span>, <span class="mono">pty-host.cjs</span>, <span class="mono">install-check.ts</span></td><td><span class="mono">pty.ts</span>: one backend, verbatim Windows command lines, job object, Ctrl-C timer</td></tr>
+        <tr><td><span class="mono">RUNCASTLE_PTY_BACKEND</span>, <span class="mono">RUNCASTLE_NODE_BIN</span>, <span class="mono">RUNCASTLE_PTY_HOST</span></td><td>Doctor and <span class="mono">checkReady</span>: a helper that spots a CLI needing a missing Node</td></tr>
+        <tr><td>README's Node row, toolchain and Alpine notes</td><td>Tests: a pipe stand-in under vitest, real terminal cases in Bun child fixtures</td></tr>
+        <tr><td>Node in the smoke's setup and Dockerfiles</td><td>Smoke: Node hidden, Bun 1.3.14 and latest, Ctrl-C, both adapters</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    [
+      "Runcastle needs no Node; a Codex installed through npm still does",
+      "The brief said to confirm this first and to say so plainly if it broke the feature's name. It does not break it: the adapters are clean, and the only Node dependency left belongs to one install route of a third-party tool, which has a standalone replacement.",
+      "assumed"
+    ],
+    [
+      "Bun's built-in terminal replaces node-pty, with no fallback",
+      "It passed keystrokes, sign-in-style prompts, 20,000 lines of output, resizing, UTF-8, tree kill and long quiet runs on Windows and Linux. A fallback would keep two backends alive and leave a failure mode that only appears on machines with no Node. Deleting node-pty also removes the native binary, so the C++ toolchain and Alpine build-from-source notes go with it.",
+      "assumed"
+    ],
+    [
+      "The minimum Bun version stays at 1.3.14",
+      "The same probes passed on 1.3.14 and 1.4.2 on both Windows and Linux, so raising the floor would make people upgrade for nothing.",
+      "assumed"
+    ],
+    [
+      "On Windows, Ctrl-C falls back to ending the program",
+      "This is the one behaviour Bun's terminal lost. On Windows, Ctrl-C reaches programs in raw mode (the sign-in screens), but a program in normal line mode (a dev server, `docker build`, plain `ping`) never gets interrupted, while node-pty does interrupt it. The brief says this feature must not change how terminals behave, and a single rule in the backend covers it without each terminal having to say what kind it is.",
+      "assumed"
+    ],
+    [
+      "Codex install advice moves to OpenAI's standalone installers",
+      "Without this, a clean machine is told to install npm to get Codex, which is the setup surprise the feature exists to remove. An npm-installed Codex on a machine that has Node keeps working, so nobody is forced to reinstall.",
+      "assumed"
+    ],
+    [
+      "The doctor stops checking for Node",
+      "Bun's terminal ships inside Bun, so there is nothing separate left to be missing. A check that can only ever pass is noise.",
+      "assumed"
+    ],
+    [
+      "Contributors keep Node for the test suite; only people running Runcastle lose it",
+      "Moving the whole suite onto Bun is a large separate job with no benefit to anyone installing Runcastle. Keeping node-pty only for tests would mean the suite exercises a terminal that never ships.",
+      "assumed"
+    ],
+    [
+      "macOS is proven by the platform smoke, with Node hidden, before ready",
+      "macOS is the one OS measured by nobody so far, and no machine here can reach it. The smoke is also the only check that would catch a Node dependency nobody remembered.",
+      "assumed"
+    ],
+    [
+      "A project that needs Node is that project's requirement",
+      "Until now Runcastle's own requirement happened to put Node on every machine. Removing it can move a surprise from the doctor to the first drive on a clean machine with a JavaScript project. But Runcastle works with any language, and guessing from a `package.json` would be wrong for the many projects Bun runs on its own.",
+      "assumed"
+    ],
+    [
+      "Burn images are not part of this feature",
+      "The image holds a project's tools, not Runcastle's, and \"Burns build their own image\" owns it in this same cut. Touching it here would risk the VPS burn checkpoint for no gain.",
+      "assumed"
+    ],
+    [
+      "An agent CLI that needs a missing Node is reported as not ready",
+      "Without this, the person sees an adapter crash reading \"'node' is not recognized\". Runcastle's readiness check already exists for exactly this moment (`checkReady`, which runs before a chat launches), and inspecting the file runs nothing.",
+      "assumed"
+    ],
+    [
+      "No Bun version pin; a broken future Bun is handled by the smoke and a README note",
+      "With no fallback, a future Bun could break sign-in with no Runcastle release involved. But Runcastle's whole server already depends on Bun in the same way, so a terminal-only guard would protect little, and a version cap would refuse people's working setups.",
+      "assumed"
+    ],
+    [
+      "The smoke covers the minimum and latest Bun, Ctrl-C, and both adapters",
+      "This makes the minimum version a measured claim on macOS too, and makes \"no Node\" true of more than the terminal. It adds no new machinery, only steps in an existing check.",
+      "assumed"
+    ]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [
+      1,
+      "A node stand-in on PATH so npm-installed agents keep working with no Node.",
+      "The brief hoped for no Node at all. An npm-installed agent is the one case left, and you may want it covered rather than redirected."
+    ],
+    [
+      2,
+      "Keep the Node helper as a fallback for one release.",
+      "Forces the rest of the plan. Bun's terminal is proven on two of three operating systems, and with no fallback a bad surprise has no safety net."
+    ],
+    [
+      4,
+      "Accept the gap: Stop drive and the Done button already end those programs. Or limit the fallback to output-only panes.",
+      "A guess at how much Ctrl-C matters to you. The challenger would limit the rule to dev, design and image-build panes.",
+      "Challenged"
+    ],
+    [
+      8,
+      "Ship on the Windows and Linux evidence and treat macOS as a known risk.",
+      "You asked for this feature to run through to merged without stopping, and a macOS failure would stop it for you.",
+      "Challenged"
+    ],
+    [
+      9,
+      "A doctor warning when a project looks like it needs Node and none is installed.",
+      "You asked that nobody fetch extra things by hand. A JavaScript project on a clean machine can still hit this at the first drive."
+    ]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
