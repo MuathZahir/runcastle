@@ -407,6 +407,17 @@ describe('the notifier', () => {
     expect(promptsOf(id)).toEqual([])
   })
 
+  it('still says when the drafts waiting on a shipped feature could not start', async () => {
+    const id = projectSession()
+    const done = heldFeature(id, 'done', { status: 'shipped' })
+
+    emit(ctx, done.id, { type: 'feature.autostart.failed', message: "couldn't start up-next dependents: boom" })
+
+    expect(await promptLines(id, 1)).toEqual([
+      [`[runcastle] done couldn't start up-next dependents: boom. Read it with get_feature_context({ slug: "done" }).`],
+    ])
+  })
+
   it('tells a running holder about the human’s acts, and does not wake a stopped one for them', async () => {
     const stopped = projectSession()
     const running = projectSession()

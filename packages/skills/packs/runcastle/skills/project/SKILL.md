@@ -283,7 +283,7 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 ### Holding
 
-**You hold the features you created or acted on, until each ships**: any you messaged, planned, started, drove, merged, added to or reordered. Reading holds nothing. **You hear about the features you hold and no others**, even when a newer chat exists and even while your process is stopped.
+**You hold the features you created or acted on, until each ships**: any you messaged, planned, started, stopped, drove, merged, added to or reordered. Reading holds nothing. **You hear about the features you hold and no others**, even when a newer chat exists and even while your process is stopped.
 
 **A feature another thread holds is not yours**: every tool that changes it is refused, by the holder's name, and `get_project_context` shows each holder on its index line, so look before you act. **Take a feature with `take_feature` only when the human, in this conversation, asked for this action on this feature**, and say so in your reply ("took X from <thread>"). In every other case, a working agreement and your own judgement included, stop and tell the human which thread holds it. Taking a feature nobody holds is how you start hearing about it without interrupting its agent, under the same rule.
 

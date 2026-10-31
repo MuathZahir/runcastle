@@ -216,7 +216,10 @@ function stateFor(ctx: AppCtx, event: EventRow): NotifyState {
   const state: NotifyState = {}
   if (event.featureId) {
     const feature = getFeatureRow(ctx, event.featureId)
-    const holderId = feature.status === 'shipped' ? null : (feature.heldBy ?? null)
+    // A shipped feature has nothing more to say, except that the drafts waiting
+    // on it could not start, which the merge reports on the shipped feature.
+    const over = feature.status === 'shipped' && event.type !== AUTOSTART_FAILED
+    const holderId = over ? null : (feature.heldBy ?? null)
     const holderRunning = holderId !== null && agentHost(ctx).isRunning(holderId)
     state.feature = { slug: feature.slug, holderId, holderRunning }
   }

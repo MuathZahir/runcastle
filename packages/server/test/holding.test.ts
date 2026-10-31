@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Feature, SessionRow, ThreadEvent } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { events, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { launchProjectSession } from '../src/launcher/launcher'
@@ -374,6 +374,22 @@ describe('threads hold features', () => {
       expect(holderOfSlug(shipped)).toBeUndefined()
       expect(holderOfSlug(human)).toBeUndefined()
       expect(typesOn(human)).toEqual([])
+    })
+
+    it('never stops the server, and tries again on the next boot', () => {
+      const feature = stamped('unplaced')
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const select = vi.spyOn(ctx.db, 'select').mockImplementationOnce(() => {
+        throw new Error('disk full')
+      })
+
+      expect(() => sweepHolders(ctx)).not.toThrow()
+      expect(logged).toHaveBeenCalled()
+      select.mockRestore()
+      logged.mockRestore()
+
+      sweepHolders(ctx)
+      expect(typesOn(feature)).toContain('feature.hold_unplaced')
     })
 
     it('runs once per project, so a later boot cannot place a feature left unheld', () => {

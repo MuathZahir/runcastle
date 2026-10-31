@@ -214,16 +214,21 @@ function sweepProject(ctx: AppCtx, projectId: string): void {
  * 7). Runs once per project, so a later boot cannot place a feature left unheld
  * on purpose. Log arguments are not recorded, so the match is by time. There is
  * no fallback to the newest thread: that could take a feature from the thread
- * running it. Call before the notifier starts.
+ * running it. Call before the notifier starts. Never throws: a sweep that fails
+ * must not stop the server, and with no marker written the next boot tries again.
  */
 export function sweepHolders(ctx: AppCtx): void {
-  for (const { id } of ctx.db.select({ id: projects.id }).from(projects).all()) {
-    const swept = ctx.db
-      .select({ id: events.id })
-      .from(events)
-      .where(and(eq(events.projectId, id), eq(events.type, HOLDERS_SWEPT)))
-      .limit(1)
-      .all()
-    if (swept.length === 0) sweepProject(ctx, id)
+  try {
+    for (const { id } of ctx.db.select({ id: projects.id }).from(projects).all()) {
+      const swept = ctx.db
+        .select({ id: events.id })
+        .from(events)
+        .where(and(eq(events.projectId, id), eq(events.type, HOLDERS_SWEPT)))
+        .limit(1)
+        .all()
+      if (swept.length === 0) sweepProject(ctx, id)
+    }
+  } catch (err) {
+    console.error('sweeping holders failed', err)
   }
 }
