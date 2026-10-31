@@ -1,9 +1,9 @@
-import { closeSync, copyFileSync, existsSync, lstatSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { runcastleVersion } from '../version'
 import { DATA_ENTRIES } from './scan'
-import { gitOrThrow, walkFiles } from './shell'
+import { gitOrThrow, isSymlink, walkFiles } from './shell'
 import { TarWriter } from './tar'
 import type { CheckoutWip, MoveEnv, MoveManifest, MoveScan, OpenSql } from './types'
 
@@ -120,8 +120,8 @@ async function addWip(tar: TarWriter, projectId: string, wip: CheckoutWip, scrat
   for (const rel of [...wip.tracked, ...wip.untracked]) {
     const path = join(wip.path, rel)
     try {
-      // lstat: a symlink would otherwise travel as a copy of whatever it points at.
-      if (!lstatSync(path).isFile()) continue
+      // A symlink would otherwise travel as a copy of whatever it points at.
+      if (isSymlink(path) || !statSync(path).isFile()) continue
     } catch {
       continue
     }

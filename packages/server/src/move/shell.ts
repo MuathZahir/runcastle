@@ -108,13 +108,27 @@ export function walkSymlinks(dir: string, base = ''): string[] {
   return links
 }
 
-/** Whether `path` is itself a symlink. */
+/** Whether `path` is itself a symlink or a Windows junction. */
 export function isSymlink(path: string): boolean {
   try {
     return lstatSync(path).isSymbolicLink()
   } catch {
     return false
   }
+}
+
+/**
+ * The link a relative path sits behind, itself included, or `null`. Git for
+ * Windows follows a junction and lists the files behind it as ordinary files,
+ * so looking at the file alone never shows the link.
+ */
+export function linkInPath(root: string, rel: string): string | null {
+  const segments = rel.split('/')
+  for (let i = 1; i <= segments.length; i++) {
+    const prefix = segments.slice(0, i).join('/')
+    if (isSymlink(join(root, prefix))) return prefix
+  }
+  return null
 }
 
 /** Total size of a file or folder, 0 when it cannot be read. */

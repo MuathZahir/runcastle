@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { assignTargetFolders, encodeClaudeFolder, sourceBasename } from './paths'
-import { formatBytes, git, gitOrThrow, isSymlink, nulList, pathBytes, walkSymlinks } from './shell'
+import { formatBytes, git, gitOrThrow, isSymlink, linkInPath, nulList, pathBytes, walkSymlinks } from './shell'
 import type {
   CheckoutWip,
   ClaudeFolder,
@@ -148,9 +148,8 @@ function checkoutWip(key: string, path: string): CheckoutWip {
   const nested: string[] = []
   const loose: string[] = []
   for (const rel of nulList(gitOrThrow(path, ['ls-files', '-o', '--exclude-standard', '-z']))) {
-    // Git on Windows lists a junction as a folder, with the slash of a nested repo.
     const bare = rel.replace(/\/$/, '')
-    if (!rel.endsWith('/') || isSymlink(join(path, bare))) {
+    if (!rel.endsWith('/') || linkInPath(path, bare)) {
       loose.push(bare)
       continue
     }
@@ -160,7 +159,8 @@ function checkoutWip(key: string, path: string): CheckoutWip {
   }
   // With no commit to diff against, staged files can only travel as whole copies.
   const candidates = headSha ? loose : [...changed, ...loose]
-  const untracked = candidates.filter((rel) => !isSymlink(join(path, rel)))
+  const links = candidates.map((rel) => linkInPath(path, rel))
+  const untracked = candidates.filter((_, i) => links[i] === null)
   return {
     key,
     path,
@@ -170,7 +170,7 @@ function checkoutWip(key: string, path: string): CheckoutWip {
     untracked: untracked.filter((rel) => !isEnvFile(rel)),
     nested,
     heldBack: untracked.filter(isEnvFile),
-    symlinks: candidates.filter((rel) => isSymlink(join(path, rel))),
+    symlinks: [...new Set(links.filter((link) => link !== null))],
   }
 }
 
