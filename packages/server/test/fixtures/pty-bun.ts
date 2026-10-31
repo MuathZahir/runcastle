@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { devSpawnTarget } from '../../src/pty/dev-pane'
-import { createPtySession, type PtySession } from '../../src/pty/pty'
+import { createPtySession, type CreatePtyOptions, type PtySession } from '../../src/pty/pty'
 import { terminalText } from './terminal-text'
 
 /**
@@ -25,8 +25,9 @@ interface Run {
 }
 
 /** Open a terminal, collecting its output, with a bound on how long exit can take. */
-function open(cmd: string, args: string[], cwd: string, timeoutMs = 15_000): Run {
-  const pty = createPtySession(cmd, args, { cwd, env: process.env, cols: 120, rows: 30 })
+function open(cmd: string, args: string[], cwd: string, extra: Partial<CreatePtyOptions> = {}): Run {
+  const timeoutMs = 15_000
+  const pty = createPtySession(cmd, args, { cwd, env: process.env, cols: 120, rows: 30, ...extra })
   let out = ''
   pty.onData((chunk) => {
     out += chunk.toString('utf8')
@@ -141,13 +142,42 @@ async function rawInterrupt(): Promise<void> {
 }
 
 /**
- * A line-mode program behind the same shell a dev pane uses. POSIX: the terminal
- * raises SIGINT. Windows: Bun's ConPTY does not, so the two-second fallback ends it.
+ * What a sign-in prompt does: read Ctrl-C as a key and carry on. A terminal opened
+ * without `ctrlCEndsTree` must leave it running, on every OS, because a person may
+ * press Ctrl-C there to copy the sign-in URL.
+ */
+async function ignoredInterrupt(): Promise<void> {
+  const run = open(
+    BUN,
+    [
+      script(
+        'ignore.ts',
+        `process.stdin.setRawMode(true)
+         process.stdin.resume()
+         console.log('ready')
+         process.stdin.on('data', (d) => console.log('KEY ' + d[0]))
+         setInterval(() => {}, 1000)`,
+      ),
+    ],
+    dir,
+  )
+  await until(() => run.text().includes('ready'))
+  run.pty.write('\x03')
+  await delay(3000)
+  evidence.ignoredInterrupt = { sawKey: run.text().includes('KEY 3'), stillRunning: !run.pty.killed }
+  await run.pty.killTree()
+  await run.exit
+}
+
+/**
+ * A line-mode program behind the same shell a dev pane uses, opened as a dev pane
+ * is. POSIX: the terminal raises SIGINT. Windows: Bun's ConPTY does not, so the
+ * two-second fallback ends it.
  */
 async function lineInterrupt(): Promise<void> {
   const idle = script('idle.ts', 'console.log("ready"); setInterval(() => {}, 1000)')
   const { file, args } = devSpawnTarget(`"${BUN}" "${idle}"`)
-  const run = open(file, args, dir)
+  const run = open(file, args, dir, { ctrlCEndsTree: true })
   await until(() => run.text().includes('ready'))
   const started = Date.now()
   run.pty.write('\x03')
@@ -191,7 +221,7 @@ async function afterExit(): Promise<void> {
   evidence.afterExit = { killed: run.pty.killed }
 }
 
-const CHECKS = [output, isTty, lifetime, input, resize, rawInterrupt, lineInterrupt, quoting, killTree, missing, afterExit]
+const CHECKS = [output, isTty, lifetime, input, resize, rawInterrupt, ignoredInterrupt, lineInterrupt, quoting, killTree, missing, afterExit]
 
 async function main(): Promise<void> {
   for (const check of CHECKS) {

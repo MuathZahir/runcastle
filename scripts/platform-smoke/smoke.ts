@@ -232,8 +232,9 @@ if (bin) {
 /**
  * Everything between a click in the app and the program: the tRPC call that opens
  * a sign-in terminal, the installed backend, and the WebSocket the view talks over.
- * Ctrl-C proves the interrupt on each OS: a line-mode program ends at once on
- * POSIX, and through the two-second fallback on Windows.
+ * A sign-in terminal gets Ctrl-C as a plain key. On POSIX the terminal interrupts
+ * this line-mode stand-in at once. On Windows nothing interrupts it, and it must
+ * keep running: the fallback that ends a program is only for output panes.
  */
 async function smokeTerminal(base: string): Promise<{ ok: boolean; detail: string }> {
   const started = await fetch(`${base}/api/trpc/setup.startTerminal`, {
@@ -273,6 +274,10 @@ async function smokeTerminal(base: string): Promise<{ ok: boolean; detail: strin
     }
     const interrupted = Date.now()
     keys('\x03')
+    if (platform() === 'win32') {
+      if (await until(() => ended, 3500)) return { ok: false, detail: `Ctrl-C ended a sign-in terminal: ${seen()}` }
+      return { ok: true, detail: 'output, typed input, and a sign-in terminal surviving Ctrl-C for 3.5s' }
+    }
     if (!(await until(() => ended, 6000))) {
       return { ok: false, detail: `Ctrl-C did not end the program: ${seen()}` }
     }

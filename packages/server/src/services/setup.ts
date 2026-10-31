@@ -248,6 +248,15 @@ export async function resolveRuntime(exec: ExecFn, preferred: Runtime): Promise<
  */
 export type TerminalKind = 'setup-token' | 'build-image' | 'claude-login' | 'codex-login'
 
+/**
+ * Whether Ctrl-C ends this terminal's program on Windows. The image build only
+ * shows output, so it can only mean stop. A sign-in prompt ignores Ctrl-C, and a
+ * person may press it to copy the sign-in URL.
+ */
+export function ctrlCEndsTerminal(kind: TerminalKind): boolean {
+  return kind === 'build-image'
+}
+
 /** The login terminal kind for each runtime, as the wizard and settings offer it. */
 export const LOGIN_TERMINAL_KIND: Record<AgentRuntime, TerminalKind> = {
   'claude-code': 'claude-login',

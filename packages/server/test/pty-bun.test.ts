@@ -29,6 +29,7 @@ interface Evidence {
   input: { exit: Exit; text: string }
   resize: string
   rawInterrupt: { exit: Exit | 'timeout'; ms: number }
+  ignoredInterrupt: { sawKey: boolean; stillRunning: boolean }
   lineInterrupt: { exit: Exit | 'timeout'; ms: number }
   quoting: { exit: Exit; text: string }
   killTree: { holderSeen: boolean; holderAlive: boolean; exit: Exit | 'timeout' }
@@ -97,7 +98,11 @@ describe.skipIf(BUN === null)('the terminal backend under Bun', () => {
     expect(evidence.rawInterrupt.exit).toEqual({ exitCode: 5 })
   })
 
-  it('ends a line-mode program on Ctrl-C', () => {
+  it('leaves a program that ignores Ctrl-C running, as a sign-in prompt does', () => {
+    expect(evidence.ignoredInterrupt).toEqual({ sawKey: true, stillRunning: true })
+  })
+
+  it('ends a dev-pane program on Ctrl-C', () => {
     expect(evidence.lineInterrupt.exit).not.toBe('timeout')
     // Windows has only the fallback, so the program must last until it fires;
     // anywhere else the terminal interrupts it straight away.

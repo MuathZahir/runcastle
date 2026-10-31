@@ -33,10 +33,12 @@ standalone installer, rather than giving agents a `node` on PATH that is really 
 - A clean machine needs Bun, git and an agent. The doctor no longer gates on Node.
 - No native addon means no toolchain, no source build and no musl special case.
 - **Ctrl-C on Windows.** Bun's ConPTY delivers `\x03` to a raw-mode program as a key but
-  does not raise the console interrupt a line-mode program waits for. The backend passes
-  the key on and, if the program is still running two seconds later, ends its tree. This
-  is new behaviour at the `claude setup-token` prompt, which ignores Ctrl-C under every
-  terminal: there the rule ends a sign-in that node-pty left running.
+  does not raise the console interrupt a line-mode program waits for. Terminals that only
+  show a program's output (dev panes, the design server, the image build) ask for a
+  fallback: the backend passes the key on and, if the program is still running two seconds
+  later, ends its tree. Sign-in flows get the plain key. The `claude setup-token` prompt
+  ignores Ctrl-C under every terminal, and a person may press it to copy the sign-in URL,
+  so a rule covering every terminal would cost them the sign-in.
 - **Windows job containment** now happens just after the program starts rather than
   before, because Bun's spawn has no suspended step. The window is the one tick between
   the two. The job still ends the tree, orphans included.

@@ -117,7 +117,7 @@ export function spawnDevPane(input: SpawnDevPaneInput): void {
     sessionId: paneId,
     cmd: file,
     args,
-    opts: { cwd, env: env ?? process.env, cols: 80, rows: 24 },
+    opts: { cwd, env: env ?? process.env, cols: 80, rows: 24, ctrlCEndsTree: true },
     ...(onExit ? { onExit: () => onExit() } : {}),
   })
 

@@ -45,6 +45,13 @@ export interface CreatePtyOptions {
   env: Record<string, string | undefined>
   cols?: number
   rows?: number
+  /**
+   * On Windows, end the program's tree if it is still running two seconds after
+   * Ctrl-C. For panes that only show a program's output, where Ctrl-C can only mean
+   * stop. Not for sign-in flows: their prompt ignores Ctrl-C, and a person may well
+   * press it to copy the sign-in URL, which must not cost them the sign-in.
+   */
+  ctrlCEndsTree?: boolean
 }
 
 export type PtyFactory = (cmd: string, args: string[], opts: CreatePtyOptions) => PtySession
@@ -57,9 +64,9 @@ export type PtyFactory = (cmd: string, args: string[], opts: CreatePtyOptions) =
 const OUTPUT_TAIL_MS = 250
 
 /**
- * How long a program on Windows gets to act on Ctrl-C before its tree is ended.
- * Bun's ConPTY delivers `\x03` to a raw-mode program as a key, but never raises
- * the console interrupt a line-mode program (a dev server, `docker build`) listens
+ * How long a program gets to act on Ctrl-C before `ctrlCEndsTree` ends it. Bun's
+ * ConPTY delivers `\x03` to a raw-mode program as a key, but never raises the
+ * console interrupt a line-mode program (a dev server, `docker build`) listens
  * for, so without this Ctrl-C would do nothing there.
  */
 const WINDOWS_INTERRUPT_GRACE_MS = 2000
@@ -259,7 +266,7 @@ function createBunPtySession(bun: BunRuntime, cmd: string, args: string[], opts:
     write(data) {
       if (exited || terminal.closed) return
       terminal.write(data)
-      if (isWin32 && data.includes('\x03') && !interrupting) {
+      if (isWin32 && opts.ctrlCEndsTree && data.includes('\x03') && !interrupting) {
         interrupting = setTimeout(() => void killTree(), WINDOWS_INTERRUPT_GRACE_MS)
         interrupting.unref?.()
       }

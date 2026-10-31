@@ -235,7 +235,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>Ctrl-C on Windows <a class="pin" data-d="4">4</a></h3>
-    <div class="chain" style="margin-top:12px"><span class="node">Ctrl-C typed</span><span class="arrow">→</span><span class="node">passed to the program</span><span class="arrow">→</span><span class="node">2 seconds</span><span class="arrow">→</span><span class="node">still running? end it</span></div>
+    <div class="chain" style="margin-top:12px"><span class="node">Ctrl-C in a dev, design or image-build pane</span><span class="arrow">→</span><span class="node">passed to the program</span><span class="arrow">→</span><span class="node">2 seconds</span><span class="arrow">→</span><span class="node">still running? end it</span></div>
   </div>
 
   <div class="sub">
@@ -260,7 +260,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>Nothing deferred. One-line install already waits on this feature.</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>How terminals look or behave, beyond the Ctrl-C fallback</li>
+      <li><i class="dot"></i>How terminals look or behave, beyond the Ctrl-C fallback for output panes</li>
       <li><i class="dot"></i>The install script</li>
       <li><i class="dot"></i>The burn image</li>
       <li><i class="dot"></i>Moving the test suite onto Bun</li>
@@ -315,8 +315,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       "assumed"
     ],
     [
-      "On Windows, Ctrl-C falls back to ending the program",
-      "This is the one behaviour Bun's terminal lost. On Windows, Ctrl-C reaches programs in raw mode (the sign-in screens), but a program in normal line mode (a dev server, `docker build`, plain `ping`) never gets interrupted, while node-pty does interrupt it. The brief says this feature must not change how terminals behave, and a single rule in the backend covers it without each terminal having to say what kind it is.",
+      "On Windows, Ctrl-C ends dev, design and image-build programs",
+      "This is the one behaviour Bun's terminal lost. On Windows, Ctrl-C reaches programs in raw mode (the sign-in screens), but a program in normal line mode (a dev server, `docker build`, plain `ping`) never gets interrupted, while node-pty does interrupt it. A real `claude setup-token` ignores Ctrl-C at its prompt on every terminal, and a person may press it to copy the sign-in URL, so the fallback stays off those flows.",
       "assumed"
     ],
     [
@@ -380,8 +380,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ],
     [
       4,
-      "Accept the gap: Stop drive and the Done button already end those programs. Or limit the fallback to output-only panes.",
-      "A guess at how much Ctrl-C matters to you. The challenger would limit the rule to dev, design and image-build panes.",
+      "Accept the gap: Stop drive and the Done button already end those programs.",
+      "Changed by the orchestrator: the first version covered every terminal, until the real sign-in check showed the setup-token prompt ignores Ctrl-C.",
       "Challenged"
     ],
     [

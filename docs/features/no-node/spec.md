@@ -47,9 +47,11 @@ What the backend has to get right, each measured or learned from the probes:
   pid swap goes away with it.
 - **POSIX tree kill.** The child leads its own process group, so the existing
   `killProcessTree` signal reaches its whole tree. Measured on Linux.
-- **Ctrl-C on Windows** (decision 4). `write()` passes the bytes through. If they
-  contain `\x03`, it starts a two-second timer and calls `killTree()` if the process is
-  still alive when it fires. Output stays as bytes for the existing UTF-8 decoder.
+- **Ctrl-C on Windows** (decision 4). `write()` passes the bytes through. On a terminal
+  opened with `ctrlCEndsTree` (dev panes, the design server, the image build), bytes
+  containing `\x03` also start a two-second timer that calls `killTree()` if the process
+  is still alive when it fires. Sign-in flows get the plain key. Output stays as bytes for
+  the existing UTF-8 decoder.
 
 **The doctor and readiness.** `nodeProbe` leaves the doctor. (`install-check.ts` goes too,
 though nothing in the server calls it today.) A small helper decides whether a resolved
@@ -103,9 +105,17 @@ Nothing in the server, the skills, or sandcastle starts `node` or `npx` on the h
 The built package then passed the platform smoke with Node hidden, on macOS (arm64 and
 Intel), Ubuntu (x64 and arm64) and Windows, each on Bun 1.3.14 and latest (1.4.4), and in
 Ubuntu and Alpine containers with no Node installed at all. On each it opened a real
-terminal through the installed server, typed into it and ended it with Ctrl-C (about 50ms
-on macOS and Linux, 2,069ms on Windows through the fallback), and both adapters answered
-`initialize`, Codex on its native binary.
+terminal through the installed server and typed into it, and both adapters answered
+`initialize`, Codex on its native binary. Ctrl-C ended the stand-in sign-in program in about
+50ms on macOS and Linux. On Windows the smoke now asserts the opposite: a sign-in terminal
+keeps running after Ctrl-C (decision 4). The fallback for output panes is tested from a
+real Bun process in `pty-bun.test.ts`, not in the smoke.
+
+Real `claude setup-token`, driven through the installed server with a fake code on Windows
+(2.1.316) and Linux (2.1.212, Node unreachable): the prompt draws, keystrokes and paste
+arrive, and the code is rejected with a visible error. The same flow on node-pty and on
+Bun's terminal matched on both systems: the prompt ignores Ctrl-C on both, and 2.1.212
+blanks the URL's first column on both. That run predates decision 4's narrowing.
 
 ## Seams
 
@@ -131,8 +141,5 @@ on macOS and Linux, 2,069ms on Windows through the fallback), and both adapters 
 
 - Why Ctrl-C does not reach line-mode programs under Bun's ConPTY is unknown. If the
   cause turns out to be something a later Bun fixes, the fallback can go.
-- Whether the Windows Ctrl-C fallback should cover sign-in flows. The real `setup-token`
-  prompt ignores Ctrl-C on every terminal, so the fallback ends a sign-in there that
-  node-pty left running, and the terminal view sends Ctrl-C even with text selected.
 - A successful login through this terminal is unproven: the real `setup-token` check on
   Windows and Linux stopped at a fake code being rejected, on purpose.
