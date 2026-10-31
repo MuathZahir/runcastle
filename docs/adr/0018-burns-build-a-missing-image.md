@@ -1,4 +1,4 @@
-# 17. Burns build an image they cannot run without
+# 18. Burns build an image they cannot run without
 
 Status: accepted, 2026-10-31
 

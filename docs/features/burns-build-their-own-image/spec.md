@@ -45,7 +45,7 @@ Three traps in the existing burner, all reachable from this step:
 
 **Doctor and Settings.** The image row's `missing` and `not-built-yet` results drop to `info` severity with the new words, and their fix names both the first burn and the command. `imageReady` already reads `info` as ready, so the checklist stops counting the row with no web change. `ImageBuildAction` keeps offering the button. The `PREREQUISITE` reason text and the settings help line are updated where they say the image needs building by hand.
 
-**Words.** Release notes are generated from commits, so what a release must call out, the regression in decision 9 included, sits in the release runbook until it is pasted in. The README's AFK sandbox section, the "Burns never build" comments, the burner's Rebuild messages (adding `runcastle build-image` where it applies), and the developer probe's fix line are corrected. `docs/adr/0017-burns-build-a-missing-image.md` records the reversal and what still stands.
+**Words.** Release notes are generated from commits, so what a release must call out, the regression in decision 9 included, sits in the release runbook until it is pasted in. The README's AFK sandbox section, the "Burns never build" comments, the burner's Rebuild messages (adding `runcastle build-image` where it applies), and the developer probe's fix line are corrected. `docs/adr/0018-burns-build-a-missing-image.md` records the reversal and what still stands.
 
 ## Seams
 
