@@ -43,3 +43,9 @@ Checkpoints:
 2. The human tries the finished phone link and a real notification on their actual phone, before those features merge.
 
 Everything else is carried through to merged by the orchestrator without stopping. This feature has no checkpoint of its own. Publishing a release needs the human's yes.
+
+## Added by the orchestrator, 2026-10-31
+
+## Working agreement correction (orchestrator, 2026-10-31)
+
+Checkpoint 2 splits in two, because notifications start only after the phone view merges: the human tries the phone link before "Runcastle on your phone" merges, and receives a real notification before "Agents can notify your phone" merges. This feature still has no checkpoint of its own.
