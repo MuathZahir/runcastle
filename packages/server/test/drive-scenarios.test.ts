@@ -4,14 +4,14 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Feature, PreparedKey, Project } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import { SAW_MAX_SHOTS, newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { projects, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { toolReviewDrive, toolReviewScenario } from '../src/mcp/server'
+import { toolReviewCapture, toolReviewDrive, toolReviewScenario } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { DRIVE_CALL_BODY_CAP, sendDriveCall } from '../src/services/drive-call'
 import { listAfter, listByProject } from '../src/services/events'
@@ -29,9 +29,12 @@ import {
   testDrive,
 } from '../src/services/git'
 import { getProjectById } from '../src/services/repo'
+import { appendSaw, readSaw } from '../src/services/review-saw'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { resolveBun } from './helpers/bun'
+import type { captureReviewShot } from '../src/workflows/review-capture'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
@@ -563,6 +566,49 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
         failure: { reason: 'exit', exitCode: 2, outputTail: expect.stringContaining('no such table') },
       })
       expect(types().filter((t) => t === 'testdrive.started')).toHaveLength(1)
+    }, 30_000)
+
+    it('keeps what a burning review pass saw: scenarios, masked calls and pictures', async () => {
+      await g.checkout('feature/drive')
+      const ping = '.runcastle/scenarios/api/ping.ts'
+      put(project.repoPath, ping, "console.log('TOKEN=tok_1'); console.log('ENTRY_URL=/')")
+      put(project.repoPath, '.runcastle/scenarios/api/ping.http', 'GET /ping\nAuthorization: Bearer {{token}}')
+      await g.add('.')
+      await g.commit('call')
+      await g.checkout('main')
+      const [pass] = storeTickets(ctx, feature.id, [
+        { title: 'Review it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [], kind: 'review' },
+      ])
+      updateTicket(ctx, pass!.id, { status: 'burning' })
+      await reviewUp()
+      const shoot: typeof captureReviewShot = async () => ({ ok: true })
+
+      await replay('scenario', ping)
+      await replay('try_call', ping)
+      expect(await toolReviewCapture(ctx, { runId }, { caption: '  The  page ' }, shoot)).toEqual({
+        ok: true,
+        action: 'capture',
+        caption: 'The page',
+        scenario: ping,
+      })
+      await toolReviewCapture(ctx, { runId }, { caption: 'Settings', outside: true }, shoot)
+
+      const entries = readSaw(pass!.id)
+      expect(entries.map((e) => e.kind)).toEqual(['scenario', 'call', 'shot', 'shot'])
+      expect(entries[1]).toMatchObject({ request: { headers: [['Authorization', '•••']] } })
+      expect(entries[2]).toMatchObject({ image: 'shot-1.png', scenario: ping })
+      expect(entries[3]).toMatchObject({ image: 'shot-2.png' })
+      expect(entries[3]).not.toHaveProperty('scenario')
+
+      expect(await toolReviewCapture(ctx, { runId }, {}, shoot)).toMatchObject({
+        ok: false,
+        deniedReason: expect.stringContaining('needs `caption`'),
+      })
+      for (let i = entries.length; i < SAW_MAX_SHOTS + 2; i++) appendSaw(pass!.id, { kind: 'shot', at: i, caption: 'x', image: 'x.png' })
+      expect(await toolReviewCapture(ctx, { runId }, { caption: 'One more' }, shoot)).toMatchObject({
+        ok: false,
+        deniedReason: expect.stringContaining('the most one pass keeps'),
+      })
     }, 30_000)
 
     it('sends a call only for the scenario that just landed with one', async () => {

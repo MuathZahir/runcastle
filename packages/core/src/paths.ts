@@ -145,6 +145,25 @@ export function reviewWalkthroughPath(ticketId: string): string {
   return join(reviewDir(ticketId), 'walkthrough.webm')
 }
 
+/** What one review pass saw: `<reviewDir>/saw/`, its log and the pictures the log names. */
+export function reviewSawDir(ticketId: string): string {
+  return join(reviewDir(ticketId), 'saw')
+}
+
+/** The pass's log, one entry per line. Created when the pass starts, so its absence means an older pass. */
+export function reviewSawLogPath(ticketId: string): string {
+  return join(reviewSawDir(ticketId), 'saw.jsonl')
+}
+
+export function reviewShotPath(ticketId: string, file: string): string {
+  return join(reviewSawDir(ticketId), file)
+}
+
+/** A picture's name as the pass's store writes it. */
+export function isReviewShotName(file: string): boolean {
+  return /^shot-\d+\.png$/.test(file)
+}
+
 /**
  * Captured output of the server's gate run for one review pass:
  * `<reviewDir>/gates/`. One `<i>.log` per verify command, plus `run.log` when

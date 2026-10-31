@@ -30,6 +30,20 @@ export const REVIEW_WALKTHROUGH_ROUTE = '/ticket/:ticketId/walkthrough.webm'
  */
 export const REVIEW_GATE_LOG_ROUTE = '/ticket/:ticketId/gates/:log'
 
+/** GET route for everything one review pass left, as its package. */
+export const REVIEW_PACKAGE_ROUTE = '/ticket/:ticketId/package.json'
+
+/** GET route for one screenshot a review pass kept. */
+export const REVIEW_SHOT_ROUTE = '/ticket/:ticketId/saw/:file'
+
+export function reviewPackageUrl(ticketId: string): string {
+  return `${REVIEWS_BASE}${REVIEW_PACKAGE_ROUTE.replace(':ticketId', encodeURIComponent(ticketId))}`
+}
+
+export function reviewShotUrl(ticketId: string, file: string): string {
+  return `${REVIEWS_BASE}${REVIEW_SHOT_ROUTE.replace(':ticketId', encodeURIComponent(ticketId)).replace(':file', encodeURIComponent(file))}`
+}
+
 export function reviewArtifactsUrl(featureId: string): string {
   return `${REVIEWS_BASE}${REVIEW_ARTIFACTS_ROUTE.replace(':featureId', encodeURIComponent(featureId))}`
 }

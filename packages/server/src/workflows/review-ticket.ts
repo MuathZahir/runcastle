@@ -23,6 +23,7 @@ import { listFeatureScenarios } from '../services/scenarios'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import type { runReviewGates } from './review-gates'
+import { startSaw } from '../services/review-saw'
 import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
 export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
@@ -504,7 +505,7 @@ export function buildScenarioBlock(entries: ScenarioEntry[], runnerConfigured: b
     '',
     ...lines,
     '',
-    '- Once `drive.devUrl` answers, reach each acceptance criterion\'s state with `mcp__runcastle__review_drive({ action: "scenario", file })`, then open the `entryUrl` it returns with `agent-browser open`. Prefer this feature\'s own scenarios when more than one fits.',
+    '- Once `drive.devUrl` answers, reach each acceptance criterion\'s state with `mcp__runcastle__review_drive({ action: "scenario", file })`, then open the `entryUrl` it returns with `agent-browser open` and `capture` it. Prefer this feature\'s own scenarios when more than one fits.',
     '- Run as many as you need, one per criterion if you like: each runs against the live drive with no restart, and entities are unique per run, so earlier scenarios never get in the way.',
     '- For a scenario with an API call, call `mcp__runcastle__review_drive({ action: "try_call", file })` after that scenario has landed; it sends the scenario\'s filled request and returns the status, headers and body.',
     "- If no scenario reaches a criterion's state, set it up by hand in the app as before, and file a `report_finding` observation titled \"No scenario reaches <state>\".",
@@ -710,6 +711,7 @@ async function writeReviewArtifacts(
   // A re-burn of the same ticket must not inherit the last attempt's DIGEST.md
   // or BLOCKED.md — that is how a failed review reports success.
   await prepareReviewArtifactsDirectory(ticket.id, dir, { recorderReap })
+  startSaw(ticket.id)
   const mcpConfigPath = join(dir, 'mcp.json')
   const mcpConfig = renderRunMcpConfig(runId, config)
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
@@ -849,7 +851,9 @@ export async function executeReviewTicket(
   const startedAt = Date.now()
   const timer = createToolTimer(deps.model.runtime)
   try {
-    return await reviewTicketOutcome(ctx, ticket, deps, timer)
+    const outcome = await reviewTicketOutcome(ctx, ticket, deps, timer)
+    ctx.postReviewPackage?.(ticket.id)
+    return outcome
   } finally {
     emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
   }

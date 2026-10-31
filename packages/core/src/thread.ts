@@ -334,6 +334,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
   /** An agent showed the human a file (`show_file`). */
   z.object({ type: z.literal('file_shown'), file: ShownFile }),
+  /** What a review pass left, shown as one package (`show_review_package`, or the pass's end). */
+  z.object({ type: z.literal('review_package'), ticketId: z.string() }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -387,6 +389,8 @@ export type ThreadItem =
   | { kind: 'changes'; id: string; files: FileChange[] }
   /** The files a turn showed. It stays in view when the turn's work folds. */
   | { kind: 'shown'; id: string; files: ShownFile[] }
+  /** A review pass's package: one attachment that opens everything the pass left. */
+  | { kind: 'review_package'; id: string; ticketId: string }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -896,6 +900,17 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           items.push({ kind: 'shown', id: `shown:${e.i}`, files: [e.file] })
           if (open) shownIndex = items.length - 1
         }
+        break
+      }
+      case 'review_package': {
+        // Placed as a shown file is: the turn's work above it, its final words below.
+        const open = turn as Turn | null
+        if (open) {
+          open.segments.push({ kind: 'answered' })
+          render(true)
+        }
+        items.push({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId })
+        if (open) shownIndex = items.length - 1
         break
       }
       case 'title':

@@ -12,6 +12,7 @@ import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, getRunRow, projectForFeature } from '../services/repo'
 import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
+import { postReviewPackage } from '../threads/review-package'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import { addTicketTokens, refreshLeadTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
@@ -200,6 +201,13 @@ export async function startRun(
     listFindings: () => listFindingsByFeature(ctx, featureId),
     reuseGates: (ownerId, sha) =>
       reuseGateResult({ ctx, config: ctx.config, project, feature, ownerId, sha }),
+    postReviewPackage: (ticketId) => {
+      try {
+        postReviewPackage(ctx, featureId, ticketId)
+      } catch (err) {
+        console.error(`[review] could not post the package of ${ticketId}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
     updateFinding: (findingId, progress, reason) => {
       markFixProgress(ctx, findingId, progress, reason)
     },
