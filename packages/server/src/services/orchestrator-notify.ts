@@ -1,8 +1,8 @@
-import type { EventRow, Project, SessionRow, Ticket } from '@runcastle/core'
-import { type SQL, and, asc, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm'
+import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, type EventRow, type SessionRow, type Ticket } from '@runcastle/core'
+import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { events, features, sessions, tickets } from '../db/schema'
-import { getSessionRow, newestThread } from '../launcher/sessions'
+import { tickets } from '../db/schema'
+import { getSessionRow } from '../launcher/sessions'
 import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { getEventRow } from './events'
@@ -10,26 +10,22 @@ import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
 /**
- * What the orchestrator hears about the features it follows
- * (`whole-cuts-plan-themselves` decisions 11, 13, 20; `one-orchestrator-no-mode`
- * decision 3): one `[runcastle]` line said into the project's newest thread as
- * a runcastle prompt ({@link notifyOrchestrator}), and a catch-up list in the
- * briefing of a new project conversation.
+ * What a project thread hears about the features it holds
+ * (`whole-cuts-plan-themselves` decisions 11, 13, 20; `threads-hold-features`):
+ * one `[runcastle]` line said into the HOLDER as a runcastle prompt
+ * ({@link notifyOrchestrator}), and into no other thread, however new. A feature
+ * nobody holds produces nothing, and a shipped one has nothing more to say.
  *
- * A feature is FOLLOWED while it is not shipped and at least one of its events
- * carries `actor: 'orchestrator'` — one the orchestrator created, messaged,
- * planned, started, drove or merged. It is read from the events table; nothing
- * is stored on the feature.
- *
- * Two kinds of event reach it, both only on followed features:
+ * Two kinds of event reach it:
  *
  * - END events — something it may be waiting on is over. Forwarded whoever
  *   started the work, except a merge's landing or conflict stamped
- *   `actor: 'orchestrator'`, which `merge_feature` already returned. The only
- *   kind the catch-up lists.
- * - ACT events — the human did something on a followed feature. Forwarded only when
- *   not stamped `actor: 'orchestrator'`, since the orchestrator's own tool call
- *   already answered it in the call's result.
+ *   `actor: 'orchestrator'`, which `merge_feature` already returned. These start
+ *   a holder whose process has stopped.
+ * - ACT events — the human did something on a held feature. Forwarded only when
+ *   not stamped `actor: 'orchestrator'`, since the thread's own tool call already
+ *   answered it, and only while the holder's process runs: they tell a working
+ *   thread to wait or carry on, and a closed one is doing neither (decision 12).
  *
  * | Event type                        | Kind | When                                        |
  * |-----------------------------------|------|---------------------------------------------|
@@ -43,6 +39,9 @@ import { getTicket } from './tickets'
  * | `feature.shipped`                 | end  | a merge landed                              |
  * | `merge.conflict`                  | end  | a merge conflicted                          |
  * | `testdrive.dev_failed`            | end  | a drive's dev server failed to start        |
+ * | `feature.started`                 | end  | only a draft that started by itself         |
+ * | `feature.autostart.*`             | end  | a draft could not start by itself           |
+ * | `feature.taken`                   | end  | another thread took it; goes to the old holder |
  * | `session.launching`               | act  | a self-planning run was launched            |
  * | `session.process_started`         | act  | the human's message started a thread        |
  * | `session.process_stopped`         | act  | that thread's process stopped               |
@@ -54,7 +53,13 @@ import { getTicket } from './tickets'
 /** What the notifier needs to know about an event beyond its row. */
 export interface NotifyState {
   /** The event's feature; absent for a project-level event. */
-  feature?: { slug: string; followed: boolean }
+  feature?: {
+    slug: string
+    /** The thread holding it; null when none does, or once it has shipped. */
+    holderId: string | null
+    /** Whether the holder's process is running. */
+    holderRunning: boolean
+  }
   /** The session the event names (`data.sessionId`), when there is one. */
   session?: Pick<SessionRow, 'kind' | 'purpose' | 'headless'>
   /** The ticket the event is about, when there is one. */
@@ -68,29 +73,11 @@ const PREFIX = '[runcastle]'
 /** The longest a summary carried from an event gets, so a line stays one short line. */
 const SUMMARY_MAX = 80
 
-/** Lines the catch-up lists before it stops counting them out. */
-const CATCH_UP_MAX = 50
-
 /** The waiting reason `declareReady` sets; the ready line speaks for it. */
 const READY_REASON = 'ready to test'
 
 /** The longest a waiting reason gets in a line: it is what the agent asked, so it runs longer. */
 const WHY_MAX = 200
-
-/** The event types that can be END events — the catch-up's query filter. */
-const END_TYPES = [
-  'session.self_plan_ended',
-  'session.run_ended',
-  'run.finished',
-  'feature.waiting',
-  'feature.ready_declared',
-  'lead.wake_failed',
-  'ticket.done',
-  'ticket.failed',
-  'feature.shipped',
-  'merge.conflict',
-  'testdrive.dev_failed',
-]
 
 /**
  * The END events a tool call's own result already reports: `merge_feature`
@@ -173,6 +160,19 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
     }
     case 'testdrive.dev_failed':
       return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
+    case 'feature.started':
+      if (typeof data.autoStartedBy !== 'string') return null
+      return {
+        kind: 'end',
+        text: `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going.`,
+      }
+    case AUTOSTART_SKIPPED:
+    case AUTOSTART_FAILED:
+      return { kind: 'end', text: `${clip(event.message, WHY_MAX)}. ${context}` }
+    case 'feature.taken': {
+      const name = typeof data.name === 'string' ? `the thread "${clip(data.name)}"` : 'another thread'
+      return { kind: 'end', text: `was taken by ${name}, so you will hear nothing more about it and it is no longer yours to act on.` }
+    }
     case 'session.launching':
       // Plan it yourself is the human's act; its end is its own END event above.
       if (!session || session.purpose !== 'self-plan') return null
@@ -197,27 +197,18 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
 }
 
 /**
- * The line to deliver to a live orchestrator for `event`, or null for none.
+ * The line to deliver to the holder for `event`, or null for none.
  * Pure: everything it needs about the feature, session and ticket is in `state`.
  */
 export function orchestratorLineFor(event: EventRow, state: NotifyState): string | null {
-  if (!event.featureId || !state.feature?.followed) return null
+  if (!event.featureId || !state.feature?.holderId) return null
   const described = describe(event, state.session, state.ticket, state.feature.slug)
   if (!described) return null
+  if (described.kind === 'act' && !state.feature.holderRunning) return null
   if (record(event.data).actor === 'orchestrator' && (described.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
     return null
   }
   return `${PREFIX} ${state.feature.slug} ${described.text}`
-}
-
-/** The followed features `where` selects: unshipped, with an orchestrator-stamped event. */
-function followedFeatures(ctx: AppCtx, where: SQL): { id: string; slug: string }[] {
-  const orchestratorActed = sql`exists (select 1 from ${events} where ${events.featureId} = ${features.id} and json_extract(${events.data}, '$.actor') = 'orchestrator')`
-  return ctx.db
-    .select({ id: features.id, slug: features.slug })
-    .from(features)
-    .where(and(where, ne(features.status, 'shipped'), orchestratorActed))
-    .all()
 }
 
 /** Read the feature, session and ticket an event names. Missing rows are left out. */
@@ -225,8 +216,9 @@ function stateFor(ctx: AppCtx, event: EventRow): NotifyState {
   const state: NotifyState = {}
   if (event.featureId) {
     const feature = getFeatureRow(ctx, event.featureId)
-    const followed = followedFeatures(ctx, eq(features.id, feature.id)).length > 0
-    state.feature = { slug: feature.slug, followed }
+    const holderId = feature.status === 'shipped' ? null : (feature.heldBy ?? null)
+    const holderRunning = holderId !== null && agentHost(ctx).isRunning(holderId)
+    state.feature = { slug: feature.slug, holderId, holderRunning }
   }
   const sessionId = record(event.data).sessionId
   if (typeof sessionId === 'string') {
@@ -255,33 +247,39 @@ export const ORCHESTRATOR_GATHER_MS = 300
 /** Lines gathering per orchestrator thread, until their prompt goes. */
 const gathering = new Map<string, string[]>()
 
+/** The thread a line about `event` goes to: the holder, or for a take the thread that lost it. */
+function recipient(event: EventRow, state: NotifyState): string | null {
+  if (event.type !== 'feature.taken') return state.feature?.holderId ?? null
+  const from = record(event.data).from
+  return typeof from === 'string' ? from : null
+}
+
 /**
- * Add the line for one event to what the project's orchestrator hears next
- * (decision 20; chat-as-web-components decision 6): its newest project
- * thread, as one runcastle prompt with a line per event, queued to the end of a
- * running turn and starting the thread when no process runs. A project with no
- * conversation yet has no orchestrator to tell; the catch-up briefs its first.
- * Best effort: nothing is retried, and nothing here throws into the emitter.
+ * Add the line for one event to what the feature's holder hears next (decision
+ * 20; chat-as-web-components decision 6): one runcastle prompt with a line per
+ * event, queued to the end of a running turn and starting the thread when no
+ * process runs. Best effort: nothing is retried or sent to another thread, and
+ * nothing here throws into the emitter.
  */
-function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
+function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
   try {
-    const orchestrator = newestThread(ctx, { projectId }, 'project')
-    if (!orchestrator) return
     const event = getEventRow(ctx, eventId)
     if (!event) return
-    const line = orchestratorLineFor(event, stateFor(ctx, event))
-    if (!line) return
-    const lines = gathering.get(orchestrator.id)
+    const state = stateFor(ctx, event)
+    const line = orchestratorLineFor(event, state)
+    const threadId = recipient(event, state)
+    if (!line || !threadId) return
+    const lines = gathering.get(threadId)
     if (lines) {
       lines.push(line)
       return
     }
-    gathering.set(orchestrator.id, [line])
+    gathering.set(threadId, [line])
     setTimeout(() => {
-      const batch = gathering.get(orchestrator.id) ?? []
-      gathering.delete(orchestrator.id)
+      const batch = gathering.get(threadId) ?? []
+      gathering.delete(threadId)
       agentHost(ctx)
-        .prompt(orchestrator.id, { text: batch.join('\n') }, { source: 'runcastle' })
+        .prompt(threadId, { text: batch.join('\n') }, { source: 'runcastle' })
         .catch((err) => console.error('orchestrator notifier failed', err))
     }, ORCHESTRATOR_GATHER_MS).unref?.()
   } catch (err) {
@@ -290,64 +288,11 @@ function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): vo
 }
 
 /**
- * One line per thing that ended on the followed features since the project's
- * last project session ended, oldest first. Nothing when there never was one:
- * a first orchestrator has nothing to catch up on.
- */
-export function orchestratorCatchUp(ctx: AppCtx, project: Project): string[] {
-  const last = ctx.db
-    .select({ endedAt: sessions.endedAt })
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.projectId, project.id),
-        eq(sessions.kind, 'project'),
-        isNotNull(sessions.endedAt),
-      ),
-    )
-    .orderBy(desc(sessions.endedAt))
-    .limit(1)
-    .get()
-  if (!last?.endedAt) return []
-
-  const followed = followedFeatures(ctx, eq(features.projectId, project.id))
-  if (followed.length === 0) return []
-  const slugs = new Map(followed.map((f) => [f.id, f.slug]))
-
-  const ids = ctx.db
-    .select({ id: events.id })
-    .from(events)
-    .where(
-      and(
-        inArray(events.featureId, [...slugs.keys()]),
-        inArray(events.type, END_TYPES),
-        gt(events.ts, last.endedAt),
-      ),
-    )
-    .orderBy(asc(events.id))
-    .all()
-
-  const lines: string[] = []
-  for (const { id } of ids) {
-    const event = getEventRow(ctx, id)
-    const slug = event?.featureId ? slugs.get(event.featureId) : undefined
-    if (!event || !slug) continue
-    const described = describe(event, undefined, ticketFor(ctx, event), slug)
-    if (described?.kind === 'end') lines.push(`${slug} ${described.text}`)
-  }
-  if (lines.length <= CATCH_UP_MAX) return lines
-  return [
-    ...lines.slice(0, CATCH_UP_MAX),
-    `…and ${lines.length - CATCH_UP_MAX} more — read get_project_context`,
-  ]
-}
-
-/**
  * Subscribe the notifier to the live event bus; returns the unsubscribe. Called
  * once at boot.
  */
 export function startOrchestratorNotifier(ctx: AppCtx): () => void {
   return subscribeLive((signal) => {
-    if (signal.kind === 'event') notifyOrchestrator(ctx, signal.projectId, signal.eventId)
+    if (signal.kind === 'event') notifyOrchestrator(ctx, signal.eventId)
   })
 }

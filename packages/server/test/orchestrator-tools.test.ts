@@ -26,9 +26,9 @@ import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
  * The shared gate (`one-orchestrator-no-mode` decision 2): every live project
- * session is the orchestrator and may act on any feature of its project; the
- * gate refuses only a caller that is not a live project session. What a project
- * session creates carries `actor: 'orchestrator'`, so it follows it (decision 3).
+ * session is the orchestrator; the gate refuses a caller that is not a live
+ * project session. What a project session creates carries `actor: 'orchestrator'`.
+ * Who may act on which feature is `threads-hold-features`: see holding.test.ts.
  */
 
 async function gitRepo(): Promise<string> {
@@ -152,6 +152,7 @@ describe('the orchestrator’s gate', () => {
       'drive',
       'merge_feature',
       'add_to_brief',
+      'take_feature',
     ]
     expect(toolsForAudience('project')).toEqual(expect.arrayContaining(tools))
     for (const kind of ['chat', 'prepare', 'drive-fix', 'run'] as const) {

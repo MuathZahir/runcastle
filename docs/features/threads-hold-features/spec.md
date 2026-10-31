@@ -32,7 +32,7 @@ The human runs several orchestrator threads at once. Today runcastle's news abou
 
 **Re-entry cap.** When `launchProjectSession` opens a new thread because the named one is past the cap, it moves that thread's holds to the new one, and the kickoff lists the features it now holds. A new thread with nothing inherited gets no line.
 
-**Boot sweep.** After migrations, for each unshipped feature with no holder and at least one `actor: 'orchestrator'` event: take its latest such event, read each project thread's log for an acting runcastle tool call (`mcp__runcastle__<tool>`, in the log's `title`) from the two minutes before that event, and pick the thread with the latest such call. If there is none, pick `newestThread`. Log arguments are not recorded, so the match is by time. A read-only trial on 2026-10-31 placed all 13 in-flight features on the two threads really working them. After the first run no feature qualifies, so later boots do nothing. Emits `feature.held` with `data.swept: true`.
+**Boot sweep.** Once per project, before the notifier starts. A project-level `holders.swept` event is the marker: a project that has one is skipped, so a later boot cannot place a feature left unheld on purpose. For each unshipped feature with no holder and at least one `actor: 'orchestrator'` event: read each project thread's log for acting runcastle tool calls (`mcp__runcastle__<tool>`, in the log's `title`), walk the feature's stamped events from newest to oldest, and stop at the first with a call from two minutes before it to three seconds after (a call can be logged a moment after the server handled it). The thread with the nearest call holds the feature. The walk matters because the newest stamped event can be a side effect, such as a docs checkpoint, with no call near it. Log arguments are not recorded, so the match is by time. A placed feature emits `feature.held` with `data.swept: true`. A feature no call matches stays unheld and emits `feature.hold_unplaced`, which puts a line on its timeline. There is no fallback to the newest thread. A read-only trial on 2026-10-31 placed all 13 in-flight features on the two threads really working them.
 
 Exact shape of the rule, which pins decision 2:
 
@@ -55,7 +55,7 @@ act(thread, feature):
 - `startOrchestratorNotifier` with a fake host — existing seam of the notifier test. Delivery goes to the holder when a newer thread exists, a closed holder gets END lines, an unheld feature gets nothing.
 - `tool*` functions with a session row — existing. Each acting tool: claim, pass, refuse; the refusal text names the holder; reads neither claim nor refuse; `set_feature_dependencies` guards only the dependent.
 - `toolTakeFeature` — new, the highest point for take: moves the hold, tells the old holder, refused on shipped.
-- `sweepHolders(ctx)` — new, boot. Given thread logs and events, which thread is chosen; fallback; second run changes nothing.
+- `sweepHolders(ctx)` — new, boot. Given thread logs and events, which thread is chosen; an unmatched feature stays unheld with a timeline line; a second run changes nothing, even for a feature left unheld since.
 - `launchProjectSession` past the cap — existing. Holds move, and the kickoff lists them.
 - `featureIndexLine` — existing. The holder mark.
 

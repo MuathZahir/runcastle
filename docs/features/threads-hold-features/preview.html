@@ -213,7 +213,7 @@ Call take_feature only if the human asked you to act on it here.</pre>
 
   <div class="sub">
     <h3>The day it ships <a class="pin" data-d="7">7</a></h3>
-    <p class="hint">Trial on today's data, read-only: every in-flight feature placed on the thread working it.</p>
+    <p class="hint">One sweep, once. Trial on today's data, read-only: every in-flight feature placed on the thread working it. A feature it can't place stays unheld, and its timeline says so.</p>
     <div class="split">
       <div class="col"><b>The phone cut's thread</b><span>burns-work-for-any-linux-user · review-hands-you-a-running-drive · review-keeps-its-screenshots · agents-show-files-in-chat · threads-hold-features · runcastle-on-your-phone · agents-can-notify-your-phone</span></div>
       <div class="col"><b>The install cut's thread</b><span>one-line-install · no-node · burns-in-cloud-sandboxes · burn-memory · burns-build-their-own-image · move-runcastle-to-another-machine</span></div>
@@ -250,7 +250,7 @@ Call take_feature only if the human asked you to act on it here.</pre>
         <div class="c"><b>Stored</b><span>One nullable thread id on the feature row. Only a small holding service writes it.</span></div>
         <div class="c"><b>Tools</b><span>Eight acting tools go through one hold check. New: <code>take_feature</code>.</span></div>
         <div class="c"><b>News</b><span>The notifier sends to the holder, not the newest thread. Three new lines for drafts that start by themselves <a class="pin" data-d="11">11</a>.</span></div>
-        <div class="c"><b>Boot</b><span>One sweep gives in-flight features a holder, then finds nothing left.</span></div>
+        <div class="c"><b>Boot</b><span>One sweep, once per project, gives in-flight features a holder by timing.</span></div>
         <div class="c"><b>Goes away</b><span>"Followed", and the catch-up list <a class="pin" data-d="5">5</a>.</span></div>
         <div class="c"><b>Who builds it</b><span>The feature's agent, in this chat. No tickets: it is one sequence through one service.</span></div>
       </div>
@@ -300,7 +300,7 @@ Call take_feature only if the human asked you to act on it here.</pre>
     ],
     [
       "Features in flight get their real holder at first boot",
-      "Neither losing the running cut's news nor taking its features is allowed. Timing placed all 13 correctly today.",
+      "Neither losing the running cut's news nor taking its features is allowed. Timing placed all 13 correctly today. Unplaced features stay unheld: the orchestrator removed the newest-thread fallback.",
       "assumed"
     ],
     [

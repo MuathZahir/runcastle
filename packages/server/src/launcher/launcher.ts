@@ -20,6 +20,7 @@ import { chatKickoffFor, prepareConfirmKickoffFor, projectTriageKickoffFor, self
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
+import { inheritHolds } from '../services/holding'
 import { rosterConfig } from '../services/model-discovery'
 import * as git from '../services/git'
 import { getFeatureRow, listRunsByFeature, projectForFeature, requireProjectById, rowToRun } from '../services/repo'
@@ -840,6 +841,7 @@ export async function launchProjectSession(
 
   assertRuntimeReady(resolveModelEntry('project', rosterConfig(ctx), project).runtime, opts)
   const row = await createProjectThread(ctx, project)
+  if (capped && prior) inheritHolds(ctx, prior.id, row.id)
   emitProject(ctx, project.id, {
     type: 'session.launching',
     message: 'launching a new project chat',

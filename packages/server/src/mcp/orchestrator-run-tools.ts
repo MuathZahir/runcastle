@@ -8,6 +8,7 @@ import {
   noSession,
   ok,
   orchestratorTool,
+  requireHeldFeature,
   requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
@@ -33,7 +34,7 @@ export async function toolSendToFeature(
   session: SessionRow,
   input: { slug: string; message: string; relaysHuman?: boolean },
 ): Promise<SendToFeatureResult> {
-  const feature = requireProjectFeature(ctx, session, input.slug)
+  const feature = requireHeldFeature(ctx, session, input.slug)
   const from = input.relaysHuman ? RELAYED_HUMAN_LINE : FROM_ORCHESTRATOR_LINE
   await deliverToLead(ctx, feature, { text: `${from}\n\n${input.message}`, source: 'human' })
   return { deliveredToLead: true }

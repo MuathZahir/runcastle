@@ -98,7 +98,8 @@ describe('the project session launch is the orchestrator', () => {
     const prompt = await briefOf(ctx, sessionId)
     expect(prompt).toContain('## Orchestrating')
     expect(prompt).toContain('/runcastle:project')
-    expect(prompt).toContain('Nothing has happened on the features you follow since you were last live.')
+    expect(prompt).not.toContain('last live')
+    expect(prompt).not.toContain('### Features you hold')
   })
 
   it('launches Codex with approvals never and no sandbox', async () => {
@@ -112,20 +113,6 @@ describe('the project session launch is the orchestrator', () => {
     const prompt = readFileSync(join(home, 'AGENTS.md'), 'utf8')
     expect(prompt).toContain('## Orchestrating')
     expect(prompt).toContain('$project')
-  })
-
-  it('catches a new conversation up on its followed features; a reopened one heard them as they happened', async () => {
-    useRuntime('claude-code')
-    const prior = await endedSession()
-    const followed = seedFeature(ctx, project.id, { slug: 'mine' })
-    runAsActor('orchestrator', () => emit(ctx, followed.id, { type: 'feature.created', message: 'created' }))
-    emit(ctx, followed.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
-
-    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-
-    expect(await briefOf(ctx, sessionId)).toContain('### Since you were last live\n- mine merge conflicted in 1 file(s).')
-    expect((await acpLaunchOf(ctx, sessionId)).sessionMode).toBe('bypassPermissions')
-    expect(await briefOf(ctx, prior)).not.toContain('- mine merge conflicted')
   })
 
   it('opens a triage launch as the orchestrator too, keeping its errand', async () => {
@@ -162,17 +149,12 @@ describe('the orchestrating section of the project prompt', () => {
     expect(out.slice(start, end)).not.toMatch(/setting|experimental/i)
   })
 
-  it('names the skill section, the prompts-off posture and the catch-up lines', () => {
-    const out = renderProjectPrompt(
-      { ...brief, catchUp: ['login-form: planning run finished', 'search: round failed'] },
-      'codex',
-    )
+  it('names the skill section, the prompts-off posture and what the thread inherited', () => {
+    const out = renderProjectPrompt({ ...brief, held: ['login-form', 'search'] }, 'codex')
     expect(out).toContain("You are this project's orchestrator.")
     expect(out).toContain('"Orchestrating" section of the `$project`\nskill')
     expect(out).toMatch(/without permission prompts/)
-    expect(out).toContain(
-      '### Since you were last live\n- login-form: planning run finished\n- search: round failed',
-    )
-    expect(out).not.toContain('Nothing has happened')
+    expect(out).toContain('### Features you hold')
+    expect(out).toContain('- login-form\n- search')
   })
 })

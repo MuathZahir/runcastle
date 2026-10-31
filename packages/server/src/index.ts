@@ -23,6 +23,7 @@ import threadsApp from './routes/threads'
 import { mountWebAppIfBuilt } from './routes/web'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
+import { sweepHolders } from './services/holding'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -170,7 +171,10 @@ export async function startServer(): Promise<void> {
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
 
-  // Tell the orchestrator's thread when something ends on one of its features
+  // Give features in flight their holder, once, before any news goes out.
+  sweepHolders(ctx)
+
+  // Tell a feature's holder when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).
   startOrchestratorNotifier(ctx)
 
