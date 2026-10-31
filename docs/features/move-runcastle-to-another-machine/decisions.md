@@ -5,16 +5,21 @@ recommendation, accepted so the plan could finish, until the human confirms it. 
 independent challenger read the brief and an earlier draft; decisions 1, 3, 5, 6 and
 10 to 13 were amended after its reading, and decisions 14 and 15 come from it.
 
+The project's orchestrator accepted the plan on 2026-10-31 with changes to decisions 2, 7
+and 13, each marked below. That was the orchestrator's word, not the human's, so every
+decision keeps its `Assumed` mark until the human confirms it.
+
 ## 1. Two published CLI commands, for a Linux or macOS destination
 **Decision:** The tool is part of runcastle itself: `runcastle move` on the old machine and `runcastle move-in` on the new one. The old machine can be Windows, Linux or macOS. The new one cannot be Windows, and `move-in` says so. It is a move tool, not a backup or sync tool.
 **Why:** A published command is the only way the code reaches the VPS, and a one-off script would have to be carried there by hand and would be just as long. Treating all source paths the same way costs nothing, but a Windows destination would need its own testing and nobody needs it.
 **Assumed.** Alternative: a one-off script kept outside the product and thrown away after this move.
 
 ## 2. One command does the whole move over SSH
-**Decision:** `runcastle move muath@vmi3713868` checks, packs, copies the pack with `scp`, and runs `runcastle move-in` on the other end over `ssh`. With no host it stops after packing and prints the two commands that finish the job, which is also the way through if SSH misbehaves. A failed copy keeps the pack, so nothing is packed twice.
+**Decision:** `runcastle move muath@vmi3713868` checks, packs, copies the pack with `scp`, and runs `runcastle move-in` on the other end over `ssh`. The remote command never relies on `runcastle` being on the PATH of a non-interactive `ssh` session: it calls Bun's global bin (`~/.bun/bin/runcastle`) directly. With no host it stops after packing and prints the two commands that finish the job. If the copy or the remote step fails, the pack is kept and the error prints the exact manual commands to finish, so nothing is packed twice.
 **Why:** The feature's one-line description promises one command. The wrapper only calls `scp` and `ssh`, which the PC and VPS already use, and the manual path is the same code stopped earlier.
 **Assumed.** Alternative: two manual commands and a manual copy, with no SSH step inside runcastle.
 **Challenged:** The wrapper is a second path to maintain, `scp` cannot resume a multi-gigabyte copy, and `runcastle` may not be on the PATH in a non-interactive `ssh` session. It would cut the wrapper. (The challenger saw only `brief.md`, which does not carry the one-line description.)
+**Changed by the orchestrator:** Keep the wrapper, but make those two risks harmless: call the remote binary by its Bun global path, and on any failed copy or remote step print the exact manual commands and keep the pack.
 
 ## 3. Show the plan first, on both machines, then ask
 **Decision:** `runcastle move --dry-run` prints what would move, what would change and what blocks the move, then stops. It works with the server running. Given a host, it also asks that machine for what only it can know: version, free disk, folder clashes, final paths and existing data. A real run prints the same report and asks for a yes before it packs. `--yes` skips the question. Without a host the report says the destination was not checked, and `move-in` makes those checks before it writes anything.
@@ -36,11 +41,11 @@ independent challenger read the brief and an earlier draft; decisions 1, 3, 5, 6
 **Why:** Chats and logs write outside the database, so a copy taken while the server runs can catch them half-written. Waiting for a round is cheap and a cut-off one wastes burn spend. Boot handling already covers a session whose process died, so chats need no separate state.
 **Assumed.** Alternative: take a database snapshot while the server runs, and leave anything live out of the move.
 
-## 7. Commands are never rewritten; Windows-only ones are cleared for preparing again
-**Decision:** On a move between operating systems, any prepared command plainly tied to the old system (`cmd`, PowerShell, `.bat`, `.cmd`, `%VAR%`, a drive-letter path) is cleared. Portable commands stay. Every "verified by a dry run" stamp is dropped, because that proof came from the other machine. Old values are saved in a report file on the destination and listed on screen. The human then runs Prepare on that project; it fills in exactly the cleared fields. A move between two Linux machines clears nothing.
-**Why:** The runcastle project's reset command is `cmd` syntax, so rewriting paths cannot fix it, and a translated command would be an untested guess. Clearing is what hands a field back to preparation, even one the human typed by hand. Keeping portable commands means a project with no Windows-bound command still works without another Prepare; a command the check misses fails loudly at its first use.
-**Assumed.** Alternative: keep every command as it is and let the first drive fail.
-**Challenged:** On a cross-system move, clear the drive setup, drive stop and database reset commands on every project. The stamps are dropped anyway, so each project likely needs Prepare regardless, and a detection list will miss cases.
+## 7. Commands are never rewritten; drive and reset commands are cleared for preparing again
+**Decision:** On a move between operating systems, the drive setup, drive stop and database reset commands are cleared on every project, along with their provenance rows, with no detection list. The dev, setup and verify commands stay. Every "verified by a dry run" stamp is dropped, because that proof came from the other machine. Old values are saved in a report file on the destination and listed on screen. The human then runs Prepare on each project; it fills in exactly the cleared fields. A move between two Linux machines clears nothing.
+**Why:** The runcastle project's reset command is `cmd` syntax, so rewriting paths cannot fix it, and a translated command would be an untested guess. Clearing is what hands a field back to preparation, even one the human typed by hand.
+**Assumed.** Alternative: clear only the commands that look tied to the old system, or keep every command as it is and let the first drive fail.
+**Changed by the orchestrator:** It took the challenger's version over the planner's detection list: every project needs Prepare anyway once the stamps drop, and a list of Windows-only patterns is a guess that can miss cases.
 
 ## 8. History text is left alone
 **Decision:** Windows paths inside events, tickets, review findings, notes, thread logs and transcripts stay as written. Only the paths the app acts on are rewritten: `projects.repo_path`, `sessions.worktree_path` and `sessions.transcript_path`.
@@ -69,9 +74,10 @@ independent challenger read the brief and an earlier draft; decisions 1, 3, 5, 6
 **Assumed.** Alternative: copy all of `~/.claude/projects`, 1.4 GB, whether or not it belongs to a runcastle project.
 
 ## 13. Proved on fake data, including a rehearsal to the VPS; the real move is the human's call
-**Decision:** The automated tests use scratch data folders and scratch repos, with Windows paths in a simulated pack. Before merge, a rehearsal moves fake data from the PC to a scratch folder on the VPS, leaving the installed runcastle and its service alone. It is the only way to prove line endings and folder renaming between the two systems. Nothing touches the real `~/.runcastle`, the real `~/.claude` or the VPS's real data, and even `--dry-run` is not run on real data until the human says so. The VPS needs a release containing this tool, which needs the human's yes. `move-in` refuses a pack from a newer runcastle than its own.
+**Decision:** The automated tests use scratch data folders and scratch repos, with Windows paths in a simulated pack. Before merge, a rehearsal moves fake data from the PC to a scratch folder on the VPS. It is the only way to prove line endings and folder renaming between the two systems. The VPS gets this branch through `bun run install:local`, the route it already runs, so the rehearsal needs no release; publishing stays the human's call and nothing here depends on it. Nothing touches the real `~/.runcastle`, the real `~/.claude` or the VPS's real data, and even `--dry-run` is not run on real data until the human says so. Anything that would touch the real VPS `~/.claude` is asked first. `move-in` refuses a pack from a newer runcastle than its own.
 **Why:** This is the brief's second checkpoint. The real run happens once, so the rehearsal has to cover everything except the real data.
 **Assumed.** Alternative: no rehearsal on the VPS, relying on the automated tests alone.
+**Changed by the orchestrator:** The VPS needs no release for the rehearsal. It takes this branch through the local install route. The branch is cut from `main` after the VPS's cache-build fix, so installing it does not bring that bug back.
 
 ## 14. Git-ignored files and old stashes are reported, not carried
 **Decision:** The report lists each project's ignored files by top-level name and size, skipping `node_modules`, so a local dev database or uploads folder is seen before it is left behind. It also counts stashes, because git bundles carry only the newest one, and burner worktrees with leftover changes. None of this blocks the move, and the human can copy what matters by hand from the old machine.

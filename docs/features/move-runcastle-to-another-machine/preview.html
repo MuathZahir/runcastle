@@ -216,7 +216,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <span class="dim">... 4 more; all land in ~/projects on the VPS</span>
 
 <b>Needs you afterwards</b>
-  <span class="warn">!</span> runcastle: database reset command is cmd syntax, cleared; run Prepare
+  <span class="warn">!</span> all 8 projects: drive and reset commands cleared; run Prepare
   <span class="warn">!</span> jev-browser-extension: no remote, the VPS and PC will be its only copies
   <span class="warn">!</span> jewellery-system: leaves behind ignored .env, uploads/ (1.2 GB)
   <span class="warn">!</span> exam-forge: 3 stashes, only the newest travels
@@ -336,7 +336,7 @@ Nothing was changed. Pack size about 3.1 GB, VPS has 71 GB free.</pre>
     ["Repos travel inside the pack, with every branch, and nothing is pushed","Committed work is reachable by construction, so repos with no remote can move as they are and nothing lands on someone else's remote.","assumed"],
     ["Uncommitted work travels too, and the old machine is not changed to do it","It moves as a patch plus whole copies of the files, so a line-ending failure still loses nothing. Committing it for you would change the PC.","assumed"],
     ["Rounds and drives finish first; a real move needs both servers stopped","Chats and logs write outside the database, so a running server can be caught half-written. Open chats do not block: they resume on the VPS.","assumed"],
-    ["Commands are never rewritten; Windows-only ones are cleared for preparing again","A translated command would be an untested guess. Clearing hands a field back to Prepare, and portable commands keep working.","assumed"],
+    ["Commands are never rewritten; drive and reset commands are cleared for preparing again","A translated command would be an untested guess. Clearing hands a field back to Prepare. Dev, setup and verify commands stay.","assumed"],
     ["History text is left alone","The brief rules it out. Chat images and shown files are served by id, so old chats still show them.","assumed"],
     ["A failed move loses nothing, and the old machine stays usable","The PC is only read, and the VPS swaps in only after its checks pass. A working PC is the cheapest way back.","assumed"],
     ["Existing data on the destination is set aside, never merged, and a second move works","Two machines' ids and histories have no safe merge at solo scale. Renaming keeps a way back and lets a repeat run work.","assumed"],
@@ -351,9 +351,9 @@ Nothing was changed. Pack size about 3.1 GB, VPS has 71 GB free.</pre>
   var C = [
     [4,"Clone from each remote and refuse until everything is pushed, as the brief first assumed.","It removes the push you expected to do first. It also leaves jewellery-system and jev-browser-extension with only the VPS and PC as copies, so you may still want a remote."],
     [12,"Copy all of ~/.claude/projects, 1.4 GB, or only chats runcastle started.","\"All of the data\" could mean every Claude chat on the PC. This takes the chats in project repos and leaves the rest, plus your global Claude rules and skills."],
-    [7,"Clear the drive setup, drive stop and database reset commands on every project.","You will run Prepare by hand on some projects, and a detection list can miss a command.","challenged"],
-    [9,"After a good move, leave a marker that stops the PC server starting.","One closing message is the only guard against working on both machines. The marker would change the PC, which the brief ruled out.","challenged"],
-    [2,"Two manual commands and a manual copy, with no SSH step inside runcastle.","The wrapper is a second path, scp cannot resume a multi-gigabyte copy, and the remote command may not be on the PATH.","challenged"]
+    [7,"Clear only the commands that look tied to Windows.","The orchestrator chose to clear these three on every project, with no detection list. You will run Prepare on every project.","orchestrator"],
+    [9,"After a good move, leave a marker that stops the PC server starting.","One closing message is the only guard against working on both machines. The orchestrator kept it that way, since you intend to turn the PC off.","challenged"],
+    [2,"Two manual commands and a manual copy, with no SSH step inside runcastle.","The wrapper is a second path. The orchestrator kept it, calling the remote binary by its Bun path, and any failure keeps the pack and prints the manual commands.","orchestrator"]
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

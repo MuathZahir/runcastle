@@ -20,10 +20,10 @@ It prints a report, asks for a yes, packs, copies the pack over `scp`, and runs 
 
 - **Blocks:** a real run with the server up; a round marked running; a main checkout on a feature's branch; a checkout mid-merge or mid-rebase; two projects with one folder name. From the destination: an older runcastle, a Windows host, too little disk, existing projects or a target folder without `--replace`.
 - **Moves:** per project, repo size, branch count, uncommitted file count, features, chats, and the old and new paths.
-- **Will need attention:** commands to be cleared, `.env*` and other ignored names with sizes, stash counts, burner worktrees with leftovers, projects with no remote or with commits their remote lacks, chats that will end, repos that use LFS or submodules (which a bundle does not carry).
+- **Will need attention:** on a move between systems, the commands to be cleared on each project; `.env*` and other ignored names with sizes, stash counts, burner worktrees with leftovers, projects with no remote or with commits their remote lacks, chats that will end, repos that use LFS or submodules (which a bundle does not carry).
 - **Stays behind:** a fixed short list (decision 12), with sizes where cheap.
 
-With a host, `move` sends the manifest to `move-in --check` over `ssh`, which answers with the destination half of the report. `ssh` calls resolve the remote binary through a login shell, then fall back to `~/.bun/bin/runcastle`.
+With a host, `move` sends the manifest to `move-in --check` over `ssh`, which answers with the destination half of the report. Every remote call uses `~/.bun/bin/runcastle` directly, because a non-interactive `ssh` session may not have `runcastle` on its PATH. If the copy or a remote step fails, the error prints the exact manual commands and the pack is kept.
 
 ### The pack
 
@@ -42,7 +42,7 @@ A single `.tar.gz`, file mode 600, built in the OS temp dir. Nothing outside it 
 
 1. **Check.** Verify hashes and manifest, refuse on a blocker, and repeat the destination checks. Refuse while the server runs. A systemd-managed server is told apart only by the port and `/health`, and the message says to stop it.
 2. **Stage.** Unpack to `<dataDir>.incoming/`. Rebuild each repo in a new sibling folder of its target (`git init`, fetch `+refs/*:refs/*` from the bundle, restore the remote URLs, check out the branch the old machine had checked out).
-3. **Rewrite the database copy.** In one transaction, rewrite `projects.repo_path`, `sessions.worktree_path` and `sessions.transcript_path` by prefix: old repo path to new, old data dir to new, old Claude dir plus encoded folder to new. Matching folds case and slashes when the source was Windows, and rewritten paths use the destination's separators. A path matching no prefix is left alone and counted in the report. Rename Claude folders to the encoding of the new paths (each character outside `a-zA-Z0-9` becomes `-`, Claude Code's own rule). Clear Windows-bound commands and their provenance rows, and drop every verified stamp, only when the source and destination systems differ.
+3. **Rewrite the database copy.** In one transaction, rewrite `projects.repo_path`, `sessions.worktree_path` and `sessions.transcript_path` by prefix: old repo path to new, old data dir to new, old Claude dir plus encoded folder to new. Matching folds case and slashes when the source was Windows, and rewritten paths use the destination's separators. A path matching no prefix is left alone and counted in the report. Rename Claude folders to the encoding of the new paths (each character outside `a-zA-Z0-9` becomes `-`, Claude Code's own rule). Only when the source and destination systems differ: clear the drive setup, drive stop and database reset commands on every project with their provenance rows, and drop every verified stamp. The dev, setup and verify commands stay.
 4. **Verify.** Row counts equal the manifest, every branch tip equals the manifest, every session with a conversation has its transcript or none was recorded, and every file hash matches. Any failure removes the staging folders and leaves the destination as it was.
 5. **Swap.** With `--replace`, rename the old data dir and target repo folders to `*.before-move-<date>`, keeping `.env` and `install-id` into the new data dir. Merge `config.json`: source values, with `burnConcurrency` and `burnCpus` from the destination. Rename the staged folders into place, and put Claude folders under the destination's `~/.claude/projects`.
 6. **Bring over unfinished work.** Apply each main checkout's changes. For a talk worktree with changes, add the worktree at its usual path on the branch or commit recorded in `head.txt` and apply them there. This runs after the swap because a git worktree records absolute paths. A patch that fails leaves its whole copies in `<repo>.uncommitted/<slug>/`, named in the report, and does not fail the move.
@@ -52,7 +52,7 @@ On first boot, the existing startup handling ends stale sessions, and `ensureTal
 
 ### Code shape
 
-A new `packages/server/src/move/` module with three parts and one small pure core: `scan` (report, read-only), `pack`, `unpack`. The pure core is the path mapping, the Claude folder encoder and the Windows-bound command check, written against an explicit source platform with `node:path`'s `win32` and `posix` functions so they test on any host. The bin gains two commands, `move` and `move-in`, with lazy imports as `doctor` has.
+A new `packages/server/src/move/` module with three parts and one small pure core: `scan` (report, read-only), `pack`, `unpack`. The pure core is the path mapping and the Claude folder encoder, written against an explicit source platform with `node:path`'s `win32` and `posix` functions so they test on any host. The bin gains two commands, `move` and `move-in`, with lazy imports as `doctor` has.
 
 There are no schema changes, tRPC routes or web changes: the app needs no screen, because after the move everything is the existing UI. `isPrepared` stays as it is, so the existing Prepare entry is reached through the report's list and not a new prompt.
 
@@ -62,8 +62,8 @@ There are no schema changes, tRPC routes or web changes: the app needs no screen
 - **`scanMove(input) → MoveReport` (new):** the highest seam on the old machine. Run against a temp data dir, temp Claude dir and real scratch git repos, it shows every blocker and report line. It is the check that the source is not changed: file hashes of the fixture before and after a pack are equal.
 - **`packMove` then `moveIn` round trip (new):** the main end-to-end test. A scratch data dir and repos go in and a second data dir comes out, with a real boot of `reconcileStaleSessions`, `reconcileStaleRuns` and `ensureTalkWorktree` afterwards. It shows branches, uncommitted work, session rows and folder names on the far side.
 - **Failure injection on `moveIn` (new):** a corrupted part or a row-count mismatch at each step leaves the destination byte-identical. A second run with `--replace` succeeds and sets the first aside.
-- **`mapSourcePath`, `encodeClaudeFolder`, `isHostBoundCommand` (new, pure):** tables of Windows and POSIX cases. The Windows pack fixture for the round trip is built through these.
-- **The rehearsal (manual, not a test):** fake data from the PC to a scratch `RUNCASTLE_DATA_DIR` and `--repos-dir` on the VPS, from a branch build, covering line endings, folder names and one real chat resume. A build from `install-local.ts` with `--no-install` run from a scratch folder leaves the installed runcastle alone.
+- **`mapSourcePath`, `encodeClaudeFolder` (new, pure):** tables of Windows and POSIX cases. The Windows pack fixture for the round trip is built through these.
+- **The rehearsal (manual, not a test):** fake data from the PC to a scratch `RUNCASTLE_DATA_DIR` and `--repos-dir` on the VPS, from a branch build, covering line endings, folder names and one real chat resume. The VPS gets the branch through `bun run install:local`, so no release is needed.
 
 ## Out of scope
 
@@ -79,6 +79,6 @@ There are no schema changes, tRPC routes or web changes: the app needs no screen
 
 ## Open questions
 
-- **Chat resume between systems.** The code shows the adapter reopens a conversation by id, and a check in `side-channels.ts` treats a transcript in any project folder as findable, so placing it under the new path should work. Only a real resume on Linux proves it, and that is in the rehearsal. It may need a throwaway project under the real `~/.claude` on the VPS, because a scratch Claude dir has no login; the plan asks the human before doing that.
+- **Chat resume between systems.** The code shows the adapter reopens a conversation by id, and a check in `side-channels.ts` treats a transcript in any project folder as findable, so placing it under the new path should work. Only a real resume on Linux proves it, and that is in the rehearsal. It may need a throwaway project under the real `~/.claude` on the VPS, because a scratch Claude dir has no login; that is asked first.
 - **When the real move runs.** It stops the server, and rounds must finish first, so it fits between features. It must come after a release that includes this tool. Timing against the rest of the cut (No Node, Burns build their own image, One-line install) is the human's call at the checkpoint.
 - **Old-machine marker.** Decision 9 leaves the old server able to start. If the human prefers a marker that refuses to start it, that is a small addition, and it changes the source after a successful move only.
