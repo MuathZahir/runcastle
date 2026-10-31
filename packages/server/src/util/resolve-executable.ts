@@ -180,7 +180,7 @@ function fileHead(path: string): string | null {
  */
 export function cliNeedsMissingNode(
   resolved: string,
-  opts: { env?: NodeJS.ProcessEnv; head?: (path: string) => string | null } = {},
+  opts: { nodeInstalled?: () => boolean; head?: (path: string) => string | null } = {},
 ): boolean {
   if (isBareName(resolved) || /\.exe$/i.test(resolved)) return false
   const head = (opts.head ?? fileHead)(resolved)
@@ -189,8 +189,7 @@ export function cliNeedsMissingNode(
     ? /\bnode(\.exe)?\b/i.test(head)
     : /^#!.*\bnode\b/.test(head)
   if (!script) return false
-  const nodeEnv = opts.env ? { env: opts.env, pathEnv: opts.env.PATH ?? '' } : {}
-  return resolveTool('node', nodeEnv) === 'node'
+  return !(opts.nodeInstalled ?? (() => resolveTool('node') !== 'node'))()
 }
 
 /** A bare command name — resolution gave up and never found a real path. */

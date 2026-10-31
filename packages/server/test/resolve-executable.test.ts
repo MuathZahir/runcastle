@@ -314,43 +314,35 @@ describe('explainSpawnFailure', () => {
 })
 
 describe('cliNeedsMissingNode', () => {
-  // No PATH, and no home for the well-known install dirs to hang off: no Node to find.
-  const noNode = { PATH: '', HOME: '', USERPROFILE: '', APPDATA: '', LOCALAPPDATA: '' }
+  const noNode = { nodeInstalled: () => false }
   const NPM_SHIM = '@"%dp0%\\node.exe" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*'
   const SHEBANG = '#!/usr/bin/env node\nconsole.log(1)\n'
 
   it('spots an npm shim and a node shebang when there is no Node', () => {
-    expect(cliNeedsMissingNode('C:\\npm\\codex.cmd', { env: noNode, head: () => NPM_SHIM })).toBe(true)
-    expect(cliNeedsMissingNode('/usr/local/bin/codex', { env: noNode, head: () => SHEBANG })).toBe(true)
+    expect(cliNeedsMissingNode('C:\\npm\\codex.cmd', { ...noNode, head: () => NPM_SHIM })).toBe(true)
+    expect(cliNeedsMissingNode('/usr/local/bin/codex', { ...noNode, head: () => SHEBANG })).toBe(true)
   })
 
   it('never reads a native binary, or a script that does not run on Node', () => {
     const head = (): string => {
       throw new Error('read a file it had no need to')
     }
-    expect(cliNeedsMissingNode('C:\\bin\\claude.exe', { env: noNode, head })).toBe(false)
-    expect(cliNeedsMissingNode('claude', { env: noNode, head })).toBe(false)
-    expect(cliNeedsMissingNode('/bin/claude', { env: noNode, head: () => '#!/bin/sh\nexec foo\n' })).toBe(false)
-    expect(cliNeedsMissingNode('/bin/claude', { env: noNode, head: () => '\x7fELF node' })).toBe(false)
+    expect(cliNeedsMissingNode('C:\\bin\\claude.exe', { ...noNode, head })).toBe(false)
+    expect(cliNeedsMissingNode('claude', { ...noNode, head })).toBe(false)
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => '#!/bin/sh\nexec foo\n' })).toBe(false)
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => '\x7fELF node' })).toBe(false)
   })
 
   it('is not fooled by a path that merely mentions node_modules', () => {
     const shim = '"%dp0%\\bun.exe" "%dp0%\\node_modules\\x\\cli.js" %*'
-    expect(cliNeedsMissingNode('C:\\npm\\x.cmd', { env: noNode, head: () => shim })).toBe(false)
+    expect(cliNeedsMissingNode('C:\\npm\\x.cmd', { ...noNode, head: () => shim })).toBe(false)
   })
 
   it('leaves a file it cannot read to the spawn', () => {
-    expect(cliNeedsMissingNode('/bin/claude', { env: noNode, head: () => null })).toBe(false)
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => null })).toBe(false)
   })
 
   it('is fine with a Node script when Node is there', () => {
-    expect(cliNeedsMissingNode('/usr/local/bin/codex', { env: { PATH: process.env.PATH ?? '' }, head: () => SHEBANG })).toBe(
-      resolveToolIsBare(),
-    )
+    expect(cliNeedsMissingNode('/usr/local/bin/codex', { nodeInstalled: () => true, head: () => SHEBANG })).toBe(false)
   })
 })
-
-/** Whether this machine really has no node, so the last case states what is true here. */
-function resolveToolIsBare(): boolean {
-  return resolveTool('node') === 'node'
-}

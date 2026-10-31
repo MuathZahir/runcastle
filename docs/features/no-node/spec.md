@@ -98,8 +98,14 @@ Probes on 2026-10-31, kept outside the repo.
 | Codex adapter, full turn, native binary, Node hidden | pass | not measured |
 | Codex adapter, npm-installed `codex`, Node hidden | **fails**: `'node' is not recognized` | not measured |
 
-macOS is unmeasured. Nothing in the server, the skills, or sandcastle starts `node` or
-`npx` on the host; the test-suite fixtures and smoke do, and the smoke changes here.
+Nothing in the server, the skills, or sandcastle starts `node` or `npx` on the host.
+
+The built package then passed the platform smoke with Node hidden, on macOS (arm64 and
+Intel), Ubuntu (x64 and arm64) and Windows, each on Bun 1.3.14 and latest (1.4.4), and in
+Ubuntu and Alpine containers with no Node installed at all. On each it opened a real
+terminal through the installed server, typed into it and ended it with Ctrl-C (about 50ms
+on macOS and Linux, 2,069ms on Windows through the fallback), and both adapters answered
+`initialize`, Codex on its native binary.
 
 ## Seams
 
@@ -123,10 +129,5 @@ macOS is unmeasured. Nothing in the server, the skills, or sandcastle starts `no
 
 ## Open questions
 
-- macOS: every result above is Windows or Linux. The smoke settles it before ready, and a
-  failure stops the work for the human (decision 8).
 - Why Ctrl-C does not reach line-mode programs under Bun's ConPTY is unknown. If the
-  cause turns out to be something the backend can set when it spawns, that replaces the
-  fallback.
-- `bun-types` in the repo is 1.3.14. If its `terminal` types are POSIX-only, the backend
-  needs a small quarantined cast or a types bump.
+  cause turns out to be something a later Bun fixes, the fallback can go.
