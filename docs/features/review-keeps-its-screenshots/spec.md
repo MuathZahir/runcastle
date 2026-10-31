@@ -16,7 +16,7 @@ When the orchestrator asks the human to accept a feature, it shows the same pack
 
 ### The record
 
-Each pass's folder (`reviewDir`, keyed by ticket, already holding `DIGEST.md` and `walkthrough.webm`, and wiped on re-burn) gains a `saw/` folder: a manifest, `saw.json`, and the PNGs it names. The file on disk is the record, as with the walkthrough, so there is no database row. The manifest is created empty when the pass prepares its folder, so "no manifest" means a pass from before this feature, which shows no part at all. Entries are appended in order, each write replacing the file atomically, and a failed write never fails a tool call. Its shape, pinned because the tool, the route and the screen must agree (adapted from the older plan):
+Each pass's folder (`reviewDir`, keyed by ticket, already holding `DIGEST.md` and `walkthrough.webm`, and wiped on re-burn) gains a `saw/` folder: a log, `saw.jsonl`, and the PNGs it names. The file on disk is the record, as with the walkthrough, so there is no database row. The log is created empty when the pass prepares its folder. Entries are appended in order, one per line, so a crash costs at most its last line, and a failed write never fails a tool call. A pass from before this feature has no log, but still opens as a package with its video and findings. Its shape, pinned because the tool, the route and the screen must agree (adapted from the older plan):
 
 ```ts
 type SawEntry =
@@ -57,7 +57,7 @@ The review routes gain `GET /api/reviews/ticket/:ticketId/package.json` and `GET
 
 ### Reaching the lead and the orchestrator
 
-One function builds `reviewShots`: every review ticket of the feature with at least one picture, newest first, keeping the newest three passes so the reply stays small. Each carries `seq`, `passKind`, `reviewedCommit`, `commitsSince` and its pictures as `{ path, caption, scenario }`. `commitsSince` is the count of commits from `reviewedCommit` to the feature branch, or null when the branch is gone or no commit was recorded. It is returned by `get_feature_context` and `read_feature_chat`, so an agent can read the pictures and quote them.
+One function builds `reviewShots`: every review ticket of the feature with at least one picture, newest first, keeping the newest three passes so the reply stays small. Each carries `seq`, `passKind`, `reviewedCommit` and its pictures as `{ path, caption, scenario }`. It is returned by `get_feature_context` and `read_feature_chat`, so an agent can read the pictures and quote them. How far the branch has moved on comes back from `show_review_package` as `commitsSince`, and the card says it too.
 
 The project skill's "Let them see it" paragraph: call `show_review_package` above your question, say so when the pictures predate later work, and fall back to `shown` when there is no package.
 
@@ -73,7 +73,7 @@ The feature skill's "Review is your call" section becomes the default in decisio
 - **`show_review_package` tool (new).** Observes the event, which pass it picks, and that it refuses a feature with no review.
 - **`/api/reviews` routes (existing).** Observes the manifest and image served, a name the store would not write refused, traversal refused, a non-review ticket refused, and the counts on the listing.
 - **`reviewPackage` (new).** Feed manifest entries and a ticket, read the package: grouping, Other checks, no scenarios, a failed scenario, the empty lines, and findings with defects first.
-- **`read_feature_chat` and `get_feature_context` (existing).** Observes `reviewShots`: order, a Gates pass skipped, the three-pass limit, `commitsSince`, and null for a deleted branch. The read-ceiling test lists the new field.
+- **`read_feature_chat` and `get_feature_context` (existing).** Observes `reviewShots`: order, a Gates pass skipped, and the path. The read-ceiling test lists the new field.
 - **Review prompts (existing templates).** The existing prompt-render tests: the `capture` instruction is in both prompts and the scenario block.
 - **The package card and page (new, designed).** Tier 1 static markup for each state; tier 2 for stepping through the page.
 - **Feature skill (existing).** The existing skill tests: the review-round default is present.

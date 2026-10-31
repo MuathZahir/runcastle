@@ -5,6 +5,8 @@ import {
   PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE,
   REVIEW_ARTIFACTS_ROUTE,
   REVIEW_GATE_LOG_ROUTE,
+  REVIEW_PACKAGE_ROUTE,
+  REVIEW_SHOT_ROUTE,
   REVIEW_WALKTHROUGH_ROUTE,
   reviewGateLogUrl,
   reviewWalkthroughUrl,
@@ -17,8 +19,10 @@ import {
 import {
   annotationPath,
   isReviewGateLogName,
+  isReviewShotName,
   projectNotePath,
   reviewGateLogPath,
+  reviewShotPath,
   reviewWalkthroughPath,
 } from '@runcastle/core/paths'
 import { Hono, type Context } from 'hono'
@@ -27,6 +31,8 @@ import { NotFoundError } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { attachScreenshot, getNote } from '../services/test-notes'
 import { attachScreenshot as attachProjectNoteScreenshot, getNote as getProjectNote } from '../services/project-notes'
+import { getFeatureRow, projectForFeature } from '../services/repo'
+import { reviewPackage } from '../services/review-package'
 import { getTicket, listByFeature } from '../services/tickets'
 import { fileSize, fileStream, serveFile } from './media'
 
@@ -223,6 +229,40 @@ reviews.get(REVIEW_GATE_LOG_ROUTE, async (c) => {
   const headers = { 'content-type': 'text/plain; charset=utf-8', 'content-length': String(size) }
   if (size === 0) return c.body(null, 200, headers)
   return c.body(fileStream(path, 0, size - 1), 200, headers)
+})
+
+/** GET /api/reviews/ticket/:ticketId/package.json — everything one pass left. */
+reviews.get(REVIEW_PACKAGE_ROUTE, async (c) => {
+  const ctx = await getRuntimeCtx()
+  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
+  if (!ticket) return c.notFound()
+  const feature = getFeatureRow(ctx, ticket.featureId)
+  return c.json(await reviewPackage(ctx, ticket, feature, projectForFeature(ctx, feature).repoPath))
+})
+
+/**
+ * GET /api/reviews/ticket/:ticketId/saw/:file — one picture a pass kept. The name
+ * must be one the store writes and the path comes from the looked-up row, as with
+ * the gate logs. `?download=` is the shared viewer's way of saving a file.
+ */
+reviews.get(REVIEW_SHOT_ROUTE, async (c) => {
+  const file = c.req.param('file')
+  if (!isReviewShotName(file)) return c.json({ error: 'not a screenshot name' }, 400)
+
+  const ctx = await getRuntimeCtx()
+  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
+  if (!ticket) return c.notFound()
+
+  const path = reviewShotPath(ticket.id, file)
+  const size = fileSize(path)
+  if (size === undefined || size === 0) return c.notFound()
+
+  return c.body(fileStream(path, 0, size - 1), 200, {
+    'content-type': 'image/png',
+    'content-length': String(size),
+    'x-content-type-options': 'nosniff',
+    ...(c.req.query('download') !== undefined ? { 'content-disposition': `attachment; filename="${file}"` } : {}),
+  })
 })
 
 /** The 8-byte PNG signature every PNG file starts with (RFC 2083 §3.1). */

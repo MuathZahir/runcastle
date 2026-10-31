@@ -18,6 +18,7 @@ import {
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
+import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -250,6 +251,8 @@ function Item({
       return <ChangesCard files={item.files} />
     case 'shown':
       return <ShownFiles files={item.files} />
+    case 'review_package':
+      return <ReviewPackageItem ticketId={item.ticketId} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">

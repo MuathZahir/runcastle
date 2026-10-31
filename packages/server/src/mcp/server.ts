@@ -34,14 +34,21 @@ import {
   isAgentDigestDoc,
   isProjectSessionKind,
   unstartedState,
+  SAW_MAX_SHOTS,
+  maskedCall,
 } from '@runcastle/core'
-import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir } from '@runcastle/core/paths'
+import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir, reviewShotPath } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
 import { RUN_HEADER } from '../launcher/artifacts'
 import { showFile } from '../threads/shown'
+import { showReviewPackage } from '../threads/review-package'
+import { requireProjectFeature } from './orchestrator-tools'
+import { reviewShots, type ReviewShots } from '../services/review-package'
+import { appendSaw, readSaw } from '../services/review-saw'
+import { captureReviewShot } from '../workflows/review-capture'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
@@ -333,7 +340,7 @@ export interface ReviewEvidence {
   reviewMode: 'drive' | 'gates' | null
   reviewVerdict: 'verified' | 'unverified' | null
   reviewVerdictReason: string | null
-  /** `~/.runcastle/reviews/<ticketId>/` — screenshots and `walkthrough.webm`. */
+  /** `~/.runcastle/reviews/<ticketId>/` — `walkthrough.webm` and the pictures in `saw/`. */
   dir: string
   /** `<dir>/DIGEST.md` — the review agent's own account of what it found. */
   digestPath: string
@@ -391,10 +398,12 @@ export interface FeatureContext {
   openDefects: OpenDefect[]
   /**
    * Where the latest review pass left its evidence on disk — the `DIGEST.md`
-   * the review agent wrote, the screenshots and walkthrough beside it, and how
-   * that pass ended. Null until a review pass has burned.
+   * the review agent wrote, the walkthrough beside it, and how that pass ended.
+   * Null until a review pass has burned.
    */
   reviewEvidence: ReviewEvidence | null
+  /** The pictures reviews kept, newest pass first. Empty when none took any. */
+  reviewShots: ReviewShots[]
   /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
@@ -629,6 +638,7 @@ export function featureContext(
     ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
+    reviewShots: reviewShots(ctx, feature.id),
   }
   const toDo = { openDefects, findings }
   let rows = allTickets.map(ticketRow)
@@ -1511,7 +1521,7 @@ export async function toolReviewDrive(
 /** A refused `scenario` / `try_call`: nothing ran and nothing was sent. */
 export interface ReviewScenarioDenial {
   ok: false
-  action: 'scenario' | 'try_call'
+  action: 'scenario' | 'try_call' | 'capture'
   deniedReason: string
   /** False for a refusal no wait fixes; absent when the drive was merely busy or not ready. */
   retriable?: boolean
@@ -1526,12 +1536,59 @@ export type ReviewScenarioResult =
 /** `review_drive({ action: 'try_call' })`: the response (or send error), or a refusal. */
 export type ReviewCallResult = ({ action: 'try_call' } & DriveCallResult) | ReviewScenarioDenial
 
-const reviewScenarioDenial = (action: 'scenario' | 'try_call', deniedReason: string): ReviewScenarioDenial => ({
+const reviewScenarioDenial = (action: ReviewScenarioDenial['action'], deniedReason: string): ReviewScenarioDenial => ({
   ok: false,
   action,
   deniedReason,
   retriable: false,
 })
+
+/** `review_drive({ action: 'capture' })`: the picture kept, or why it was not. */
+export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; scenario?: string } | ReviewScenarioDenial
+
+/** The burning review ticket on this run's feature: the pass a tool call belongs to. */
+function burningReview(ctx: AppCtx, featureId: string): Ticket | undefined {
+  return listByFeature(ctx, featureId).find((ticket) => ticket.kind === 'review' && ticket.status === 'burning')
+}
+
+/**
+ * Keep a picture of what the review agent's browser shows, with what it shows
+ * as the caption. Runcastle takes it and names it, so the agent writes nothing.
+ * It belongs to the latest scenario that landed in this pass, unless `outside`.
+ */
+export async function toolReviewCapture(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { caption?: string; outside?: boolean },
+  capture: typeof captureReviewShot = captureReviewShot,
+): Promise<ReviewCaptureResult> {
+  const identity = requireRunIdentity(ctx, caller, 'the review drive')
+  const withheld = withheldDriveFor(identity.runId)
+  if (withheld) return reviewScenarioDenial('capture', withheld)
+  const featureId = identity.featureId
+  const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
+  if (!git.reviewDriveFor(projectId, featureId)) {
+    return reviewScenarioDenial('capture', "No review drive of this feature is running — review_drive({ action: 'start' }) first.")
+  }
+  const caption = input.caption?.replace(/\s+/g, ' ').trim()
+  if (!caption) return reviewScenarioDenial('capture', '`capture` needs `caption`: one line saying what the picture shows.')
+  const ticket = burningReview(ctx, featureId)
+  if (!ticket) return reviewScenarioDenial('capture', 'No review pass is running on this feature.')
+  const entries = readSaw(ticket.id)
+  const taken = entries.filter((entry) => entry.kind === 'shot').length
+  if (taken >= SAW_MAX_SHOTS) {
+    return reviewScenarioDenial('capture', `This pass has its ${SAW_MAX_SHOTS} screenshots, the most one pass keeps. Carry on without more.`)
+  }
+  const image = `shot-${taken + 1}.png`
+  const result = await capture(ticket.id, reviewShotPath(ticket.id, image))
+  if (!result.ok) return reviewScenarioDenial('capture', result.reason)
+  const scenario = input.outside
+    ? undefined
+    : entries.findLast((entry) => entry.kind === 'scenario' && entry.ok)
+  const file = scenario?.kind === 'scenario' ? scenario.file : undefined
+  appendSaw(ticket.id, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
+  return { ok: true, action: 'capture', caption, ...(file ? { scenario: file } : {}) }
+}
 
 /**
  * Replay a scenario on the run's live review drive (drive-scenarios decision
@@ -1575,7 +1632,13 @@ export async function toolReviewScenario(
   if (action === 'scenario') {
     const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowReview: true })
     if ('denied' in result) return { ok: false, action, deniedReason: result.denied }
-    if (!result.ok) return { ok: false, action, failure: result.failure }
+    const pass = burningReview(ctx, featureId)
+    const name = git.activeDriveInfo(projectId)?.scenario?.name ?? file
+    if (!result.ok) {
+      if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
+      return { ok: false, action, failure: result.failure }
+    }
+    if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
     return { ok: true, action, entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
   }
 
@@ -1586,7 +1649,10 @@ export async function toolReviewScenario(
   if (!scenario.call) {
     return reviewScenarioDenial(action, scenario.callError ?? 'this scenario has no .http call')
   }
-  return { action, ...(await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })) }
+  const result = await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })
+  const pass = burningReview(ctx, featureId)
+  if (pass) appendSaw(pass.id, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
+  return { action, ...result }
 }
 
 /**
@@ -2526,6 +2592,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_panel: ['chat'],
   // Every session with a thread to show it in; a run agent has none.
   show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
+  show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -2708,10 +2775,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Once the app answers, `scenario` and `try_call` replay the scenarios your prompt lists ' +
           'against this same drive, with no restart: run as many as you need, one per criterion ' +
           'if you like. Both are refused (`retriable: false`) unless your own review drive is the ' +
-          'live one. Refused unless your call carries a live run identity.',
+          'live one. `capture` keeps a screenshot for the human, who may see nothing else: take ' +
+          'one wherever a screen shows what you checked. Refused unless your call carries a live ' +
+          'run identity.',
         inputSchema: {
           action: z
-            .enum(['start', 'status', 'stop', 'scenario', 'try_call'])
+            .enum(['start', 'status', 'stop', 'scenario', 'try_call', 'capture'])
             .describe(
               '`start` switches the checkout to the feature branch, renders driveEnv (per-branch ' +
                 'database), runs driveSetupCommand and spawns devCommand. `status` reports the ' +
@@ -2721,7 +2790,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
                 "project's runner, waits for it, and returns its `entryUrl` (open it with " +
                 'agent-browser) and `token`, or its `failure` (reason, exitCode, outputTail). ' +
                 '`try_call` sends the filled `.http` request of the scenario `file`, which must be ' +
-                'the one that just landed, and returns status, headers and body.',
+                'the one that just landed, and returns status, headers and body. `capture` keeps ' +
+                'a screenshot of your browser as it stands, with `caption`, for the human.',
             ),
           file: z
             .string()
@@ -2730,11 +2800,21 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
               'For `scenario` and `try_call`: the repo-relative scenario path, e.g. ' +
                 '`.runcastle/scenarios/checkout/expired-coupon.ts`.',
             ),
+          caption: z
+            .string()
+            .max(200)
+            .optional()
+            .describe('For `capture`: one line saying what the picture shows, for someone who was not there.'),
+          outside: z
+            .boolean()
+            .optional()
+            .describe('For `capture`: true when the picture belongs to no scenario. It joins the latest scenario that landed otherwise.'),
         },
       },
       async (args, extra) => {
         const rc = await resolveRunCaller(extra)
-        const { action, file } = args
+        const { action, file, caption, outside } = args
+        if (action === 'capture') return ok(await toolReviewCapture(rc.ctx, rc.caller, { caption, outside }))
         if (action === 'scenario' || action === 'try_call') {
           return ok(await toolReviewScenario(rc.ctx, rc.caller, { action, file }))
         }
@@ -3213,7 +3293,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), ' +
-        '`reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
+        '`reviewShots` (the pictures reviews kept, newest pass first), `reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
         'walkthrough — read them before planning more work; null until a review has run). Then ' +
         'every ticket as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
@@ -3717,6 +3797,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(showFile(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_review_package')) {
+    server.registerTool(
+      'show_review_package',
+      {
+        title: 'Show a review package',
+        description:
+          'Show what a review left, as one attachment in this chat: its verdict, screenshots, ' +
+          'walkthrough, calls and findings. A click opens them all. It shows the newest pass that ' +
+          'took pictures, or the newest pass when none did, and returns `commitsSince`, how far the ' +
+          'branch has moved on from it: say so when that is above zero. Refused when the feature ' +
+          'has had no review. It waits for nobody.',
+        inputSchema: {
+          slug: z.string().optional().describe("The feature's slug. A feature's own chats leave it out."),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        const feature = rs.session.featureId
+          ? getFeatureRow(rs.ctx, rs.session.featureId)
+          : requireProjectFeature(rs.ctx, rs.session, args.slug ?? '')
+        return ok(await showReviewPackage(rs.ctx, rs.session, feature))
       },
     )
   }

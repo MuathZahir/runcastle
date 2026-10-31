@@ -32,6 +32,7 @@ describe('chat contract', () => {
       'resolve_finding',
       'show_file',
       'show_panel',
+      'show_review_package',
       'start_design_server',
       'stop_round',
       'update_ticket',
