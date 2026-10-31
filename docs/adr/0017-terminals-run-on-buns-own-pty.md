@@ -1,4 +1,4 @@
-# ADR-0016: Terminals run on Bun's own PTY, and Node is no longer a prerequisite
+# ADR-0017: Terminals run on Bun's own PTY, and Node is no longer a prerequisite
 
 **Status:** Accepted
 **Date:** 2026-10-31

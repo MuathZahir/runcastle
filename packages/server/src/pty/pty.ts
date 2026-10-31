@@ -11,7 +11,7 @@ import { windowsArgsLine, windowsArgv0 } from './windows-command-line'
  *
  * The backend is Bun's own terminal (`Bun.spawn` with `terminal`): openpty on
  * POSIX, ConPTY on Windows. It needs nothing installed beyond Bun itself, which
- * is why it replaced node-pty in a Node sidecar (ADR-0016).
+ * is why it replaced node-pty in a Node sidecar (ADR-0017).
  */
 
 export interface PtySession {
