@@ -37,7 +37,7 @@ The result of the check is one exported function, `checkBurnCacheAccess`, with t
 
 **The doctor** (decisions 7, 8, 9, 12). New or changed rows:
 
-- **Cache volume:** in the app, the project's volume, only when a project is passed to the query. In the CLI, every volume from `volume ls --filter label=io.runcastle.burn-cache`. Skipped when the runtime is down, the cache is off, the engine is podman or the image is absent. A bad volume is `stale` at `info`.
+- **Cache volume:** in the app, the project's volume, only when a project is passed to the query. In the CLI run by hand, every volume from `volume ls --filter label=io.runcastle.burn-cache`; never in the `--gate` boot check, which must not start a container per volume. Skipped when the runtime is down, the cache is off, the engine is podman or the image is absent. A bad volume is `stale` at `info`.
 - **Image:** the UID, GID and fallback handling above.
 - **AFK token:** duplicate key lines are reported, offline, in both surfaces. An injected `checkToken` runs only in `runCli` in `diagnostic` mode. It runs one `claude -p` turn with the token in the environment and reports `rejected`, `ok` or `unreachable`.
 - **Burn user:** an error row when the host runs as UID 0. A Claude Code burn also stops on this before any container starts.
@@ -85,6 +85,9 @@ Then the drive, in order:
 ## Open questions
 
 - **The `0:0`.** Not proven. The code has three routes to it (decisions.md, 3), and the plan closes them without knowing which one happened. The VPS drive's timeline event gives the evidence if it recurs.
-- **`os.userInfo()` on Bun.** Believed to return the process's group, so the plan uses `id -g`. Confirm on Linux when building.
-- **Docker's copy-up.** The marker file relies on Docker only copying onto an empty volume. Confirm with a real container when building.
-- **Windows and WSL.** Docker was not running while this was planned, so nothing here has been reproduced yet. The first thing the build does is reproduce the failure with a scratch volume and a fake UID of 1001.
+
+Settled while building:
+
+- **`os.userInfo()` on Bun** returns the process's group, so `sg docker` moves it. Measured as a UID-1001 user in WSL. `id -g <user>` does not move.
+- **Docker's copy-up** is real: an empty chowned volume mounted over a root-owned image folder goes to `0:0`, and the marker file stops it. Measured on a real engine. The stock image has none of the mounted toolchain folders, so this route needs a project image.
+- **The existing token verifier** (`createCredentialVerifier`) only runs `--version`, so it never tests the token. The app keeps it as it is, and the live check is a separate step in `runcastle doctor`.

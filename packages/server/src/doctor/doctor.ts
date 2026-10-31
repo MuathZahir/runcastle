@@ -18,8 +18,10 @@ import {
   AGENT_RUNTIMES,
   DEFAULT_RUNTIME,
   DEFAULT_SANDBOX_IMAGE,
+  resolveBurnCacheMode,
   resolveSandboxImage,
   type AgentRuntime,
+  type RuncastleConfig,
 } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { isOlderVersion, minimumCliVersion } from './adapter-requirements'
@@ -30,13 +32,17 @@ import {
 } from '../services/agent-cli-versions'
 import { codexAuthFile } from '../services/codex-auth'
 import {
+  type BuiltImage,
   describeFreshnessReason,
   type FreshnessReason,
   hashDockerfile,
   imageFreshness,
+  imageUidMismatch,
+  imageUidMismatchMessage,
   inspectBuiltImage,
   legacyGlobalImage,
   legacyGlobalImageReason,
+  parseImageUser,
   projectDockerfilePath,
   projectImageTag,
   type StoredProjectImage,
@@ -44,6 +50,20 @@ import {
   unmanagedImageReason,
 } from '../services/sandbox-image'
 import type { Runtime } from '../services/setup'
+import {
+  BURN_CACHE_VOLUME_LABEL,
+  burnCacheVolumeName,
+  checkBurnCacheAccess,
+  inspectBurnCacheVolume,
+} from '../workflows/burn-cache'
+import {
+  type BurnUser,
+  burnUserSpec,
+  resolveBurnUser,
+  ROOT_BURN_REFUSED,
+  runningAsRoot,
+} from '../workflows/burn-user'
+import type { TokenCheck } from './token-check'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
 export interface ExecOutcome {
@@ -147,6 +167,37 @@ export interface DoctorEnv {
    * says nothing about legacy residue rather than guessing at it.
    */
   knownProjectIds?: readonly string[]
+  /** Who burns run as; resolved per engine when omitted. */
+  burnUser?: BurnUser
+  /** The host is running as root; read from the process when omitted. */
+  runningAsRoot?: boolean
+  /** Which cache volumes to test. Absent, the report has no volume row. */
+  burnCache?: BurnCacheScope
+  /** Lines assigning each AFK key in `~/.runcastle/.env`. Absent, not reported. */
+  afkKeyLines?: Record<string, number>
+  /**
+   * Test the Claude Code AFK token with a real call. Only `runcastle doctor` run
+   * by hand supplies this (decision 8): a live call spends the human's usage, and
+   * the app's doctor query runs on screens the app waits for.
+   */
+  checkToken?: (token: string) => Promise<TokenCheck>
+}
+
+/**
+ * The cache volumes a report tests, and the image to test them from: one
+ * project's, or, with no `projectId`, every labelled volume on the engine, which
+ * is how the CLI answers with no project list to read.
+ */
+export interface BurnCacheScope {
+  imageName: string
+  projectId?: string
+}
+
+/** Whether burns on this config use a cache volume the doctor can test. */
+export function burnsOnDockerCache(
+  config: Pick<RuncastleConfig, 'burnCache' | 'sandbox'>,
+): boolean {
+  return config.sandbox === 'docker' && resolveBurnCacheMode(config) === 'volume'
 }
 
 /**
@@ -432,17 +483,22 @@ async function runtimeAuthProbe(
 
 /**
  * The runtime's unattended credential — presence only (validity needs a live
- * call). Read from the injected env; both callers — the CLI and the tRPC doctor
- * query the AFK card reads — merge `~/.runcastle/.env` in before calling.
+ * call, which {@link applyTokenCheck} adds where one is wanted). Read from the
+ * injected env; both callers — the CLI and the tRPC doctor query the AFK card
+ * reads — merge `~/.runcastle/.env` in before calling.
  *
  * `undefined` for a runtime with no `ids.afkKey`: its burns borrow the human's
  * own login, which the `auth` check already reports, so a second row asking for
  * a credential they need not have would be the setup step this feature removed.
+ *
+ * Several lines for the key stay `ok` with a note: burns use the last line, so
+ * the file may be fine, but only a human can tell which line they meant.
  */
 export function runtimeAfkKeyProbe(
   spec: RuntimeSpec,
   env: Record<string, string | undefined>,
   severity: ProbeSeverity = 'error',
+  lines: Record<string, number> = {},
 ): ProbeResult | undefined {
   const id = spec.ids.afkKey
   if (!id) return undefined
@@ -456,13 +512,42 @@ export function runtimeAfkKeyProbe(
   }
   const value = env[spec.afkKey]
   if (value && value.trim().length > 0) {
-    return { ...base, status: 'ok', detail: `${spec.afkNoun} present` }
+    const count = lines[spec.afkKey] ?? 0
+    const duplicates =
+      count > 1 ? ` — ~/.runcastle/.env has ${count} ${spec.afkKey} lines, and burns use the last` : ''
+    return { ...base, status: 'ok', detail: `${spec.afkNoun} present${duplicates}` }
   }
   return {
     ...base,
     status: 'unset',
     detail: `no ${spec.afkKey} — AFK burns on ${spec.label} cannot authenticate`,
     fix: spec.afkFix,
+  }
+}
+
+/**
+ * Fold a live token test into the presence row. Only a clear refusal fails the
+ * row: a test that could not reach the service says nothing about the token.
+ */
+async function applyTokenCheck(
+  row: ProbeResult,
+  spec: RuntimeSpec,
+  token: string,
+  check: (token: string) => Promise<TokenCheck>,
+): Promise<ProbeResult> {
+  const result = await check(token)
+  switch (result.verdict) {
+    case 'ok':
+      return { ...row, detail: `${row.detail} — a live call authenticated` }
+    case 'unreachable':
+      return { ...row, detail: `${row.detail} — not tested: ${result.why}` }
+    case 'rejected':
+      return {
+        ...row,
+        status: 'unhealthy',
+        detail: `${row.detail} — the service rejected it: ${result.why}`,
+        fix: spec.afkFix,
+      }
   }
 }
 
@@ -480,10 +565,17 @@ export async function runtimeProbes(
     env: Record<string, string | undefined>
     fileExists?: (path: string) => boolean
     severity: ProbeSeverity
+    afkKeyLines?: Record<string, number>
+    checkToken?: (token: string) => Promise<TokenCheck>
   },
 ): Promise<ProbeResult[]> {
   const fileExists = deps.fileExists ?? existsSync
-  const afkKeyProbe = runtimeAfkKeyProbe(spec, deps.env, deps.severity)
+  const presence = runtimeAfkKeyProbe(spec, deps.env, deps.severity, deps.afkKeyLines)
+  const token = deps.env[spec.afkKey]?.trim()
+  const afkKeyProbe =
+    presence?.status === 'ok' && token && deps.checkToken
+      ? await applyTokenCheck(presence, spec, token, deps.checkToken)
+      : presence
   return [
     await runtimeBinaryProbe(spec, deps.exec, deps.severity),
     await runtimeAuthProbe(spec, deps.exec, deps.env, fileExists, deps.severity),
@@ -650,6 +742,8 @@ export interface ImageProbeInput {
   project?: ProjectImageEnv
   /** See {@link DoctorEnv.knownProjectIds}; absent means "do not classify". */
   knownProjectIds?: readonly string[]
+  /** Who burns run as; resolved for the runtime found when omitted. */
+  burnUser?: BurnUser
 }
 
 /**
@@ -693,6 +787,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     }
   }
 
+  const burnUser = input.burnUser ?? resolveBurnUser(runtime)
   const projectHash = project ? dockerfileHash(projectDockerfilePath(project.repoPath)) : null
 
   // Decision 5: a tag the human typed outranks the Dockerfile, because
@@ -719,6 +814,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     image: stock,
     expectedHash: dockerfileHash(burnerDockerfile),
     host: hostVersions,
+    burnUser,
   })
 
   if (project && handTyped === null && projectHash !== null) {
@@ -740,12 +836,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     }
     // The project image's own labels, inherited through `FROM`, record the CLIs
     // its containers actually run — so its CLI drift is judged here, not on the base.
-    const own = imageFreshness({ image, expectedHash: projectHash, host: hostVersions })
+    const own = imageFreshness({ image, expectedHash: projectHash, host: hostVersions, burnUser })
     if (!own.fresh) {
       return staleImage(describeStale(tag, own.reasons, '.runcastle/sandbox/Dockerfile'), unchecked)
     }
     if (!stockVerdict.fresh) {
-      const layer = stockVerdict.reasons.find((r) => r.kind !== 'cli')
+      const layer = stockVerdict.reasons.find((r) => r.kind === 'hash' || r.kind === 'missing')
       return staleImage(
         layer === undefined
           ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the burner Dockerfile')}`
@@ -757,7 +853,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       ...IMAGE_ROW,
       status: 'ok',
       severity: 'error',
-      detail: `${tag} built from .runcastle/sandbox/Dockerfile${unchecked}`,
+      detail: `${tag} built from .runcastle/sandbox/Dockerfile${unchecked}${imageUserNote(image, burnUser)}`,
     }
   }
 
@@ -775,6 +871,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // worth saying out loud: an operator's own image is `info` when it is there
     // and an `error` when it is not.
     const custom = await inspectBuiltImage(exec, runtime, imageName)
+    const wrongUid = imageUidMismatch(custom.user, burnUser)
     // An older runcastle wrote built project images into the machine-wide
     // config, so a `sandcastle:runcastle-<name>` reaching here from below the
     // project column is residue rather than anyone's custom image. Only the
@@ -792,6 +889,9 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       // waiting on a build that is never coming.
       ...(projectHash === null ? [] : [`and outranks this repo's .runcastle/sandbox/Dockerfile`]),
       ...(custom.present ? [] : ['and is not built locally']),
+      ...(wrongUid === undefined
+        ? []
+        : [imageUidMismatchMessage(imageName, wrongUid, burnUser.uid, false)]),
       // Decision 3: no labels to read, so the one probe that starts a container.
       // Drift is a warning only — the status stays `custom`, which is what keeps
       // the Rebuild button disarmed, since runcastle did not build this image.
@@ -803,8 +903,8 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       ...IMAGE_ROW,
       status: 'custom',
       // Residue nobody chose is always worth acting on, however buildable the
-      // tag happens to be on this machine.
-      severity: custom.present && legacy === null ? 'info' : 'error',
+      // tag happens to be on this machine. So is an image a burn would refuse.
+      severity: custom.present && legacy === null && wrongUid === undefined ? 'info' : 'error',
       detail: clauses.join(' — '),
       fix:
         legacy === null
@@ -831,8 +931,155 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     ...IMAGE_ROW,
     status: 'ok',
     severity: 'error',
-    detail: `${imageName} present${unchecked}`,
+    detail: `${imageName} present${unchecked}${imageUserNote(stock, burnUser)}`,
   }
+}
+
+/**
+ * The clauses a fresh image's row carries about its group. Neither stops a burn:
+ * burns pass the right group themselves, so the image's own is cosmetic
+ * (decision 6). They exist so a group picked up from `sg docker`, or a lookup
+ * that fell back to the process, is never silent (decision 2).
+ */
+function imageUserNote(image: BuiltImage, burnUser: BurnUser): string {
+  const imageGid = parseImageUser(image.user)?.gid
+  const built =
+    imageGid === undefined || imageGid === burnUser.gid
+      ? ''
+      : ` (built with GID ${imageGid}, burns here use ${burnUser.gid}: harmless, and the next Rebuild corrects it)`
+  const fallback =
+    burnUser.gidSource === 'process'
+      ? ` (could not read this account's primary group, so burns use the process's GID ${burnUser.gid})`
+      : ''
+  return `${built}${fallback}`
+}
+
+/**
+ * Who burns run as, and the one user they cannot run as: Claude Code refuses to
+ * run unattended as root (decision 9). Its severity follows the runtime it is
+ * about, so a Codex-only setup is told without failing the report.
+ */
+export function burnUserProbe(
+  burnUser: BurnUser,
+  root: boolean,
+  severity: ProbeSeverity,
+): ProbeResult {
+  const base = { id: 'burn-user', label: 'Burn user', tier: 2 as const, severity }
+  if (root) {
+    return {
+      ...base,
+      status: 'unhealthy',
+      detail: ROOT_BURN_REFUSED,
+      fix: 'Create a normal user, add it to the docker group, and run runcastle as that user.',
+    }
+  }
+  return { ...base, status: 'ok', detail: `burns run as ${burnUserSpec(burnUser)}` }
+}
+
+/**
+ * Rootless Docker and `userns-remap` are named, not supported (decision 12): the
+ * host's UID means something else inside the container there, so `--user` no
+ * longer matches the bind-mounted worktree. `undefined` — no row — on an
+ * ordinary engine, or one that will not say. Burns are not blocked, in case a
+ * setup happens to work, which is why this is not part of the runtime probe the
+ * burn preflight reads.
+ */
+export async function dockerUserMappingProbe(exec: ExecFn): Promise<ProbeResult | undefined> {
+  const out = await exec('docker', ['info', '--format', '{{json .SecurityOptions}}'])
+  if (!(out.ok && out.code === 0)) return undefined
+  const mode = /name=rootless/.test(out.stdout)
+    ? 'rootless Docker'
+    : /name=userns/.test(out.stdout)
+      ? 'Docker with userns-remap'
+      : undefined
+  if (!mode) return undefined
+  return {
+    id: 'docker-user-mapping',
+    label: 'Docker user mapping',
+    tier: 2,
+    status: 'unhealthy',
+    severity: 'error',
+    detail: `this engine runs ${mode}, which burns do not support: host user IDs mean something else inside its containers`,
+    fix: 'Use rootful Docker with no userns-remap, or Podman.',
+  }
+}
+
+/**
+ * Can the burn user write to its cache volume? The doctor used to pass while
+ * burns could not (decision 7). The check is the one every run makes, so the two
+ * cannot disagree. A bad volume is `info`, not an error: the next burn replaces
+ * it, so there is nothing for a human to do. `undefined` — no row — when the
+ * image is not there to test from, which the image row already reports.
+ */
+export async function burnCacheVolumeProbe(
+  exec: ExecFn,
+  scope: BurnCacheScope,
+  burnUser: BurnUser,
+): Promise<ProbeResult | undefined> {
+  const base = {
+    id: 'burn-cache-volume',
+    label: 'Burn cache volume',
+    tier: 2 as const,
+    severity: 'info' as const,
+  }
+  const image = await exec('docker', ['image', 'inspect', scope.imageName])
+  if (!(image.ok && image.code === 0)) return undefined
+
+  const projectIds = await burnCacheProjectIds(exec, scope)
+  const none = { ...base, status: 'ok' as const, detail: 'no cache volume yet: the first burn creates it' }
+  if (projectIds.length === 0) return none
+
+  const bad: string[] = []
+  const unknown: string[] = []
+  for (const projectId of projectIds) {
+    const volume = burnCacheVolumeName(projectId)
+    const access = await checkBurnCacheAccess({
+      engine: 'docker',
+      imageName: scope.imageName,
+      projectId,
+      exec,
+      burnUser,
+    })
+    if (access.state === 'unwritable') {
+      bad.push(`${volume}: ${access.path} is owned by ${access.owner}`)
+    }
+    if (access.state === 'unknown') unknown.push(`${volume}: ${access.reason}`)
+  }
+  const user = burnUserSpec(burnUser)
+  if (bad.length > 0) {
+    return {
+      ...base,
+      status: 'stale',
+      detail: `burn user ${user} cannot write to ${bad.join('; ')}. The next burn replaces it.`,
+    }
+  }
+  if (unknown.length > 0) {
+    return { ...base, status: 'unhealthy', detail: `could not test ${unknown.join('; ')}` }
+  }
+  return { ...base, status: 'ok', detail: `burn user ${user} can write to its cache` }
+}
+
+/** The project ids behind the volumes a scope covers, existing volumes only. */
+async function burnCacheProjectIds(exec: ExecFn, scope: BurnCacheScope): Promise<string[]> {
+  if (scope.projectId !== undefined) {
+    const state = await inspectBurnCacheVolume(exec, 'docker', scope.projectId)
+    return state === 'missing' ? [] : [scope.projectId]
+  }
+  const out = await exec('docker', [
+    'volume',
+    'ls',
+    '--filter',
+    `label=${BURN_CACHE_VOLUME_LABEL}`,
+    '--format',
+    '{{.Name}}',
+  ])
+  if (!(out.ok && out.code === 0)) return []
+  const prefix = burnCacheVolumeName('')
+  return out.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((name) => name.startsWith(prefix))
+    .map((name) => name.slice(prefix.length))
 }
 
 /**
@@ -966,6 +1213,8 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
         env: processEnv,
         ...(env.fileExists ? { fileExists: env.fileExists } : {}),
         severity: required.has(runtime) ? 'error' : 'info',
+        ...(env.afkKeyLines ? { afkKeyLines: env.afkKeyLines } : {}),
+        ...(env.checkToken && runtime === 'claude-code' ? { checkToken: env.checkToken } : {}),
       })),
     )
     const versionRow = await adapterVersionProbe(
@@ -995,8 +1244,26 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
           hostVersions: (await resolveHostAgentVersions(exec, () => true)).versions,
           ...(env.projectImage ? { project: env.projectImage } : {}),
           ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
+          ...(env.burnUser ? { burnUser: env.burnUser } : {}),
         }),
   )
+
+  const engineUp = containerRuntime.status === 'ok'
+  const engine = engineUp ? await presentRuntime(exec) : null
+  const burnUser = env.burnUser ?? resolveBurnUser(engine ?? 'docker')
+  results.push(
+    burnUserProbe(
+      burnUser,
+      env.runningAsRoot ?? runningAsRoot(),
+      required.has('claude-code') ? 'error' : 'info',
+    ),
+  )
+  if (engine === 'docker') {
+    const mapping = await dockerUserMappingProbe(exec)
+    if (mapping) results.push(mapping)
+    const volume = env.burnCache ? await burnCacheVolumeProbe(exec, env.burnCache, burnUser) : undefined
+    if (volume) results.push(volume)
+  }
 
   const counts = (r: ProbeResult) => r.severity === 'error'
   return {

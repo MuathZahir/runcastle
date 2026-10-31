@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
+import type { ExecFn } from '../src/doctor/doctor'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import {
+  BURN_ROOT_REFUSED_EVENT,
   burnRun,
   cliTooOldMessage,
   registerTicketAbort,
@@ -195,9 +197,94 @@ describe('burnRun — scheduling and summary', () => {
           'for c in codex; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
         ],
       },
+      {
+        command: 'docker',
+        args: ['image', 'inspect', '--format', '{{.Config.User}}', 'sandcastle:test'],
+      },
     ])
     expect(calls).toEqual([1, 2])
     expect(res.status).toBe('succeeded')
+  })
+
+  describe('who the burn runs as', () => {
+    const dockerConfig = {
+      serverPort: 4512,
+      model: 'm',
+      stepModels: {},
+      sandbox: 'docker',
+      sandboxImage: 'sandcastle:runcastle',
+    } as const
+    const imageUser =
+      (user: string): ExecFn =>
+      async (_command, args) => ({
+        ok: true,
+        code: 0,
+        stdout: args[0] === 'image' ? `${user}\n` : '',
+        stderr: '',
+      })
+
+    it('stops before any ticket when the image was built for another UID', async () => {
+      const { ctx } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          config: dockerConfig,
+          exec: imageUser('1000:1000'),
+          burnUser: { uid: 1001, gid: 1001, gidSource: 'account' },
+          runningAsRoot: false,
+        }),
+      )
+      expect(calls).toEqual([])
+      expect(res.status).toBe('failed')
+      expect(res.summary).toContain('built for UID 1000')
+      expect(res.summary).toContain('Rebuild it from Settings → Workers')
+    })
+
+    it('burns on when only the group differs', async () => {
+      const { ctx } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          config: dockerConfig,
+          exec: imageUser('1001:998'),
+          burnUser: { uid: 1001, gid: 1001, gidSource: 'account' },
+          runningAsRoot: false,
+        }),
+      )
+      expect(calls).toEqual([1])
+      expect(res.status).toBe('succeeded')
+    })
+
+    it('refuses a Claude Code burn as root, before any ticket', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          runtime: 'claude-code',
+          runningAsRoot: true,
+        }),
+      )
+      expect(calls).toEqual([])
+      expect(res.status).toBe('failed')
+      expect(res.summary).toContain('refuses to run unattended as root')
+      expect(events.some((e) => e.type === BURN_ROOT_REFUSED_EVENT)).toBe(true)
+    })
+
+    it('lets a Codex-only burn run as root', async () => {
+      const { ctx } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          runtime: 'codex',
+          runningAsRoot: true,
+        }),
+      )
+      expect(calls).toEqual([1])
+    })
   })
 
   it('aborts before creating a sandbox when the image lacks the runtime binary', async () => {

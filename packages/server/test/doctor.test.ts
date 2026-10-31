@@ -40,9 +40,10 @@ const STOCK_HASH = 'a'.repeat(64)
 
 /** The canned-exec key for the label read the image probe makes (decision 4). */
 function inspectKey(runtime: 'docker' | 'podman', tag: string): string {
-  const format = [DOCKERFILE_HASH_LABEL, CLAUDE_CODE_VERSION_LABEL, CODEX_VERSION_LABEL]
-    .map((label) => `{{index .Config.Labels "${label}"}}`)
-    .join('|')
+  const labels = [DOCKERFILE_HASH_LABEL, CLAUDE_CODE_VERSION_LABEL, CODEX_VERSION_LABEL].map(
+    (label) => `{{index .Config.Labels "${label}"}}`,
+  )
+  const format = [...labels, '{{.Config.User}}'].join('|')
   return `${runtime} image inspect --format ${format} ${tag}`
 }
 

@@ -56,7 +56,11 @@ import {
   parseAgentCliVersion,
   resolveHostAgentVersions,
 } from '../services/agent-cli-versions'
-import { isManagedImage } from '../services/sandbox-image'
+import {
+  imageUidMismatch,
+  imageUidMismatchMessage,
+  isManagedImage,
+} from '../services/sandbox-image'
 import { ADR_DIR_REL, CHARTER_FILE, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import { readDiscoverySnapshot } from '../services/model-discovery'
@@ -113,6 +117,13 @@ import {
   slotRepoPath,
   slotStampPath,
 } from './burn-cache'
+import {
+  type BurnUser,
+  burnUserSpec,
+  resolveBurnUser,
+  ROOT_BURN_REFUSED,
+  runningAsRoot,
+} from './burn-user'
 // The other execution kind. Imported for its one entry point only — everything
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.
@@ -160,6 +171,10 @@ export const AUTH_MISSING_EVENT = 'auth.missing'
 export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
 /** The burn's container runtime (docker/podman) is down — no image can start. */
 export const CONTAINER_RUNTIME_DOWN_EVENT = 'burn.container_runtime_down'
+/** A cache volume the burn user could not write to was replaced. */
+export const BURN_CACHE_REPAIRED_EVENT = 'burn.cache_repaired'
+/** A burn was refused because runcastle is running as root. */
+export const BURN_ROOT_REFUSED_EVENT = 'burn.root_refused'
 /**
  * The image's agent CLI drifted from the host's — a warning for every image,
  * never fatal. Burns never build: a managed image's message points at Rebuild,
@@ -517,6 +532,10 @@ export interface BurnDeps {
   hasAuthToken: boolean
   /** Doctor-style injected command runner used for the pre-container image probe. */
   exec?: ExecFn
+  /** Who burns run as; resolved from the host when omitted. */
+  burnUser?: BurnUser
+  /** The host is running as root; read from the process when omitted. */
+  runningAsRoot?: boolean
   /**
    * The host's agent CLI versions, which the image probe compares the image's
    * with — a difference is warned about, never fatal. Omitted, or `null` for a
@@ -3213,14 +3232,103 @@ export interface HarvestedDigest {
  * under progress noise — a failed `worktree add` starts with "Preparing
  * worktree (...)" and only says `fatal: ... Filename too long` lines later —
  * so prefer the LAST `fatal:`/`error:` line over the first line.
+ *
+ * A failed sandbox command opens with the whole command it ran, which says
+ * nothing about why it failed, so its headline is {@link setupFailureCause}. A
+ * message {@link leadWithCause} already led is read from above the command.
  */
 export function errorHeadline(s: string): string {
-  const lines = s
+  const cause = SANDBOX_COMMAND_FAILED.test(s) ? setupFailureCause(s) : undefined
+  if (cause) return cause
+  const [head = s] = s.split(LED_COMMAND_FAILURE)
+  const lines = head
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
   const causes = lines.filter((l) => /^(fatal|error):/i.test(l))
   return causes.at(-1) ?? lines[0] ?? ''
+}
+
+/** How the sandcastle patch opens the message of a failed sandbox command. */
+const SANDBOX_COMMAND_FAILED = /^Command failed \(exit \S+\):/
+
+/** The same line, below the cause {@link leadWithCause} put above it. */
+const LED_COMMAND_FAILURE = /\n\s*\n(?=Command failed \(exit \S+\):)/
+
+/** A line of command output that says what went wrong. */
+const FAILURE_LINE =
+  /permission denied|no space left|read-only file system|fatal:|error[:\s]|ERR!|cannot |could not|not found/i
+
+/** Long enough for any real cause, short enough for a ticket row. */
+const MAX_CAUSE_CHARS = 300
+
+/**
+ * The line of a failed sandbox command's output that names the cause: the last
+ * one that reads like a failure, because tools report the root problem last and
+ * a long install can print a harmless warning first. Otherwise the last line of
+ * output, and undefined when the command said nothing at all.
+ */
+export function setupFailureCause(message: string): string | undefined {
+  const output = message
+    .split('\n')
+    .slice(1)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const cause = output.filter((l) => FAILURE_LINE.test(l)).at(-1) ?? output.at(-1)
+  return cause?.slice(0, MAX_CAUSE_CHARS)
+}
+
+/**
+ * Put a failed setup step's cause on the first line, which is the one the ticket
+ * row and the timeline show. The original follows, so nothing is lost. Without
+ * this the first line is `Command failed (exit 1): mkdir -p "$HOME/.claude/hooks"…`,
+ * which is only the start of the setup chain and was never what failed.
+ */
+export function leadWithCause(message: string): string {
+  if (!SANDBOX_COMMAND_FAILED.test(message)) return message
+  const cause = setupFailureCause(message)
+  return cause ? `${cause}\n\n${message}` : message
+}
+
+/**
+ * A setup step refused access to the cache volume, in plain words, or undefined
+ * for any other failure. The start-of-run check should have caught this, so the
+ * remedy is the Clear button rather than another burn. Only the command's
+ * output is read: its first line is the command, which names the mount anyway.
+ */
+export function burnCacheDeniedMessage(
+  message: string,
+  volume: string,
+  burnUser: Pick<BurnUser, 'uid' | 'gid'>,
+): string | undefined {
+  if (!SANDBOX_COMMAND_FAILED.test(message)) return undefined
+  const denied = message
+    .split('\n')
+    .slice(1)
+    .some((line) => line.includes(BURN_CACHE_MOUNT) && /permission denied/i.test(line))
+  if (!denied) return undefined
+  return `Burn cache volume ${volume} is not writable by burn user ${burnUserSpec(burnUser)}. Clear the burn cache in Settings → Workers, then burn again.\n\n${message}`
+}
+
+/**
+ * Sandcastle's refusal to start an image built for another UID, in runcastle's
+ * words, or undefined for any other failure. Its own text sends the reader to
+ * `sandcastle docker build-image`, a command nobody here has. The run-level
+ * check catches this first; this is what a race past it reads like.
+ */
+export function imageUidRefusalMessage(
+  message: string,
+  project: { id: string } | null,
+): string | undefined {
+  const match = /UID mismatch: image '([^']+)' was built with UID (\d+), but the expected UID is (\d+)/.exec(message)
+  if (!match) return undefined
+  const [, image = '', imageUid = '', burnUid = ''] = match
+  return imageUidMismatchMessage(
+    image,
+    Number(imageUid),
+    Number(burnUid),
+    isManagedImage(image, project),
+  )
 }
 
 /** The reason a review ticket is cancelled when the run landed nothing at all. */
@@ -3780,6 +3888,17 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
+  // Claude Code refuses to run unattended as root, on the host or in a container
+  // built for it (decision 9), so no ticket of this run would get past its first
+  // turn. A run that uses only Codex is not affected.
+  const usesClaudeCode =
+    deps.runtime === 'claude-code' ||
+    burnable.some((t) => !isReviewTicket(t) && deps.ticketRuntime?.(t) === 'claude-code')
+  if (usesClaudeCode && (deps.runningAsRoot ?? runningAsRoot())) {
+    ctx.emitEvent({ type: BURN_ROOT_REFUSED_EVENT, message: ROOT_BURN_REFUSED })
+    return { status: 'failed', summary: ROOT_BURN_REFUSED }
+  }
+
   // Prove the selected image carries everything this burn will reach for — the
   // agent CLI, the setup hook's commands and the verify commands the prompt
   // hands the agent — before sandcastle creates a ticket container. One `sh`
@@ -3838,12 +3957,24 @@ export async function burnRun(
           : missingToolchainMessage(missing, image),
       )
     }
+    const managed = isManagedImage(image, ctx.project)
+    // Sandcastle refuses an image built for another UID when the first container
+    // starts, in words that name a command nobody here has. Every ticket would
+    // hear the same, so the run stops first, with the real fix (decision 6). A
+    // group mismatch does not stop a burn: the container passes the right one.
+    if (deps.config.sandbox === 'docker') {
+      const burnUser = deps.burnUser ?? resolveBurnUser('docker')
+      const user = await deps.exec('docker', ['image', 'inspect', '--format', '{{.Config.User}}', image])
+      const imageUid = user.ok && user.code === 0 ? imageUidMismatch(user.stdout, burnUser) : undefined
+      if (imageUid !== undefined) {
+        return fail(imageUidMismatchMessage(image, imageUid, burnUser.uid, managed))
+      }
+    }
     // Strict equality detects drift, but drift is a warning for every image:
     // the burn runs on the CLI the image has, which almost always serves the
     // model. Burns never build — the fix is a human's one-click Rebuild, which
     // exists only for an image runcastle builds. A custom tag's Rebuild is
     // `refused`, so its message names who owns the image instead.
-    const managed = isManagedImage(image, ctx.project)
     const inImage = parseProbedVersions(probe.stdout)
     for (const runtime of versionsOf) {
       const hostVersion = hostVersions?.[runtime]
@@ -4323,7 +4454,14 @@ export function selectSandbox(
   env: Record<string, string> = {},
   kill: KillHandleOptions = {},
 ) {
-  const imageOpts = buildSandboxOptions(config, project, mounts, env, kill.containerName)
+  const imageOpts = buildSandboxOptions(
+    config,
+    project,
+    mounts,
+    env,
+    kill.containerName,
+    config.sandbox === 'docker' ? resolveBurnUser('docker') : undefined,
+  )
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -4356,12 +4494,20 @@ export function buildSandboxOptions(
   env: Record<string, string> = {},
   /** What to `--name` the container, so a stop has a handle to kill it by. */
   containerName?: string,
+  /**
+   * Who the container runs as. Docker passes the burn user, so sandcastle's own
+   * `process.getuid()`/`getgid()` default never decides it: `sg docker` would
+   * otherwise move the group. Podman passes none and keeps its own default.
+   */
+  burnUser?: Pick<BurnUser, 'uid' | 'gid'>,
 ): {
   imageName: string
   mounts?: readonly CacheMount[]
   cpus?: number
   env?: Record<string, string>
   containerName?: string
+  containerUid?: number
+  containerGid?: number
 } {
   return {
     imageName: resolveSandboxImage(config, project),
@@ -4369,6 +4515,7 @@ export function buildSandboxOptions(
     ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
     ...(Object.keys(env).length > 0 ? { env } : {}),
     ...(containerName !== undefined ? { containerName } : {}),
+    ...(burnUser ? { containerUid: burnUser.uid, containerGid: burnUser.gid } : {}),
   }
 }
 
@@ -5227,11 +5374,19 @@ async function burnTicket(
             },
           }
         }
-        if (missingBinary) {
+        // Facts about the image or the cache, which every other container in the
+        // run shares, so the run halts here rather than proving it ticket by ticket.
+        const sharedFailure =
+          missingBinary ??
+          imageUidRefusalMessage(msg, project) ??
+          burnCacheDeniedMessage(
+            msg,
+            burnCacheVolumeName(project.id),
+            resolveBurnUser(config.sandbox === 'podman' ? 'podman' : 'docker'),
+          )
+        if (sharedFailure) {
           if (salvaged.length > 0) preserveChain(tempBranch)
-          // The image every other container would be built from, so the run
-          // halts here rather than proving it ticket by ticket.
-          return { status: 'failed', error: missingBinary, runFatal: { runtime: model.runtime } }
+          return { status: 'failed', error: sharedFailure, runFatal: { runtime: model.runtime } }
         }
         const verdict = classifyTicketRunError(err, model.runtime, setupCommand)
         if (verdict === 'retryable' && attempt < maxAttempts) {
@@ -5277,7 +5432,8 @@ async function burnTicket(
             runFatal: { runtime: model.runtime },
           }
         }
-        return { status: 'failed', error: stranded ? `${msg} — ${stranded}` : msg }
+        const led = leadWithCause(msg)
+        return { status: 'failed', error: stranded ? `${led} — ${stranded}` : led }
       }
     }
 
@@ -5408,18 +5564,27 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
   let pushTargetReady: Promise<void> | undefined
   const ensureIsolatedPushTarget = () =>
     (pushTargetReady ??= allowPushToCheckedOutBranches(ctx.project.repoPath))
-  // Same shape for the cache volume: `volume create` plus the one-shot chown a
-  // fresh (root-owned) volume needs is run-constant, so every ticket awaits the
-  // same promise instead of re-issuing it per burn.
+  // Same shape for the cache volume: creating a fresh (root-owned) volume, or
+  // checking an existing one, is run-constant, so every ticket awaits the same
+  // promise instead of re-issuing it per burn.
   let cacheVolumeReady: Promise<void> | undefined
   const ensureCacheVolume = (): Promise<void> => {
     if (resolveBurnCacheMode(config) !== 'volume') return Promise.resolve()
     const engine: BurnCacheEngine = config.sandbox === 'podman' ? 'podman' : 'docker'
+    const burnUser = resolveBurnUser(engine)
     return (cacheVolumeReady ??= ensureBurnCacheVolume({
       engine,
       imageName: resolveSandboxImage(config, ctx.project),
       projectId: ctx.project.id,
       exec,
+      burnUser,
+      // The evidence for a volume left wrong, whichever route got it there.
+      onRepair: ({ owner, path }) =>
+        ctx.emitEvent({
+          type: BURN_CACHE_REPAIRED_EVENT,
+          message: `Replaced burn cache volume ${burnCacheVolumeName(ctx.project.id)}: burn user ${burnUserSpec(burnUser)} could not write to ${path}, owned by ${owner}. This burn starts cold.`,
+          data: { warning: true, owner, path, burnUser: burnUserSpec(burnUser) },
+        }),
     }))
   }
 

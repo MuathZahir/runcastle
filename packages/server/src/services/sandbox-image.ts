@@ -9,6 +9,7 @@ import {
   type RuncastleConfig,
 } from '@runcastle/core'
 import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
+import { type BurnUser, resolveBurnUser } from '../workflows/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
 import type { Runtime } from './setup'
 
@@ -97,11 +98,13 @@ export interface BuiltImage {
    * is absent, predates the labels, or was built with no host CLI to pin to.
    */
   versions: Record<AgentRuntime, string | null>
+  /** The image's `USER`, as written; null when absent or the image predates asking. */
+  user: string | null
 }
 
 const NO_VERSIONS: Record<AgentRuntime, string | null> = { 'claude-code': null, codex: null }
 
-/** Ask a local image whether it is there, which Dockerfile it was built from, and which CLIs it pins. */
+/** Ask a local image whether it is there, what it was built from, and who it runs as. */
 export async function inspectBuiltImage(
   exec: ExecFn,
   runtime: Runtime,
@@ -112,12 +115,14 @@ export async function inspectBuiltImage(
     'image',
     'inspect',
     '--format',
-    labels.map((label) => `{{index .Config.Labels "${label}"}}`).join('|'),
+    [...labels.map((label) => `{{index .Config.Labels "${label}"}}`), '{{.Config.User}}'].join('|'),
     tag,
   ])
-  if (!(out.ok && out.code === 0)) return { present: false, hash: null, versions: NO_VERSIONS }
+  if (!(out.ok && out.code === 0)) {
+    return { present: false, hash: null, versions: NO_VERSIONS, user: null }
+  }
   // Both runtimes print a placeholder rather than nothing for a missing key.
-  const [hash, ...versions] = out.stdout
+  const [hash, ...rest] = out.stdout
     .trim()
     .split('|')
     .map((value) => (value === '' || value === '<no value>' ? null : value))
@@ -125,9 +130,47 @@ export async function inspectBuiltImage(
     present: true,
     hash: hash ?? null,
     versions: Object.fromEntries(
-      AGENT_RUNTIMES.map((r, i) => [r, versions[i] ?? null]),
+      AGENT_RUNTIMES.map((r, i) => [r, rest[i] ?? null]),
     ) as Record<AgentRuntime, string | null>,
+    user: rest[AGENT_RUNTIMES.length] ?? null,
   }
+}
+
+/**
+ * The numeric ids in an image's `USER`, or null when it names a user or is
+ * empty: those are not judged, because nothing here can say who they resolve to
+ * (decision 6). Sandcastle's own start-time check skips the same cases.
+ */
+export function parseImageUser(user: string | null): { uid: number; gid?: number } | null {
+  const match = /^(\d+)(?::(\d+))?$/.exec(user?.trim() ?? '')
+  if (!match) return null
+  return { uid: Number(match[1]), ...(match[2] ? { gid: Number(match[2]) } : {}) }
+}
+
+/** The image's numeric UID when it is not the burn user's; undefined otherwise. */
+export function imageUidMismatch(
+  user: string | null,
+  burnUser: Pick<BurnUser, 'uid'>,
+): number | undefined {
+  const parsed = parseImageUser(user)
+  return parsed && parsed.uid !== burnUser.uid ? parsed.uid : undefined
+}
+
+/**
+ * The fix for an image built for another UID, in runcastle's words. A managed
+ * image has a Rebuild; a custom one does not, so that message sends the reader
+ * to wherever it was made (decision 6).
+ */
+export function imageUidMismatchMessage(
+  image: string,
+  imageUid: number,
+  burnUid: number,
+  managed: boolean,
+): string {
+  const found = `Image ${image} was built for UID ${imageUid}, but burns on this machine run as UID ${burnUid}.`
+  return managed
+    ? `${found} Rebuild it from Settings → Workers.`
+    : `${found} It is a custom image, so rebuild it wherever it was made, for UID ${burnUid}.`
 }
 
 /** One reason an image is not fresh; see {@link imageFreshness}. */
@@ -135,6 +178,7 @@ export type FreshnessReason =
   | { kind: 'missing' }
   | { kind: 'hash' }
   | { kind: 'cli'; runtime: AgentRuntime; image: string | null; host: string }
+  | { kind: 'user'; image: number; burn: number }
 
 export type ImageFreshness = { fresh: true } | { fresh: false; reasons: FreshnessReason[] }
 
@@ -143,6 +187,8 @@ export interface ImageFreshnessInput {
   /** The Dockerfile's hash, or null when it cannot be read. */
   expectedHash: string | null
   host: HostAgentVersions
+  /** Who burns run as. Omitted, the image's `USER` is not judged. */
+  burnUser?: Pick<BurnUser, 'uid'>
 }
 
 /**
@@ -156,9 +202,11 @@ export interface ImageFreshnessInput {
  * - Otherwise the image's version label must equal the host's, and a missing
  *   label counts as drift: runcastle cannot vouch for what an unlabelled image
  *   installed, the same precedent as an unlabelled hash.
+ * - A `USER` with another UID is stale: sandcastle refuses to start it. A GID
+ *   mismatch is not, because burns pass the right group themselves (decision 6).
  */
 export function imageFreshness(input: ImageFreshnessInput): ImageFreshness {
-  const { image, expectedHash, host } = input
+  const { image, expectedHash, host, burnUser } = input
   if (!image.present) return { fresh: false, reasons: [{ kind: 'missing' }] }
   const reasons: FreshnessReason[] = []
   if (expectedHash !== null && image.hash !== expectedHash) reasons.push({ kind: 'hash' })
@@ -166,6 +214,10 @@ export function imageFreshness(input: ImageFreshnessInput): ImageFreshness {
     const want = host[runtime]
     const have = image.versions[runtime]
     if (want !== null && have !== want) reasons.push({ kind: 'cli', runtime, image: have, host: want })
+  }
+  const imageUid = burnUser ? imageUidMismatch(image.user, burnUser) : undefined
+  if (burnUser && imageUid !== undefined) {
+    reasons.push({ kind: 'user', image: imageUid, burn: burnUser.uid })
   }
   return reasons.length === 0 ? { fresh: true } : { fresh: false, reasons }
 }
@@ -182,6 +234,8 @@ export function describeFreshnessReason(tag: string, reason: FreshnessReason): s
       const inImage = reason.image === null ? `no ${label} version recorded` : `${label} ${reason.image} in image`
       return `${tag}: ${inImage}, ${reason.host} on host`
     }
+    case 'user':
+      return `${tag} was built for UID ${reason.image}, but burns here run as UID ${reason.burn}`
   }
 }
 
@@ -392,25 +446,27 @@ export function imageBuildTarget(input: ImageBuildTargetInput): ImageBuildTarget
 }
 
 /**
- * The `AGENT_UID`/`AGENT_GID` build args the stock image needs, exactly as the
- * retired sandcastle shell-out passed them: the host's uid/gid, so bind-mounted
- * files share an owner with the in-container agent user (research #32). Absent
- * on Windows, where `process.getuid` does not exist, and deliberately absent for
- * podman, whose rootless mapping already lands the agent on the host user — the
- * sandcastle podman path passed none either.
+ * The `AGENT_UID`/`AGENT_GID` build args the stock image needs: the burn user,
+ * so bind-mounted files share an owner with the in-container agent user
+ * (research #32). Absent on Windows, which has no ids to pass and takes the
+ * Dockerfile's defaults, and deliberately absent for podman, whose rootless
+ * mapping already lands the agent on the host user.
  */
 export function stockBuildArgs(
   runtime: Runtime,
-  ids: { uid?: number | undefined; gid?: number | undefined } = {
-    uid: process.getuid?.(),
-    gid: process.getgid?.(),
-  },
+  ids: { uid?: number | undefined; gid?: number | undefined } = burnBuildIds(),
 ): Record<string, string> {
   if (runtime === 'podman') return {}
   return {
     ...(ids.uid === undefined ? {} : { AGENT_UID: String(ids.uid) }),
     ...(ids.gid === undefined ? {} : { AGENT_GID: String(ids.gid) }),
   }
+}
+
+/** The burn user's ids, or none on a host that has no ids of its own. */
+function burnBuildIds(): { uid?: number; gid?: number } {
+  const { uid, gid, gidSource } = resolveBurnUser('docker')
+  return gidSource === 'default' ? {} : { uid, gid }
 }
 
 /** The `.runcastle/sandbox/Dockerfile` a project actually ships, or null. */

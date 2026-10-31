@@ -36,6 +36,10 @@ export function createSystemExec(
   opts: {
     cwd?: string
     timeoutMs?: number
+    /** The environment commands run in; inherited when omitted. */
+    env?: NodeJS.ProcessEnv
+    /** Give commands no stdin, for one that would otherwise wait on the open pipe. */
+    noStdin?: boolean
     /** Injected in tests; production puts each command in a kill-on-close Job Object on win32. */
     containFn?: (pid: number) => Containment | null
   } = {},
@@ -58,7 +62,12 @@ export function createSystemExec(
         clearTimeout(timer)
         resolve(outcome)
       }
-      const child = spawn(file, spawnArgs, { cwd: opts.cwd, windowsHide: true })
+      const child = spawn(file, spawnArgs, {
+        cwd: opts.cwd,
+        windowsHide: true,
+        ...(opts.env ? { env: opts.env } : {}),
+        ...(opts.noStdin ? { stdio: ['ignore', 'pipe', 'pipe'] as const } : {}),
+      })
       // Straight after spawn, no await between (decision 4). The job is closed
       // however the command ends, so nothing a probe started outlives it.
       const containment = child.pid === undefined ? null : containFn(child.pid)
