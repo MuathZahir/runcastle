@@ -10,6 +10,8 @@ import { runcastleVersion } from '../version'
  *
  *   runcastle            boot the server + open the app on http://localhost:4512
  *   runcastle doctor     run the pre-boot gate/diagnostic (forwards --gate etc.)
+ *   runcastle move       move this machine's runcastle to another machine
+ *   runcastle move-in    the receiving end of a move
  *   runcastle --version  print the installed version
  *   runcastle --help     print usage
  *
@@ -17,7 +19,7 @@ import { runcastleVersion } from '../version'
  * done in `main`, guarded by `import.meta.main` so importing this file for the
  * test never spawns a server.
  */
-export type Command = 'serve' | 'doctor' | 'version' | 'help'
+export type Command = 'serve' | 'doctor' | 'move' | 'move-in' | 'version' | 'help'
 
 export interface ParsedCommand {
   command: Command
@@ -32,6 +34,8 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (first === '--help' || first === '-h' || first === 'help')
     return { command: 'help', args: rest }
   if (first === 'doctor') return { command: 'doctor', args: rest }
+  if (first === 'move') return { command: 'move', args: rest }
+  if (first === 'move-in') return { command: 'move-in', args: rest }
   if (first === 'serve') return { command: 'serve', args: rest }
   // Unknown token: show help rather than silently booting on a typo.
   return { command: 'help', args: argv }
@@ -42,6 +46,11 @@ const USAGE = `runcastle — burn tickets into shipped features with Claude Code
 Usage:
   runcastle            Boot the server and serve the app (http://localhost:4512)
   runcastle doctor     Check prerequisites (add --gate for the pre-boot gate)
+  runcastle move [user@host] [--dry-run] [--yes] [--replace]
+                 [--repos-dir <dir>] [--no-repo <project>] [--out <file>]
+                       Move runcastle to another machine; only reads this one
+  runcastle move-in <pack> [--replace] [--repos-dir <dir>]
+                       Bring a move in on this machine
   runcastle --version  Print the installed version
   runcastle --help     Show this help
 `
@@ -64,6 +73,14 @@ async function main(argv: string[]): Promise<number> {
     case 'doctor': {
       const { runCli } = await import('../doctor/cli')
       return runCli(args)
+    }
+    case 'move': {
+      const { runMoveCli } = await import('../move/cli')
+      return runMoveCli(args)
+    }
+    case 'move-in': {
+      const { runMoveInCli } = await import('../move/cli')
+      return runMoveInCli(args)
     }
     case 'serve': {
       const { startServer } = await import('../index')

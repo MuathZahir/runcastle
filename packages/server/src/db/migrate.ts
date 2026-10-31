@@ -26,6 +26,13 @@ const MIGRATIONS_DIR = resolveAsset(
 
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint'
 
+/** The migrations this build ships: a database that has applied others came from a newer runcastle. */
+export function bundledMigrations(dir: string = MIGRATIONS_DIR): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+}
+
 export function runMigrations(db: Db, dir: string = MIGRATIONS_DIR): void {
   db.run(
     sql.raw(
@@ -40,11 +47,7 @@ export function runMigrations(db: Db, dir: string = MIGRATIONS_DIR): void {
   const appliedRows = db.all(sql.raw('SELECT name FROM __migrations')) as { name: string }[]
   const applied = new Set(appliedRows.map((r) => r.name))
 
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort()
-
-  for (const file of files) {
+  for (const file of bundledMigrations(dir)) {
     if (applied.has(file)) continue
     const contents = readFileSync(join(dir, file), 'utf8')
     const statements = contents

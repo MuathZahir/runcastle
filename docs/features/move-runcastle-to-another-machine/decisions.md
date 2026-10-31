@@ -88,3 +88,8 @@ decision keeps its `Assumed` mark until the human confirms it.
 **Decision:** `--no-repo <project>` moves a project's features, chats and notes but not its repo, for example when a repo is too big or blocked. A project whose repo folder is already gone gets the same treatment automatically, with a report line. It appears on the new machine at its expected path, and it works once the repo is placed there by hand.
 **Why:** With eight projects, one blocker should not stop the move, and history is worth keeping even without the repo. Leaving a project out altogether would lose the data the move exists to carry.
 **Assumed.** Alternative: every project must be clean, or the whole move waits.
+
+## 16. The rehearsal runs this branch from a scratch folder on the VPS
+**Decision:** Supersedes the install route in decision 13. The rehearsal runs this branch from `~/move-rehearsal` on the VPS, with the destination's data dir and Claude dir pointed at scratch folders there. The installed runcastle and its service stay as they are. No release is needed, as decision 13 wanted.
+**Why:** `bun run install:local` refuses while the VPS service is running, and that service is up. Stopping it needs a `sudo` password. The script's only way past the refusal is a flag that swaps the installed files under a live server, and its own comment leaves that choice to the human. A scratch folder runs the same code without any of that.
+**Assumed.** Alternative: the human stops the service and the branch is installed globally, as the orchestrator asked.

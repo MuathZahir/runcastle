@@ -56,6 +56,7 @@ It runs entirely on your machine: a Bun server plus a browser UI at
 ```sh
 bun add -g runcastle       # install
 runcastle doctor           # check prerequisites
+runcastle move user@host   # move runcastle to another machine (add --dry-run to look first)
 runcastle                  # boot the server and open http://localhost:4512
 ```
 
