@@ -56,6 +56,27 @@ export type FileChange = z.infer<typeof FileChange>
 export const Attachment = z.object({ id: z.string(), src: z.string(), name: z.string() })
 export type Attachment = z.infer<typeof Attachment>
 
+/**
+ * What a file an agent showed turned out to be, decided once when it was shown
+ * (`threads/shown.ts`): a picture in the chat, read in the viewer as Markdown,
+ * HTML or plain text, handed to the browser, or downloaded.
+ */
+export const ShownAs = z.enum(['image', 'markdown', 'html', 'text', 'browser', 'download'])
+export type ShownAs = z.infer<typeof ShownAs>
+
+/** A file an agent showed: a copy kept with the thread, served at `src`. */
+export const ShownFile = z.object({
+  id: z.string(),
+  src: z.string(),
+  name: z.string(),
+  /** Where it was when shown; relative to the session's worktree when it sat inside it. */
+  path: z.string(),
+  size: z.number().int().nonnegative(),
+  as: ShownAs,
+  caption: z.string().optional(),
+})
+export type ShownFile = z.infer<typeof ShownFile>
+
 export const QuestionOption = z.object({ label: z.string(), description: z.string().optional() })
 export type QuestionOption = z.infer<typeof QuestionOption>
 
@@ -311,6 +332,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
    * superseded — kept in the log, left out of the fold.
    */
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
+  /** An agent showed the human a file (`show_file`). */
+  z.object({ type: z.literal('file_shown'), file: ShownFile }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -362,6 +385,8 @@ export type ThreadItem =
   /** The agent's words: the end of a turn, or a turn that was only words. */
   | { kind: 'agent'; id: string; text: string; model?: string }
   | { kind: 'changes'; id: string; files: FileChange[] }
+  /** The files a turn showed. It stays in view when the turn's work folds. */
+  | { kind: 'shown'; id: string; files: ShownFile[] }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -465,7 +490,7 @@ type Segment =
   | { kind: 'thought'; id: string; text: string; from: number; to: number }
   | { kind: 'tools'; id: string; calls: ToolCall[] }
   | { kind: 'subagent'; id: string; title: string; status: ToolStatus; calls: ToolCall[] }
-  /** An ask answered here: it shows nothing in the work, but words before it are no longer the turn's answer. */
+  /** An ask answered or a file shown here: it shows nothing in the work, but words before it are no longer the turn's answer. */
   | { kind: 'answered' }
 
 interface Turn {
@@ -526,6 +551,10 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
  *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
  * - A thread is `working` only inside a turn a `turn_started` opened: words
  *   logged after a turn's end (with no turn around them) fold as settled.
+ * - A shown file sits after the turn's work and ahead of its final words, from
+ *   the moment it is shown. Words before it are no longer the answer, as with
+ *   an answered ask. A turn's files are one `shown` item, and a steered message
+ *   starts another. Work that starts after a file still lands above it.
  * - A model divider appears only when the model changes after one was set; a
  *   compaction shows once however many times it is reported before the next
  *   prompt; a usage report without a cost keeps the last one, and a restarted
@@ -545,6 +574,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const shownCalls = new Set<string>()
   let workIndex = -1
   let answerIndex = -1
+  /** Where the open turn's `shown` item sits; -1 until it shows a file. */
+  let shownIndex = -1
   let ask: Ask | undefined
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
@@ -588,13 +619,15 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     // Work always precedes the answer; both keep their first-seen slots.
     if (workItem) {
       if (workIndex < 0) {
-        workIndex = answerIndex >= 0 ? answerIndex : items.length
+        workIndex = shownIndex >= 0 ? shownIndex : answerIndex >= 0 ? answerIndex : items.length
         items.splice(workIndex, 0, workItem)
         if (answerIndex >= 0) answerIndex++
+        if (shownIndex >= 0) shownIndex++
       } else items[workIndex] = workItem
     } else if (workIndex >= 0) {
       items.splice(workIndex, 1)
       if (answerIndex > workIndex) answerIndex--
+      if (shownIndex > workIndex) shownIndex--
       workIndex = -1
     }
     if (answerItem) {
@@ -613,6 +646,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       turn = { id: String(e.i), startedAt: e.at, segments: [], subagents: new Map(), calls: new Map(), model: view.model?.label, started: e.type === 'turn_started' }
       workIndex = -1
       answerIndex = -1
+      shownIndex = -1
       view.turnStartedAt = e.at
     }
     return turn
@@ -638,6 +672,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       items.push({ kind: 'error', id: `error:${e.i}`, message })
     }
     turn = null
+    shownIndex = -1
     ask = undefined
     view.turnStartedAt = undefined
   }
@@ -655,6 +690,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.segments = []
     workIndex = -1
     answerIndex = -1
+    shownIndex = -1
   }
 
   /** A call first seen: under its subagent, else in the turn's run of tool calls. */
@@ -848,6 +884,20 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'notice':
         items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text })
         break
+      case 'file_shown': {
+        const open = turn as Turn | null
+        if (open) {
+          open.segments.push({ kind: 'answered' })
+          render(true)
+        }
+        const group = shownIndex >= 0 ? items[shownIndex] : undefined
+        if (group?.kind === 'shown') group.files.push(e.file)
+        else {
+          items.push({ kind: 'shown', id: `shown:${e.i}`, files: [e.file] })
+          if (open) shownIndex = items.length - 1
+        }
+        break
+      }
       case 'title':
         view.title = e.title
         break

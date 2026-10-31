@@ -1,5 +1,3 @@
-import { createReadStream, statSync } from 'node:fs'
-import { Readable } from 'node:stream'
 import {
   NOTE_SCREENSHOT_ROUTE,
   NOTE_SCREENSHOT_UPLOAD_ROUTE,
@@ -30,6 +28,7 @@ import { getRuntimeCtx } from '../launcher/runtime'
 import { attachScreenshot, getNote } from '../services/test-notes'
 import { attachScreenshot as attachProjectNoteScreenshot, getNote as getProjectNote } from '../services/project-notes'
 import { getTicket, listByFeature } from '../services/tickets'
+import { fileSize, fileStream, serveFile } from './media'
 
 /**
  * Review artifacts over plain HTTP (improve-workflow seam 6): the walkthrough
@@ -113,16 +112,6 @@ function gateRunWire(ticketId: string, run: ReviewGateRun): ReviewGateRunWire {
   }
 }
 
-/** Size of a regular file, or `undefined` if it is missing / not a file. */
-function fileSize(path: string): number | undefined {
-  try {
-    const stat = statSync(path)
-    return stat.isFile() ? stat.size : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /**
  * What a service lookup returned, or `undefined` when the id matched no row.
  *
@@ -192,51 +181,6 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
   return c.json(artifacts)
 })
 
-interface ByteRange {
-  start: number
-  end: number
-}
-
-/**
- * The single byte range a `Range` header asks for, `'unsatisfiable'` when it
- * asks past the end of the file, or `undefined` when the whole file should be
- * served.
- *
- * `undefined` is deliberately the answer to anything this route does not handle
- * — another unit, a multi-range request, a header it cannot parse — because
- * RFC 9110 lets a server ignore a Range it does not understand and reply 200.
- * Serving the whole video is always correct; only scrubbing gets slower.
- */
-function parseRange(
-  header: string | undefined,
-  size: number,
-): ByteRange | 'unsatisfiable' | undefined {
-  const spec = header?.trim().match(/^bytes=(\d*)-(\d*)$/)
-  if (!spec) return undefined
-  const [, rawStart, rawEnd] = spec
-  // Nothing to hand back out of an empty file, whatever was asked for.
-  if (size === 0) return 'unsatisfiable'
-
-  if (rawStart === '') {
-    // Suffix form (`bytes=-500`): the LAST n bytes. `bytes=-0` asks for nothing.
-    const suffix = Number(rawEnd)
-    if (rawEnd === '' || suffix === 0) return 'unsatisfiable'
-    return { start: Math.max(0, size - suffix), end: size - 1 }
-  }
-
-  const start = Number(rawStart)
-  if (start >= size) return 'unsatisfiable'
-  // An open end, or one past the last byte, means "to the end of the file".
-  const end = rawEnd === '' ? size - 1 : Math.min(Number(rawEnd), size - 1)
-  if (end < start) return 'unsatisfiable'
-  return { start, end }
-}
-
-/** The slice `[start, end]` of a file, as a web stream Hono can hand back. */
-function fileStream(path: string, start: number, end: number): ReadableStream {
-  return Readable.toWeb(createReadStream(path, { start, end })) as unknown as ReadableStream
-}
-
 /**
  * GET /api/reviews/ticket/:ticketId/walkthrough.webm — the recording itself.
  *
@@ -255,26 +199,7 @@ reviews.get(REVIEW_WALKTHROUGH_ROUTE, async (c) => {
   const size = fileSize(path)
   if (size === undefined) return c.notFound()
 
-  const range = parseRange(c.req.header('range'), size)
-  if (range === 'unsatisfiable') {
-    return c.body(null, 416, {
-      'accept-ranges': 'bytes',
-      'content-range': `bytes */${size}`,
-    })
-  }
-
-  const { start, end } = range ?? { start: 0, end: size - 1 }
-  const headers: Record<string, string> = {
-    'content-type': 'video/webm',
-    'accept-ranges': 'bytes',
-    'content-length': String(end - start + 1),
-  }
-  if (range) headers['content-range'] = `bytes ${start}-${end}/${size}`
-  // A recording that was cut off before a single byte reached disk: there is
-  // nothing to stream, and `createReadStream` would be asked for [0, -1]. (Any
-  // Range against it came back unsatisfiable above, so this is the plain reply.)
-  if (size === 0) return c.body(null, 200, headers)
-  return c.body(fileStream(path, start, end), range ? 206 : 200, headers)
+  return serveFile(c, path, size, { 'content-type': 'video/webm' })
 })
 
 /**

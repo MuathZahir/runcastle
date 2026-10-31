@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconDoc, IconDownload, IconImage, IconX } from '../../../icons'
+import type { ShownFile } from '../../../lib/chat-thread'
 import { previewDocument } from '../../../lib/preview-frame'
 import { useTheme } from '../../../lib/theme'
 import { fmtBytes } from '../../../lib/format'
@@ -7,14 +8,13 @@ import { Dialog, DimLine, IconButton } from '../../../ui'
 import { ProseSkeleton } from '../../DocReader'
 import { Markdown } from '../../Markdown'
 import { PreviewFrame } from '../../PreviewPanel'
-import type { ShownFile } from './ShownFiles'
 
 /** How much of a text file the viewer reads (decision 5). */
 const TEXT_MAX = 1_000_000
 
 /** The URL that hands the file over as a download, under its own name. */
 export function downloadUrl(file: ShownFile): string {
-  return `${file.src}?download=1`
+  return `${file.src}?download=${encodeURIComponent(file.name)}`
 }
 
 type TextRead = { state: 'loading' } | { state: 'failed' } | { state: 'read'; text: string }

@@ -74,14 +74,14 @@ routes, validating both names as the image route does. It computes the path from
 the two validated names and nothing else. Headers:
 
 - `x-content-type-options: nosniff` on every reply.
-- Inline types: the image types, `application/pdf`, video and audio.
-- `text/plain; charset=utf-8` for `markdown`, `html` and `text`. It never replies
-  `text/html`.
+- Inline: images, PDF, video and audio, under their own types.
+- Everything else, Markdown, HTML and text included, is
+  `application/octet-stream` with `content-disposition: attachment`, so it never
+  replies `text/html`. The viewer reads those bytes with `fetch`, which ignores
+  both headers.
 - SVG also carries `content-security-policy: sandbox`, so it runs nothing if opened
   directly. PDF must not carry it: a sandboxed document breaks Chrome's PDF viewer.
-- `?download=1`, and every other type, replies `content-disposition: attachment`
-  with the file's own name. The name lives in the log, so the viewer passes it, or
-  the route looks it up; the implementer picks the simpler.
+- `?download=<name>` saves any file under its own name.
 - Byte ranges, for video and for the viewer's first 1 MB of a long text file. The
   range and streaming helpers in the review media routes move somewhere both share.
 

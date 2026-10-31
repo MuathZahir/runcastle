@@ -1,34 +1,10 @@
 import { useState } from 'react'
 import { IconChevronDown, IconChevronRight, IconDoc, IconDownload, IconExternalLink, IconImage } from '../../../icons'
+import type { ShownFile } from '../../../lib/chat-thread'
 import { fmtBytes } from '../../../lib/format'
 import { Button, ListRow, cx } from '../../../ui'
 import { FileViewer, downloadUrl } from './FileViewer'
 import { WELL } from './surfaces'
-
-/**
- * What the server decided a file is when it was shown (agents-show-files-in-chat
- * decision 6): inline, read in the viewer, handed to the browser, or downloaded.
- */
-export type ShownAs = 'image' | 'markdown' | 'html' | 'text' | 'browser' | 'download'
-
-/** One file an agent showed: a copy in the thread's folder, named by `src`. */
-export interface ShownFile {
-  id: string
-  src: string
-  name: string
-  /** Where it was when shown, for the viewer's header. */
-  path: string
-  size: number
-  as: ShownAs
-  caption?: string
-}
-
-/** Everything one turn showed, as the thread lists it. */
-export interface ShownItem {
-  kind: 'shown'
-  id: string
-  files: ShownFile[]
-}
 
 /** How many files a group shows before "Show N more". */
 const GROUP_MAX = 4

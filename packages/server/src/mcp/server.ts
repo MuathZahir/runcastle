@@ -41,6 +41,7 @@ import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
 import { RUN_HEADER } from '../launcher/artifacts'
+import { showFile } from '../threads/shown'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
@@ -2523,6 +2524,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
+  // Every session with a thread to show it in; a run agent has none.
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -3688,6 +3691,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolShowPanel(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_file')) {
+    server.registerTool(
+      'show_file',
+      {
+        title: 'Show the human a file',
+        description:
+          'Show one file in this chat. A picture appears inline; any other file appears as a card ' +
+          'the human clicks to open. It appears at once and stays when your work folds, but your ' +
+          'words before this call fold away: say what the file shows in `caption`, and put what ' +
+          'you need from the human in your words after it. The chat keeps a copy, so it still ' +
+          'works after the worktree is gone. It waits for nobody. One file per call, up to 100 MB, ' +
+          'from this project, its worktrees, review evidence or the temp folder. Make Markdown and ' +
+          'HTML self-contained: files they link to beside them are not copied.',
+        inputSchema: {
+          path: z.string().min(1).describe('The file. A relative path starts at your working folder.'),
+          caption: z.string().max(200).optional().describe('One line saying what the file shows.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(showFile(rs.ctx, rs.session, args))
       },
     )
   }

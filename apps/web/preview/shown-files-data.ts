@@ -1,5 +1,4 @@
-import type { ThreadItem } from '../src/lib/chat-thread'
-import type { ShownFile, ShownItem } from '../src/components/chat/thread/ShownFiles'
+import type { ShownFile, ThreadItem } from '../src/lib/chat-thread'
 
 /** Sample data for shown files: every file below is made up. */
 
@@ -178,7 +177,7 @@ const WORK: ThreadItem = {
 
 const answer = (text: string): ThreadItem => ({ kind: 'agent', id: 'a1', text, model: 'Opus 5.5' })
 
-const shown = (files: ShownFile[]): ShownItem => ({ kind: 'shown', id: 'shown1', files })
+const shown = (files: ShownFile[]): ThreadItem => ({ kind: 'shown', id: 'shown1', files })
 
 /** The states this preview shows, one per address. */
 export const STATES = {
@@ -217,6 +216,6 @@ export const STATES = {
   'viewer-markdown': { label: 'Viewer: Markdown', items: [USER, WORK, shown([MARKDOWN]), answer('Here is the report.')], open: 'export-report.md' },
   'viewer-text': { label: 'Viewer: text', items: [USER, WORK, shown([TEXT]), answer('Here is the log.')], open: 'export-tests.log' },
   'viewer-html': { label: 'Viewer: HTML', items: [USER, WORK, shown([HTML]), answer('Here is the size report.')], open: 'size-report.html' },
-} satisfies Record<string, { label: string; items: (ThreadItem | ShownItem)[]; open?: string }>
+} satisfies Record<string, { label: string; items: ThreadItem[]; open?: string }>
 
 export type StateKey = keyof typeof STATES
