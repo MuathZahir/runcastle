@@ -35,17 +35,17 @@ Three traps in the existing burner, all reachable from this step:
 
 - `cachedExec` memoises every engine command by its args, so a probe or inspect made before the build would answer the same after it. Inspect through the uncached `exec`, and make the toolchain probe only after the build.
 - `ctx.project` is a snapshot. After adopting a project image, `resolveSandboxImage(config, ctx.project)` still answers with the old tag, in the burner and in the cache volume step. The run re-reads the project row and every later step reads that.
-- A column runcastle wrote whose Dockerfile has since gone resolves to a tag that may not exist, and `imageBuildTarget` answers stock. The burn releases that column (`releaseProjectImage`) as the doctor's heal does, so the run resolves to the stock image it just checked.
+- A column runcastle wrote whose Dockerfile has since gone resolves to a tag that may not exist, and `imageBuildTarget` answers stock or refuses it outright. The burn releases that column (`releaseProjectImage`) first, on the doctor's own terms, so the run resolves to the stock image it then checks.
 
 **Events and summary.** New event types `burn.image_build_started`, `burn.image_built` and `burn.image_build_failed` are emitted through `ctx.emitEvent`. Started names the tag, the Dockerfile and the log path. `resolveHostAgentVersions` problems become a warning-flagged event, because no toast exists here. Failed carries the output tail. The run's summary leads with the cause and names the log file, which `composeRoundWake` already passes to the lead. An aborted signal throws, so `executeRun` records a cancelled run. The log goes under `logsDir()` as `image-build-<runId>.log`.
 
-**The Work view.** `roundWords` in `TicketsView` takes one more input: a build is running when the running run has a `burn.image_build_started` event with no `burn.image_built` after it. Then it returns "Building the sandbox image · first time only, a few minutes". No layout changes, and no design pages.
+**The Work view.** `imageBuildWords` reads the event log: a build is running when the running run has a `burn.image_build_started` event with no `burn.image_built` or `burn.image_build_failed` after it. `TicketsView` shows those words in place of `roundWords`. Then the header reads "Building the sandbox image · first time only, a few minutes" for a first build, and "Rebuilding the sandbox image · a few minutes" for a rebuild, where "first time only" would be untrue. No layout changes, and no design pages.
 
 **The command.** `parseCommand` gains `build-image`, dispatching to a lazy import as `doctor` does. It calls `prepareImageBuild` with no project and `runImageBuild` with `onLine` printing to stdout, needs no database, and refuses as root using the same message as the doctor's root row. `plan.kind === 'refused'` prints the reason and exits 1.
 
 **Doctor and Settings.** The image row's `missing` and `not-built-yet` results drop to `info` severity with the new words, and their fix names both the first burn and the command. `imageReady` already reads `info` as ready, so the checklist stops counting the row with no web change. `ImageBuildAction` keeps offering the button. The `PREREQUISITE` reason text and the settings help line are updated where they say the image needs building by hand.
 
-**Words.** The README's AFK sandbox section, the "Burns never build" comments, the burner's Rebuild messages (adding `runcastle build-image` where it applies), and the developer probe's fix line are corrected. `docs/adr/0017-burns-build-a-missing-image.md` records the reversal and what still stands.
+**Words.** Release notes are generated from commits, so what a release must call out, the regression in decision 9 included, sits in the release runbook until it is pasted in. The README's AFK sandbox section, the "Burns never build" comments, the burner's Rebuild messages (adding `runcastle build-image` where it applies), and the developer probe's fix line are corrected. `docs/adr/0017-burns-build-a-missing-image.md` records the reversal and what still stands.
 
 ## Seams
 
@@ -55,7 +55,7 @@ Three traps in the existing burner, all reachable from this step:
 - **`withImageBuildSlot` (new).** Observes ordering and refusal with no engine.
 - **`runDoctor` image row (existing).** Observes severity and text for missing and not-built-yet.
 - **`parseCommand` and the CLI's `runBuildImage(argv, log)` (existing and new).** Observes dispatch, refusal, root refusal and exit codes.
-- **`roundWords` (existing, exported for test).** Observes the header's words from an event list.
+- **`imageBuildWords` (new).** Observes the header's words from an event list.
 - **A real engine (by hand, decision 10).** The only proof the build, labels and adoption work end to end.
 
 ## Out of scope
