@@ -216,7 +216,7 @@ function RequestForm({ form, onChange }: { form: CallForm; onChange: (form: Call
 }
 
 /** What the drive answered: status by class, duration, headers folded, body pretty when JSON. */
-function CallResponse({ result }: { result: DriveCallResult }) {
+export function CallResponse({ result }: { result: DriveCallResult }) {
   if (!result.ok) {
     return (
       <p className="m-0 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">

@@ -60,7 +60,6 @@ export const PUBLISHED_FILES = [
   'index.js',
   'bin',
   'hook-client.ts',
-  'pty-host.cjs',
   'drizzle',
   'skills',
   'web',

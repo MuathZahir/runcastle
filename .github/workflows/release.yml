@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24' # ships a recent npm; also the PTY sidecar runtime
+          node-version: '24' # ships a recent npm
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false # never cache in a release build
 

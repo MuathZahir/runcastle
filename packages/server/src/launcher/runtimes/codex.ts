@@ -14,7 +14,7 @@ import type { RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
 import { RUNTIME_SPECS } from '../../doctor/doctor'
 import { codexAuthFile } from '../../services/codex-auth'
-import { resolveTool } from '../../util/resolve-executable'
+import { cliNeedsMissingNode, resolveTool } from '../../util/resolve-executable'
 import { hookClientPath, renderSessionPrompt, serverUrlFor } from '../artifacts'
 import { guardsEdits } from '../edit-guard'
 import { PRE_TOOL_MATCHER } from '../install-guard'
@@ -527,7 +527,8 @@ export const codexRuntime: AgentRuntimeAdapter = {
    * all, which fails inside a terminal that closes as fast as it opened.
    */
   checkReady(): RuntimeReadiness {
-    if (this.resolveBinary() === CODEX_BIN) {
+    const resolved = this.resolveBinary()
+    if (resolved === CODEX_BIN) {
       return {
         ok: false,
         reason:
@@ -536,6 +537,14 @@ export const codexRuntime: AgentRuntimeAdapter = {
         doctorHint:
           'Run `runcastle doctor` and fix its "Codex CLI" probe, then restart runcastle from a ' +
           'terminal where `codex --version` works.',
+      }
+    }
+    if (cliNeedsMissingNode(resolved)) {
+      return {
+        ok: false,
+        reason: `the Codex CLI at ${resolved} is a Node script, and this machine has no Node`,
+        doctorHint:
+          'Run `runcastle doctor` for its standalone installer, which needs no Node, then restart runcastle.',
       }
     }
     if (!existsSync(realCodexAuthFile())) {

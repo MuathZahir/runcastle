@@ -65,6 +65,8 @@ export interface WorkflowCtx {
    * Never throws.
    */
   reuseGates?(ownerId: string, sha: string): Promise<ReviewGateRun | undefined>
+  /** Put a finished review pass's package in the feature's chat. Never throws. */
+  postReviewPackage?(ticketId: string): void
   /**
    * Mirror a fix ticket's lifecycle onto the review finding it was minted from
    * (`ticket.originFindingId`), so found/fixed/open is counted from findings

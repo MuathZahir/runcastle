@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cliNeedsMissingNode,
   explainSpawnFailure,
   resolveExecutable,
   resolveTool,
@@ -118,14 +119,14 @@ describe('resolveTool', () => {
     expect(resolved).toBe('C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd')
   })
 
-  it('honors RUNCASTLE_NODE_BIN for node', () => {
-    const resolved = resolveTool('node', {
-      env: { RUNCASTLE_NODE_BIN: '/opt/node/bin/node' },
+  it('honors RUNCASTLE_CODEX_BIN for codex', () => {
+    const resolved = resolveTool('codex', {
+      env: { RUNCASTLE_CODEX_BIN: '/opt/codex/bin/codex' },
       platform: 'linux',
       pathEnv: '/usr/bin',
-      exists: (p) => p === '/opt/node/bin/node',
+      exists: (p) => p === '/opt/codex/bin/codex',
     })
-    expect(resolved).toBe('/opt/node/bin/node')
+    expect(resolved).toBe('/opt/codex/bin/codex')
   })
 
   it('scans PATH normally for a tool with no override env var', () => {
@@ -270,12 +271,12 @@ describe('spawnTargetFor', () => {
 })
 
 /**
- * node-pty's PATH-search failure is `File not found: ` + the *resolved* path,
- * which is empty exactly when the search failed — a terminal that dies showing
- * nothing but a colon. Every spawn site routes its failure through here instead.
+ * A failed PATH search can report `File not found: ` + the *resolved* path, which
+ * is empty exactly when the search failed — a terminal that dies showing nothing
+ * but a colon. Every spawn site routes its failure through here instead.
  */
 describe('explainSpawnFailure', () => {
-  it('names the binary node-pty could not report', () => {
+  it('names the binary a bare spawn error could not report', () => {
     const msg = explainSpawnFailure('claude', 'File not found: ')
     expect(msg).toContain('claude')
     expect(msg).toContain('PATH')
@@ -309,5 +310,39 @@ describe('explainSpawnFailure', () => {
     expect(msg).toContain('C:\\bin\\claude.exe')
     expect(msg).toContain('Access denied')
     expect(msg).not.toContain('PATH')
+  })
+})
+
+describe('cliNeedsMissingNode', () => {
+  const noNode = { nodeInstalled: () => false }
+  const NPM_SHIM = '@"%dp0%\\node.exe" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*'
+  const SHEBANG = '#!/usr/bin/env node\nconsole.log(1)\n'
+
+  it('spots an npm shim and a node shebang when there is no Node', () => {
+    expect(cliNeedsMissingNode('C:\\npm\\codex.cmd', { ...noNode, head: () => NPM_SHIM })).toBe(true)
+    expect(cliNeedsMissingNode('/usr/local/bin/codex', { ...noNode, head: () => SHEBANG })).toBe(true)
+  })
+
+  it('never reads a native binary, or a script that does not run on Node', () => {
+    const head = (): string => {
+      throw new Error('read a file it had no need to')
+    }
+    expect(cliNeedsMissingNode('C:\\bin\\claude.exe', { ...noNode, head })).toBe(false)
+    expect(cliNeedsMissingNode('claude', { ...noNode, head })).toBe(false)
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => '#!/bin/sh\nexec foo\n' })).toBe(false)
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => '\x7fELF node' })).toBe(false)
+  })
+
+  it('is not fooled by a path that merely mentions node_modules', () => {
+    const shim = '"%dp0%\\bun.exe" "%dp0%\\node_modules\\x\\cli.js" %*'
+    expect(cliNeedsMissingNode('C:\\npm\\x.cmd', { ...noNode, head: () => shim })).toBe(false)
+  })
+
+  it('leaves a file it cannot read to the spawn', () => {
+    expect(cliNeedsMissingNode('/bin/claude', { ...noNode, head: () => null })).toBe(false)
+  })
+
+  it('is fine with a Node script when Node is there', () => {
+    expect(cliNeedsMissingNode('/usr/local/bin/codex', { nodeInstalled: () => true, head: () => SHEBANG })).toBe(false)
   })
 })

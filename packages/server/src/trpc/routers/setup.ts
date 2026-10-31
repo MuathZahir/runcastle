@@ -30,6 +30,7 @@ import {
   runtimeInstallGuide,
   saveAfkCredential,
   seedModelDefaults,
+  ctrlCEndsTerminal,
   terminalSpec,
   writeGitIdentity,
 } from '../../services/setup'
@@ -203,7 +204,7 @@ export const setupRouter = router({
           sessionId,
           cmd: file,
           args,
-          opts: { cwd: spec.cwd, env: process.env },
+          opts: { cwd: spec.cwd, env: process.env, ctrlCEndsTree: ctrlCEndsTerminal(input.kind) },
           ...(onExit ? { onExit } : {}),
         })
       } catch (error) {

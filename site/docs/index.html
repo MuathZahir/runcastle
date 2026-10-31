@@ -157,15 +157,6 @@
                   identity, which the first-run wizard collects.
                 </td>
               </tr>
-              <tr>
-                <th scope="row">
-                  <a href="https://nodejs.org" rel="noopener" target="_blank">Node.js</a> 22+
-                </th>
-                <td>
-                  <strong>Windows only.</strong> The embedded terminal uses a
-                  <code>node</code>-hosted PTY sidecar. Not needed on macOS.
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -261,9 +252,9 @@
             install.</strong> Add <code>%USERPROFILE%\.bun\bin</code> to your PATH.
           </li>
           <li>
-            <strong>The embedded terminal will not start, or instantly exits.</strong> node-pty's
-            native binary is missing, so re-run <code>bun install</code>. On Windows it is almost
-            always a missing system <code>node</code>.
+            <strong>The embedded terminal will not start, or instantly exits.</strong> The
+            terminal shows why when its program could not start. If a new Bun broke terminals,
+            reinstall the last one that worked.
           </li>
           <li>
             <strong>Unattended burns fail with an auth error.</strong> Make sure

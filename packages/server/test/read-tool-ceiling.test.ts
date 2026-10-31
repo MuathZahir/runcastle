@@ -147,6 +147,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'annotatedModels',
         'burnConcurrency',
         'reviewEvidence',
+        'reviewShots',
         'tickets',
         ...(backlogged ? ['ticketsNotInlined'] : []),
         'ticketsNote',

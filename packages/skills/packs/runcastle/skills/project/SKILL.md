@@ -215,7 +215,7 @@ This line is yours to hold. **No limits beyond the human's buttons and holding**
 
 **"You decide" means autonomous, merge included.**
 
-**Let them see it.** When you present a feature, `read_feature_chat({ slug })` lists in `shown` the files its chat showed; show them again with `show_file`, each with its caption, above your question, so the human can judge by looking, on a phone too. This works after a merge as well. If a feature with a screen showed nothing, ask its lead for screenshots with `send_to_feature`. If there is nothing to look at, say so. Showing a file stops nothing: a cut you carry through keeps moving, with the files in your report.
+**Let them see it.** When you present a feature, call `show_review_package({ slug })` above your question, so the human can judge by looking, on a phone too: it puts the feature's Review Package in your chat, and returns `commitsSince`, which you mention when it is above zero. This works after a merge as well. With no review, `read_feature_chat({ slug })` lists in `shown` the files its chat showed; show them again with `show_file`, each with its caption. If a feature with a screen has neither, ask its lead for a review round with `send_to_feature`. If there is nothing to look at, say so. Showing a file stops nothing: a cut you carry through keeps moving, with the files in your report.
 
 **Always offer all three shapes**, even for a cut of one feature. Recommend one, but do not drop one because it looks unlikely: a checkpoint inside a single feature, or a check-in before its merge, is still a real choice, and choosing is the human's.
 

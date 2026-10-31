@@ -1065,6 +1065,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // Showing a file only copies it into the thread: a prompt would interrupt the
   // agent for something that asks nothing of the human.
   'mcp__runcastle__show_file',
+  'mcp__runcastle__show_review_package',
 ]
 
 /**
