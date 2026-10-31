@@ -47,7 +47,7 @@ Three facts corrected from the brief while planning:
 **Challenged:** stock-only left a headless dead end for an edited project Dockerfile, the problem the brief opens with. Taken as decision 12 rather than as a flag. `sudo runcastle build-image`, or an install script running as root, would also have baked in UID 0. Taken: the root refusal.
 
 ## 6. A missing managed image no longer counts as a problem
-**Decision:** The doctor's image row reports a missing stock image or an unbuilt project Dockerfile at `info` severity: "not built yet — the first burn builds it, which takes a few minutes". Settings → Workers stops counting it as something in the way and keeps the Build image button for anyone who would rather build ahead. `runcastle doctor` no longer fails on it. A custom image that is missing stays an `error`.
+**Decision:** The doctor's image row reports a missing stock image or an unbuilt project Dockerfile at `info` severity: "not built yet — the first round builds it, which takes a few minutes". Settings → Workers stops counting it as something in the way and keeps the Build image button for anyone who would rather build ahead. `runcastle doctor` no longer fails on it. A custom image that is missing stays an `error`.
 **Why:** The checklist's rule is that it counts "everything a burn is actually blocked on", and a burn is no longer blocked. Leaving it red would send people to a click this feature exists to remove, and would fail the one-line install's doctor check on a healthy new machine.
 **Assumed.** Alternative: keep it an `error` so the human knows a slow first burn is coming. The row's words say so without failing the report.
 

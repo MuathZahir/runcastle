@@ -213,7 +213,12 @@ describe('runDoctor — canned environments', () => {
     const table = { ...ALL_HEALTHY }
     delete table[inspectKey('docker', 'sandcastle:runcastle')]
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
-    expect(byId(report.results, 'sandcastle-image').status).toBe('missing')
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('missing')
+    // The first burn builds it, so nothing is in the way and the report stays healthy.
+    expect(image.severity).toBe('info')
+    expect(image.detail).toContain('the first round builds it')
+    expect(image.fix).toContain('runcastle build-image')
   })
 
   it('reports a sandcastle image as stale when its hash label is not the Dockerfile’s', async () => {
@@ -807,8 +812,12 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project({ stored: null }),
     })
     expect(row.status).toBe('not-built-yet')
-    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+    expect(row.detail).toBe(
+      '.runcastle/sandbox/Dockerfile is not built yet — the first round builds it, which takes a few minutes',
+    )
     expect(row.fix).toContain('Build image')
+    // Nothing is in the way: the first burn builds it.
+    expect(row.severity).toBe('info')
   })
 
   // An image nothing resolves to is not this project's image, however current
@@ -821,7 +830,8 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project({ stored: null }),
     })
     expect(row.status).toBe('not-built-yet')
-    expect(row.detail).toBe(`${TAG} is built but is not this project's image yet`)
+    expect(row.detail).toBe(`${TAG} is built but is not this project's image yet — the next round adopts it`)
+    expect(row.severity).toBe('info')
   })
 
   it('clears a machine-written image whose Dockerfile has been deleted, and falls back', async () => {
@@ -900,7 +910,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project({ stored: '  ', overwritable: false }),
     })
     expect(row.status).toBe('not-built-yet')
-    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+    expect(row.detail).toContain('.runcastle/sandbox/Dockerfile is not built yet')
   })
 
   it('puts the project column above the env and config layers, as the resolver does', async () => {

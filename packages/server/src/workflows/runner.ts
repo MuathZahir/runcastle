@@ -5,6 +5,8 @@ import type { AppCtx } from '../db/types'
 import { events, runs } from '../db/schema'
 import { NotFoundError } from '../errors'
 import { parkTalkWorktreeForRun, releaseTalkWorktreeAfterRun } from '../services/chat-branch'
+import { isOverwritable } from '../services/findings'
+import { adoptProjectImage, releaseProjectImage } from '../services/project-image'
 import { emit } from '../services/events'
 import { headSha } from '../services/git'
 import { composeRoundWake, deliverToLead } from '../services/lead-delivery'
@@ -206,6 +208,17 @@ export async function startRun(
     input: opts.input,
     modelOverride: opts.modelOverride,
     signal: controller.signal,
+    projectImage: {
+      overwritable: () => isOverwritable(ctx, project.id, 'sandboxImage'),
+      adopt: (tag) => {
+        adoptProjectImage(ctx, project.id, tag)
+        wctx.project = projectForFeature(ctx, feature)
+      },
+      release: () => {
+        releaseProjectImage(ctx, project.id)
+        wctx.project = projectForFeature(ctx, feature)
+      },
+    },
   }
 
   const done = executeRun(

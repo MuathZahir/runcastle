@@ -1,3 +1,10 @@
+import {
+  IMAGE_BUILD_FAILED_EVENT,
+  IMAGE_BUILD_STARTED_EVENT,
+  IMAGE_BUILT_EVENT,
+  type ImageBuildNeed,
+} from '@runcastle/core'
+
 export interface BurnInterruption {
   runId: string
   landedTickets: number
@@ -21,6 +28,30 @@ export function burnInterruption(
     typeof pendingTickets !== 'number'
   ) return undefined
   return { runId: event.runId, landedTickets, pendingTickets }
+}
+
+/**
+ * The words for a run that is building its image, or undefined when it is not: a
+ * started event with nothing after it that ends the build. "First time only" is
+ * true of an image that was never there, not of a rebuild.
+ */
+export function imageBuildWords(
+  events: readonly { type: string; runId?: string | null; data?: unknown }[],
+  runId: string | undefined,
+): string | undefined {
+  if (!runId) return undefined
+  const last = [...events]
+    .reverse()
+    .find(
+      (e) =>
+        e.runId === runId &&
+        (e.type === IMAGE_BUILD_STARTED_EVENT || e.type === IMAGE_BUILT_EVENT || e.type === IMAGE_BUILD_FAILED_EVENT),
+    )
+  if (last?.type !== IMAGE_BUILD_STARTED_EVENT) return undefined
+  const { need } = (last.data ?? {}) as { need?: ImageBuildNeed }
+  return need === 'missing' || need === 'unadopted'
+    ? 'Building the sandbox image · first time only, a few minutes'
+    : 'Rebuilding the sandbox image · a few minutes'
 }
 
 export interface LaneTicketFigure {

@@ -1,7 +1,5 @@
-import { join } from 'node:path'
 import {
   AgentRuntime,
-  DEFAULT_SANDBOX_IMAGE,
   configuredRuntimes,
   newId,
   resolveSandboxImage,
@@ -21,21 +19,14 @@ import { isOverwritable } from '../../services/findings'
 import { rosterConfig } from '../../services/model-discovery'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
 import { allProjects, requireProjectById } from '../../services/repo'
-import { resolveHostAgentVersions } from '../../services/agent-cli-versions'
+import { prepareImageBuild, tryImageBuildSlot } from '../../services/image-build'
 import {
-  hashDockerfile,
   imageBuildTarget,
   imageBuildTerminal,
-  imageFreshness,
-  inspectBuiltImage,
-  planImageBuild,
-  stockBuildArgs,
   type ImageBuildTerminal,
 } from '../../services/sandbox-image'
 import {
   fileAfkTokenIo,
-  prepareSandboxBuildContext,
-  resolveRuntime,
   runtimeInstallGuide,
   saveAfkCredential,
   seedModelDefaults,
@@ -43,7 +34,6 @@ import {
   writeGitIdentity,
 } from '../../services/setup'
 import { resolveSpawnTarget } from '../../util/resolve-executable'
-import { resolveBurnUser } from '../../workflows/burn-user'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -208,13 +198,19 @@ export const setupRouter = router({
       // `spawn('docker'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
       // ConPTY can't exec any shim directly, so each goes via its interpreter.
       const { file, args } = resolveSpawnTarget(spec.cmd, spec.args)
-      ptyRegistry().create({
-        sessionId,
-        cmd: file,
-        args,
-        opts: { cwd: spec.cwd, env: process.env },
-        ...(onExit ? { onExit } : {}),
-      })
+      try {
+        ptyRegistry().create({
+          sessionId,
+          cmd: file,
+          args,
+          opts: { cwd: spec.cwd, env: process.env },
+          ...(onExit ? { onExit } : {}),
+        })
+      } catch (error) {
+        // Nothing started, so nothing will exit: free what the build was holding.
+        onExit?.({ exitCode: 1 })
+        throw error
+      }
       return { sessionId, notices }
     }),
 })
@@ -236,14 +232,16 @@ function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
 }
 
 /**
- * The image build behind the AFK card's Build button: refresh the stock context,
- * ask the built stock image whether it still matches its Dockerfile and the
- * host's agent CLI versions (`imageFreshness`, the verdict the doctor shares), and plan
- * the build from the project's own state — stock alone, the two-step chain when
- * the repo carries `.runcastle/sandbox/Dockerfile`, or nothing at all when the
- * image is a tag runcastle does not manage (decision 5 — the button must never
- * build the stock template under someone's custom tag, and must not build a
- * project image a hand-typed setting would keep every burn away from).
+ * The image build behind the AFK card's Build button, planned by
+ * `prepareImageBuild` — stock alone, the two-step chain when the repo carries
+ * `.runcastle/sandbox/Dockerfile`, or nothing at all when the image is a tag
+ * runcastle does not manage (decision 5 — the button must never build the stock
+ * template under someone's custom tag, and must not build a project image a
+ * hand-typed setting would keep every burn away from).
+ *
+ * It holds the server's one build slot for the life of the terminal, so a burn
+ * that needs an image waits for this build and the button refuses while a burn
+ * is building.
  *
  * A chain that exits 0 adopts its project image as the project's `sandboxImage`,
  * on the PTY's own exit: the build IS the event that makes the tag real, and
@@ -255,49 +253,42 @@ async function buildImageTerminal(
   projectId: string | undefined,
 ): Promise<{
   spec: ImageBuildTerminal
-  onExit?: (info: { exitCode: number }) => void
+  onExit: (info: { exitCode: number }) => void
   notices: string[]
 }> {
-  const exec = createSystemExec()
-  const runtime = await resolveRuntime(exec, ctx.config.sandbox === 'podman' ? 'podman' : 'docker')
-  const project = projectId ? requireProjectById(ctx, projectId) : null
-  const stockContext = prepareSandboxBuildContext()
-  // Decision 8: a host CLI whose version cannot be read does not refuse the
-  // build — it goes ahead unpinned for that runtime, and the card says why.
-  const host = await resolveHostAgentVersions(exec)
-  const notices = Object.values(host.problems)
-  const stockFresh = imageFreshness({
-    image: await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE),
-    expectedHash: hashDockerfile(join(stockContext, 'Dockerfile')),
-    host: host.versions,
-    burnUser: resolveBurnUser(runtime),
-  }).fresh
-  const plan = planImageBuild({
-    config: ctx.config,
-    project: project
-      ? {
-          id: project.id,
-          repoPath: project.repoPath,
-          sandboxImage: project.sandboxImage,
-          sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+  const release = tryImageBuildSlot()
+  if (!release) {
+    throw new InvalidInputError(
+      'A burn is building the sandbox image right now. It will be ready when that build finishes.',
+    )
+  }
+  try {
+    const project = projectId ? requireProjectById(ctx, projectId) : null
+    const { runtime, plan, notices } = await prepareImageBuild({
+      exec: createSystemExec(),
+      config: ctx.config,
+      project: project
+        ? {
+            id: project.id,
+            repoPath: project.repoPath,
+            sandboxImage: project.sandboxImage,
+            sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+          }
+        : null,
+    })
+    if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
+    return {
+      spec: imageBuildTerminal(runtime, plan),
+      notices,
+      onExit: ({ exitCode }) => {
+        release()
+        if (exitCode === 0 && plan.kind === 'chain' && project) {
+          adoptProjectImage(ctx, project.id, plan.projectTag)
         }
-      : null,
-    stockContext,
-    stockDockerfile: burnerDockerfilePath(),
-    stockFresh,
-    buildArgs: stockBuildArgs(runtime),
-    hostVersions: host.versions,
-  })
-  if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
-
-  const spec = imageBuildTerminal(runtime, plan)
-  if (plan.kind !== 'chain' || !project) return { spec, notices }
-  const { projectTag } = plan
-  return {
-    spec,
-    notices,
-    onExit: ({ exitCode }) => {
-      if (exitCode === 0) adoptProjectImage(ctx, project.id, projectTag)
-    },
+      },
+    }
+  } catch (error) {
+    release()
+    throw error
   }
 }

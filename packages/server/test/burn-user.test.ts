@@ -139,7 +139,7 @@ describe('a failed setup step leads with its cause', () => {
     const refusal =
       "UID mismatch: image 'sandcastle:runcastle' was built with UID 1000, but the expected UID is 1001. Rebuild the image with 'sandcastle docker build-image'"
     expect(imageUidRefusalMessage(refusal, null)).toBe(
-      'Image sandcastle:runcastle was built for UID 1000, but burns on this machine run as UID 1001. Rebuild it from Settings → Workers.',
+      'Image sandcastle:runcastle was built for UID 1000, but burns on this machine run as UID 1001. Rebuild it from Settings → Workers, or run `runcastle build-image`.',
     )
     expect(imageUidRefusalMessage('some other error', null)).toBeUndefined()
   })

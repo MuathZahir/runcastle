@@ -265,6 +265,19 @@ running version (`checkForUpdate` in `src/services/update-check.ts`); with
 `latest` now `1.0.0`, an up-to-date install reports `updateAvailable: false`,
 and only an older install is prompted with `bun add -g runcastle@latest`.
 
+## Changes the next release must call out
+
+GitHub generates a release's notes from its commits, which will not carry these.
+Paste them into the release, then remove them from here.
+
+- **A burn now builds its own sandbox image.** The first burn on a machine takes a
+  few minutes longer, with no click. `runcastle build-image` does the same build
+  by hand. `runcastle doctor` no longer fails on a missing image.
+- **A repo with a broken `.runcastle/sandbox/Dockerfile` that was never built now
+  fails its burn.** Until now such a repo ran on the stock image, without the tools
+  its Dockerfile asked for. Fix the Dockerfile, or delete it to go back to the stock
+  image. The run stops before any ticket starts, and names the cause and a log file.
+
 ## Notes / open decisions
 
 - **System `node` is required on Windows** for the PTY sidecar — documented in

@@ -60,6 +60,7 @@ import {
   imageUidMismatch,
   imageUidMismatchMessage,
   isManagedImage,
+  orBuildImageCommand,
 } from '../services/sandbox-image'
 import { ADR_DIR_REL, CHARTER_FILE, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
@@ -97,7 +98,9 @@ import type {
   RunResult,
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
+import { failureCause } from '../util/failure-line'
 import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
+import { type BurnImageOutcome, ensureBurnImage } from './burn-image'
 import {
   type LastCommandRecord,
   buildInterruptedCommandNotes,
@@ -177,8 +180,9 @@ export const BURN_CACHE_REPAIRED_EVENT = 'burn.cache_repaired'
 export const BURN_ROOT_REFUSED_EVENT = 'burn.root_refused'
 /**
  * The image's agent CLI drifted from the host's — a warning for every image,
- * never fatal. Burns never build: a managed image's message points at Rebuild,
- * a custom image's names who owns it. `data.warning` flags it for the run page.
+ * never fatal, and never a reason to build: a burn only builds an image it could
+ * not otherwise run on. A managed image's message points at Rebuild, a custom
+ * image's names who owns it. `data.warning` flags it for the run page.
  */
 export const IMAGE_CLI_DRIFT_EVENT = 'burn.image_cli_drift'
 
@@ -189,7 +193,7 @@ const RUNTIME_BINARY: Record<AgentRuntime, string> = {
 
 export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
   const binary = RUNTIME_BINARY[runtime]
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image)${orBuildImageCommand(image)}.`
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +408,7 @@ export function agentCliDriftMessage(
 ): string {
   const { label } = RUNTIME_SPECS[runtime]
   const burningOn = imageVersion ? `${label} ${imageVersion}` : `its ${label}`
-  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Workers to catch up.`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Workers${orBuildImageCommand(image)} to catch up.`
 }
 
 /**
@@ -532,6 +536,11 @@ export interface BurnDeps {
   hasAuthToken: boolean
   /** Doctor-style injected command runner used for the pre-container image probe. */
   exec?: ExecFn
+  /**
+   * Build the image this run should use if it needs building, before the probe
+   * looks at it. Omitted, the burn takes the image as it finds it.
+   */
+  ensureImage?: () => Promise<BurnImageOutcome>
   /** Who burns run as; resolved from the host when omitted. */
   burnUser?: BurnUser
   /** The host is running as root; read from the process when omitted. */
@@ -3255,27 +3264,12 @@ const SANDBOX_COMMAND_FAILED = /^Command failed \(exit \S+\):/
 /** The same line, below the cause {@link leadWithCause} put above it. */
 const LED_COMMAND_FAILURE = /\n\s*\n(?=Command failed \(exit \S+\):)/
 
-/** A line of command output that says what went wrong. */
-const FAILURE_LINE =
-  /permission denied|no space left|read-only file system|fatal:|error[:\s]|ERR!|cannot |could not|not found/i
-
-/** Long enough for any real cause, short enough for a ticket row. */
-const MAX_CAUSE_CHARS = 300
-
 /**
- * The line of a failed sandbox command's output that names the cause: the last
- * one that reads like a failure, because tools report the root problem last and
- * a long install can print a harmless warning first. Otherwise the last line of
- * output, and undefined when the command said nothing at all.
+ * The line of a failed sandbox command's output that names the cause. The
+ * message's first line is the command itself, so the search starts below it.
  */
 export function setupFailureCause(message: string): string | undefined {
-  const output = message
-    .split('\n')
-    .slice(1)
-    .map((l) => l.trim())
-    .filter(Boolean)
-  const cause = output.filter((l) => FAILURE_LINE.test(l)).at(-1) ?? output.at(-1)
-  return cause?.slice(0, MAX_CAUSE_CHARS)
+  return failureCause(message.split('\n').slice(1))
 }
 
 /**
@@ -3914,6 +3908,11 @@ export async function burnRun(
       return { status: 'failed', summary: message }
     }
 
+    // Before anything below reads the image: a build can change which image this
+    // run resolves to, and a probe made first would be remembered for the run.
+    const built = await deps.ensureImage?.()
+    if (built?.status === 'failed') return built
+
     const image = resolveSandboxImage(deps.config, ctx.project)
     const binary = RUNTIME_BINARY[deps.runtime]
     const prepared = resolvePreparedSettings(deps.config, ctx.project)
@@ -3972,9 +3971,10 @@ export async function burnRun(
     }
     // Strict equality detects drift, but drift is a warning for every image:
     // the burn runs on the CLI the image has, which almost always serves the
-    // model. Burns never build — the fix is a human's one-click Rebuild, which
-    // exists only for an image runcastle builds. A custom tag's Rebuild is
-    // `refused`, so its message names who owns the image instead.
+    // model. A burn builds only what it could not otherwise run on, so the fix
+    // here is a human's Rebuild, which exists only for an image runcastle
+    // builds. A custom tag's Rebuild is `refused`, so its message names who
+    // owns the image instead.
     const inImage = parseProbedVersions(probe.stdout)
     for (const runtime of versionsOf) {
       const hostVersion = hostVersions?.[runtime]
@@ -5626,6 +5626,8 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
     runtime: model.runtime,
     hasAuthToken: burnAuthReady(model.runtime, token),
     exec: cachedExec,
+    // The plain `exec`: the cached one would answer as it did before the build.
+    ensureImage: () => ensureBurnImage(ctx, { config, exec }),
     hostAgentVersions,
     ticketAuthMissing: (ticket) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)

@@ -827,11 +827,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       return {
         ...IMAGE_ROW,
         status: 'not-built-yet',
-        severity: 'error',
+        // Not in the way of anything: the first round builds it (decision 6).
+        severity: 'info',
         detail: image.present
-          ? `${tag} is built but is not this project's image yet`
-          : `.runcastle/sandbox/Dockerfile is not built — ${tag} does not exist`,
-        fix: 'Open Settings → Workers (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
+          ? `${tag} is built but is not this project's image yet — the next round adopts it`
+          : `.runcastle/sandbox/Dockerfile is not built yet — the first round builds it, which takes a few minutes`,
+        fix: 'Nothing to do. To build ahead of the first round, open Settings → Workers (Build image).',
       }
     }
     // The project image's own labels, inherited through `FROM`, record the CLIs
@@ -916,9 +917,10 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     return {
       ...IMAGE_ROW,
       status: 'missing',
-      severity: 'error',
-      detail: `image ${imageName} not found locally`,
-      fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
+      // Not in the way of anything: the first round builds it (decision 6).
+      severity: 'info',
+      detail: `${imageName} is not built yet — the first round builds it, which takes a few minutes`,
+      fix: 'Nothing to do. To build ahead of the first round, run `runcastle build-image` or open Settings → Workers (Build image).',
     }
   }
   if (!stockVerdict.fresh) {
