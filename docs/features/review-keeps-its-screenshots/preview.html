@@ -181,7 +181,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="sub">
     <h3>How it gets to you</h3>
     <div class="flow">
-      <div class="step"><h3>The work is done <a class="pin" data-d="14">14</a></h3><p>A feature with a screen or API ends with a review round, even when the lead built it all.</p><span class="who">The lead, by default</span></div>
+      <div class="step"><h3>The work is done <a class="pin" data-d="14">14</a></h3><p>Every feature ends with a review round, even when the lead built it all, unless you say no.</p><span class="who">The lead, always</span></div>
       <div class="step"><h3>The review walks it <a class="pin" data-d="12">12</a> <a class="pin" data-d="3">3</a></h3><p>The agent takes every screenshot, with what it shows as the caption. Calls record themselves.</p><span class="who">The review agent</span></div>
       <div class="step"><h3>The package arrives <a class="pin" data-d="13">13</a></h3><p>One attachment in the chat. A click opens everything.</p><span class="who">Runcastle, always</span></div>
     </div>
@@ -189,12 +189,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>The Review Package <a class="pin" data-d="13">13</a></h3>
-    <p class="hint">Three cards and two pages to try. The bar at the top right of the page switches them.</p>
+    <p class="hint">The contact sheet card, and a page that shows one thing at a time. Findings are one page. <a class="pin" data-d="15">15</a></p>
 <!-- screen:review-package -->
 <div class="designed">
-  <h3>Review Package: card and page options</h3>
-  <p>The thread, composer and call rows are real components; the cards and pages are options on the preview page until you pick; everything shown is sample data.</p>
-  <p class="mono">apps/web/preview/review-package.tsx · apps/web/src/components/review/ReviewCallRow.tsx · preview /preview/review-package.html</p>
+  <h3>Review Package: card and page</h3>
+  <p>The card, page, thread and call rows are real components; everything shown is sample data.</p>
+  <p class="mono">apps/web/src/components/review/ReviewPackageCard.tsx · ReviewPackagePage.tsx · preview /preview/review-package.html</p>
   <button data-open-design="/preview/review-package.html">Open in design</button>
 </div>
 <!-- /screen:review-package -->
@@ -273,14 +273,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["Pictures are taken at the width the agent's browser uses","The phone is how you look, not what is under review. A second width would resize the browser under the agent's walk and its recording.","assumed"],
     ["Pictures are kept as long as the walkthrough","A picture is far smaller than the video beside it, and cleaning up review folders is its own feature. Capped at 60 per pass.","assumed"],
     ["The agent takes every picture","Your call: the automatic entry picture adds nothing the agent cannot take."],
-    ["What a review leaves arrives in the chat as a Review Package","Your idea. Evidence belongs where the conversation is, runcastle posts it so it cannot be forgotten, and a full-window page works from any chat and on a phone.","assumed"],
-    ["A feature with a surface ends with a review round","Leads build most features themselves now, so reviews rarely run and there would be no pictures. Nothing enforces it.","assumed"]
+    ["What a review leaves arrives in the chat as a Review Package","Your idea. Evidence belongs where the conversation is, runcastle posts it so it cannot be forgotten, and a full-window page works from any chat and on a phone."],
+    ["Every feature ends with a review round, unless the human says no","Your call. Leads build most features themselves now, so reviews rarely run and there would be no package. Nothing on the server enforces it."],
+    ["Findings are one page in the package","Your call. A finding holds more than its title, and findings read as a list to go through."]
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [13, "The filmstrip card, with pictures in the chat and no separate page, or the cover card with one large picture.", "You said to try this and others. Pick from the preview page.", 'your pick'],
-    [14, "Leave review as the lead's free choice, and ask for it only on larger features.", "It costs a drive and about half an hour per feature, and it holds your checkout and drive slot while it runs.", 'your idea, my shape'],
     [3, "Pull frames from the walkthrough video when a pass took no pictures. The challenger preferred this.", "With the entry picture gone, every picture depends on the agent following its prompt.", 'challenged'],
     [4, "Mask tokens in bodies and URLs too, or keep calls off the phone. The challenger preferred this.", "A login response body would be kept whole and will be readable from your phone link.", 'challenged'],
     [10, "Take every picture at desktop and phone width.", "A desktop-width picture is small on a phone. You may want that fixed before you rely on this.", 'guess at intent']

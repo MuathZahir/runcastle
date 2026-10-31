@@ -8,7 +8,7 @@ The human wants to accept a finished feature from their phone by looking at it, 
 
 ### What the human gets
 
-When a review pass ends, a **Review Package** appears in the feature's chat: one attachment with the review's conclusion, a contact sheet of what it holds, and a line such as `6 screenshots · walkthrough 2:14 · 2 calls · 1 defect`. A click opens a full-window page. One thing sits large on its stage, a list of everything sits beside it (below it on a phone), and the human steps through with the arrows. The list is grouped: findings first, then each scenario with its pictures and calls, then **Other checks**, then the review's full account. A pass with no scenarios simply lists its pictures. When there are no pictures, one quiet line says why.
+When a review pass ends, a **Review Package** appears in the feature's chat: one attachment with the review's conclusion, a contact sheet of what it holds, and a line such as `6 screenshots · walkthrough · 2 calls · 1 defect`. A click opens a full-window page. One thing sits large on its stage, a list of everything sits beside it (below it on a phone), and the human steps through with the arrows. The list starts with one **Findings** row, whose page holds every finding in full. Each scenario follows with its pictures and calls, then **Other checks**, then the review's full account. A pass with no scenarios simply lists its pictures. When there are no pictures, one quiet line says why.
 
 The review ticket keeps its goal and criteria and gains one **Open review package** button. The walkthrough button, findings and digest leave it.
 
@@ -49,11 +49,11 @@ The picture belongs to the latest scenario that landed in this pass, unless `out
 
 ### Serving and the screen
 
-The review routes gain `GET /api/reviews/ticket/:ticketId/saw.json` and `GET /api/reviews/ticket/:ticketId/saw/:file`. As with the gate-log route, the file name is checked against what the store writes, and the path is computed from the looked-up row's id. PNG only, `nosniff`. `ReviewTicketArtifacts` gains `shots` and `calls` counts.
+The review routes gain `GET /api/reviews/ticket/:ticketId/package.json` and `GET /api/reviews/ticket/:ticketId/saw/:file`. The first returns the whole package: the verdict (the digest's first line), the account, how far the branch has moved since, the groups built from the manifest, the findings, and why there are no pictures. As with the gate-log route, the file name is checked against what the store writes, and the path is computed from the looked-up row's id. PNG only, `nosniff`, and `?download=<name>` for the viewer's habit of saving a file under its own name.
 
-**The package in a thread.** One new thread event, `review_package`, carries the review ticket's id and nothing else, and folds as its own item, as a `file_shown` does outside a turn. The card and page read the pass through the routes above, so they always show the pass as it stands. A re-burn replaces what they show. The burner appends the event to the feature's main chat when a review pass ends, whatever its mode, unless it kept nothing and never ran. `show_review_package({ slug })` appends the same event to the calling thread, for the newest pass that took pictures, or the newest pass when none did. It is registered for the thread kinds.
+**The package in a thread.** One new thread event, `review_package`, carries the review ticket's id and nothing else, and folds as its own item, as a `file_shown` does outside a turn. The card and page read the pass through the route above, so they always show the pass as it stands. A re-burn replaces what they show. The burner asks the runner to post it to the feature's main chat when a review pass ends, whatever its mode. `show_review_package({ slug })` appends the same event to the calling thread, for the newest pass that took pictures, or the newest pass when none did. It is registered for the thread kinds.
 
-**The screens.** `apps/web/preview/review-package.html` holds the card and page options with `?card=`, `?page=` and `?state=`. The chosen ones move from the preview page into `apps/web/src/components/review/`, and the rest are deleted. `ReviewCallRow` is already a real component, reusing the drive's `CallResponse`. The walkthrough on the page is the real `WalkthroughPlayer`, so its notes keep working. Wiring adds the query for one ticket's manifest, under the same query key as the listing, and a pure function that turns entries into groups. The empty lines come from the pass's recorded mode: `gates` gives "This review read the code, so it has no screenshots."; `drive` with no pictures gives "The review took no screenshots."
+**The screens.** `ReviewPackageCard` and `ReviewPackagePage` in `apps/web/src/components/review/`, previewed at `/preview/review-package.html`. The walkthrough on the page is the existing `EvidenceStage`, so it plays as it does today. A chat item and the ticket's button both open the same dialog. The empty lines come from the pass's recorded mode: `gates` gives "This review read the code, so it has no screenshots."; `drive` with no pictures gives "The review took no screenshots."
 
 ### Reaching the lead and the orchestrator
 
@@ -63,7 +63,7 @@ The project skill's "Let them see it" paragraph: call `show_review_package` abov
 
 ### Review rounds
 
-The feature skill's "Review is your call" section becomes the default in decision 14, and the plan preview and tickets references say a feature with a surface plans one final review round. The lead emits a single `kind: "review"` ticket and dispatches it. The server gains no rule: a lead can skip it, and nothing refuses a merge. A review round on work the lead built has no implementer digests, and the burner already says so to the agent.
+The feature skill's "Review is your call" section becomes the default in decision 14, and the tickets reference follows it: every feature plans one final review round, unless the human does not want one. The lead emits a single `kind: "review"` ticket and dispatches it. The server gains no rule: a lead can skip it, and nothing refuses a merge. A review round on work the lead built has no implementer digests, and the burner already says so to the agent.
 
 ## Seams
 
@@ -72,7 +72,7 @@ The feature skill's "Review is your call" section becomes the default in decisio
 - **`foldThread` (existing).** Observes the `review_package` item's place, in and out of a turn.
 - **`show_review_package` tool (new).** Observes the event, which pass it picks, and that it refuses a feature with no review.
 - **`/api/reviews` routes (existing).** Observes the manifest and image served, a name the store would not write refused, traversal refused, a non-review ticket refused, and the counts on the listing.
-- **`sawGroups` (new, pure).** Feed entries, read groups: grouping, Other checks, no scenarios, a failed scenario, and the empty lines.
+- **`reviewPackage` (new).** Feed manifest entries and a ticket, read the package: grouping, Other checks, no scenarios, a failed scenario, the empty lines, and findings with defects first.
 - **`read_feature_chat` and `get_feature_context` (existing).** Observes `reviewShots`: order, a Gates pass skipped, the three-pass limit, `commitsSince`, and null for a deleted branch. The read-ceiling test lists the new field.
 - **Review prompts (existing templates).** The existing prompt-render tests: the `capture` instruction is in both prompts and the scenario block.
 - **The package card and page (new, designed).** Tier 1 static markup for each state; tier 2 for stepping through the page.
@@ -96,4 +96,4 @@ One check goes beyond the tests, and I will run it by hand: the capture module a
 
 ## Open questions
 
-Two are the human's: which card and page to build (the plan assumes the contact sheet and one at a time), and whether a review round becomes the default for features with a surface.
+None.
