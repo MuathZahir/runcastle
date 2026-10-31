@@ -62,8 +62,11 @@ export class TarWriter {
   constructor(path: string) {
     this.gzip = createGzip({ level: 6 })
     this.out = createWriteStream(path, { mode: 0o600 })
+    // A full disk fails the file stream, and nothing then drains the gzip stream,
+    // so a failure on either side has to wake whoever waits on the gzip one.
     const fail = (err: Error): void => {
       this.failure ??= err
+      this.gzip.destroy(err)
     }
     this.gzip.on('error', fail)
     this.out.on('error', fail)
@@ -115,6 +118,12 @@ export class TarWriter {
     await this.writeHeaders(name, body.length, Date.now() / 1000)
     await this.write(body)
     await this.pad(body.length)
+  }
+
+  /** Give up: release the output file so it can be removed. */
+  abort(): void {
+    this.gzip.destroy()
+    this.out.destroy()
   }
 
   async finish(): Promise<void> {

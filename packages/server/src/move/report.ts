@@ -20,10 +20,12 @@ export function formatReport(
   }
 
   const width = Math.max(10, ...report.projects.map((p) => p.name.length))
-  out.push(`Moves${' '.repeat(width - 2)}branches  uncommitted  features  chats`)
+  const reposDir = destination?.answer?.reposDir ?? '<repos folder>'
+  out.push(`Moves${' '.repeat(width - 2)}branches  uncommitted  features  chats  repo size`)
   for (const p of report.projects) {
-    const row = `${String(p.branches).padStart(8)}  ${String(p.uncommitted).padStart(11)}  ${String(p.features).padStart(8)}  ${String(p.chats).padStart(5)}`
+    const row = `${String(p.branches).padStart(8)}  ${String(p.uncommitted).padStart(11)}  ${String(p.features).padStart(8)}  ${String(p.chats).padStart(5)}  ${formatBytes(p.repoBytes).padStart(9)}`
     out.push(`  + ${p.name.padEnd(width)} ${row}${p.repoMoves ? '' : '  (repo stays)'}`)
+    out.push(`      ${p.repoPath} -> ${reposDir}/${p.targetFolder}`)
   }
   out.push('')
 
@@ -60,9 +62,16 @@ export function formatMoveInResult(result: MoveInResult): string {
   if (result.wipKept.length > 0) {
     out.push('', 'Uncommitted work that would not apply, kept here', ...result.wipKept.map((w) => `  ${w.project} (${w.key}): ${w.folder}`))
   }
+  if (result.wipStuck.length > 0) {
+    out.push(
+      '',
+      `Uncommitted work that could not be placed. Copy it out of ${result.stagingKept}/wip before anything else`,
+      ...result.wipStuck.map((w) => `  ${w}`),
+    )
+  }
   if (result.cleared.length > 0) {
-    const projects = [...new Set(result.cleared.map((c) => c.project))]
-    out.push('', 'Drive and reset commands cleared; run Prepare on', ...projects.map((p) => `  ${p}`))
+    out.push('', 'Drive and reset commands cleared; run Prepare on these projects')
+    out.push(...result.cleared.map((c) => `  ${c.project}, ${c.field}: ${c.value}`))
   }
   if (result.setAside.length > 0) {
     out.push('', 'Set aside', ...result.setAside.map((s) => `  ${s.to}`))

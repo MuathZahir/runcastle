@@ -39,6 +39,10 @@ export interface CheckoutWip {
   tracked: string[]
   /** Untracked paths git does not ignore, repo-relative with forward slashes. */
   untracked: string[]
+  /** Untracked folders that are git repos themselves: their files travel, their history does not. */
+  nested: string[]
+  /** `.env`-style files git does not ignore. Secrets stay behind, ignored or not. */
+  heldBack: string[]
 }
 
 export interface MoveProject {
@@ -54,6 +58,8 @@ export interface MoveProject {
   /** Every ref and the commit it points at. */
   refs: Record<string, string>
   remotes: { name: string; url: string }[]
+  /** Repo-level settings worth keeping: upstream tracking, identity, the hooks path. */
+  config: { key: string; value: string }[]
   /** Checked-out branch of the main checkout; absent when detached. */
   headBranch?: string
   headSha?: string
@@ -83,6 +89,10 @@ export interface MoveManifest {
   migrations: string[]
   projects: MoveProject[]
   claudeFolders: ClaudeFolder[]
+  /** Every Claude conversation of a session, and the folder holding its transcript. */
+  conversations: { id: string; folder: string }[]
+  /** The report the human saw before packing, kept in `move-report.md`. */
+  reportText: string
   /** Row count of every table in the packed database. */
   rowCounts: Record<string, number>
   files: PackedFile[]
@@ -136,6 +146,7 @@ export interface MoveScan {
   report: MoveReport
   projects: MoveProject[]
   claudeFolders: ClaudeFolder[]
+  conversations: { id: string; folder: string }[]
 }
 
 export interface MoveOptions {
@@ -156,6 +167,9 @@ export interface MoveInResult {
   /** Uncommitted work put back in place, and work kept beside the repo instead. */
   wipApplied: string[]
   wipKept: { project: string; key: string; folder: string }[]
+  /** Work that could not even be copied beside the repo: it stays in {@link stagingKept}. */
+  wipStuck: string[]
+  stagingKept?: string
   /** Paths matching no known prefix, left as they were. */
   unmappedPaths: number
   /** What was set aside, old path to new. */

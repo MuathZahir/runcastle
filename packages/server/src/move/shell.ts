@@ -69,18 +69,23 @@ export function systemTar(): string {
   return join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
 }
 
-/** Every regular file under `dir`, as forward-slashed relative paths. Symlinks are skipped. */
-export function walkFiles(dir: string, base = ''): string[] {
+/**
+ * Every regular file under `dir`, as forward-slashed relative paths. Symlinks
+ * are skipped. With `strict`, a folder that cannot be read throws: a pack must
+ * not quietly leave out what it could not see.
+ */
+export function walkFiles(dir: string, base = '', strict = false): string[] {
   let entries
   try {
     entries = readdirSync(dir, { withFileTypes: true })
-  } catch {
+  } catch (err) {
+    if (strict) throw err
     return []
   }
   const files: string[] = []
   for (const entry of entries) {
     const rel = base ? `${base}/${entry.name}` : entry.name
-    if (entry.isDirectory()) files.push(...walkFiles(join(dir, entry.name), rel))
+    if (entry.isDirectory()) files.push(...walkFiles(join(dir, entry.name), rel, strict))
     else if (entry.isFile()) files.push(rel)
   }
   return files

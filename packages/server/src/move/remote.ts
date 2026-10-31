@@ -39,11 +39,15 @@ function remoteCheckCommand(flags: RemoteFlags): string {
   return [remoteEnv(), 'runcastle move-in --check', flagWords(flags)].filter(Boolean).join(' ')
 }
 
-/** The two commands that finish a move by hand, ready to paste. */
+/**
+ * The commands that finish a move by hand, ready to paste. The copy runs from
+ * the pack's own folder, for the same reason {@link copyPack} does.
+ */
 export function manualSteps(pack: string, host: string | undefined, flags: RemoteFlags): string[] {
   const target = host ?? '<user@host>'
   return [
-    `scp "${pack}" ${target}:`,
+    `cd "${dirname(pack)}"`,
+    `scp "${basename(pack)}" ${target}:`,
     `ssh ${target} '${remoteMoveInCommand(basename(pack), flags)}'`,
   ]
 }

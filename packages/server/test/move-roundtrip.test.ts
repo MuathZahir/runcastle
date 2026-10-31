@@ -72,11 +72,57 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
     expect(f.result.unmappedPaths).toBe(0)
   })
 
+  it('rewrites a Codex transcript, which lives under the data dir', () => {
+    expect(f.codexTranscriptPath).toBe(f.expectedCodex)
+    expect(f.codexFile).toBe('{"codex":true}\n')
+  })
+
   it('renames Claude folders, and leaves chats from other folders behind', () => {
     expect(f.transcript).toBe('{"cwd":"old"}\n')
     expect(f.handChat).toBe('{"hand":true}\n')
     expect(f.memory).toBe('- a memory\n')
     expect(f.otherChat).toBe(false)
+  })
+
+  it('loses nothing when two old Claude folders land in one new one', () => {
+    expect(f.olderChat).toBe('{"older":true}\n')
+    expect(f.claudeMemories).toEqual(['- newer memory\n', '- older memory\n'])
+  })
+
+  it('names a chat with no transcript, rather than letting it pass unseen', () => {
+    expect(f.attention.join('\n')).toContain('1 chat with no transcript')
+  })
+
+  it('carries an untracked nested repo by its own ignore rules, and says its history stays', () => {
+    expect(f.nestedFile).toBe('only copy of this file\n')
+    expect(f.nestedIgnored).toBe(false)
+    expect(f.attention.join('\n')).toContain('vendor/mylib is a git repo of its own')
+  })
+
+  it('keeps a secret out even when git does not ignore it, and says so', () => {
+    expect(f.unignoredEnv).toBe(false)
+    expect(f.envExample).toBe(true)
+    expect(f.attention.join('\n')).toContain('.env.local stays behind')
+  })
+
+  it('leaves launch files out, which can hold values a session was given', () => {
+    expect(f.launchFiles).toEqual([])
+  })
+
+  it('restores the newest stash as a real stash, and upstream tracking', () => {
+    expect(f.stashList).toContain('moved from the old machine')
+    expect(f.stashFile).toBe('stashed work\n')
+    expect(f.upstream).toBe('refs/heads/main')
+  })
+
+  it('keeps a repo with no commits: its staged work, remote and branch name', () => {
+    expect(f.unbornBranch).toBe('trunk')
+    expect(f.unbornRemote).toBe('https://example.invalid/unborn.git')
+    expect(f.unbornFile).toBe('staged, never committed\n')
+  })
+
+  it('blocks a shallow clone before anything is packed', () => {
+    expect(f.shallowBlocked.length).toBe(1)
   })
 
   it('carries thread logs, images and Codex conversations but no secrets, caches or logs', () => {
@@ -137,7 +183,13 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
   })
 
   it('counts a server only when it serves this data dir, or cannot be read', () => {
-    expect(f.servers).toEqual({ ownServer: true, otherServer: false, unreadableServer: true, noServer: false })
+    expect(f.servers).toEqual({
+      ownServer: true,
+      otherServer: false,
+      unreadableServer: true,
+      noServer: false,
+      busyServer: true,
+    })
   })
 
   it('refuses a pack altered after it was made, and writes nothing', () => {
@@ -150,7 +202,7 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
 
   it('keeps uncommitted work beside the repo when its patch will not apply, and the move still succeeds', () => {
     expect(f.patch.wipKept.map((w: { key: string }) => w.key)).toEqual(['main'])
-    expect(f.patch.appliedOthers).toEqual(['app (login)'])
+    expect(f.patch.appliedOthers).toContain('app (login)')
     expect(f.patch.keptPatch).toBe('this is not a patch\n')
     expect(f.patch.keptCopy).toBe('two\n')
     expect(f.patch.keptUntracked).toBe('untracked\n')

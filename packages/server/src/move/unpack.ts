@@ -7,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -14,7 +15,7 @@ import { checkDestination, reposDirOf } from './destination'
 import { encodeClaudeFolder, mapSourcePath, type PathRule } from './paths'
 import { countRows } from './pack'
 import { CLEARED_ON_CROSS_OS } from './scan'
-import { gitOrThrow, run, stamp, systemTar } from './shell'
+import { formatBytes, freeBytes, gitOrThrow, run, stamp, systemTar } from './shell'
 import { hashFile } from './tar'
 import type {
   ClearedCommand,
@@ -82,17 +83,22 @@ function claudeRenames(manifest: MoveManifest, rules: PathRule[]): Map<string, s
   return renames
 }
 
-/** A transcript's path on the new machine, or `null` when its folder did not travel. */
+/**
+ * A transcript's path on the new machine, or `null` when it did not travel.
+ * Claude transcripts follow their renamed folder. Codex keeps its own under the
+ * data dir, which the ordinary rules cover.
+ */
 function mapTranscript(
   path: string,
   manifest: MoveManifest,
+  rules: PathRule[],
   renames: Map<string, string>,
   env: MoveEnv,
 ): string | null {
   const platform = manifest.source.platform
   const projects = `${manifest.source.claudeDir}${platform === 'win32' ? '\\' : '/'}projects`
   const rest = mapSourcePath(path, [{ from: projects, to: '' }], platform)
-  if (rest === null) return null
+  if (rest === null) return mapSourcePath(path, rules, platform)
   const [, folder, ...tail] = rest.split('/')
   const key = platform === 'win32' ? folder.toLowerCase() : folder
   for (const [oldName, newName] of renames) {
@@ -129,7 +135,7 @@ function rewriteDatabase(
       if (worktree) sql.run('UPDATE sessions SET worktree_path = ? WHERE id = ?', worktree, row.id)
       else unmapped++
       if (!row.transcript_path) continue
-      const transcript = mapTranscript(row.transcript_path, manifest, renames, env)
+      const transcript = mapTranscript(row.transcript_path, manifest, rules, renames, env)
       if (transcript) sql.run('UPDATE sessions SET transcript_path = ? WHERE id = ?', transcript, row.id)
       else unmapped++
     }
@@ -167,16 +173,32 @@ function clearHostCommands(sql: MoveSql): ClearedCommand[] {
 function rebuildRepo(project: MoveProject, staging: string, path: string): void {
   mkdirSync(path, { recursive: true })
   gitOrThrow(path, ['init', '-q'])
-  const bundle = join(staging, 'repos', `${project.id}.bundle`)
-  if (Object.keys(project.refs).length === 0) return
-  gitOrThrow(path, ['fetch', '-q', '--no-tags', '--update-head-ok', bundle, '+refs/*:refs/*'])
+  // A repo with no commits has no bundle, but keeps its remotes and branch name.
+  if (Object.keys(project.refs).length > 0) {
+    const bundle = join(staging, 'repos', `${project.id}.bundle`)
+    gitOrThrow(path, ['fetch', '-q', '--no-tags', '--update-head-ok', bundle, '+refs/*:refs/*'])
+  }
   for (const remote of project.remotes) gitOrThrow(path, ['remote', 'add', remote.name, remote.url])
+  for (const { key, value } of project.config) gitOrThrow(path, ['config', '--local', '--add', key, value])
   if (project.headBranch) {
     gitOrThrow(path, ['symbolic-ref', 'HEAD', `refs/heads/${project.headBranch}`])
-    gitOrThrow(path, ['reset', '-q', '--hard'])
+    if (project.headSha) gitOrThrow(path, ['reset', '-q', '--hard'])
   } else if (project.headSha) {
     gitOrThrow(path, ['checkout', '-q', '-f', '--detach', project.headSha])
   }
+  restoreStash(project, path)
+}
+
+/**
+ * A bundle carries `refs/stash` but not the log that `git stash` reads, so the
+ * stash would exist and `git stash list` would not show it. Storing it again
+ * makes it an ordinary stash, at the same commit.
+ */
+function restoreStash(project: MoveProject, path: string): void {
+  const sha = project.refs['refs/stash']
+  if (!sha) return
+  gitOrThrow(path, ['update-ref', '-d', 'refs/stash'])
+  gitOrThrow(path, ['-c', 'user.name=runcastle', '-c', 'user.email=runcastle@localhost', 'stash', 'store', '-m', 'moved from the old machine', sha])
 }
 
 /** Every ref must point where it pointed on the old machine. */
@@ -193,6 +215,15 @@ function verifyRefs(project: MoveProject, path: string): void {
   )
   for (const [ref, sha] of Object.entries(project.refs)) {
     if (found.get(ref) !== sha) throw new Error(`${project.name}: ${ref} did not arrive at ${sha}`)
+  }
+}
+
+/** Every conversation a session recorded has to have come with its transcript. */
+function verifyConversations(staging: string, manifest: MoveManifest): void {
+  for (const { id, folder } of manifest.conversations) {
+    if (!existsSync(join(staging, 'claude', folder, `${id}.jsonl`))) {
+      throw new Error(`the pack is missing the transcript of conversation ${id}`)
+    }
   }
 }
 
@@ -242,15 +273,24 @@ class Swap {
   }
 }
 
-/** Move a staged Claude folder's contents into place without overwriting anything. */
-function placeClaudeFolder(from: string, to: string, swap: Swap): void {
+/**
+ * Move a staged Claude folder into place, merging into a folder that is already
+ * there. Two old folders can map to one new name, and neither may lose a file: a
+ * clash with different content is kept beside the other under a marked name.
+ */
+function placeClaudeFolder(from: string, to: string, swap: Swap, when: string): void {
   if (!existsSync(to)) {
     swap.rename(from, to)
     return
   }
-  for (const entry of readdirSync(from)) {
-    if (!existsSync(join(to, entry))) swap.rename(join(from, entry), join(to, entry))
+  if (statSync(from).isDirectory() && statSync(to).isDirectory()) {
+    for (const entry of readdirSync(from)) placeClaudeFolder(join(from, entry), join(to, entry), swap, when)
+    return
   }
+  if (readFileSync(from).equals(readFileSync(to))) return
+  let aside = `${to}.moved-${when}`
+  for (let n = 2; existsSync(aside); n++) aside = `${to}.moved-${when}-${n}`
+  swap.rename(from, aside)
 }
 
 /** Put a checkout's uncommitted work back, or keep it beside the repo if it will not apply. */
@@ -295,6 +335,10 @@ function renderReport(manifest: MoveManifest, result: Omit<MoveInResult, 'report
     '## Repos',
     ...result.repos.map((r) => `- ${r.name}: ${r.path}`),
   ]
+  if (result.wipStuck.length > 0) {
+    lines.push('', `## Uncommitted work still in ${result.stagingKept}/wip`, '')
+    for (const w of result.wipStuck) lines.push(`- ${w}`)
+  }
   if (result.cleared.length > 0) {
     lines.push('', '## Cleared commands, for Prepare to fill in again', '')
     for (const c of result.cleared) lines.push(`- ${c.project}, ${c.field}: \`${c.value}\``)
@@ -310,6 +354,7 @@ function renderReport(manifest: MoveManifest, result: Omit<MoveInResult, 'report
   if (result.unmappedPaths > 0) {
     lines.push('', `${result.unmappedPaths} stored paths matched no known folder and were left as they were.`)
   }
+  if (manifest.reportText) lines.push('', '## The report before the move', '', '```', manifest.reportText, '```')
   return `${lines.join('\n')}\n`
 }
 
@@ -320,8 +365,15 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
   const when = stamp()
   const staging = `${env.dataDir}.incoming-${when}`
   const stagedRepos: string[] = []
+  let keepStaging = false
 
   try {
+    if (!existsSync(pack)) throw new Error(`no pack at ${pack}`)
+    const free = freeBytes(dirname(env.dataDir))
+    const unpackBytes = statSync(pack).size * 3
+    if (free !== null && free < unpackBytes) {
+      throw new Error(`not enough disk to unpack: about ${formatBytes(unpackBytes)} needed, ${formatBytes(free)} free`)
+    }
     mkdirSync(staging, { recursive: true })
     log('Unpacking')
     extract(pack, staging)
@@ -334,13 +386,15 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
       migrations: manifest.migrations,
       targetFolders: manifest.projects.filter((p) => p.repoMoves).map((p) => p.targetFolder),
       dataBytes: 0,
-      repoBytes: 0,
+      // Already unpacked, so only the checkouts are still to come.
+      repoBytes: manifest.files.filter((f) => f.path.startsWith('repos/')).reduce((total, f) => total + f.size, 0),
     }
     const answer = await checkDestination(question, env, { replace, reposDir, open })
     if (answer.blockers.length > 0) throw new Error(answer.blockers.join('\n'))
 
     log('Checking every file')
     await verifyFiles(staging, manifest)
+    verifyConversations(staging, manifest)
 
     const rules = pathRules(manifest, env, reposDir)
     const renames = claudeRenames(manifest, rules)
@@ -402,7 +456,7 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
         }
         asideNames.add(newName)
         const staged = join(staging, 'claude', folder.name)
-        if (existsSync(staged)) placeClaudeFolder(staged, target, swap)
+        if (existsSync(staged)) placeClaudeFolder(staged, target, swap, when)
       }
       if (existsSync(env.dataDir)) {
         swap.rename(env.dataDir, asideOf(env.dataDir))
@@ -417,6 +471,7 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
     log('Putting uncommitted work back')
     const wipApplied: string[] = []
     const wipKept: { project: string; key: string; folder: string }[] = []
+    const wipStuck: string[] = []
     for (const project of manifest.projects) {
       if (!project.repoMoves) continue
       const repoPath = join(reposDir, project.targetFolder)
@@ -427,8 +482,15 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
           if (wip.key !== 'main') addTalkWorktree(repoPath, checkout, wip)
           kept = applyWip(project, wip, repoPath, checkout, staging)
         } catch {
-          kept = join(`${repoPath}.uncommitted`, wip.key)
-          cpSync(join(staging, 'wip', project.id, wip.key), kept, { recursive: true })
+          try {
+            kept = join(`${repoPath}.uncommitted`, wip.key)
+            cpSync(join(staging, 'wip', project.id, wip.key), kept, { recursive: true })
+          } catch {
+            // Staging is now the only copy, so it and the pack stay.
+            keepStaging = true
+            wipStuck.push(`${project.name} (${wip.key})`)
+            continue
+          }
         }
         if (kept) wipKept.push({ project: project.name, key: wip.key, folder: kept })
         else wipApplied.push(`${project.name} (${wip.key})`)
@@ -442,15 +504,17 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
       cleared: rewritten.cleared,
       wipApplied,
       wipKept,
+      wipStuck,
+      ...(keepStaging ? { stagingKept: staging } : {}),
       unmappedPaths: rewritten.unmapped,
       setAside,
     }
     const reportPath = join(env.dataDir, 'move-report.md')
     writeFileSync(reportPath, renderReport(manifest, partial))
-    rmSync(pack, { force: true })
+    if (!keepStaging) rmSync(pack, { force: true })
     return { ...partial, reportPath }
   } finally {
-    rmSync(staging, { recursive: true, force: true })
+    if (!keepStaging) rmSync(staging, { recursive: true, force: true })
     for (const stage of stagedRepos) rmSync(stage, { recursive: true, force: true })
   }
 }

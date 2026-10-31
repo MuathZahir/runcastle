@@ -1,6 +1,6 @@
-import { closeSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { runcastleVersion } from '../version'
 import { DATA_ENTRIES } from './scan'
 import { gitOrThrow, walkFiles } from './shell'
@@ -13,13 +13,20 @@ import type { CheckoutWip, MoveEnv, MoveManifest, MoveScan, OpenSql } from './ty
  * for the database copy and git bundles, removed before this returns.
  */
 
-/** Secrets that sit inside folders that otherwise travel. */
-function isSecret(entry: string): boolean {
-  return /^sessions\/[^/]+\/codex-home\/auth\.json$/.test(entry)
+/**
+ * What stays out of a session folder. Launch files are rewritten at every launch
+ * and can hold values a session was given, such as a drive's environment; a
+ * Codex home holds a copy of the login. Its `sessions/` folder is the chat itself.
+ */
+function isLeftOut(entry: string): boolean {
+  return (
+    /^sessions\/[^/]+\/(system-prompt\.md|settings\.json|mcp\.json|agent-stderr\.log)$/.test(entry) ||
+    /^sessions\/[^/]+\/codex-home\/(?!sessions\/)/.test(entry)
+  )
 }
 
 async function addTree(tar: TarWriter, dir: string, prefix: string, skip?: (rel: string) => boolean): Promise<void> {
-  for (const rel of walkFiles(dir)) {
+  for (const rel of walkFiles(dir, '', true)) {
     if (skip?.(rel)) continue
     await tar.addFile(`${prefix}/${rel}`, join(dir, rel))
   }
@@ -35,7 +42,7 @@ async function addDataEntries(tar: TarWriter, env: MoveEnv): Promise<void> {
       continue
     }
     if (isFile) await tar.addFile(`data/${entry}`, path)
-    else await addTree(tar, path, `data/${entry}`, (rel) => isSecret(`${entry}/${rel}`))
+    else await addTree(tar, path, `data/${entry}`, (rel) => isLeftOut(`${entry}/${rel}`))
   }
 }
 
@@ -89,12 +96,17 @@ async function addWip(tar: TarWriter, projectId: string, wip: CheckoutWip, scrat
   const prefix = `wip/${projectId}/${wip.key}`
   if (wip.sha && wip.tracked.length > 0) {
     const patch = join(scratch, 'changes.patch')
+    // `git diff` rewrites the index it reads, and GIT_OPTIONAL_LOCKS does not stop
+    // it. A copy of the index takes that write, so the source's own stays as it was.
+    const index = resolve(wip.path, gitOrThrow(wip.path, ['rev-parse', '--git-path', 'index']).trim())
+    const indexCopy = join(scratch, 'index')
+    if (existsSync(index)) copyFileSync(index, indexCopy)
     const fd = openSync(patch, 'w')
     try {
       const diff = spawnSync('git', ['-c', 'core.quotepath=off', 'diff', '--binary', 'HEAD'], {
         cwd: wip.path,
         stdio: ['ignore', fd, 'pipe'],
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_INDEX_FILE: indexCopy },
         windowsHide: true,
       })
       if (diff.status !== 0) throw new Error(`git diff failed in ${wip.path}: ${String(diff.stderr)}`)
@@ -103,6 +115,7 @@ async function addWip(tar: TarWriter, projectId: string, wip: CheckoutWip, scrat
     }
     await tar.addFile(`${prefix}/changes.patch`, patch)
     rmSync(patch, { force: true })
+    rmSync(indexCopy, { force: true })
   }
   for (const rel of [...wip.tracked, ...wip.untracked]) {
     const path = join(wip.path, rel)
@@ -120,6 +133,7 @@ export async function packMove(input: {
   scan: MoveScan
   open: OpenSql
   out: string
+  reportText?: string
   log?: (line: string) => void
 }): Promise<MoveManifest> {
   const { env, scan, open, out } = input
@@ -154,6 +168,8 @@ export async function packMove(input: {
       migrations,
       projects: scan.projects,
       claudeFolders: scan.claudeFolders,
+      conversations: scan.conversations,
+      reportText: input.reportText ?? '',
       rowCounts,
       files: tar.files,
     }
@@ -161,7 +177,7 @@ export async function packMove(input: {
     await tar.finish()
     return manifest
   } catch (err) {
-    await tar.finish().catch(() => {})
+    tar.abort()
     rmSync(out, { force: true })
     throw err
   } finally {

@@ -93,7 +93,8 @@ export function assignTargetFolders<T extends { id: string; folder: string; repo
   }
   const targets = new Map<string, string>()
   for (const project of projects) {
-    const taken = movers.has(project.folder) && !project.repoMoves
+    const shared = projects.filter((p) => p.folder === project.folder).length > 1
+    const taken = shared && !project.repoMoves
     targets.set(project.id, taken ? `${project.folder}-${project.id}` : project.folder)
   }
   const clashes = [...movers].filter(([, ids]) => ids.length > 1).map(([folder]) => folder)

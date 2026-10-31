@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { dataDir } from '@runcastle/core/paths'
 import { runcastleVersion } from '../version'
@@ -16,7 +16,7 @@ import {
 } from './remote'
 import { formatMoveInResult, formatReport, isBlocked } from './report'
 import { clearedCommandLines, scanMove } from './scan'
-import { stamp } from './shell'
+import { formatBytes, freeBytes, stamp } from './shell'
 import type { DestinationQuestion, MoveEnv, MoveScan, MoveSql, OpenSql } from './types'
 import { moveIn } from './unpack'
 
@@ -145,8 +145,18 @@ export async function runMoveCli(argv: string[]): Promise<number> {
     : undefined
   // Commands are cleared only between systems. With no host the destination is
   // unknown, so the report still warns.
+  const pack = args.out ?? join(tmpdir(), `runcastle-move-${stamp()}.tar.gz`)
+  const room = freeBytes(dirname(pack))
+  const packMax = scan.report.dataBytes + scan.report.repoBytes
+  if (room !== null && room < packMax) {
+    scan.report.blockers.push(
+      `not enough disk beside the pack: up to ${formatBytes(packMax)} needed, ${formatBytes(room)} free. Choose another place with --out`,
+    )
+  }
+
   const sameSystem = destination?.answer?.platform === env.platform
-  console.log(formatReport(scan.report, destination, sameSystem ? [] : cleared))
+  const reportText = formatReport(scan.report, destination, sameSystem ? [] : cleared)
+  console.log(reportText)
 
   if (args.dryRun) {
     console.log('\nNothing was changed.')
@@ -161,8 +171,7 @@ export async function runMoveCli(argv: string[]): Promise<number> {
     return 0
   }
 
-  const pack = args.out ?? join(tmpdir(), `runcastle-move-${stamp()}.tar.gz`)
-  await packMove({ env, scan, open, out: pack, log: (line) => console.log(line) })
+  await packMove({ env, scan, open, out: pack, reportText, log: (line) => console.log(line) })
   console.log(`\nPacked: ${pack}`)
 
   if (!args.host) {

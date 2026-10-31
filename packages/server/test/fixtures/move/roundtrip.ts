@@ -6,7 +6,7 @@
  * Usage: bun roundtrip.ts <empty scratch dir>
  */
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { createDb, openRawSqlite } from '../../../src/db/client'
@@ -88,8 +88,13 @@ sh(repo, 'init', '-q', '-b', 'main')
 writeFileSync(join(repo, '.gitignore'), '.env\nuploads/\nnode_modules/\n')
 writeFileSync(join(repo, 'app.txt'), 'one\n')
 writeFileSync(join(repo, 'gone.txt'), 'delete me\n')
+writeFileSync(join(repo, 'touched.txt'), 'same content\n')
 sh(repo, 'add', '.')
 sh(repo, 'commit', '-q', '-m', 'first')
+sh(repo, 'config', 'branch.main.remote', 'origin')
+sh(repo, 'config', 'branch.main.merge', 'refs/heads/main')
+writeFileSync(join(repo, 'app.txt'), 'stashed work\n')
+sh(repo, 'stash', 'push', '-q', '-m', 'keep me')
 sh(repo, 'branch', 'feature/login')
 sh(repo, 'branch', 'feature/idle')
 sh(repo, 'tag', 'v1')
@@ -103,6 +108,8 @@ writeFileSync(join(worktree, 'draft.md'), 'untracked in the talk worktree\n')
 writeFileSync(join(repo, 'app.txt'), 'two\n')
 writeFileSync(join(repo, 'notes.md'), 'untracked\n')
 writeFileSync(join(repo, '.env'), 'SECRET=1\n')
+writeFileSync(join(repo, '.env.local'), 'SECRET=not ignored\n')
+writeFileSync(join(repo, '.env.example'), 'SECRET=\n')
 mkdirSync(join(repo, 'uploads'))
 writeFileSync(join(repo, 'uploads', 'photo.bin'), 'x')
 sh(repo, 'rm', '-q', '--cached', 'gone.txt')
@@ -111,6 +118,23 @@ sh(repo, 'reset', '-q', '--hard', 'HEAD~1')
 writeFileSync(join(repo, 'app.txt'), 'two\n')
 writeFileSync(join(repo, 'notes.md'), 'untracked\n')
 Bun.spawnSync([process.platform === 'win32' ? 'cmd' : 'rm', ...(process.platform === 'win32' ? ['/c', 'del', 'gone.txt'] : ['gone.txt'])], { cwd: repo })
+// A stat-only change, which `git diff` would "fix" by rewriting the index.
+utimesSync(join(repo, 'touched.txt'), new Date(2030, 0, 1), new Date(2030, 0, 1))
+const nestedRepo = join(repo, 'vendor', 'mylib')
+mkdirSync(nestedRepo, { recursive: true })
+sh(nestedRepo, 'init', '-q', '-b', 'main')
+writeFileSync(join(nestedRepo, '.gitignore'), 'node_modules/\n')
+writeFileSync(join(nestedRepo, 'lib.txt'), 'only copy of this file\n')
+mkdirSync(join(nestedRepo, 'node_modules'))
+writeFileSync(join(nestedRepo, 'node_modules', 'dep.js'), 'ignored by the nested repo')
+
+// A repo with no commits yet: staged work, a remote and a chosen branch name.
+const unborn = join(source.home, 'work', 'unborn')
+mkdirSync(unborn, { recursive: true })
+sh(unborn, 'init', '-q', '-b', 'trunk')
+sh(unborn, 'remote', 'add', 'origin', 'https://example.invalid/unborn.git')
+writeFileSync(join(unborn, 'staged.txt'), 'staged, never committed\n')
+sh(unborn, 'add', 'staged.txt')
 
 freshDb(source)
 const sourceDb = db(source)
@@ -123,6 +147,7 @@ sourceDb.run(
   'INSERT INTO projects (id, name, repo_path) VALUES (?, ?, ?)',
   'proj_gone', 'vanished', join(source.home, 'work', 'vanished'),
 )
+sourceDb.run('INSERT INTO projects (id, name, repo_path) VALUES (?, ?, ?)', 'proj_unborn', 'unborn', unborn)
 sourceDb.run(
   'INSERT INTO project_findings (project_id, key, source, established_at, verified_at, verified_sha) VALUES (?, ?, ?, ?, ?, ?)',
   'proj_a', 'dbResetCommand', 'human', 1, 2, 'abc',
@@ -141,6 +166,20 @@ sourceDb.run(
   'INSERT INTO sessions (id, feature_id, kind, cc_session_id, transcript_path, status, worktree_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
   's1', 'f1', 'chat', 'conv-1', transcript, 'live', worktree,
 )
+const codexTranscript = join(source.dataDir, 'sessions', 's2', 'codex-home', 'sessions', 'rollout.jsonl')
+sourceDb.run(
+  'INSERT INTO sessions (id, feature_id, kind, cc_session_id, transcript_path, status, worktree_path, runtime) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  's2', 'f1', 'chat', 'codex-1', codexTranscript, 'ended', worktree, 'codex',
+)
+// A chat kept in a folder of its own, which maps onto the same new folder as s1.
+sourceDb.run(
+  'INSERT INTO sessions (id, feature_id, kind, cc_session_id, status, worktree_path) VALUES (?, ?, ?, ?, ?, ?)',
+  's3', 'f1', 'chat', 'conv-3', 'ended', worktree,
+)
+sourceDb.run(
+  'INSERT INTO sessions (id, feature_id, kind, cc_session_id, status, worktree_path) VALUES (?, ?, ?, ?, ?, ?)',
+  's4', 'f1', 'chat', 'conv-gone', 'ended', worktree,
+)
 sourceDb.run(
   'INSERT INTO events (project_id, ts, type, message, data) VALUES (?, ?, ?, ?, ?)',
   'proj_a', 1, 'note', `history mentions ${repo}`, null,
@@ -155,6 +194,11 @@ for (const [rel, body] of [
   ['sessions/s1/images/a.png', 'png'],
   ['sessions/s1/codex-home/auth.json', '{"token":"must not travel"}'],
   ['sessions/s1/codex-home/sessions/rollout.jsonl', '{}\n'],
+  ['sessions/s1/codex-home/config.toml', 'launch file'],
+  ['sessions/s1/system-prompt.md', 'DRIVE_SECRET=from a drive env'],
+  ['sessions/s1/mcp.json', '{}'],
+  ['sessions/s2/thread.jsonl', '{"i":0}\n'],
+  ['sessions/s2/codex-home/sessions/rollout.jsonl', '{"codex":true}\n'],
   ['reviews/t1/DIGEST.md', 'digest'],
   ['annotations/n1.png', 'png'],
   ['project-notes/n2.png', 'png'],
@@ -169,6 +213,9 @@ const claudeRel = [
   [encodeClaudeFolder(worktree), 'conv-1.jsonl', '{"cwd":"old"}\n'],
   [encodeClaudeFolder(repo), 'by-hand.jsonl', '{"hand":true}\n'],
   [encodeClaudeFolder(repo), 'memory/MEMORY.md', '- a memory\n'],
+  [encodeClaudeFolder(worktree), 'memory/MEMORY.md', '- newer memory\n'],
+  ['an-older-folder', 'conv-3.jsonl', '{"older":true}\n'],
+  ['an-older-folder', 'memory/MEMORY.md', '- older memory\n'],
   ['some-other-project', 'private.jsonl', '{"other":true}\n'],
 ] as const
 for (const [folder, rel, body] of claudeRel) {
@@ -234,6 +281,7 @@ const newTranscript = join(dest.claudeDir, 'projects', encodeClaudeFolder(newWor
 const moved = db(dest)
 const projectRow = moved.all<Record<string, string | null>>("SELECT * FROM projects WHERE id = 'proj_a'")[0]
 const sessionRow = moved.all<Record<string, string | null>>("SELECT * FROM sessions WHERE id = 's1'")[0]
+const codexRow = moved.all<Record<string, string | null>>("SELECT * FROM sessions WHERE id = 's2'")[0]
 const findings = moved.all<Record<string, string | number | null>>('SELECT * FROM project_findings')
 const eventText = moved.all<{ message: string }>('SELECT message FROM events')[0].message
 const gonePath = moved.all<{ repo_path: string }>("SELECT repo_path FROM projects WHERE id = 'proj_gone'")[0].repo_path
@@ -285,6 +333,28 @@ const facts = {
   repoPath: projectRow.repo_path,
   worktreePath: sessionRow.worktree_path,
   transcriptPath: sessionRow.transcript_path,
+  codexTranscriptPath: codexRow.transcript_path,
+  expectedCodex: join(dest.dataDir, 'sessions', 's2', 'codex-home', 'sessions', 'rollout.jsonl'),
+  codexFile: read(join(dest.dataDir, 'sessions', 's2', 'codex-home', 'sessions', 'rollout.jsonl')),
+  olderChat: read(join(dest.claudeDir, 'projects', encodeClaudeFolder(newWorktree), 'conv-3.jsonl')),
+  claudeFiles: walkFiles(join(dest.claudeDir, 'projects', encodeClaudeFolder(newWorktree))).sort(),
+  claudeMemories: walkFiles(join(dest.claudeDir, 'projects', encodeClaudeFolder(newWorktree)))
+    .filter((rel) => rel.startsWith('memory/'))
+    .map((rel) => read(join(dest.claudeDir, 'projects', encodeClaudeFolder(newWorktree), rel)))
+    .sort(),
+  nestedFile: read(join(newRepo, 'vendor', 'mylib', 'lib.txt')),
+  nestedIgnored: existsSync(join(newRepo, 'vendor', 'mylib', 'node_modules')),
+  unignoredEnv: existsSync(join(newRepo, '.env.local')),
+  envExample: existsSync(join(newRepo, '.env.example')),
+  launchFiles: ['system-prompt.md', 'mcp.json', 'codex-home/config.toml'].filter((rel) =>
+    existsSync(join(dest.dataDir, 'sessions', 's1', rel)),
+  ),
+  stashList: sh(newRepo, 'stash', 'list'),
+  stashFile: Bun.spawnSync(['git', 'show', 'stash@{0}:app.txt'], { cwd: newRepo }).stdout.toString(),
+  upstream: sh(newRepo, 'config', 'branch.main.merge'),
+  unbornBranch: sh(join(reposDir, 'unborn'), 'symbolic-ref', '--short', 'HEAD'),
+  unbornRemote: sh(join(reposDir, 'unborn'), 'remote', 'get-url', 'origin'),
+  unbornFile: read(join(reposDir, 'unborn', 'staged.txt')),
   gonePath,
   eventText,
   dev: projectRow.dev_command,
@@ -323,6 +393,16 @@ healthBody = 'not json'
 const unreadableServer = await serverRunning(dest)
 health.stop(true)
 const noServer = await serverRunning(dest)
+const slow = Bun.serve({
+  port,
+  hostname: '127.0.0.1',
+  fetch: async () => {
+    await Bun.sleep(4000)
+    return new Response(JSON.stringify({ dataDir: dest.dataDir }))
+  },
+})
+const busyServer = await serverRunning(dest)
+slow.stop(true)
 
 // --- a pack altered after it was made ------------------------------------------
 
@@ -415,6 +495,11 @@ blockedDb.run("INSERT INTO runs (id, feature_id, workflow, status, started_at) V
 blockedDb.close()
 Bun.spawnSync(['git', 'stash', '-u'], { cwd: repo, env: gitEnv })
 sh(repo, 'checkout', '-q', 'feature/idle')
+const shallow = join(source.home, 'work', 'shallow')
+sh(root, 'clone', '-q', '--depth', '1', `file://${(repo).replace(/\\/g, '/')}`, shallow)
+const shallowDb = db(source)
+shallowDb.run("INSERT INTO projects (id, name, repo_path) VALUES ('proj_shallow', 'shallow', ?)", shallow)
+shallowDb.close()
 
 const blockedSql = openRawSqlite(join(source.dataDir, 'runcastle.db'), { readonly: true })
 const blocked = scanMove(source, blockedSql, { noRepo: [] }).report.blockers
@@ -429,7 +514,8 @@ console.log(
     ...facts,
     secondSetAside: second.setAside.map((s) => s.from),
     secondRepoFile: read(join(newRepo, 'app.txt')),
-    servers: { ownServer, otherServer, unreadableServer, noServer },
+    servers: { ownServer, otherServer, unreadableServer, noServer, busyServer },
+    shallowBlocked: blocked.filter((line) => line.includes('shallow')),
     relativeRepos,
     altered: { alteredFile, alteredRows, alteredRef, newerPack, cleanLeft },
     patch: {

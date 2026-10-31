@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { assignTargetFolders, encodeClaudeFolder, sourceBasename } from './paths'
-import { formatBytes, git, nulList, pathBytes } from './shell'
+import { formatBytes, git, gitOrThrow, nulList, pathBytes } from './shell'
 import type {
   CheckoutWip,
   ClaudeFolder,
@@ -63,6 +63,7 @@ interface SessionRow {
   status: string
   worktree_path: string
   cc_session_id: string | null
+  runtime: string | null
 }
 
 interface FeatureRow {
@@ -85,6 +86,7 @@ function count(n: number, noun: string): string {
 function repoFacts(repoPath: string): {
   refs: Record<string, string>
   remotes: { name: string; url: string }[]
+  config: { key: string; value: string }[]
   headBranch?: string
   headSha?: string
 } {
@@ -99,8 +101,12 @@ function repoFacts(repoPath: string): {
     const url = git(repoPath, ['remote', 'get-url', name])
     if (url.ok) remotes.push({ name, url: url.stdout.trim() })
   }
-  const head = headOf(repoPath)
-  return { refs, remotes, ...head }
+  const settings = git(repoPath, ['config', '--local', '-z', '--get-regexp', '^(branch\\.|user\\.|core\\.hookspath)'])
+  const config = nulList(settings.stdout).map((entry) => {
+    const newline = entry.indexOf('\n')
+    return newline < 0 ? { key: entry, value: '' } : { key: entry.slice(0, newline), value: entry.slice(newline + 1) }
+  })
+  return { refs, remotes, config, ...headOf(repoPath) }
 }
 
 function headOf(path: string): { headBranch?: string; headSha?: string } {
@@ -127,25 +133,56 @@ function midOperation(path: string): string | null {
   return marks.find(([file]) => existsSync(join(gitDir, file)))?.[1] ?? null
 }
 
+/** A `.env` file, by name: example files hold no secrets and are left to travel. */
+function isEnvFile(rel: string): boolean {
+  const name = rel.slice(rel.lastIndexOf('/') + 1)
+  return /^\.env(\..+)?$/.test(name) && !/\.(example|sample|template)$/.test(name)
+}
+
 function checkoutWip(key: string, path: string): CheckoutWip {
   const { headBranch, headSha } = headOf(path)
-  const tracked = headSha
-    ? nulList(git(path, ['diff', '--name-only', '--no-renames', '-z', 'HEAD']).stdout).filter((rel) =>
-        existsSync(join(path, rel)),
-      )
-    : []
-  const untracked = nulList(git(path, ['ls-files', '-o', '--exclude-standard', '-z']).stdout)
-  const deleted = headSha
-    ? nulList(git(path, ['diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', 'HEAD']).stdout)
-    : []
+  // `git status`, not `git diff --name-only`: under GIT_OPTIONAL_LOCKS it leaves the
+  // index alone, where `git diff` refreshes it, and it compares content, not stat data.
+  const status = gitOrThrow(path, ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=no'])
+  const changed = nulList(status).map((entry) => entry.slice(3))
+  const nested: string[] = []
+  const loose: string[] = []
+  for (const rel of nulList(gitOrThrow(path, ['ls-files', '-o', '--exclude-standard', '-z']))) {
+    if (!rel.endsWith('/')) {
+      loose.push(rel)
+      continue
+    }
+    // A folder that is a repo of its own. Its own ignore rules keep its `node_modules` out.
+    nested.push(rel.slice(0, -1))
+    loose.push(...nulList(gitOrThrow(join(path, rel), ['ls-files', '-co', '--exclude-standard', '-z'])).map((inner) => `${rel}${inner}`))
+  }
+  // With no commit to diff against, staged files can only travel as whole copies.
+  const untracked = headSha ? loose : [...changed, ...loose]
   return {
     key,
     path,
     ...(headBranch ? { branch: headBranch } : {}),
     ...(headSha ? { sha: headSha } : {}),
-    tracked: [...tracked, ...deleted.filter((rel) => !tracked.includes(rel))],
-    untracked,
+    tracked: headSha ? changed : [],
+    untracked: untracked.filter((rel) => !isEnvFile(rel)),
+    nested,
+    heldBack: untracked.filter(isEnvFile),
   }
+}
+
+/** What the human should know about a checkout's uncommitted work. */
+function wipAttention(project: string, wip: CheckoutWip): string[] {
+  const where = wip.key === 'main' ? '' : ` (${wip.key})`
+  const lines = wip.nested.map(
+    (rel) => `${project}${where}: ${rel} is a git repo of its own; its files travel, its history does not`,
+  )
+  if (wip.heldBack.length > 0) lines.push(`${project}${where}: ${wip.heldBack.join(', ')} stays behind, though git does not ignore it`)
+  if (wip.untracked.length > 0) {
+    const shown = wip.untracked.slice(0, 3).join(', ')
+    const more = wip.untracked.length > 3 ? `, and ${wip.untracked.length - 3} more` : ''
+    lines.push(`${project}${where}: untracked files travel as they are: ${shown}${more}`)
+  }
+  return lines
 }
 
 function hasWork(wip: CheckoutWip): boolean {
@@ -188,6 +225,26 @@ function leftoverWorktrees(repoPath: string, talkRoot: string): number {
     if (path.replace(/\\/g, '/').toLowerCase().startsWith(talk)) return false
     return existsSync(path) && git(path, ['status', '--porcelain']).stdout.trim().length > 0
   }).length
+}
+
+/** Local git files a bundle does not carry. Sample hooks do not count. */
+function hooksAndExcludes(project: string, repoPath: string): string[] {
+  const lines: string[] = []
+  try {
+    const hooks = readdirSync(join(repoPath, '.git', 'hooks')).filter((name) => !name.endsWith('.sample'))
+    if (hooks.length > 0) lines.push(`${project}: local git hooks stay behind: ${hooks.join(', ')}`)
+  } catch {
+    // no hooks folder
+  }
+  try {
+    const excludes = readFileSync(join(repoPath, '.git', 'info', 'exclude'), 'utf8')
+    if (excludes.split('\n').some((line) => line.trim() && !line.startsWith('#'))) {
+      lines.push(`${project}: rules in .git/info/exclude stay behind`)
+    }
+  } catch {
+    // no exclude file
+  }
+  return lines
 }
 
 function usesLfsOrSubmodules(repoPath: string): boolean {
@@ -237,7 +294,11 @@ function conversationFolders(projectsDir: string): Map<string, string> {
  * name over Claude's limit carries a hash, so a folder is also found by the
  * conversations recorded against it.
  */
-function findClaudeFolders(env: MoveEnv, repoPaths: string[], sessions: SessionRow[]): ClaudeFolder[] {
+function findClaudeFolders(
+  env: MoveEnv,
+  repoPaths: string[],
+  sessions: SessionRow[],
+): { folders: ClaudeFolder[]; conversations: { id: string; folder: string }[]; missing: number } {
   const projectsDir = join(env.claudeDir, 'projects')
   const owned = new Map<string, string>()
   const claim = (name: string, cwd: string): void => {
@@ -248,22 +309,45 @@ function findClaudeFolders(env: MoveEnv, repoPaths: string[], sessions: SessionR
   try {
     for (const name of readdirSync(projectsDir)) onDisk.set(fold(env, name), name)
   } catch {
-    return []
+    return { folders: [], conversations: [], missing: 0 }
   }
   for (const cwd of cwds) {
     const name = onDisk.get(fold(env, encodeClaudeFolder(cwd)))
     if (name) claim(name, cwd)
   }
-  const conversations = conversationFolders(projectsDir)
+  const onDiskConversations = conversationFolders(projectsDir)
+  const conversations = new Map<string, string>()
+  const missing = new Set<string>()
   for (const session of sessions) {
-    const name = session.cc_session_id ? conversations.get(session.cc_session_id) : undefined
-    if (name) claim(name, session.worktree_path)
+    const id = session.cc_session_id
+    if (!id || (session.runtime ?? 'claude-code') !== 'claude-code') continue
+    const folder = onDiskConversations.get(id)
+    if (!folder) {
+      missing.add(id)
+      continue
+    }
+    claim(folder, session.worktree_path)
+    conversations.set(id, folder)
   }
-  return [...owned].map(([name, cwd]) => ({ name, cwd }))
+  return {
+    folders: [...owned].map(([name, cwd]) => ({ name, cwd })),
+    conversations: [...conversations].map(([id, folder]) => ({ id, folder })),
+    missing: missing.size,
+  }
 }
 
 function fold(env: MoveEnv, name: string): string {
   return env.platform === 'win32' ? name.toLowerCase() : name
+}
+
+function wipBytes(projects: MoveProject[]): number {
+  let total = 0
+  for (const project of projects) {
+    for (const wip of project.wip) {
+      for (const rel of [...wip.tracked, ...wip.untracked]) total += pathBytes(join(wip.path, rel))
+    }
+  }
+  return total
 }
 
 function dataBytes(env: MoveEnv, folders: ClaudeFolder[]): number {
@@ -310,7 +394,7 @@ function scanTalkWorktrees(
 export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): MoveScan {
   const projectRows = sql.all<ProjectRow>('SELECT * FROM projects')
   const sessionRows = sql.all<SessionRow>(
-    'SELECT project_id, feature_id, status, worktree_path, cc_session_id FROM sessions',
+    'SELECT project_id, feature_id, status, worktree_path, cc_session_id, runtime FROM sessions',
   )
   const featureRows = sql.all<FeatureRow>(
     'SELECT id, project_id, slug, title, branch, status FROM features',
@@ -359,6 +443,7 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
       repoMoves,
       refs: {},
       remotes: [],
+      config: [],
       wip: [],
     }
     let bytes = 0
@@ -374,6 +459,13 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
       const talk = scanTalkWorktrees(env, row, featureRows)
       project.wip = [...(hasWork(main) ? [main] : []), ...talk.wips]
       blockers.push(...talk.stopped)
+      attention.push(...[main, ...talk.wips].flatMap((wip) => wipAttention(row.name, wip)))
+      if (git(row.repo_path, ['rev-parse', '--is-shallow-repository']).stdout.trim() === 'true') {
+        blockers.push(`${row.name}: a shallow clone cannot be packed. Run git fetch --unshallow, or leave it out with --no-repo`)
+      }
+      if (project.remotes.some((remote) => /^https?:\/\/[^/@]+@/.test(remote.url))) {
+        attention.push(`${row.name}: a remote URL holds a credential, and it travels with the repo`)
+      }
       bytes = repoBytes(row.repo_path)
 
       const mid = midOperation(row.repo_path)
@@ -396,6 +488,9 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
       if (ignored.length > 0) attention.push(`${row.name}: ignored files stay behind: ${ignored.join(', ')}`)
       const stashes = stashCount(row.repo_path)
       if (stashes > 1) attention.push(`${row.name}: ${stashes} stashes, only the newest travels`)
+      if (Object.keys(project.refs).length > 0) {
+        attention.push(...hooksAndExcludes(row.name, row.repo_path))
+      }
       const leftovers = leftoverWorktrees(row.repo_path, join(env.dataDir, 'worktrees'))
       if (leftovers > 0) attention.push(`${row.name}: ${count(leftovers, 'burner worktree')} with changes stay behind`)
       if (usesLfsOrSubmodules(row.repo_path)) {
@@ -421,18 +516,21 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
   const openChats = sessionRows.filter((s) => s.status === 'live' || s.status === 'launching').length
   if (openChats > 0) attention.push(`${count(openChats, 'open chat')} will end at the new machine's first boot, and can be resumed`)
 
-  const claudeFolders = findClaudeFolders(env, projectRows.map((p) => p.repo_path), sessionRows)
+  const claude = findClaudeFolders(env, projectRows.map((p) => p.repo_path), sessionRows)
+  if (claude.missing > 0) {
+    attention.push(`${count(claude.missing, 'chat')} with no transcript on this machine: their history shows, they cannot be resumed`)
+  }
 
   const report: MoveReport = {
     blockers,
     projects: lines,
     attention,
     staysBehind: STAYS_BEHIND,
-    dataBytes: dataBytes(env, claudeFolders),
+    dataBytes: dataBytes(env, claude.folders) + wipBytes(projects),
     repoBytes: totalRepoBytes,
     openChats,
   }
-  return { report, projects, claudeFolders }
+  return { report, projects, claudeFolders: claude.folders, conversations: claude.conversations }
 }
 
 /** The commands a move between systems clears, for the report: one line per project that has any. */

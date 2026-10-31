@@ -96,6 +96,21 @@ describe('assignTargetFolders', () => {
   })
 })
 
+describe('assignTargetFolders, when no project takes the folder', () => {
+  it('still gives two projects without repos different paths', () => {
+    const { targets } = assignTargetFolders([
+      { id: 'a', folder: 'app', repoMoves: false },
+      { id: 'b', folder: 'app', repoMoves: false },
+    ])
+    expect(new Set(targets.values()).size).toBe(2)
+  })
+
+  it('leaves a lone project at its plain folder name', () => {
+    const { targets } = assignTargetFolders([{ id: 'a', folder: 'app', repoMoves: false }])
+    expect(targets.get('a')).toBe('app')
+  })
+})
+
 describe('the command line', () => {
   it('routes move and move-in', () => {
     expect(parseCommand(['move', 'me@host']).command).toBe('move')
@@ -119,7 +134,7 @@ describe('the command line', () => {
 })
 
 describe('the SSH wrapper', () => {
-  const pack = 'C:\\Temp\\runcastle-move-1.tar.gz'
+  const pack = '/tmp/runcastle-move-1.tar.gz'
   const flags = { replace: true }
 
   it("never relies on runcastle being on the PATH of a non-interactive session", () => {
@@ -132,14 +147,15 @@ describe('the SSH wrapper', () => {
   it('prints the exact manual commands when a step fails, and says the pack is kept', () => {
     const message = failureMessage('The copy', 'scp to me@host did not finish', pack, 'me@host', flags)
     expect(message).toContain(`The pack is kept at ${pack}`)
-    expect(message).toContain(`scp "${pack}" me@host:`)
+    expect(message).toContain('cd "/tmp"')
+    expect(message).toContain('scp "runcastle-move-1.tar.gz" me@host:')
     expect(message).toContain(
       `ssh me@host 'PATH="$HOME/.bun/bin:$PATH" runcastle move-in "$HOME/runcastle-move-1.tar.gz" --replace'`,
     )
   })
 
   it('leaves a placeholder host in the printed steps when none was given', () => {
-    expect(manualSteps('/tmp/p.tar.gz', undefined, { replace: false })[0]).toBe('scp "/tmp/p.tar.gz" <user@host>:')
+    expect(manualSteps('/tmp/p.tar.gz', undefined, { replace: false })[1]).toBe('scp "p.tar.gz" <user@host>:')
   })
 })
 

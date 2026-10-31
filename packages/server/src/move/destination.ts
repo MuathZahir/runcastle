@@ -9,12 +9,17 @@ import type { DestinationAnswer, DestinationQuestion, MoveEnv, OpenSql } from '.
 
 export const DEFAULT_REPOS_FOLDER = 'projects'
 
+/** Long enough for a busy server to answer. Connection refused comes back at once. */
+const HEALTH_TIMEOUT_MS = 3000
+
 export function reposDirOf(env: MoveEnv, override: string | undefined): string {
   return override ?? join(env.home, DEFAULT_REPOS_FOLDER)
 }
 
-/** The port this data dir's server listens on: what its config says, else the default. */
+/** The port this data dir's server listens on, by the order the server itself uses. */
 function serverPort(env: MoveEnv): number {
+  const fromEnv = Number(process.env.RUNCASTLE_SERVER_PORT)
+  if (Number.isInteger(fromEnv) && fromEnv > 0) return fromEnv
   try {
     const config = JSON.parse(readFileSync(join(env.dataDir, 'config.json'), 'utf8')) as { serverPort?: number }
     return config.serverPort ?? 4512
@@ -26,19 +31,18 @@ function serverPort(env: MoveEnv): number {
 /**
  * Whether this data dir's server is up. Its `/health` names the tree it serves,
  * so a server on the same port for another data dir does not count. A reply that
- * cannot be read does count: something is there, and guessing wrong here means
- * copying a database in use.
+ * cannot be read, or that does not come in time, does count: something is there,
+ * and guessing wrong here means copying a database in use.
  */
 export async function serverRunning(env: MoveEnv): Promise<boolean> {
   try {
     const reply = await fetch(`http://127.0.0.1:${serverPort(env)}/health`, {
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
     })
     const body = (await reply.json()) as { dataDir?: string }
     return !body.dataDir || sameDataDir(body.dataDir, env.dataDir)
   } catch (err) {
-    if (err instanceof SyntaxError) return true
-    return false
+    return err instanceof SyntaxError || (err as Error).name === 'TimeoutError'
   }
 }
 

@@ -29,12 +29,12 @@ With a host, `move` sends the manifest to `move-in --check` over `ssh`, which an
 
 A single `.tar.gz`, file mode 600, built in the OS temp dir. Files stream straight into it from where they sit, so the old machine never holds a second copy of the data; the only scratch space is a temp folder beside the pack for the database copy and bundles, removed afterwards. Git runs with `GIT_OPTIONAL_LOCKS=0`, so reading a repo cannot refresh its index. SQLite may leave its usual empty `-wal` and `-shm` files beside a database opened read-only; the database itself does not change.
 
-- `manifest.json`: pack format version, runcastle version, applied migrations, source platform, home, data dir and Claude dir, and per project its id, name, repo path, every ref, remotes, and which checkouts carry uncommitted work. Also a sha256 for each file and row counts per table. `move-in` refuses a pack holding a migration its build does not ship, which is the real test for "from a newer runcastle".
+- `manifest.json`: pack format version, runcastle version, applied migrations, source platform, home, data dir and Claude dir, and per project its id, name, repo path, every ref, remotes, upstream tracking, repo identity and hooks path, and which checkouts carry uncommitted work. Also a sha256 for each file and row counts per table. `move-in` refuses a pack holding a migration its build does not ship, which is the real test for "from a newer runcastle".
 - `db/runcastle.db`: a consistent copy made with SQLite's `VACUUM INTO`, which reads committed state whatever the WAL holds. Refusing while the server runs stays anyway, because logs and chats are written beside the database.
-- `data/`: `config.json`, `sessions/` (minus `codex-home/auth.json`; launch artifacts travel too and are rewritten at the next launch), `reviews/`, `annotations/`, `project-notes/`, `design-crops/`, `stories/`.
+- `data/`: `config.json`, `sessions/` (minus launch files, which are rewritten at the next launch and can hold values a session was given, and everything in a Codex home except its `sessions/` folder, which is the chat), `reviews/`, `annotations/`, `project-notes/`, `design-crops/`, `stories/`.
 - `claude/<encoded-old-path>/`: the Claude project folder of each repo path and each session's worktree path. A folder is found from `~/.claude/projects` by the encoded path, or by a session's conversation id, which also catches names past Claude Code's 200-character limit.
-- `repos/<project-id>.bundle`: `git bundle create --all`.
-- `wip/<project-id>/<slug-or-main>/`: `changes.patch` from `git diff --binary HEAD`, and `files/` holding whole copies of changed and untracked non-ignored files. The manifest records each checkout's branch and commit.
+- `repos/<project-id>.bundle`: `git bundle create --all`. A shallow clone cannot be bundled, so it blocks the move; a repo with no commits has no bundle and keeps its remotes, branch name and staged files.
+- `wip/<project-id>/<slug-or-main>/`: `changes.patch` from `git diff --binary HEAD`, run against a copy of the index because `git diff` rewrites the index it reads, and `files/` holding whole copies of changed and untracked non-ignored files. The manifest records each checkout's branch and commit.
 
 ### Moving in
 
