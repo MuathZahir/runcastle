@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burns build their own image preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:12px}
+.flow[hidden]{display:none}
+.st{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);max-width:230px}
+.st .dot{margin-top:7px}
+.st small{display:block;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.ar{align-self:center;color:var(--color-text-tertiary)}
+.grid{width:100%;max-width:640px;border-collapse:collapse;margin-top:8px}
+.grid td{padding:6px 8px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary)}
+.grid td:first-child{color:var(--color-text);width:50%}
+.grid .dot{margin-right:8px;vertical-align:1px}
+.rh{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--color-border-subtle)}
+.rh b{font-weight:500}
+.shim{min-width:0;font-size:12px;color:var(--color-text-secondary)}
+.tm{margin-left:auto;font-size:12px;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+.tk{display:flex;align-items:center;gap:10px;padding:7px 14px;color:var(--color-text-secondary)}
+.term{margin:8px 0 0;padding:10px 12px;max-width:640px;overflow:auto;border-radius:var(--radius-md);background:var(--color-surface-inset);font:12px/18px var(--font-mono);color:var(--color-text-secondary)}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Burns build their own image</h1>
+  <p class="lede">The first burn builds the sandbox image when it is missing, with no click and no command to run. A server with no browser gets a small command for the same build.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/burns-build-their-own-image/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">A first burn on a machine with no image, before and after.</p>
+
+  <div class="sub">
+    <div class="seg" role="group" aria-label="Before or after">
+      <button data-flow="before" aria-pressed="false">Today</button>
+      <button data-flow="after" aria-pressed="true">With this feature</button>
+    </div>
+    <div class="flow" id="flow-before" hidden>
+      <div class="st"><i class="dot live"></i>Start a round</div><span class="ar">→</span>
+      <div class="st"><i class="dot no"></i><span>Burn stops<small>“could not start image … Unable to find image”</small></span></div><span class="ar">→</span>
+      <div class="st"><i class="dot"></i><span>Find Settings, click Build<small>no browser on a server: copy the args from source</small></span></div><span class="ar">→</span>
+      <div class="st"><i class="dot"></i>Start the round again</div>
+    </div>
+    <div class="flow" id="flow-after">
+      <div class="st"><i class="dot live"></i>Start a round</div><span class="ar">→</span>
+      <div class="st"><i class="dot live"></i><span>Burn builds the image <a class="pin" data-d="1">1</a><small>a few minutes, first time only</small></span></div><span class="ar">→</span>
+      <div class="st"><i class="dot ok"></i><span>Tickets run<small>second burn: no build</small></span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What a burn does with each image</h3>
+    <p class="hint">Checked after auth and the engine, before any ticket.</p>
+    <table class="grid">
+      <tr><td>No image on this machine</td><td><i class="dot live"></i>Builds <a class="pin" data-d="1">1</a></td></tr>
+      <tr><td>Project Dockerfile never built</td><td><i class="dot live"></i>Builds, then uses it <a class="pin" data-d="1">1</a></td></tr>
+      <tr><td>Project Dockerfile edited since the build</td><td><i class="dot live"></i>Builds <a class="pin" data-d="12">12</a></td></tr>
+      <tr><td>Image built for another user ID</td><td><i class="dot live"></i>Builds <a class="pin" data-d="2">2</a></td></tr>
+      <tr><td>Agent CLI differs from the host’s</td><td><i class="dot ok"></i>Warns and runs, as today <a class="pin" data-d="2">2</a></td></tr>
+      <tr><td>Stock Dockerfile changed by an upgrade</td><td><i class="dot ok"></i>Runs, as today <a class="pin" data-d="2">2</a></td></tr>
+      <tr><td>Custom image you named yourself</td><td><i class="dot ok"></i>Never built, as today <a class="pin" data-d="3">3</a></td></tr>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>The wait, in the Work view</h3>
+    <p class="hint">One line of words changes. No new layout, so no design pages. <a class="pin" data-d="8">8</a></p>
+<!-- screen:round-header -->
+    <div class="screen">
+      <div class="rh">
+        <b>Round 1</b>
+        <span class="shim">Building the sandbox image · first time only, a few minutes</span>
+        <span class="tm">3m 12s</span>
+      </div>
+      <div class="tk"><i class="dot"></i>#1 Add the export button</div>
+      <div class="tk"><i class="dot"></i>#2 Write the CSV endpoint</div>
+    </div>
+<!-- /screen:round-header -->
+  </div>
+
+  <div class="sub">
+    <h3>When the build fails</h3>
+    <div class="flow">
+      <div class="st"><i class="dot no"></i><span>Build fails, one attempt <a class="pin" data-d="9">9</a><small>no space left on device</small></span></div><span class="ar">→</span>
+      <div class="st"><i class="dot"></i><span>Tickets still waiting<small>none marked failed</small></span></div><span class="ar">→</span>
+      <div class="st"><i class="dot"></i><span>Lead gets the cause and the log file</span></div><span class="ar">→</span>
+      <div class="st"><i class="dot live"></i><span>Next round tries again</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>On a server with no browser</h3>
+    <p class="hint">The same build by hand, for the one-line install or as a Rebuild. <a class="pin" data-d="5">5</a></p>
+    <pre class="term">$ runcastle build-image
+Building sandcastle:runcastle …
+#8 [4/9] RUN curl -fsSL https://bun.sh/install | bash
+…
+Built sandcastle:runcastle</pre>
+  </div>
+
+  <div class="sub">
+    <h3>Two burns at once</h3>
+    <p class="hint">The server runs one build at a time. The second burn waits, sees the image, and carries on. <a class="pin" data-d="7">7</a></p>
+  </div>
+
+  <div class="sub">
+    <h3>Settings and doctor</h3>
+    <p class="hint">A missing image reads “not built yet: the first burn builds it”. The Build image button stays for anyone who wants to build ahead. <a class="pin" data-d="6">6</a></p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The one-line install, which waits on this</li>
+      <li><i class="dot"></i>Rebuilding a project image by hand on a server (a --project flag)</li>
+      <li><i class="dot"></i>Live build output in the app</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Token and service setup</li>
+      <li><i class="dot"></i>Project-owned image design</li>
+      <li><i class="dot"></i>Rebuilding an image that can still run</li>
+      <li><i class="dot"></i>A named message for a missing custom image</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <table class="grid">
+        <tr><td>prepareImageBuild</td><td>The plan, moved out of the router. Button, burn and command all call it.</td></tr>
+        <tr><td>runImageBuild</td><td>Runs a plan with no terminal: streams to a log, stops after 10 quiet minutes, can be aborted.</td></tr>
+        <tr><td>withImageBuildSlot</td><td>The server's one-at-a-time queue.</td></tr>
+        <tr><td>ensureBurnImage</td><td>The burn step, after the auth, root and engine checks, before the toolchain probe.</td></tr>
+        <tr><td>Traps in the burner</td><td>Memoised engine commands, the run's project snapshot, and a stored image whose Dockerfile has gone. See spec.md.</td></tr>
+        <tr><td>Who builds it</td><td>The lead, in its own window. No tickets. Proved on a real engine.</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    [
+      "A burn builds when the image it should run on does not exist yet",
+      "A burn with no image can do nothing else useful. Asking the build target also catches a project Dockerfile that was never built.",
+      "assumed"
+    ],
+    [
+      "A burn also builds over an image it cannot start; drift stays a warning",
+      "A wrong user ID cannot run, so it is the same case as missing. A drifted image can run, so the shipped warn-only decision stands.",
+      "assumed"
+    ],
+    [
+      "Custom images are never built, and behave exactly as they do today",
+      "The Rebuild button draws the same line, and pulling on first use is how registry images work now.",
+      "assumed"
+    ],
+    [
+      "One build plan, run two ways",
+      "The brief asks for no second build path. Only what executes the plan differs: a terminal, or a process on its own.",
+      "assumed"
+    ],
+    [
+      "`runcastle build-image` exists, and builds the stock image",
+      "The one-line install needs a way to build without the app. Project images need the database, and burns handle those.",
+      "assumed"
+    ],
+    [
+      "A missing managed image no longer counts as a problem",
+      "The checklist counts what a burn is blocked on, and a burn no longer is. It also keeps doctor green on a new machine.",
+      "assumed"
+    ],
+    [
+      "One image build at a time on the server",
+      "One queue is simpler than a lock per image. The command stays outside it, because two builds of one tag cannot corrupt anything.",
+      "assumed"
+    ],
+    [
+      "The wait shows in the round's header, and the timeline records it",
+      "A burn is left running, so the need is to see it is not stuck. The header already moves and has a timer.",
+      "assumed"
+    ],
+    [
+      "A failed build ends the run before any ticket, and the next round tries again",
+      "A failure is nearly always network, disk or a broken Dockerfile, which an instant retry will not fix. Tickets did nothing wrong.",
+      "assumed"
+    ],
+    [
+      "Built in the lead's own window, proved on a real engine",
+      "One coupled change, and a sandboxed worker has no container engine, which is what it needs proving on.",
+      "assumed"
+    ],
+    [
+      "The reversal is written down as an ADR",
+      "\"Burns never build\" was argued twice and sits in the code. A reader should find the exception and its reason.",
+      "assumed"
+    ],
+    [
+      "A burn rebuilds a project image whose Dockerfile changed",
+      "A stop tells the human to edit that file and rebuild. Otherwise the next burn runs on the old image, and a server has no way out.",
+      "assumed"
+    ]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [
+      12,
+      "A --project flag on the command, so a human rebuilds it by hand.",
+      "The brief asks only about missing and drifted images. This rebuilds an existing image, which the shipped rule ruled out, narrowed to a project's own file.",
+      "challenger"
+    ],
+    [
+      2,
+      "Only missing images build, and a wrong user ID stops the run with the command named.",
+      "How far \"burns build\" should go is your call. It reverses a rule argued twice, so the smaller version may be what you meant.",
+      "challenger"
+    ],
+    [
+      9,
+      "Fall back to the stock image when a project image will not build.",
+      "A repo with a broken Dockerfile nobody ever built goes from running on stock to a failed run. That run was silently wrong, but people will notice the change.",
+      "challenger"
+    ],
+    [
+      5,
+      "A --project flag for the whole chain.",
+      "The one-line install only needs stock, but a server can then only rebuild a project image through a burn.",
+      "challenger"
+    ],
+    [
+      8,
+      "Show the build's last line of output in the header.",
+      "A few minutes with only a timer moving may look stuck, and someone may press Stop.",
+      "challenger"
+    ]
+  ]
+  $$('[data-flow]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-flow]').forEach(function (o) {
+        var on = o === b
+        o.setAttribute('aria-pressed', String(on))
+        $('#flow-' + o.dataset.flow).hidden = !on
+      })
+    })
+  })
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
