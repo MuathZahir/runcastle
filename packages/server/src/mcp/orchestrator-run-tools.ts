@@ -4,10 +4,12 @@ import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { deliverToLead } from '../services/lead-delivery'
 import { mainChatExcerpt } from '../services/main-chat-excerpt'
+import { shownCopies, type ShownCopy } from '../threads/shown'
 import {
   noSession,
   ok,
   orchestratorTool,
+  requireHeldFeature,
   requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
@@ -33,7 +35,7 @@ export async function toolSendToFeature(
   session: SessionRow,
   input: { slug: string; message: string; relaysHuman?: boolean },
 ): Promise<SendToFeatureResult> {
-  const feature = requireProjectFeature(ctx, session, input.slug)
+  const feature = requireHeldFeature(ctx, session, input.slug)
   const from = input.relaysHuman ? RELAYED_HUMAN_LINE : FROM_ORCHESTRATOR_LINE
   await deliverToLead(ctx, feature, { text: `${from}\n\n${input.message}`, source: 'human' })
   return { deliveredToLead: true }
@@ -45,6 +47,8 @@ export type ReadFeatureChatResult = {
   quote: string | null
   transcriptPath: string | null
   reason?: string
+  /** The files the chat showed, newest last; each `path` is a copy `show_file` can show again. */
+  shown: ShownCopy[]
 }
 
 /** The last turns of a feature's main chat, for reading what its agent said or asked. */
@@ -60,6 +64,7 @@ export function toolReadFeatureChat(
     quote,
     transcriptPath,
     ...(quote === null ? { reason: 'no chat on disk yet' } : {}),
+    shown: shownCopies(ctx, feature.id),
   }
 }
 
@@ -103,7 +108,8 @@ export function registerOrchestratorRunTools(
         description:
           "The last turns of a feature's chat, for reading what its agent said or asked. " +
           'Returns the quote and the transcript path; the quote is null, with a reason, when ' +
-          'the feature has no chat on disk yet.',
+          'the feature has no chat on disk yet. `shown` lists the files that chat showed, each ' +
+          'with a `path` that show_file can show again, even after the feature merged.',
         inputSchema: { slug: z.string().describe('The slug of the feature.') },
       },
       orchestratorTool(async (args, extra) => {

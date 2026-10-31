@@ -216,7 +216,7 @@ describe('feature dependencies over MCP', () => {
     const row = ctx.db.select().from(features).where(eq(features.id, out.id)).get()
     expect(row?.upNext).toBe(true)
     const index = (await toolGetProjectContext(ctx, session)).featureIndex
-    expect(index).toContain('billing — Billing [draft, up next] · waits on: auth-rework')
+    expect(index).toContain('billing — Billing [draft, up next] · waits on: auth-rework · held by you')
 
     const authSession = createSessionRow(ctx, {
       featureId: auth.id,

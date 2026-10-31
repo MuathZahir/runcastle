@@ -33,11 +33,31 @@ describe('runCli (real wiring)', () => {
    */
   it('runs every probe against the host and returns a numeric exit code', async () => {
     const lines: string[] = []
-    const code = await runCli([], (l) => lines.push(l))
+    // The gate: a diagnostic run would spend usage on a live token call and
+    // start a container per cache volume, on every test run.
+    const code = await runCli(['--gate'], (l) => lines.push(l))
     const out = lines.join('\n')
     expect(out).toContain('runcastle doctor')
     // git is present in the repo container -> that probe reports ok.
     expect(out).toMatch(/Git .*OK/i)
     expect(typeof code).toBe('number')
   }, 15000)
+})
+
+describe('the costly checks run only by hand', () => {
+  it('tests the token and the volumes when run by hand, never in the boot gate', () => {
+    const before = process.env.RUNCASTLE_SANDBOX
+    process.env.RUNCASTLE_SANDBOX = 'docker'
+    try {
+      const byHand = resolveDoctorEnv('diagnostic')
+      expect(byHand.checkToken).toBeDefined()
+      expect(byHand.burnCache).toBeDefined()
+      const gate = resolveDoctorEnv('gate')
+      expect(gate.checkToken).toBeUndefined()
+      expect(gate.burnCache).toBeUndefined()
+    } finally {
+      if (before === undefined) delete process.env.RUNCASTLE_SANDBOX
+      else process.env.RUNCASTLE_SANDBOX = before
+    }
+  })
 })

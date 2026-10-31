@@ -199,6 +199,14 @@ document, under **one header row**:
   - **The composer is one box**: the task list and background commands are its
     top section, the context meter (a short bar and a percentage) sits in its
     footer, and the working caption sits under it.
+  - **Files an agent showed** (`ShownFiles`, preview `preview/shown-files.html`)
+    stay in view after the turn's work folds, above its final words: pictures at
+    the column's width, 420px tall at most, then a caption; any other file a
+    well row whose trailing glyph says what a click does (open, new tab,
+    download). A group shows four, then "Show N more". A click opens
+    `FileViewer`, the full-window dialog. That is a shown file's one exception to
+    "docs are never read in a dialog": it belongs to the chat, and a phone has no
+    side panel.
   - **Notices** (a round finished, a ticket failed, the plan is ready) are a
     strip on the top edge of the composer or an ask, one line each, older ones
     behind "+N more". They never cover a message. Above them stand the

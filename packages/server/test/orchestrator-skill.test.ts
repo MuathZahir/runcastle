@@ -35,6 +35,7 @@ const PROJECT_TOOLS = [
   'drive',
   'merge_feature',
   'add_to_brief',
+  'take_feature',
 ]
 
 describe('the project skill, orchestrating', () => {
@@ -72,14 +73,14 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('"Check on X" is a read, not a licence to start X')
     expect(text).toContain('**Questions, portfolio answers and health sweeps never lead to action on their own**')
     expect(text).toContain("**A feature the human is running by hand is theirs** unless they ask you to act on it")
-    expect(text).toContain('**No limits beyond the human\'s buttons**')
+    expect(text).toContain("**No limits beyond the human's buttons and holding**")
   })
 
   it('stops when told, saying what is still in flight, and when the project chat ends', () => {
     const text = section()
     expect(text).toContain('**When the human tells you to stop, start nothing new**')
     expect(text).toContain('tell them what is still in flight')
-    expect(text).toContain('Ending the project chat stops you too')
+    expect(text).toContain('Ending the project chat does not stop you for good')
   })
 
   it('agrees how the cut is run before creating anything, merging included, and works within it', () => {
@@ -158,15 +159,17 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain("saying it is the human's answer")
   })
 
-  it('hears about the features it has acted on, and shows no list of them', () => {
+  it('holds what it acted on, hears only that, and takes a feature only on the human’s own request', () => {
     const text = section()
-    expect(text).toContain('**You hear about the features you have acted on**')
-    expect(text).toContain('until each ships')
+    expect(text).toContain('**You hold the features you created or acted on, until each ships**')
+    expect(text).toContain('**You hear about the features you hold and no others**')
+    expect(text).toContain('**Take a feature with `take_feature` only when the human, in this conversation, asked for this action on this feature**')
+    expect(text).toContain('a working agreement and your own judgement included')
     expect(text).toContain('`[runcastle]`')
     expect(text).toContain("a feature's agent is waiting for the human")
     expect(text).toContain('an agent declared its work ready')
-    expect(text).toContain('"Since you were last live"')
-    expect(text).toContain('**The app shows no list of what you follow or run**')
+    expect(text).not.toContain('Since you were last live')
+    expect(text).toContain("**The app shows holders only on each feature's timeline**")
   })
 
   it("merges through runcastle and never works in a live session's worktree", () => {

@@ -131,3 +131,8 @@ on macOS and Linux, 2,069ms on Windows through the fallback), and both adapters 
 
 - Why Ctrl-C does not reach line-mode programs under Bun's ConPTY is unknown. If the
   cause turns out to be something a later Bun fixes, the fallback can go.
+- Whether the Windows Ctrl-C fallback should cover sign-in flows. The real `setup-token`
+  prompt ignores Ctrl-C on every terminal, so the fallback ends a sign-in there that
+  node-pty left running, and the terminal view sends Ctrl-C even with text selected.
+- A successful login through this terminal is unproven: the real `setup-token` check on
+  Windows and Linux stopped at a fake code being rejected, on purpose.

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
+import type { BurnUser } from '../src/workflows/burn-user'
 import {
+  BURN_CACHE_MARKER_FILE,
   BURN_CACHE_MOUNT,
   BURN_CACHE_VOLUME_LABEL,
   BURN_CACHE_VOLUME_VERSION,
@@ -9,6 +11,7 @@ import {
   burnCacheEnv,
   burnCacheVolumeName,
   burnCacheVolumeSize,
+  checkBurnCacheAccess,
   createSlotAllocator,
   ensureBurnCacheVolume,
   getBurnSlotAllocator,
@@ -53,21 +56,36 @@ const volumeCurrent = (_command: string, args: string[]): Partial<ExecOutcome> =
 const volumeStale = (_command: string, args: string[]): Partial<ExecOutcome> =>
   isInspect(args) ? { stdout: '\n' } : {}
 
-const CHOWN_ONE_SHOT = [
+/** The VPS's user: UID 1001, because `ubuntu` holds 1000. */
+const VPS_USER: BurnUser = { uid: 1001, gid: 1001, gidSource: 'account' }
+const WINDOWS_USER: BurnUser = { uid: 1000, gid: 1000, gidSource: 'default' }
+
+const claimOneShot = (owner: string): string[] => [
   'docker',
   'run',
   '--rm',
   '--user',
   'root',
   '--entrypoint',
-  'chown',
+  'sh',
   '-v',
   `${VOLUME}:${BURN_CACHE_MOUNT}`,
   IMAGE,
-  '-R',
-  '1000:1000',
+  '-c',
+  'touch "$1/$3" && chown -R "$2" "$1"',
+  'sh',
   BURN_CACHE_MOUNT,
+  owner,
+  BURN_CACHE_MARKER_FILE,
 ]
+const CHOWN_ONE_SHOT = claimOneShot('1000:1000')
+const isAccessCheck = (args: string[]) =>
+  args[0] === 'run' && args[args.indexOf('--user') + 1] !== 'root'
+/** The start-of-run access check answers this, on a volume that exists. */
+const accessReply =
+  (stdout: string) =>
+  (command: string, args: string[]): Partial<ExecOutcome> =>
+    isAccessCheck(args) ? { stdout } : volumeCurrent(command, args)
 const CREATE_LABELLED = [
   'docker',
   'volume',
@@ -109,13 +127,85 @@ describe('inspectBurnCacheVolume', () => {
   })
 })
 
+describe('checkBurnCacheAccess', () => {
+  const check = (stdout: Partial<ExecOutcome>, burnUser = VPS_USER) => {
+    const fake = fakeExec(() => stdout)
+    return {
+      calls: fake.calls,
+      run: checkBurnCacheAccess({
+        engine: 'docker',
+        imageName: IMAGE,
+        projectId: PROJECT,
+        exec: fake.exec,
+        burnUser,
+      }),
+    }
+  }
+
+  // Running as the burn user is the point: the answer is what a burn would get.
+  it('asks from a container running as the burn user', async () => {
+    const { calls, run } = check({ stdout: 'runcastle-access writable\n' })
+    expect(await run).toEqual({ state: 'writable' })
+    expect(calls[0]?.slice(0, 9)).toEqual([
+      'docker',
+      'run',
+      '--rm',
+      '--user',
+      '1001:1001',
+      '--entrypoint',
+      'sh',
+      '-v',
+      `${VOLUME}:${BURN_CACHE_MOUNT}`,
+    ])
+  })
+
+  it('names the path and its owner when the burn user cannot write', async () => {
+    const { run } = check({
+      stdout: `noise\nruncastle-access unwritable 0:0 ${BURN_CACHE_MOUNT}/slots\n`,
+    })
+    expect(await run).toEqual({
+      state: 'unwritable',
+      owner: '0:0',
+      path: `${BURN_CACHE_MOUNT}/slots`,
+    })
+  })
+
+  it('reports no clear answer as unknown, whatever went wrong', async () => {
+    expect((await check({ code: 125, stderr: 'daemon gone' }).run).state).toBe('unknown')
+    expect((await check({ ok: false, code: null }).run).state).toBe('unknown')
+    expect((await check({ stdout: 'something else entirely' }).run).state).toBe('unknown')
+  })
+})
+
 describe('ensureBurnCacheVolume', () => {
   it('creates a labelled volume and chowns it to the burn user on first creation', async () => {
     const { exec, calls } = fakeExec(volumeMissing)
 
-    await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: WINDOWS_USER,
+    })
 
     expect(calls.slice(1)).toEqual([CREATE_LABELLED, CHOWN_ONE_SHOT])
+  })
+
+  // The bug: the owner was hardcoded to 1000 while the image baked in the host's
+  // UID, so a host at 1001 got a volume its own burns could not write to.
+  it('hands a new volume to the real burn user, not to 1000', async () => {
+    const { exec, calls } = fakeExec(volumeMissing)
+
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: VPS_USER,
+    })
+
+    expect(calls.at(-1)).toEqual(claimOneShot('1001:1001'))
   })
 
   // The sandbox image's ENTRYPOINT is `sleep infinity`; without `--entrypoint`
@@ -123,27 +213,96 @@ describe('ensureBurnCacheVolume', () => {
   it('overrides the image ENTRYPOINT so chown actually runs', () => {
     const entrypoint = CHOWN_ONE_SHOT.indexOf('--entrypoint')
     expect(entrypoint).toBeGreaterThan(-1)
-    expect(CHOWN_ONE_SHOT[entrypoint + 1]).toBe('chown')
-    // and the image is followed by chown's own args, not by a second `chown`.
-    expect(CHOWN_ONE_SHOT.slice(CHOWN_ONE_SHOT.indexOf(IMAGE) + 1)).toEqual(['-R', '1000:1000', BURN_CACHE_MOUNT])
+    expect(CHOWN_ONE_SHOT[entrypoint + 1]).toBe('sh')
   })
 
-  // A recursive chown of a multi-gigabyte cache, once per burn, is exactly the
-  // cost this feature exists to remove.
-  it('never touches a volume that exists with the current label', async () => {
-    const { exec, calls } = fakeExec(volumeCurrent)
+  // A recursive chown of a multi-gigabyte cache, once per burn, is the cost this
+  // cache exists to remove, and a writable volume holds warm state worth keeping.
+  it('leaves a current volume the burn user can write to alone', async () => {
+    const { exec, calls } = fakeExec(accessReply('runcastle-access writable\n'))
+    let repaired = false
 
-    await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: WINDOWS_USER,
+      onRepair: () => {
+        repaired = true
+      },
+    })
 
-    expect(calls.map((c) => c.slice(0, 3))).toEqual([['docker', 'volume', 'inspect']])
+    expect(calls.map((c) => c.slice(0, 3))).toEqual([
+      ['docker', 'volume', 'inspect'],
+      ['docker', 'run', '--rm'],
+    ])
+    expect(repaired).toBe(false)
+  })
+
+  // Every route to a bad volume ends here: a label stamped before a chown that
+  // never ran, a UID that changed, a volume left over from another host.
+  it('replaces a labelled volume the burn user cannot write to, and says what it found', async () => {
+    const { exec, calls } = fakeExec(
+      accessReply(`runcastle-access unwritable 0:0 ${BURN_CACHE_MOUNT}\n`),
+    )
+    const found: unknown[] = []
+
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: VPS_USER,
+      onRepair: (access) => found.push(access),
+    })
+
+    expect(calls.slice(2)).toEqual([
+      ['docker', 'volume', 'rm', VOLUME],
+      CREATE_LABELLED,
+      claimOneShot('1001:1001'),
+    ])
+    expect(found).toEqual([{ state: 'unwritable', owner: '0:0', path: BURN_CACHE_MOUNT }])
+  })
+
+  // A hiccup must never cost a warm cache: nothing is deleted on a guess.
+  it('leaves the volume alone when the check gives no clear answer', async () => {
+    const { exec, calls } = fakeExec((command, args) =>
+      isAccessCheck(args) ? { code: null, timedOut: true } : volumeCurrent(command, args),
+    )
+
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: VPS_USER,
+    })
+
+    expect(calls.filter((c) => c[1] === 'volume' && c[2] !== 'inspect')).toEqual([])
   })
 
   it('drops and recreates an unlabelled (root-owned) volume left by an older version', async () => {
     const { exec, calls } = fakeExec(volumeStale)
 
-    await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
+    await ensureBurnCacheVolume({
+      engine: 'docker',
+      imageName: IMAGE,
+      projectId: PROJECT,
+      exec,
+      burnUser: WINDOWS_USER,
+    })
 
     expect(calls.slice(1)).toEqual([['docker', 'volume', 'rm', VOLUME], CREATE_LABELLED, CHOWN_ONE_SHOT])
+  })
+
+  // Decision 10: its one-shot runs under a different user mapping from the burn.
+  it('keeps podman on create-and-chown-once, with no access check', async () => {
+    const { exec, calls } = fakeExec(volumeCurrent)
+
+    await ensureBurnCacheVolume({ engine: 'podman', imageName: IMAGE, projectId: PROJECT, exec })
+
+    expect(calls.map((c) => c.slice(0, 3))).toEqual([['podman', 'volume', 'inspect']])
   })
 
   it('rolls the volume back when the chown fails, so the next burn retries from scratch', async () => {

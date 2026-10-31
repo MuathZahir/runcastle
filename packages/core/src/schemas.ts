@@ -574,6 +574,8 @@ export const Feature = z.object({
   createdAt: z.number(),
   /** The up-next mark — see the db schema. Only meaningful on a draft. */
   upNext: z.boolean().default(false),
+  /** The project thread holding this feature — see the db schema. Unset when none does. */
+  heldBy: z.string().optional(),
   /**
    * When the human pressed Stop (ms); null when the feature is not stopped. No
    * round dispatches while it is set, and the next human message clears it.

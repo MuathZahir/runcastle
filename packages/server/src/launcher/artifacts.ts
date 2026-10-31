@@ -875,31 +875,35 @@ export interface ProjectBrief {
    */
   openNotes: number
   /**
-   * One line per thing that ended on the features the orchestrator follows since
-   * the last project session ended (`one-orchestrator-no-mode` decision 3).
+   * The features a new thread already holds, by slug: only ever those inherited
+   * from a chat too long to reopen (`threads-hold-features` decision 10).
    */
-  catchUp?: string[]
+  held?: string[]
 }
 
 /**
  * The orchestrating section of the project prompt: that this session is the
  * project's orchestrator, where its judgement is written down, that nothing will
- * prompt it, and what happened on the features it follows while it was not live.
+ * prompt it, and which features it inherited from a chat too long to reopen.
  */
-function renderOrchestratingSection(catchUp: string[], runtime: AgentRuntime): string[] {
+function renderOrchestratingSection(held: string[], runtime: AgentRuntime): string[] {
   return [
     `## ${ORCHESTRATING}`,
-    "**You are this project's orchestrator.** You can check on, message, plan, start and merge",
-    'any of its features, and you act on what the human asked or agreed, as far as they asked.',
+    "**You are this project's orchestrator.** You can check on any of its features, and message,",
+    'plan, start and merge the ones you hold, acting on what the human asked or agreed, as far as they asked.',
     `Read and follow the "${ORCHESTRATING}" section of the \`${skillRef(runtime, 'project')}\``,
     'skill — it is how you judge every step; nothing here replaces it.',
     '',
     'You run without permission prompts: you edit the repo and run commands without asking.',
     '',
-    ...(catchUp.length > 0
-      ? ['### Since you were last live', ...catchUp.map((line) => `- ${line}`)]
-      : ['Nothing has happened on the features you follow since you were last live.']),
-    '',
+    ...(held.length > 0
+      ? [
+          '### Features you hold',
+          'You replace a chat too long to reopen, so these are yours now. Read each before you act on it.',
+          ...held.map((slug) => `- ${slug}`),
+          '',
+        ]
+      : []),
   ]
 }
 
@@ -926,7 +930,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base, openNotes, catchUp } = brief
+  const { project, branch, worktreePath, base, openNotes, held } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -972,7 +976,7 @@ export function renderProjectPrompt(
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
     '',
-    ...renderOrchestratingSection(catchUp ?? [], runtime),
+    ...renderOrchestratingSection(held ?? [], runtime),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
@@ -1058,6 +1062,9 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__stop_round',
   'mcp__runcastle__declare_ready',
   'mcp__runcastle__wait_for_you',
+  // Showing a file only copies it into the thread: a prompt would interrupt the
+  // agent for something that asks nothing of the human.
+  'mcp__runcastle__show_file',
 ]
 
 /**

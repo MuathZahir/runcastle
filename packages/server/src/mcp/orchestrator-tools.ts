@@ -22,6 +22,7 @@ import { featureDocPath } from '../services/feature-docs'
 import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
+import { holderName, requireHold, takeHold } from '../services/holding'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
   projectForFeature,
@@ -32,10 +33,11 @@ import type { HeaderCarrier } from './server'
 
 /**
  * The orchestrator's tools (`one-orchestrator-no-mode`): every project session
- * is the orchestrator, acting on any feature of its project. What it may act on
- * is drawn by its instructions, not here (decision 2): every acting tool refuses
- * only through {@link requireProjectFeature} and the refusals its service
- * already has, with a sentence saying why, as the human's buttons do.
+ * is the orchestrator. What it may act on is drawn by its instructions (decision
+ * 2), and by one server rule (`threads-hold-features`): every acting tool goes
+ * through {@link requireHeldFeature}, so a thread cannot act on a feature another
+ * thread holds. Beyond that each tool refuses what its service already refuses,
+ * with a sentence saying why, as the human's buttons do.
  */
 
 /** The caller of a session tool, or null when the request names no session. */
@@ -70,6 +72,11 @@ export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: st
   return featureBySlug(ctx, requireOrchestratorSession(session), slug)
 }
 
+/** {@link requireProjectFeature}, for a tool that changes it: this thread must hold it. */
+export function requireHeldFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
+  return requireHold(ctx, session, requireProjectFeature(ctx, session, slug))
+}
+
 /**
  * Run a tool handler as the orchestrator: every event it emits carries
  * `data.actor: 'orchestrator'`, so the notifier does not repeat back what the
@@ -81,6 +88,18 @@ export function orchestratorTool<A extends unknown[], R>(
   return (...args) => runAsActor('orchestrator', () => handler(...args))
 }
 
+/** Make this thread the holder of a feature, held or not, waking nothing on it. */
+export const toolTakeFeature = orchestratorTool(
+  (
+    ctx: AppCtx,
+    session: SessionRow,
+    input: { slug: string },
+  ): { slug: string; heldBy: string; takenFrom: string | null } => {
+    const { from } = takeHold(ctx, session, requireProjectFeature(ctx, session, input.slug))
+    return { slug: input.slug, heldBy: holderName(session), takenFrom: from }
+  },
+)
+
 /** Start a draft, as Start does: refused where Start is. */
 export const toolStartFeature = orchestratorTool(
   async (
@@ -88,7 +107,7 @@ export const toolStartFeature = orchestratorTool(
     session: SessionRow,
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
     return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }
   },
@@ -102,7 +121,7 @@ export const toolPlanFeature = orchestratorTool(
     input: { slug: string },
     launch: LaunchSessionOptions = {},
   ): Promise<{ slug: string; sessionId: string }> => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     const { sessionId } = await launchSession(
       ctx,
       { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
@@ -115,7 +134,7 @@ export const toolPlanFeature = orchestratorTool(
 /** End the feature's running self-planning run, as its Stop button does. */
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     // The run plan_feature starts is always one this can stop; the feature's
     // lead never is — ending it would drop the conversation it is having.
     const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
@@ -139,7 +158,7 @@ export const toolDrive = orchestratorTool(
       const project = requireProjectById(ctx, requireOrchestratorSession(session))
       return git.projectDrive(ctx, project, input.action)
     }
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     requireNotDraft(feature)
     return git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
   },
@@ -152,7 +171,7 @@ export const toolDrive = orchestratorTool(
  */
 export const toolMergeFeature = orchestratorTool(
   async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<MergeFlowResult> => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     return mergeFeatureFlow(ctx, feature.id)
   },
 )
@@ -178,7 +197,7 @@ export const toolAddToBrief = orchestratorTool(
     session: SessionRow,
     input: { slug: string; text: string },
   ): Promise<{ slug: string; relPath: string }> => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
+    const feature = requireHeldFeature(ctx, session, input.slug)
     const text = input.text.trim()
     if (!text) throw new InvalidInputError('there is nothing to add: the text is empty.')
     if (feature.status === 'draft') {
@@ -249,6 +268,19 @@ export function registerOrchestratorTools(
       return ok(await tool(rs.ctx, rs.session, args))
     }) as never)
   }
+
+  acting(
+    'take_feature',
+    {
+      title: 'Take a feature',
+      description:
+        'Make this thread the holder of a feature, whoever holds it: you hear its news and may ' +
+        'act on it, and the thread that held it is told. Wakes nothing on the feature. Use it only ' +
+        'when the human asked you to act on this feature in this conversation. Refused once it shipped.',
+      inputSchema: { slug: SlugInput },
+    },
+    toolTakeFeature,
+  )
 
   acting(
     'start_feature',

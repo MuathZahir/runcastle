@@ -1,5 +1,5 @@
 import type * as acp from '@agentclientprotocol/sdk/unstable'
-import { Effort, type ModelChoice, type ThreadEvent, type ThreadView, type ToolKind, type WorkStep } from '@runcastle/core'
+import { Effort, type ModelChoice, type ShownFile, type ThreadEvent, type ThreadView, type ToolKind, type WorkStep } from '@runcastle/core'
 import { labelKey, LONG_CONTEXT, rosterLabel } from './model-catalog'
 
 /**
@@ -265,6 +265,12 @@ function workLine(steps: readonly WorkStep[], seconds: number): string {
   return `Worked for ${formatDuration(seconds)}${parts.length ? `: ${parts.join(', ')}` : ''}`
 }
 
+/** A shown file in a thread's Markdown: a picture's or a plain link, with its caption. */
+function shownLink(file: ShownFile): string {
+  const link = `${file.as === 'image' ? '!' : ''}[${file.name}](${file.src})`
+  return file.caption ? `${link}\n\n${file.caption}` : link
+}
+
 /**
  * A thread as Markdown, for Copy / Save: what the human said under "You", what
  * runcastle sent under "Runcastle", the agent's words under "Agent" with each
@@ -292,6 +298,9 @@ export function threadMarkdown(view: ThreadView, title: string): string {
         break
       case 'agent':
         under('Agent', item.text)
+        break
+      case 'shown':
+        under('Agent', item.files.map(shownLink).join('\n\n'))
         break
       case 'answered':
         under('Agent', `> ${item.what} ${item.answer}`)

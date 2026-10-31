@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awaitsHuman, foldThread, lastPickedModel, liveEvents, ThreadEvent, type ThreadEventBody, type ThreadItem } from '../src/thread'
+import { awaitsHuman, foldThread, lastPickedModel, liveEvents, ThreadEvent, type ShownFile, type ThreadEventBody, type ThreadItem } from '../src/thread'
 
 /** A log from bodies, one second apart unless an `at` is given. */
 function log(...bodies: Array<ThreadEventBody | [number, ThreadEventBody]>): ThreadEvent[] {
@@ -20,6 +20,57 @@ const prompt = (id: string, text = 'hi', extra: Partial<Extract<ThreadEventBody,
 })
 
 const work = (v: ReturnType<typeof foldThread>, n = 0) => v.items.filter((x): x is Extract<ThreadItem, { kind: 'work' }> => x.kind === 'work')[n]
+
+describe('foldThread: shown files', () => {
+  const file = (id: string): ShownFile => ({ id, src: `/f/${id}.png`, name: `${id}.png`, path: `${id}.png`, size: 1, as: 'image' })
+  const shown = (id: string): ThreadEventBody => ({ type: 'file_shown', file: file(id) })
+  const tool = (id: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title: 'show_file', status: 'completed' } })
+  const say = (messageId: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId, text })
+  const running: ThreadEventBody[] = [prompt('p1'), { type: 'process', state: 'running' }, { type: 'turn_started' }]
+  const names = (item: ThreadItem | undefined) => (item?.kind === 'shown' ? item.files.map((f) => f.id) : null)
+
+  it('keeps the file in view after the work folds, ahead of the final words', () => {
+    const v = foldThread(log(...running, say('m1', 'Taking a look.'), tool('c1'), shown('a'), say('m2', 'Merge it?'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
+    expect(v.items[3]).toMatchObject({ text: 'Merge it?' })
+  })
+
+  it('shows at once in a running turn, and work after it stays above it in one group', () => {
+    const v = foldThread(log(...running, tool('c1'), shown('a'), tool('c2'), shown('b')))
+    expect(v.state).toBe('working')
+    expect(kinds(v.items)).toEqual(['user', 'work', 'shown'])
+    expect(names(v.items[2])).toEqual(['a', 'b'])
+    expect(work(v).steps).toMatchObject([{ kind: 'tools', calls: [{ id: 'c1' }] }, { kind: 'tools', calls: [{ id: 'c2' }] }])
+  })
+
+  it('turns words said before the file into narration, not the answer', () => {
+    const v = foldThread(log(...running, say('m1', 'Here it is.'), shown('a'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'shown'])
+  })
+
+  it('lands work above a file logged before its tool call', () => {
+    const v = foldThread(log(...running, shown('a'), tool('c1'), say('m1', 'Done.'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
+  })
+
+  it('starts a new group after a steered message, and in the next turn', () => {
+    const v = foldThread(
+      log(...running, shown('a'), prompt('p2', 'And the other?', { steered: true }), shown('b'), { type: 'turn_ended', reason: 'end_turn' }, prompt('p3'), { type: 'turn_started' }, shown('c')),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'shown', 'user', 'shown', 'user', 'shown'])
+    expect(names(v.items[3])).toEqual(['b'])
+  })
+
+  it('shows a file logged with no turn open', () => {
+    expect(kinds(foldThread(log(shown('a'))).items)).toEqual(['shown'])
+  })
+
+  it('goes with the rest when the thread is rewound past it', () => {
+    const v = foldThread(log(...running, shown('a'), { type: 'turn_ended', reason: 'end_turn' }, { type: 'rewound', toPromptId: 'p1' }))
+    expect(kinds(v.items)).toEqual([])
+  })
+})
 
 describe('foldThread: subagents across turns and late updates', () => {
   const opened = (id: string, title: string): ThreadEventBody => ({ type: 'subagent', id, title, status: 'in_progress' })

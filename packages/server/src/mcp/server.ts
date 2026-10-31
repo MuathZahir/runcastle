@@ -41,6 +41,7 @@ import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
 import { RUN_HEADER } from '../launcher/artifacts'
+import { showFile } from '../threads/shown'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
@@ -65,6 +66,7 @@ import {
 import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
+import { claimHold, holderName, holderOf, requireHold } from '../services/holding'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -364,6 +366,8 @@ export interface FeatureContext {
   blocks: { slug: string; upNext: boolean }[]
   /** This feature's own up-next mark: it starts by itself when its dependencies ship. */
   upNext: boolean
+  /** The name of the project thread holding it (`threads-hold-features`); null when none does. */
+  heldBy: string | null
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
    * ceiling, whole, in fill order: brief → decisions → spec.
@@ -607,6 +611,7 @@ export function featureContext(
   // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
   canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
+  const holder = holderOf(ctx, feature)
   const header = {
     feature,
     rounds: listRounds(ctx, feature.id),
@@ -618,6 +623,7 @@ export function featureContext(
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
     upNext: feature.upNext,
+    heldBy: holder ? holderName(holder) : null,
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
@@ -1807,17 +1813,20 @@ function createFeatureProject(
  * It launches nothing: the orchestrator sets a feature working with its acting
  * tools when it judges it ready. From a project session — the orchestrator — it
  * runs as the orchestrator, so every event it emits carries `actor:
- * 'orchestrator'` and the orchestrator follows what it created
- * (`one-orchestrator-no-mode` decision 3).
+ * 'orchestrator'`, and the calling thread holds what it created
+ * (`threads-hold-features` decision 13).
  */
 export async function toolCreateFeature(
   ctx: AppCtx,
   session: SessionRow,
   input: CreateFeatureInput,
 ): Promise<CreateFeatureResult> {
-  return session.kind === 'project'
-    ? runAsActor('orchestrator', () => createFeatureFor(ctx, session, input))
-    : createFeatureFor(ctx, session, input)
+  if (session.kind !== 'project') return createFeatureFor(ctx, session, input)
+  return runAsActor('orchestrator', async () => {
+    const created = await createFeatureFor(ctx, session, input)
+    claimHold(ctx, created.id, session.id)
+    return created
+  })
 }
 
 interface CreateFeatureInput {
@@ -1923,6 +1932,8 @@ export function toolSetFeatureDependencies(
   }
   const [dependentId] = featureIdsBySlug(ctx, project.id, [input.slug])
   const dependencyIds = featureIdsBySlug(ctx, project.id, input.dependsOn)
+  // Only the draft being reordered is acted on; the features it names are read.
+  requireHold(ctx, session, getFeatureRow(ctx, dependentId as string))
   const edges = setDependencies(ctx, dependentId as string, dependencyIds)
   // After the new set is written, so one call can both set the edges and mark the draft.
   const feature =
@@ -2039,7 +2050,7 @@ export async function toolGetProjectContext(
     ...(charter !== undefined ? { charter } : {}),
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
-    featureIndex: featureIndex(ctx, project.id),
+    featureIndex: featureIndex(ctx, project.id, session.id),
     featureIndexNote: FEATURE_INDEX_NOTE,
   }
 }
@@ -2056,7 +2067,7 @@ export async function toolGetProjectContext(
  * that names how many were left out and how to reach them — their docs are on
  * disk, where a search answers "did we already do X?" better than a title list.
  */
-function featureIndex(ctx: AppCtx, projectId: string): string[] {
+function featureIndex(ctx: AppCtx, projectId: string, callerId: string): string[] {
   const all = listFeatures(ctx, projectId)
   const shipped = all
     .filter((f) => f.status === 'shipped')
@@ -2072,7 +2083,8 @@ function featureIndex(ctx: AppCtx, projectId: string): string[] {
     ...all.filter((f) => f.status === 'draft'),
     ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
   ]
-  const lines = listed.map(featureIndexLine)
+  const names = new Map<string, string>()
+  const lines = listed.map((feature) => `${featureIndexLine(feature)}${holderMark(ctx, feature, callerId, names)}`)
 
   const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
   const archived = all.filter((f) => f.status === 'archived').length
@@ -2178,6 +2190,17 @@ function featureIndexLine(feature: FeatureListItem): string {
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
   return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
+}
+
+/** ` · held by …` for an index line: a thread needs the holder before it acts, not after a refusal. */
+function holderMark(ctx: AppCtx, feature: FeatureListItem, callerId: string, names: Map<string, string>): string {
+  if (!feature.heldBy || feature.status === 'shipped') return ''
+  if (feature.heldBy === callerId) return ' · held by you'
+  if (!names.has(feature.heldBy)) {
+    const row = holderOf(ctx, feature)
+    names.set(feature.heldBy, row ? holderName(row) : feature.heldBy)
+  }
+  return ` · held by "${names.get(feature.heldBy)}"`
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2501,6 +2524,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
+  // Every session with a thread to show it in; a run agent has none.
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -2540,6 +2565,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   drive: ['project'],
   merge_feature: ['project'],
   add_to_brief: ['project'],
+  take_feature: ['project'],
 }
 
 /**
@@ -3178,7 +3204,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'ms since the epoch, or null), `dependsOn` (the ' +
         'features it waits on to merge, each `satisfied` once shipped) and `blocks` (the ' +
         'drafts waiting on this feature, each with its `upNext` mark) and `upNext` (this ' +
-        'feature’s own mark: it starts by itself when its dependencies ship), `annotatedModels` (the ' +
+        'feature’s own mark: it starts by itself when its dependencies ship), `heldBy` (the name of the project thread holding it, or null), `annotatedModels` (the ' +
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
         'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
         'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
@@ -3665,6 +3691,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolShowPanel(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_file')) {
+    server.registerTool(
+      'show_file',
+      {
+        title: 'Show the human a file',
+        description:
+          'Show one file in this chat. A picture appears inline; any other file appears as a card ' +
+          'the human clicks to open. It appears at once and stays when your work folds, but your ' +
+          'words before this call fold away: say what the file shows in `caption`, and put what ' +
+          'you need from the human in your words after it. The chat keeps a copy, so it still ' +
+          'works after the worktree is gone. It waits for nobody. One file per call, up to 100 MB, ' +
+          'from this project, its worktrees, review evidence or the temp folder. Make Markdown and ' +
+          'HTML self-contained: files they link to beside them are not copied.',
+        inputSchema: {
+          path: z.string().min(1).describe('The file. A relative path starts at your working folder.'),
+          caption: z.string().max(200).optional().describe('One line saying what the file shows.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(showFile(rs.ctx, rs.session, args))
       },
     )
   }
