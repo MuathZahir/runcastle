@@ -1,4 +1,5 @@
 import type { ExecFn } from '../doctor/doctor'
+import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
 import type { PackageManager } from './ticket-burner'
 
 /**
@@ -129,8 +130,14 @@ export class BurnCacheBusyError extends Error {
   }
 }
 
-/** The UID:GID every burn container runs as (research #32; the image bakes it in). */
-const CONTAINER_USER = '1000:1000'
+/**
+ * Left on the volume when it is created, so the volume is never empty. Docker
+ * copies an image's directory, owner included, onto an EMPTY volume mounted over
+ * it, so a project image with a root-owned `~/.m2` would otherwise reset a
+ * freshly chowned volume to `0:0` on its first mount. Measured on a real engine:
+ * the owner goes to `0:0` without this file and stays put with it.
+ */
+export const BURN_CACHE_MARKER_FILE = '.runcastle-volume'
 
 /**
  * Run one engine command, throwing its stderr on failure. Volume setup has no
@@ -150,12 +157,17 @@ export interface EnsureBurnCacheVolumeOptions {
   imageName: string
   projectId: string
   exec: ExecFn
+  /** Who burns run as; resolved from the host when omitted. */
+  burnUser?: BurnUser
+  /** Told when a volume the burn user cannot write to is about to be replaced. */
+  onRepair?: (found: Extract<BurnCacheAccess, { state: 'unwritable' }>) => void
 }
 
 /**
  * The label stamped on every cache volume runcastle creates, and the version of
- * the volume layout it vouches for. Its presence is the proof that the volume
- * came from {@link ensureBurnCacheVolume} — created AND chowned, or rolled back.
+ * the volume layout it vouches for. It says nothing about who owns the volume:
+ * `volume create` stamps it BEFORE the chown, so a server killed between the two
+ * leaves a labelled, root-owned volume. {@link checkBurnCacheAccess} answers that.
  *
  * Bump the version if the on-volume layout ever changes incompatibly: a volume
  * carrying an older (or no) version is dropped and recreated rather than trusted.
@@ -192,31 +204,136 @@ export async function inspectBurnCacheVolume(
   return out.stdout.trim() === BURN_CACHE_VOLUME_VERSION ? 'current' : 'stale'
 }
 
+/** What {@link checkBurnCacheAccess} found. */
+export type BurnCacheAccess =
+  | { state: 'writable' }
+  /** The burn user cannot write to `path`, which `owner` (`uid:gid`) holds. */
+  | { state: 'unwritable'; path: string; owner: string }
+  /** No clear answer. Never a reason to touch the volume. */
+  | { state: 'unknown'; reason: string }
+
+export interface CheckBurnCacheAccessOptions {
+  engine: BurnCacheEngine
+  imageName: string
+  projectId: string
+  exec: ExecFn
+  burnUser: BurnUser
+}
+
+/** Marks the check's own output line, so stray image output is never parsed. */
+const ACCESS_SENTINEL = 'runcastle-access'
+
+/**
+ * Tests the mount point and the folders directly inside it, which is the depth
+ * a non-recursive hand-fix or a UID change leaves wrong. The whole tree would
+ * cost a scan of a multi-gigabyte cache on every run.
+ */
+const ACCESS_SCRIPT = `for p in "$1" "$1"/*; do [ -d "$p" ] || continue; [ -w "$p" ] || { echo "${ACCESS_SENTINEL} unwritable $(stat -c %u:%g "$p") $p"; exit 0; }; done; echo "${ACCESS_SENTINEL} writable"`
+
+/**
+ * Ask the volume whether the burn user can write to it, from a one-shot
+ * container running AS that user (decision 3). Asking rather than comparing
+ * owner numbers is what makes the answer true under any id mapping, and it is
+ * the question a burn actually needs answered.
+ */
+export async function checkBurnCacheAccess(
+  opts: CheckBurnCacheAccessOptions,
+): Promise<BurnCacheAccess> {
+  const out = await opts.exec(opts.engine, [
+    'run',
+    '--rm',
+    '--user',
+    burnUserSpec(opts.burnUser),
+    '--entrypoint',
+    'sh',
+    '-v',
+    `${burnCacheVolumeName(opts.projectId)}:${BURN_CACHE_MOUNT}`,
+    opts.imageName,
+    '-c',
+    ACCESS_SCRIPT,
+    'sh',
+    BURN_CACHE_MOUNT,
+  ])
+  if (!out.ok || out.code !== 0) {
+    return { state: 'unknown', reason: out.stderr.trim() || `exit ${out.code ?? 'unknown'}` }
+  }
+  const line = out.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.startsWith(`${ACCESS_SENTINEL} `))
+  const [, verdict, owner, ...path] = (line ?? '').split(' ')
+  if (verdict === 'writable') return { state: 'writable' }
+  if (verdict === 'unwritable' && owner) {
+    return { state: 'unwritable', owner, path: path.join(' ') }
+  }
+  return { state: 'unknown', reason: 'the access check printed no verdict' }
+}
+
+/**
+ * The root one-shot that hands a new volume to the burn user. Docker also leaves
+ * {@link BURN_CACHE_MARKER_FILE}, so the volume is never empty. Podman keeps its
+ * bare chown (decision 10).
+ *
+ * The entrypoint is overridden either way: the sandbox image's ENTRYPOINT is
+ * `sleep infinity` (that is how the burn container is kept alive), so a bare
+ * `<image> chown …` would have Docker run `sleep infinity chown -R …` and die
+ * on `-R`.
+ */
+function claimVolumeArgs(
+  engine: BurnCacheEngine,
+  opts: { name: string; image: string; owner: string },
+): string[] {
+  const mount = ['-v', `${opts.name}:${BURN_CACHE_MOUNT}`]
+  const asRoot = ['run', '--rm', '--user', 'root', '--entrypoint']
+  if (engine === 'podman') {
+    return [...asRoot, 'chown', ...mount, opts.image, '-R', opts.owner, BURN_CACHE_MOUNT]
+  }
+  return [
+    ...asRoot,
+    'sh',
+    ...mount,
+    opts.image,
+    '-c',
+    'touch "$1/$3" && chown -R "$2" "$1"',
+    'sh',
+    BURN_CACHE_MOUNT,
+    opts.owner,
+    BURN_CACHE_MARKER_FILE,
+  ]
+}
+
 /**
  * Make the project's cache volume exist and be writable by the burn user.
  *
- * A freshly created volume is owned by root, and the burn container always runs
- * `--user 1000:1000` and so cannot fix that itself — hence the one-shot
- * `run --rm --user root` that chowns the mount point. It runs with
- * `--entrypoint chown`: the sandbox image's ENTRYPOINT is `sleep infinity`
- * (that is how the burn container is kept alive), so a bare `<image> chown …`
- * would have Docker run `sleep infinity chown -R …` and die on `-R`.
+ * A freshly created volume is owned by root and the burn container cannot fix
+ * that itself, hence the one-shot root `run` of {@link claimVolumeArgs}. That
+ * runs only on creation: on an existing volume it would be a recursive chown of
+ * every file in a multi-gigabyte cache, once per burn.
  *
- * The chown runs ONLY on first creation: on an existing volume it would be a
- * pointless recursive chown of every file in a multi-gigabyte cache, once per
- * burn. That makes "exists" load-bearing — it has to mean "chowned" — so a
- * volume whose chown fails is removed again before the error propagates, and
- * the volume is labelled ({@link BURN_CACHE_VOLUME_LABEL}) so one that exists
- * WITHOUT the label is known to have been left by a version that did not roll
- * back. Such a volume is dropped and recreated: it is root-owned, nothing could
- * ever have written to it, and burning against it would fail on the first write.
+ * An existing volume is checked instead, on Docker, once per run. A volume the
+ * burn user cannot write to is dropped and recreated (decision 4). It cannot
+ * hold much worth keeping, since this user could never have filled it, and a
+ * chown in place can outrun the engine-command timeout. A check with no clear
+ * answer leaves the volume alone: nothing is ever deleted on a guess. Podman
+ * keeps create-and-chown-once, because its one-shot runs under a different user
+ * mapping from the burn (decision 10).
+ *
+ * A failed chown removes the volume again before the error propagates, so the
+ * next burn starts clean. An unlabelled volume is one a version that did not
+ * roll back left behind, and is dropped the same way.
  */
 export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions): Promise<void> {
   const { engine, exec } = opts
+  const burnUser = opts.burnUser ?? resolveBurnUser(engine)
   const name = burnCacheVolumeName(opts.projectId)
   const state = await inspectBurnCacheVolume(exec, engine, opts.projectId)
-  if (state === 'current') return
-  if (state === 'stale') await execOrThrow(exec, engine, ['volume', 'rm', name])
+  if (state === 'current') {
+    if (engine !== 'docker') return
+    const access = await checkBurnCacheAccess({ ...opts, burnUser })
+    if (access.state !== 'unwritable') return
+    opts.onRepair?.(access)
+  }
+  if (state !== 'missing') await execOrThrow(exec, engine, ['volume', 'rm', name])
 
   await execOrThrow(exec, engine, [
     'volume',
@@ -226,24 +343,15 @@ export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions):
     name,
   ])
   try {
-    await execOrThrow(exec, engine, [
-      'run',
-      '--rm',
-      '--user',
-      'root',
-      '--entrypoint',
-      'chown',
-      '-v',
-      `${name}:${BURN_CACHE_MOUNT}`,
-      opts.imageName,
-      '-R',
-      CONTAINER_USER,
-      BURN_CACHE_MOUNT,
-    ])
+    await execOrThrow(
+      exec,
+      engine,
+      claimVolumeArgs(engine, { name, image: opts.imageName, owner: burnUserSpec(burnUser) }),
+    )
   } catch (err) {
-    // Roll back so the next burn creates and chowns afresh instead of finding
-    // a root-owned volume and trusting it. Best-effort: the chown error is the
-    // one worth surfacing, and a leftover volume is caught by the label check.
+    // Roll back so the next burn creates and chowns afresh. Best-effort: the
+    // chown error is the one worth surfacing, and the next run's access check
+    // catches a leftover volume.
     await exec(engine, ['volume', 'rm', name])
     throw err
   }

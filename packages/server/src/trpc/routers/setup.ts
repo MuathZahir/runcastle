@@ -11,8 +11,8 @@ import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
 import type { AppCtx } from '../../db/types'
-import { envWithAfkCredentials } from '../../doctor/afk-env'
-import { runDoctor, type ProjectImageEnv } from '../../doctor/doctor'
+import { afkKeyLineCounts, envWithAfkCredentials } from '../../doctor/afk-env'
+import { burnsOnDockerCache, runDoctor, type ProjectImageEnv } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
 import { InvalidInputError } from '../../errors'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
@@ -43,6 +43,7 @@ import {
   writeGitIdentity,
 } from '../../services/setup'
 import { resolveSpawnTarget } from '../../util/resolve-executable'
+import { resolveBurnUser } from '../../workflows/burn-user'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -105,7 +106,18 @@ export const setupRouter = router({
         // machine-wide tag (named after a project runcastle no longer has, or
         // never had) from an image someone chose on purpose.
         knownProjectIds: allProjects(ctx).map((p) => p.id),
+        afkKeyLines: afkKeyLineCounts(),
         ...(project ? { projectImage: projectImageEnv(ctx, project) } : {}),
+        // Only with a project in view: the check starts a container, and the
+        // app's first screen, which has no project, must not wait on one.
+        ...(project && burnsOnDockerCache(ctx.config)
+          ? {
+              burnCache: {
+                projectId: project.id,
+                imageName: resolveSandboxImage(ctx.config, project),
+              },
+            }
+          : {}),
       })
     }),
 
@@ -258,6 +270,7 @@ async function buildImageTerminal(
     image: await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE),
     expectedHash: hashDockerfile(join(stockContext, 'Dockerfile')),
     host: host.versions,
+    burnUser: resolveBurnUser(runtime),
   }).fresh
   const plan = planImageBuild({
     config: ctx.config,

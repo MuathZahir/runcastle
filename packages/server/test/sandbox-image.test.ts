@@ -94,6 +94,7 @@ describe('inspectBuiltImage', () => {
       present: true,
       hash: 'abc123',
       versions: { 'claude-code': '2.1.280', codex: '0.46.0' },
+      user: null,
     })
     expect(calls).toHaveLength(1)
     const format = calls[0]?.[calls[0].indexOf('--format') + 1]
@@ -108,6 +109,7 @@ describe('inspectBuiltImage', () => {
       present: false,
       hash: null,
       versions: NO_HOST_CLIS,
+      user: null,
     })
   })
 
@@ -120,6 +122,7 @@ describe('inspectBuiltImage', () => {
       present: true,
       hash: null,
       versions: NO_HOST_CLIS,
+      user: null,
     })
   })
 
@@ -128,6 +131,7 @@ describe('inspectBuiltImage', () => {
       present: true,
       hash: 'abc123',
       versions: { 'claude-code': '2.1.280', codex: null },
+      user: null,
     })
   })
 })
@@ -138,6 +142,7 @@ describe('imageFreshness', () => {
     present: true,
     hash: 'abc123',
     versions: { ...HOST },
+    user: null,
     ...over,
   })
 
@@ -148,7 +153,7 @@ describe('imageFreshness', () => {
   })
 
   it('reports an absent image as missing only', () => {
-    const image = { present: false, hash: null, versions: NO_HOST_CLIS }
+    const image = { present: false, hash: null, versions: NO_HOST_CLIS, user: null }
     expect(imageFreshness({ image, expectedHash: 'abc123', host: HOST })).toEqual({
       fresh: false,
       reasons: [{ kind: 'missing' }],
@@ -312,6 +317,7 @@ describe('the build the terminal runs', () => {
         present: true,
         hash: hashDockerfileContents(STOCK_DOCKERFILE),
         versions: { 'claude-code': '2.1.270', codex: '0.46.0' },
+        user: null,
       },
       expectedHash: hashDockerfile(join(context, 'Dockerfile')),
       host: hostVersions,

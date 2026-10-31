@@ -5,6 +5,32 @@ import { parseEnvFile } from '../workflows/ticket-burner'
 import { RUNTIME_SPECS } from './doctor'
 
 /**
+ * How many lines of `content` assign `key`. Parsing keeps only the last one, so
+ * a file with three token lines reads as one token and the other two vanish.
+ */
+export function countEnvKeyLines(content: string, key: string): number {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^export\s+/, ''))
+    .filter((line) => line.startsWith(`${key}=`)).length
+}
+
+/** How many lines of `~/.runcastle/.env` assign each runtime's AFK credential. */
+export function afkKeyLineCounts(): Record<string, number> {
+  try {
+    const content = readFileSync(envPath(), 'utf8')
+    return Object.fromEntries(
+      AGENT_RUNTIMES.map((runtime) => {
+        const key = RUNTIME_SPECS[runtime].afkKey
+        return [key, countEnvKeyLines(content, key)]
+      }),
+    )
+  } catch {
+    return {}
+  }
+}
+
+/**
  * Merge every runtime's AFK credential from `~/.runcastle/.env` over
  * `process.env`, so the doctor's `afk-key` probes see a token the operator
  * saved rather than only one their shell happened to export.

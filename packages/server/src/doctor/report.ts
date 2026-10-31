@@ -30,7 +30,7 @@ function line(r: ProbeResult): string {
   // what was found, but never as a defect — no ✗, no fix line, no issue count.
   const informational = r.severity === 'info' && r.status !== 'ok'
   const tier = `[T${r.tier}]`
-  const suffix = informational ? ' (not in use)' : ''
+  const suffix = informational && r.runtime !== undefined ? ' (not in use)' : ''
   const head = `${informational ? '·' : GLYPH[r.status]} ${tier} ${r.label} — ${statusWord(r.status)}${suffix}`
   const detail = `    ${r.detail}`
   if (r.status === 'ok' || informational || !r.fix) return `${head}\n${detail}`
