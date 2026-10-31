@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review keeps its screenshots preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.step{position:relative;display:grid;gap:4px;align-content:start;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step h3{display:flex;align-items:center;gap:8px}
+.step p{color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.who{margin-top:2px;color:var(--color-text-tertiary);font-size:11px;line-height:14px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.ba > div{padding:10px 12px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md)}
+.ba ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:4px;color:var(--color-text-secondary)}
+.ba li{display:flex;align-items:center;gap:8px}
+.chat{margin-top:12px;display:grid;gap:8px;max-width:420px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-lg)}
+.chat .ph{aspect-ratio:16/10;border-radius:var(--radius-md);background:var(--color-surface-inset);border:1px solid var(--color-border-subtle)}
+.chat p{color:var(--color-text-secondary)}
+@media (max-width:760px){.flow,.ba{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Review keeps its screenshots</h1>
+  <p class="lede">A review pass keeps the screenshots it takes and the calls it tries, so you can see what a feature looks like without a drive, on your phone too.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/review-keeps-its-screenshots/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="sub" style="margin-top:12px">
+    <h3>Before and after</h3>
+    <div class="ba">
+      <div><span class="hint">What a review leaves today</span><ul>
+        <li><i class="dot ok"></i>A walkthrough video</li>
+        <li><i class="dot ok"></i>Its digest and findings</li>
+        <li><i class="dot no"></i>No screenshots</li>
+        <li><i class="dot no"></i>No record of its scenarios</li>
+        <li><i class="dot no"></i>The answers to its calls are thrown away</li>
+      </ul></div>
+      <div><span class="hint">What it leaves with this feature</span><ul>
+        <li><i class="dot ok"></i>A walkthrough video</li>
+        <li><i class="dot ok"></i>Its digest and findings</li>
+        <li><i class="dot ok"></i>Screenshots with captions <a class="pin" data-d="1">1</a></li>
+        <li><i class="dot ok"></i>Each scenario, and whether it landed</li>
+        <li><i class="dot ok"></i>Each call, credentials masked <a class="pin" data-d="4">4</a></li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Who takes which picture</h3>
+    <div class="flow">
+      <div class="step"><h3>Scenario lands <a class="pin" data-d="2">2</a></h3><p>Runcastle opens the entry page in the agent's own browser and takes the picture.</p><span class="who">Runcastle, always</span></div>
+      <div class="step"><h3>Agent checks something <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a></h3><p>It asks for a picture, with what it checked as the caption. On a project with no scenarios, this is the only source.</p><span class="who">The agent, because its prompt says to</span></div>
+      <div class="step"><h3>Agent tries a call</h3><p>The request and the answer are recorded by themselves.</p><span class="who">Runcastle, always</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The opened review ticket <a class="pin" data-d="5">5</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">In the Work view, because the review page was retired.</p>
+<!-- screen:review-saw -->
+<div class="designed">
+  <h3>What the review saw</h3>
+  <p>Layout, pictures, calls and viewer are real components; every picture and call is sample data. Four states: with scenarios, no scenarios, drove but took none, read the code.</p>
+  <p class="mono">apps/web/src/components/bodies/tickets/ReviewSaw.tsx · preview /preview/review-saw.html</p>
+  <button data-open-design="/preview/review-saw.html">Open in design</button>
+</div>
+<!-- /screen:review-saw -->
+  </div>
+
+  <div class="sub">
+    <h3>Accepting from your phone <a class="pin" data-d="8">8</a></h3>
+    <p class="hint">The orchestrator reads the pictures from the review and shows them in its chat.</p>
+    <div class="chat">
+      <div class="ph" role="img" aria-label="A screenshot from the review"></div>
+      <p>The table fits the page width in the exported PDF</p>
+      <p style="color:var(--color-text)">These are from the last review, 2 commits ago. Happy to merge Export notes?</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A phone-friendly picture viewer: goes with "Runcastle on your phone"</li>
+      <li><i class="dot"></i>Keeping the review's app running: stays in the older feature, whose lead drops its tickets 2 and 5</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Any automatic comparison of screens</li>
+      <li><i class="dot"></i>Making review required, or holding a merge for a picture</li>
+      <li><i class="dot"></i>Pictures from a video, or live while a review runs</li>
+      <li><i class="dot"></i>Cleaning up old review folders</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+        <div class="step"><h3>review_drive</h3><p><code class="mono">scenario</code>, new <code class="mono">capture</code>, <code class="mono">try_call</code></p></div>
+        <div class="step"><h3>saw/ folder</h3><p><code class="mono">saw.json</code> and PNGs, beside the walkthrough</p></div>
+        <div class="step"><h3>/api/reviews</h3><p>Manifest and images, by checked name</p></div>
+        <div class="step"><h3>Readers</h3><p>Work view; <code class="mono">reviewShots</code> on <code class="mono">read_feature_chat</code> and <code class="mono">get_feature_context</code></p></div>
+      </div>
+      <p class="hint" style="margin-top:12px">No database change. Built by the lead, no tickets: one connected change across server, prompts and one screen. Live reviews run the installed runcastle, so the first real pass after a release is the true test.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["A review pass keeps a record of what it saw, beside its walkthrough","The page can only show what was kept. Kept with the pass, each pass shows its own and a re-burn cannot mix two attempts. The file is the record, as with the walkthrough.","assumed"],
+    ["Runcastle takes each scenario's entry picture; the agent asks for the rest","A test showed a second process can open a page in the agent's recording browser and screenshot it, so the entry picture need not depend on an agent under pressure. Only the agent knows when it is checking something.","assumed"],
+    ["A pass with no picture says so, and nothing enforces more","Review is an optional tool and nothing may hold on it. A visible gap is enough, and the orchestrator can ask the lead.","assumed"],
+    ["Credentials in recorded calls are masked; bodies are kept as they are","The record outlives the drive and will be reachable from a phone, and nobody judges a call by its token. Scrubbing bodies would need code that understands them.","assumed"],
+    ["The pictures live in the opened review ticket, because the review page is gone","That is where the walkthrough and findings already are. Bringing back a page for one section would undo a decision the app already made.","assumed"],
+    ["Pictures group by scenario, and look the same as pictures in chat","Grouping puts a picture beside the call that produced it, and the chat's pictures already work on a phone.","assumed"],
+    ["A review that only read the code says so in one line","Someone looking for pictures should learn why there are none without reading the digest.","assumed"],
+    ["The orchestrator gets every pass that took pictures, newest first, and how old each is","A later pass with few pictures should not hide a fuller earlier set. Age is in commits because a lead often builds without tickets. It extends a tool the orchestrator already calls.","assumed"],
+    ["A feature with no review gets no new way to make a picture","Runcastle never starts the app just to look at it, and the orchestrator can already ask the lead for pictures.","assumed"],
+    ["Pictures are taken at the width the agent's browser uses","The phone is how you look, not what is under review. A second width would resize the browser under the agent's walk and its recording.","assumed"],
+    ["Pictures are kept as long as the walkthrough","A picture is far smaller than the video beside it, and cleaning up review folders is its own feature. Capped at 60 per pass.","assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [2, "The agent asks for every picture, including the entry page, and runcastle never touches its browser.", "It moves the agent's browser under it. I tested this on a plain static page, not through a real review. Decisions 3 and 8 lean on the pictures being there.", 'forces others'],
+    [3, "Pull frames from the walkthrough video when a pass took no pictures. The challenger preferred this.", "On a project with no scenarios, such as runcastle today, pictures depend wholly on the agent following its prompt.", 'challenged'],
+    [4, "Mask tokens in bodies and URLs too, or keep calls off the phone. The challenger preferred this.", "A login response body would be kept whole and will be readable from your phone link.", 'challenged'],
+    [5, "A new Review view with the pictures first.", "Your brief says the review page, which no longer exists. You may want the pictures one click closer than an opened ticket.", 'guess at intent'],
+    [10, "Take every picture at desktop and phone width.", "A desktop-width picture is small on a phone, and today's viewer does not enlarge it. You may want that fixed before you rely on this.", 'guess at intent']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
