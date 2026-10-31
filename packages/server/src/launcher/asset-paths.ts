@@ -5,9 +5,8 @@ import { fileURLToPath } from 'node:url'
 /**
  * Runtime-asset resolution (issue #51, workstream G). A published `runcastle`
  * ships several things as *real files* that the server reads or spawns by path —
- * the drizzle migrations, the hook client (run by a separate `bun`), the PTY
- * sidecar host (run by system `node`), the skills pack, and the built SPA. In a
- * contributor checkout these live at their workspace source paths; in an
+ * the drizzle migrations, the hook client (run by a separate `bun`), the skills
+ * pack, and the built SPA. In a contributor checkout these live at their workspace source paths; in an
  * installed tarball they are vendored beside the bin and named by env var.
  *
  * One pattern, both layouts (SPEC / issue #51 decision point 3): each asset has
@@ -23,8 +22,6 @@ export const ASSET_ENV = {
   migrations: 'RUNCASTLE_MIGRATIONS_DIR',
   /** The `hook-client.ts` script, spawned by `bun` inside each session. */
   hookClient: 'RUNCASTLE_HOOK_CLIENT',
-  /** The `pty-host.cjs` sidecar, spawned by system `node`. */
-  ptyHost: 'RUNCASTLE_PTY_HOST',
   /** The `@runcastle/skills` root (has `packs/` + `burner/`). */
   skills: 'RUNCASTLE_SKILLS_DIR',
   /** The vetted `.sandcastle/` burner template dir (scaffolded for `build-image`). */
@@ -59,7 +56,6 @@ export function vendoredAssetPaths(pkgRoot: string): Record<string, string> {
     [ASSET_ENV.webDist]: join(pkgRoot, 'web'),
     [ASSET_ENV.migrations]: join(pkgRoot, 'drizzle'),
     [ASSET_ENV.hookClient]: join(pkgRoot, 'hook-client.ts'),
-    [ASSET_ENV.ptyHost]: join(pkgRoot, 'pty-host.cjs'),
     [ASSET_ENV.sandcastleTemplate]: join(pkgRoot, 'sandcastle-template'),
   }
 }

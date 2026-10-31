@@ -11,16 +11,14 @@ import { ptyRegistry } from '../../src/pty/registry'
  * what happened as one line of JSON evidence.
  *
  * This exists because the vitest suite cannot reach the runtime that broke. On
- * win32 production runs the server under Bun, `selectBackend()` auto-picks the
- * sidecar, and the tree-kill promise is awaited under Bun — which is precisely
- * where `promisify(execFile)` never settled and hung every drive stop. vitest
+ * win32 production runs the server under Bun, and the tree-kill promise is
+ * awaited under Bun — which is precisely where `promisify(execFile)` never settled and hung every drive stop. vitest
  * awaits it under node, where it always settled, so the node-side test stayed
  * green for the entire life of the bug. Only a Bun process can speak to it.
  *
- * Run BY `bun`, spawned from `dev-pane-stop-bun.test.ts`. Deliberately does NOT
- * set `RUNCASTLE_PTY_BACKEND`: backend selection is part of what is under test.
+ * Run BY `bun`, spawned from `dev-pane-stop-bun.test.ts`.
  *
- * The tree it builds is the production shape — PTY host → `cmd.exe /d /s /c`
+ * The tree it builds is the production shape — the `cmd.exe /d /s /c`
  * shim (win32) or `/bin/sh -c` (POSIX) → a `bun` grandchild holding a real TCP
  * port — so a teardown that reaches only the direct child leaves the port bound.
  *
@@ -50,12 +48,10 @@ const BAIL_KILL_TIMEOUT_MS = 3000
  * The smallest tree the pane can legitimately have — anything less means the
  * process-table capture is lying, not that teardown had less to do.
  *
- * On win32 production's shape is three deep: the sidecar HOST we spawned → the
- * `cmd.exe /d /s /c` shim `devSpawnTarget` always interposes → the `bun`
- * grandchild holding the port. On POSIX node-pty's `forkpty` leader IS the
- * `/bin/sh -c` shim, so there is no separate host and the legitimate floor is two.
+ * Production's shape is two deep: the shim `devSpawnTarget` always interposes
+ * (`cmd.exe /d /s /c`, or `/bin/sh -c`) → the `bun` grandchild holding the port.
  */
-const MIN_TREE_PIDS = process.platform === 'win32' ? 3 : 2
+const MIN_TREE_PIDS = 2
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -273,7 +269,6 @@ async function main(): Promise<void> {
     platform: process.platform,
     bun: process.versions.bun ?? null,
     isBun: typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined',
-    ptyBackendOverride: process.env.RUNCASTLE_PTY_BACKEND ?? null,
     port,
     paneId,
     devCommand,
@@ -287,8 +282,7 @@ async function main(): Promise<void> {
   const report = (ok: boolean): never => {
     evidence.ok = ok
     // Never leak the tree we built. On a bail, `pty.kill()` alone is not enough:
-    // on win32 it reaps the sidecar host but leaves the port-holding GRANDCHILD
-    // orphaned behind the cmd.exe shim, and only a tree walk reaches that. The
+    // on win32 it reaps the shim but leaves the port-holding GRANDCHILD orphaned, and only a tree walk reaches that. The
     // order is the same one the registry's teardown documents — tree FIRST,
     // because reaping the direct child breaks the parent → child link
     // `taskkill /T` walks. Both steps are synchronous and bounded: the failure
@@ -317,10 +311,8 @@ async function main(): Promise<void> {
       sessionId: paneId,
       cmd: file,
       args,
-      opts: { cwd: dir, env: process.env, cols: 80, rows: 24, useConpty: true },
+      opts: { cwd: dir, env: process.env, cols: 80, rows: 24 },
     })
-    // Read on THIS tick: under the sidecar `pty.pid` is the host process we
-    // spawned only until its async `ready` frame swaps in node-pty's inner pid.
     hostPid = ptyRegistry().get(paneId)?.pty.pid ?? -1
     evidence.hostPid = hostPid
 
@@ -356,7 +348,7 @@ async function main(): Promise<void> {
       // "the whole tree died" — so it must never again pass for proof.
       evidence.failure =
         `pane tree resolved to ${before.length} pid(s) [${before.join(', ')}], expected at least ` +
-        `${MIN_TREE_PIDS} (host + shim + port-holding grandchild). The capture is not seeing the ` +
+        `${MIN_TREE_PIDS} (shim + port-holding grandchild). The capture is not seeing the ` +
         `tree, so aliveAfter would prove nothing.`
       report(false)
     }

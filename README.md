@@ -73,9 +73,8 @@ stricter pre-boot gate that stops only on the must-haves.)
 | Requirement | Why runcastle needs it |
 |---|---|
 | **[Bun](https://bun.sh) 1.3.14+** | The runtime. `curl -fsSL https://bun.sh/install \| bash`, or `irm bun.sh/install.ps1 \| iex` on Windows. |
-| **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `npm install -g @openai/codex` (or `brew install codex`); log in with `codex login`, on a ChatGPT plan or an API key. |
+| **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`, or `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` on Windows; log in with `codex login`, on a ChatGPT plan or an API key. Use these standalone installers rather than npm: an agent installed through npm or `bun add -g` is a Node script and needs Node, which runcastle itself does not. |
 | **[Git](https://git-scm.com)** | runcastle branches, worktrees, commits, and merges on your behalf. It also needs a commit identity: the first-run wizard collects one, or set it yourself. |
-| **[Node.js](https://nodejs.org) 22+** | **Every platform.** The embedded terminal runs in a `node`-hosted PTY sidecar whenever runcastle runs under Bun, because node-pty does not work in-process under Bun (its Windows ConPTY input pipe breaks, and on Linux the terminal hangs up after its first output). Without `node` on PATH, terminals exit instantly. |
 
 Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 
@@ -452,31 +451,12 @@ crash means your CPU lacks AVX2; use Bun's `x64-baseline` build.
 
 <br />
 
-node-pty's native binary is missing (`pty.node`, or `conpty.node` on Windows).
-node-pty ships it prebuilt for macOS, Windows and glibc Linux on x64 and arm64.
-Anywhere else, its install compiles from source, which needs a C++ toolchain and
-Python 3. Install those, then reinstall with `bun add -g runcastle`. A repeat
-install can exit `0` even when the binary is still missing, so check the terminal
-again rather than trusting the exit code. On musl, see below.
+The terminal is Bun's own, so nothing separate can be missing. When its program
+cannot start, the terminal says why.
 
-It can also be a missing system `node`, on any platform: the terminal runs in a
-`node`-hosted sidecar, so Node.js 22+ must be on PATH. This is the usual cause
-on Windows. See [Prerequisites](#prerequisites).
-
-</details>
-
-<details>
-<summary><b>musl / Alpine Linux</b></summary>
-
-<br />
-
-node-pty's Linux prebuild is glibc-only and crashes under musl, and a plain
-install keeps it. Build from source instead:
-
-```sh
-apk add build-base python3
-npm_config_build_from_source=true bun add -g runcastle
-```
+If terminals stopped working right after a Bun upgrade, go back to the last Bun
+that worked: `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, or
+`iex "& {$(irm https://bun.sh/install.ps1)} -Version 1.3.14"` on Windows.
 
 </details>
 

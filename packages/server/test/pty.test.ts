@@ -1,79 +1,24 @@
-import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import {
-  chooseBackend,
-  createNativePtySession,
-  createPtySession,
-  type PtySession,
-} from '../src/pty/pty'
-import { createSidecarPtySession } from '../src/pty/pty-sidecar'
+import { createPtySession, installPtyStandIn } from '../src/pty/pty'
 import { ptyRegistry, type ControlFrame } from '../src/pty/registry'
 import { RingBuffer } from '../src/pty/ring-buffer'
+import { usePipePty } from './helpers/pipe-pty'
 
 /**
- * PTY layer unit test (task item 6). Covers, per backend:
- *  1. a real spawn + OUTPUT roundtrip + exit code,
- *  2. a WRITE→ECHO roundtrip (regression guard for the bug where INPUT was dead:
- *     keystrokes never reached the process). We spawn an interactive shell, write
- *     `echo <marker>`, and assert the echoed marker comes back out — output alone
- *     is not enough, the earlier unit test only did `cmd /c echo` (no stdin write)
- *     so the broken write path was never exercised,
- *  3. kill of a long-lived process,
- *  4. ring-buffer replay through the registry.
- *
- * Two backends are exercised: `native` (in-process node-pty — what runs under a
- * node runtime) and `sidecar` (node-pty hosted in a system `node` child — what
- * ships under Bun on every platform, where in-process node-pty breaks). Both must
- * pass the WRITE→ECHO assertion wherever they are the shipped backend. Cases skip
- * gracefully where the native addon cannot load (CI without prebuilds).
- *
- * The suite itself runs under Bun (`bun run test`), so on win32 it sits on the
- * same side of that incompatibility as the product does — see the native
- * write→echo case for the one assertion that cannot hold there.
+ * The layers above the backend: the ring buffer, and the registry's replay and
+ * teardown, run against the pipe stand-in because vitest is on node. The shipped
+ * terminal itself is tested from a real Bun process in `pty-bun.test.ts`.
  */
+
+usePipePty()
 
 const isWin = process.platform === 'win32'
 const SHELL = isWin ? 'cmd.exe' : 'sh'
-const CR = isWin ? '\r' : '\n'
 const echoArgs = (text: string): string[] => (isWin ? ['/c', 'echo', text] : ['-c', `echo ${text}`])
-const idleArgs = (): string[] => []
+const idleArgs = (): string[] => (isWin ? ['/c', 'ping', '-n', '60', '127.0.0.1'] : ['-c', 'sleep 60'])
 const baseOpts = { cwd: process.cwd(), env: process.env }
-// Wide + short cwd for write→echo tests so the echoed command line never wraps
-// (a long cwd + marker past 80 cols would split the marker across rows).
-const wideOpts = { cwd: process.cwd(), env: process.env, cols: 220, rows: 50 }
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-
-/** Probe whether the native node-pty addon can spawn in this runtime. */
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession(SHELL, echoArgs('probe'), baseOpts)
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const AVAILABLE = ptyAvailable()
-
-/**
- * Spawn an interactive shell via `make`, wait for its prompt, write
- * `echo <marker>`, and return everything the PTY emitted. Used to assert the
- * INPUT path actually reaches the process (the class of bug this test guards).
- */
-async function writeEchoRoundtrip(make: () => PtySession, marker: string): Promise<string> {
-  const p = make()
-  let data = ''
-  const sub = p.onData((chunk) => {
-    data += chunk.toString('utf8')
-  })
-  await delay(900) // let the shell print its prompt / become ready for input
-  p.write(`echo ${marker}${CR}`)
-  await delay(1600) // let the shell run the command and echo the marker back
-  sub.dispose()
-  p.kill()
-  return data
-}
 
 /** True while `pid` is still a live process (Windows-safe existence probe). */
 function pidAlive(pid: number): boolean {
@@ -110,207 +55,18 @@ describe('RingBuffer', () => {
   })
 })
 
-describe.skipIf(!AVAILABLE)('createPtySession (native backend)', () => {
-  it(
-    'spawns a process and roundtrips its output + exit code',
-    async () => {
-      const p = createNativePtySession(SHELL, echoArgs('hi-roundtrip'), baseOpts)
-      const result = await new Promise<{ data: string; code: number }>((resolve) => {
-        let data = ''
-        p.onData((chunk) => {
-          data += chunk.toString('utf8')
-        })
-        p.onExit(({ exitCode }) => resolve({ data, code: exitCode }))
-      })
-      expect(result.data).toContain('hi-roundtrip')
-      expect(result.code).toBe(0)
-    },
-    15000,
-  )
-
-  // Platform-fundamental on win32: node-pty v1.1.0's ConPTY backend writes
-  // keystrokes through a `node:net` socket that is unusable under Bun, so
-  // `write()` throws `ERR_SOCKET_CLOSED` and input is silently dropped. This
-  // suite runs under Bun (`bun run test`), which is exactly why `selectBackend`
-  // routes Bun+win32 to the sidecar — the native backend is never the shipped
-  // input path there, and the sidecar case below covers the one that is.
-  it.skipIf(isWin)(
-    'delivers written keystrokes to the process (write→echo INPUT path)',
-    async () => {
-      const marker = `mark_native_${Date.now()}`
-      const data = await writeEchoRoundtrip(
-        () => createNativePtySession(SHELL, idleArgs(), wideOpts),
-        marker,
-      )
-      // The marker appears twice on success (the typed command line + the echo
-      // output); the input path is dead if it never appears beyond what we typed.
-      // A ConPTY echoes the keystrokes, so require the *command output* line too.
-      expect(data).toContain(marker)
-      expect(data.split(marker).length - 1).toBeGreaterThanOrEqual(2)
-    },
-    15000,
-  )
-
-  it(
-    'kill() terminates a long-lived process',
-    async () => {
-      const p = createNativePtySession(SHELL, idleArgs(), baseOpts) // interactive shell, stays alive
-      const exit = new Promise<number>((resolve) => p.onExit(({ exitCode }) => resolve(exitCode)))
-      // give it a beat to actually start before killing
-      await delay(200)
-      p.kill()
-      const code = await exit
-      expect(typeof code).toBe('number')
-      expect(p.killed).toBe(true)
-    },
-    15000,
-  )
-})
-
-describe.skipIf(!AVAILABLE)('createSidecarPtySession (node sidecar backend)', () => {
-  it(
-    'spawns via the node host and roundtrips output + exit code',
-    async () => {
-      const p = createSidecarPtySession(SHELL, echoArgs('hi-sidecar'), baseOpts)
-      const result = await new Promise<{ data: string; code: number }>((resolve) => {
-        let data = ''
-        p.onData((chunk) => {
-          data += chunk.toString('utf8')
-        })
-        p.onExit(({ exitCode }) => resolve({ data, code: exitCode }))
-      })
-      expect(result.data).toContain('hi-sidecar')
-      expect(result.code).toBe(0)
-    },
-    20000,
-  )
-
-  it(
-    'delivers written keystrokes to the process (write→echo INPUT path)',
-    async () => {
-      const marker = `mark_sidecar_${Date.now()}`
-      const data = await writeEchoRoundtrip(
-        () => createSidecarPtySession(SHELL, idleArgs(), wideOpts),
-        marker,
-      )
-      expect(data).toContain(marker)
-      expect(data.split(marker).length - 1).toBeGreaterThanOrEqual(2)
-    },
-    20000,
-  )
-
-  it(
-    'kill() terminates the sidecar process',
-    async () => {
-      const p = createSidecarPtySession(SHELL, idleArgs(), baseOpts)
-      const exit = new Promise<number>((resolve) => p.onExit(({ exitCode }) => resolve(exitCode)))
-      await delay(400)
-      p.kill()
-      const code = await exit
-      expect(typeof code).toBe('number')
-      expect(p.killed).toBe(true)
-    },
-    20000,
-  )
-
-  // End session on win32 tree-kills the HOST first, then sends the `kill` frame
-  // as a backstop — into the stdin of a host already dead but whose `exit` has
-  // not been delivered yet. That write fails asynchronously (EPIPE), and with
-  // nothing listening for it the error took the whole server down. Reproduced
-  // here by killing the host out from under the session the same way.
-  it.skipIf(process.platform !== 'linux')(
-    'survives writing to a host that died before its exit was delivered',
-    async () => {
-      const p = createSidecarPtySession(SHELL, idleArgs(), baseOpts)
-      const exit = new Promise<void>((resolve) => p.onExit(() => resolve()))
-      await delay(600)
-      const hostPid = parentPid(p.pid)
-      process.kill(hostPid, 'SIGKILL')
-      // Spin, not poll: a timer turn would let the host's `exit` be delivered, and
-      // the writes below must land while the host is dead but not yet reaped.
-      while (!isZombieOrGone(hostPid)) {}
-      p.write('echo late\n')
-      p.kill()
-      await exit
-      await delay(200)
-      expect(p.killed).toBe(true)
-    },
-    20000,
-  )
-})
-
-/** The parent of `pid`, read from `/proc` (linux only). */
-function parentPid(pid: number): number {
-  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
-  return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
-}
-
-/**
- * True once `pid` has exited and released its fds (a zombie awaiting its reap
- * counts). The leader turns `Z` while its other threads are still exiting, and
- * the shared fd table — the host's stdin — closes only with the last of them.
- */
-function isZombieOrGone(pid: number): boolean {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
-    return (
-      stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z') &&
-      readdirSync(`/proc/${pid}/task`).length === 1
-    )
-  } catch {
-    return true
-  }
-}
-
-describe('chooseBackend', () => {
-  it.each(['linux', 'darwin', 'win32'] as const)('picks the sidecar for any Bun runtime (%s)', (platform) => {
-    expect(chooseBackend({ isBun: true, platform, override: undefined }).backend).toBe('sidecar')
-  })
-
-  it('picks native for a node runtime', () => {
-    expect(chooseBackend({ isBun: false, platform: 'linux', override: undefined })).toEqual({
-      backend: 'native',
-      why: 'node runtime',
-    })
-  })
-
-  it('lets RUNCASTLE_PTY_BACKEND override either runtime', () => {
-    expect(chooseBackend({ isBun: true, platform: 'linux', override: 'native' }).backend).toBe('native')
-    expect(chooseBackend({ isBun: false, platform: 'linux', override: 'sidecar' }).backend).toBe('sidecar')
-  })
-
-  it('ignores an unrecognised override value', () => {
-    expect(chooseBackend({ isBun: true, platform: 'darwin', override: 'bogus' }).backend).toBe('sidecar')
-  })
-
-  it('logs why Bun gets the sidecar off win32', () => {
-    const { why } = chooseBackend({ isBun: true, platform: 'linux', override: undefined })
-    expect(why).toBe(
-      'Bun on linux: node-pty is unusable in-process under Bun ' +
-        '(win32 ConPTY input pipe throws; posix PTY hangs up after first output)',
-    )
-  })
-})
-
-describe.skipIf(!AVAILABLE)('createPtySession backend dispatch', () => {
-  it('honours RUNCASTLE_PTY_BACKEND override', async () => {
-    const prev = process.env.RUNCASTLE_PTY_BACKEND
-    process.env.RUNCASTLE_PTY_BACKEND = 'sidecar'
+describe('createPtySession outside Bun', () => {
+  it('says what is wrong rather than failing somewhere deeper', () => {
+    installPtyStandIn(null)
     try {
-      const marker = `mark_dispatch_${Date.now()}`
-      const data = await writeEchoRoundtrip(
-        () => createPtySession(SHELL, idleArgs(), wideOpts),
-        marker,
-      )
-      expect(data).toContain(marker)
+      expect(() => createPtySession(SHELL, [], baseOpts)).toThrow(/need Bun/)
     } finally {
-      if (prev === undefined) delete process.env.RUNCASTLE_PTY_BACKEND
-      else process.env.RUNCASTLE_PTY_BACKEND = prev
+      usePipePty()
     }
-  }, 20000)
+  })
 })
 
-describe.skipIf(!AVAILABLE)('ptyRegistry replay', () => {
+describe('ptyRegistry replay', () => {
   it(
     'buffers output and replays it to a late-attaching sink with an ended status',
     async () => {
@@ -347,12 +103,12 @@ describe.skipIf(!AVAILABLE)('ptyRegistry replay', () => {
 
 /**
  * Shutdown teardown: `killAllTrees` is what the SIGINT/SIGTERM handler awaits, so
- * a session PTY that survives it is an orphaned `claude` holding a lock after the
- * server is gone. That the kill reaches the whole TREE (not just the shell) is
- * asserted per backend in dev-pane.test.ts, which drives the same registry
- * teardown; this covers the all-sessions sweep and the entry bookkeeping.
+ * a PTY that survives it is an orphan holding a port after the server is gone.
+ * That the kill reaches the whole TREE (not just the shell) is asserted in
+ * dev-pane.test.ts and pty-bun.test.ts; this covers the all-sessions sweep and the
+ * entry bookkeeping.
  */
-describe.skipIf(!AVAILABLE)('ptyRegistry teardown', () => {
+describe('ptyRegistry teardown', () => {
   it(
     'kills every live PTY and leaves no entry behind',
     async () => {

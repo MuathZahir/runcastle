@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import type { SessionKind } from '@runcastle/core'
 import { createSystemExec } from '../../doctor/system-exec'
-import { resolveTool } from '../../util/resolve-executable'
+import { cliNeedsMissingNode, resolveTool } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
@@ -205,16 +205,27 @@ export const claudeRuntime: AgentRuntimeAdapter = {
    * of an ENOENT from inside a terminal that closed as fast as it opened.
    */
   checkReady(): RuntimeReadiness {
-    if (this.resolveBinary() !== CLAUDE_BIN) return { ok: true }
-    return {
-      ok: false,
-      reason:
-        'the Claude Code CLI (`claude`) is not on the PATH this runcastle server inherited, ' +
-        'nor in the usual install locations',
-      doctorHint:
-        'Run `runcastle doctor` and fix its "Claude Code CLI" probe, then restart runcastle ' +
-        'from a terminal where `claude --version` works.',
+    const resolved = this.resolveBinary()
+    if (resolved === CLAUDE_BIN) {
+      return {
+        ok: false,
+        reason:
+          'the Claude Code CLI (`claude`) is not on the PATH this runcastle server inherited, ' +
+          'nor in the usual install locations',
+        doctorHint:
+          'Run `runcastle doctor` and fix its "Claude Code CLI" probe, then restart runcastle ' +
+          'from a terminal where `claude --version` works.',
+      }
     }
+    if (cliNeedsMissingNode(resolved)) {
+      return {
+        ok: false,
+        reason: `the Claude Code CLI at ${resolved} is a Node script, and this machine has no Node`,
+        doctorHint:
+          'Run `runcastle doctor` for its standalone installer, which needs no Node, then restart runcastle.',
+      }
+    }
+    return { ok: true }
   },
 
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {

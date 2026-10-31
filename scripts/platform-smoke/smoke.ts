@@ -6,15 +6,16 @@
  * It walks the path a new user walks after reading the README, and checks the
  * parts that differ per OS rather than the logic the vitest suite already covers:
  *
+ *   0. no node      Node is hidden from PATH for every step after this one, and
+ *                   the smoke fails if it cannot be: runcastle runs on Bun alone
  *   1. install      `bun add -g <spec>` — a tarball path or a registry spec
  *   2. version      `runcastle --version`
- *   3. pty binary   node-pty's native addon is on disk where its loader looks
- *                   (and on macOS, `spawn-helper` beside it AND executable)
- *   4. pty spawn    the real sidecar (`pty-host.cjs` under system `node`) runs a
- *                   shell in a PTY and returns its output — the embedded terminal
- *   5. doctor       `runcastle doctor` — printed, not judged (claude and docker
+ *   3. adapters     both agent adapters start under Bun and answer `initialize`
+ *   4. doctor       `runcastle doctor` — printed, not judged (claude and docker
  *                   are deliberately absent on a smoke machine)
- *   6. serve        boot the server, fetch the SPA and one tRPC query, SIGTERM it
+ *   5. serve        boot the server, fetch the SPA and one tRPC query
+ *   6. terminal     through that server, the way the app does it: open a sign-in
+ *                   terminal on a stand-in `claude`, type into it, Ctrl-C it
  *
  * Usage: `bun scripts/platform-smoke/smoke.ts [spec]`. The spec defaults to
  * `$RUNCASTLE_SPEC`, then a `runcastle.tgz` beside this file, then
@@ -22,10 +23,10 @@
  * is set. Exits 1 when any required step fails; prints a summary either way.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { accessSync, constants, existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { arch, homedir, platform, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 interface StepResult {
@@ -72,7 +73,46 @@ if (!process.env.CI && !process.env.RUNCASTLE_SMOKE_DISPOSABLE) {
 // A throwaway data dir and the telemetry opt-out: a smoke boot must never touch a
 // real ~/.runcastle or count as an active install.
 const dataDir = mkdtempSync(join(tmpdir(), 'runcastle-smoke-'))
-const smokeEnv: NodeJS.ProcessEnv = { ...process.env, RUNCASTLE_DATA_DIR: dataDir, DO_NOT_TRACK: '1' }
+
+/** A stand-in `claude` first on PATH, which the terminal step opens as a sign-in flow. */
+function fakeClaudeDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'runcastle-smoke-claude-'))
+  writeFileSync(
+    join(dir, 'fake-claude.ts'),
+    `if (process.argv[3] !== 'login') {
+       console.log('0.0.0 (stand-in)')
+       process.exit(0)
+     }
+     process.stdin.setEncoding('utf8')
+     console.log('FAKE_READY')
+     process.stdin.on('data', (d) => console.log('FAKE_GOT[' + String(d).trim() + ']'))
+     setInterval(() => {}, 1000)`,
+  )
+  const script = join(dir, 'fake-claude.ts')
+  if (platform() === 'win32') {
+    writeFileSync(join(dir, 'claude.cmd'), `@"${process.execPath}" "${script}" %*\r\n`)
+  } else {
+    writeFileSync(join(dir, 'claude'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 })
+  }
+  return dir
+}
+
+/** PATH with every directory holding a `node` taken out. */
+function pathWithoutNode(): string {
+  const names = platform() === 'win32' ? ['node.exe', 'node.cmd', 'node'] : ['node']
+  return (process.env.PATH ?? '')
+    .split(delimiter)
+    .filter((dir) => !names.some((name) => existsSync(join(dir, name))))
+    .join(delimiter)
+}
+
+const noNodePath = pathWithoutNode()
+const smokeEnv: NodeJS.ProcessEnv = {
+  ...process.env,
+  PATH: `${fakeClaudeDir()}${delimiter}${noNodePath}`,
+  RUNCASTLE_DATA_DIR: dataDir,
+  DO_NOT_TRACK: '1',
+}
 const spec = resolveSpec()
 
 header('environment')
@@ -80,7 +120,6 @@ console.log(`platform  ${platform()}-${arch()}`)
 for (const [label, cmd, args] of [
   ['os', 'uname', ['-a']],
   ['bun', 'bun', ['--version']],
-  ['node', 'node', ['--version']],
   ['git', 'git', ['--version']],
 ] as const) {
   const r = run(cmd, [...args])
@@ -89,17 +128,20 @@ for (const [label, cmd, args] of [
 console.log(`spec      ${spec}`)
 console.log(`data dir  ${dataDir}`)
 
+const nodeLeft = Bun.which('node', { PATH: noNodePath })
+record('no node', nodeLeft === null, nodeLeft === null ? 'node is not on PATH' : `node is still reachable at ${nodeLeft}`)
+
 // --- 1. install ---------------------------------------------------------------
 
 header('1. install')
-const install = run('bun', ['add', '-g', spec])
+const install = run('bun', ['add', '-g', spec], smokeEnv)
 console.log(install.out)
 record('install', install.code === 0, install.code === 0 ? `bun add -g ${spec}` : `exit ${install.code}`)
 
 // --- 2. version ---------------------------------------------------------------
 
 header('2. version')
-const bin = Bun.which('runcastle')
+const bin = Bun.which('runcastle', { PATH: smokeEnv.PATH ?? '' })
 let pkgDir: string | null = null
 if (!bin) {
   record('version', false, '`runcastle` is not on PATH after install')
@@ -122,121 +164,63 @@ if (!bin) {
   console.log(`package   ${pkgDir ?? '(not found)'}`)
 }
 
-// --- 3. node-pty binary -------------------------------------------------------
+// --- 3. adapters --------------------------------------------------------------
 
-header('3. node-pty binary')
-let ptyEntry: string | null = null
-if (!pkgDir) {
-  record('pty binary', false, 'the installed runcastle package could not be located')
-} else {
-  try {
-    ptyEntry = createRequire(join(pkgDir, 'package.json')).resolve('node-pty')
-  } catch (err) {
-    record('pty binary', false, `node-pty does not resolve from ${pkgDir}: ${(err as Error).message}`)
-  }
-}
-if (ptyEntry) {
-  // node-pty's entry is <root>/lib/index.js; its loader tries these dirs in order.
-  const ptyRoot = dirname(dirname(ptyEntry))
-  const dirs = ['build/Release', 'build/Debug', `prebuilds/${platform()}-${arch()}`]
-  // node-pty 1.2 ships no pty.node on win32: ConPTY (conpty.node) is its only backend there.
-  const addon = platform() === 'win32' ? 'conpty.node' : 'pty.node'
-  const found = dirs.find((d) => existsSync(join(ptyRoot, d, addon)))
-  if (!found) {
-    record('pty binary', false, `no ${addon} under ${ptyRoot} (checked ${dirs.join(', ')})`)
-  } else if (platform() === 'darwin') {
-    const helper = join(ptyRoot, found, 'spawn-helper')
-    let executable = false
-    try {
-      accessSync(helper, constants.X_OK)
-      executable = true
-    } catch {}
-    record(
-      'pty binary',
-      existsSync(helper) && executable,
-      !existsSync(helper)
-        ? `${found}/pty.node present but spawn-helper is missing`
-        : executable
-          ? `${found}/pty.node + executable spawn-helper`
-          : `${found}/spawn-helper is NOT executable — node-pty fails with "posix_spawnp failed"`,
-    )
-  } else {
-    record('pty binary', true, `${found}/${addon}`)
-  }
-}
+header('3. adapters')
 
-// --- 4. pty spawn through the real sidecar ------------------------------------
-
-header('4. pty spawn (pty-host.cjs under node)')
-async function ptySpawn(hostPath: string, entry: string): Promise<{ ok: boolean; detail: string }> {
-  // The shell computes the marker, so seeing it proves a shell ran inside the PTY
-  // rather than the command line being echoed back.
-  const shell = platform() === 'win32' ? 'cmd.exe' : '/bin/sh'
-  const args = platform() === 'win32' ? ['/c', 'set /a 6*7'] : ['-c', 'echo PTY_OK_$((6*7))']
-  const marker = platform() === 'win32' ? '42' : 'PTY_OK_42'
-  const child = spawn('node', [hostPath, entry], { stdio: ['pipe', 'pipe', 'pipe'] })
-  let output = ''
-  let stderr = ''
-  let buffered = ''
-  child.stderr.on('data', (d: Buffer) => (stderr += d.toString()))
-  return new Promise((resolve) => {
-    const done = (ok: boolean, detail: string) => {
-      clearTimeout(timer)
-      child.kill()
-      resolve({ ok, detail })
-    }
-    const timer = setTimeout(
-      () => done(false, `timed out after 15s; pty output ${JSON.stringify(output)}; stderr ${stderr.trim()}`),
-      15_000,
-    )
-    child.on('error', (err) => done(false, `could not start node: ${err.message}`))
-    // A wrong-libc addon kills the host outright (musl + glibc prebuild segfaults).
-    child.on('exit', (code, signal) =>
-      done(false, `pty-host died (code ${code}, signal ${signal}) before the PTY exited; stderr ${stderr.trim()}`),
-    )
-    child.stdout.on('data', (d: Buffer) => {
-      buffered += d.toString()
-      let nl: number
-      while ((nl = buffered.indexOf('\n')) >= 0) {
-        const line = buffered.slice(0, nl)
-        buffered = buffered.slice(nl + 1)
-        let msg: { t: string; d?: string; message?: string; code?: number }
-        try {
-          msg = JSON.parse(line)
-        } catch {
-          continue
-        }
-        if (msg.t === 'data' && msg.d) output += Buffer.from(msg.d, 'base64').toString('utf8')
-        if (msg.t === 'error') return done(false, `host error: ${msg.message}`)
-        if (msg.t === 'exit') {
-          return output.includes(marker)
-            ? done(true, `shell ran in a PTY and printed ${marker} (exit ${msg.code})`)
-            : done(false, `PTY exited ${msg.code} without ${marker}; output ${JSON.stringify(output)}`)
-        }
+/** The native Codex binary its npm package carries for this machine, if any. */
+function nativeCodex(root: string): string | null {
+  const openai = join(root, '@openai')
+  if (!existsSync(openai)) return null
+  const name = platform() === 'win32' ? 'codex.exe' : 'codex'
+  for (const pkg of readdirSync(openai).filter((p) => p.startsWith('codex-'))) {
+    const vendor = join(openai, pkg, 'vendor')
+    if (!existsSync(vendor)) continue
+    for (const triple of readdirSync(vendor)) {
+      for (const sub of [join(vendor, triple, 'bin'), join(vendor, triple, 'codex')]) {
+        if (existsSync(join(sub, name))) return join(sub, name)
       }
-    })
-    const frame = {
-      t: 'spawn',
-      file: shell,
-      args,
-      opts: { cwd: tmpdir(), cols: 80, rows: 24, useConpty: true, env: process.env },
     }
-    child.stdin.write(`${JSON.stringify(frame)}\n`)
-  })
+  }
+  return null
 }
-const hostPath = pkgDir ? join(pkgDir, 'pty-host.cjs') : null
-if (!hostPath || !existsSync(hostPath)) {
-  record('pty spawn', false, `pty-host.cjs not found in the installed package`)
-} else if (!ptyEntry) {
-  record('pty spawn', false, 'skipped — node-pty does not resolve')
+
+/** Start one adapter under Bun, ask `initialize`, and report what came back. */
+async function adapterAnswers(entry: string, env: NodeJS.ProcessEnv): Promise<{ ok: boolean; detail: string }> {
+  const child = spawn(process.execPath, [entry], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  let out = ''
+  let err = ''
+  child.stdout.on('data', (d: Buffer) => (out += d.toString()))
+  child.stderr.on('data', (d: Buffer) => (err += d.toString()))
+  child.stdin.write(
+    `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: {} } })}\n`,
+  )
+  const deadline = Date.now() + 30_000
+  while (!out.includes('"id":1') && child.exitCode === null && Date.now() < deadline) await Bun.sleep(100)
+  child.kill()
+  const line = out.split('\n').find((l) => l.includes('"id":1')) ?? ''
+  if (!line) return { ok: false, detail: `no answer to initialize; stderr ${err.slice(-300)}` }
+  // An error is a fair answer with no login. One that names Node is what this step hunts.
+  if (/\bnode\b/i.test(line)) return { ok: false, detail: `it wanted Node: ${line.slice(0, 300)}` }
+  return { ok: true, detail: line.slice(0, 100) }
+}
+
+if (!pkgDir) {
+  record('adapters', false, 'the installed package could not be located')
 } else {
-  const r = await ptySpawn(hostPath, ptyEntry)
-  record('pty spawn', r.ok, r.detail)
+  const require = createRequire(join(pkgDir, 'package.json'))
+  const claudeEntry = require.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js')
+  const codexEntry = require.resolve('@agentclientprotocol/codex-acp')
+  const codex = nativeCodex(dirname(pkgDir))
+  const claudeResult = await adapterAnswers(claudeEntry, smokeEnv)
+  record('claude adapter', claudeResult.ok, claudeResult.detail)
+  const codexResult = await adapterAnswers(codexEntry, { ...smokeEnv, ...(codex ? { CODEX_PATH: codex } : {}) })
+  record('codex adapter', codexResult.ok, `${codex ? 'native binary' : 'no native binary found'}: ${codexResult.detail}`)
 }
 
-// --- 5. doctor ----------------------------------------------------------------
+// --- 4. doctor ----------------------------------------------------------------
 
-header('5. doctor')
+header('4. doctor')
 if (bin) {
   const d = run(bin, ['doctor'], smokeEnv)
   console.log(d.out)
@@ -245,10 +229,63 @@ if (bin) {
   record('doctor', d.out.length > 0 && !/^(TypeError|ReferenceError|error:)/m.test(d.out), `exit ${d.code}`, false)
 }
 
-// --- 6. serve -----------------------------------------------------------------
+/**
+ * Everything between a click in the app and the program: the tRPC call that opens
+ * a sign-in terminal, the installed backend, and the WebSocket the view talks over.
+ * Ctrl-C proves the interrupt on each OS: a line-mode program ends at once on
+ * POSIX, and through the two-second fallback on Windows.
+ */
+async function smokeTerminal(base: string): Promise<{ ok: boolean; detail: string }> {
+  const started = await fetch(`${base}/api/trpc/setup.startTerminal`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'claude-login' }),
+  })
+  if (started.status !== 200) {
+    return { ok: false, detail: `setup.startTerminal → ${started.status}: ${await started.text()}` }
+  }
+  const body = (await started.json()) as { result: { data: { sessionId: string } } }
+  const socket = new WebSocket(`${base.replace('http', 'ws')}/ws/terminal/${body.result.data.sessionId}`)
+  socket.binaryType = 'arraybuffer'
+  let output = ''
+  let ended = false
+  socket.addEventListener('message', (e: MessageEvent) => {
+    if (typeof e.data === 'string') ended ||= (JSON.parse(e.data) as { status?: string }).status === 'ended'
+    else output += Buffer.from(e.data as ArrayBuffer).toString('utf8')
+  })
+  const until = async (check: () => boolean, ms: number): Promise<boolean> => {
+    const deadline = Date.now() + ms
+    while (!check() && Date.now() < deadline) await Bun.sleep(50)
+    return check()
+  }
+  const keys = (text: string): void => socket.send(Buffer.from(text, 'utf8'))
+  const seen = (): string => JSON.stringify(output.slice(-300))
+  try {
+    if (!(await until(() => socket.readyState === WebSocket.OPEN, 5000))) {
+      return { ok: false, detail: 'the terminal WebSocket never opened' }
+    }
+    if (!(await until(() => output.includes('FAKE_READY'), 15_000))) {
+      return { ok: false, detail: `the program never printed in the terminal: ${seen()}` }
+    }
+    keys('smoke-input\r')
+    if (!(await until(() => output.includes('FAKE_GOT[smoke-input]'), 5000))) {
+      return { ok: false, detail: `typed input never reached the program: ${seen()}` }
+    }
+    const interrupted = Date.now()
+    keys('\x03')
+    if (!(await until(() => ended, 6000))) {
+      return { ok: false, detail: `Ctrl-C did not end the program: ${seen()}` }
+    }
+    return { ok: true, detail: `output, typed input, and Ctrl-C ending the program in ${Date.now() - interrupted}ms` }
+  } finally {
+    socket.close()
+  }
+}
 
-header('6. serve')
-async function smokeServe(binPath: string): Promise<{ ok: boolean; detail: string }> {
+// --- 5. serve, 6. terminal -----------------------------------------------------------------
+
+header('5. serve')
+async function smokeServe(binPath: string): Promise<{ ok: boolean; detail: string; name?: string }> {
   const server = spawn(binPath, ['serve'], { env: smokeEnv, stdio: ['ignore', 'pipe', 'pipe'] })
   let log = ''
   server.stdout.on('data', (d: Buffer) => (log += d.toString()))
@@ -271,7 +308,10 @@ async function smokeServe(binPath: string): Promise<{ ok: boolean; detail: strin
     if (trpc.status !== 200) {
       return { ok: false, detail: `GET /api/trpc/setup.runtimeGuide → ${trpc.status}: ${await trpc.text()}` }
     }
-    return { ok: true, detail: `SPA served and tRPC answered on ${base}` }
+    record('serve', true, `SPA served and tRPC answered on ${base}`)
+    header('6. terminal')
+    const t = await smokeTerminal(base)
+    return { ok: t.ok, detail: t.detail, name: 'terminal' }
   } finally {
     server.kill('SIGTERM')
     const exited = await Promise.race([
@@ -286,7 +326,7 @@ async function smokeServe(binPath: string): Promise<{ ok: boolean; detail: strin
 }
 if (bin) {
   const s = await smokeServe(bin)
-  record('serve', s.ok, s.detail)
+  record(s.name ?? 'serve', s.ok, s.detail)
 }
 
 // --- summary ------------------------------------------------------------------

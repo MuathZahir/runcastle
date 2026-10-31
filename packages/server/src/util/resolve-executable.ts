@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readSync } from 'node:fs'
 import { win32, posix } from 'node:path'
 
 /**
  * PATHEXT-aware executable resolution — the single home for the PATH scan the
- * launcher, the PTY node sidecar, and the doctor probes all share.
+ * launcher and the doctor probes share.
  *
  * Why this exists: `spawn("docker")` can ENOENT on Windows even though `docker`
  * works in a terminal, because a non-shell spawn does NOT apply `PATHEXT` — a
@@ -56,7 +56,6 @@ const WIN_EXTS = ['.exe', '.cmd', '.bat', '.ps1', '']
 export const BIN_OVERRIDE_ENV: Readonly<Record<string, string>> = {
   claude: 'RUNCASTLE_CLAUDE_BIN',
   codex: 'RUNCASTLE_CODEX_BIN',
-  node: 'RUNCASTLE_NODE_BIN',
 }
 
 /**
@@ -158,6 +157,42 @@ export function resolveSpawnTarget(name: string, args: string[]): SpawnTarget {
   return spawnTargetFor(resolveTool(name), args)
 }
 
+/** The start of a file, as text. Null when it cannot be read. */
+function fileHead(path: string): string | null {
+  try {
+    const fd = openSync(path, 'r')
+    try {
+      const buf = Buffer.alloc(4096)
+      return buf.toString('latin1', 0, readSync(fd, buf, 0, buf.length, 0))
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether the CLI at `resolved` is a script that runs on Node, as an npm install
+ * makes it, on a machine with no Node. Runcastle itself runs on Bun alone, so
+ * this is the one way an agent CLI can sit on PATH and still not start. Looks at
+ * the file and runs nothing.
+ */
+export function cliNeedsMissingNode(
+  resolved: string,
+  opts: { env?: NodeJS.ProcessEnv; head?: (path: string) => string | null } = {},
+): boolean {
+  if (isBareName(resolved) || /\.exe$/i.test(resolved)) return false
+  const head = (opts.head ?? fileHead)(resolved)
+  if (head === null) return false
+  const script = /\.(cmd|bat|ps1)$/i.test(resolved)
+    ? /\bnode(\.exe)?\b/i.test(head)
+    : /^#!.*\bnode\b/.test(head)
+  if (!script) return false
+  const nodeEnv = opts.env ? { env: opts.env, pathEnv: opts.env.PATH ?? '' } : {}
+  return resolveTool('node', nodeEnv) === 'node'
+}
+
 /** A bare command name — resolution gave up and never found a real path. */
 function isBareName(cmd: string): boolean {
   return !cmd.includes('/') && !cmd.includes('\\')
@@ -166,10 +201,7 @@ function isBareName(cmd: string): boolean {
 /**
  * Turn a raw spawn failure into something the user can act on.
  *
- * node-pty is the reason this exists: when its own PATH search fails it throws
- * `File not found: ` followed by the *resolved* path — which is the empty string
- * precisely when the search failed. So the one case that needs explaining most
- * arrives with no filename, no cause, and no next step. Every spawn site funnels
+ * A bare spawn error names no cause and no next step. Every spawn site funnels
  * its failure through here so the terminal says which binary was missing and why
  * a working shell is not evidence that the server can see it.
  */

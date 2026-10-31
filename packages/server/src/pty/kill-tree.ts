@@ -78,14 +78,10 @@ export async function killProcessTree(pid: number): Promise<void> {
     }
   }
 
-  // The pid is logged HERE, not by the registry one layer up, because this is the
-  // only place that knows it. The registry logs `entry.pty.pid`; under the sidecar
-  // backend the tree is rooted at the HOST pid the sidecar spawned, never that
-  // inner node-pty pid, so the two differ on every real run. An investigator
-  // self-locating a recurrence from these breadcrumbs must be handed the pid that
-  // was actually killed, or they inspect an untouched stranger and conclude the
-  // tree-kill missed. Same `[pty-teardown]` prefix as the registry's lines, so one
-  // grep gets the whole teardown story in order.
+  // The pid is logged HERE, at the kill itself: an investigator self-locating a
+  // recurrence from these breadcrumbs must be handed the pid that was actually
+  // killed. Same `[pty-teardown]` prefix as the registry's lines, so one grep gets
+  // the whole teardown story in order.
   console.error(
     `[pty-teardown] killProcessTree: pid=${pid} branch=${isWin32 ? 'taskkill' : 'pgroup'} settled after ${Date.now() - started}ms`,
   )

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow } from '../src/launcher/sessions'
 import { toolListProjectNotes } from '../src/mcp/server'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { listByProject } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import {
@@ -79,19 +79,8 @@ function setupCommand(file: string): string {
     : `echo "$RUNCASTLE_SLUG $RUNCASTLE_ID $RUNCASTLE_BRANCH" > "${file}" && mkdir -p .runcastle && echo "DB_NAME=app_$RUNCASTLE_ID" > "${envFile}"`
 }
 
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], {
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = !WIN && ptyAvailable()
+usePipePty()
+const PTY = !WIN
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 

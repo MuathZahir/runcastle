@@ -150,7 +150,6 @@ describe('buildPublishedManifest', () => {
       'index.js',
       'bin',
       'hook-client.ts',
-      'pty-host.cjs',
       'drizzle',
       'skills',
       'web',

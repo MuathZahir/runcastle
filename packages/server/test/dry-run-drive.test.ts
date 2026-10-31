@@ -10,7 +10,7 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow } from '../src/launcher/sessions'
 import { toolDryRunDrive } from '../src/mcp/server'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { ptyRegistry } from '../src/pty/registry'
 import { listByProject } from '../src/services/events'
 import { listFindings, recordFinding } from '../src/services/findings'
@@ -36,7 +36,7 @@ import { seedFeature } from './helpers/fixtures'
  * shell, the real drive slot — because the whole premise of the feature is that
  * a re-enactment proves nothing. Hook commands are spelled for whichever shell
  * hosts them, the way `drive-hooks.test.ts` does, and the dev pane is gated on
- * the native PTY addon loading in this runtime.
+ * a POSIX shell.
  */
 
 const tmpDirs: string[] = []
@@ -78,20 +78,8 @@ const WRITE_DB_NAME = writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID')
 const CAPTURE_DB_NAME =
   process.platform === 'win32' ? 'echo %DB_NAME%>db-name.txt' : 'echo "$DB_NAME" > db-name.txt'
 
-/** Probe whether node-pty can spawn here (CI without prebuilds cannot). */
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], {
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = process.platform !== 'win32' && ptyAvailable()
+usePipePty()
+const PTY = process.platform !== 'win32'
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 

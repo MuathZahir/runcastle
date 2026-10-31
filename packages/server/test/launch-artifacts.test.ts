@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
 import { RuncastleConfig as ConfigSchema, SessionKind, SessionPurpose } from '@runcastle/core'
+import { windowsCommandLine } from '../src/pty/windows-command-line'
+import { cliNeedsMissingNode } from '../src/util/resolve-executable'
 import type { WriteArtifactsInput } from '../src/launcher/artifacts'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
@@ -519,23 +520,11 @@ describe('renderSystemPrompt', () => {
 })
 
 /**
- * node-pty's own Win32 command-line builder — the real encoder, reached by deep
- * import because the package exports only its terminal API. `WindowsPtyAgent`
- * calls exactly this to flatten `(file, args)` into the single string ConPTY
- * hands `CreateProcessW`, so a kickoff line that survives here is one the CLI
- * really receives. (`createRequire` because it is CommonJS with no typings, the
- * same way the launcher loads the addon — see `src/pty/pty.ts`.)
- */
-const { argsToCommandLine } = createRequire(import.meta.url)(
-  'node-pty/lib/windowsPtyAgent.js',
-) as { argsToCommandLine: (file: string, args: string[]) => string }
-
-/**
  * The receiving end: split a Win32 command line back into argv by the
  * `CommandLineToArgvW` rules every CRT startup applies — quotes delimit, a
  * backslash run is literal unless it precedes a quote, an even run yields half
  * as many backslashes plus a delimiter, an odd run yields half plus a literal
- * quote. Written out rather than reusing node-pty's encoder in reverse so the
+ * quote. Written out rather than reusing the encoder in reverse so the
  * round-trip below is checked against the documented convention, not itself.
  */
 function commandLineToArgv(commandLine: string): string[] {
@@ -586,12 +575,12 @@ function commandLineToArgv(commandLine: string): string[] {
  * Everything a runtime's argv crosses between `buildXArgs` and the agent on
  * Windows: {@link spawnTargetFor} picks the real program (a `.cmd`/`.ps1` shim
  * is run through its interpreter, which pushes the argv further down the line),
- * node-pty flattens the result, and the process on the other side splits it
+ * the terminal backend flattens the result, and the process on the other side splits it
  * again. Whatever comes back is what the CLI actually parsed.
  */
 function windowsSpawnRoundTrip(resolved: string, argv: string[]): string[] {
   const target = spawnTargetFor(resolved, argv)
-  return commandLineToArgv(argsToCommandLine(target.file, target.args))
+  return commandLineToArgv(windowsCommandLine(target.file, target.args))
 }
 
 describe('buildClaudeArgs', () => {
@@ -1557,6 +1546,24 @@ describe('codexRuntime.checkReady', () => {
     if (ready.ok) return
     expect(ready.reason).toContain('`codex`')
     expect(ready.doctorHint).toContain('runcastle doctor')
+  })
+
+  it('refuses, naming the standalone route, when the CLI is a Node script with no Node', () => {
+    const script = join(home, 'codex')
+    writeFileSync(script, '#!/usr/bin/env node\n', 'utf8')
+    writeFileSync(join(home, 'auth.json'), '{}', 'utf8')
+    const path = process.env.PATH
+    process.env.PATH = home
+    try {
+      const needsNode = cliNeedsMissingNode(script)
+      const ready = codexRuntime.checkReady()
+      expect(ready.ok).toBe(!needsNode)
+      if (ready.ok) return // a Node in the usual install dirs is on this machine, so it can run
+      expect(ready.reason).toContain('Node script')
+      expect(ready.doctorHint).toContain('standalone installer')
+    } finally {
+      process.env.PATH = path
+    }
   })
 
   it('refuses with the login fix when there are no credentials to borrow', () => {

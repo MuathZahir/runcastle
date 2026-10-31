@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { ptyRegistry, type TerminalSink } from '../src/pty/registry'
 import {
   devSpawnTarget,
@@ -11,7 +11,6 @@ import {
   isDrivePaneId,
   sniffDevUrl,
   startDevPane,
-  type StartDevPaneInput,
   stopDevPane,
 } from '../src/pty/dev-pane'
 import { listAfter } from '../src/services/events'
@@ -21,25 +20,16 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 /**
  * Test-drive dev pane (issue #41): the non-session PTY id, the localhost URL
  * sniffer, the generalized shell/cmd shim, and the process-tree kill on stop.
- * The pure helpers are unit-tested; start/stop are exercised against a real PTY
- * (gated on the native node-pty addon loading in this runtime).
+ * The pure helpers are unit-tested; start/stop are exercised against the pipe
+ * stand-in, since vitest runs on node. The shipped terminal's own tree kill is in
+ * `pty-bun.test.ts` and `dev-pane-stop-bun.test.ts`.
  */
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-/** Probe whether node-pty can spawn here (CI without prebuilds cannot). */
-function ptyAvailable(): boolean {
-  const { file, args } = devSpawnTarget(process.platform === 'win32' ? 'rem' : 'true')
-  try {
-    const p = createNativePtySession(file, args, { cwd: process.cwd(), env: process.env })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const AVAILABLE = process.platform !== 'win32' && ptyAvailable()
-const WIN_AVAILABLE = process.platform === 'win32' && ptyAvailable()
+usePipePty()
+const AVAILABLE = process.platform !== 'win32'
+const WIN_AVAILABLE = process.platform === 'win32'
 
 /** True while `pid` is still a live process (Windows-safe existence probe). */
 function pidAlive(pid: number): boolean {
@@ -137,25 +127,6 @@ describe('devSpawnTarget', () => {
   })
 })
 
-/**
- * The teardown suites below are gated on a working PTY. On win32 that gate must
- * never swallow a broken install: node-pty ships its Windows prebuild in the
- * tarball, so a probe that fails there is a broken install, not an unsupported
- * platform — and a silent skip is exactly how the Windows tree-kill regression
- * test went unrun on every machine. CI without Linux prebuilds stays a legitimate
- * skip, so this only speaks for win32.
- */
-describe('PTY availability', () => {
-  it('can spawn a PTY on Windows (a failed probe means a broken node-pty install)', () => {
-    if (process.platform !== 'win32') return
-    expect(
-      WIN_AVAILABLE,
-      'node-pty could not spawn a PTY on win32 — a broken install, not an unsupported ' +
-        'platform. The stopDevPane teardown tests would silently skip.',
-    ).toBe(true)
-  })
-})
-
 describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
   afterEach(async () => {
     // Best-effort: never leave a drive pane running between cases.
@@ -224,11 +195,8 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
  * file locks. The POSIX group-kill path is covered by the suite above.
  *
  * READ THIS BEFORE TRUSTING A GREEN RUN HERE. This suite runs under NODE — vitest's
- * runtime — and therefore does NOT exercise the runtime production uses. Production
- * runs the server under BUN, where `selectBackend()` auto-picks the sidecar; these
- * cases reach the same sidecar backend by forcing it with an env var, but they still
- * await the tree-kill under node. The runtime, not the backend, was the variable:
- * every case below was GREEN throughout the period when stopping a drive on Windows
+ * runtime — and therefore does NOT exercise the runtime production uses. The
+ * runtime was the variable: every case below was GREEN throughout the period when stopping a drive on Windows
  * hung forever in production (preparation-bug), because `promisify(execFile)` settles
  * fine under node and never settled under Bun. A green run here is evidence about
  * node only. The production runtime is covered by `dev-pane-stop-bun.test.ts`, which
@@ -284,34 +252,6 @@ describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
     return pid!
   }
 
-  /** Put an env var back where it was — deleted if it was unset (never "undefined"). */
-  function restoreEnv(key: string, value: string | undefined): void {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
-  }
-
-  /**
-   * Start a pane on the SIDECAR backend and report the pid of the node host it
-   * spawned. Both env overrides are read at spawn time and restored immediately
-   * after, so only this pane takes the detour; `process.execPath` is a real node
-   * because vitest runs under one.
-   */
-  function startSidecarPane(input: StartDevPaneInput): { paneId: string; hostPid: number } {
-    const prevBackend = process.env.RUNCASTLE_PTY_BACKEND
-    const prevNodeBin = process.env.RUNCASTLE_NODE_BIN
-    try {
-      process.env.RUNCASTLE_PTY_BACKEND = 'sidecar'
-      process.env.RUNCASTLE_NODE_BIN = process.execPath
-      const paneId = startDevPane(input)!
-      // Read on THIS tick: `pty.pid` is the host's own pid only until the host's
-      // async `ready` frame arrives and replaces it with node-pty's inner pid.
-      return { paneId, hostPid: ptyRegistry().get(paneId)!.pty.pid }
-    } finally {
-      restoreEnv('RUNCASTLE_PTY_BACKEND', prevBackend)
-      restoreEnv('RUNCASTLE_NODE_BIN', prevNodeBin)
-    }
-  }
-
   /** Wait out the lag between taskkill signalling a tree and Windows reaping it. */
   async function awaitDeath(pid: number): Promise<void> {
     for (let i = 0; i < 20 && pidAlive(pid); i++) await delay(250)
@@ -338,41 +278,5 @@ describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
 
     await awaitDeath(pid)
     expect(pidAlive(pid)).toBe(false)
-  }, 45000)
-
-  /**
-   * The same scenario on the backend PRODUCTION actually runs. Bun+win32 selects
-   * the sidecar, but vitest runs under node — so the native test above was never
-   * the leaking path. Forcing the sidecar puts a node host between the server and
-   * node-pty: the tree to kill is rooted at that host, and the pid the server
-   * used to taskkill (`pty.pid`) is swapped to node-pty's inner pid the moment
-   * the host's async `ready` frame lands.
-   */
-  it('kills the sidecar host and its grandchild — the backend production runs', async () => {
-    const ctx = await makeTestCtx()
-    const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'winsidecar' })
-
-    const { paneId, hostPid } = startSidecarPane({
-      ctx,
-      scope: { featureId: feature.id },
-      repoPath: grandchildDir(),
-      devCommand: 'node grandchild.mjs',
-      env: paneEnv(),
-      onUrl: () => {},
-    })
-    expect(hostPid).toBeGreaterThan(0)
-
-    const pid = await readGrandchildPid(paneId)
-    expect(pidAlive(pid)).toBe(true)
-    expect(pidAlive(hostPid)).toBe(true)
-
-    await stopDevPane(paneId)
-
-    await awaitDeath(pid)
-    await awaitDeath(hostPid)
-    expect(pidAlive(pid), 'dev server grandchild survived the stop').toBe(false)
-    expect(pidAlive(hostPid), 'sidecar host survived the stop').toBe(false)
-    expect(ptyRegistry().has(paneId)).toBe(false)
   }, 45000)
 })

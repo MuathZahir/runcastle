@@ -1,42 +1,17 @@
-import { createRequire } from 'node:module'
+import { constants } from 'node:os'
 import { explainSpawnFailure } from '../util/resolve-executable'
+import { contain } from './job-object'
 import { killProcessTree } from './kill-tree'
-import { createSidecarPtySession } from './pty-sidecar'
+import { windowsArgsLine, windowsArgv0 } from './windows-command-line'
 
 /**
  * The single PTY interface (UI-SPEC §5). Everything above this line — registry,
- * WebSocket transport, launcher — talks to `createPtySession` and never imports
- * `node-pty` directly, so the backend implementation stays swappable behind this
- * one function.
+ * WebSocket transport, launcher — talks to `createPtySession`, so what hosts a
+ * terminal stays swappable behind this one function.
  *
- * SHIPPED PATH — TWO BACKENDS, selected at spawn time (`selectBackend`):
- *
- * - **sidecar** (`pty-sidecar.ts` + `pty-host.cjs` under system `node`): the
- *   default under **Bun, on every platform** — node-pty does not work
- *   in-process under Bun anywhere:
- *   - win32: node-pty's ConPTY backend (observed on 1.1.0) writes keystrokes to the child
- *     through a Node `net.Socket` input pipe; under Bun that socket is unusable
- *     and `write()` throws `ERR_SOCKET_CLOSED`, so INPUT is silently dropped
- *     (OUTPUT works — it uses a different read path). Reproduced: under Bun
- *     `write()` threw and echo delta was 0; under Node the same write echoed.
- *   - Linux: the PTY exits with SIGHUP ~14ms after its first output, so every
- *     terminal dies at once (Bun 1.3.14–1.4.2, with or without a TTY; see
- *     `docs/features/session-process-trees-die-with-their-session-on-windows/
- *     prototypes/linux-probe/FINDINGS.md`). macOS shares node-pty's Unix read
- *     side, so it gets the sidecar too (unverified there).
- *   Hosting node-pty in a real `node` process fixes both, which is why Node 22+
- *   is a prerequisite on every platform.
- *
- * - **native** (in-process `node-pty`, below): used under a `node` runtime (e.g.
- *   the vitest suite), where node-pty works fine. Kept present and exercised by
- *   tests so it never bit-rots.
- *
- * Selection is deterministic (`chooseBackend` — no async probe; the failures are
- * not flaky but a fixed Bun↔node-pty incompatibility) and overridable via
- * `RUNCASTLE_PTY_BACKEND=sidecar|native`. `node-pty` is a native CommonJS addon
- * loaded lazily via `createRequire` on first native spawn (not at import time),
- * so importing the launcher/index — as the tests and `buildApp` do — never
- * touches the binding.
+ * The backend is Bun's own terminal (`Bun.spawn` with `terminal`): openpty on
+ * POSIX, ConPTY on Windows. It needs nothing installed beyond Bun itself, which
+ * is why it replaced node-pty in a Node sidecar (ADR-0016).
  */
 
 export interface PtySession {
@@ -53,14 +28,13 @@ export interface PtySession {
   /** Terminate the process (ConPTY on Windows). */
   kill(): void
   /**
-   * Kill the whole process tree this backend owns, best-effort. Distinct from
-   * `kill()`, which ends only the PTY itself and leaves grandchildren running —
-   * on win32 that is the dev server behind the `cmd.exe` shim, still holding its
-   * port. Each backend kills a process it owns rather than one it inferred, so
-   * the pid is never guessed across a process boundary. Never rejects.
+   * Kill the whole process tree this session owns, best-effort. Distinct from
+   * `kill()`, which ends only the PTY's own process and leaves grandchildren
+   * running — on win32 that is the dev server behind the `cmd.exe` shim, still
+   * holding its port. Never rejects.
    */
   killTree(): Promise<void>
-  /** OS process id of the spawned shell. */
+  /** OS process id of the spawned program. */
   readonly pid: number
   /** True once the process has exited. */
   readonly killed: boolean
@@ -71,193 +45,241 @@ export interface CreatePtyOptions {
   env: Record<string, string | undefined>
   cols?: number
   rows?: number
-  /** Use ConPTY on Windows (default true — the modern, correct backend). */
-  useConpty?: boolean
 }
 
-// --- node-pty shape (structural; avoids depending on its exported types at the
-// import graph level so the lazy-load boundary is honoured) --------------------
+export type PtyFactory = (cmd: string, args: string[], opts: CreatePtyOptions) => PtySession
 
-interface IDisposable {
-  dispose(): void
-}
-interface NodePtyProcess {
-  readonly pid: number
-  onData(cb: (d: string | Buffer) => void): IDisposable
-  onExit(cb: (e: { exitCode: number; signal?: number }) => void): IDisposable
-  write(data: string): void
+/**
+ * How long after a program exits to wait for the end of its output. The exit can
+ * arrive before the last bytes are read; a grandchild that kept the terminal open
+ * would hold the stream past any wait, so this is a bound, not a promise.
+ */
+const OUTPUT_TAIL_MS = 250
+
+/**
+ * How long a program on Windows gets to act on Ctrl-C before its tree is ended.
+ * Bun's ConPTY delivers `\x03` to a raw-mode program as a key, but never raises
+ * the console interrupt a line-mode program (a dev server, `docker build`) listens
+ * for, so without this Ctrl-C would do nothing there.
+ */
+const WINDOWS_INTERRUPT_GRACE_MS = 2000
+
+const TERMINAL_NAME = 'xterm-256color'
+
+/** Inherited settings that describe some other terminal, not the one being opened. */
+const FOREIGN_TERMINAL_ENV = ['TMUX', 'TMUX_PANE', 'STY', 'WINDOW', 'WINDOWID', 'TERMCAP', 'COLUMNS', 'LINES']
+
+/**
+ * The part of Bun's API the backend uses, declared here because this module also
+ * reaches `apps/web`'s typecheck through the router types, where Bun's globals do
+ * not exist. (Bun's own types still call `terminal` POSIX-only; it runs on Windows
+ * from the 1.3.14 floor on, measured and covered by `pty-bun.test.ts`.)
+ */
+interface BunTerminal {
+  readonly closed: boolean
+  write(data: string): number
   resize(cols: number, rows: number): void
+  close(): void
+}
+interface BunSubprocess {
+  readonly pid: number
+  readonly exited: Promise<number>
+  readonly signalCode: NodeJS.Signals | null
+  readonly terminal: BunTerminal
   kill(signal?: string): void
 }
-interface NodePtySpawnOptions {
-  name?: string
-  cols?: number
-  rows?: number
-  cwd?: string
-  env?: Record<string, string>
-  useConpty?: boolean
+interface BunSpawnOptions {
+  cwd: string
+  env: Record<string, string>
+  terminal: {
+    cols: number
+    rows: number
+    name: string
+    data(terminal: BunTerminal, data: Uint8Array): void
+    exit(): void
+  }
+  windowsHide?: boolean
+  windowsVerbatimArguments?: boolean
+  argv0?: string
 }
-interface NodePtyModule {
-  spawn(file: string, args: string[] | string, opts: NodePtySpawnOptions): NodePtyProcess
-}
-
-let cached: NodePtyModule | null = null
-
-/** Lazily load the native `node-pty` addon (once). */
-function loadNodePty(): NodePtyModule {
-  if (cached) return cached
-  const require = createRequire(import.meta.url)
-  cached = require('node-pty') as NodePtyModule
-  return cached
+interface BunRuntime {
+  spawn(cmd: string[], opts: BunSpawnOptions): BunSubprocess
 }
 
-/** Drop only the keys node-pty rejects: env values must be strings. */
-function cleanEnv(env: Record<string, string | undefined>): Record<string, string> {
+function bunRuntime(): BunRuntime | undefined {
+  return (globalThis as unknown as { Bun?: BunRuntime }).Bun
+}
+
+let standIn: PtyFactory | null = null
+
+/**
+ * Tests only. vitest runs on node, which has no `Bun.spawn`, so a suite that just
+ * needs a process to talk to installs a stand-in here; real terminal behaviour is
+ * tested from a real Bun child (`test/fixtures/pty-bun.ts`).
+ */
+export function installPtyStandIn(factory: PtyFactory | null): void {
+  standIn = factory
+}
+
+/** Spawn a process inside a pseudo-terminal and return the runcastle PTY handle. */
+export function createPtySession(cmd: string, args: string[], opts: CreatePtyOptions): PtySession {
+  if (standIn) return standIn(cmd, args, opts)
+  const bun = bunRuntime()
+  if (!bun) throw new Error('runcastle terminals need Bun: run the server with bun, not node')
+  return createBunPtySession(bun, cmd, args, opts)
+}
+
+/** The environment a terminal starts with: strings only, and describing this terminal. */
+function terminalEnv(env: Record<string, string | undefined>): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(env)) {
     if (typeof v === 'string') out[k] = v
   }
-  return out
+  if (process.platform === 'win32') return out
+  for (const key of FOREIGN_TERMINAL_ENV) delete out[key]
+  return { ...out, TERM: TERMINAL_NAME }
 }
 
-export type Backend = 'native' | 'sidecar'
-
-function isBun(): boolean {
-  return typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
-}
-
-const BACKEND_LOGGED = Symbol.for('runcastle.pty.backend.logged')
-
-/** What the backend choice depends on — the runtime and the override env var. */
-export interface BackendInputs {
-  isBun: boolean
-  platform: NodeJS.Platform
-  /** Raw `RUNCASTLE_PTY_BACKEND`; anything but `sidecar`/`native` is ignored. */
-  override: string | undefined
+/** The exit signal as a number, as `PtySession.onExit` reports it. */
+function signalNumber(signal: NodeJS.Signals | null): number | undefined {
+  return signal ? constants.signals[signal] : undefined
 }
 
 /**
- * Pure backend choice (see the file header). `RUNCASTLE_PTY_BACKEND` wins; any
- * Bun runtime gets the sidecar, on every platform; a node runtime gets native.
- * `why` is the reason the `[pty] backend=` log line prints.
+ * A terminal whose program could not start. The explanation goes into the
+ * terminal stream as well as the log: that is what the person is watching, and
+ * without it the pane just opens empty and dies.
  */
-export function chooseBackend(inputs: BackendInputs): { backend: Backend; why: string } {
-  const { override } = inputs
-  if (override === 'sidecar' || override === 'native') {
-    return { backend: override, why: 'RUNCASTLE_PTY_BACKEND override' }
+function failedPtySession(why: string): PtySession {
+  process.stderr.write(`[pty] ${why}\n`)
+  const dataListeners = new Set<(data: Buffer) => void>()
+  const exitListeners = new Set<(event: { exitCode: number; signal?: number }) => void>()
+  // A later tick, because the registry attaches its listeners after this returns.
+  setTimeout(() => {
+    const text = Buffer.from(`\r\n${why.replace(/\n/g, '\r\n')}\r\n`, 'utf8')
+    for (const l of dataListeners) l(text)
+    for (const l of exitListeners) l({ exitCode: 1 })
+  }, 0)
+  return {
+    onData(listener) {
+      dataListeners.add(listener)
+      return { dispose: () => dataListeners.delete(listener) }
+    },
+    onExit(listener) {
+      exitListeners.add(listener)
+      return { dispose: () => exitListeners.delete(listener) }
+    },
+    write() {},
+    resize() {},
+    kill() {},
+    killTree: () => Promise.resolve(),
+    pid: -1,
+    killed: true,
   }
-  if (inputs.isBun) {
-    return {
-      backend: 'sidecar',
-      why:
-        `Bun on ${inputs.platform}: node-pty is unusable in-process under Bun ` +
-        '(win32 ConPTY input pipe throws; posix PTY hangs up after first output)',
-    }
-  }
-  return { backend: 'native', why: 'node runtime' }
 }
 
 /**
- * Pick a PTY backend for this process via {@link chooseBackend}. The choice is
- * logged exactly once per process (survives `bun --hot` via a global symbol).
+ * Bun's terminal. Output listeners receive a copy of the raw bytes, so the
+ * consumer's UTF-8 decoder owns reassembly and the ring buffer can keep them.
  */
-function selectBackend(): Backend {
-  const { backend, why } = chooseBackend({
-    isBun: isBun(),
-    platform: process.platform,
-    override: process.env.RUNCASTLE_PTY_BACKEND,
+function createBunPtySession(bun: BunRuntime, cmd: string, args: string[], opts: CreatePtyOptions): PtySession {
+  const isWin32 = process.platform === 'win32'
+  const dataListeners = new Set<(data: Buffer) => void>()
+  const exitListeners = new Set<(event: { exitCode: number; signal?: number }) => void>()
+  let exited = false
+  let interrupting: ReturnType<typeof setTimeout> | null = null
+  let outputEnded = (): void => {}
+  const outputDone = new Promise<void>((resolve) => {
+    outputEnded = resolve
   })
-  const g = globalThis as typeof globalThis & { [BACKEND_LOGGED]?: boolean }
-  if (!g[BACKEND_LOGGED]) {
-    g[BACKEND_LOGGED] = true
-    console.error(`[pty] backend=${backend} (${why})`)
-  }
-  return backend
-}
 
-/**
- * Spawn a process inside a pseudo-terminal and return the runcastle PTY handle.
- * Dispatches to the sidecar or native backend (`selectBackend`); both honour the
- * same interface so registry / WS / launcher are backend-agnostic.
- */
-export function createPtySession(
-  cmd: string,
-  args: string[],
-  opts: CreatePtyOptions,
-): PtySession {
-  return selectBackend() === 'sidecar'
-    ? createSidecarPtySession(cmd, args, opts)
-    : createNativePtySession(cmd, args, opts)
-}
-
-/**
- * Native (in-process `node-pty`) backend. Output listeners always receive a
- * `Buffer` (node-pty is spawned WITHOUT an encoding so bytes pass through
- * untouched — the consumer's UTF-8 decoder owns reassembly). Works fully under a
- * `node` runtime; under Bun it breaks (win32 `write()` throws
- * `ERR_SOCKET_CLOSED`; posix hangs up after first output), which is why
- * `selectBackend` routes every Bun runtime to the sidecar instead.
- */
-export function createNativePtySession(
-  cmd: string,
-  args: string[],
-  opts: CreatePtyOptions,
-): PtySession {
-  const pty = loadNodePty()
-  let proc: NodePtyProcess
+  let proc: BunSubprocess
   try {
-    proc = pty.spawn(cmd, args, {
-      name: 'xterm-256color',
-      cols: opts.cols ?? 80,
-      rows: opts.rows ?? 24,
+    proc = bun.spawn(isWin32 ? [cmd, windowsArgsLine(args)].filter(Boolean) : [cmd, ...args], {
       cwd: opts.cwd,
-      env: cleanEnv(opts.env),
-      useConpty: opts.useConpty ?? true,
+      env: terminalEnv(opts.env),
+      terminal: {
+        cols: opts.cols ?? 80,
+        rows: opts.rows ?? 24,
+        name: TERMINAL_NAME,
+        data(_terminal, data) {
+          const chunk = Buffer.from(data)
+          for (const l of dataListeners) l(chunk)
+        },
+        exit() {
+          outputEnded()
+        },
+      },
+      ...(isWin32
+        ? { windowsHide: true, windowsVerbatimArguments: true, argv0: windowsArgv0(cmd) }
+        : {}),
     })
   } catch (err) {
-    // This throw is synchronous, so it reaches the launcher's try/catch and
-    // becomes a `session.spawn_failed` event — worth carrying the explanation
-    // rather than node-pty's bare `File not found: ` (see explainSpawnFailure).
-    throw new Error(explainSpawnFailure(cmd, err instanceof Error ? err.message : String(err)))
+    return failedPtySession(explainSpawnFailure(cmd, err instanceof Error ? err.message : String(err)))
   }
 
-  let killed = false
-  proc.onExit(() => {
-    killed = true
+  const { terminal } = proc
+
+  // On the spawn's own tick: every descendant the program starts from here on is
+  // born inside the job, and dies with it even once its parent has exited. Null
+  // off win32, or when setup failed; teardown then keeps the `taskkill /T` path.
+  const containment = isWin32 ? contain(proc.pid) : null
+
+  void proc.exited.then(async (exitCode) => {
+    if (interrupting) clearTimeout(interrupting)
+    await Promise.race([outputDone, new Promise((resolve) => setTimeout(resolve, OUTPUT_TAIL_MS))])
+    exited = true
+    terminal.close()
+    // A program that ended on its own releases its job too: whatever it left
+    // behind dies, and no handle leaks.
+    void containment?.kill()
+    const signal = signalNumber(proc.signalCode)
+    for (const l of exitListeners) l({ exitCode, ...(signal === undefined ? {} : { signal }) })
   })
+
+  async function killTree(): Promise<void> {
+    if (containment) {
+      await containment.kill()
+      return
+    }
+    // The ConPTY child on win32 (taskkill /T walks down to the dev server behind
+    // it), the process-group leader on POSIX.
+    await killProcessTree(proc.pid)
+  }
 
   return {
     onData(listener) {
-      return proc.onData((d) => listener(typeof d === 'string' ? Buffer.from(d, 'utf8') : d))
+      dataListeners.add(listener)
+      return { dispose: () => dataListeners.delete(listener) }
     },
     onExit(listener) {
-      return proc.onExit(listener)
+      exitListeners.add(listener)
+      return { dispose: () => exitListeners.delete(listener) }
     },
     write(data) {
-      proc.write(data)
-    },
-    resize(cols, rows) {
-      // ConPTY throws on a 0 dimension; clamp to a sane minimum.
-      proc.resize(Math.max(1, cols), Math.max(1, rows))
-    },
-    kill() {
-      if (killed) return
-      try {
-        proc.kill()
-      } catch {
-        // Process may have already exited between the killed check and kill().
+      if (exited || terminal.closed) return
+      terminal.write(data)
+      if (isWin32 && data.includes('\x03') && !interrupting) {
+        interrupting = setTimeout(() => void killTree(), WINDOWS_INTERRUPT_GRACE_MS)
+        interrupting.unref?.()
       }
     },
-    killTree() {
-      // node-pty's own pid: the ConPTY cmd shim on win32 (taskkill /T walks down
-      // to the dev server behind it), the process-group leader on POSIX.
-      return killProcessTree(proc.pid)
+    resize(cols, rows) {
+      if (exited || terminal.closed) return
+      // ConPTY throws on a 0 dimension; clamp to a sane minimum.
+      terminal.resize(Math.max(1, cols), Math.max(1, rows))
     },
+    kill() {
+      if (exited) return
+      // Closing a terminal hangs up on its program; on win32 kill() takes no signal.
+      proc.kill(isWin32 ? undefined : 'SIGHUP')
+    },
+    killTree,
     get pid() {
       return proc.pid
     },
     get killed() {
-      return killed
+      return exited
     },
   }
 }

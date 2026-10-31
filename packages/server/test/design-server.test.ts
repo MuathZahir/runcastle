@@ -11,7 +11,7 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import type { StopReason } from '../src/threads/types'
 import mcpApp, { toolsForAudience } from '../src/mcp/server'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { devSpawnTarget, drivePaneId, startDevPane, stopDevPane } from '../src/pty/dev-pane'
 import { endSession } from '../src/pty/end-session'
 import { ptyRegistry } from '../src/pty/registry'
@@ -44,18 +44,8 @@ import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
  * with its reason on the timeline.
  */
 
-/** Probe whether node-pty can spawn here (CI without prebuilds cannot). */
-function ptyAvailable(): boolean {
-  const { file, args } = devSpawnTarget(process.platform === 'win32' ? 'rem' : 'true')
-  try {
-    const p = createNativePtySession(file, args, { cwd: process.cwd(), env: process.env })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const AVAILABLE = process.platform !== 'win32' && ptyAvailable()
+usePipePty()
+const AVAILABLE = process.platform !== 'win32'
 
 /** A fake dev server: prints its local URL on the injected port, then idles. */
 const FAKE_DEV =

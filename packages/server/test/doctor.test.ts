@@ -70,7 +70,6 @@ function labelled(hash: string, claude = HOST_CLAUDE, codex = ''): string {
 
 const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'bun --version': { stdout: '1.3.14' },
-  'node --version': { stdout: 'v22.0.0' },
   'git --version': { stdout: 'git version 2.45.0' },
   'claude --version': { stdout: `${HOST_CLAUDE} (Claude Code)` },
   'claude auth status': { stdout: '{"loggedIn":true}' },
@@ -123,20 +122,36 @@ describe('runDoctor — canned environments', () => {
   })
 
   it.each(['linux', 'darwin', 'win32'] as const)(
-    'treats a missing node as a Tier-1 error on %s — the terminal needs it everywhere',
+    'does not ask for Node on %s: a machine without it passes the gate',
     async (platform) => {
-      const table = { ...ALL_HEALTHY }
-      delete table['node --version']
-      const report = await runDoctor({ ...base, platform, exec: cannedExec(table) })
-      const node = byId(report.results, 'node')
-      expect(node.status).toBe('missing')
-      expect(node.severity).toBe('error')
-      expect(node.fix).toBe(
-        'Install Node.js 22+ — required on every platform: the embedded terminal runs in a node-hosted PTY sidecar, and without node it exits instantly.',
-      )
-      expect(report.tier1Ok).toBe(false)
+      const report = await runDoctor({ ...base, platform, exec: cannedExec(ALL_HEALTHY) })
+      expect(report.results.some((r) => r.id === 'node')).toBe(false)
+      expect(report.tier1Ok).toBe(true)
     },
   )
+
+  it('names the standalone installer for a CLI that is a Node script with no Node to run it', async () => {
+    const table = { ...ALL_HEALTHY }
+    delete table['claude --version']
+    const report = await runDoctor({
+      ...base,
+      exec: cannedExec(table),
+      needsMissingNode: (bin) => bin === 'claude',
+    })
+    const claude = byId(report.results, 'claude')
+    expect(claude.status).toBe('missing')
+    expect(claude.detail).toContain('Node script')
+    expect(claude.fix).toContain('https://claude.ai/install.sh')
+    // Only that runtime: Codex, also absent here, still reads as simply not installed.
+    expect(byId(report.results, 'codex').detail).toContain('not found on PATH')
+  })
+
+  it('recommends the standalone Codex installer, not npm', async () => {
+    const report = await runDoctor({ ...base, exec: cannedExec(ALL_HEALTHY) })
+    const codex = byId(report.results, 'codex')
+    expect(codex.fix).toContain('https://chatgpt.com/codex/install.sh')
+    expect(codex.fix).not.toContain('npm')
+  })
 
   it('distinguishes a dead docker daemon from a missing binary', async () => {
     const table = { ...ALL_HEALTHY }

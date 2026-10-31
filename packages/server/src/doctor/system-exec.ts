@@ -28,7 +28,7 @@ export const DEFAULT_EXEC_TIMEOUT_MS = 60_000
  * not healthy, which is how every probe already reads a non-zero exit. It does
  * not wait for `close`: a shim's grandchild can hold the pipes open past the kill.
  *
- * Resolves via {@link resolveTool}, so `RUNCASTLE_CLAUDE_BIN` / `RUNCASTLE_NODE_BIN`
+ * Resolves via {@link resolveTool}, so `RUNCASTLE_CLAUDE_BIN` / `RUNCASTLE_CODEX_BIN`
  * pin the path here exactly as they do for the session launcher — the probes and
  * the launcher must never disagree about whether a tool is present.
  */

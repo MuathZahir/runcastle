@@ -7,8 +7,8 @@ import { awaitDead, openStubTerminal, pidAlive } from './job-object-terminal'
  * Run BY `bun`, spawned from `job-object-win32.test.ts` (bun:ffi exists only there).
  *
  * Two shapes, because they end through two different paths:
- * - selfExit: the stub orphans its MCP child and exits, so the PTY and its host
- *   exit on their own — the sidecar releases the job from its `exit` handler.
+ * - selfExit: the stub orphans its MCP child and exits, so the PTY exits on its
+ *   own — the backend releases the job when it sees that exit.
  * - killTree: a "nest" parent keeps the terminal alive after the stub orphans its
  *   MCP child; `ptyRegistry().killTree()` must then reach an orphan that
  *   `taskkill /T` no longer can (its parent is gone).
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   }, WATCHDOG_MS)
 
   try {
-    // --- the host exits on its own ---
+    // --- the program exits on its own ---
     const self = await openStubTerminal('job-self-exit', 'exit')
     leaks.push(self.mcpPid)
     await self.exited

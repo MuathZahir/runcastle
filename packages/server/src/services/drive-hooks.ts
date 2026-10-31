@@ -85,8 +85,8 @@ export function tailLines(text: string, max = OUTPUT_TAIL_LINES): string {
  * message) arrives at the shell mangled. `windowsVerbatimArguments` turns that
  * escaping off and hands cmd the line we actually wrote; `/s` then means "strip
  * the outer quotes, take the rest literally", which is the documented way to
- * pass a command that quotes things. node-pty does not share this problem, so
- * the dev pane does not share this code.
+ * pass a command that quotes things. The terminal backend builds its own line
+ * the same way (`windowsArgsLine`), since the dev pane does not spawn through here.
  */
 export function hookSpawnTarget(command: string): {
   file: string

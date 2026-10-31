@@ -66,7 +66,7 @@ Binding spec for the apps/web rework + embedded terminal. Supersedes SPEC.md §1
 
 ## 5. Embedded terminal architecture (W1)
 
-- **PTY backend**: `node-pty` (ConPTY on Windows). Try under Bun first; if native module fails under Bun, run a **sidecar**: `packages/server/src/pty/pty-host.cjs` executed with system `node` (v25 present), one process per terminal, newline-JSON protocol over stdio (`{t:'data',d}`, `{t:'resize',cols,rows}`, `{t:'exit',code}`). Server owns lifecycle either way behind one interface `createPtySession(cmd, args, opts): { onData, write, resize, kill, onExit }`.
+- **PTY backend**: Bun's own terminal (`Bun.spawn` with `terminal`, ADR-0016), behind one interface `createPtySession(cmd, args, opts): { onData, write, resize, kill, killTree, onExit }`.
 - **Transport**: Bun.serve native WebSocket at `/ws/terminal/:sessionId` (upgrade in packages/server; note @hono/trpc coexistence — mount upgrade before Hono fetch fallthrough). Binary/utf8 data frames pass through; JSON control frames for resize/status.
 - **Lifecycle**: `launchSession` always spawns the PTY eagerly (embedded is the only mode — the legacy `window`/`wt.exe` mode is removed, see CONTEXT.md decision 13): command = `claude` + EXACT same flags/artifacts as today, `cwd` = talk worktree, `env` = process.env + RUNCASTLE_SESSION_ID/RUNCASTLE_SERVER_URL (direct inheritance — no cmd /k). Ring buffer (512KB) per PTY; on WS attach: replay buffer, then live. Detach ≠ kill. Kill on: session-end hook, End session button, server shutdown.
 - **Kickoff delivery (ADR-0009)**: a fresh session is opened with its briefing (per-kind line, or a per-purpose override like the merge-conflict resolution) already in the agent's argv as the CLI's positional initial prompt — nothing is typed into the terminal and nothing is confirmed afterwards; one `session.kickoff` is emitted at spawn, recording the line the session was opened with. A resumed session carries no briefing at all (the conversation it restores already has it), and a launch with a per-purpose override skips the resume it could have had so the briefing lands in a fresh conversation. What is still watched is readiness, not delivery: no `SessionStart` within 25s → `session.not_ready`, rendered as a warning bar in the session strip saying the agent has not started on its briefing and something on its own screen (a trust prompt, a login) is waiting on the human. No button — the briefing is already in the process.
@@ -75,7 +75,7 @@ Binding spec for the apps/web rework + embedded terminal. Supersedes SPEC.md §1
 
 ## 6. File ownership for this rework
 
-- **W1**: `packages/server/src/pty/**`, edits to `launcher/launcher.ts` + core config, WS wiring in `index.ts`, `apps/web/src/components/TerminalView.tsx`, `apps/web/src/lib/terminal.ts`, deps (@xterm/*, node-pty).
+- **W1**: `packages/server/src/pty/**`, edits to `launcher/launcher.ts` + core config, WS wiring in `index.ts`, `apps/web/src/components/TerminalView.tsx`, `apps/web/src/lib/terminal.ts`, deps (@xterm/*).
 - **W2**: everything else in `apps/web/src/**` (full shell rework), MUST import TerminalView only via `components/TerminalView` with the pinned props and wrap it in an error boundary. Never edits W1 files; a placeholder TerminalView already exists so W2 typechecks before W1 lands.
 - tRPC additions allowed (additive only): `feature.endSession({sessionId})`, `run.cancel({runId})` if missing — coordinate by making W2 add them (it owns the consuming UI) in `trpc/routers/*` with service-level implementations; W1 does not touch tRPC.
 

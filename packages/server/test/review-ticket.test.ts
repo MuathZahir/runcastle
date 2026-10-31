@@ -18,7 +18,7 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { renderRunMcpConfig } from '../src/launcher/artifacts'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { getFeatureRow, listRunsByFeature } from '../src/services/repo'
 import {
   __resetTestDriveState,
@@ -1953,16 +1953,8 @@ describe('a pass that already delivered is not re-derived', () => {
 
 // --- the drive is released on both paths ------------------------------------
 
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], { cwd: process.cwd(), env: process.env })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = process.platform !== 'win32' && ptyAvailable()
+usePipePty()
+const PTY = process.platform !== 'win32'
 
 describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
   let ctx: AppCtx

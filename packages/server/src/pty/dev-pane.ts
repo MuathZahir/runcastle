@@ -14,8 +14,7 @@ import { ptyRegistry, type TerminalSink } from './registry'
  * plain "Open app" link, sticky per drive); on stop we ask the PTY backend to
  * kill the whole process tree (`PtySession.killTree`) so the dev server frees its
  * port with no orphan. Which pid that tree is rooted at is the BACKEND's to know,
- * not ours: under the sidecar it is the node host we spawned, natively it is
- * node-pty's own process. The server never infers a pid it does not own.
+ * not ours: the server never infers a pid it does not own.
  */
 
 /** Registry-id prefix for drive-owned PTYs. Deliberately not a `sess_` id. */
@@ -118,7 +117,7 @@ export function spawnDevPane(input: SpawnDevPaneInput): void {
     sessionId: paneId,
     cmd: file,
     args,
-    opts: { cwd, env: env ?? process.env, cols: 80, rows: 24, useConpty: true },
+    opts: { cwd, env: env ?? process.env, cols: 80, rows: 24 },
     ...(onExit ? { onExit: () => onExit() } : {}),
   })
 

@@ -8,16 +8,15 @@
  *
  *   1. Bundle the server + bin entrypoints to plain JS with `@runcastle/core`
  *      resolved INTO the output (NOT `--compile`); every real dependency
- *      (node-pty, simple-git, hono, drizzle, …) stays external so it installs
- *      normally and keeps its prebuilds — EXCEPT the patched ones listed in
+ *      (simple-git, hono, drizzle, …) stays external so it installs normally —
+ *      EXCEPT the patched ones listed in
  *      `BUNDLED_DEPENDENCIES` (sandcastle), which are inlined so the workspace
  *      patch ships with them. The output is then checked for the patch's code:
  *      a registry copy of the dep would bundle just as happily and fail on the
  *      user's first burn instead (that was v1.2.11).
  *   2. Copy the runtime-spawned / runtime-read assets as REAL files: drizzle
- *      migrations, the hook client (spawned by `bun`), the PTY sidecar host
- *      (spawned by `node`), the skills pack + burner prompts, the built SPA, and
- *      the sandcastle build-context template (scaffolded on demand, issue #50).
+ *      migrations, the hook client (spawned by `bun`), the skills pack + burner
+ *      prompts, the built SPA, and the sandcastle build-context template (scaffolded on demand, issue #50).
  *   3. Write the flattened manifest (see publish-manifest.ts) — public name, no
  *      `private`, no `workspace:*`.
  *
@@ -123,9 +122,8 @@ async function main(): Promise<void> {
   console.log('• vendoring runtime assets as real files')
   // Migrations (read by runMigrations).
   cpSync(join(SERVER_DIR, 'drizzle'), join(OUT, 'drizzle'), { recursive: true })
-  // Hook client (spawned by bun) + PTY sidecar host (spawned by node): real files.
+  // Hook client (spawned by bun): a real file.
   cpSync(join(SERVER_DIR, 'src', 'launcher', 'hook-client.ts'), join(OUT, 'hook-client.ts'))
-  cpSync(join(SERVER_DIR, 'src', 'pty', 'pty-host.cjs'), join(OUT, 'pty-host.cjs'))
   // Skills pack + burner prompts (read at launch / by the burner workflow).
   cpSync(join(SKILLS_DIR, 'packs'), join(OUT, 'skills', 'packs'), { recursive: true })
   cpSync(join(SKILLS_DIR, 'burner'), join(OUT, 'skills', 'burner'), { recursive: true })

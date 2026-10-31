@@ -82,14 +82,7 @@ describe('killProcessTree', () => {
     expect(Date.now() - started).toBeLessThan(3000)
   }, 15000)
 
-  /**
-   * The breadcrumb has to come from HERE, not from the registry. The registry logs
-   * `entry.pty.pid`, which under the sidecar backend is the inner node-pty pid the
-   * async `ready` frame swaps in — while the sidecar deliberately roots its
-   * taskkill at the host pid it spawned. The two differ on every real run, so a
-   * teardown log written one layer up cannot name the pid actually killed.
-   * `killProcessTree` is the one place that knows it.
-   */
+  /** `killProcessTree` is the one place that knows the pid actually killed. */
   it('names the pid it actually kills, the branch taken, and ms-to-settle', async () => {
     const errs: string[] = []
     const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
