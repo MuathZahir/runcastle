@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { assignTargetFolders, encodeClaudeFolder, sourceBasename } from './paths'
-import { formatBytes, git, gitOrThrow, nulList, pathBytes } from './shell'
+import { formatBytes, git, gitOrThrow, isSymlink, nulList, pathBytes, walkSymlinks } from './shell'
 import type {
   CheckoutWip,
   ClaudeFolder,
@@ -148,16 +148,19 @@ function checkoutWip(key: string, path: string): CheckoutWip {
   const nested: string[] = []
   const loose: string[] = []
   for (const rel of nulList(gitOrThrow(path, ['ls-files', '-o', '--exclude-standard', '-z']))) {
-    if (!rel.endsWith('/')) {
-      loose.push(rel)
+    // Git on Windows lists a junction as a folder, with the slash of a nested repo.
+    const bare = rel.replace(/\/$/, '')
+    if (!rel.endsWith('/') || isSymlink(join(path, bare))) {
+      loose.push(bare)
       continue
     }
     // A folder that is a repo of its own. Its own ignore rules keep its `node_modules` out.
-    nested.push(rel.slice(0, -1))
+    nested.push(bare)
     loose.push(...nulList(gitOrThrow(join(path, rel), ['ls-files', '-co', '--exclude-standard', '-z'])).map((inner) => `${rel}${inner}`))
   }
   // With no commit to diff against, staged files can only travel as whole copies.
-  const untracked = headSha ? loose : [...changed, ...loose]
+  const candidates = headSha ? loose : [...changed, ...loose]
+  const untracked = candidates.filter((rel) => !isSymlink(join(path, rel)))
   return {
     key,
     path,
@@ -167,6 +170,7 @@ function checkoutWip(key: string, path: string): CheckoutWip {
     untracked: untracked.filter((rel) => !isEnvFile(rel)),
     nested,
     heldBack: untracked.filter(isEnvFile),
+    symlinks: candidates.filter((rel) => isSymlink(join(path, rel))),
   }
 }
 
@@ -177,6 +181,7 @@ function wipAttention(project: string, wip: CheckoutWip): string[] {
     (rel) => `${project}${where}: ${rel} is a git repo of its own; its files travel, its history does not`,
   )
   if (wip.heldBack.length > 0) lines.push(`${project}${where}: ${wip.heldBack.join(', ')} stays behind, though git does not ignore it`)
+  if (wip.symlinks.length > 0) lines.push(`${project}${where}: untracked symlinks stay behind: ${wip.symlinks.join(', ')}`)
   if (wip.untracked.length > 0) {
     const shown = wip.untracked.slice(0, 3).join(', ')
     const more = wip.untracked.length > 3 ? `, and ${wip.untracked.length - 3} more` : ''
@@ -338,6 +343,24 @@ function findClaudeFolders(
 
 function fold(env: MoveEnv, name: string): string {
   return env.platform === 'win32' ? name.toLowerCase() : name
+}
+
+/** Symlinks in the folders that travel, which the pack leaves out. */
+function dataSymlinks(env: MoveEnv, folders: ClaudeFolder[]): string[] {
+  const inData = DATA_ENTRIES.flatMap((entry) => {
+    const path = join(env.dataDir, entry)
+    if (isSymlink(path)) return [entry]
+    try {
+      if (!statSync(path).isDirectory()) return []
+    } catch {
+      return []
+    }
+    return walkSymlinks(path).map((rel) => `${entry}/${rel}`)
+  })
+  const inClaude = folders.flatMap((folder) =>
+    walkSymlinks(join(env.claudeDir, 'projects', folder.name)).map((rel) => `claude/${folder.name}/${rel}`),
+  )
+  return [...inData, ...inClaude]
 }
 
 function wipBytes(projects: MoveProject[]): number {
@@ -520,6 +543,9 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
   if (claude.missing > 0) {
     attention.push(`${count(claude.missing, 'chat')} with no transcript on this machine: their history shows, they cannot be resumed`)
   }
+
+  const links = dataSymlinks(env, claude.folders)
+  if (links.length > 0) attention.push(`symlinks in runcastle's folders stay behind: ${links.join(', ')}`)
 
   const report: MoveReport = {
     blockers,

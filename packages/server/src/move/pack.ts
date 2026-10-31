@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, lstatSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { runcastleVersion } from '../version'
@@ -120,7 +120,8 @@ async function addWip(tar: TarWriter, projectId: string, wip: CheckoutWip, scrat
   for (const rel of [...wip.tracked, ...wip.untracked]) {
     const path = join(wip.path, rel)
     try {
-      if (!statSync(path).isFile()) continue
+      // lstat: a symlink would otherwise travel as a copy of whatever it points at.
+      if (!lstatSync(path).isFile()) continue
     } catch {
       continue
     }

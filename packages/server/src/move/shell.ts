@@ -91,6 +91,32 @@ export function walkFiles(dir: string, base = '', strict = false): string[] {
   return files
 }
 
+/** Every symlink under `dir`, as forward-slashed relative paths. {@link walkFiles} skips these. */
+export function walkSymlinks(dir: string, base = ''): string[] {
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const links: string[] = []
+  for (const entry of entries) {
+    const rel = base ? `${base}/${entry.name}` : entry.name
+    if (entry.isSymbolicLink()) links.push(rel)
+    else if (entry.isDirectory()) links.push(...walkSymlinks(join(dir, entry.name), rel))
+  }
+  return links
+}
+
+/** Whether `path` is itself a symlink. */
+export function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
 /** Total size of a file or folder, 0 when it cannot be read. */
 export function pathBytes(path: string): number {
   try {

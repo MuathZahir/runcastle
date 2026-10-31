@@ -6,7 +6,7 @@
  * Usage: bun roundtrip.ts <empty scratch dir>
  */
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { createDb, openRawSqlite } from '../../../src/db/client'
@@ -224,6 +224,14 @@ for (const [folder, rel, body] of claudeRel) {
   writeFileSync(path, body)
 }
 
+// Junctions need no privilege on Windows, and the type is ignored elsewhere.
+const outside = join(source.home, 'outside')
+mkdirSync(outside, { recursive: true })
+writeFileSync(join(outside, 'target.txt'), 'outside the move\n')
+symlinkSync(outside, join(source.dataDir, 'reviews', 't1', 'link-in-data'), 'junction')
+symlinkSync(outside, join(source.claudeDir, 'projects', encodeClaudeFolder(repo), 'link-in-claude'), 'junction')
+symlinkSync(outside, join(repo, 'link-in-repo'), 'junction')
+
 // --- the new machine, already holding a trial ----------------------------------
 
 freshDb(dest)
@@ -346,6 +354,12 @@ const facts = {
   nestedIgnored: existsSync(join(newRepo, 'vendor', 'mylib', 'node_modules')),
   unignoredEnv: existsSync(join(newRepo, '.env.local')),
   envExample: existsSync(join(newRepo, '.env.example')),
+  symlinksArrived: [
+    join(dest.dataDir, 'reviews', 't1', 'link-in-data'),
+    join(dest.claudeDir, 'projects', encodeClaudeFolder(newRepo), 'link-in-claude'),
+    join(newRepo, 'link-in-repo'),
+  ].filter((path) => existsSync(path)),
+  packHasLinkTarget: manifest.files.some((f) => f.path.includes('target.txt')),
   launchFiles: ['system-prompt.md', 'mcp.json', 'codex-home/config.toml'].filter((rel) =>
     existsSync(join(dest.dataDir, 'sessions', 's1', rel)),
   ),

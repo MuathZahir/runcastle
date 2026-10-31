@@ -43,6 +43,8 @@ export interface CheckoutWip {
   nested: string[]
   /** `.env`-style files git does not ignore. Secrets stay behind, ignored or not. */
   heldBack: string[]
+  /** Untracked symlinks. The pack holds regular files only, so these stay behind and the report names them. */
+  symlinks: string[]
 }
 
 export interface MoveProject {

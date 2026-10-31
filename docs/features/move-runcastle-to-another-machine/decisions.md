@@ -80,9 +80,10 @@ decision keeps its `Assumed` mark until the human confirms it.
 **Changed by the orchestrator:** The VPS needs no release for the rehearsal. It takes this branch through the local install route. The branch is cut from `main` after the VPS's cache-build fix, so installing it does not bring that bug back.
 
 ## 14. Git-ignored files and old stashes are reported, not carried
-**Decision:** The report lists each project's ignored files by top-level name and size, skipping `node_modules`, so a local dev database or uploads folder is seen before it is left behind. It also counts stashes, because git bundles carry only the newest one, and burner worktrees with leftover changes. The newest stash travels as a real stash. None of this blocks the move, and the human can copy what matters by hand from the old machine.
+**Decision:** The report lists each project's ignored files by top-level name and size, skipping `node_modules`, so a local dev database or uploads folder is seen before it is left behind. It also counts stashes, because git bundles carry only the newest one, and burner worktrees with leftover changes. Symlinks in the folders that travel, and untracked ones in checkouts, are named too, because the pack holds regular files only; symlinks committed to a repo travel in its bundle. The newest stash travels as a real stash. None of this blocks the move, and the human can copy what matters by hand from the old machine.
 **Why:** Ignored files are mostly rebuildable or secret, and no rule can tell which are precious. Silent loss is what must be avoided, and a list does that.
 **Assumed.** Alternative: a flag naming extra ignored paths to carry.
+**Changed by the orchestrator:** Symlinks skipped without a word were a silent loss, which this decision exists to prevent, so the report names them. They do not block the move.
 
 ## 15. A project that cannot move does not hold up the others
 **Decision:** `--no-repo <project>` moves a project's features, chats and notes but not its repo, for example when a repo is too big or blocked. A project whose repo folder is already gone gets the same treatment automatically, with a report line. It appears on the new machine at its expected path, and it works once the repo is placed there by hand.

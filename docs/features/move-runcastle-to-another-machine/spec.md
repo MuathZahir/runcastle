@@ -20,7 +20,7 @@ It prints a report, asks for a yes, packs, copies the pack over `scp`, and runs 
 
 - **Blocks:** a real run with the server up; a round marked running; a main checkout on a feature's branch; a checkout mid-merge or mid-rebase; two projects with one folder name. From the destination: an older runcastle, a Windows host, too little disk, existing projects or a target folder without `--replace`.
 - **Moves:** per project, repo size, branch count, uncommitted file count, features, chats, and the old and new paths.
-- **Will need attention:** on a move between systems, the commands to be cleared on each project; `.env*` and other ignored names with sizes, stash counts, burner worktrees with leftovers, projects with no remote or with commits their remote lacks, chats that will end, repos that use LFS or submodules (which a bundle does not carry).
+- **Will need attention:** on a move between systems, the commands to be cleared on each project; `.env*` and other ignored names with sizes, stash counts, burner worktrees with leftovers, every symlink the pack leaves out, projects with no remote or with commits their remote lacks, chats that will end, repos that use LFS or submodules (which a bundle does not carry).
 - **Stays behind:** a fixed short list (decision 12), with sizes where cheap.
 
 With a host, `move` sends the manifest to `move-in --check` over `ssh`, which answers with the destination half of the report. Every remote call uses `~/.bun/bin/runcastle` directly, because a non-interactive `ssh` session may not have `runcastle` on its PATH. If the copy or a remote step fails, the error prints the exact manual commands and the pack is kept.
@@ -79,6 +79,5 @@ There are no schema changes, tRPC routes or web changes: the app needs no screen
 
 ## Open questions
 
-- **Chat resume between systems.** The code shows the adapter reopens a conversation by id, and a check in `side-channels.ts` treats a transcript in any project folder as findable, so placing it under the new path should work. Only a real resume on Linux proves it, and that is in the rehearsal. It may need a throwaway project under the real `~/.claude` on the VPS, because a scratch Claude dir has no login; that is asked first.
 - **When the real move runs.** It stops the server, and rounds must finish first, so it fits between features. It must come after a release that includes this tool. Timing against the rest of the cut (No Node, Burns build their own image, One-line install) is the human's call at the checkpoint.
 - **Old-machine marker.** Decision 9 leaves the old server able to start. If the human prefers a marker that refuses to start it, that is a small addition, and it changes the source after a successful move only.

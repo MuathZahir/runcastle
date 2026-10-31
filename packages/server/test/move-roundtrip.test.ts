@@ -105,6 +105,16 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
     expect(f.attention.join('\n')).toContain('.env.local stays behind')
   })
 
+  it('names symlinks it leaves behind, without blocking the move', () => {
+    const text = f.attention.join('\n')
+    expect(text).toContain('reviews/t1/link-in-data')
+    expect(text).toContain('link-in-claude')
+    expect(text).toContain('link-in-repo')
+    expect(f.blockers.join('\n')).not.toContain('link-in')
+    expect(f.symlinksArrived).toEqual([])
+    expect(f.packHasLinkTarget).toBe(false)
+  })
+
   it('leaves launch files out, which can hold values a session was given', () => {
     expect(f.launchFiles).toEqual([])
   })
