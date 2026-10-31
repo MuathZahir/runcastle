@@ -62,3 +62,17 @@ planner's answer standing.
 **Decision:** Pictures survive a merge, so the human can look back at a shipped feature. Nothing deletes them, which is how walkthroughs are treated today, and each pass is capped at 60 pictures so a runaway loop cannot fill the disk.
 **Why:** A picture is much smaller than the video already kept beside it, and clean-up of review folders would be a feature of its own, covering the videos too.
 **Assumed.** Alternative: delete a feature's pictures a while after it merges.
+
+## 12. The agent takes every picture
+**Decision:** Supersedes: 2. Runcastle takes no pictures on its own. The review agent takes all the screenshots a review needs, through `review_drive({ action: "capture", caption })`, and runcastle only files each one with its caption. A failed picture never fails the review.
+**Why:** The human's call: the automatic entry picture adds nothing the agent cannot take, and it would need runcastle to drive the agent's browser.
+
+## 13. What a review leaves arrives in the chat as a Review Package
+**Decision:** Supersedes: 5, 6, 8. When a review pass ends, runcastle itself posts one **Review Package** in the feature's chat: a single attachment that says what the review concluded and what it holds. A click opens a full-window page with the pictures, the walkthrough, the calls, the findings and the review's account. The orchestrator shows the same package in its own chat with a new tool, `show_review_package({ slug })`, in place of showing pictures one by one, and the package says how old it is against the branch. The review ticket keeps its goal and criteria and gains one "Open review package" button, so "Watch the walkthrough", the findings and the digest leave it. Which card and page is the human's pick, from the options on the preview page; the plan assumes the contact sheet card and the one-at-a-time page.
+**Why:** The human's idea: evidence belongs where the conversation is, not inside a ticket. Runcastle posts it rather than the lead, so it cannot be forgotten. One attachment keeps a chat short, and a full-window page works from any chat and on a phone.
+**Assumed.** Alternative: the filmstrip card, where the pictures sit in the chat and open one by one with no separate page.
+
+## 14. A feature with a surface ends with a review round
+**Decision:** The feature skill changes its default. When the work is done and the feature has a screen or API someone operates, the lead runs one review round before saying ready, even if it built everything itself, by emitting a single review ticket. A change to docs, prompts or internals skips it, and the lead says why. The plan preview says the round is coming, so the human's yes to the plan covers it. It stays skill guidance: nothing refuses, gates or holds a merge without a review, and the human can tell the lead to skip it.
+**Why:** Leads now build most features themselves, so review tickets rarely run and there would be no pictures to accept from a phone. A round holding only a review ticket already works: the scheduler has no implementation tickets to wait on. The cost is one drive, about half an hour, during which the review holds the project's drive slot and checkout.
+**Assumed.** Alternative: leave review as the lead's free choice and ask for it only on larger features.

@@ -8,9 +8,11 @@ The human wants to accept a finished feature from their phone by looking at it, 
 
 ### What the human gets
 
-An opened review ticket in the Work view has a **What the review saw** part, directly under its action buttons. Each scenario the pass ran is a group: its name, whether it landed, its pictures with captions, and its calls, folded. Pictures taken outside any scenario sit in **Other checks**, and a pass with no scenarios simply lists its pictures. A click opens the same viewer as files in chat. The ticket's collapsed row says what it holds: `Reviewed · 6 screenshots · 2 calls · 7m`. When there is nothing, one quiet line says why.
+When a review pass ends, a **Review Package** appears in the feature's chat: one attachment with the review's conclusion, a contact sheet of what it holds, and a line such as `6 screenshots · walkthrough 2:14 · 2 calls · 1 defect`. A click opens a full-window page. One thing sits large on its stage, a list of everything sits beside it (below it on a phone), and the human steps through with the arrows. The list is grouped: findings first, then each scenario with its pictures and calls, then **Other checks**, then the review's full account. A pass with no scenarios simply lists its pictures. When there are no pictures, one quiet line says why.
 
-When the orchestrator asks the human to accept a feature, it shows the same pictures in chat, and says so if they predate later work.
+The review ticket keeps its goal and criteria and gains one **Open review package** button. The walkthrough button, findings and digest leave it.
+
+When the orchestrator asks the human to accept a feature, it shows the same package in its chat. The card says "This build", or how many commits the branch has moved on since.
 
 ### The record
 
@@ -21,8 +23,7 @@ type SawEntry =
   | { kind: 'scenario'; at: number; file: string; name: string; ok: true; entryUrl: string }
   | { kind: 'scenario'; at: number; file: string; name: string; ok: false; failure: ScenarioFailure }
   | { kind: 'shot'; at: number; caption: string; image: string /* file name in saw/ */;
-      by: 'runcastle' | 'agent'; scenario?: string /* scenario file; absent = Other checks */ }
-  | { kind: 'shot-failed'; at: number; scenario: string; reason: string }
+      scenario?: string /* scenario file; absent = Other checks */ }
   | { kind: 'call'; at: number; scenario: string; request: FilledHttpRequest; result: DriveCallResult }
 ```
 
@@ -30,50 +31,54 @@ type SawEntry =
 
 ### Taking pictures
 
-A new small module beside `recorder-reap.ts` talks to the pass's browser. The session name is already fixed (`review-<ticketId>`), and `reapRecorder` already reaches it from a second process. Tested on agent-browser 0.26 on this machine: a second process opened a page in a session that was recording and screenshotted it in about 400 ms, and the walkthrough still saved.
+The agent takes every picture. `review_drive({ action: 'capture', caption, outside? })` is new: runcastle screenshots the agent's browser, picks the file name, and appends the entry. The session name is already fixed (`review-<ticketId>`), and `reapRecorder` already reaches it from a second process. Tested on agent-browser 0.26 on this machine: a second process screenshotted a session that was recording in about 400 ms, and the walkthrough still saved.
 
 - **Spawn with stdio ignored**, as `runCommand` does, and with a deadline. The daemon inherits any pipe it is given, and a pipe that never closes hung this probe.
-- **Never start a browser.** `session list` says whether the agent's session exists. Without that check, runcastle would launch a browser nobody closes, because the reaper only acts when a walkthrough file exists.
+- **Never start a browser.** Check `session list` first. Without that, a capture before the agent opened its browser would launch one nobody closes, because the reaper only acts when a walkthrough file exists.
 
-`review_drive({ action: 'scenario', file })` records the `scenario` entry. If it landed and the agent's browser is up, runcastle opens `entryUrl` in that browser, waits for the load with a short bound (an app holding a live stream never reaches network idle, so the picture is taken anyway), and takes the picture, captioned "Entry page". The result gains `browser: 'on-entry-page' | 'not-open'`, so the agent knows to re-snapshot, or to open the page itself and capture. A picture that fails adds a `shot-failed` entry and the scenario still returns its landing.
+The picture belongs to the latest scenario that landed in this pass, unless `outside: true` or none has. `capture` is refused, in a sentence the agent can act on, when no review drive of this feature is up, the browser is not open, or the pass reached 60 pictures. The pass's ticket is found the way `report_finding` finds it: the burning review ticket on the run's feature.
 
-`review_drive({ action: 'capture', caption, outside? })` is new. Runcastle screenshots the agent's browser, picks the file name, and appends the entry. The picture belongs to the latest scenario that landed in this pass, unless `outside: true` or none has. It is refused, in a sentence the agent can act on, when no review drive of this feature is up, the browser is not open, or the pass reached 60 pictures. The pass's ticket is found the way `report_finding` finds it: the burning review ticket on the run's feature.
-
-`try_call` appends its `call` entry by itself, with no new step for the agent.
+`review_drive({ action: 'scenario', file })` and `try_call` append their entries by themselves, with no new step for the agent.
 
 ### The prompts
 
 `review-ticket.md`, `verify-fixes.md` and `buildScenarioBlock` change together:
 
-- Open the app in the browser before the first scenario. After a scenario, runcastle has already put the browser on its entry page, so re-snapshot.
-- At each acceptance criterion a screen can show, once the screen shows it, call `capture` with the criterion in one line as the caption. A scenario's entry picture does not count as a check.
+- At each scenario's entry page and at each acceptance criterion a screen can show, once the screen shows it, call `capture` with what it shows in one line as the caption.
 - If the feature's criteria name a phone layout, resize the browser and capture that.
-- Delete the step that opens `entryUrl` by hand, except when the result says `not-open`.
 
 ### Serving and the screen
 
-The review routes gain `GET /api/reviews/ticket/:ticketId/saw.json` and `GET /api/reviews/ticket/:ticketId/saw/:file`. As with the gate-log route, the file name is checked against what the store writes, and the path is computed from the looked-up row's id. PNG only, `nosniff`, `?download=<name>` honoured because the shared viewer's download button sends it. `ReviewTicketArtifacts` gains `shots` and `calls` counts, and has a `saw` flag saying a manifest exists.
+The review routes gain `GET /api/reviews/ticket/:ticketId/saw.json` and `GET /api/reviews/ticket/:ticketId/saw/:file`. As with the gate-log route, the file name is checked against what the store writes, and the path is computed from the looked-up row's id. PNG only, `nosniff`. `ReviewTicketArtifacts` gains `shots` and `calls` counts.
 
-The screen is designed. `ReviewSawPart` is a real component taking groups or one empty line, and it reuses the chat's `ShownFiles` and the drive's `CallResponse`, which this design exported from `ApiView`. `apps/web/preview/review-saw.html?state=` holds the states. Wiring adds: the query for one ticket's manifest, under the same query key as the listing so the stream refreshes it; a pure function that turns entries into groups and gives each picture a readable name; the part in `TicketDetail`, for a review that finished, failed or was stopped and has a manifest; and the counts in the row's words. A `shot-failed` entry reads as a quiet line in its group. The empty lines come from the pass's recorded mode: `gates` gives "This review read the code, so it has no screenshots."; `drive` with no pictures gives "The review took no screenshots."
+**The package in a thread.** One new thread event, `review_package`, carries the review ticket's id and nothing else, and folds as its own item, as a `file_shown` does outside a turn. The card and page read the pass through the routes above, so they always show the pass as it stands. A re-burn replaces what they show. The burner appends the event to the feature's main chat when a review pass ends, whatever its mode, unless it kept nothing and never ran. `show_review_package({ slug })` appends the same event to the calling thread, for the newest pass that took pictures, or the newest pass when none did. It is registered for the thread kinds.
+
+**The screens.** `apps/web/preview/review-package.html` holds the card and page options with `?card=`, `?page=` and `?state=`. The chosen ones move from the preview page into `apps/web/src/components/review/`, and the rest are deleted. `ReviewCallRow` is already a real component, reusing the drive's `CallResponse`. The walkthrough on the page is the real `WalkthroughPlayer`, so its notes keep working. Wiring adds the query for one ticket's manifest, under the same query key as the listing, and a pure function that turns entries into groups. The empty lines come from the pass's recorded mode: `gates` gives "This review read the code, so it has no screenshots."; `drive` with no pictures gives "The review took no screenshots."
 
 ### Reaching the lead and the orchestrator
 
-One function builds `reviewShots`: every review ticket of the feature with at least one picture, newest first, keeping the newest three passes so the reply stays small. Each carries `seq`, `passKind`, `reviewedCommit`, `commitsSince` and its pictures as `{ path, caption, scenario }`. `commitsSince` is the count of commits from `reviewedCommit` to the feature branch, or null when the branch is gone or no commit was recorded. `read_feature_chat` returns it beside `shown`, and `get_feature_context` returns it beside `reviewEvidence`. `show_file` already accepts anything under the reviews folder, and it copies the file, so a shown picture survives a re-burn.
+One function builds `reviewShots`: every review ticket of the feature with at least one picture, newest first, keeping the newest three passes so the reply stays small. Each carries `seq`, `passKind`, `reviewedCommit`, `commitsSince` and its pictures as `{ path, caption, scenario }`. `commitsSince` is the count of commits from `reviewedCommit` to the feature branch, or null when the branch is gone or no commit was recorded. It is returned by `get_feature_context` and `read_feature_chat`, so an agent can read the pictures and quote them.
 
-- The project skill's "Let them see it" paragraph: show the newest pass's pictures, add an earlier pass's where they cover a screen the newest does not, say so when `commitsSince` is above zero, and fall back to `shown` when there are none.
-- The feature skill's ready section: when a review drove, show its pictures in chat with `show_file` when you say ready.
+The project skill's "Let them see it" paragraph: call `show_review_package` above your question, say so when the pictures predate later work, and fall back to `shown` when there is no package.
+
+### Review rounds
+
+The feature skill's "Review is your call" section becomes the default in decision 14, and the plan preview and tickets references say a feature with a surface plans one final review round. The lead emits a single `kind: "review"` ticket and dispatches it. The server gains no rule: a lead can skip it, and nothing refuses a merge. A review round on work the lead built has no implementer digests, and the burner already says so to the agent.
 
 ## Seams
 
-- **`review_drive` tool, through `toolReviewScenario` (existing, new action `capture`).** Observes manifest entries for each action, each refusal, the cap, that a failed picture does not fail a scenario, and masking on a recorded call. The browser is injected, so no browser is needed.
-- **The browser module (new).** With injected commands, observes that nothing runs when `session list` lacks the session, that a slow network wait still takes the picture, and that a hung command is abandoned at its deadline.
-- **`/api/reviews` routes (existing).** Observes the manifest and image served, a name the store would not write refused, traversal refused, a non-review ticket refused, `?download=`, and the counts on the listing.
-- **`sawGroups` (new, pure).** Feed entries, read groups: grouping, Other checks, no scenarios, a failed scenario, a failed picture, and the empty lines.
+- **`review_drive` tool, through `toolReviewScenario` (existing, new action `capture`).** Observes manifest entries for each action, each refusal, the cap, and masking on a recorded call. The browser is injected, so no browser is needed.
+- **The capture module (new).** With injected commands, observes that nothing runs when `session list` lacks the session, and that a hung command is abandoned at its deadline.
+- **`foldThread` (existing).** Observes the `review_package` item's place, in and out of a turn.
+- **`show_review_package` tool (new).** Observes the event, which pass it picks, and that it refuses a feature with no review.
+- **`/api/reviews` routes (existing).** Observes the manifest and image served, a name the store would not write refused, traversal refused, a non-review ticket refused, and the counts on the listing.
+- **`sawGroups` (new, pure).** Feed entries, read groups: grouping, Other checks, no scenarios, a failed scenario, and the empty lines.
 - **`read_feature_chat` and `get_feature_context` (existing).** Observes `reviewShots`: order, a Gates pass skipped, the three-pass limit, `commitsSince`, and null for a deleted branch. The read-ceiling test lists the new field.
 - **Review prompts (existing templates).** The existing prompt-render tests: the `capture` instruction is in both prompts and the scenario block.
-- **`ReviewSawPart` (new, designed).** Tier 1 static markup for each state.
+- **The package card and page (new, designed).** Tier 1 static markup for each state; tier 2 for stepping through the page.
+- **Feature skill (existing).** The existing skill tests: the review-round default is present.
 
-One check goes beyond the tests, and I will run it by hand: the browser module against real agent-browser and a recording session, with a page that holds a stream open. Live review passes run the installed runcastle, so a real pass cannot use this code until it is published. The first real review after the release is the true test, and the first thing to look at is whether agents capture at each check.
+One check goes beyond the tests, and I will run it by hand: the capture module against real agent-browser and a recording session. Live review passes run the installed runcastle, so a real pass cannot use this code until it is published. The first real review after the release is the true test, and the first thing to look at is whether agents capture at each check.
 
 ## Out of scope
 
@@ -81,6 +86,7 @@ One check goes beyond the tests, and I will run it by hand: the browser module a
 - Comparison of any kind: no diffs, no base captures, no masking of screens.
 - Requiring a review, or holding anything for a missing picture.
 - A way to make pictures for a feature with no review.
+- Any server rule requiring a review round.
 - Frames pulled from the walkthrough video.
 - Pictures appearing live while a review runs.
 - Capturing at a second width.
@@ -90,4 +96,4 @@ One check goes beyond the tests, and I will run it by hand: the browser module a
 
 ## Open questions
 
-None block the work. The plan preview's Check first group lists the decisions the human may want to change. One choice is open in the design: pictures two across on a wide screen, or one to a line as in chat. Two across is the default on the preview page.
+Two are the human's: which card and page to build (the plan assumes the contact sheet and one at a time), and whether a review round becomes the default for features with a surface.
