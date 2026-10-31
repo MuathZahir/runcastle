@@ -230,9 +230,9 @@ runcastle release.
 AFK ticket burns run inside a container via
 [sandcastle](https://github.com/mattpocock/sandcastle) (`@ai-hero/sandcastle`).
 Docker is the default and smoothest path; Podman is a fully supported free
-alternative. After installing a runtime, build the image once with
-`sandcastle docker build-image`, because nothing builds it for you.
-`runcastle doctor` reports when the image is missing.
+alternative. The first burn builds the image if it is missing, which takes a few
+minutes. To build it ahead of time, run `runcastle build-image`, or click Build
+image in Settings → Workers.
 
 <details>
 <summary><b>Docker setup, per platform</b></summary>

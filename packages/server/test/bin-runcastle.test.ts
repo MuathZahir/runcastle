@@ -18,6 +18,10 @@ describe('parseCommand', () => {
     expect(parseCommand(['doctor', '--gate'])).toEqual({ command: 'doctor', args: ['--gate'] })
   })
 
+  it('routes the build-image subcommand', () => {
+    expect(parseCommand(['build-image'])).toEqual({ command: 'build-image', args: [] })
+  })
+
   it('handles --version / -v without booting', () => {
     expect(parseCommand(['--version']).command).toBe('version')
     expect(parseCommand(['-v']).command).toBe('version')

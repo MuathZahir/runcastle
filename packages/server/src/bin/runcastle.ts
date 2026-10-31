@@ -10,6 +10,7 @@ import { runcastleVersion } from '../version'
  *
  *   runcastle            boot the server + open the app on http://localhost:4512
  *   runcastle doctor     run the pre-boot gate/diagnostic (forwards --gate etc.)
+ *   runcastle build-image  build the stock sandbox image, with no app
  *   runcastle --version  print the installed version
  *   runcastle --help     print usage
  *
@@ -17,7 +18,7 @@ import { runcastleVersion } from '../version'
  * done in `main`, guarded by `import.meta.main` so importing this file for the
  * test never spawns a server.
  */
-export type Command = 'serve' | 'doctor' | 'version' | 'help'
+export type Command = 'serve' | 'doctor' | 'build-image' | 'version' | 'help'
 
 export interface ParsedCommand {
   command: Command
@@ -32,6 +33,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (first === '--help' || first === '-h' || first === 'help')
     return { command: 'help', args: rest }
   if (first === 'doctor') return { command: 'doctor', args: rest }
+  if (first === 'build-image') return { command: 'build-image', args: rest }
   if (first === 'serve') return { command: 'serve', args: rest }
   // Unknown token: show help rather than silently booting on a typo.
   return { command: 'help', args: argv }
@@ -42,6 +44,8 @@ const USAGE = `runcastle — burn tickets into shipped features with Claude Code
 Usage:
   runcastle            Boot the server and serve the app (http://localhost:4512)
   runcastle doctor     Check prerequisites (add --gate for the pre-boot gate)
+  runcastle build-image
+                       Build the sandbox image without the app (a burn builds it if it is missing)
   runcastle --version  Print the installed version
   runcastle --help     Show this help
 `
@@ -64,6 +68,10 @@ async function main(argv: string[]): Promise<number> {
     case 'doctor': {
       const { runCli } = await import('../doctor/cli')
       return runCli(args)
+    }
+    case 'build-image': {
+      const { runBuildImage } = await import('./build-image')
+      return runBuildImage(args)
     }
     case 'serve': {
       const { startServer } = await import('../index')
