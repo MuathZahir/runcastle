@@ -69,7 +69,7 @@ The viewer always offers Download.
 **Assumed.** Alternative: a database table of shown files.
 
 ## 12. The viewer is a full-window dialog, not the side panel
-**Decision:** A viewed file opens in the app's full-window dialog: the file's name and path, Download, Close, and the content scrolling. It looks like a doc's Open full window, and an image opens the same way as a note's picture.
+**Decision:** A viewed file opens in the app's full-window dialog: the file's name and path, Download, Close, and the content scrolling. It looks like a doc's Open full window, and an image opens there too, at full size.
 **Why:** The dialog works from every chat. The panel differs between a feature and the Orchestrator, a scenario chat has none, and a phone has no side-by-side. This is a deliberate exception to the design rule "docs are read in place, never in a dialog": that rule is about a feature's docs, and a shown file belongs to the chat, not to a panel view.
 **Assumed.** Alternative: open it in the feature's panel beside the chat, as a doc is read.
 **Challenged:** Keep the dialog, but give each viewed file its own URL, so a phone's back button closes it rather than leaving the chat and a notification can link to it. The back button belongs to the phone view, which will meet it on every dialog, so it stays out of this feature.

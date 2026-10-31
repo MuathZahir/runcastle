@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents show files in chat preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.step{position:relative;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step b{display:block;font-weight:500}
+.step span{color:var(--color-text-secondary);font-size:12px;line-height:16px;display:block;margin-top:2px}
+.step code{font-family:var(--font-mono);font-size:12px;color:var(--color-accent-text)}
+.acts{margin-top:12px;border-top:1px solid var(--color-border-subtle)}
+.act{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.7fr) auto;gap:12px;align-items:center;min-height:36px;padding:4px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.act > :nth-child(2){color:var(--color-text-secondary)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.hoodflow{display:grid;gap:6px;margin-top:8px;color:var(--color-text-secondary)}
+.hoodflow div{padding:6px 10px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.hoodflow b{font-weight:500;color:var(--color-text)}
+@media (max-width:760px){.flow,.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Agents show files in chat</h1>
+  <p class="lede">One tool lets any agent you talk to, the orchestrator included, show you a file in the chat. Pictures appear inline. Anything else is a card you click to open, on a desktop or a phone.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/agents-show-files-in-chat/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  
+  <div class="sub"><h3>How it works</h3>
+  <div class="flow">
+    <div class="step"><b>The agent calls <code>show_file</code></b><span>A path and a short caption. <a class="pin" data-d="1">1</a> <a class="pin" data-d="9">9</a></span></div>
+    <div class="step"><b>The server checks and copies</b><span>Allowed place, under 100 MB, into the thread&rsquo;s folder. <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></span></div>
+    <div class="step"><b>It appears in the chat at once</b><span>It stays when the work folds, and in old chats. <a class="pin" data-d="8">8</a> <a class="pin" data-d="11">11</a></span></div>
+    <div class="step"><b>You look and reply</b><span>&ldquo;Merge it&rdquo; or &ldquo;the second one is wrong&rdquo;. <a class="pin" data-d="13">13</a></span></div>
+  </div></div>
+
+  <div class="sub"><h3>Accepting a feature from your phone</h3>
+  <p class="hint">The lead shows its screenshots in its own chat. The orchestrator re-shows those copies above its question, so this keeps working after merge. <a class="pin" data-d="14">14</a> <a class="pin" data-d="16">16</a></p>
+  <div class="grid2"><!-- screen:accepting-screenshots -->
+<div class="designed">
+  <h3>Accepting from the orchestrator</h3>
+  <p>The real thread, composer and pictures; the files are sample data. Has a Tweak: stacked or two across.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=screenshots</p>
+  <button data-open-design="/preview/shown-files.html?state=screenshots">Open in design</button>
+</div>
+<!-- /screen:accepting-screenshots --><!-- screen:long-group -->
+<div class="designed">
+  <h3>A long group</h3>
+  <p>Six files: four show, then Show 2 more. Has the same Tweak.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=many</p>
+  <button data-open-design="/preview/shown-files.html?state=many">Open in design</button>
+</div>
+<!-- /screen:long-group --></div></div>
+
+  <div class="sub"><h3>What a click does</h3>
+  <div class="acts"><div class="act"><span>PNG, JPEG, GIF, WebP, SVG</span><span>Inline. A click opens it large.</span><a class="pin" data-d="6">6</a></div><div class="act"><span>The same, over 10 MB</span><span>A card that opens it large.</span><a class="pin" data-d="5">5</a></div><div class="act"><span>Markdown</span><span>Rendered, in the viewer.</span><a class="pin" data-d="6">6</a></div><div class="act"><span>HTML</span><span>Sandboxed frame, in the viewer.</span><a class="pin" data-d="7">7</a></div><div class="act"><span>Any other text</span><span>Monospaced, in the viewer.</span><a class="pin" data-d="6">6</a></div><div class="act"><span>PDF, video, audio</span><span>New browser tab.</span><a class="pin" data-d="6">6</a></div><div class="act"><span>Everything else</span><span>Downloads.</span><a class="pin" data-d="6">6</a></div></div>
+  <div class="grid2"><!-- screen:every-kind-of-file -->
+<div class="designed">
+  <h3>Every kind of file</h3>
+  <p>Real cards. The glyph on the right says what a click does.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=cards</p>
+  <button data-open-design="/preview/shown-files.html?state=cards">Open in design</button>
+</div>
+<!-- /screen:every-kind-of-file --><!-- screen:pictures-and-cards -->
+<div class="designed">
+  <h3>Pictures and cards together</h3>
+  <p>A picture, a download, and an image too big to load inline.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=mixed</p>
+  <button data-open-design="/preview/shown-files.html?state=mixed">Open in design</button>
+</div>
+<!-- /screen:pictures-and-cards --></div></div>
+
+  <div class="sub"><h3>The viewer</h3>
+  <p class="hint">One full-window dialog from every chat, with Download and Close. <a class="pin" data-d="12">12</a></p>
+  <div class="grid2"><!-- screen:viewer-picture -->
+<div class="designed">
+  <h3>Viewer: a picture</h3>
+  <p>The real dialog, opened by clicking the picture.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=viewer-image</p>
+  <button data-open-design="/preview/shown-files.html?state=viewer-image">Open in design</button>
+</div>
+<!-- /screen:viewer-picture --><!-- screen:viewer-markdown -->
+<div class="designed">
+  <h3>Viewer: Markdown</h3>
+  <p>Reads as the docs read.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=viewer-markdown</p>
+  <button data-open-design="/preview/shown-files.html?state=viewer-markdown">Open in design</button>
+</div>
+<!-- /screen:viewer-markdown --><!-- screen:viewer-text -->
+<div class="designed">
+  <h3>Viewer: text</h3>
+  <p>Any text file, as it is.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=viewer-text</p>
+  <button data-open-design="/preview/shown-files.html?state=viewer-text">Open in design</button>
+</div>
+<!-- /screen:viewer-text --><!-- screen:viewer-html -->
+<div class="designed">
+  <h3>Viewer: HTML</h3>
+  <p>The plan preview&rsquo;s locked frame. Its scripts run; it reaches nothing.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ShownFiles.tsx · FileViewer.tsx · preview /preview/shown-files.html?state=viewer-html</p>
+  <button data-open-design="/preview/shown-files.html?state=viewer-html">Open in design</button>
+</div>
+<!-- /screen:viewer-html --></div></div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Workers&rsquo; screenshots: &ldquo;Review keeps its screenshots&rdquo;</li>
+      <li><i class="dot"></i>The phone layout and back button: &ldquo;Runcastle on your phone&rdquo;</li>
+      <li><i class="dot"></i>Telling you a file arrived: &ldquo;Agents can notify your phone&rdquo;</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>An accept button</li>
+      <li><i class="dot"></i>Deleting a shown file</li>
+      <li><i class="dot"></i>Copying a file&rsquo;s neighbours along with it</li>
+      <li><i class="dot"></i>Editing files, or a file browser</li>
+      <li><i class="dot"></i>A PDF reader in the app, or code highlighting</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="hoodflow">
+        <div><b>MCP tool</b> <span class="mono">show_file</span>: checks the path, copies to the thread&rsquo;s <span class="mono">shown/</span> folder, sorts the file</div>
+        <div><b>Thread log</b>: one new event, <span class="mono">file_shown</span>, which already reaches every open client</div>
+        <div><b>Fold</b>: <span class="mono">foldThread</span> gains a <span class="mono">shown</span> item between the work and the answer</div>
+        <div><b>Route</b>: <span class="mono">GET /api/threads/:id/files/:file</span>, minted names only, never <span class="mono">text/html</span></div>
+        <div><b>Web</b>: <span class="mono">ShownFiles</span> and <span class="mono">FileViewer</span>, designed and waiting; wiring moves their types into core</div>
+        <div><b>Orchestrator</b>: <span class="mono">read_feature_chat</span> lists shown copies; two skills gain a few lines</div>
+      </div>
+      <p class="hint" style="margin-top:10px">Built by the lead in its own checkout, with no tickets: the pieces form one chain through a few files, so workers would not run in parallel.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+  [
+    "The tool is show_file, for every agent that has a chat",
+    "A worker has no chat to show anything in, and its files live inside a container the server cannot read. Its screenshots belong to \"Review keeps its screenshots\". This narrows the brief's agreed \"every agent\" to every agent the human talks to.",
+    "assumed"
+  ],
+  [
+    "A file is copied into its thread when shown, and lives as long as the thread",
+    "The human already accepted copying, so a card keeps working after merge deletes the worktree. The thread's folder is where its sent images already live, and nothing removes those folders at merge.",
+    "assumed"
+  ],
+  [
+    "The server serves copies only, never a path",
+    "The app has no login, so a route that takes a path would hand out the disk. With minted names the route can only ever reach what an agent deliberately showed. The route sits under `/api` with the rest of the app, so the phone link's access control covers it the same way; it adds no protection of its own.",
+    "assumed"
+  ],
+  [
+    "The tool shows files from the project and from temp, and refuses the rest",
+    "The orchestrator must reach a feature's worktree and temp screenshots, or its main job fails. Keeping out the rest of the disk stops an agent tricked by a web page from putting `~/.ssh` into a chat that will soon be reachable from a phone. It is a few lines of checking, not a permission system.",
+    "assumed"
+  ],
+  [
+    "One file is capped at 100 MB, and big files stay out of the way",
+    "The cap stops an agent copying a database dump or a build folder by mistake, and it fits a long walkthrough video. One person's disk needs no quota machinery. The lower limits keep a chat opening quickly on phone data.",
+    "assumed"
+  ],
+  [
+    "What a file does is decided by what it is",
+    "All of this works from a phone browser with no new dependency and no desktop program. Checking for binary bytes instead of keeping an extension list means a `.tf` or `.prisma` file works without anyone teaching runcastle about it. A PDF reader inside the app would be a large dependency for what the browser already does. Android's browser may download the PDF rather than show it, which is acceptable.",
+    "assumed"
+  ],
+  [
+    "HTML runs in the plan preview's sandbox, and the server never serves it as a page",
+    "The unauthenticated server can start burns and merges, and a page served from its own address could call all of that. The frame already exists and is tested. External images in an HTML report will not load, which is the price.",
+    "assumed"
+  ],
+  [
+    "A shown file stays in view, after the turn's work and before its final words",
+    "Accepting work means seeing the screenshots without opening anything. The same placement is already used for an answered question inside a turn, so it reads as part of the turn and its order never jumps.",
+    "assumed"
+  ],
+  [
+    "A file can carry a short caption",
+    "The agent's words before a tool call fold away into \"Worked for…\", so \"here is the empty state\" would vanish and leave a bare picture. A caption stays with the file, including in the orchestrator's thread on a phone.",
+    "assumed"
+  ],
+  [
+    "One file per call, and a turn's files read as one group",
+    "One file per call gives each its own result, so one refused file does not hide the others, and the tool stays simple for both runtimes. The fold after four keeps twenty screenshots from pushing the agent's question off a phone screen.",
+    "assumed"
+  ],
+  [
+    "Shown files are part of the thread's log, so a reopened chat shows them",
+    "The log is already the thread's whole record, read with no agent running, and server and web fold it the same way. Sent images behave identically.",
+    "assumed"
+  ],
+  [
+    "The viewer is a full-window dialog, not the side panel",
+    "The dialog works from every chat. The panel differs between a feature and the Orchestrator, a scenario chat has none, and a phone has no side-by-side. This is a deliberate exception to the design rule \"docs are read in place, never in a dialog\": that rule is about a feature's docs, and a shown file belongs to the chat, not to a panel view.",
+    "assumed"
+  ],
+  [
+    "No accept button",
+    "The brief asked for one only if a real reason turned up. None did: the reply box is already there on every screen, and a button would need its own idea of which feature it accepts.",
+    "assumed"
+  ],
+  [
+    "The orchestrator is told to show evidence, and can re-show what a feature showed",
+    "A tool nobody is told to use does not deliver \"accept from your phone by looking\". Using the copies rather than the originals means this still works after merge deletes the worktree and after temp is cleaned, including \"show me that feature\" a week later. It needs no new tool.",
+    "assumed"
+  ],
+  [
+    "One file means one file",
+    "Working out a file's dependencies and copying them along is a large job for a rare case, and it would quietly widen what leaves a worktree.",
+    "assumed"
+  ],
+  [
+    "Showing a file waits for nobody",
+    "The tool shows things; deciding when the human must look stays with the working agreement. Telling the human a file arrived is \"Agents can notify your phone\".",
+    "assumed"
+  ],
+  [
+    "A shown file cannot be taken back",
+    "A branched thread may still use that copy, and an agent showing a secret in the human's own chat is rare and the same harm as pasting it. A delete control earns its place only once real use asks for it.",
+    "assumed"
+  ]
+]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[1, "Offer it to workers too, showing in the feature’s main chat.", "The brief agreed “every agent”. This narrows it to agents with a chat, because a worker has none.", "narrows the brief"], [4, "No allowed places: accept any path and refuse a short list of secret files.", "The list is thin protection, and it refuses things like a PDF in Downloads. It is your call how careful this should be once a phone can reach it.", "challenged"], [6, "Every non-image opens in a new tab, with no viewer inside the app.", "The viewer is the bulk of the screen work. The simple version loses rendered Markdown and safe HTML on a phone."], [12, "Read a file in the side panel, as a doc is.", "This is an exception to the design rule that docs are never read in a dialog. The phone back button is left to the phone view.", "challenged"], [14, "The lead names its screenshot paths in its ready message.", "This adds a habit to both skills: what you see when you are asked to accept depends on it."]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
