@@ -29,6 +29,11 @@ describe('foldThread: shown files', () => {
   const running: ThreadEventBody[] = [prompt('p1'), { type: 'process', state: 'running' }, { type: 'turn_started' }]
   const names = (item: ThreadItem | undefined) => (item?.kind === 'shown' ? item.files.map((f) => f.id) : null)
 
+  it('places a review package as it places a file, between the work and the final words', () => {
+    const v = foldThread(log(...running, tool('c1'), { type: 'review_package', ticketId: 't1' }, say('m2', 'Merge it?'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'review_package', 'agent'])
+  })
+
   it('keeps the file in view after the work folds, ahead of the final words', () => {
     const v = foldThread(log(...running, say('m1', 'Taking a look.'), tool('c1'), shown('a'), say('m2', 'Merge it?'), { type: 'turn_ended', reason: 'end_turn' }))
     expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])

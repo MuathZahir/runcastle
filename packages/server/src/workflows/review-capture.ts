@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { AGENT_BROWSER_BIN, findOnPath, runCommand } from './recorder-reap'
@@ -25,8 +25,14 @@ export interface ReviewCaptureDeps {
 function listSessions(bin: string): Promise<string | null> {
   return new Promise((resolve) => {
     let out = ''
-    const target = spawnTargetFor(bin, ['session', 'list'])
-    const child = spawn(target.file, target.args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    let child: ChildProcess
+    try {
+      const target = spawnTargetFor(bin, ['session', 'list'])
+      child = spawn(target.file, target.args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    } catch {
+      resolve(null)
+      return
+    }
     const timer = setTimeout(() => {
       child.kill()
       resolve(null)

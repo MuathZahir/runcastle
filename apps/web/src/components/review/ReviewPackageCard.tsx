@@ -65,7 +65,7 @@ export function ReviewPackageCard({ pack, onOpen }: { pack: ReviewPackage; onOpe
           ))}
         </span>
       )}
-      <span className="text-xs text-text-tertiary">{packageHolds(pack) || pack.empty}</span>
+      <span className="text-xs text-text-tertiary">{[packageHolds(pack), pack.empty].filter(Boolean).join(' · ')}</span>
     </button>
   )
 }

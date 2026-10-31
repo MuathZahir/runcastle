@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { PackageFinding, ReviewPackage } from '@runcastle/core'
 import { IconAlert, IconChevronRight, IconEye, IconX } from '../../icons'
 import { Dialog, Disclosure, IconButton, cx } from '../../ui'
@@ -101,8 +101,17 @@ function RowMark({ stop, poster }: { stop: PackageStop; poster?: string }) {
 
 /** One row of the package's list. */
 function StopRow({ stop, poster, active, onPick }: { stop: PackageStop; poster?: string; active: boolean; onPick: () => void }) {
+  const row = useRef<HTMLButtonElement>(null)
+  // The list follows the arrows, where it scrolls by itself. On a phone it sits
+  // under the stage in one scroll, and moving that would hide what just changed.
+  useEffect(() => {
+    const list = row.current?.closest('aside')
+    if (!active || !list || getComputedStyle(list).overflowY === 'visible') return
+    row.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [active])
   return (
     <button
+      ref={row}
       type="button"
       aria-current={active}
       onClick={onPick}
