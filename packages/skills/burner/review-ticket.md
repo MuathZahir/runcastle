@@ -109,6 +109,14 @@ agent-browser close                  # when you are done driving
 - **A recording failure never fails the review.** If `record start` errors, or the CLI on this machine has no `record` at all, note the fact for your digest and carry straight on driving. The findings are the deliverable; the video is evidence.
 - **Always `record stop` where you stop the drive.** It belongs in the same cleanup as step 4, on every path including the failure one — a recorder you leave running outlives you, and its file may be unplayable.
 
+**Take the screenshots.** The human may accept this feature from their phone, from your pictures alone, so they are a deliverable and not a nicety. Whenever a screen shows what you just checked, and at each scenario's entry page, call:
+
+```
+mcp__runcastle__review_drive({ action: "capture", caption: "the table fits the page width at A4" })
+```
+
+Runcastle takes the picture of your browser and keeps it; you never write the file. The caption is one line saying what the picture shows, for someone who was not there. Take at least one per acceptance criterion a screen can show, and one of anything you report as a defect. A picture belongs to the latest scenario that landed; pass `outside: true` for one that belongs to none. If the criteria name a phone layout, resize the browser and capture that. A capture that fails never fails the review: carry on.
+
 **`@eN` refs go stale on any page change.** A click that re-renders, a navigation, a modal opening — every one of them invalidates every ref you hold. Re-snapshot after each, and act only on refs from the newest snapshot. Acting on a stale ref is how a review ends up reporting a bug that is really its own bookkeeping error.
 
 Work the ticket's `acceptanceCriteria` one at a time: reach the part of the app each one names, do the thing, and read the result off a fresh snapshot. Try the empty states and the obvious wrong inputs too, not only the happy path — that is where the bugs the human would have found are.

@@ -5,6 +5,7 @@ import type { AppCtx } from '../db/types'
 import { deliverToLead } from '../services/lead-delivery'
 import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { shownCopies, type ShownCopy } from '../threads/shown'
+import { reviewShots, type ReviewShots } from '../services/review-package'
 import {
   noSession,
   ok,
@@ -49,6 +50,8 @@ export type ReadFeatureChatResult = {
   reason?: string
   /** The files the chat showed, newest last; each `path` is a copy `show_file` can show again. */
   shown: ShownCopy[]
+  /** The pictures this feature's reviews kept, newest pass first; each `path` works with show_file. */
+  reviewShots: ReviewShots[]
 }
 
 /** The last turns of a feature's main chat, for reading what its agent said or asked. */
@@ -65,6 +68,7 @@ export function toolReadFeatureChat(
     transcriptPath,
     ...(quote === null ? { reason: 'no chat on disk yet' } : {}),
     shown: shownCopies(ctx, feature.id),
+    reviewShots: reviewShots(ctx, feature.id),
   }
 }
 
@@ -109,7 +113,9 @@ export function registerOrchestratorRunTools(
           "The last turns of a feature's chat, for reading what its agent said or asked. " +
           'Returns the quote and the transcript path; the quote is null, with a reason, when ' +
           'the feature has no chat on disk yet. `shown` lists the files that chat showed, each ' +
-          'with a `path` that show_file can show again, even after the feature merged.',
+          'with a `path` that show_file can show again, even after the feature merged. ' +
+          '`reviewShots` lists the pictures its reviews kept. To put a review in front of the ' +
+          'human, use show_review_package.',
         inputSchema: { slug: z.string().describe('The slug of the feature.') },
       },
       orchestratorTool(async (args, extra) => {

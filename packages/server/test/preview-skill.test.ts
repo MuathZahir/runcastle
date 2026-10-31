@@ -235,7 +235,7 @@ describe('the feature skill’s preview step', () => {
 
   it("draws the preview and gets the human's yes before the first round", () => {
     const skill = read('feature', 'SKILL.md')
-    const yes = skill.slice(skill.indexOf("## The human's yes"), skill.indexOf('## Review is your call'))
+    const yes = skill.slice(skill.indexOf("## The human's yes"), skill.indexOf('## Every feature ends with a review round'))
     expect(yes).toContain('`./references/preview.md`')
     expect(yes).toContain('`./references/preview-starter.html`')
     expect(yes).toContain("get the human's **explicit yes in chat**")

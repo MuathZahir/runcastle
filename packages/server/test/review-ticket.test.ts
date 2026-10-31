@@ -967,6 +967,8 @@ describe('what the review agent is handed', () => {
       'Lap <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
     )
     expect(template).toMatch(/renders it alone as the lap account/)
+    // The human may accept from these pictures alone, so the prompt asks for them.
+    expect(template).toContain('action: "capture"')
     expect(template).not.toMatch(/renders it verbatim as the first thing they read/)
     // The superseded contract — "code review always, drive additionally" — is
     // gone, not merely deprioritised.

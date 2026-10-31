@@ -33,20 +33,20 @@ Before the first round, draw the plan preview (`./references/preview.md`, from `
 
 Then run rounds: `./references/rounds.md`.
 
-## Review is your call
+## Every feature ends with a review round
 
-Run a review ticket when the change is worth an independent look: it spans several areas, it has a surface a human operates, or you are not sure of it. Skip it when it is not, and say why. No rule requires one.
+When the work is done, run one review round before you say ready, even if you built everything yourself: emit a single review ticket (`./references/tickets.md`) and dispatch it. Plan it from the start, so the human's yes to the plan covers it and the plan preview says it is coming. Skip it only when the human says they do not want one. A change with nothing to drive gets a code review from the same ticket. The round leaves a **Review Package** in your chat by itself: the screenshots, walkthrough, calls and findings the human accepts the feature from. No server rule requires any of this; it is how a feature gets looked at.
 
 ## Ready for the human
 
 Before you say ready, always run the project's own checks (its typecheck and its tests) and fix what they find. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
 
 - **what to test**: what changed, where to look, what would count as broken;
-- **how you checked it**: for example "typecheck and tests green; no review agent, since it's a one-file style change".
+- **how you checked it**: for example "typecheck and tests green; the review round found nothing".
 
 Pass on any warning `declare_ready` returns.
 
-When you took screenshots of the work, show them in your chat with `show_file` before you say ready, a caption on each. The human may accept the feature from them, and the orchestrator re-shows them from your chat.
+When you took screenshots of the work yourself, show them in your chat with `show_file` before you say ready, a caption on each. A review's arrive in its package by themselves.
 
 ## After a drive
 

@@ -34,7 +34,7 @@ Run digests:
 
 ## Tour and verify
 
-In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, start the recorder at `{{WALKTHROUGH_PATH}}`, and walk every acceptance criterion's user-facing surface once at pace. Keep the recorder running for the whole tour. Scrutinise only the landed fixes: check whether each listed repro step still reproduces and inspect the surfaces those fixes touched. Report anything plainly broken during the tour, but do not hunt for unrelated defects. Stop the recorder and drive when finished. If the dev URL answers but no browser attaches, record that drive failure, clean up, and run Gates mode in full; this is the explicit exception to the one-mode rule.
+In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, start the recorder at `{{WALKTHROUGH_PATH}}`, and walk every acceptance criterion's user-facing surface once at pace. Keep the recorder running for the whole tour. At each surface, once the screen shows what you checked, call `mcp__runcastle__review_drive({ action: "capture", caption })` with what it shows in one line: the human may accept the feature from these pictures alone. Scrutinise only the landed fixes: check whether each listed repro step still reproduces and inspect the surfaces those fixes touched. Report anything plainly broken during the tour, but do not hunt for unrelated defects. Stop the recorder and drive when finished. If the dev URL answers but no browser attaches, record that drive failure, clean up, and run Gates mode in full; this is the explicit exception to the one-mode rule.
 
 {{DRIVE_INSTRUCTIONS}}
 

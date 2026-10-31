@@ -63,7 +63,7 @@ function log(message: string): void {
  * `bin` is usually npm's `agent-browser.CMD` shim on Windows, which cannot be
  * started directly (EINVAL), so it goes through its interpreter.
  */
-export function runCommand(bin: string, args: readonly string[]): Promise<boolean> {
+export function runCommand(bin: string, args: readonly string[], timeoutMs = COMMAND_TIMEOUT_MS): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
     const settle = (ok: boolean): void => {
@@ -72,7 +72,7 @@ export function runCommand(bin: string, args: readonly string[]): Promise<boolea
       clearTimeout(timer)
       resolve(ok)
     }
-    const timer = setTimeout(() => settle(false), COMMAND_TIMEOUT_MS)
+    const timer = setTimeout(() => settle(false), timeoutMs)
     timer.unref?.()
 
     try {

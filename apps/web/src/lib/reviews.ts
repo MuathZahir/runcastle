@@ -1,4 +1,4 @@
-import { noteScreenshotUploadUrl, reviewArtifactsUrl } from '@runcastle/core'
+import { noteScreenshotUploadUrl, reviewArtifactsUrl, reviewPackageUrl, type ReviewPackage } from '@runcastle/core'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 /**
@@ -148,4 +148,20 @@ export async function uploadScreenshot(noteId: string, png: Blob): Promise<void>
     body: png,
   })
   if (!res.ok) throw new Error(`screenshot upload: ${res.status}`)
+}
+
+/**
+ * Everything one review pass left, under the listing's key so the stream refreshes
+ * it with the listing. A pass that is gone reads as nothing.
+ */
+export function useReviewPackage(ticketId: string): UseQueryResult<ReviewPackage | null> {
+  return useQuery({
+    queryKey: [REVIEW_ARTIFACTS_KEY, 'package', ticketId],
+    queryFn: async () => {
+      const res = await fetch(reviewPackageUrl(ticketId))
+      if (res.status === 404) return null
+      if (!res.ok) throw new Error(`review package ${res.status}`)
+      return (await res.json()) as ReviewPackage
+    },
+  })
 }
