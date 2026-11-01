@@ -134,6 +134,8 @@ describe('per-runtime AFK auth', () => {
   })
 })
 
+const TOKEN = `sk-ant-oat01-${'x'.repeat(95)}`
+
 describe('saveAfkCredential', () => {
   function io(over: Partial<AfkTokenIo> & { seed?: string } = {}): AfkTokenIo & { written: () => string } {
     let content = over.seed ?? ''
@@ -147,8 +149,8 @@ describe('saveAfkCredential', () => {
 
   it('captures the token into the env file and reports the validity result', async () => {
     const deps = io()
-    const res = await saveAfkCredential(deps, '  sk-ant-oat01-abc  ')
-    expect(deps.written()).toBe('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc\n')
+    const res = await saveAfkCredential(deps, `  ${TOKEN}  `)
+    expect(deps.written()).toBe(`CLAUDE_CODE_OAUTH_TOKEN=${TOKEN}\n`)
     expect(res.valid).toBe(true)
     expect(res.detail).toBe('token accepted')
   })
@@ -165,8 +167,8 @@ describe('saveAfkCredential', () => {
 
   it('still saves but reports invalid when the live check rejects it', async () => {
     const deps = io({ verify: async () => ({ valid: false, detail: 'rejected by API' }) })
-    const res = await saveAfkCredential(deps, 'sk-bad')
-    expect(deps.written()).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-bad')
+    const res = await saveAfkCredential(deps, `${TOKEN}-bad`)
+    expect(deps.written()).toContain(`CLAUDE_CODE_OAUTH_TOKEN=${TOKEN}-bad`)
     expect(res.valid).toBe(false)
     expect(res.detail).toBe('rejected by API')
   })
@@ -179,10 +181,19 @@ describe('saveAfkCredential', () => {
     expect(touched).toBe(false)
   })
 
+  it('refuses a cut-off claude token before touching the file, but not a short codex key', async () => {
+    let touched = false
+    const deps = io({ write: () => (touched = true) })
+    await expect(saveAfkCredential(deps, TOKEN.slice(0, 53))).rejects.toThrow(/cut off/)
+    expect(touched).toBe(false)
+    await saveAfkCredential(deps, 'sk-short', 'codex')
+    expect(touched).toBe(true)
+  })
+
   it('rejects a token with an embedded newline without touching the file', async () => {
     let touched = false
     const deps = io({ write: () => (touched = true) })
-    await expect(saveAfkCredential(deps, 'sk-ant-oat01-abc\nOTHER=evil')).rejects.toThrow()
+    await expect(saveAfkCredential(deps, `${TOKEN}\nOTHER=evil`)).rejects.toThrow()
     expect(touched).toBe(false)
   })
 })

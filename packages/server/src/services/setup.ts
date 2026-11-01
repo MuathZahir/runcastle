@@ -112,6 +112,13 @@ export interface AfkTokenIo {
 }
 
 /**
+ * The shortest Claude Code token saved. Real ones run ~108 characters; a paste
+ * that wrapped on a narrow terminal saved 53 and failed a burn much later.
+ * Codex API keys are exempt.
+ */
+export const MIN_CLAUDE_TOKEN_LENGTH = 80
+
+/**
  * Captures a runtime's AFK credential — Claude Code's `setup-token` OAuth token,
  * Codex's OpenAI API key — into the data-dir env file under that runtime's own
  * key, then runs a live validity check. Always persists a non-empty value (so a
@@ -128,6 +135,11 @@ export async function saveAfkCredential(
   if (value.length === 0) throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot be empty`)
   if (/[\r\n]/.test(value)) {
     throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot contain a newline`)
+  }
+  if (runtime === 'claude-code' && value.length < MIN_CLAUDE_TOKEN_LENGTH) {
+    throw new InvalidInputError(
+      `${spec.label} ${spec.afkNoun} looks cut off (${value.length} characters, expected at least ${MIN_CLAUDE_TOKEN_LENGTH}). Paste the whole value.`,
+    )
   }
   io.write(upsertEnvVar(io.read(), spec.afkKey, value))
   return io.verify(value)
