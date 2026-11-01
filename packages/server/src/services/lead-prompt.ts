@@ -37,3 +37,12 @@ export function isRuncastlePrompt(prompt: string): boolean {
   const text = prompt.trimStart()
   return text.startsWith(RUNCASTLE_PROMPT_TAG) || HOOK_FEEDBACK_LINE.test(text)
 }
+
+/** A runcastle prompt's own lines: the hook feedback's wrapper around them, if any, taken off. */
+export function runcastleLines(prompt: string): string {
+  const text = prompt.trim()
+  if (!HOOK_FEEDBACK_LINE.test(text)) return text
+  return text
+    .slice(text.indexOf(RUNCASTLE_PROMPT_TAG))
+    .replace(/\s*<\/system-reminder>$/, '')
+}

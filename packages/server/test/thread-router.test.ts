@@ -373,6 +373,25 @@ describe('thread router', () => {
     ])
   })
 
+  it("reads runcastle's own lines in a transcript as runcastle's, not as the human's", async () => {
+    const [, newer] = terminalEra('cc-runcastle-lines', [
+      ['[runcastle] Round 1 returned: succeeded', 'Reading the digests.'],
+      [
+        '<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>\n' +
+          'Stop hook blocking error from command "Stop": [runcastle] The human pressed Stop.\n</system-reminder>',
+        'Stopped.',
+      ],
+      ['what does [runcastle] mean in the log?', 'It marks our own lines.'],
+    ])
+    const view = await caller.thread.view({ threadId: newer })
+    expect(view.items.filter((i) => i.kind === 'user')).toMatchObject([
+      { text: '[runcastle] Round 1 returned: succeeded', from: 'runcastle' },
+      { text: '[runcastle] The human pressed Stop.', from: 'runcastle' },
+      { text: 'what does [runcastle] mean in the log?' },
+    ])
+    expect(view.items.filter((i) => i.kind === 'user').at(-1)).not.toHaveProperty('from')
+  })
+
   it('reads a terminal-era conversation whose last prompt got no answer as idle, not starting', async () => {
     const [, newer] = terminalEra('cc-unanswered', [
       ['Make the header blue', 'Done.'],

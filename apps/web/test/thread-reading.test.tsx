@@ -132,6 +132,15 @@ describe('the runcastle line', () => {
     expect(line()).not.toContain('transcript.jsonl')
   })
 
+  it('takes the tag off every line of a gathered batch', () => {
+    const batch = '[runcastle] one-line-install waits for you.\n[runcastle] no-node declared ready.'
+    render(<ChatThread items={[{ kind: 'user', id: 'p', text: batch, from: 'runcastle' }]} state="idle" footer={null} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    const line = screen.getByText(/one-line-install/).closest('p')?.textContent
+    expect(line).toContain('no-node declared ready.')
+    expect(line).not.toContain('[runcastle]')
+  })
+
   it('cuts a first sentence longer than a line at a word', () => {
     const long = `[runcastle] ${'word '.repeat(60)}end.`
     render(<ChatThread items={[{ kind: 'user', id: 'p', text: long, from: 'runcastle' }]} state="idle" footer={null} />)

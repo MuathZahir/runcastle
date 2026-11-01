@@ -474,8 +474,11 @@ function AgentMessage({
   )
 }
 
-/** The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`); the line already says who spoke. */
-const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/
+/**
+ * The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`), on each
+ * line of a gathered batch; the line already says who spoke.
+ */
+const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/gm
 
 /** How long a runcastle line's head may run before it is cut at a word: about one line of the column. */
 const RUNCASTLE_HEAD_MAX = 140
