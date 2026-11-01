@@ -15,3 +15,7 @@
 ## 4. Tapping opens the thread that sent it, and an unreachable computer gets a page of its own
 **Decision:** Tapping a notification opens the chat that sent it: a feature's chat for a feature's agent, the exact orchestrator thread for an orchestrator, not the latest one. When the phone cannot reach runcastle, the service worker this feature adds shows a "can't reach your computer" page instead of the browser's error.
 **Why:** That chat is where the sender can explain and show what it wants seen. A feature's agent did not send an orchestrator's message and may have nothing to show. `runcastle-on-your-phone` decision 9 left the page to this feature, because it needs the service worker.
+
+## 5. A "Notifications" row at the foot of the phone's list turns them on
+**Decision:** The phone's feature list ends with one "Notifications" row and an On/Off switch, one per phone, covering every project on that runcastle. Turning it on asks the browser's permission, then sends a test notification. On an iPhone not yet added to the Home Screen, or with permission blocked, the row says what to do. Desktop Settings' "On your phone" section gets one line pointing to it. When an agent calls the tool and no phone is set up, the tool says so and the agent tells the human where to turn it on.
+**Why:** The permission has to be asked on the phone, and Settings is not on the phone view. A row keeps the list clean where a banner would not. The test notification proves it works, and the tool's answer reaches a new user who never saw the row, without any automatic alert.
