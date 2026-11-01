@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FirstRunWizard } from '../src/components/first-run/FirstRunWizard'
 import { ToastProvider } from '../src/lib/toast'
+import { atWidth } from './phone-width'
 
 /**
  * Walking the wizard the way a first-time user does (decision 4): forward, back,
@@ -99,7 +100,10 @@ describe('FirstRunWizard', () => {
     onOpened.mockClear()
     onCancel.mockClear()
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   // The intro is the screen that was missing (finding F13): it is not a setup
   // step, so it carries neither the rail nor a Back.
@@ -209,5 +213,12 @@ describe('FirstRunWizard', () => {
     // Intro → identity, then intro → runtimes → AFK on a host that has one.
     walk([identity('unset')], ['Set up runcastle'])
     walk([identity('ok'), ...codexSignedIn], ['Set up runcastle', 'Continue'])
+  })
+
+  it('on a phone, says to set up on the computer and offers no step', () => {
+    atWidth(true)
+    open([identity('unset')])
+    expect(screen.getByText('Set this up on your computer.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })

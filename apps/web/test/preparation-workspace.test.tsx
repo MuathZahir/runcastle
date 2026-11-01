@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PrepView, ProjectFinding } from '../src/lib/api'
 import { fakeTrpc } from './fake-trpc'
+import { atWidth } from './phone-width'
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
 vi.mock('../src/lib/live', async (importOriginal) => ({
@@ -40,6 +41,7 @@ describe('the preparation workspace', () => {
   afterEach(() => {
     cleanup()
     localStorage.clear()
+    vi.unstubAllGlobals()
   })
 
   it('is the preparation thread, empty with its composer before anyone started it — no Start, Resume or End session', async () => {
@@ -62,6 +64,13 @@ describe('the preparation workspace', () => {
     expect(await screen.findByText('The dev server is bun run dev')).toBeTruthy()
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_prep', text: 'The dev server is bun run dev' }]))
     expect(api.inputs('project.talkToPrep')).toEqual([{ projectId: 'proj_1', holdOpening: true }])
+  })
+
+  it('on a phone, says to prepare on the computer, with no chat', () => {
+    atWidth(true)
+    render(<PreparationWorkspace projectId="proj_1" />, { wrapper: server({}).Wrapper })
+    expect(screen.getByText('Set this up on your computer.')).toBeTruthy()
+    expect(screen.queryByLabelText('Message')).toBeNull()
   })
 })
 

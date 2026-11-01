@@ -3,10 +3,12 @@ import { trpc } from '../trpc'
 import { isAbsolutePath, pathPlaceholder } from '../lib/platform'
 import { repoOpenFailure, type RepoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
+import { useIsPhone } from '../lib/use-phone'
 import type { ReactNode } from 'react'
 import { IconArrowLeft, IconArrowRight, IconBranch, IconFolder, IconSearch, LogoMark } from '../icons'
 import { Button, DialogBody, DialogHeader, FailureNote, TextField, cx } from '../ui'
 import { DirectoryPicker } from './DirectoryPicker'
+import { OnYourComputer } from './OnYourComputer'
 import { SetupFrame, StepHeading } from './first-run/StepLayout'
 
 /**
@@ -53,6 +55,8 @@ export function OpenProject({
   const [relative, setRelative] = useState(false)
   const toast = useToast()
   const utils = trpc.useUtils()
+  // A phone cannot browse the computer's folders: it says where to open one.
+  const phone = useIsPhone()
 
   const open = trpc.project.open.useMutation({
     onSuccess: async (project) => {
@@ -213,6 +217,20 @@ export function OpenProject({
       )}
     </>
   )
+
+  if (phone)
+    return variant === 'dialog' ? (
+      <>
+        <DialogHeader title="Open a project" onClose={onCancel} />
+        <DialogBody>
+          <OnYourComputer />
+        </DialogBody>
+      </>
+    ) : (
+      <SetupFrame>
+        <OnYourComputer />
+      </SetupFrame>
+    )
 
   if (variant === 'dialog')
     return (
