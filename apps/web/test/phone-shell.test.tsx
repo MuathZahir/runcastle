@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppAt } from '../../../.runcastle/preview/app-at'
 import { fakeTrpcFetch, type TrpcFakes } from '../../../.runcastle/preview/fake-api'
 import { PROJECT_ID, withShell } from '../../../.runcastle/preview/shell-fakes'
+import { phoneDesignSrc } from '../src/components/phone/PhoneDesignView'
+import type { RouterOutputs } from '../src/lib/api'
 import { ToastProvider } from '../src/lib/toast'
 import { PHONE_QUERY } from '../src/lib/use-phone'
 import { trpc, trpcLinks } from '../src/trpc'
@@ -55,10 +57,11 @@ class TestEventSource extends EventTarget {
   }
 }
 
-function fakes(threads: ThreadEntry[]): TrpcFakes {
+function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}): TrpcFakes {
   const item = listItem({ id: FEATURE.id, slug: SLUG, waitingReason: 'question', leadAwaitsHuman: true })
   const feature = full({ id: FEATURE.id, slug: SLUG })
   return withShell({
+    ...extra,
     feature: {
       list: () => [{ ...item, title: FEATURE.title }],
       get: () =>
@@ -73,9 +76,11 @@ function fakes(threads: ThreadEntry[]): TrpcFakes {
   } as TrpcFakes)
 }
 
-function Root({ path, threads = [] }: { path: string; threads?: ThreadEntry[] }) {
+function Root({ path, threads = [], extra }: { path: string; threads?: ThreadEntry[]; extra?: TrpcFakes }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
-  const [client] = useState(() => trpc.createClient({ links: trpcLinks('/api/trpc', fakeTrpcFetch('/api/trpc', fakes(threads))) }))
+  const [client] = useState(() =>
+    trpc.createClient({ links: trpcLinks('/api/trpc', fakeTrpcFetch('/api/trpc', fakes(threads, extra))) }),
+  )
   return (
     <trpc.Provider client={client} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
@@ -213,5 +218,79 @@ describe('runcastle on a phone', () => {
       stream.dispatchEvent(new Event('ready'))
     })
     expect(screen.queryByText(/Can’t reach your computer/)).toBeNull()
+  })
+})
+
+describe('a design on a phone', () => {
+  // The frame points at a design server that is not there; nothing should try to load it.
+  ;(window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true
+
+  const DESIGN = `/p/${PROJECT_ID}/f/${SLUG}/design`
+  type DesignStatus = RouterOutputs['design']['status']
+
+  /** The design server in `status`, the app opened on the phone link's machine, and what the view asks of the server. */
+  function designFakes(status: DesignStatus) {
+    const calls = { heartbeat: [] as unknown[], start: [] as unknown[] }
+    const host = window.location.hostname
+    const extra: TrpcFakes = {
+      design: {
+        status: () => status,
+        heartbeat: (input: unknown) => (calls.heartbeat.push(input), { running: true }),
+        start: (input: unknown) => (calls.start.push(input), { url: 'http://localhost:30001/', port: 30001, command: 'vite' }),
+      },
+      phoneLink: {
+        status: () => ({
+          tailscale: 'running' as const,
+          on: true,
+          url: `https://${host}:4512`,
+          designUrl: `https://${host}:4514`,
+          commands: [],
+        }),
+      },
+    }
+    return { calls, extra, host }
+  }
+
+  it('shows the live page through the phone link at desktop width, then the phone’s, and keeps the server alive', async () => {
+    const { calls, extra, host } = designFakes({
+      running: true,
+      url: 'http://localhost:30001/',
+      port: 30001,
+      hasRecordedCommand: true,
+      lastPath: '/preview/x.html',
+    })
+    render(<Root path={DESIGN} extra={extra} />)
+    const frame = (await screen.findByTitle('The design')) as HTMLIFrameElement
+    await waitFor(() =>
+      expect(frame.getAttribute('src')).toBe(`https://${host}:4514/__runcastle/open/${FEATURE.id}?path=%2Fpreview%2Fx.html`),
+    )
+    expect(frame.style.width).toBe('1440px')
+    expect(screen.getByText('Tap around it. Say what to change in the chat.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Select area/ })).toBeNull()
+    await waitFor(() => expect(calls.heartbeat).toEqual([{ featureId: FEATURE.id }]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show at the phone’s width' }))
+    expect(frame.style.width).not.toBe('1440px')
+    expect(screen.getByRole('button', { name: 'Show at desktop width' }).textContent).toBe('Phone')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
+    await waitFor(() => expect(window.location.pathname).toBe(CHAT))
+  })
+
+  it('starts a stopped server from its recorded command', async () => {
+    const { calls, extra } = designFakes({ running: false, hasRecordedCommand: true })
+    render(<Root path={DESIGN} extra={extra} />)
+    await waitFor(() => expect(calls.start).toEqual([{ featureId: FEATURE.id }]))
+  })
+})
+
+describe('phoneDesignSrc', () => {
+  it('goes through the pass-through only when the app is open on the link’s machine', () => {
+    const designUrl = 'https://desk.tail1234.ts.net:4514'
+    expect(phoneDesignSrc('http://localhost:30001/', '/a b', 'f1', designUrl, 'desk.tail1234.ts.net')).toBe(
+      `${designUrl}/__runcastle/open/f1?path=%2Fa%20b`,
+    )
+    expect(phoneDesignSrc('http://localhost:30001/', '/a', 'f1', designUrl, 'localhost')).toBe('http://localhost:30001/a')
+    expect(phoneDesignSrc('http://localhost:30001/', undefined, 'f1', undefined, 'localhost')).toBe('http://localhost:30001/')
   })
 })
