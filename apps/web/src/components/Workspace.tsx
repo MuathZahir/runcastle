@@ -85,6 +85,7 @@ import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 import { useIsPhone } from '../lib/use-phone'
 import { PhoneChatBar, PhoneViewScreen } from './phone/PhoneChatBar'
+import { PhoneDesignView } from './phone/PhoneDesignView'
 import { featurePhoneStatus, phoneViewChoices, phoneViewOf } from './phone/phone-views'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
@@ -986,7 +987,16 @@ export function Workspace({
           />
         </ScenarioChatContext.Provider>
       )}
-      {phoneView && (
+      {phoneView === 'design' && !reading ? (
+        <PhoneDesignView
+          featureId={featureId}
+          {...(panel.state.path ? { path: panel.state.path } : {})}
+          {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
+          title={labelOf(phoneView)}
+          sub={feature.title}
+          onBack={() => panel.dispatch({ type: 'close' })}
+        />
+      ) : phoneView && (
         <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => panel.dispatch({ type: 'close' })}>
           {panelView(phoneView)}
         </PhoneViewScreen>

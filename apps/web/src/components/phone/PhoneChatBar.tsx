@@ -116,11 +116,14 @@ export function PhoneViewScreen({
   title,
   sub,
   onBack,
+  trailing,
   children,
 }: {
   title: string
   sub?: string
   onBack: () => void
+  /** A control at the bar's right edge, for the view's own choice. */
+  trailing?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -131,6 +134,7 @@ export function PhoneViewScreen({
           <span className="truncate text-md font-medium text-text">{title}</span>
           {sub && <span className="truncate text-xs text-text-tertiary">{sub}</span>}
         </div>
+        {trailing}
       </header>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">{children}</div>
     </section>
