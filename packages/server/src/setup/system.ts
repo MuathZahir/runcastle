@@ -41,12 +41,18 @@ export function readMachineFacts(env: NodeJS.ProcessEnv = process.env): MachineF
  * The real {@link StepRunner}. Unlike the doctor's exec it inherits the terminal
  * and has no timeout: `sudo` must be able to ask for a password, an installer's
  * progress must show, and a slow download is not a hung probe.
+ *
+ * Codex's installer ends by asking to start Codex, on the terminal itself. That
+ * is a second question after the one yes, and it would hang a `--yes` run forever.
  */
 export function createStepRunner(): StepRunner {
   return (command) =>
     new Promise((resolve) => {
       const { file, args } = resolveSpawnTarget(command.file, command.args)
-      const child = spawn(file, args, { stdio: 'inherit' })
+      const child = spawn(file, args, {
+        stdio: 'inherit',
+        env: { ...process.env, CODEX_NON_INTERACTIVE: '1' },
+      })
       child.on('error', () => resolve(false))
       child.on('close', (code) => resolve(code === 0))
     })

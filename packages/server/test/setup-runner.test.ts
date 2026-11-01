@@ -3,6 +3,7 @@ import { runSetup, SETUP_USAGE, type SetupDeps } from '../src/bin/setup'
 import type { DoctorReport, ProbeResult, ProbeStatus } from '../src/doctor/doctor'
 import type { MachineFacts, SetupCommand } from '../src/setup/plan'
 import { AGENT_QUESTION } from '../src/setup/runner'
+import { createStepRunner } from '../src/setup/system'
 import { ROOT_BURN_REFUSED } from '../src/workflows/burn-user'
 
 function probe(id: string, status: ProbeStatus, detail = ''): ProbeResult {
@@ -206,5 +207,12 @@ describe('runcastle setup', () => {
 
     expect(await runSetup(argv, h.deps)).toBe(1)
     expect(h.lines).toEqual([SETUP_USAGE])
+  })
+})
+
+describe('createStepRunner', () => {
+  it('tells Codex not to ask its own question', async () => {
+    const check = "process.exit(process.env.CODEX_NON_INTERACTIVE === '1' ? 0 : 1)"
+    expect(await createStepRunner()({ file: process.execPath, args: ['-e', check] })).toBe(true)
   })
 })

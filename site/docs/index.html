@@ -17,7 +17,7 @@
     <meta property="og:title" content="Getting started — runcastle docs" />
     <meta
       property="og:description"
-      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512. No account, no hosted backend."
+      content="One command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512. No account, no hosted backend."
     />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
@@ -25,7 +25,7 @@
     <meta name="twitter:title" content="Getting started — runcastle docs" />
     <meta
       name="twitter:description"
-      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512."
+      content="One command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512."
     />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
@@ -94,7 +94,7 @@
         <h1>Getting started</h1>
         <p class="article-lede">
           runcastle is a programming system built on Claude Code: the IDE to Claude Code's text
-          editor. One global command installs it, and it runs entirely on your machine as a Bun
+          editor. One command installs it, and it runs entirely on your machine as a Bun
           server plus a browser UI at <code>http://localhost:4512</code>. No account, no hosted
           backend.
         </p>
@@ -174,8 +174,7 @@
         <p>
           Skip these two if you only want interactive sessions. Builds you walk away from need a
           container runtime (Docker or Podman) and an auth token: run
-          <code>claude setup-token</code> on this machine and put
-          <code>CLAUDE_CODE_OAUTH_TOKEN=…</code> in <code>~/.runcastle/.env</code>. Each user
+          <code>runcastle token</code> on this machine. Each user
           authenticates against their own subscription. Nothing routes through runcastle.
         </p>
         <div class="note">
@@ -261,9 +260,8 @@
             reinstall the last one that worked.
           </li>
           <li>
-            <strong>Unattended burns fail with an auth error.</strong> Make sure
-            <code>CLAUDE_CODE_OAUTH_TOKEN</code> is in <code>~/.runcastle/.env</code>, generated
-            by <code>claude setup-token</code>.
+            <strong>Unattended burns fail with an auth error.</strong> Run
+            <code>runcastle token</code> again with a fresh token.
           </li>
         </ul>
         <p>
