@@ -20,133 +20,147 @@ the agent has asked something, whichever comes first. Anything the agent asks be
 The chat does not pretend a turn is running: the composer works as after any turn, and the
 command strip keeps its timer.
 
-Opening a thread shows its current state and nothing older. Switching to the largest thread takes
-under 300 ms, a first open after a server start under 1 second, a page reload on it under
-2 seconds, and a working thread on screen stays within 1 second of its log. No screen changes
-shape, so there is nothing to design.
+Opening a thread shows its current state and nothing older, and a working thread on screen stays
+within a moment of its log. No screen changes shape, so there is nothing to design.
 
 ### What was measured
 
-The measurements in `decisions.md` overturned the brief's reading (a long history that loads
-slowly). Rendering is cheap, because settled turns draw nothing inside their folds. The costs are:
+`scripts/thread-timing.ts` measures all of this in real Chrome against a copy of the real data,
+with other threads working. Rendering is cheap, because settled turns draw nothing inside their
+folds. The plan's first explanation, that validating log lines costs 270 ms a read, was wrong:
+`curl` to `localhost` loses about 200 ms on Windows trying IPv6 first. A real read of the largest
+log is about 35 ms. What the browser timings showed instead:
 
-- **Validating every line on every read.** A read of the largest log takes about 270 ms and
-  plain parsing only 11 ms. The rest is validating each line against the `ThreadEvent` schema,
-  even for a read that asks only what came after the last event.
-- **Three whole-log reads per signal.** Each `thread` live signal invalidates `thread.events`,
-  `thread.view` and `thread.list`, and the `thread.view` read is used only until the log arrives.
-  The server does one thing at a time, so these queue.
-- **Reads cancelled by the next signal.** `resyncThread` in `apps/web/src/lib/live.ts` invalidates
+- **Reads cancelled by the next signal.** `resyncThread` in `apps/web/src/lib/live.ts` invalidated
   on every signal, and an invalidation cancels a refetch already in flight. The stream sends a
-  thread's signal up to every 120 ms. A read slower than that never lands until the agent pauses.
-  `resyncAll` has a guard against exactly this, and its comment describes this bug; `resyncThread`
-  has no such guard. Reproduced against `@tanstack/query-core` 5.101.2 at the app's own timings:
-  24 reads started, 0 shown, 1 shown after the signals stopped. At 20 ms a read the same test
-  shows all of them, which is why only long threads suffer.
-- **The old state painted first.** `useThread` draws the held log, or a cached `thread.view`, at
+  thread's signal up to every 120 ms, and a read slower than that never landed until the agent
+  paused. `resyncAll` had a guard against exactly this, and its comment described this bug;
+  `resyncThread` had none. Reproduced against `@tanstack/query-core` 5.101.2: 24 reads started,
+  0 shown, 1 shown after the signals stopped.
+- **Each signal read the whole thread.** It invalidated `thread.events`, `thread.view` and
+  `thread.list`. `thread.view` is the whole thread folded, and was needed only until the log
+  arrived, so the batch these shared was 8.4 MB. That is why a read in the page took longer than
+  a signal.
+- **The old state painted first.** `useThread` drew the held log, or a cached `thread.view`, at
   once. Ticket 16 of `chat-as-web-components` made a reopened thread read past its held log, so it
-  no longer stays old. It still shows old first, and the catch-up read then meets the cancellation
-  above. Those tickets fixed a different case, which is why the note came after them.
-- **Reads held up by their batch.** `thread.events` shares a request with `thread.usage` and the
-  rest of the page's reads, and a batch answers when its slowest member does. The thread also
-  waits for the feature list before asking: a reload spends about 1.7 seconds on each of those
-  batches, against 0.3 for the thread's own read.
+  no longer stayed old. It still showed old first, on 4 of 4 reopens in the baseline, and the
+  catch-up read then met the cancellation above. Those tickets fixed a different case.
+- **The feature list.** A reload waits for it, because the page needs it to know which feature the
+  address names, and it took 1.5 seconds. It parsed every ticket of 188 features in full just to
+  count them (400 ms), and read and folded the log of every feature ever shipped to ask whether
+  its lead waits on the human (1.2 seconds cold). It is also read on every `turn` signal.
+- **Reads held up by their batch.** `thread.events` shared a request with `thread.usage`, which
+  starts a process, and with the rest of the page's reads. A batch answers when its slowest member
+  does.
 
 ### The shape of it
 
-**A tail reader in the thread log (`packages/server`).** The server keeps each read thread's
+**One read per thread at a time (`apps/web`).** `oneAtATime` in `live.ts` is `resyncAll`'s guard,
+now also used per thread and for the thread lists: a signal during a read marks it dirty, the read
+is never cancelled, and exactly one more follows, so the last change is still read by a fetch that
+began after it.
+
+**One read to open a thread (`apps/web`).** `useThread` no longer calls `thread.view`, so an open
+makes one log read and a signal causes no second. `thread.view` stays on the server for Export.
+Every opening reads past the held log, and the thread is drawn only once that read has answered.
+If it fails, the held log shows with an out-of-date line. The "Loading the thread…" line fades in
+after 250 ms, so a read that answers at once shows no flash of it. ↑ in the composer still recalls
+from the held log while the thread catches up.
+
+**A tail reader in the thread log (`packages/server`).** `readThreadEvents` keeps each log's
 parsed events and how far into the file it has read, and each read parses only the lines added
-since. It reads from the last byte offset, advances only past a complete line, and starts over if
-the file shrank, as `seedThreadLog` may do. `foldedLog` in `read.ts` already keeps one such entry
-per thread and is unbounded; this replaces it, so thread lists, the waiting flag and thread reads
-share one copy. A cold first read still validates the whole log once, about 270 ms for the
-largest. Check that against decision 7's 1-second first open; if it does not fit, validate less
-on a cold read.
+since. It advances only past a complete line and starts over if the file shrank or `seedThreadLog`
+rewrote it. `foldedLog` in `read.ts` stays, on top of it.
 
-**One read per thread at a time (`apps/web`).** `resyncThread` gets the same guard as `resyncAll`:
-a signal during a read marks the thread dirty, the read is never cancelled, and exactly one more
-read follows, so the last change is still read by a fetch that began after it. `thread.list`
-invalidations go through the same guard, since a thread's status is read from them.
+**A feature list that reads less (`packages/server`).** `ticketStatusCounts` counts tickets in one
+query for the project. Only an active feature asks about its lead: nothing reads that flag of a
+shipped, archived or draft feature.
 
-**One read to open a thread (`apps/web`).** `useThread` stops calling `thread.view`, so an open
-makes one log read and a signal stops causing a second. `thread.view` stays on the server for
-Export. `useThread` paints a thread only once a read that started at this opening has answered.
-If that read fails it paints the held log, with an out-of-date line.
+**Thread reads on their own requests.** `thread.events`, `thread.list`, `thread.usage` and
+`thread.models` move out of the shared batch using the existing `UNBATCHED_PATHS` list in
+`apps/web/src/trpc.ts`. Ticket 19's rule stands: a thread the address names opens only once the
+page's list holds it, and with `thread.list` on its own request that wait is short. Answers on
+`/api/trpc` are gzipped, never the `/api/stream` signals.
 
-**Thread reads on their own requests.** `thread.events`, `thread.usage` and `thread.models` move
-out of the shared batch using the existing `UNBATCHED_PATHS` list in `apps/web/src/trpc.ts`. The
-thread column asks for its log as soon as the address names a thread, and still checks afterwards
-that the page's list holds it, so an address carried from another feature does not open a stranger
-(ticket 19's rule). Large answers on `/api/trpc` are compressed, never the `/api/stream` signals.
-
-**One status rule (`packages/core`).** A pure function beside `awaitsHuman` answers what the
-thread is doing from its events, whether its process runs, and the time:
+**One status rule (`packages/core`).** `threadActivity` answers what the thread is doing from its
+events, whether its process runs, and the time. It replaces `awaitsHuman`, which meant `asking` or
+`replied`:
 
 ```ts
-// Sketch: names are the builder's. The order is the decision.
-function threadActivity(events, running, now): 'asking' | 'replied' | 'background' | 'turn' | 'idle' {
+function threadActivity(events, running, now): 'asking' | 'turn' | 'background' | 'replied' | 'idle' {
   // asking: an open ask while the process runs
   // turn: a turn is open
   // background: a reply ended the turn, background work is live, the process runs,
   //             less than 10 minutes since that turn ended, and the reply does not
   //             end in a question mark
-  // replied: what `awaitsHuman` calls a reply today
+  // replied: a reply the human has not answered
 }
 ```
 
-`awaitsHuman` keeps its meaning for every case but `background`, where it now says no. Three
-readers need care:
+Three readers need care:
 
-- `leadAwaitsHuman` follows the rule. Its feature gains a sibling flag saying the lead works in
-  the background, which `triageOf` and the header status read as Agent working.
+- `leadState` replaces `leadAwaitsHuman`, and `feature.list` gains `leadInBackground`, which
+  `triageOf` reads as Agent working. The header reads the main chat's `ThreadEntry.state`.
 - `awaitingInput` stays true after a turn, because it means the turn ended and `needsMe` checks
   it first so that `waitingReason` beats everything. Leaving it true is what makes a
   `wait_for_you` or `declare_ready` win at once. Do not implement this by clearing the bit.
-- `ThreadEntry.state` from `listThreads` gains `working` for `background`. The chat's own
-  `view.state` from `foldThread` does not change, which is what keeps the composer honest.
+- `ThreadEntry.state` from `listThreads` gains `working` for `background`, except on a lead whose
+  feature has a waiting reason. The chat's own `view.state` from `foldThread` does not change,
+  which is what keeps the composer honest.
 
 **Background sub-agents.** The `tasks` log event gains a count of live sub-agents beside the
 commands, filled from the same `background_tasks_changed` message, whose `local_agent` entries
-`isBackgroundCommand` filters out today. Monitors and ambient tasks stay out: they are not work
-the agent waits on for a reply. The strip stays commands only.
+`isBackgroundCommand` filters out. Monitors and ambient tasks stay out: they are not work the
+agent waits on for a reply. The strip stays commands only.
 
 **The flip at 10 minutes.** Nothing is logged at that moment, so no signal would fire. The host
-sets a timer when a turn ends with background work, and publishes a `turn` live signal when it
-expires, cleared by the next turn or by the process stopping.
+sets a timer when a turn ends with background work or background work changes after a turn, and
+publishes a `turn` live signal when it expires. A `tasks` event also pushes `turn`, since work
+ending moves what the thread reads as.
 
-**The skill line.** `packages/skills`' feature skill tells a lead that hands something to the
-human while a command runs to call `wait_for_you`.
+**The skill line.** The feature skill tells a lead that hands something to the human while a
+command runs to call `wait_for_you`.
 
-### Order of work
+### Results
 
-1. Add a repeatable timing of the targets in decision 7, against a copy of the largest real log,
-   with a simulated working thread. Run it first for a baseline. If it shows a target out of reach,
-   tell the human before going on.
-2. The tail reader, then the one-read-at-a-time guard, with a test that fails first.
-3. One read to open and no old paint.
-4. Thread reads on their own requests, the list no longer holding up the thread, compression.
-5. The status rule and its readers, the 10-minute signal, sub-agents, the skill line.
-6. Re-run the timing, the project's typecheck and tests, then the review round.
+On the largest real thread (4.3 MB) in real Chrome, on this machine, with other threads working.
+"After" is the last two runs of `scripts/thread-timing.ts`.
+
+| | Target | Before | After |
+|---|---|---|---|
+| Switch back to the thread | 300 ms | 514 ms | 190–208 ms |
+| Reload on the thread | 2 s | 2.1 s | 1.3 s |
+| Opens that drew an old state first | 0 | 4 of 4 | 0 of 4 |
+| Working thread, typical lag | 1 s | 746 ms | 101–113 ms |
+| Working thread, worst lag | 1 s | 5.5 s | 173–176 ms |
+| Working thread, markers never shown | 0 | 5 | 0 |
+| First open after a server start | 1 s | 4.2 s | **1.15–1.9 s, not met** |
+
+One open of that thread now sends 1.06 MB, where it sent 8.6 MB.
+
+The first-open target is missed, and it stands as decision 7 set it. That wait comes once per
+server start. Nothing dominates what remains: no single read takes more than about 0.75 s, and
+they overlap while the server warms its own code. Getting under 1 second would mean working on
+the server's start and the page's project reads, outside threads.
 
 ## Seams
 
-- **`foldThread` / `awaitsHuman` and the new rule in `@runcastle/core`** (existing, one new): pure
-  functions over a list of events and a time. All the status cases are testable here: command
-  running, 10 minutes passed, question mark, open ask, process stopped, a command finishing
-  without waking the agent.
-- **`threadEvents` / `listThreads` in `threads/read.ts`** (existing): observe that a read after a
-  cursor returns the same events as a full read, after appends, a torn last line and a rewritten
-  file, and that it does not re-validate the file.
-- **`startLiveSync`** (existing): driven by fake frames and a clock. Observe that a read slower
-  than the signal rate still lands, and that the last signal gets one read after it.
-- **`useThread`** (existing, through `thread-column.test.tsx`): observe that a held log is not
-  painted before the opening's read answers, and is painted with the out-of-date line if it fails.
-- **`needsMe` / `triageOf` / the header status** (existing): a feature with background work and no
-  waiting reason is Agent working; with a waiting reason it needs the human.
-- **The agent host with a fake agent** (existing, `agent-host.test.ts`): observe the `tasks` event
-  with sub-agents and the `turn` signal at the limit.
-- **A timing script** (new, step 1): the numbers decision 7 asks for, before and after. It lives
-  with the repo's other scripts, and it is the feature's proof.
+- **`foldThread` and `threadActivity` in `@runcastle/core`**: pure functions over a list of events
+  and a time. All the status cases are tested here: command running, 10 minutes passed, question
+  mark, open ask, process stopped, work finishing without waking the agent.
+- **`readThreadEvents` and `listThreads` in `packages/server`**: a read after appends, a torn last
+  line and a rewritten file gives what a whole read would.
+- **`startLiveSync`**: driven by fake frames. A read slower than the signal rate lands, and the
+  last signal gets one read after it.
+- **`useThread`**, through `thread-column.test.tsx`: a held log is not drawn before the opening's
+  read answers, and is drawn with the out-of-date line if it fails.
+- **`needsMe` / `triageOf`**: a feature with background work and no waiting reason is Agent
+  working; with a waiting reason it needs the human.
+- **The agent host with a fake agent**: the `tasks` event with sub-agents, and the `turn` signal at
+  the limit.
+- **`scripts/thread-timing.ts`** (new): the numbers decision 7 asks for, before and after, and the
+  slow reads of a page load. It is the feature's proof, and it is what caught the wrong first
+  explanation.
 
 ## Out of scope
 
@@ -164,10 +178,4 @@ human while a command runs to call `wait_for_you`.
 
 ## Open questions
 
-- Whether a thread with hundreds of live tool rows re-renders too slowly. Items in the chat are not
-  memoised, so each event re-renders them all. The timing in step 1 covers a live turn; memoising
-  `Item` is a small change if it shows up.
-- Which reads hold up the page-load batch. `project.prep` takes 208 ms alone and 1.9 s during a
-  page load, so the server is queueing rather than any one read being slow. Step 1 should profile
-  that burst; the tail reader may clear most of it by itself.
 - The timings over the SSH tunnel, which can only be checked once the move has happened.
