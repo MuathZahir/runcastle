@@ -169,7 +169,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>The two designed screens</h3>
-    <p class="hint">Real components on sample data. They are waiting for you, not committed.</p>
+    <p class="hint">Real components on sample data, approved and committed.</p>
     <div class="designs">
 <!-- screen:orchestrator-list -->
 <div class="designed">
@@ -188,7 +188,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:held-feature -->
 <div class="designed">
   <h3>A feature names its holder <a class="pin" data-d="13">13</a></h3>
-  <p>The header and its crumbs are real. The names are sample data. The Tweaks menu compares the crumb with a row in Details.</p>
+  <p>The header and its crumbs are real. The names are sample data.</p>
   <p class="mono">apps/web/src/components/Workspace.tsx · preview /preview/held-feature.html</p>
   <div class="btns">
     <button data-open-design="/preview/held-feature.html">Open in design</button>
@@ -260,7 +260,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <span class="node end">One pure active rule</span><span class="arrow">read by</span>
         <span class="node">The sidebar list</span><span class="node">The Orchestrator's landing</span>
       </div>
-      <p class="hint" style="margin-top:8px">Naming changes in one function, shared with the runtime-title check. The feature read gains its holder's id and title. No schema change. Shared components changed: the sidebar's parts, the row menu (a rule after an item) and the tooltip (closes as the pointer leaves). The full shape is in the spec.</p>
+      <p class="hint" style="margin-top:8px">Naming changes in one function, shared with the runtime-title check. The feature page finds its holder in the thread list. No schema change. Shared components changed: the sidebar's parts, the row menu (a rule after an item) and the tooltip (closes as the pointer leaves). The full shape is in the spec.</p>
     </div>
   </details>
 </section>
@@ -362,6 +362,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [
       "Orchestrator thread rows show no time, and holders wear their features' rings",
       "The human's choice from the Tweaks: a column mixing times and rings doesn't work, and in an active-only list the time says little. The rings show what a thread holds and how far along it is."
+    ],
+    [
+      "The yellow dots stay as they are",
+      "The human's call after weighing the proposal to take the dot off feature rows. The rest of the sidebar stays out of this feature, as the brief says."
     ]
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
@@ -393,7 +397,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [
       13,
       "A \"Held by\" row in the Details panel's facts. The challenger would also keep the crumb after shipping.",
-      "A guess at how visible you want this. It is the part that reverses ADR-0016's \"no Held by line\", and it is a Tweak on the preview page.",
+      "A guess at how visible you want this. It is the part that reverses ADR-0016's \"no Held by line\".",
       "challenged"
     ]
   ]

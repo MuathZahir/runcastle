@@ -515,22 +515,88 @@ export function ThreadGlyph({ state }: { state: ThreadState }) {
 }
 
 /**
+ * What an Orchestrator thread holds, at the row's end: up to three of the
+ * features' own progress rings, the glyph those features wear below it, then
+ * "+N" (the-sidebar-shows-only-active-threads decision 18).
+ */
+export function HoldMark({ features }: { features: readonly FeatureListItem[] }) {
+  const n = features.length
+  return (
+    <span role="img" aria-label={`Holds ${n} ${n === 1 ? 'feature' : 'features'}`} className="inline-flex items-center gap-0.5">
+      {features.slice(0, 3).map((f) => (
+        <FeatureProgressIcon key={f.id} f={f} size={12} label="" />
+      ))}
+      {n > 3 && <span className="ml-0.5">+{n - 3}</span>}
+    </span>
+  )
+}
+
+/** The features a thread holds, named: the hover on a holding row. */
+export function HoldTip({ features }: { features: readonly FeatureListItem[] }) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-1 p-0 py-0.5">
+      {features.map((f) => (
+        <li key={f.id} className="flex min-w-0 items-center gap-1.5">
+          <FeatureProgressIcon f={f} size={12} label="" />
+          <span className="min-w-0 truncate">{f.title}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
  * One thread under its feature or the Orchestrator, on one line in three
- * columns: its {@link ThreadGlyph}, its title, and how long ago it moved. Its
- * "…" (hover, right-click) holds Rename, Export and, on an open scenario
- * chat, its close (decision 5).
+ * columns: its {@link ThreadGlyph}, its title, and how long ago it moved. A
+ * `mark` takes the age's place, and null is neither, the title running on; the
+ * spot only opens on hover, for the "…". Its "…" (hover, right-click) holds Rename, Export and,
+ * on an open scenario chat, its close (decision 5). A `tip` names what the mark
+ * counts, on hover or focus, in place of the title's native hover.
  */
 export function SidebarThreadRow({
   thread,
   active,
   onOpen,
   actions,
+  mark,
+  tip,
 }: {
   thread: ThreadEntry
   active: boolean
   onOpen: (id: string) => void
   actions: FeatureAction[]
+  mark?: ReactNode
+  tip?: ReactNode
 }) {
+  const bare = mark === null
+  const open = (
+    <button
+      type="button"
+      title={tip ? undefined : thread.title}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onOpen(thread.id)}
+      className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[inherit] px-2.5 text-left"
+    >
+      <ThreadGlyph state={thread.state} />
+      <span
+        className={cx(
+          'min-w-0 flex-1 truncate text-md',
+          active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
+        )}
+      >
+        {thread.title}
+      </span>
+      <span
+        className={cx(
+          'inline-flex shrink-0 items-center text-xs text-text-tertiary tabular-nums transition-opacity duration-(--dur-1)',
+          actions.length > 0 && 'group-hover/thread:opacity-0 group-has-[:focus-visible]/thread:opacity-0',
+          bare && actions.length > 0 && 'group-hover/thread:w-5 group-has-[:focus-visible]/thread:w-5',
+        )}
+      >
+        {mark === undefined ? thread.updatedAt > 0 && relTime(thread.updatedAt) : mark}
+      </span>
+    </button>
+  )
   return (
     <div
       className={cx(
@@ -539,31 +605,13 @@ export function SidebarThreadRow({
       )}
       onContextMenu={actions.length > 0 ? openRowMenu : undefined}
     >
-      <button
-        type="button"
-        title={thread.title}
-        aria-current={active ? 'page' : undefined}
-        onClick={() => onOpen(thread.id)}
-        className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[inherit] px-2.5 text-left"
-      >
-        <ThreadGlyph state={thread.state} />
-        <span
-          className={cx(
-            'min-w-0 flex-1 truncate text-md',
-            active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
-          )}
-        >
-          {thread.title}
-        </span>
-        <span
-          className={cx(
-            'shrink-0 text-xs text-text-tertiary tabular-nums transition-opacity duration-(--dur-1)',
-            actions.length > 0 && 'group-hover/thread:opacity-0 group-has-[:focus-visible]/thread:opacity-0',
-          )}
-        >
-          {thread.updatedAt > 0 && relTime(thread.updatedAt)}
-        </span>
-      </button>
+      {tip ? (
+        <Tooltip label={tip} side="right" align="start" leaves>
+          {open}
+        </Tooltip>
+      ) : (
+        open
+      )}
       {actions.length > 0 && (
         <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-hover/thread:opacity-100 group-has-[:focus-visible]/thread:opacity-100">
           <FeatureActionsMenu actions={actions} label="Thread actions" />
@@ -591,9 +639,10 @@ export function ThreadListMore({ label, icon, onClick }: { label: string; icon: 
 }
 
 /**
- * The open feature's or the Orchestrator's threads in the order given, five
- * and then the rest: a feature's open in place ("Show N more"); the
- * Orchestrator's are the Conversations page (`more`, "All N conversations").
+ * The open feature's or the Orchestrator's threads in the order given. A
+ * feature's: five and then the rest, opened in place ("Show N more"). The
+ * Orchestrator's: those `keep` says are active, with no cap, and the rest are
+ * the Conversations page (`more`, "All N conversations").
  */
 export function SidebarThreadList({
   threads,
@@ -602,6 +651,9 @@ export function SidebarThreadList({
   actionsFor,
   more,
   label = 'Threads',
+  keep,
+  markFor,
+  tipFor,
 }: {
   threads: readonly ThreadEntry[]
   /** The thread in front, or null when none is (the Conversations page). */
@@ -611,16 +663,34 @@ export function SidebarThreadList({
   /** Where the rest live, instead of opening in place. */
   more?: () => void
   label?: string
+  /** Which threads list, in place of the five; the rest only count towards `more`. */
+  keep?: (t: ThreadEntry) => boolean
+  /** What a row shows in place of its age; null for nothing. */
+  markFor?: (t: ThreadEntry) => ReactNode
+  /** The names behind that mark, on hover. */
+  tipFor?: (t: ThreadEntry) => ReactNode
 }) {
   const [all, setAll] = useState(false)
-  const { shown, hidden } = all ? { shown: [...threads], hidden: 0 } : visibleThreads(threads, current)
+  const listed = keep ? threads.filter(keep) : null
+  const { shown, hidden } = listed
+    ? { shown: listed, hidden: threads.length - listed.length }
+    : all
+      ? { shown: [...threads], hidden: 0 }
+      : visibleThreads(threads, current)
   return (
     <ul aria-label={label} className="m-0 flex animate-rise-in list-none flex-col gap-px p-0">
       {shown.map((t, i) => (
         <li key={t.id} className="flex flex-col gap-px">
           {/* Divided: a hairline from the title column to the edge, between thread rows. */}
           {i > 0 && <span aria-hidden className="mr-2.5 ml-[34px] h-px bg-border-subtle" />}
-          <SidebarThreadRow thread={t} active={t.id === current} onOpen={onOpen} actions={actionsFor(t)} />
+          <SidebarThreadRow
+            thread={t}
+            active={t.id === current}
+            onOpen={onOpen}
+            actions={actionsFor(t)}
+            mark={markFor?.(t)}
+            tip={tipFor?.(t)}
+          />
         </li>
       ))}
       {hidden > 0 && (

@@ -10,7 +10,7 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 
 **The active rule.** A thread is active if any of these is true: its state is working or waiting (waiting meaning an open question, the list's existing state), it holds a feature in flight or up next, it is the thread in front, or the human wrote in it in the last 24 hours. A pure function in the sidebar threads module owns this, taking the thread, the thread in front, the project's features and the time. The sidebar's list and the Orchestrator's landing both use it, so they can't disagree. "In flight" is status active. "Up next" is a draft marked up next. The 24 hours is one named constant.
 
-**What the server adds.** A thread entry gains when the human last wrote: the newest live prompt from the human that is not hidden, read from the fold of the log the list already keeps. An entry with no log has none. The feature list already carries who holds each feature, so holdings are derived in the web app from the query the sidebar already reads, with no new endpoint. The feature read gains the holder as id and title, using the existing holder lookup, and returns nothing once a feature has shipped.
+**What the server adds.** A thread entry gains when the human last wrote: the newest live prompt from the human that is not hidden, read from the fold of the log the list already keeps. An entry with no log has none. The feature list already carries who holds each feature, so holdings are derived in the web app from the query the sidebar already reads, with no new endpoint. The feature's page finds its holder's name in the project's thread list, a query the sidebar already polls, so the feature read stays as it is and re-reads no thread log. A shipped feature shows no holder, and neither does a holder the list no longer has.
 
 **Naming.** Whether the runtime's title may name a thread now depends on the thread as well as its log: an Orchestrator thread may use it even after a briefing, and every other kind keeps today's rule. A generated title containing one of the junk phrases ("project session", "project skill", "resume conversation", any case) is ignored wherever a title is chosen, so a thread falls through to the human's first message. Only titles from the log are affected, so logged threads pick up their names at once and terminal-era threads stay as they are. The runtime-title check in the thread host and the name function share the rule. Renames still win. The name a holder goes by follows, because it is the same function.
 
@@ -25,7 +25,7 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 - **The active rule** (new): the pure function. Shows each of the four clauses, backlog holds not counting, and 24 hours as the edge.
 - **The Orchestrator's landing** (new): a pure function from threads and features to "open this chat", "Conversations" or "new chat". Shows all three outcomes, with scenario chats never picked.
 - **The sidebar thread list** (existing): static markup. Shows the filter, the rings with their "+N", no age on an Orchestrator row, the "All N conversations" row, and a feature's list unchanged with its ages.
-- **The feature read** (existing): shows the holder while unshipped and none once shipped.
+- **The feature's holder** (new): a pure function from the feature and the thread list. Shows the thread while unshipped, and none once shipped, with no holder, or with a holder the list lacks.
 
 ## Out of scope
 
@@ -40,4 +40,3 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 
 - Whether Codex sends a title: this machine has no Codex threads. Either answer works (decision 8).
 - "Runcastle on your phone" is reworking the sidebar for small screens, so whichever lands second may have conflicts in the sidebar's parts. Hover does not exist on a phone, which is why the "…" menu carries the same list.
-- The holder's place on the feature page is an open Tweak for the human.

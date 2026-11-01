@@ -98,3 +98,7 @@ Superseded by: 18.
 **Decision:** No row in the Orchestrator's list shows an age. A thread holding features ends with those features' progress rings: up to three, then "+N". A thread holding none shows nothing after its title. The Conversations page and the threads under a feature keep their times.
 **Why:** The human's choice from the Tweaks: a column mixing times and rings doesn't work, and in an active-only list the time says little. The rings show what a thread holds and how far along it is.
 Supersedes: 1.
+
+## 19. The yellow dots stay as they are
+**Decision:** Feature rows, the Preparation row, thread rows and the Orchestrator card keep their yellow dots unchanged.
+**Why:** The human's call after weighing the proposal to take the dot off feature rows. The rest of the sidebar stays out of this feature, as the brief says.

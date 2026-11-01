@@ -28,6 +28,8 @@ export interface FeatureAction {
   disabled?: string
   /** A title for an enabled item. */
   hint?: string
+  /** A rule under this item: the end of a group at the top of the menu. */
+  ruleAfter?: boolean
   onSelect: (triggerRef: RefObject<HTMLButtonElement | null>) => void
 }
 
@@ -72,7 +74,7 @@ export function FeatureActionsMenu({
   const safe = actions.filter((a) => !a.danger)
   const destructive = actions.filter((a) => a.danger)
 
-  const item = (a: FeatureAction) => (
+  const item = (a: FeatureAction) => [
     <DropdownMenuItem
       key={a.key}
       className="text-sm"
@@ -90,8 +92,9 @@ export function FeatureActionsMenu({
       }}
     >
       {a.label}
-    </DropdownMenuItem>
-  )
+    </DropdownMenuItem>,
+    a.ruleAfter ? <DropdownMenuSeparator key={`${a.key}-rule`} /> : null,
+  ]
 
   return (
     <DropdownMenu>
