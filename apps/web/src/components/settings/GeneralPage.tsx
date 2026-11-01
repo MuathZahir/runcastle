@@ -24,7 +24,7 @@ const THEMES: readonly { value: ThemePreference; label: string; icon: ReactNode 
 
 export function GeneralPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
   // Neither section reads `settings.get`, so both stand while it loads or fails.
-  const appearance = (
+  const standalone = (
     <>
       {showsSetting(filter, THEME_FIELD) && (
         <SettingSection title="Appearance">
@@ -38,25 +38,25 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
   if (globals.isLoading)
     return (
       <>
-        {appearance}
+        {standalone}
         <SettingsSkeleton groups={GENERAL_SKELETON} className="mt-9" />
       </>
     )
   if (globals.error)
     return (
       <>
-        {appearance}
+        {standalone}
         <DimLine>Could not load settings: {globals.error.message}</DimLine>
       </>
     )
-  if (!globals.data) return <>{appearance}</>
+  if (!globals.data) return <>{standalone}</>
 
   const rows = pageRows(globals.data, 'general')
   const group = (name: 'server' | 'sessions') => rows.filter((row) => row.group === name)
 
   return (
     <>
-      {appearance}
+      {standalone}
       <SettingGroup
         title="Server"
         rows={group('server')}
