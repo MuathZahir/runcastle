@@ -7,8 +7,7 @@ Orchestrator click); these settle what it left open.
 ## 1. A row's hold mark takes the age's spot
 **Decision:** An Orchestrator thread row that holds features shows a mark at the right, where the age sits, and no age. Every other row keeps its age. No line, no label, no word.
 **Why:** The row only fits the title and one short thing, and in an active-only list the age matters least. It is the human's own idea from the brief.
-**Assumed.** Alternative: keep the age and squeeze the mark beside it, at the cost of more of the title.
-**Challenged:** A bare "3" in a column of "2d" and "5h" can read as an age or an unread count, so a glyph with the number may read better. The two looks are a Tweak on the preview page.
+Superseded by: 18.
 
 ## 2. The mark counts features in flight or up next
 **Decision:** The mark counts the same features that make a thread active: held, and in flight or up next. Held backlog, shipped and archived features are not counted, and a thread holding only those has no mark.
@@ -94,3 +93,8 @@ Orchestrator click); these settle what it left open.
 **Decision:** When a thread becomes active or stops being active the list updates straight away, even under the pointer. The start-time order keeps every other row in the same relative place.
 **Why:** It happens rarely, and freezing the list while the pointer is over it is machinery that hides news such as a thread starting to wait.
 **Assumed.** Alternative: hold back removals until the pointer leaves the list.
+
+## 18. Orchestrator thread rows show no time, and holders wear their features' rings
+**Decision:** No row in the Orchestrator's list shows an age. A thread holding features ends with those features' progress rings: up to three, then "+N". A thread holding none shows nothing after its title. The Conversations page and the threads under a feature keep their times.
+**Why:** The human's choice from the Tweaks: a column mixing times and rings doesn't work, and in an active-only list the time says little. The rings show what a thread holds and how far along it is.
+Supersedes: 1.

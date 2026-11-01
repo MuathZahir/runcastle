@@ -6,7 +6,7 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 
 ## Approach
 
-**What the human sees.** With the Orchestrator open, its card lists only active threads, newest started first, with no cap. "All N conversations" sits under them whenever any thread is not listed. A thread that holds features in flight or up next shows a count in the age's spot. Hovering the row names those features, and the row's "…" menu lists them above Rename and opens one. Threads are named by what they are about. Clicking Orchestrator opens the active thread with the latest activity, the Conversations page if none is active, or an empty new chat if the project has none. A feature's header starts with the thread holding it, and clicking that crumb opens the thread.
+**What the human sees.** With the Orchestrator open, its card lists only active threads, newest started first, with no cap. "All N conversations" sits under them whenever any thread is not listed. Rows show no time. A thread that holds features in flight or up next ends with those features' progress rings, up to three and then "+N", and a thread holding none shows nothing after its title. Hovering a holding row names those features, and the row's "…" menu lists them above Rename and opens one. Threads are named by what they are about. Clicking Orchestrator opens the active thread with the latest activity, the Conversations page if none is active, or an empty new chat if the project has none. A feature's header starts with the thread holding it, and clicking that crumb opens the thread.
 
 **The active rule.** A thread is active if any of these is true: its state is working or waiting (waiting meaning an open question, the list's existing state), it holds a feature in flight or up next, it is the thread in front, or the human wrote in it in the last 24 hours. A pure function in the sidebar threads module owns this, taking the thread, the thread in front, the project's features and the time. The sidebar's list and the Orchestrator's landing both use it, so they can't disagree. "In flight" is status active. "Up next" is a draft marked up next. The 24 hours is one named constant.
 
@@ -16,7 +16,7 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 
 **The Orchestrator's landing.** On arrival with no chat addressed, the page picks the Orchestrator chat with the latest activity among active threads, as today's pick does among all of them, and picks once. If none is active and chats exist, it replaces the address with the Conversations page rather than pushing it, so Back doesn't bounce. If the project has none, it opens an empty new chat. Closing a scenario errand lands by the same rule. Scenario chats are never picked. While an errand is open its row stays listed.
 
-**Designed pieces.** The row and list changes are made in the sidebar's parts: a mark and tip per row, a filter on the list in place of the five, and the hold count and names. The Orchestrator list passes these, and a feature's own thread list passes none, so it is unchanged. The action menu gains a rule after an item, and the tooltip can close as soon as the pointer leaves its trigger. The feature's header adds the holder as a first crumb capped at about 176px, and uses the quiet last-crumb treatment only when a thread crumb follows, so the feature stays the emphasised item. These are uncommitted until the human approves them, along with the preview pages `/preview/active-threads.html` and `/preview/held-feature.html`.
+**Designed pieces.** The row and list changes are made in the sidebar's parts: a mark and tip per row (a row's mark replaces its age, and an empty mark means nothing shows), a filter on the list in place of the five, and the rings and names. The Orchestrator list passes these, and a feature's own thread list passes none, so it is unchanged. The action menu gains a rule after an item, and the tooltip can close as soon as the pointer leaves its trigger. The feature's header adds the holder as a first crumb capped at about 176px, and uses the quiet last-crumb treatment only when a thread crumb follows, so the feature stays the emphasised item. These are uncommitted until the human approves them, along with the preview pages `/preview/active-threads.html` and `/preview/held-feature.html`.
 
 ## Seams
 
@@ -24,7 +24,7 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 - **Thread list read** (existing): the project's thread list. Shows the human's last-written time, including that hidden and rewound prompts don't count.
 - **The active rule** (new): the pure function. Shows each of the four clauses, backlog holds not counting, and 24 hours as the edge.
 - **The Orchestrator's landing** (new): a pure function from threads and features to "open this chat", "Conversations" or "new chat". Shows all three outcomes, with scenario chats never picked.
-- **The sidebar thread list** (existing): static markup. Shows the filter, the mark in the age's spot, the "All N conversations" row, and a feature's list unchanged.
+- **The sidebar thread list** (existing): static markup. Shows the filter, the rings with their "+N", no age on an Orchestrator row, the "All N conversations" row, and a feature's list unchanged with its ages.
 - **The feature read** (existing): shows the holder while unshipped and none once shipped.
 
 ## Out of scope
@@ -40,4 +40,4 @@ The human works in one Orchestrator thread and later comes back to another. Toda
 
 - Whether Codex sends a title: this machine has no Codex threads. Either answer works (decision 8).
 - "Runcastle on your phone" is reworking the sidebar for small screens, so whichever lands second may have conflicts in the sidebar's parts. Hover does not exist on a phone, which is why the "…" menu carries the same list.
-- The hold mark's final look and the holder's place on the feature page are open Tweaks for the human.
+- The holder's place on the feature page is an open Tweak for the human.
