@@ -279,6 +279,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     return () => window.removeEventListener('keydown', onKey)
   }, [setCmdk])
 
+  // A feature's page asked for the thread holding it.
+  const [threadRequest, setThreadRequest] = useState<string | null>(null)
+  const consumeThreadRequest = useCallback(() => setThreadRequest(null), [])
+
   const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared, empty })
   // The details are one of the feature page's panel views (design-mode
   // decision 5), so the palette's toggle and the page's button are one switch.
@@ -308,6 +312,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
         conversations={ws.conversations}
+        threadRequest={threadRequest}
+        onConsumeThreadRequest={consumeThreadRequest}
         onOpenConversations={ws.openConversations}
         onCloseConversations={ws.selectProject}
         onOpenPreparation={ws.startPreparation}
@@ -333,6 +339,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           driving={driving}
           landedOn={landedOn === selectedFeatureId}
           onDriveChange={setDriving}
+          onOpenThread={(threadId) => {
+            setThreadRequest(threadId)
+            ws.selectProject()
+          }}
           // Same exit as the sidebar's delete: drop the stale selection, land
           // on the project home.
           onDeleted={() => {

@@ -1,5 +1,6 @@
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
+import { heldFeatures as holdsOf, threadIsActive } from '../src/lib/sidebar-threads'
 import { busyFeatures } from './sidebar-data'
 
 /**
@@ -23,8 +24,8 @@ export const VPS = 'thread_vps'
 export const DESIGN = 'thread_design'
 export const OLD = 'thread_old'
 
-/** When the human last wrote, the one fact `ThreadEntry` does not carry yet. */
-export const lastHumanAt: Record<string, number> = {
+/** When the human last wrote. */
+const lastHumanAt: Record<string, number> = {
   [NOTES]: now - 20 * MIN,
   [VPS]: now - 3 * HOUR,
   [DESIGN]: now - 3 * DAY,
@@ -70,17 +71,10 @@ export const heldFeatures: FeatureListItem[] = busyFeatures.map((f) => {
   return heldBy ? { ...f, heldBy, ...(f.title === 'Dark terminal palette' ? { status: 'active' as const } : {}) } : f
 })
 
-/** What a row counts: held, and in flight or up next. */
-export function holdsOf(thread: string, features: readonly FeatureListItem[]): FeatureListItem[] {
-  return features.filter((f) => f.heldBy === thread && (f.status === 'active' || (f.status === 'draft' && f.upNext)))
-}
+export { holdsOf }
 
-/** The active rule, as the brief states it. */
+/** The real rule, over the sample's times. */
 export function isActive(t: ThreadEntry, current: string | null, features: readonly FeatureListItem[], at = now): boolean {
-  return (
-    t.state !== 'idle' ||
-    t.id === current ||
-    holdsOf(t.id, features).length > 0 ||
-    at - (lastHumanAt[t.id] ?? 0) < DAY
-  )
+  const written = lastHumanAt[t.id]
+  return threadIsActive({ ...t, ...(written === undefined ? {} : { lastHumanAt: written }) }, { current, features, now: at })
 }

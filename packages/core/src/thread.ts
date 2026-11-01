@@ -439,6 +439,8 @@ export interface ThreadEntry {
   createdAt: number
   /** When it last moved, for "4m", "2d". */
   updatedAt: number
+  /** When the human last wrote in it; absent when they never did, or it has no log. */
+  lastHumanAt?: number
   runtime: 'claude-code' | 'codex'
   /** A conversation from before threads had logs: it reads back as plain turns until it is continued. */
   readOnlyTranscript?: boolean
@@ -446,6 +448,11 @@ export interface ThreadEntry {
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */
 export const EMPTY_THREAD_VIEW: ThreadView = { items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }
+
+/** When the human last wrote in a thread, rewound words aside; undefined when they never did. */
+export function lastHumanAt(events: readonly ThreadEvent[]): number | undefined {
+  return liveEvents(events).findLast((e) => e.type === 'prompt' && e.source === 'human' && !e.hidden)?.at
+}
 
 /** The events {@link foldThread} still reads after edit-and-rewind cut some out. */
 export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
