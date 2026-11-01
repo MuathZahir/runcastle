@@ -334,6 +334,37 @@ if (bin) {
   record(s.name ?? 'serve', s.ok, s.detail)
 }
 
+// --- 7. install script ----------------------------------------------------------
+
+header('7. install script')
+{
+  const siteDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'site')
+  const windows = platform() === 'win32'
+  const scriptRun = windows
+    ? run(
+        'powershell',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(siteDir, 'install.ps1'), '--yes', '--agent', 'claude'],
+        { ...process.env, RUNCASTLE_INSTALL_SPEC: spec },
+      )
+    : run('bash', [join(siteDir, 'install.sh'), '--yes', '--agent', 'claude'], {
+        ...process.env,
+        RUNCASTLE_INSTALL_SPEC: spec,
+      })
+  console.log(scriptRun.out)
+  // The script reaches third-party installers and may want sudo, so it only warns.
+  const version = run('runcastle', ['--version'], {
+    ...process.env,
+    PATH: `${join(homedir(), '.bun', 'bin')}${delimiter}${process.env.PATH ?? ''}`,
+  })
+  const ok = scriptRun.code === 0 && version.code === 0
+  record(
+    'install script',
+    ok,
+    ok ? `${windows ? 'install.ps1' : 'install.sh'} ran, runcastle ${version.out}` : `script exit ${scriptRun.code}, runcastle --version exit ${version.code}`,
+    false,
+  )
+}
+
 // --- summary ------------------------------------------------------------------
 
 header('summary')
