@@ -15,6 +15,7 @@ import {
 } from './ui/combobox'
 import { cx } from './ui/floating'
 import { SectionLabel } from './ui/list'
+import { useIsPhone } from './lib/use-phone'
 
 /**
  * The shared primitives (apps/web/DESIGN.md §Components, STYLE.md §Primitives).
@@ -349,6 +350,11 @@ export function Dialog({
 }) {
   const [confirming, setConfirming] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  // On a phone the full window is the whole screen, edge to edge: no margin,
+  // no corners, and at least the screen's height whatever height the caller
+  // gave it (runcastle-on-your-phone: a review package fills the phone).
+  const phone = useIsPhone()
+  const edge = size === 'full' && !inline && phone
 
   useEffect(() => {
     if (!open) return
@@ -414,9 +420,9 @@ export function Dialog({
         inline
           ? 'flex flex-1 items-center justify-center p-6'
           : cx(
-              'fixed inset-0 z-[200] flex items-start justify-center px-4 pb-4',
+              'fixed inset-0 z-[200] flex items-start justify-center',
               // The palette sits at 12vh; every other dialog at 8vh.
-              size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]',
+              edge ? '' : cx('px-4 pb-4', size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]'),
               DIALOG_SCRIM[scrim],
             ),
         backdropClassName,
@@ -439,9 +445,9 @@ export function Dialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={cx(
-          'w-full rounded-lg bg-surface-raised text-sm text-text shadow-dialog animate-dialog-in',
+          'w-full bg-surface-raised text-sm text-text shadow-dialog animate-dialog-in',
           scrim === 'none' && 'pointer-events-auto',
-          DIALOG_SIZE[size],
+          edge ? 'min-h-dvh' : cx('rounded-lg', DIALOG_SIZE[size]),
           className,
         )}
       >
