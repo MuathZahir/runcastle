@@ -143,10 +143,26 @@ describe('buildInstallPlan', () => {
     expect(labels(plan)).toEqual(['Git', 'Claude Code'])
     expect(plan.install[0].commands).toEqual([{ file: 'sudo', args: ['pacman', '-S', '--noconfirm', 'git'] }])
     expect(plan.afterwards).toEqual([
+      'Open a new terminal',
       'Install Docker: https://docs.docker.com/get-docker/',
       'Sign in: claude auth login',
       'For burns: runcastle token',
     ])
+  })
+
+  it('says to open a new terminal when the script added Bun to PATH, unless logging out covers it', () => {
+    const present = report(
+      probe('bun', 'ok', '1.4.2'),
+      probe('git', 'ok', 'git version 2.47.0'),
+      probe('codex', 'ok', '0.61.0'),
+      probe('codex-auth', 'ok'),
+      probe('container-runtime', 'ok', 'Docker version 28.5.2'),
+    )
+    expect(buildInstallPlan(present, { ...mac, pathChanged: true }, null).afterwards).toContain('Open a new terminal')
+    expect(buildInstallPlan(present, mac, null).afterwards).not.toContain('Open a new terminal')
+    const vps = buildInstallPlan(freshMachine(), { ...ubuntuVps, pathChanged: true }, 'claude').afterwards
+    expect(vps).toContain('Log out and back in, so the docker group applies')
+    expect(vps).not.toContain('Open a new terminal')
   })
 
   it('a second run lists only what is still missing', () => {

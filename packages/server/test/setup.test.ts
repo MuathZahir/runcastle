@@ -190,11 +190,11 @@ describe('saveAfkCredential', () => {
     expect(touched).toBe(true)
   })
 
-  it('rejects a token with an embedded newline without touching the file', async () => {
-    let touched = false
-    const deps = io({ write: () => (touched = true) })
-    await expect(saveAfkCredential(deps, `${TOKEN}\nOTHER=evil`)).rejects.toThrow()
-    expect(touched).toBe(false)
+  it('removes spaces and line breaks, so a paste can never add a second env line', async () => {
+    let written = ''
+    const deps = io({ write: (content) => (written = content) })
+    await saveAfkCredential(deps, `${TOKEN.slice(0, 40)} ${TOKEN.slice(40)}\nOTHER=evil`)
+    expect(written).toBe(`CLAUDE_CODE_OAUTH_TOKEN=${TOKEN}OTHER=evil\n`)
   })
 })
 

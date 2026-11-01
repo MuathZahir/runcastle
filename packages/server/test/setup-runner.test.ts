@@ -176,6 +176,13 @@ describe('runcastle setup', () => {
     expect(h.ran).toEqual([])
   })
 
+  it('counts only Enter or y as a yes, so a stray key installs nothing', async () => {
+    const h = harness({ answers: ['', 'q'] })
+
+    expect(await runSetup([], h.deps)).toBe(1)
+    expect(h.ran).toEqual([])
+  })
+
   it('with nothing to install, says so and exits 0 without asking', async () => {
     const h = harness({ reports: [done] })
 

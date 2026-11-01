@@ -1,4 +1,4 @@
-import { delimiter, isAbsolute, join } from 'node:path'
+import { posix } from 'node:path'
 
 export const SERVICE_NAME = 'runcastle'
 export const SERVICE_FILE_PATH = '/etc/systemd/system/runcastle.service'
@@ -42,9 +42,10 @@ export function renderServiceFile(input: ServiceFileInput): string {
 
 /**
  * The service's `PATH`: the process's absolute entries, then the places Bun and
- * the agent CLIs install to, deduped in order.
+ * the agent CLIs install to, deduped in order. Linux paths, whatever runs this.
  */
 export function servicePath(processPath: string | undefined, home: string): string {
+  const { delimiter, isAbsolute, join } = posix
   const extra = [join(home, '.bun', 'bin'), join(home, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin']
   const entries = [...(processPath ?? '').split(delimiter).filter((e) => e && isAbsolute(e)), ...extra]
   return [...new Set(entries)].join(delimiter)

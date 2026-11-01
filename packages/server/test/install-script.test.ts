@@ -78,6 +78,14 @@ EOS`
     expect(calls()).toEqual(['id -u'])
   })
 
+  it('run through sudo, says to run it without sudo rather than to create the user', () => {
+    stub(stubs, 'id', 'echo 0')
+    const r = run([], { SUDO_USER: 'ada' })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('without sudo, as ada')
+    expect(r.stderr).not.toContain('adduser')
+  })
+
   it('hands straight over to setup, with its arguments, when Bun and runcastle are current', () => {
     stub(stubs, 'bun', 'echo 1.3.14')
     stub(stubs, 'curl')

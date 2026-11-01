@@ -2,12 +2,10 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { SERVICE_FILE_PATH } from '../services/service-file'
 import { resolveExecutable, resolveSpawnTarget } from '../util/resolve-executable'
 import { LINUX_PACKAGE_MANAGERS, type MachineFacts, type PackageManager } from './plan'
 import type { StepRunner } from './runner'
-
-/** Where `runcastle service install` writes its system service. */
-export const SERVICE_FILE = '/etc/systemd/system/runcastle.service'
 
 const PACKAGE_MANAGERS: readonly PackageManager[] = [...LINUX_PACKAGE_MANAGERS, 'brew', 'winget']
 
@@ -33,8 +31,9 @@ export function readMachineFacts(env: NodeJS.ProcessEnv = process.env): MachineF
     distroId: platform === 'linux' ? readDistroId() : null,
     packageManagers: PACKAGE_MANAGERS.filter((pm) => resolveExecutable(pm) !== pm),
     hasDesktop: Boolean(env.DISPLAY || env.WAYLAND_DISPLAY),
-    serviceFileExists: platform === 'linux' && existsSync(SERVICE_FILE),
+    serviceFileExists: platform === 'linux' && existsSync(SERVICE_FILE_PATH),
     user: userInfo().username,
+    pathChanged: env.RUNCASTLE_PATH_CHANGED === '1',
   }
 }
 

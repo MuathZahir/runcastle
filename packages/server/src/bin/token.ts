@@ -1,11 +1,13 @@
+import { RUNTIME_SPECS } from '../doctor/doctor'
 import { createSystemExec } from '../doctor/system-exec'
+import { checkClaudeToken } from '../doctor/token-check'
 import { InvalidInputError } from '../errors'
-import { fileAfkTokenIo, saveAfkCredential, type AfkTokenIo } from '../services/setup'
+import { fileAfkTokenIo, saveAfkCredential, type AfkTokenIo, type TokenValidity } from '../services/setup'
 
 export const TOKEN_USAGE = [
   'usage: runcastle token [--stdin]',
   '  Saves the Claude Code token burns use when nobody is watching.',
-  '  --stdin  read the whole token from stdin, no prompt: claude setup-token | runcastle token --stdin',
+  '  --stdin  read the whole token from stdin, no prompt: runcastle token --stdin < token.txt',
 ].join('\n')
 
 /** How long a pasted line break may be followed by more text before Enter counts. */
@@ -22,9 +24,12 @@ export interface TokenDeps {
   io?: AfkTokenIo
 }
 
-/** Wrapping adds spaces and line breaks; a real token holds neither. */
-export function stripWrapping(raw: string): string {
-  return raw.replace(/\s+/g, '')
+/** Ask the service itself: `claude --version` says nothing about the token. */
+async function checkLive(token: string): Promise<TokenValidity> {
+  const result = await checkClaudeToken(token)
+  if (result.verdict === 'ok') return { valid: true, detail: 'A live call authenticated.' }
+  if (result.verdict === 'unreachable') return { valid: true, detail: `Not tested: ${result.why}` }
+  return { valid: false, detail: result.why, fix: RUNTIME_SPECS['claude-code'].afkFix }
 }
 
 async function readAllStdin(): Promise<string> {
@@ -94,9 +99,9 @@ export async function runToken(argv: string[], deps: TokenDeps = {}): Promise<nu
     return 1
   }
 
-  const io = deps.io ?? fileAfkTokenIo(createSystemExec(), 'claude-code')
+  const io = deps.io ?? { ...fileAfkTokenIo(createSystemExec(), 'claude-code'), verify: checkLive }
   try {
-    const verdict = await saveAfkCredential(io, stripWrapping(raw), 'claude-code')
+    const verdict = await saveAfkCredential(io, raw, 'claude-code')
     if (verdict.valid) {
       log(`Saved. ${verdict.detail}`)
       return 0

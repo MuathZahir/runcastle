@@ -57,10 +57,14 @@ confirm_or_stop() {
 
 refuse_root() {
   local name="${SUDO_USER:-}"
-  if [ -z "$name" ] || [ "$name" = root ]; then name="runcastle"; fi
   say "runcastle must not be installed as root."
   say "Claude Code refuses to run unattended as root, so every burn would fail."
   say ""
+  if [ -n "$name" ] && [ "$name" != root ]; then
+    say "Run the installer again without sudo, as $name."
+    return
+  fi
+  name="runcastle"
   say "Create a normal user with sudo (run these as root):"
   say "  sudo adduser $name"
   say "  sudo usermod -aG sudo $name"
@@ -137,7 +141,11 @@ main() {
   fi
 
   # Bun's global bin may not be on PATH yet, in a fresh shell or after an earlier run.
-  export PATH="$HOME/.bun/bin:$PATH"
+  # Setup then tells the person to open a new terminal: this one will not find it.
+  case ":$PATH:" in
+    *":$HOME/.bun/bin:"*) ;;
+    *) export RUNCASTLE_PATH_CHANGED=1 PATH="$HOME/.bun/bin:$PATH" ;;
+  esac
 
   ensure_bun || return 1
   ensure_runcastle || return 1

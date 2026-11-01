@@ -101,7 +101,8 @@ export async function runSetup(argv: string[], deps: SetupDeps = {}): Promise<nu
     log('There is no terminal to ask on, so nothing was installed. Re-run with --yes to install these.')
     return 1
   }
-  if (!options.yes && /^n/i.test((await prompt(confirmQuestion(plan.install.length))).trim())) {
+  // Enter or y. Any other key is a no: this yes can run `sudo`.
+  if (!options.yes && !/^y?$/i.test((await prompt(confirmQuestion(plan.install.length))).trim())) {
     log('Nothing was installed.')
     return 1
   }

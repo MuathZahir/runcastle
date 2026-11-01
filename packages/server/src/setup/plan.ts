@@ -49,6 +49,8 @@ export interface MachineFacts {
   serviceFileExists: boolean
   /** The person's login name, for the docker group. */
   user: string
+  /** The install script added Bun to PATH, so the terminal it ran in lacks it. */
+  pathChanged?: boolean
 }
 
 /** Which agent CLI to install when neither is there (decision 2). */
@@ -165,10 +167,10 @@ function agentItem(
   const spec = RUNTIME_SPECS[runtime]
   const binary = row(report, spec.ids.binary)
   const install = installerCommand(AGENT_INSTALLERS[runtime], platform)
-  const changesPath = platform === 'win32'
   if (!isOk(binary)) {
     const label = binary?.detail === noNodeDetail(spec.bin) ? `${spec.label} (reinstall without Node)` : spec.label
-    return { item: { label, needsSudo: false, commands: [install], changesPath } }
+    // Standalone installers write to `~/.local/bin`, which an open terminal may lack.
+    return { item: { label, needsSudo: false, commands: [install], changesPath: true } }
   }
   const version = row(report, `${spec.ids.binary}-adapter-version`)
   if (version?.status === 'stale') {
@@ -270,7 +272,8 @@ export function buildInstallPlan(
   }
 
   if (dockerGroupChanged) afterwards.push('Log out and back in, so the docker group applies')
-  if (install.some((i) => i.changesPath)) afterwards.push('Open a new terminal')
+  // Logging out covers it, so one step does for both.
+  else if (facts.pathChanged || install.some((i) => i.changesPath)) afterwards.push('Open a new terminal')
   if (containerAfterwards) afterwards.push(containerAfterwards)
   for (const runtime of inUse) {
     const spec = RUNTIME_SPECS[runtime]
