@@ -112,6 +112,20 @@ EOS`
     expect(existsSync(join(home, '.bun', 'bin', 'bun'))).toBe(true)
   })
 
+  it("runs Bun's installer with no bun on PATH, or it skips the shell config", () => {
+    stub(stubs, 'curl', `echo 'echo "installer saw $PATH" >> "${log}"'\n${bunInstaller('1.3.20')}`)
+    run(['--yes'])
+    const saw = calls().find((line) => line.startsWith('installer saw'))
+    expect(saw).toBeDefined()
+    expect(saw).not.toContain('.bun/bin')
+  })
+
+  it('gives Bun a ~/.zshrc to write to on a machine that has none', () => {
+    stub(stubs, 'curl', bunInstaller('1.3.20'))
+    run(['--yes'], { SHELL: '/bin/zsh' })
+    expect(existsSync(join(home, '.zshrc'))).toBe(true)
+  })
+
   it('installs unzip first, through sudo, when Bun is missing and unzip is not there', () => {
     rmSync(join(stubs, 'unzip'))
     stub(stubs, 'curl', bunInstaller('1.3.20'))

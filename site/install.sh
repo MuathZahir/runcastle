@@ -101,6 +101,8 @@ ensure_bun() {
     if [ "$(uname -s)" = Linux ] && ! command -v unzip >/dev/null 2>&1; then
       install_unzip || return 1
     fi
+    # Bun's installer only adds itself to a ~/.zshrc that exists, and a new Mac has none.
+    if [ "${SHELL##*/}" = zsh ] && [ ! -e "$HOME/.zshrc" ]; then : >"$HOME/.zshrc"; fi
     say "Installing Bun..."
     curl -fsSL https://bun.sh/install | bash || return 1
     export PATH="$HOME/.bun/bin:$PATH"
@@ -142,9 +144,14 @@ main() {
 
   # Bun's global bin may not be on PATH yet, in a fresh shell or after an earlier run.
   # Setup then tells the person to open a new terminal: this one will not find it.
+  # Only add it once Bun is there: Bun's installer skips the shell config if it
+  # already finds bun on PATH, and new terminals would never find it.
   case ":$PATH:" in
     *":$HOME/.bun/bin:"*) ;;
-    *) export RUNCASTLE_PATH_CHANGED=1 PATH="$HOME/.bun/bin:$PATH" ;;
+    *)
+      export RUNCASTLE_PATH_CHANGED=1
+      if [ -x "$HOME/.bun/bin/bun" ]; then export PATH="$HOME/.bun/bin:$PATH"; fi
+      ;;
   esac
 
   ensure_bun || return 1
