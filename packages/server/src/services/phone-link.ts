@@ -62,7 +62,12 @@ const WINDOWS_TAILSCALE = win32.join('C:\\Program Files', 'Tailscale', 'tailscal
 /** What a Linux server needs before a non-root user may change the serve config. */
 export const LINUX_OPERATOR_HINT = 'sudo tailscale set --operator=$USER'
 
-const serveOnArgs = (port: number) => ['serve', '--bg', `--https=${port}`, `http://127.0.0.1:${port}`]
+const serveOnArgs = (port: number) => [
+  'serve',
+  '--bg',
+  `--https=${port}`,
+  `http://127.0.0.1:${port}`,
+]
 const serveOffArgs = (port: number) => ['serve', `--https=${port}`, 'off']
 
 /** A command as the human would type it, the binary quoted when it is a path. */

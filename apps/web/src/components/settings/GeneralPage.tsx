@@ -3,6 +3,7 @@ import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
 import { DimLine, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
+import { PhoneLinkSection } from './PhoneLinkSection'
 import { SettingGroup, SettingLine, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -21,11 +22,17 @@ const THEMES: readonly { value: ThemePreference; label: string; icon: ReactNode 
   { value: 'system', label: 'System', icon: <IconMonitor size={14} /> },
 ]
 
-export function GeneralPage({ globals, filter, highlightField }: SettingsPageProps) {
-  const appearance = showsSetting(filter, THEME_FIELD) && (
-    <SettingSection title="Appearance">
-      <ThemeRow />
-    </SettingSection>
+export function GeneralPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
+  // Neither section reads `settings.get`, so both stand while it loads or fails.
+  const appearance = (
+    <>
+      {showsSetting(filter, THEME_FIELD) && (
+        <SettingSection title="Appearance">
+          <ThemeRow />
+        </SettingSection>
+      )}
+      <PhoneLinkSection projectId={projectId} filter={filter} />
+    </>
   )
 
   if (globals.isLoading)
