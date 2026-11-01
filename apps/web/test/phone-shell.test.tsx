@@ -232,10 +232,10 @@ describe('a design on a phone', () => {
   function designFakes(status: DesignStatus) {
     const calls = { heartbeat: [] as unknown[], start: [] as unknown[] }
     const host = window.location.hostname
-    const extra = {
+    const extra: TrpcFakes = {
       design: {
         status: () => status,
-        heartbeat: (input: unknown) => (calls.heartbeat.push(input), { ok: true }),
+        heartbeat: (input: unknown) => (calls.heartbeat.push(input), { running: true }),
         start: (input: unknown) => (calls.start.push(input), { url: 'http://localhost:30001/', port: 30001, command: 'vite' }),
       },
       phoneLink: {
@@ -247,7 +247,7 @@ describe('a design on a phone', () => {
           commands: [],
         }),
       },
-    } as TrpcFakes
+    }
     return { calls, extra, host }
   }
 
