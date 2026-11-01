@@ -262,9 +262,13 @@ Three of those look like details and are not:
 - **Focus is not stolen from a child that asked for it.** `Dialog` focuses the
   panel on open only when nothing inside it already has the focus.
 
-`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh · `full` 1400 or 96vw, whichever is less (the plan preview), and on a phone (`useIsPhone`) the whole screen edge to edge, at least the screen's height whatever height the caller gives it;
+`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh · `full` 1400 or 96vw, whichever is less (the plan preview), and on a phone (`useIsPhone`) the whole screen edge to edge, at least the screen's height whatever height the caller gives it · `sheet` the whole width on the screen's foot, rising in (`Sheet` below);
 `scrim`: `dim` (default) · `light` · `none` (clicks fall through). `className`
 lands on the panel and `backdropClassName` on the backdrop.
+
+| Primitive | Props | Notes |
+|---|---|---|
+| `Sheet` · `SheetRow` (`ui/sheet.tsx`) | `Sheet`: `open`, `onClose`, `title` (a quiet heading, and its name) or `label`, children (the rows). `SheetRow`: `icon` (20px, or a mark of its own), `label`, `hint`, `current`, `onClick`. | The phone's menu: a `Dialog` at `size="sheet"`, so its mechanics are the dialog's. A grab handle, then 52px rows a thumb can hit. Reference: `preview/phone.html`. |
 
 `inline` is the one escape from the portal, for `FormOverlay`, which fills the
 workspace column rather than the viewport; it claims no `aria-modal`.
