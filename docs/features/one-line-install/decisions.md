@@ -19,3 +19,7 @@
 ## 5. The scripts live on runcastle.dev, one command per system
 **Decision:** `install.sh` and `install.ps1` live in `site/`, so people can read them at the address they run: `curl -fsSL https://runcastle.dev/install.sh | bash`, and `irm https://runcastle.dev/install.ps1 | iex` on Windows. The landing page's "Get started" section and the README show these commands. `bun add -g runcastle` stays documented as the manual route. At launch the npm release goes out first and the site deploy second, because the scripts call `runcastle setup`. Both steps need the human's yes.
 **Why:** The site is static files, so one address cannot serve the right script per system. GitHub hosting gives a longer command and ties the install to the repo's layout, and reads no better. Moving the scripts later only changes the address.
+
+## 6. Run as root, the script stops before installing anything
+**Decision:** Run as root or through `sudo`, the script stops at the very start, explains why, gives the two commands that create a normal user with `sudo`, and says to re-run as that user. There is no `--allow-root`. The script only names those commands; it does not run them.
+**Why:** A fresh VPS usually logs in as root, Claude Code refuses to run unattended as root, and carrying on would put everything in root's home folder and fail at the first burn. An override would only delay that failure, and it can be added later if people need it. Running inside a Dockerfile is not a job this feature aims at.
