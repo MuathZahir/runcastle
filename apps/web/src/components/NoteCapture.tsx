@@ -312,10 +312,10 @@ export function NoteCapture({
             </span>
             {phone ? (
               <>
-                <Button size="lg" variant="ghost" onClick={onClose}>
+                <Button size="touch" variant="ghost" onClick={onClose}>
                   Close
                 </Button>
-                <Button size="lg" variant="primary" loading={saving} disabled={!text.trim()} onClick={() => void submit()}>
+                <Button size="touch" variant="primary" loading={saving} disabled={!text.trim()} onClick={() => void submit()}>
                   Save
                 </Button>
               </>

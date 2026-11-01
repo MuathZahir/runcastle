@@ -13,14 +13,14 @@ On the phone, runcastle is a list and chats. The list opens first: the Orchestra
 **One app, one address scheme.** There is no separate app or route. A width check (`useIsPhone`: under 768px wide, or under 500px tall so a phone on its side stays a phone) changes how the existing screens are framed:
 
 - `Frame` shows one thing at a time. With nothing open it shows the sidebar's content at full width, as the list. With something open it shows the page, and the list stays out of the way.
-- `ProjectShell` keeps its existing address handling, so `/p/<id>` is the list and `/p/<id>/f/<slug>` is that feature's chat. Back is the browser's Back through the existing history sync. On a phone, landing never picks a feature by itself.
+- `ProjectShell` keeps its existing address handling, so `/p/<id>` is the list and `/p/<id>/f/<slug>` is that feature's chat. Back is the browser's Back through the existing history sync, and the on-screen Back takes that same step, so the two never loop through a page already left. A chat opened straight by its link has nothing of the app's behind it, so its Back goes to the list. On a phone, landing never picks a feature by itself.
 - The feature page's panel views become full-screen pages over the chat rather than a split.
 - `PageTopbar` gives way to the phone's chat bar: Back, the title (a sheet of threads when there is more than one), the status words, and "…".
 - A bottom `Sheet` primitive is the phone's menu. It runs through `Dialog`'s mechanics and is built only once.
 
 The approved look is `apps/web/preview/phone.html`, with its source in `phone.tsx`. Its rows, thread, composer and Review Package are real components. Its bars, sheets and read-only screens are the design to reproduce with real data.
 
-**Touch.** On a phone, Enter in the composer starts a new line and the Send button sends. Keyboard hints go from the composer and the ask docks. A hover-only control is reachable or gone: row menus and hover actions are hidden on the phone list. The model and effort pickers stay and hide while the agent works. The layout follows the on-screen keyboard (`interactive-widget=resizes-content`, `dvh` heights) and respects the safe areas.
+**Touch.** On a phone, Enter in the composer and the note box starts a new line, and a button sends or saves. Keyboard hints go from the composer, the ask docks and the note box. A hover-only control is reachable or gone: row menus and hover actions are hidden on the phone list. The model and effort pickers stay and hide while the agent works. The layout follows the on-screen keyboard (`interactive-widget=resizes-content`, `dvh` heights) and respects the safe areas.
 
 **Read-only surfaces.** Plan, Tickets and a backlog feature's page keep their content and lose their controls on a phone: no ticket editing, no Go, no Start, no Merge. A notice that opens a drive is hidden, and a feature waiting on a drive says so in its chat. Preparation and the first-run wizard say to use the computer.
 

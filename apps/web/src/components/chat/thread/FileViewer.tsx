@@ -113,7 +113,7 @@ function FileBody({ file }: { file: ShownFile }) {
  */
 export function FileViewer({ file, onClose }: { file: ShownFile; onClose: () => void }) {
   // Close is the one way out of a full-screen sheet, so on a phone it is thumb-sized.
-  const control = useIsPhone() ? 'lg' : 'sm'
+  const control = useIsPhone() ? 'touch' : 'sm'
   return (
     <Dialog open onClose={onClose} labelledBy="shown-file-title" size="full" className="flex h-[86vh] flex-col overflow-hidden">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
