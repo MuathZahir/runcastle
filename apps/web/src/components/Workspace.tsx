@@ -83,6 +83,9 @@ import {
 import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
+import { useIsPhone } from '../lib/use-phone'
+import { PhoneChatBar, PhoneViewScreen } from './phone/PhoneChatBar'
+import { featurePhoneStatus, phoneViewChoices, phoneViewOf } from './phone/phone-views'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
 
@@ -133,6 +136,7 @@ export function Workspace({
   landedOn = false,
   onDriveChange,
   onDeleted,
+  onBackToList,
 }: {
   featureId: string
   /** The panel view beside the chat, or `chat` for none — the shell's, so the address bar can name it. */
@@ -148,7 +152,10 @@ export function Workspace({
    * the page's menu offers no Delete (the sidebar's still does).
    */
   onDeleted?: () => void
+  /** On a phone, the chat bar's Back: the list. */
+  onBackToList?: () => void
 }) {
+  const phone = useIsPhone()
   const utils = trpc.useUtils()
   const toast = useToast()
   const openSettings = useOpenSettings()
@@ -942,11 +949,14 @@ export function Workspace({
         )
     }
   }
-  const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // A phone shows the chat alone, or one of its views full screen in its place;
+  // Details and a drive are the computer's, so an address naming them shows the chat.
+  const phoneView = phone ? phoneViewOf(shown) : null
+  const chatHidden = !phone && !!shown && !panel.state.collapsed && panel.state.share >= 1
   // The drive stays mounted while it runs, so the app is as it was left on the
   // way back.
-  const onDrive = shown === 'drive'
-  const driveMounted = views.includes('drive')
+  const onDrive = shown === 'drive' && !phone
+  const driveMounted = views.includes('drive') && !phone
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({
@@ -976,10 +986,24 @@ export function Workspace({
           />
         </ScenarioChatContext.Provider>
       )}
-      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
+      {phoneView && (
+        <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => panel.dispatch({ type: 'close' })}>
+          {panelView(phoneView)}
+        </PhoneViewScreen>
+      )}
+      <div className={onDrive || phoneView ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
           at most one action, "⋯" and the panel toggle. */}
+      {phone ? (
+        <PhoneChatBar
+          title={feature.title}
+          status={featurePhoneStatus(status)}
+          views={phoneViewChoices(tabs, full.tickets)}
+          onView={(v) => panel.dispatch({ type: 'open', view: v, origin: 'human' })}
+          onBack={() => onBackToList?.()}
+        />
+      ) : (
       <PageTopbar
         crumbs={[
           {
@@ -1027,6 +1051,7 @@ export function Workspace({
           </>
         }
       />
+      )}
       {isDraft ? (
         <Page routeKey={`${featureId}:draft`}>
           {bodyHeader}
@@ -1062,7 +1087,8 @@ export function Workspace({
               }
               panel={
                 shown &&
-                shown !== 'drive' && (
+                shown !== 'drive' &&
+                !phone && (
                   <FeaturePanel
                     view={shown}
                     views={tabs}
