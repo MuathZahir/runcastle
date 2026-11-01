@@ -15,3 +15,7 @@
 ## 4. No terminal and no `--yes` means show the list and stop with an error
 **Decision:** The setup reads its answer directly from the terminal, so `curl | bash` can still ask. A run with no terminal at all and no `--yes` prints the full list, changes nothing further, and stops with an error saying to re-run with `--yes`. With `--yes`, it installs everything it can and prints the "afterwards" steps.
 **Why:** Silence must never count as a yes, because that yes can run `sudo` and add someone to the `docker` group. Installing anyway would be friendlier for scripts, but it makes the safe path depend on something the person cannot see. Bun and runcastle are already installed by this point, under decision 1.
+
+## 5. The scripts live on runcastle.dev, one command per system
+**Decision:** `install.sh` and `install.ps1` live in `site/`, so people can read them at the address they run: `curl -fsSL https://runcastle.dev/install.sh | bash`, and `irm https://runcastle.dev/install.ps1 | iex` on Windows. The landing page's "Get started" section and the README show these commands. `bun add -g runcastle` stays documented as the manual route. At launch the npm release goes out first and the site deploy second, because the scripts call `runcastle setup`. Both steps need the human's yes.
+**Why:** The site is static files, so one address cannot serve the right script per system. GitHub hosting gives a longer command and ties the install to the repo's layout, and reads no better. Moving the scripts later only changes the address.
