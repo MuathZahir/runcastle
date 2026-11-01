@@ -8,7 +8,11 @@ index.html          the landing page: markup and copy
 styles.css          tokens, shared chrome (nav, footer, buttons), landing page sections
 main.js             pipeline walkthrough, clipboard, the film dialog
 content.css         the reading surface for docs/ and compare/, on top of styles.css
+install.sh          the one-line install for macOS and Linux; hands over to `runcastle setup`
+install.ps1         the same for Windows
+_headers            serves both install scripts as plain text
 docs/, compare/     article pages; they load styles.css + content.css and no JS
+  docs/vps/         the VPS guide: install, service, and the SSH tunnel in
 assets/
   rc-ui.css         the design system's component styles, for the product mockups
   og.png            the social card: a capture of the top of the landing page
@@ -181,6 +185,10 @@ The absolute URLs in `<head>` (`canonical`, `og:url`, `og:image`) point at
 `https://runcastle.dev/`. Change them if the page is served elsewhere, or the
 preview cards will point at the wrong host.
 
+**Release before a site deploy.** `install.sh` and `install.ps1` call
+`runcastle setup` on whatever npm serves as `latest`, so a release must reach
+npm before a site deploy that changes what they call. See `docs/RELEASE.md`.
+
 Before a deploy, recount the two numbers in the proof strip. The commands are in
 a comment above that section in `index.html`.
 
@@ -263,5 +271,5 @@ look moves; stale screenshots are what this folder exists to avoid.
   animation (4px rise, 190ms) is CSS, and nothing moves under
   `prefers-reduced-motion`.
 - **Five class names are shared with the article pages**: `nav*`, `footer*`,
-  `brand`, `lp-btn*`, `wrap`. Renaming one means editing all nine pages under
+  `brand`, `lp-btn*`, `wrap`. Renaming one means editing all ten pages under
   `docs/` and `compare/`.
