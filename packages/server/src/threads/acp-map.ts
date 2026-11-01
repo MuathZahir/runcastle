@@ -388,6 +388,17 @@ export function backgroundTasks(message: unknown, listed: readonly BackgroundTas
   return same ? null : tasks
 }
 
+/**
+ * How many sub-agents a Claude session runs in the background now, from the same
+ * message; null when the message is not that. They have rows of their own in the
+ * chat, so they stay off the strip, but a lead left waiting on one is still at work.
+ */
+export function backgroundAgents(message: unknown): number | null {
+  const m = message as Partial<SDKBackgroundTasksChangedMessage> | null
+  if (m?.type !== 'system' || m.subtype !== 'background_tasks_changed' || !Array.isArray(m.tasks)) return null
+  return m.tasks.filter((task) => task.task_type === 'local_agent' && task.ambient !== true).length
+}
+
 /** A forwarded SDK message saying the Claude session went idle (`session_state_changed`): no model turn runs. */
 export function wentIdle(message: unknown): boolean {
   const m = message as { type?: unknown; subtype?: unknown; state?: unknown } | null

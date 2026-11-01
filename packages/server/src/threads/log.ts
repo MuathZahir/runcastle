@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
@@ -130,33 +130,83 @@ export function seedThreadLog(threadId: string, events: readonly ThreadEvent[]):
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, events.map((e, i) => `${JSON.stringify({ ...e, i })}\n`).join(''))
   states().set(threadId, { next: events.length })
+  tails().delete(path)
   publishLive({ kind: 'thread', threadId })
+}
+
+/** A log as read so far: its events, and how many bytes of the file they came from. */
+interface Tail {
+  events: ThreadEvent[]
+  offset: number
+}
+
+const TAILS_KEY = Symbol.for('runcastle.threads.log.tails')
+type GlobalWithTails = typeof globalThis & { [TAILS_KEY]?: Map<string, Tail> }
+
+/** Keyed by path: a thread's log is reached by a data dir as well as an id. */
+function tails(): Map<string, Tail> {
+  const g = globalThis as GlobalWithTails
+  if (!g[TAILS_KEY]) g[TAILS_KEY] = new Map()
+  return g[TAILS_KEY]
+}
+
+/** The event on a line, or null for one that does not parse: a write torn by a crash, a hand edit. */
+function parseLine(line: string): ThreadEvent | null {
+  if (!line.trim()) return null
+  try {
+    const parsed = ThreadEvent.safeParse(JSON.parse(line))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The events a thread's log holds now, reading only what was added since the
+ * last read: every open thread, the thread lists and the waiting flag read the
+ * log on every signal, and it only ever grows. It starts over if the file shrank.
+ * The bytes after the last newline may be a line still being written, so they are
+ * read every time and kept only once a newline ends them.
+ */
+function loggedEvents(threadId: string): readonly ThreadEvent[] {
+  const path = threadLogPath(threadId)
+  let size: number
+  try {
+    size = statSync(path).size
+  } catch {
+    tails().delete(path)
+    return []
+  }
+  let tail = tails().get(path)
+  if (!tail || size < tail.offset) {
+    tail = { events: [], offset: 0 }
+    tails().set(path, tail)
+  }
+  if (size === tail.offset) return tail.events
+  const added = Buffer.alloc(size - tail.offset)
+  const file = openSync(path, 'r')
+  try {
+    readSync(file, added, 0, added.length, tail.offset)
+  } finally {
+    closeSync(file)
+  }
+  const end = added.lastIndexOf(0x0a) + 1
+  for (const line of added.toString('utf8', 0, end).split('\n')) {
+    const event = parseLine(line)
+    if (event) tail.events.push(event)
+  }
+  tail.offset += end
+  const last = end < added.length ? parseLine(added.toString('utf8', end)) : null
+  return last ? [...tail.events, last] : tail.events
 }
 
 /**
  * A thread's log, every event with an index greater than `after` (all when
- * omitted). A line that does not parse — a write torn by a crash, a hand edit —
- * is skipped: one bad line must never make a thread unopenable. Chunks still
- * held for coalescing are not in it yet; they arrive with their own signal.
+ * omitted). A line that does not parse is skipped: one bad line must never make
+ * a thread unopenable. Chunks still held for coalescing are not in it yet; they
+ * arrive with their own signal.
  */
 export function readThreadEvents(threadId: string, after?: number): ThreadEvent[] {
-  let text: string
-  try {
-    text = readFileSync(threadLogPath(threadId), 'utf8')
-  } catch {
-    return []
-  }
-  const events: ThreadEvent[] = []
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    let raw: unknown
-    try {
-      raw = JSON.parse(line)
-    } catch {
-      continue
-    }
-    const parsed = ThreadEvent.safeParse(raw)
-    if (parsed.success && (after === undefined || parsed.data.i > after)) events.push(parsed.data)
-  }
-  return events
+  const events = loggedEvents(threadId)
+  return after === undefined ? [...events] : events.filter((e) => e.i > after)
 }
