@@ -2,6 +2,7 @@ import { trpcServer } from '@hono/trpc-server'
 import { REVIEWS_BASE } from '@runcastle/core'
 import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
+import { compress } from 'hono/compress'
 import {
   SERVE_HOSTNAME,
   SERVE_IDLE_TIMEOUT_SECONDS,
@@ -58,6 +59,10 @@ export function buildApp(ctx: AppCtx): Hono {
   // on 4512, so the dev tool would otherwise mistake one for the other when
   // deciding whether a live server needs restarting after a db change.
   app.get('/health', (c) => c.json({ ok: true, dataDir: dataDir() }))
+
+  // A long thread's log is megabytes of JSON, and the app may be read over a tunnel.
+  // First, so it wraps the reply the rest of the chain makes. Never the live stream.
+  app.use('/api/trpc/*', compress({ encoding: 'gzip', threshold: 16 * 1024 }))
 
   // tRPC replies are UTF-8 but @hono/trpc-server omits the charset, so
   // CP1252-defaulting clients (Windows PowerShell 5.1 et al.) mis-decode

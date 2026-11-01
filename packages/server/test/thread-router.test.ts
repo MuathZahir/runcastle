@@ -15,6 +15,7 @@ import {
 } from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
 import { subscribeLive } from '../src/services/bus'
+import { setWaiting } from '../src/services/lead-status'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
@@ -190,16 +191,17 @@ describe('thread router', () => {
     ])
     const renamed = thread([{ type: 'prompt', id: 'p', text: 'whatever', source: 'human' }])
     await caller.thread.rename({ threadId: renamed, title: 'Journal audit' })
-    // Runcastle's words reached the conversation later, or rode unseen with a prompt: no generated title names it.
+    // Runcastle's words reached the conversation later, or rode unseen with a prompt: an Orchestrator
+    // chat still takes the generated title (the-sidebar-shows-only-active-threads decision 5).
     const wokenLater = thread([
       { type: 'prompt', id: 'p', text: 'Audit the journal', source: 'human' },
       { type: 'prompt', id: 'w', text: '[runcastle] The round ended.', source: 'runcastle' },
-      { type: 'title', title: 'Runcastle round summary' },
+      { type: 'title', title: 'The journal audit' },
     ])
     const briefedUnseen = thread([
       { type: 'prompt', id: 'p', text: 'Pick up the release', source: 'human' },
       { type: 'briefed' },
-      { type: 'title', title: 'Runcastle feature session' },
+      { type: 'title', title: 'Picking up the release' },
     ])
 
     const names = Object.fromEntries((await caller.thread.list({ projectId })).map((t) => [t.id, t.title]))
@@ -208,8 +210,8 @@ describe('thread router', () => {
       [firstMessage]: 'A notes inbox for the project',
       [generated]: 'Dark mode for the app',
       [renamed]: 'Journal audit',
-      [wokenLater]: 'Audit the journal',
-      [briefedUnseen]: 'Pick up the release',
+      [wokenLater]: 'The journal audit',
+      [briefedUnseen]: 'Picking up the release',
     })
   })
 
@@ -426,6 +428,52 @@ describe('thread router', () => {
     expect((await app.request(`/api/threads/${id}/images/missing.png`)).status).toBe(404)
     expect((await app.request(`/api/threads/${id}/images/..%2Fthread.jsonl`)).status).toBe(404)
     expect((await app.request(`/api/threads/${id}/images/x.svg`)).status).toBe(404)
+  })
+})
+
+describe('a feature whose lead replied with work left running (threads-open-fast decisions 1 to 3)', () => {
+  const COMMAND = {
+    type: 'system',
+    subtype: 'background_tasks_changed',
+    tasks: [{ task_id: 'b1', task_type: 'local_bash', description: 'bun test' }],
+    uuid: '00000000-0000-0000-0000-000000000000',
+    session_id: 'acp-session-1',
+  }
+
+  /** The lead replies `words` with a command left running. */
+  async function replied(words: string): Promise<string> {
+    fake.script.turn = async (t) => {
+      await t.sdkMessage(COMMAND)
+      await t.say(words)
+    }
+    const id = chat()
+    await caller.thread.send({ threadId: id, text: 'Run the tests' })
+    await logUntil(id, turnEnded)
+    return id
+  }
+
+  async function reads() {
+    const [row] = await caller.feature.list({ projectId })
+    const full = await caller.feature.get({ id: featureId })
+    const thread = (await caller.thread.list({ featureId }))[0]
+    return { waits: [row!.leadAwaitsHuman, full.leadAwaitsHuman], background: row!.leadInBackground, thread: thread!.state }
+  }
+
+  it('reads as working in every status, and the chat still reads its turn as over', async () => {
+    const id = await replied('The tests are running, and I will commit once they are green.')
+    expect(await reads()).toEqual({ waits: [false, false], background: true, thread: 'working' })
+    expect((await caller.thread.view({ threadId: id })).state).toBe('idle')
+  })
+
+  it('waits on the human at once when the reply ends on a question', async () => {
+    await replied('The server is up. Shall I carry on?')
+    expect(await reads()).toEqual({ waits: [true, true], background: false, thread: 'idle' })
+  })
+
+  it('shows no thread working once the lead said it waits on the human', async () => {
+    await replied('The tests are running.')
+    setWaiting(ctx, featureId, 'start round 1?')
+    expect((await reads()).thread).toBe('idle')
   })
 })
 

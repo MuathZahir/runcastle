@@ -52,11 +52,12 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { leadAwaitsHuman } from '../threads/read'
+import { leadState, NO_LEAD } from '../threads/read'
 import {
   getTicket,
   isPendingTicket,
   listByFeature,
+  ticketStatusCounts,
   sweepOrphanedBurning,
   updateTicket,
 } from './tickets'
@@ -100,8 +101,10 @@ export interface FeatureListItem extends Feature {
    * anyone's attention.
    */
   liveSession: LiveSessionState | null
-  /** The lead replied, or asks, and the human has not answered (`leadAwaitsHuman`, decision 15). */
+  /** The lead replied, or asks, and the human has not answered (`leadState`, decision 15). */
   leadAwaitsHuman: boolean
+  /** The lead replied and its background work still runs: Agent working, not Waiting on you. */
+  leadInBackground: boolean
   /**
    * When this feature last did anything — its newest event's `ts`, falling back
    * to `createdAt` when it has no events yet. The sidebar row's relative stamp
@@ -447,7 +450,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     upNextProblem: feature.upNext && feature.status === 'draft'
       ? (upNextProblems(ctx, feature.projectId).get(id) ?? null)
       : null,
-    leadAwaitsHuman: leadAwaitsHuman(ctx, id),
+    leadAwaitsHuman: leadState(ctx, id).awaitsHuman,
   }
 }
 
@@ -463,23 +466,28 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const projectFeatures = rows.map(rowToFeature)
   const deps = dependencyMaps(ctx, projectId, projectFeatures)
   const problems = upNextProblems(ctx, projectId)
+  const ticketStatuses = ticketStatusCounts(ctx, projectId)
 
   return projectFeatures.map((feature) => {
-    const tickets = listByFeature(ctx, feature.id)
+    const byStatus = ticketStatuses.get(feature.id)
     const counts: TicketCounts = {
-      total: tickets.length,
-      pending: tickets.filter((t) => t.status === 'pending').length,
-      burning: tickets.filter((t) => t.status === 'burning').length,
-      done: tickets.filter((t) => t.status === 'done').length,
-      failed: tickets.filter((t) => t.status === 'failed').length,
-      cancelled: tickets.filter((t) => t.status === 'cancelled').length,
+      total: [...(byStatus?.values() ?? [])].reduce((sum, n) => sum + n, 0),
+      pending: byStatus?.get('pending') ?? 0,
+      burning: byStatus?.get('burning') ?? 0,
+      done: byStatus?.get('done') ?? 0,
+      failed: byStatus?.get('failed') ?? 0,
+      cancelled: byStatus?.get('cancelled') ?? 0,
     }
+    // Only a feature in flight has a lead to wait on: nothing reads this of the
+    // others, and asking would read the log of every feature ever shipped.
+    const lead = feature.status === 'active' ? leadState(ctx, feature.id) : NO_LEAD
     return {
       ...feature,
       ticketCounts: counts,
       activeRun: hasActiveRun(ctx, feature.id),
       liveSession: liveSessionOf(ctx, feature.id),
-      leadAwaitsHuman: leadAwaitsHuman(ctx, feature.id),
+      leadAwaitsHuman: lead.awaitsHuman,
+      leadInBackground: lead.inBackground,
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],

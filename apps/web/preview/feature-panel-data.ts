@@ -163,6 +163,7 @@ export function fullAt(step: Step): Full {
     blocks: [{ featureId: 'feat_round', slug: 'the-panel-s-round-review-and-shipped-views', title: 'The panel’s round, review and shipped views', upNext: true }],
     upNextProblem: null,
     leadAwaitsHuman: step === 'tickets',
+    leadInBackground: false,
   } as unknown as Full
 }
 

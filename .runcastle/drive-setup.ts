@@ -207,7 +207,6 @@ emit({
   RUNCASTLE_WEB_DIST: pkg('apps', 'web', 'dist'),
   RUNCASTLE_SKILLS_DIR: pkg('packages', 'skills'),
   RUNCASTLE_HOOK_CLIENT: pkg('packages', 'server', 'src', 'launcher', 'hook-client.ts'),
-  RUNCASTLE_PTY_HOST: pkg('packages', 'server', 'src', 'pty', 'pty-host.cjs'),
   RUNCASTLE_SANDCASTLE_TEMPLATE: pkg('packages', 'server', 'src', 'assets', 'sandcastle'),
 })
 

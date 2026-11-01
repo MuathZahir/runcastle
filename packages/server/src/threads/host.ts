@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk/unstable'
 import {
+  BACKGROUND_WINDOW_MS,
   DEFAULT_RUNTIME,
   foldThread,
   lastPickedModel,
@@ -54,6 +55,7 @@ import {
 import { claudeTranscriptOnDisk, readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
 import { claudeUsageReport, codexUsageReport } from './usage'
 import {
+  backgroundAgents,
   backgroundTasks,
   CLAUDE_SDK_MESSAGE_METHOD,
   createUpdateMapper,
@@ -74,7 +76,7 @@ import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, LONG_CONTEXT, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
-import { runtimeMayName, threadAbout, threadName } from './naming'
+import { namesItsSubject, runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 import { snapshotWorktree, worktreeChanges, worktreeRelative, type WorktreeSnapshot } from './worktree-changes'
@@ -122,6 +124,8 @@ export interface AgentHostDeps {
   selfTurnQuietMs?: number
   /** Whether the runtime's own record of a conversation is known to be on disk; see `side-channels.ts`. */
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
+  /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
+  backgroundWindowMs?: number
 }
 
 /**
@@ -335,6 +339,11 @@ interface Thread {
   map: (update: acp.SessionUpdate, from?: string) => ThreadEventBody[]
   /** The background commands the agent runs now, as last logged. */
   tasks: BackgroundTask[]
+  /** How many sub-agents it runs in the background, as last logged. */
+  agents: number
+  /** When its last turn ended, and the timer that says so when its background work stops counting. */
+  turnEndedAt?: number
+  windowEnds?: ReturnType<typeof setTimeout>
   /** Who sent the prompt that started this process. */
   startedBy: PromptOptions['source']
   /** The lifecycle's opening, sent with the first prompt and then forgotten. */
@@ -423,6 +432,7 @@ class Host implements AgentHost {
   private readonly rewindFiles: NonNullable<AgentHostDeps['rewindFiles']>
   private readonly selfTurnQuietMs: number
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
+  private readonly backgroundWindowMs: number
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -439,6 +449,7 @@ class Host implements AgentHost {
     this.rewindFiles = deps.rewindFiles ?? rewindClaudeFiles
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
+    this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -842,6 +853,7 @@ class Host implements AgentHost {
       queue: [],
       map: createUpdateMapper((prefix) => `${prefix}_${row.id}_${Date.now().toString(36)}_${++n}`),
       tasks: [],
+      agents: 0,
       startedBy,
       ...(opening ? { opening } : {}),
     }
@@ -1035,6 +1047,7 @@ class Host implements AgentHost {
     t.state = 'stopped'
     if (this.threads.get(t.id) === t) this.threads.delete(t.id)
     if (t.idle) clearTimeout(t.idle)
+    if (t.windowEnds) clearTimeout(t.windowEnds)
     this.settleAsk(t, 'cancelled')
     t.conn?.close()
   }
@@ -1126,6 +1139,8 @@ class Host implements AgentHost {
     t.turn = null
     this.logAwaits(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
+    t.turnEndedAt = Date.now()
+    this.watchWindow(t)
     const row = getSessionRow(this.ctx, t.id)
     // The turn may have written files: the composer's `@` lists them afresh.
     if (row) forgetWorktreeFiles(row.worktreePath)
@@ -1190,6 +1205,8 @@ class Host implements AgentHost {
     t.turn = null
     this.logAwaits(t.id, { type: 'turn_ended', reason, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
+    t.turnEndedAt = Date.now()
+    this.watchWindow(t)
     this.pump(t)
   }
 
@@ -1206,6 +1223,20 @@ class Host implements AgentHost {
       if (t.state === 'stopped') return
     }
     this.enqueue(t, item)
+  }
+
+  /**
+   * A thread's background work stops counting {@link BACKGROUND_WINDOW_MS} after
+   * its turn ended, with nothing logged to say so: push a `turn` signal then, so
+   * the sidebar and the header read it at once and not on their next poll.
+   */
+  private watchWindow(t: Thread): void {
+    if (t.windowEnds) clearTimeout(t.windowEnds)
+    if (t.turn || t.turnEndedAt === undefined || (t.tasks.length === 0 && t.agents === 0)) return
+    const left = t.turnEndedAt + this.backgroundWindowMs - Date.now()
+    if (left <= 0) return
+    t.windowEnds = setTimeout(() => publishLive({ kind: 'turn', sessionId: t.id }), left)
+    t.windowEnds.unref?.()
   }
 
   private armIdle(t: Thread): void {
@@ -1238,9 +1269,12 @@ class Host implements AgentHost {
       if (body.type === 'model' && t.state === 'starting') continue
       if (body.type === 'title') {
         // The runtime's generated title names a thread nobody named, unless it was made from
-        // runcastle's opening (see `naming.ts`); a name the human gave stays.
-        if (getSessionRow(this.ctx, t.id)?.title) continue
-        if (runtimeMayName(readThreadEvents(t.id))) setSessionTitle(this.ctx, t.id, body.title)
+        // runcastle's opening or only names the session (see `naming.ts`); a name the human gave stays.
+        const row = getSessionRow(this.ctx, t.id)
+        if (row?.title) continue
+        if (row && runtimeMayName(row, readThreadEvents(t.id)) && namesItsSubject(row, body.title)) {
+          setSessionTitle(this.ctx, t.id, body.title)
+        }
       }
       appendThreadEvent(t.id, body)
     }
@@ -1254,10 +1288,15 @@ class Host implements AgentHost {
   private onSdkMessage(t: Thread, message: unknown): void {
     if (t.state === 'stopped') return
     if (t.turn?.self && wentIdle(message)) return void this.endSelfTurn(t, t.turn, 'end_turn')
+    const agents = backgroundAgents(message)
+    if (agents === null) return
     const tasks = backgroundTasks(message, t.tasks, Date.now())
-    if (!tasks) return
-    t.tasks = tasks
-    appendThreadEvent(t.id, { type: 'tasks', tasks })
+    if (!tasks && agents === t.agents) return
+    t.tasks = tasks ?? t.tasks
+    t.agents = agents
+    // Its work ending moves what the thread reads as, turn or no turn.
+    this.logAwaits(t.id, { type: 'tasks', tasks: t.tasks, ...(agents ? { agents } : {}) })
+    this.watchWindow(t)
   }
 
   private unattended(t: Thread): boolean {

@@ -93,7 +93,12 @@ function makeEventHost() {
 const globals = globalThis as unknown as Record<string, unknown>
 let windowStub: ReturnType<typeof makeEventHost>
 let documentStub: ReturnType<typeof makeEventHost>
-let handlers: { resyncAll: ReturnType<typeof vi.fn>; resyncTranscript: ReturnType<typeof vi.fn>; resyncThread: ReturnType<typeof vi.fn> }
+let handlers: {
+  resyncAll: ReturnType<typeof vi.fn>
+  resyncTranscript: ReturnType<typeof vi.fn>
+  resyncThread: ReturnType<typeof vi.fn>
+  resyncThreadLists: ReturnType<typeof vi.fn>
+}
 let stop: () => void
 
 /** The source the client is currently listening to. */
@@ -115,7 +120,7 @@ beforeEach(() => {
   globals.EventSource = StubEventSource
   globals.window = windowStub
   globals.document = documentStub
-  handlers = { resyncAll: vi.fn(), resyncTranscript: vi.fn(), resyncThread: vi.fn() }
+  handlers = { resyncAll: vi.fn(), resyncTranscript: vi.fn(), resyncThread: vi.fn(), resyncThreadLists: vi.fn() }
   stop = () => {}
 })
 
@@ -253,7 +258,58 @@ describe('startLiveSync', () => {
     current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' }))
 
     expect(handlers.resyncThread).toHaveBeenCalledExactlyOnceWith('th1')
+    expect(handlers.resyncThreadLists).toHaveBeenCalledTimes(1)
     expect(handlers.resyncAll).not.toHaveBeenCalled()
+  })
+
+  // A working agent signals every flush (120ms), and a read of a long thread took
+  // longer: each read was cancelled by the next signal, and none landed until the
+  // agent paused. The thread sat on an old state, then jumped.
+  it('lets a thread’s read finish under a busy feed, and reads once more after the last signal', async () => {
+    const reads: Array<() => void> = []
+    handlers.resyncThread.mockImplementation(() => new Promise<void>((resolve) => reads.push(resolve)))
+    start()
+    current().emit('ready')
+
+    const signal = () => current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' }))
+    signal()
+    signal()
+    signal()
+    expect(handlers.resyncThread).toHaveBeenCalledTimes(1)
+
+    reads[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(handlers.resyncThread).toHaveBeenCalledTimes(2)
+
+    reads[1]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(handlers.resyncThread).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads each thread on its own: one thread’s read holds no other’s back', () => {
+    handlers.resyncThread.mockImplementation(() => new Promise<void>(() => {}))
+    start()
+    current().emit('ready')
+
+    current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' }))
+    current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th2' }))
+
+    expect(handlers.resyncThread.mock.calls).toEqual([['th1'], ['th2']])
+  })
+
+  it('lets the thread lists’ read finish under a busy feed too', async () => {
+    let answer = () => undefined as void
+    handlers.resyncThreadLists.mockImplementation(() => new Promise<void>((resolve) => (answer = resolve)))
+    start()
+    current().emit('ready')
+
+    current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th1' }))
+    current().emit('live', JSON.stringify({ kind: 'thread', threadId: 'th2' }))
+    expect(handlers.resyncThreadLists).toHaveBeenCalledTimes(1)
+
+    answer()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(handlers.resyncThreadLists).toHaveBeenCalledTimes(2)
   })
 
   it('routes a turn signal to the full resync', () => {

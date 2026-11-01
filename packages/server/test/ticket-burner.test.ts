@@ -569,14 +569,14 @@ describe('burnRun — scheduling and summary', () => {
       expect(probes.find((args) => args[0] === 'run')?.at(-1)).toBe(
         'for c in claude; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done; echo "@@runcastle-cli-version claude-code"; claude --version 2>/dev/null || true',
       )
-      // Burns never build: the probe is the only container command run.
+      // Drift never builds: the probe is the only container command run.
       expect(probes.some((args) => args[0] === 'build')).toBe(false)
       expect(res.status).toBe('succeeded')
       expect(calls).toEqual([1, 2])
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Workers to catch up.',
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
           data: {
             warning: true,
             managed: true,
@@ -717,7 +717,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Workers to catch up.',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
           data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
       ])

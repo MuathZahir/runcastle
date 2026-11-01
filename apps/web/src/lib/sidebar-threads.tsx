@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { FeatureListItem } from './api'
+import { newestThread } from './chat-sessions'
 import type { ThreadEntry } from './chat-thread'
 
 /**
@@ -64,6 +66,59 @@ export function sidebarThreadOrder(threads: readonly ThreadEntry[]): ThreadEntry
     const main = Number(b.role === 'main') - Number(a.role === 'main')
     return main !== 0 ? main : b.createdAt - a.createdAt
   })
+}
+
+/** How long writing in a thread keeps it listed: a talk-only thread must not vanish on clicking away. */
+export const WRITTEN_KEEPS_LISTED_MS = 24 * 60 * 60 * 1000
+
+/** What a thread holds, as the Orchestrator's list counts it: held, and in flight or up next. */
+export function heldFeatures(threadId: string, features: readonly FeatureListItem[]): FeatureListItem[] {
+  return features.filter((f) => f.heldBy === threadId && (f.status === 'active' || (f.status === 'draft' && f.upNext)))
+}
+
+/**
+ * Whether the Orchestrator's list shows a thread (the-sidebar-shows-only-active-threads):
+ * it is working or asking, it holds something, it is in front, or the human wrote
+ * in it lately. Everything else lives on the Conversations page.
+ */
+export function threadIsActive(
+  thread: ThreadEntry,
+  { current, features, now }: { current: string | null; features: readonly FeatureListItem[]; now: number },
+): boolean {
+  return (
+    thread.state !== 'idle' ||
+    thread.id === current ||
+    heldFeatures(thread.id, features).length > 0 ||
+    (thread.lastHumanAt !== undefined && now - thread.lastHumanAt < WRITTEN_KEEPS_LISTED_MS)
+  )
+}
+
+/** Where arriving at the Orchestrator lands. */
+export type OrchestratorLanding = { kind: 'chat'; threadId: string } | { kind: 'conversations' } | { kind: 'none' }
+
+/**
+ * Arriving with no chat addressed: the active chat that moved last, else the
+ * Conversations page, else (a project with no chats) nothing. Scenario and
+ * preparation chats are never picked.
+ */
+export function orchestratorLanding(
+  threads: readonly ThreadEntry[],
+  features: readonly FeatureListItem[],
+  now: number,
+): OrchestratorLanding {
+  if (!threads.some((t) => t.role === 'project')) return { kind: 'none' }
+  const active = threads.filter((t) => threadIsActive(t, { current: null, features, now }))
+  const threadId = newestThread(active, 'project')
+  return threadId ? { kind: 'chat', threadId } : { kind: 'conversations' }
+}
+
+/** The thread to name on a feature's page: its holder, while it has not shipped and the list knows it. */
+export function featureHolder(
+  feature: { status: string; heldBy?: string | undefined },
+  threads: readonly ThreadEntry[],
+): ThreadEntry | null {
+  if (feature.status === 'shipped' || !feature.heldBy) return null
+  return threads.find((t) => t.id === feature.heldBy) ?? null
 }
 
 /** localStorage key for the rows whose threads the human folded away (decision 10). */

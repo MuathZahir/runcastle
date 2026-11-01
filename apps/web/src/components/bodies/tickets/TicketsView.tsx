@@ -4,6 +4,7 @@ import { trpc } from '../../../trpc'
 import { useEventLog } from '../../../lib/events'
 import { useLandOnChat } from '../../../lib/land-on-chat'
 import {
+  imageBuildWords,
   laneFacts,
   laneState,
   sessionActive,
@@ -110,6 +111,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const { folded, current } = splitRounds(tickets, roundsQ.data ?? [])
   const waiting = tickets.filter((t) => t.status === 'pending')
   const runningRun = full.data.runs.find((r) => r.status === 'running')
+  const building = imageBuildWords(events, runningRun?.id)
   // A conflict's "Resolve in terminal" opens a session, which the launcher
   // refuses while a run holds the feature branch or another terminal is open.
   const terminalBlocked = !!runningRun || full.data.sessions.some(sessionActive)
@@ -207,7 +209,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
           {current.round ? `Round ${current.round.round}` : current.number > 1 ? `Round ${current.number}` : 'Round 1'}
         </h2>
         <span className={cx('min-w-0 truncate text-xs', current.running ? 'text-shimmer text-text-secondary' : 'text-text-tertiary')}>
-          {roundWords(current)}
+          {building ?? roundWords(current)}
         </span>
         <span className="ml-auto flex items-center gap-1">
           {runningRun && (

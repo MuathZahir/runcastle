@@ -161,7 +161,8 @@ export function ChatThread({
       >
         <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col pt-8" style={{ paddingBottom: footH + 56 }}>
           {items.length === 0 && loading ? (
-            <p role="status" className="m-0 flex items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary">
+            // Held back a moment: a read that answers at once shows no flash of it.
+            <p role="status" className="m-0 flex animate-fade-in items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary [animation-delay:var(--dur-3)]">
               <Spinner />
               Loading the thread…
             </p>

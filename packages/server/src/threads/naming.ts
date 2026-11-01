@@ -10,24 +10,35 @@ import { tryGetFeature } from '../services/repo'
  * A title the runtime generates summarises the conversation's start, and once
  * runcastle's opening or a kickoff reached the conversation — sent alone, held
  * for the human's first message (decision 12), riding a resumed chat's prompt,
- * or begun in a terminal before the log — that start is runcastle's words
- * ("Runcastle project skill session"). Such a title names nothing; the human's
- * first message names the thread instead.
+ * or begun in a terminal before the log — that start is runcastle's words. A
+ * feature's thread then keeps the human's first message. An Orchestrator chat
+ * takes the title anyway, for it is mostly about its subject, unless the title
+ * only names the session (the-sidebar-shows-only-active-threads decisions 5, 6).
  */
 
 /** What a thread with nothing said in it yet is called. */
 export const NEW_CHAT_NAME = 'New chat'
 
 /**
- * Whether the runtime's generated title may name the thread: only when the
- * human's own words are all runcastle ever said to that conversation — no
- * prompt of runcastle's, and nothing it `briefed` the agent with besides.
- * A command (Compact now) is no prompt of anyone's.
+ * Whether the runtime's generated title may name the thread. Always on an
+ * Orchestrator chat. Otherwise only when the human's own words are all runcastle
+ * ever said to that conversation — no prompt of runcastle's, and nothing it
+ * `briefed` the agent with besides. A command (Compact now) is no prompt of
+ * anyone's.
  */
-export function runtimeMayName(events: readonly ThreadEvent[]): boolean {
+export function runtimeMayName(row: Pick<SessionRow, 'kind'>, events: readonly ThreadEvent[]): boolean {
+  if (row.kind === 'project') return true
   if (events.some((e) => e.type === 'briefed')) return false
   const said = events.filter((e) => e.type === 'prompt' && !e.hidden)
   return said.length > 0 && said.every((e) => e.type === 'prompt' && e.source === 'human')
+}
+
+/** What a generated title says when it names an Orchestrator chat's session, not its subject. */
+const NAMES_THE_SESSION = /project session|project skill|resume conversation/i
+
+/** Whether a generated title says what the thread is about; this runs on Orchestrator chats only. */
+export function namesItsSubject(row: Pick<SessionRow, 'kind'>, title: string): boolean {
+  return row.kind !== 'project' || !NAMES_THE_SESSION.test(title)
 }
 
 /** What the thread's feature is called, for a main chat nobody has written in. */
@@ -81,9 +92,10 @@ export function threadName(row: SessionRow, events: readonly ThreadEvent[], abou
   if (renamed) return renamed
   const branched = events[branchAt]
   if (branched?.type === 'branched') return firstMessage(row, own) ?? `Branch of ${branched.from}`
-  const mayName = runtimeMayName(events)
+  const mayName = runtimeMayName(row, events)
   const generated = events.flatMap((e) => (e.type === 'title' ? [e.title] : []))
-  if (row.title && (mayName || !generated.includes(row.title))) return row.title
-  if (mayName && generated.length) return generated.at(-1)!
+  if (row.title && (!generated.includes(row.title) || (mayName && namesItsSubject(row, row.title)))) return row.title
+  const title = generated.findLast((t) => namesItsSubject(row, t))
+  if (mayName && title) return title
   return firstMessage(row, events) ?? errandName(row, events, about) ?? NEW_CHAT_NAME
 }

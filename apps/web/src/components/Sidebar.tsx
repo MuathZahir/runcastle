@@ -20,7 +20,7 @@ import { useIsPhone } from '../lib/use-phone'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { foldKey, sidebarThreadOrder, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT } from '../lib/chat-sessions'
 import {
@@ -49,6 +49,9 @@ import { CollapseSidebarButton } from './Frame'
 import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
 import {
   DriveCard,
+  FeatureProgressIcon,
+  HoldMark,
+  HoldTip,
   OrchestratorCard,
   PrepRow,
   Shelf,
@@ -295,6 +298,20 @@ export function Sidebar(props: SidebarProps) {
       ? published
       : null
   const projectThreads = view === 'project' && published && 'projectId' in published.scope ? published : null
+  // The Orchestrator's rows: its features, each opening its page, over Rename and Export.
+  const orchestratorThreadActions = (t: ThreadEntry): FeatureAction[] => {
+    const held = heldFeatures(t.id, features)
+    return [
+      ...held.map((f, i) => ({
+        key: `open-${f.id}`,
+        label: f.title,
+        icon: <FeatureProgressIcon f={f} size={14} label="" />,
+        ruleAfter: i === held.length - 1,
+        onSelect: () => onSelect(f.id),
+      })),
+      ...threadActionsFor(t),
+    ]
+  }
 
   const row = (f: FeatureListItem, nested = false) => {
     // The phone's list (phone decision 1): only shown with nothing open, so no
@@ -403,7 +420,20 @@ export function Sidebar(props: SidebarProps) {
                     threads={sidebarThreadOrder(projectThreads.threads)}
                     current={projectThreads.current}
                     onOpen={projectThreads.pick}
-                    actionsFor={threadActionsFor}
+                    actionsFor={orchestratorThreadActions}
+                    keep={(t) =>
+                      // An open errand's chat keeps its row, which is how it is closed.
+                      t.id === projectThreads.errand?.threadId ||
+                      threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
+                    }
+                    markFor={(t) => {
+                      const held = heldFeatures(t.id, features)
+                      return held.length > 0 ? <HoldMark features={held} /> : null
+                    }}
+                    tipFor={(t) => {
+                      const held = heldFeatures(t.id, features)
+                      return held.length > 0 ? <HoldTip features={held} /> : undefined
+                    }}
                     {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
                   />
                 ),

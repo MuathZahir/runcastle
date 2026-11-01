@@ -8,6 +8,7 @@ import { sessionDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { subscribeLive } from '../src/services/bus'
 import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
@@ -665,6 +666,69 @@ describe('subagents and background commands', () => {
     const done = await logUntil(id, turnsEnded(1))
     expect(done.filter((e) => e.type === 'tasks')).toHaveLength(2)
     expect(foldThread(done).tasks).toEqual([])
+  })
+
+  describe('work left running as a turn ends', () => {
+    const changed = (tasks: { task_id: string; task_type: string; description: string; subagent_type?: string }[]) => ({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks,
+      uuid: '00000000-0000-0000-0000-000000000000',
+      session_id: 'acp-session-1',
+    })
+    const COMMAND = { task_id: 'b1', task_type: 'local_bash', description: 'bun test' }
+    const AGENT = { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' }
+
+    /** The `turn` signals a thread pushes once its turn has ended, with nothing else happening. */
+    async function signalsAfterTheTurn(id: string): Promise<number> {
+      let n = 0
+      const stop = subscribeLive((signal) => {
+        if (signal.kind === 'turn' && signal.sessionId === id) n++
+      })
+      const logged = readThreadEvents(id).length
+      await new Promise((r) => setTimeout(r, 120))
+      stop()
+      expect(readThreadEvents(id)).toHaveLength(logged)
+      return n
+    }
+
+    it('logs background sub-agents beside the commands, and keeps them off the strip', async () => {
+      setup({ turn: (t) => t.sdkMessage(changed([COMMAND, AGENT])) })
+      const id = thread()
+      await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+      const log = await logUntil(id, turnsEnded(1))
+      expect(log.find((e) => e.type === 'tasks')).toMatchObject({ agents: 1 })
+      expect(foldThread(log).tasks).toEqual([{ id: 'b1', title: 'bun test', startedAt: expect.any(Number) }])
+    })
+
+    it('logs a change in the sub-agents alone', async () => {
+      setup({
+        turn: async (t) => {
+          await t.sdkMessage(changed([COMMAND, AGENT]))
+          await t.sdkMessage(changed([COMMAND]))
+        },
+      })
+      const id = thread()
+      await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+      const log = await logUntil(id, turnsEnded(1))
+      expect(log.filter((e) => e.type === 'tasks').map((e) => (e.type === 'tasks' ? (e.agents ?? 0) : -1))).toEqual([1, 0])
+    })
+
+    it('says so when the work stops counting, with nothing logged at that moment', async () => {
+      setup({ turn: (t) => t.sdkMessage(changed([COMMAND])) }, { backgroundWindowMs: 40 })
+      const id = thread()
+      await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+      await logUntil(id, turnsEnded(1))
+      expect(await signalsAfterTheTurn(id)).toBe(1)
+    })
+
+    it('stays quiet when no work was left running', async () => {
+      setup({ turn: async () => undefined }, { backgroundWindowMs: 40 })
+      const id = thread()
+      await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+      await logUntil(id, turnsEnded(1))
+      expect(await signalsAfterTheTurn(id)).toBe(0)
+    })
   })
 })
 

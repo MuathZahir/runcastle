@@ -100,9 +100,17 @@ export interface BuiltImage {
   versions: Record<AgentRuntime, string | null>
   /** The image's `USER`, as written; null when absent or the image predates asking. */
   user: string | null
+  /**
+   * The inspect failed for some reason other than "no such image", so `present`
+   * is a guess. A burn must not build on it: a wedged engine reads the same way.
+   */
+  undetermined?: boolean
 }
 
 const NO_VERSIONS: Record<AgentRuntime, string | null> = { 'claude-code': null, codex: null }
+
+/** How docker and podman each say an image is not there. */
+const NO_SUCH_IMAGE = /no such (image|object)|image not known/i
 
 /** Ask a local image whether it is there, what it was built from, and who it runs as. */
 export async function inspectBuiltImage(
@@ -119,7 +127,13 @@ export async function inspectBuiltImage(
     tag,
   ])
   if (!(out.ok && out.code === 0)) {
-    return { present: false, hash: null, versions: NO_VERSIONS, user: null }
+    return {
+      present: false,
+      hash: null,
+      versions: NO_VERSIONS,
+      user: null,
+      ...(NO_SUCH_IMAGE.test(out.stderr) ? {} : { undetermined: true }),
+    }
   }
   // Both runtimes print a placeholder rather than nothing for a missing key.
   const [hash, ...rest] = out.stdout
@@ -169,8 +183,17 @@ export function imageUidMismatchMessage(
 ): string {
   const found = `Image ${image} was built for UID ${imageUid}, but burns on this machine run as UID ${burnUid}.`
   return managed
-    ? `${found} Rebuild it from Settings → Workers.`
+    ? `${found} Rebuild it from Settings → Workers${orBuildImageCommand(image)}.`
     : `${found} It is a custom image, so rebuild it wherever it was made, for UID ${burnUid}.`
+}
+
+/**
+ * The way to the same fix on a server with no browser, for the one image
+ * `runcastle build-image` builds. Empty for a project image, which only a burn
+ * or the button can build, and which a burn rebuilds when it has to.
+ */
+export function orBuildImageCommand(image: string): string {
+  return image === DEFAULT_SANDBOX_IMAGE ? ', or run `runcastle build-image`' : ''
 }
 
 /** One reason an image is not fresh; see {@link imageFreshness}. */
@@ -540,7 +563,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
 }
 
 /** The argv (after the runtime binary) for one build step. */
-function buildStepArgs(step: ImageBuildStep): string[] {
+export function buildStepArgs(step: ImageBuildStep): string[] {
   return [
     'build',
     '-t',
