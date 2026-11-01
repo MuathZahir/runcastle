@@ -26,7 +26,9 @@ export function PhoneNotificationsRow({ projectId }: { projectId: string }) {
   const [state, setState] = useState<PushState | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const utils = trpc.useUtils()
+  // Fetched ahead of the tap: iPhones only ask permission straight from a tap,
+  // so nothing may be waited on first.
+  const publicKey = trpc.push.publicKey.useQuery(undefined, { enabled: state === 'off' })
   const subscribe = trpc.push.subscribe.useMutation()
   const unsubscribe = trpc.push.unsubscribe.useMutation()
 
@@ -41,7 +43,8 @@ export function PhoneNotificationsRow({ projectId }: { projectId: string }) {
   }, [])
 
   const turnOn = async () => {
-    const subscription = await subscribeThisPhone(await utils.push.publicKey.fetch())
+    if (!publicKey.data) return
+    const subscription = await subscribeThisPhone(publicKey.data)
     if (!subscription) return
     try {
       await subscribe.mutateAsync({ projectId, subscription })
@@ -83,7 +86,7 @@ export function PhoneNotificationsRow({ projectId }: { projectId: string }) {
         <Switch
           aria-label="Notifications"
           checked={state === 'on'}
-          disabled={busy}
+          disabled={busy || (state === 'off' && !publicKey.data)}
           onChange={(on) => void flip(on)}
         />
       )}

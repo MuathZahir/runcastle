@@ -24,13 +24,12 @@ function isApplePhone(): boolean {
 }
 
 /** Push needs HTTPS, which here means the phone link: plain addresses have no worker. */
+function overHttps(): boolean {
+  return window.location.protocol === 'https:'
+}
+
 function canPush(): boolean {
-  return (
-    window.location.protocol === 'https:' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window
-  )
+  return overHttps() && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
 
 /**
@@ -38,7 +37,7 @@ function canPush(): boolean {
  * computer" page is there before it is needed. A failure costs only that page.
  */
 export function registerPhoneWorker(): void {
-  if (window.location.protocol !== 'https:' || !('serviceWorker' in navigator)) return
+  if (!overHttps() || !('serviceWorker' in navigator)) return
   void navigator.serviceWorker.register(WORKER_PATH).catch(() => undefined)
 }
 
@@ -49,7 +48,8 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 
 /** This phone's state, read fresh from the browser. */
 export async function readPushState(): Promise<PushState> {
-  if (!canPush()) return isApplePhone() ? 'home-screen' : 'unsupported'
+  // Safari hides push from a page that is not on the Home Screen.
+  if (!canPush()) return overHttps() && isApplePhone() ? 'home-screen' : 'unsupported'
   if (Notification.permission === 'denied') return 'blocked'
   return (await currentSubscription()) ? 'on' : 'off'
 }

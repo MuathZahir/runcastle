@@ -9,6 +9,8 @@ import { fakeTrpc } from './fake-trpc'
  * browser's push machinery is the boundary, so it is the one thing faked here.
  */
 
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)'
+
 const SUBSCRIPTION = {
   endpoint: 'https://push.example/1',
   toJSON: () => ({ endpoint: 'https://push.example/1', keys: { p256dh: 'k', auth: 'a' } }),
@@ -58,6 +60,13 @@ function row(handlers: Record<string, (input: never) => unknown> = {}) {
   return calls
 }
 
+/** The switch, once the key it needs has arrived. */
+async function readySwitch() {
+  const control = await screen.findByRole('switch', { name: 'Notifications' })
+  await waitFor(() => expect((control as HTMLButtonElement).disabled).toBe(false))
+  return control
+}
+
 beforeEach(() => {
   SUBSCRIPTION.unsubscribe.mockClear()
 })
@@ -74,7 +83,7 @@ describe('the Notifications row', () => {
     const pushManager = browser()
     const calls = row()
 
-    fireEvent.click(await screen.findByRole('switch', { name: 'Notifications' }))
+    fireEvent.click(await readySwitch())
 
     await screen.findByText('On for this phone')
     expect(Notification.requestPermission).toHaveBeenCalledOnce()
@@ -89,7 +98,7 @@ describe('the Notifications row', () => {
     browser({ answer: 'default' })
     const calls = row()
 
-    fireEvent.click(await screen.findByRole('switch', { name: 'Notifications' }))
+    fireEvent.click(await readySwitch())
 
     await waitFor(() => expect(Notification.requestPermission).toHaveBeenCalled())
     await screen.findByText('When an agent needs you')
@@ -100,7 +109,7 @@ describe('the Notifications row', () => {
     browser({ subscribed: true })
     const calls = row()
 
-    fireEvent.click(await screen.findByRole('switch', { name: 'Notifications' }))
+    fireEvent.click(await readySwitch())
 
     await screen.findByText('When an agent needs you')
     expect(SUBSCRIPTION.unsubscribe).toHaveBeenCalledOnce()
@@ -118,7 +127,7 @@ describe('the Notifications row', () => {
       },
     })
 
-    fireEvent.click(await screen.findByRole('switch', { name: 'Notifications' }))
+    fireEvent.click(await readySwitch())
 
     await screen.findByText('The test notification could not be sent.')
     expect(SUBSCRIPTION.unsubscribe).toHaveBeenCalledOnce()
@@ -134,11 +143,19 @@ describe('the Notifications row', () => {
   })
 
   it('on an iPhone not yet on the Home Screen, says to add it', async () => {
-    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(IPHONE)
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ protocol: 'https:' } as Location)
     row()
 
     await screen.findByText(/Add Runcastle to your Home Screen/)
     expect(screen.queryByRole('switch')).toBeNull()
+  })
+
+  it('on an iPhone away from the phone link, does not send it to the Home Screen', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(IPHONE)
+    row()
+
+    await screen.findByText(/in a browser that supports this/)
   })
 
   it('where this browser cannot do it, says so', async () => {

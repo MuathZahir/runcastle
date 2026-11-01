@@ -37,7 +37,7 @@ Standard Web Push with VAPID, sent with the `web-push` library. Under Bun it sen
 
 - **Keys:** a VAPID key pair made once per install and stored in the database, so it travels with the subscriptions when runcastle moves machines. Subject: `https://runcastle.dev` (Apple's push service refuses a localhost subject).
 - **Subscriptions:** one table, keyed by endpoint, holding the browser's encryption keys and when it was added. It is per install, not per project.
-- **Send:** to every subscription, in parallel, with a 10-second timeout, a 24-hour time to live and `high` urgency so a sleeping Android phone wakes. A 404 or 410 from the push service removes that subscription. Other failures are reported to the caller and keep the subscription.
+- **Send:** to every subscription, in parallel, with a 10-second limit of its own (`web-push`'s timeout misses a stalled connection), a 24-hour time to live and `high` urgency so a sleeping Android phone wakes. A 404 or 410 from the push service removes that subscription. Other failures are reported to the caller and keep the subscription.
 - **Payload:** `{ title, body, url }`.
 
 A tRPC router exposes the public key, subscribe (which sends the test notification) and unsubscribe. Subscribing and unsubscribing emit a project event, and a send emits `notification.sent` on the feature's timeline, or the project's for an orchestrator thread with no feature. That line is the only record: no inbox, no history. These events are not news, so they never reach a thread.

@@ -50,8 +50,20 @@ const webPushSender: PushSender = async (target, message, keys) => {
     TTL: TTL_SECONDS,
     // A sleeping Android phone holds back anything less.
     urgency: 'high',
-    timeout: SEND_TIMEOUT_MS,
   })
+}
+
+/** Give up on a send. `web-push`'s own timeout misses a connection stalled before it is up. */
+async function withinTimeLimit(sending: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('the push service did not answer')), SEND_TIMEOUT_MS)
+  })
+  try {
+    await Promise.race([sending, limit])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** This install's key pair, made the first time anything needs it. */
@@ -98,7 +110,7 @@ async function deliver(
   send: PushSender,
 ): Promise<boolean> {
   try {
-    await send(target, message, vapidKeys(ctx))
+    await withinTimeLimit(send(target, message, vapidKeys(ctx)))
     return true
   } catch (error) {
     const status = refusalStatus(error)

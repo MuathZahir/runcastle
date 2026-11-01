@@ -22,7 +22,7 @@ export const NOTIFY_MAX_CHARS = 200
 const NO_PHONE_NOTE =
   'No phone has notifications on, so nothing was sent. Tell the human in this chat: with the ' +
   'phone link on (Settings, On your phone), switch on Notifications at the foot of the feature ' +
-  'list on their phone.'
+  'list on their phone. If it already says on, switch it off and on again.'
 
 const NOT_SENT_NOTE =
   'The notification could not be sent to any phone. Tell the human in this chat, and do not ' +

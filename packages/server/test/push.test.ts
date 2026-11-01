@@ -224,6 +224,19 @@ describe('phone notifications', () => {
       expect(endpoints()).toEqual([phone('a').endpoint])
     })
 
+    it('gives up on a push service that never answers, and keeps the phone', async () => {
+      addPushSubscription(ctx, phone('a'))
+      vi.useFakeTimers()
+      try {
+        const sending = sendPushToAll(ctx, message, () => new Promise(() => {}))
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(await sending).toEqual({ phones: 1, sent: 0 })
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(endpoints()).toEqual([phone('a').endpoint])
+    })
+
     it('sends high urgency with a day to live, so a sleeping phone wakes and a stale one drops it', async () => {
       addPushSubscription(ctx, phone('a'))
       await sendPushToAll(ctx, message)
