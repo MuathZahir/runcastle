@@ -94,7 +94,12 @@ function targetFor(req: Request, lookup: DesignLookup): URL | undefined {
 
 /** The entry path: remember the feature in a cookie, then go to the page asked for. */
 function open(url: URL): Response {
-  const featureId = decodeURIComponent(url.pathname.slice(DESIGN_OPEN_PREFIX.length))
+  let featureId = ''
+  try {
+    featureId = decodeURIComponent(url.pathname.slice(DESIGN_OPEN_PREFIX.length))
+  } catch {
+    // a malformed escape names no feature
+  }
   const path = url.searchParams.get('path') ?? '/'
   if (!featureId || featureId.includes('/')) return page(404, 'No such design', 'This link names no feature.')
   if (!isLocalPath(path)) return page(400, 'Not a page of this design', 'The link points somewhere else, so it is not followed.')

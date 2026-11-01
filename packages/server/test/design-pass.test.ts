@@ -100,6 +100,12 @@ describe('the entry path', () => {
       expect(res.headers.get('set-cookie')).toBeNull()
     },
   )
+
+  it('answers a link naming no feature with a page, not an error', async () => {
+    const res = await designPassFetch(new Request(`${PASS}/__runcastle/open/%E0%A4%A?path=/`), lookup)
+    expect(res.status).toBe(404)
+    expect(res.headers.get('set-cookie')).toBeNull()
+  })
 })
 
 describe('forwarding', () => {
