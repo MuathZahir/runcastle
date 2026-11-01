@@ -16,6 +16,10 @@
  *   5. serve        boot the server, fetch the SPA and one tRPC query
  *   6. terminal     through that server, the way the app does it: open a sign-in
  *                   terminal on a stand-in `claude`, type into it, Ctrl-C it
+ *   7. install script  `site/install.sh` (`install.ps1` on Windows) from this
+ *                   checkout with `--yes --agent claude`, installing the same
+ *                   spec, then `runcastle --version`. Not required: a real run
+ *                   reaches third-party installers and may need sudo
  *
  * Usage: `bun scripts/platform-smoke/smoke.ts [spec]`. The spec defaults to
  * `$RUNCASTLE_SPEC`, then a `runcastle.tgz` beside this file, then
@@ -332,6 +336,37 @@ async function smokeServe(binPath: string): Promise<{ ok: boolean; detail: strin
 if (bin) {
   const s = await smokeServe(bin)
   record(s.name ?? 'serve', s.ok, s.detail)
+}
+
+// --- 7. install script ----------------------------------------------------------
+
+header('7. install script')
+{
+  const siteDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'site')
+  const windows = platform() === 'win32'
+  const scriptRun = windows
+    ? run(
+        'powershell',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(siteDir, 'install.ps1'), '--yes', '--agent', 'claude'],
+        { ...process.env, RUNCASTLE_INSTALL_SPEC: spec },
+      )
+    : run('bash', [join(siteDir, 'install.sh'), '--yes', '--agent', 'claude'], {
+        ...process.env,
+        RUNCASTLE_INSTALL_SPEC: spec,
+      })
+  console.log(scriptRun.out)
+  // The script reaches third-party installers and may want sudo, so it only warns.
+  const version = run('runcastle', ['--version'], {
+    ...process.env,
+    PATH: `${join(homedir(), '.bun', 'bin')}${delimiter}${process.env.PATH ?? ''}`,
+  })
+  const ok = scriptRun.code === 0 && version.code === 0
+  record(
+    'install script',
+    ok,
+    ok ? `${windows ? 'install.ps1' : 'install.sh'} ran, runcastle ${version.out}` : `script exit ${scriptRun.code}, runcastle --version exit ${version.code}`,
+    false,
+  )
 }
 
 // --- summary ------------------------------------------------------------------
