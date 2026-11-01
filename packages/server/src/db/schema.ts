@@ -5,6 +5,8 @@ import {
   projectFindings,
   projectNotes,
   projects,
+  pushKeys,
+  pushSubscriptions,
   readyDeclarations,
   reviewFindings,
   runs,
@@ -21,6 +23,8 @@ import {
  */
 export const schema = {
   projects,
+  pushKeys,
+  pushSubscriptions,
   reviewFindings,
   features,
   featureDependencies,
@@ -43,6 +47,8 @@ export {
   projectFindings,
   projectNotes,
   projects,
+  pushKeys,
+  pushSubscriptions,
   readyDeclarations,
   reviewFindings,
   runs,

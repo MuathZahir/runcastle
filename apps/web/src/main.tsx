@@ -3,6 +3,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { unhandledMutationError } from './lib/mutation-errors'
+import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
 import { pushToast, ToastProvider } from './lib/toast'
 import '@fontsource-variable/geist'
@@ -15,6 +16,7 @@ import { TooltipProvider } from './ui/tooltip'
 
 // Paint the stored theme onto <html> before the first render (lib/theme.ts).
 applyStoredTheme()
+registerPhoneWorker()
 
 function Root() {
   const [queryClient] = useState(

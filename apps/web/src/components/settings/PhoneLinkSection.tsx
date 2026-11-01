@@ -100,6 +100,9 @@ export function PhoneLinkSection({
           onTurnOff={() => turnOff.mutate({ projectId })}
         />
       )}
+      {link?.on && (
+        <DimLine>Turn on notifications from your phone: it’s the last row of the feature list.</DimLine>
+      )}
       {link?.error && <FailedLine error={link.error} commands={link.commands} />}
     </SettingSection>
   )

@@ -4,6 +4,7 @@ import { docsRouter } from './routers/docs'
 import { eventsRouter } from './routers/events'
 import { featureRouter } from './routers/feature'
 import { phoneLinkRouter } from './routers/phone-link'
+import { pushRouter } from './routers/push'
 import { projectRouter } from './routers/project'
 import { projectNotesRouter } from './routers/project-notes'
 import { reviewFindingsRouter } from './routers/review-findings'
@@ -35,6 +36,7 @@ export const appRouter = router({
   system: systemRouter,
   thread: threadRouter,
   phoneLink: phoneLinkRouter,
+  push: pushRouter,
 })
 
 export type AppRouter = typeof appRouter

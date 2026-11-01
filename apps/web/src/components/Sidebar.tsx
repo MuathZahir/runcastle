@@ -47,6 +47,7 @@ import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { CollapseSidebarButton } from './Frame'
 import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
+import { PhoneNotificationsRow } from './phone/PhoneNotificationsRow'
 import {
   DriveCard,
   FeatureProgressIcon,
@@ -501,7 +502,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
 
-      {!phone && <SidebarFoot {...props} />}
+      {phone ? <PhoneNotificationsRow projectId={projectId} /> : <SidebarFoot {...props} />}
 
       {pendingDelete && (
         <DeleteFeatureDialog

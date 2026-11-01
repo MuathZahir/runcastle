@@ -246,6 +246,24 @@ describe('runcastle on a phone', () => {
     await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
   })
 
+  it.each([
+    ['a thread that no longer exists', `/p/${PROJECT_ID}/chat?thread=sess_gone`],
+    ['no thread, with none active', `/p/${PROJECT_ID}/chat`],
+  ])('lists the conversations for an Orchestrator address naming %s', async (_name, path) => {
+    const old: ThreadEntry = {
+      id: 'th_old',
+      title: 'Audit the journal',
+      role: 'project',
+      state: 'idle',
+      createdAt: 1,
+      updatedAt: 1,
+      runtime: 'claude-code',
+    }
+    render(<Root path={path} threads={[old]} />)
+    expect(await screen.findByRole('button', { name: /Audit the journal/ })).toBeTruthy()
+    expect(screen.queryByText('Loading feature…')).toBeNull()
+  })
+
   it('starts a new Orchestrator chat and opens note capture from the list’s +', async () => {
     render(<Root path={LIST} />)
     await onList()

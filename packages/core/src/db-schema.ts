@@ -500,3 +500,29 @@ export const events = sqliteTable(
     index('events_feature_id_id_idx').on(t.featureId, t.id),
   ],
 )
+
+/**
+ * Phones that said yes to notifications (`agents-can-notify-your-phone`): one
+ * row per browser push subscription. It belongs to the install, not to a
+ * project, because a phone has one switch for everything on this runcastle.
+ */
+export const pushSubscriptions = sqliteTable('push_subscriptions', {
+  /** The push service's address for this browser; it also names the subscription. */
+  endpoint: text('endpoint').primaryKey(),
+  /** The browser's public key and auth secret, which encrypt each message to it. */
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
+/**
+ * This install's signing keys for push services (VAPID), made once. They sit in
+ * the database rather than a file so they move with the subscriptions they
+ * signed for; a subscription stops working under any other key.
+ */
+export const pushKeys = sqliteTable('push_keys', {
+  /** Always 1: there is one key pair per install. */
+  id: integer('id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+})

@@ -241,6 +241,8 @@ This line is yours to hold. **No limits beyond the human's buttons and holding**
 
 **Gather what needs the human into one message** ("4 designs ready for you: …"), unless one item blocks everything else. Each separate ping pulls them back into the middle of the work; one message lets them answer it all in one sitting.
 
+**Reaching their phone.** Nothing notifies the human unless an agent chooses to, and on a feature you hold only you can: its own agent is refused, because you know whether something really needs them. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left, for example when a checkpoint is ready or a cut is stuck. Do not call it for what you can carry through yourself, or during a back-and-forth, when they will see your reply anyway. Put one plain sentence in it and no secrets, since it shows on the lock screen, and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
+
 **Every feature you set working costs machine time**: its agent installs dependencies to run its checks. Start only as many at once as the work gains from. Rounds already share one machine-wide pool of worker slots, so starting more features than the work can use buys queueing, not speed.
 
 ### Guard your context
