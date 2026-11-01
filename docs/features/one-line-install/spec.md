@@ -17,7 +17,7 @@ Running it again after a failure only lists what is still missing.
 `install.sh` (bash, for Linux and macOS) and `install.ps1` (Windows) live in the static site. Each does only this:
 
 1. Stop if running as root or through `sudo`, on Linux and macOS (decision 6).
-2. If Bun is missing, install it with Bun's own installer. If `unzip` is missing on Linux, ask one yes and install it first. If Bun is older than 1.3.14, ask one yes and run `bun upgrade`. `--yes` answers both.
+2. If Bun is missing, install it with Bun's own installer, with no `bun` on `PATH` at that moment, or the installer skips the shell config and new terminals cannot find runcastle. On a machine with `zsh` and no `~/.zshrc`, create one first, because Bun's installer only writes to a file that exists. If `unzip` is missing on Linux, ask one yes and install it first. If Bun is older than 1.3.14, ask one yes and run `bun upgrade`. `--yes` answers both.
 3. If runcastle is missing, or its `--help` does not mention `setup` (an install too old to have it), run `bun add -g runcastle@latest`.
 4. Hand over to `runcastle setup`, passing on its arguments and reading from the terminal rather than the pipe.
 
@@ -34,13 +34,15 @@ It runs the doctor's existing probes, plus Bun's minimum version, and turns the 
 - **Docker:** Docker's own script on the systems in decision 3, followed by adding the person to the `docker` group. Elsewhere, and on Windows and macOS, an "afterwards" step with a link.
 - **Afterwards:** starting Docker Desktop, logging out and back in after the group change, opening a new terminal when `PATH` changed, the agent sign-in commands, `runcastle token` where burns need it, and `runcastle service install` on a Linux machine with no desktop session. Sign-ins always stay with the person.
 
+The one yes is Enter or `y`; any other key is a no. Installers run with their question-asking turned off where they have any: Codex's would otherwise ask to start Codex, a second question that would hang a `--yes` run.
+
 Setup does not stop at the first failure. It tries every item, re-runs the probes with the installers' folders added to its own `PATH`, reports what is still missing, and exits non-zero if anything failed. With no terminal and no `--yes`, it prints the list, changes nothing and exits non-zero (decision 4).
 
 The doctor's install advice stays the single source for install commands, so setup and the doctor cannot disagree.
 
 ### `runcastle token`
 
-A guided step for the unattended Claude Code token, with a `--stdin` form for servers. It tells the person to run `claude setup-token`, reads the value with hidden input, and refuses a value too short to be a real token. It saves through the existing function that replaces any existing line in `~/.runcastle/.env`, then reports the existing live check. The length check belongs in that shared function, so the app's token card gets it too. Wrapped pastes are handled by removing line breaks and spaces from what was typed before checking it.
+A guided step for the unattended Claude Code token, with a `--stdin` form for servers. It tells the person to run `claude setup-token`, reads the value with hidden input, and refuses a value too short to be a real token. It saves through the existing function that replaces any existing line in `~/.runcastle/.env`, then runs the doctor's live call to the service and reports it. The length check and the removal of spaces and line breaks both belong in that shared function, so the app's token card gets them too.
 
 ### `runcastle service install` and `remove`
 
@@ -61,7 +63,7 @@ The npm release goes out first and the site deploy second, because the scripts c
 - **New: the install plan function.** Given probe results and machine facts, it returns the plan. Lets tests assert every system's list, including what needs `sudo`, what is only an "afterwards" step, and that nothing already fine is listed.
 - **New: the setup runner.** Takes a plan, an injected command runner and an injected prompt. Lets tests observe what ran, in what order, what happens on a failure, on no terminal and on `--yes`.
 - **Existing: `runDoctor`.** Reused as is, through its injected exec.
-- **Existing: `saveAfkCredential`.** Gains the length check; the token command and the app share it.
+- **Existing: `saveAfkCredential`.** Gains the length check and strips spaces and line breaks; the token command and the app share it.
 - **New: the service file renderer.** A pure function from user, paths and `PATH` to the file's text.
 - **Existing: `parseCommand`.** New commands are unit-tested at the same dispatch.
 - **Existing: the platform smoke workflow.** Gains a step that runs `install.sh` or `install.ps1` from the checkout against the built package, on every system. The scripts themselves are tested end to end in clean Linux containers.
@@ -78,5 +80,4 @@ The npm release goes out first and the site deploy second, because the scripts c
 
 ## Open questions
 
-- The exact shortest token length to accept, to be set from a real token's length (108 characters on the VPS report) with room for the format to change.
 - Whether `irm | iex` needs `_headers` at all on Cloudflare Pages, which can only be measured after a deploy. The rule is harmless either way.
