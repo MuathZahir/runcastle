@@ -122,6 +122,7 @@ import {
 } from '../services/scenarios'
 import { updateSettings } from '../services/settings'
 import { withheldDriveFor } from '../workflows/review-ticket'
+import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { registerOrchestratorTools } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
@@ -2587,6 +2588,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
+  // Refused at call time on a feature another thread holds (`toolNotifyHuman`).
+  notify_human: ['chat', 'project'],
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
@@ -3797,6 +3800,36 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(showFile(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('notify_human')) {
+    server.registerTool(
+      'notify_human',
+      {
+        title: 'Notify the human’s phone',
+        description:
+          'Send the human a phone notification. Nothing else ever notifies them, so if you do not ' +
+          'call this they hear nothing. Call it when they asked to be told, or when you need them ' +
+          'and they seem to have left, for example after a long unattended round. Do not call it ' +
+          'during a back-and-forth, when they will see your reply anyway. Say what you want in ' +
+          'one plain sentence; it shows on their lock screen, so never put secrets or credentials ' +
+          'in it. A tap opens this chat, so show there whatever they should see. The answer says ' +
+          'how many phones it reached; relay any `note`. Refused on a feature an orchestrator ' +
+          'thread holds: only that thread notifies about it.',
+        inputSchema: {
+          message: z
+            .string()
+            .min(1)
+            .max(NOTIFY_MAX_CHARS)
+            .describe('One sentence saying what you want from the human.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolNotifyHuman(rs.ctx, rs.session, args))
       },
     )
   }

@@ -12,7 +12,9 @@ import { emit, emitProject } from './events'
  * Threads hold features (`threads-hold-features`): one orchestrator thread holds
  * a feature, hears its news, and is the only thread that may act on it. This is
  * the one writer of `features.held_by`. Holding binds project threads and nothing
- * else: the human's buttons and the feature's own agent never read it.
+ * else: the human's buttons and the feature's own agent never read it, with one
+ * exception: on a held feature only the holder may notify the human's phone
+ * (`agents-can-notify-your-phone`, decision 3).
  */
 
 /** The marker of a project's sweep: a project with this event is never swept again. */

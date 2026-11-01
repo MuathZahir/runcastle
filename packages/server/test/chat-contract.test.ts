@@ -27,6 +27,7 @@ describe('chat contract', () => {
       'get_feature_context',
       'get_ticket',
       'list_tickets',
+      'notify_human',
       'read_feature_doc',
       'record_event',
       'resolve_finding',
