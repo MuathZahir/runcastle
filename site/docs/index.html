@@ -109,15 +109,19 @@
         </nav>
 
         <h2>Install</h2>
-        <p>Three lines: install it, see what is missing, boot it.</p>
-        <pre><code><span class="pre-prompt">$</span> bun add -g runcastle       <span class="pre-comment"># install</span>
-<span class="pre-prompt">$</span> runcastle doctor           <span class="pre-comment"># check prerequisites</span>
-<span class="pre-prompt">$</span> runcastle                  <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
+        <p>One command: it shows what is missing, asks once, and installs it. Then boot it.</p>
+        <pre><code><span class="pre-prompt">$</span> curl -fsSL https://runcastle.dev/install.sh | bash   <span class="pre-comment"># macOS and Linux</span>
+<span class="pre-prompt">&gt;</span> irm https://runcastle.dev/install.ps1 | iex          <span class="pre-comment"># Windows</span>
+<span class="pre-prompt">$</span> runcastle                                            <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
+        <p>
+          It says what needs <code>sudo</code> before asking, guides you through Docker Desktop on
+          Windows and macOS, and leaves sign-ins to you. <code>bun add -g runcastle</code> is the
+          manual route. On a server, follow <a href="/docs/vps/">the VPS guide</a>.
+        </p>
         <p>
           <code>runcastle --version</code> prints the installed version. When a newer release
           lands, an in-app banner names the exact
-          <code>bun add -g runcastle@latest</code> command. runcastle never installs anything for
-          you. Every fix is a line you run yourself.
+          <code>bun add -g runcastle@latest</code> command.
         </p>
 
         <h2>What you need first</h2>

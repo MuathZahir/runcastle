@@ -29,6 +29,10 @@ If a run fails, delete the tag and re-release once fixed:
 git push --delete origin v1.0.4 && git tag -d v1.0.4
 ```
 
+**Release before a site deploy.** `site/install.sh` and `site/install.ps1` call
+`runcastle setup` on whatever npm serves as `latest`. A site deploy that changes
+what they call must wait until the release carrying it is on npm.
+
 ### Preview releases — the `next` channel
 
 To get a build onto another machine without shipping it to users, release a
