@@ -59,6 +59,7 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 ## When to ask, and when to stop
 
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })` with a few words, and end your turn.
+- **Handing over with a command still running.** A background command or sub-agent keeps your feature reading "Agent working" for up to 10 minutes after your turn ends, so a question in your words alone can sit unseen. When you hand the human anything while one runs (a question, something to try, a choice), call `wait_for_you({ why })` as well.
 - After the human presses Stop, start nothing until they reply.
 - **Runaway guard.** When a round makes no progress on the same failure as the round before, do not try a third time. Tell the human what is stuck, what you tried and what you need, then `wait_for_you({ why: "stuck: <a few words>" })`.
 

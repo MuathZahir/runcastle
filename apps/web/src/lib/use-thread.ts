@@ -8,13 +8,16 @@ import { attachmentsAt, loadAttachments, moveAttachments, pendingAttachment, sub
 import { useToast } from './toast'
 
 /**
- * One thread, live (chat-as-web-components decision 7): its first paint from
- * `thread.view`, then its whole log from `thread.events`, folded with core's
- * `foldThread` — the same fold the server makes. A `{ kind: 'thread' }` live
- * signal invalidates this thread's `events` query, and the query only ever
- * asks for what comes after the last event already held, so a long thread is
- * read once and then a few events at a time. A thread opened again reads what
- * came after its held log at once, whatever its signals did meanwhile.
+ * One thread, live (chat-as-web-components decision 7): its whole log from
+ * `thread.events`, folded with core's `foldThread` — the same fold the server
+ * makes. A `{ kind: 'thread' }` live signal invalidates this thread's `events`
+ * query, and the query only ever asks for what comes after the last event
+ * already held, so a long thread is read once and then a few events at a time.
+ *
+ * A thread is drawn only once a read that started at this opening has answered
+ * (threads-open-fast decision 8): a log held from an earlier visit is caught up
+ * first, never shown first, whatever its signals did meanwhile. If that read
+ * fails, the held log shows with a line saying it may be out of date.
  *
  * Sending never waits: the message shows at once, and the server's own prompt
  * event takes its place when it arrives. A thread with no id yet (a feature's
@@ -43,6 +46,9 @@ interface Held {
 
 /** Where a thread's log, as read so far, is kept between openings: a cache entry no query fetches. */
 const heldLogKey = (threadId: string) => ['runcastle.thread.log', threadId] as const
+
+/** What a thread says under a log the server could not bring up to date. */
+const OUT_OF_DATE = 'Could not reach the server — this may be out of date'
 
 const DRAFT_KEY = 'runcastle.thread.draft:'
 const AT_FILE = /(?:^|\s)@(\S*)$/
@@ -121,7 +127,6 @@ export function useThread({
   const log = held.threadId === threadId && held.log ? held.log : cachedLog
   const cursor = log?.length ? log[log.length - 1].i : undefined
 
-  const viewQ = trpc.thread.view.useQuery({ threadId: id }, { enabled })
   const eventsQ = trpc.thread.events.useQuery(
     { threadId: id, ...(cursor !== undefined ? { after: cursor } : {}) },
     {
@@ -135,36 +140,57 @@ export function useThread({
     },
   )
   const got = eventsQ.data?.events
-  useEffect(() => {
-    if (!got || !threadId) return
-    const base = log ?? []
-    const last = base.length ? base[base.length - 1].i : -1
-    const fresh = got.filter((e) => e.i > last)
-    if (fresh.length === 0 && log) return
-    const next = [...base, ...fresh]
-    queryClient.setQueryData(heldLogKey(threadId), next)
-    // The read after the new cursor has nothing in it yet: say so, so moving
-    // the cursor is not itself a fetch. A live signal invalidates it.
-    if (next.length) utils.thread.events.setData({ threadId, after: next[next.length - 1].i }, { events: [] })
-    setHeld({ threadId, log: next })
-  }, [got, threadId, log, utils, queryClient])
 
-  // Opening a thread whose log is already held always reads what came after it:
-  // its live signals may have come while another thread was open.
-  const opened = useRef<string | null>(null)
+  /** Add a read's answer to the thread's held log. */
+  const take = useCallback(
+    (to: string, events: ThreadEvent[]): void => {
+      const base = queryClient.getQueryData<ThreadEvent[]>(heldLogKey(to))
+      const last = base?.length ? base[base.length - 1].i : -1
+      const fresh = events.filter((e) => e.i > last)
+      if (fresh.length === 0 && base) return
+      const next = [...(base ?? []), ...fresh]
+      queryClient.setQueryData(heldLogKey(to), next)
+      // The read after the new cursor has nothing in it yet: say so, so moving
+      // the cursor is not itself a fetch. A live signal invalidates it.
+      if (next.length) utils.thread.events.setData({ threadId: to, after: next[next.length - 1].i }, { events: [] })
+      setHeld({ threadId: to, log: next })
+    },
+    [utils, queryClient],
+  )
   useEffect(() => {
-    if (!threadId || opened.current === threadId) return
-    opened.current = threadId
-    if (cursor !== undefined) void utils.thread.events.invalidate({ threadId, after: cursor })
-  }, [threadId, cursor, utils])
+    if (got && threadId) take(threadId, got)
+  }, [got, threadId, take])
 
-  const folded = useMemo((): ThreadView => {
-    if (!threadId) return EMPTY_THREAD_VIEW
-    if (log) return foldThread(log)
-    return viewQ.data ?? EMPTY_THREAD_VIEW
-  }, [threadId, log, viewQ.data])
-  /** Nothing read yet of a thread that exists: it is not known to be empty. */
-  const loading = enabled && !log && !viewQ.data && eventsQ.isPending
+  // Which thread a read from its opening has answered for. Every opening reads
+  // what came after the log held so far, all of it when none is: a thread's live
+  // signals may have come while another was open.
+  const [readFor, setReadFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!threadId) return
+    let left = false
+    const held = queryClient.getQueryData<ThreadEvent[]>(heldLogKey(threadId))
+    const input = held?.length ? { threadId, after: held[held.length - 1].i } : { threadId }
+    const answered = (events: ThreadEvent[]) => {
+      if (left) return
+      take(threadId, events)
+      setReadFor(threadId)
+    }
+    utils.thread.events.fetch(input, { staleTime: 0 }).then(
+      (read) => answered(read.events),
+      () => answered([]),
+    )
+    return () => {
+      left = true
+    }
+  }, [threadId, utils, queryClient, take])
+
+  const folded = useMemo((): ThreadView => (threadId && log ? foldThread(log) : EMPTY_THREAD_VIEW), [threadId, log])
+  /** A read from this opening has answered: the thread may be drawn. */
+  const current = enabled && readFor === threadId
+  /** The thread's history is still on its way: show neither it nor the empty-thread welcome. */
+  const loading = enabled && !current
+  /** The last read failed, so what is held may be behind the server. */
+  const outOfDate = current && eventsQ.isError && !!log?.length
 
   // ---- sending ----
   const [pending, setPending] = useState<Pending[]>([])
@@ -176,17 +202,18 @@ export function useThread({
     )
   })
   const view = useMemo((): ThreadView => {
-    if (shownPending.length === 0) return folded
-    const working = folded.state === 'working'
+    const shown = current || !enabled ? folded : EMPTY_THREAD_VIEW
+    const working = shown.state === 'working'
     const items: ThreadItem[] = shownPending.map((p) => ({
       kind: 'user',
       id: p.localId,
       text: p.text,
       ...(p.images.length ? { images: p.images } : {}),
-      ...(working ? { steered: true } : folded.process !== 'running' ? { starting: true } : {}),
+      ...(working ? { steered: true } : shown.process !== 'running' ? { starting: true } : {}),
     }))
-    return { ...folded, items: [...folded.items, ...items] }
-  }, [folded, shownPending])
+    if (outOfDate) items.push({ kind: 'notice', id: 'out-of-date', text: OUT_OF_DATE })
+    return items.length ? { ...shown, items: [...shown.items, ...items] } : shown
+  }, [folded, current, enabled, outOfDate, shownPending])
 
   // ---- the draft ----
   const draftAt = threadId ?? draftKey ?? 'new'
@@ -335,9 +362,9 @@ export function useThread({
     }
   }
 
-  /** ↑ in an empty composer: the last thing the human said here. */
+  /** ↑ in an empty composer: the last thing the human said here, whether or not the thread has caught up. */
   const recall = (): string | undefined =>
-    [...view.items].reverse().find((x): x is Extract<ThreadItem, { kind: 'user' }> => x.kind === 'user' && !x.from)?.text
+    [...(current ? view : folded).items].reverse().find((x): x is Extract<ThreadItem, { kind: 'user' }> => x.kind === 'user' && !x.from)?.text
 
   const onError = (e: { message: string }) => toast.push(e.message)
   const stopM = trpc.thread.stop.useMutation({ onError })

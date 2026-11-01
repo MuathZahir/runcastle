@@ -21,6 +21,22 @@ const shipped = listItem({ id: 'shipped', status: 'shipped' })
 const archived = listItem({ id: 'archived', status: 'archived' })
 const all = [ready, burning, draft, failed, asking, shipped, building, archived]
 
+describe('a lead that replied with work left running', () => {
+  const session = { liveSession: { status: 'live' as const, awaitingInput: true } }
+
+  it('sits under Agent working, not Needs you', () => {
+    const f = listItem({ id: 'tests', ...session, leadInBackground: true })
+    const { inbox, lanes } = sidebarLanes([f])
+    expect(inbox).toEqual([])
+    expect(lanes.map((g) => g.key)).toEqual(['agentWorking'])
+  })
+
+  it('needs you once it said so, whatever still runs', () => {
+    const f = listItem({ id: 'tests', ...session, leadInBackground: true, waitingReason: 'start round 1?' })
+    expect(sidebarLanes([f]).inbox.map((x) => x.id)).toEqual(['tests'])
+  })
+})
+
 describe('sidebarLanes', () => {
   it('lifts exactly the Needs you features into the Inbox, in their incoming order', () => {
     const { inbox } = sidebarLanes(all)

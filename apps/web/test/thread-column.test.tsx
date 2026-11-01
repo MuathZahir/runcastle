@@ -130,6 +130,52 @@ describe('ThreadColumn', () => {
       expect(api.inputs('thread.events')).toContainEqual({ threadId: 'th1', after: 2 })
     })
 
+    it('draws nothing of the held log until the opening’s read has answered', async () => {
+      const logs: Record<string, ThreadEvent[]> = { th1: [...MID_TURN], th2: [...OTHER] }
+      let release = () => undefined as void
+      let holding = false
+      const api = fakeTrpc({
+        'thread.events': async ({ threadId, after }: { threadId: string; after?: number }) => {
+          if (holding && threadId === 'th1') await new Promise<void>((resolve) => (release = resolve))
+          return { events: logs[threadId].filter((e) => after === undefined || e.i > after) }
+        },
+      })
+      const view = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      await screen.findByText('Line up the export button')
+      view.rerender(<ThreadColumn threadId="th2" />)
+      await screen.findByText('Renamed.')
+
+      logs.th1.push(...ANSWERED)
+      holding = true
+      view.rerender(<ThreadColumn threadId="th1" />)
+      expect(await screen.findByText('Loading the thread…')).toBeTruthy()
+      expect(screen.queryByText('Line up the export button')).toBeNull()
+
+      await act(async () => release())
+      expect(await screen.findByText('Lined up.')).toBeTruthy()
+      expect(screen.getByText('Line up the export button')).toBeTruthy()
+    })
+
+    it('shows the held log, marked, when the opening’s read fails', async () => {
+      const logs: Record<string, ThreadEvent[]> = { th1: [...MID_TURN], th2: [...OTHER] }
+      let down = false
+      const api = fakeTrpc({
+        'thread.events': ({ threadId, after }: { threadId: string; after?: number }) => {
+          if (down && threadId === 'th1') throw new Error('the server is gone')
+          return { events: logs[threadId].filter((e) => after === undefined || e.i > after) }
+        },
+      })
+      const view = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+      await screen.findByText('Line up the export button')
+      view.rerender(<ThreadColumn threadId="th2" />)
+      await screen.findByText('Renamed.')
+
+      down = true
+      view.rerender(<ThreadColumn threadId="th1" />)
+      expect(await screen.findByText('Line up the export button')).toBeTruthy()
+      expect(await screen.findByText(/may be out of date/)).toBeTruthy()
+    })
+
     it('takes a live signal of a thread that is not open, and shows it on return', async () => {
       const { api, logs } = twoThreads()
       const view = render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })

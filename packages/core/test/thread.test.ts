@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awaitsHuman, foldThread, lastPickedModel, liveEvents, ThreadEvent, type ShownFile, type ThreadEventBody, type ThreadItem } from '../src/thread'
+import { BACKGROUND_WINDOW_MS, foldThread, lastPickedModel, liveEvents, threadActivity, ThreadEvent, type ShownFile, type ThreadEventBody, type ThreadItem } from '../src/thread'
 
 /** A log from bodies, one second apart unless an `at` is given. */
 function log(...bodies: Array<ThreadEventBody | [number, ThreadEventBody]>): ThreadEvent[] {
@@ -709,6 +709,74 @@ describe('lastPickedModel', () => {
   it('is never a model logged as its process came up, though round 13 marked some picked there', () => {
     expect(lastPickedModel(log(prompt('p1'), { type: 'process', state: 'starting' }, running, sonnet))).toBeNull()
     expect(lastPickedModel(log(prompt('p1'), running, opus))).toBeNull()
+  })
+})
+
+/** Whether the thread waits on the human, with no background work in these logs to weigh. */
+const awaitsHuman = (events: readonly ThreadEvent[], running: boolean): boolean => ['asking', 'replied'].includes(threadActivity(events, running, 0))
+
+describe('threadActivity with background work', () => {
+  const at = 1_000
+  const line = (body: ThreadEventBody, i: number, when = at): ThreadEvent => ({ ...body, i, at: when }) as ThreadEvent
+  const reply = (words: string): ThreadEvent[] =>
+    (
+      [
+        { type: 'prompt', id: 'p1', text: 'Run the tests', source: 'human' },
+        { type: 'turn_started' },
+        { type: 'agent_text', messageId: 'm1', text: words.slice(0, 4) },
+        { type: 'agent_text', messageId: 'm1', text: words.slice(4) },
+        { type: 'tasks', tasks: [{ id: 'b1', title: 'bun test', startedAt: at }] },
+        { type: 'turn_ended', reason: 'end_turn' },
+      ] as ThreadEventBody[]
+    ).map((body, i) => line(body, i))
+  const soon = at + 60_000
+
+  it('reads a reply with a command still running as background work, not as waiting', () => {
+    expect(threadActivity(reply('Tests are running; I will commit once green.'), true, soon)).toBe('background')
+  })
+
+  it('goes back to waiting once the window has passed, whatever still runs', () => {
+    const log = reply('Tests are running.')
+    expect(threadActivity(log, true, at + BACKGROUND_WINDOW_MS - 1)).toBe('background')
+    expect(threadActivity(log, true, at + BACKGROUND_WINDOW_MS)).toBe('replied')
+  })
+
+  it('waits on the human at once when the reply ends on a question', () => {
+    expect(threadActivity(reply('The server is up. Shall I carry on?'), true, soon)).toBe('replied')
+    expect(threadActivity(reply('Which do you want: **A or B?**'), true, soon)).toBe('replied')
+    expect(threadActivity(reply('هل تريد المتابعة؟'), true, soon)).toBe('replied')
+    expect(threadActivity(reply('I asked why? Because it failed.'), true, soon)).toBe('background')
+  })
+
+  it('waits on the human when an ask is open, whatever runs', () => {
+    const ask: ThreadEventBody = { type: 'ask', ask: { kind: 'question', id: 'a1', questions: [] } }
+    expect(threadActivity([...reply('Running.'), line(ask, 6)], true, soon)).toBe('asking')
+  })
+
+  it('waits on the human once the work is over and the agent did not pick up', () => {
+    const over = line({ type: 'tasks', tasks: [] }, 6)
+    expect(threadActivity([...reply('Running.'), over], true, soon)).toBe('replied')
+  })
+
+  it('counts a sub-agent left running in the background', () => {
+    const log = reply('Running.').map((e) => (e.type === 'tasks' ? { ...e, tasks: [], agents: 1 } : e))
+    expect(threadActivity(log, true, soon)).toBe('background')
+  })
+
+  it('takes no background work from a process that is not running', () => {
+    expect(threadActivity(reply('Running.'), false, soon)).toBe('replied')
+    const stopped = line({ type: 'process', state: 'stopped' }, 6)
+    expect(threadActivity([...reply('Running.'), stopped], true, soon)).toBe('replied')
+  })
+
+  it('leaves a turn the human stopped as no reply', () => {
+    const log = reply('Running.').map((e) => (e.type === 'turn_ended' ? { ...e, reason: 'cancelled' as const } : e))
+    expect(threadActivity(log, true, soon)).toBe('idle')
+  })
+
+  it('reads a turn the agent started by itself as a turn', () => {
+    const woke = line({ type: 'turn_started', source: 'agent' }, 6)
+    expect(threadActivity([...reply('Running.'), woke], true, soon)).toBe('turn')
   })
 })
 

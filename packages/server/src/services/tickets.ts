@@ -1,8 +1,8 @@
 import type { ModelEntry, ReviewGateRun, TicketInput } from '@runcastle/core'
 import { BlockingEdgeError, Ticket, modelRoster, newId, resolveBatchBlocking } from '@runcastle/core'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { events, tickets } from '../db/schema'
+import { events, features, tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { markFailed } from './review-findings'
@@ -134,6 +134,28 @@ export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
     .orderBy(asc(tickets.seq))
     .all()
     .map(rowToTicket)
+}
+
+/**
+ * How many tickets each feature of a project has in each status, keyed by
+ * feature id. One query for the whole project: the feature list is read on every
+ * signal, and reading each ticket whole to count it was most of what it cost.
+ */
+export function ticketStatusCounts(ctx: AppCtx, projectId: string): Map<string, Map<string, number>> {
+  const rows = ctx.db
+    .select({ featureId: tickets.featureId, status: tickets.status, n: count() })
+    .from(tickets)
+    .innerJoin(features, eq(features.id, tickets.featureId))
+    .where(eq(features.projectId, projectId))
+    .groupBy(tickets.featureId, tickets.status)
+    .all()
+  const out = new Map<string, Map<string, number>>()
+  for (const { featureId, status, n } of rows) {
+    const byStatus = out.get(featureId) ?? new Map<string, number>()
+    byStatus.set(status, n)
+    out.set(featureId, byStatus)
+  }
+  return out
 }
 
 /**
