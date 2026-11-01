@@ -33,8 +33,10 @@ export const MARKDOWN_POLICY = {
  */
 export const MARKDOWN_CLASSES = {
   /** Self-sufficient on purpose: it states its own face and white-space so it
-      reads the same inside a mono, `pre-wrap` container as it does anywhere. */
-  root: 'font-sans whitespace-normal text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+      reads the same inside a mono, `pre-wrap` container as it does anywhere.
+      A path or a URL with no break in it breaks anywhere rather than widening
+      a phone's page; a fenced block keeps its lines and scrolls sideways. */
+  root: 'font-sans whitespace-normal text-pretty wrap-anywhere [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
   h1: 'mt-6 mb-2 text-[1.3em] leading-tight font-semibold tracking-tight text-text',
   h2: 'mt-6 mb-2 text-[1.12em] leading-snug font-semibold text-text',
   h3: 'mt-5 mb-1.5 text-[1em] font-semibold text-text',

@@ -16,6 +16,7 @@ import {
   IconX,
 } from '../../../icons'
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
 import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
@@ -307,9 +308,12 @@ function Divider({ children }: { children: ReactNode }) {
  * A message's actions, shown on hover or focus within it. They take no room,
  * so a thread's rhythm is its messages alone: an answer's hang under it, on
  * the turn's 12px step (`start`); yours sit beside your bubble (`beside`),
- * because what follows it in the turn is only 12px away.
+ * because what follows it in the turn is only 12px away. A phone has no
+ * hover, so there they are not shown at all: nothing in a chat needs them.
  */
 function Actions({ align, children }: { align: 'start' | 'beside'; children: ReactNode }) {
+  const phone = useIsPhone()
+  if (phone) return null
   return (
     <div
       className={cx(
