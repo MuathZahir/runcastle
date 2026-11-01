@@ -7,3 +7,7 @@
 ## 2. No timer: the agent's instructions decide when a recent chat means stay quiet
 **Decision:** The server does not block a notification because the human typed recently. The agent's instructions say to notify when the human asked to be told, or when it needs them and they seem to have left, for example after a long unattended round. They say not to notify during a back-and-forth, when the human will see the reply anyway.
 **Why:** A timer cannot tell "ask and walk away" from "still here", and "show me screenshots when it's done" is the job this feature exists for. It also keeps to the human's choice that nothing is automatic. The agent already knows when the human last typed. A wrong call costs one stray or missed ping, and a rule can be added later if that proves common.
+
+## 3. The server limits who may notify, with no exception for a human's request
+**Decision:** An orchestrator thread may always notify. A feature's main chat agent may notify only while no orchestrator thread holds that feature; otherwise the server refuses, and the agent says in the chat that it cannot ping and why. Side threads and workers, review workers included, do not get the tool. This holds even when the human asks a held feature's agent directly: they ask the orchestrator instead.
+**Why:** It enforces the brief's rule through the holder field "Threads hold features" already keeps, so a skill wording slip cannot break it. One rule is easier to trust, and the server cannot tell a human's request from the agent's own judgement. The cost is one extra message in a rare case.
