@@ -9,7 +9,11 @@ import { runcastleVersion } from '../version'
  * boots the server (serving the SPA) by default and dispatches subcommands:
  *
  *   runcastle            boot the server + open the app on http://localhost:4512
+ *   runcastle serve      the same, spelled out for scripts and services
+ *   runcastle setup      list what this machine is missing and install it
  *   runcastle doctor     run the pre-boot gate/diagnostic (forwards --gate etc.)
+ *   runcastle token      save the unattended Claude Code token
+ *   runcastle service    keep runcastle running on a Linux machine
  *   runcastle build-image  build the stock sandbox image, with no app
  *   runcastle --version  print the installed version
  *   runcastle --help     print usage
@@ -18,7 +22,15 @@ import { runcastleVersion } from '../version'
  * done in `main`, guarded by `import.meta.main` so importing this file for the
  * test never spawns a server.
  */
-export type Command = 'serve' | 'doctor' | 'build-image' | 'version' | 'help'
+export type Command =
+  | 'serve'
+  | 'setup'
+  | 'doctor'
+  | 'token'
+  | 'service'
+  | 'build-image'
+  | 'version'
+  | 'help'
 
 export interface ParsedCommand {
   command: Command
@@ -32,7 +44,10 @@ export function parseCommand(argv: string[]): ParsedCommand {
     return { command: 'version', args: rest }
   if (first === '--help' || first === '-h' || first === 'help')
     return { command: 'help', args: rest }
+  if (first === 'setup') return { command: 'setup', args: rest }
   if (first === 'doctor') return { command: 'doctor', args: rest }
+  if (first === 'token') return { command: 'token', args: rest }
+  if (first === 'service') return { command: 'service', args: rest }
   if (first === 'build-image') return { command: 'build-image', args: rest }
   if (first === 'serve') return { command: 'serve', args: rest }
   // Unknown token: show help rather than silently booting on a typo.
@@ -43,7 +58,12 @@ const USAGE = `runcastle — burn tickets into shipped features with Claude Code
 
 Usage:
   runcastle            Boot the server and serve the app (http://localhost:4512)
+  runcastle serve      The same, spelled out for scripts and services
+  runcastle setup      List what this machine is missing and install it (--yes, --agent claude|codex|both)
   runcastle doctor     Check prerequisites (add --gate for the pre-boot gate)
+  runcastle token      Save the unattended Claude Code token (--stdin to read it from a pipe)
+  runcastle service install
+                       Keep runcastle running on this Linux machine (service remove undoes it)
   runcastle build-image
                        Build the sandbox image without the app (a burn builds it if it is missing)
   runcastle --version  Print the installed version
@@ -65,9 +85,21 @@ async function main(argv: string[]): Promise<number> {
     case 'help':
       console.log(USAGE)
       return 0
+    case 'setup': {
+      const { runSetup } = await import('./setup')
+      return runSetup(args)
+    }
     case 'doctor': {
       const { runCli } = await import('../doctor/cli')
       return runCli(args)
+    }
+    case 'token': {
+      const { runToken } = await import('./token')
+      return runToken(args)
+    }
+    case 'service': {
+      const { runService } = await import('./service')
+      return runService(args)
     }
     case 'build-image': {
       const { runBuildImage } = await import('./build-image')

@@ -22,6 +22,12 @@ describe('parseCommand', () => {
     expect(parseCommand(['build-image'])).toEqual({ command: 'build-image', args: [] })
   })
 
+  it('routes setup, token and service, forwarding their arguments', () => {
+    expect(parseCommand(['setup', '--yes'])).toEqual({ command: 'setup', args: ['--yes'] })
+    expect(parseCommand(['token', '--stdin'])).toEqual({ command: 'token', args: ['--stdin'] })
+    expect(parseCommand(['service', 'install'])).toEqual({ command: 'service', args: ['install'] })
+  })
+
   it('handles --version / -v without booting', () => {
     expect(parseCommand(['--version']).command).toBe('version')
     expect(parseCommand(['-v']).command).toBe('version')

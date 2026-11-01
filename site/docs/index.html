@@ -17,7 +17,7 @@
     <meta property="og:title" content="Getting started — runcastle docs" />
     <meta
       property="og:description"
-      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512. No account, no hosted backend."
+      content="One command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512. No account, no hosted backend."
     />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
@@ -25,7 +25,7 @@
     <meta name="twitter:title" content="Getting started — runcastle docs" />
     <meta
       name="twitter:description"
-      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512."
+      content="One command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512."
     />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
@@ -94,7 +94,7 @@
         <h1>Getting started</h1>
         <p class="article-lede">
           runcastle is a programming system built on Claude Code: the IDE to Claude Code's text
-          editor. One global command installs it, and it runs entirely on your machine as a Bun
+          editor. One command installs it, and it runs entirely on your machine as a Bun
           server plus a browser UI at <code>http://localhost:4512</code>. No account, no hosted
           backend.
         </p>
@@ -109,15 +109,19 @@
         </nav>
 
         <h2>Install</h2>
-        <p>Three lines: install it, see what is missing, boot it.</p>
-        <pre><code><span class="pre-prompt">$</span> bun add -g runcastle       <span class="pre-comment"># install</span>
-<span class="pre-prompt">$</span> runcastle doctor           <span class="pre-comment"># check prerequisites</span>
-<span class="pre-prompt">$</span> runcastle                  <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
+        <p>One command: it shows what is missing, asks once, and installs it. Then boot it.</p>
+        <pre><code><span class="pre-prompt">$</span> curl -fsSL https://runcastle.dev/install.sh | bash   <span class="pre-comment"># macOS and Linux</span>
+<span class="pre-prompt">&gt;</span> irm https://runcastle.dev/install.ps1 | iex          <span class="pre-comment"># Windows</span>
+<span class="pre-prompt">$</span> runcastle                                            <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
+        <p>
+          It says what needs <code>sudo</code> before asking, guides you through Docker Desktop on
+          Windows and macOS, and leaves sign-ins to you. <code>bun add -g runcastle</code> is the
+          manual route. On a server, follow <a href="/docs/vps/">the VPS guide</a>.
+        </p>
         <p>
           <code>runcastle --version</code> prints the installed version. When a newer release
           lands, an in-app banner names the exact
-          <code>bun add -g runcastle@latest</code> command. runcastle never installs anything for
-          you. Every fix is a line you run yourself.
+          <code>bun add -g runcastle@latest</code> command.
         </p>
 
         <h2>What you need first</h2>
@@ -170,8 +174,7 @@
         <p>
           Skip these two if you only want interactive sessions. Builds you walk away from need a
           container runtime (Docker or Podman) and an auth token: run
-          <code>claude setup-token</code> on this machine and put
-          <code>CLAUDE_CODE_OAUTH_TOKEN=…</code> in <code>~/.runcastle/.env</code>. Each user
+          <code>runcastle token</code> on this machine. Each user
           authenticates against their own subscription. Nothing routes through runcastle.
         </p>
         <div class="note">
@@ -257,9 +260,8 @@
             reinstall the last one that worked.
           </li>
           <li>
-            <strong>Unattended burns fail with an auth error.</strong> Make sure
-            <code>CLAUDE_CODE_OAUTH_TOKEN</code> is in <code>~/.runcastle/.env</code>, generated
-            by <code>claude setup-token</code>.
+            <strong>Unattended burns fail with an auth error.</strong> Run
+            <code>runcastle token</code> again with a fresh token.
           </li>
         </ul>
         <p>

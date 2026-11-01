@@ -54,6 +54,27 @@ It runs entirely on your machine: a Bun server plus a browser UI at
 ## Install
 
 ```sh
+curl -fsSL https://runcastle.dev/install.sh | bash     # macOS and Linux
+```
+
+```powershell
+irm https://runcastle.dev/install.ps1 | iex            # Windows
+```
+
+It installs Bun and runcastle, then shows one list: what is already there, what
+it will install (each line saying if it needs `sudo`), and what you do
+afterwards. One yes installs the lot; `--yes` answers for you on a server. It
+only lists what is missing, so it is safe to run again. On Windows and macOS it
+guides you through Docker Desktop instead of installing it, and sign-ins always
+stay yours. Both scripts can be read at those addresses before you run them.
+Then run `runcastle` and open `http://localhost:4512`.
+
+On a VPS, [the VPS guide](https://runcastle.dev/docs/vps/) goes from a fresh
+login to a running, reachable runcastle.
+
+### Install by hand
+
+```sh
 bun add -g runcastle       # install
 runcastle doctor           # check prerequisites
 runcastle                  # boot the server and open http://localhost:4512
@@ -61,14 +82,14 @@ runcastle                  # boot the server and open http://localhost:4512
 
 `runcastle --version` prints the installed version. When a newer release is
 published an in-app banner names the exact `bun add -g runcastle@latest`
-command. runcastle never installs anything for you.
+command.
 
 ### Prerequisites
 
-runcastle drives real tools on your machine, so a few things must already be
-present. Run `runcastle doctor` at any time: it probes each one and prints a
-copy-pasteable fix for whatever is missing. (`runcastle doctor --gate` is the
-stricter pre-boot gate that stops only on the must-haves.)
+The install handles these for you. Run `runcastle doctor` at any time: it
+probes each one and prints a copy-pasteable fix for whatever is missing.
+(`runcastle doctor --gate` is the stricter pre-boot gate that stops only on the
+must-haves.)
 
 | Requirement | Why runcastle needs it |
 |---|---|
@@ -83,8 +104,8 @@ Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 - A **container runtime**, Docker or Podman. See
   [The AFK sandbox](#the-afk-sandbox).
 - **Agent credentials**, one step per runtime you burn on. For **Claude Code**,
-  run `claude setup-token` on this machine and put `CLAUDE_CODE_OAUTH_TOKEN=…` in
-  `~/.runcastle/.env`. For **Codex**, run `codex login` — that is the whole of it;
+  run `runcastle token`: it has you run `claude setup-token` and saves the token
+  to `~/.runcastle/.env` (`--stdin` reads it from a pipe). For **Codex**, run `codex login` — that is the whole of it;
   a burn borrows the credentials the login wrote. Either way you authenticate
   against your own subscription; nothing routes through runcastle. (A
   `CODEX_API_KEY` you put in `~/.runcastle/.env` by hand still wins over the

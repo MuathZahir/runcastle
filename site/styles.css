@@ -1780,7 +1780,7 @@ a.sr-only:focus-visible {
   flex-direction: column;
   gap: 10px;
   width: 100%;
-  max-width: 560px;
+  max-width: 680px;
   margin-top: 36px;
   text-align: left;
 }
@@ -1804,12 +1804,18 @@ a.sr-only:focus-visible {
   color: var(--text-disabled);
   user-select: none;
 }
+/* A command is one line that scrolls when the row is narrower than it: wrapped,
+   the URL breaks mid-word and the line stops reading as something to paste. */
 .cmd code {
   min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
   color: var(--text);
 }
 .cmd-note {
   margin-left: auto;
+  white-space: nowrap;
   font-size: 12px;
   line-height: 16px;
   color: var(--text-tertiary);
