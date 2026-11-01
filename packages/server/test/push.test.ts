@@ -1,5 +1,7 @@
+import { createECDH, randomBytes } from 'node:crypto'
 import type { SessionKind, SessionRow } from '@runcastle/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import webpush from 'web-push'
 import { pushSubscriptions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
@@ -234,6 +236,24 @@ describe('phone notifications', () => {
 
     it('makes its signing keys once and keeps them', () => {
       expect(pushPublicKey(ctx)).toBe(pushPublicKey(ctx))
+    })
+
+    it('encrypts the sentence, so a push service cannot read it', () => {
+      const browser = createECDH('prime256v1')
+      browser.generateKeys()
+      const keys = webpush.generateVAPIDKeys()
+
+      const request = webpush.generateRequestDetails(
+        {
+          endpoint: 'https://push.example/1',
+          keys: { p256dh: browser.getPublicKey('base64url'), auth: randomBytes(16).toString('base64url') },
+        },
+        JSON.stringify({ ...message, body: 'A private sentence' }),
+        { vapidDetails: { subject: 'https://runcastle.dev', ...keys } },
+      )
+
+      expect(request.headers['Content-Encoding']).toBe('aes128gcm')
+      expect(Buffer.from(request.body as Buffer).toString('latin1')).not.toContain('A private sentence')
     })
   })
 

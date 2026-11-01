@@ -33,7 +33,7 @@ When to call it lives in the tool's description and the feature and project skil
 
 ### Delivery
 
-Standard Web Push with VAPID, sent with the `web-push` library, which was confirmed under Bun to produce an encrypted request. New server service (push):
+Standard Web Push with VAPID, sent with the `web-push` library. Under Bun it sent a real encrypted request to a local HTTPS stand-in, and a 410 came back as a status. New server service (push):
 
 - **Keys:** a VAPID key pair made once per install and stored in the database, so it travels with the subscriptions when runcastle moves machines. Subject: `https://runcastle.dev` (Apple's push service refuses a localhost subject).
 - **Subscriptions:** one table, keyed by endpoint, holding the browser's encryption keys and when it was added. It is per install, not per project.
@@ -44,11 +44,11 @@ A tRPC router exposes the public key, subscribe (which sends the test notificati
 
 ### The phone
 
-A plain service worker, served from the root of the app with no caching of its own, registered on phone-width screens over HTTPS:
+A plain service worker, served from the root of the app with no caching of its own, registered wherever the page is open over HTTPS, which here means the phone link:
 
 - On `push` it shows the notification.
 - On `notificationclick` it focuses an open runcastle window and navigates it to the address, or opens a new one.
-- On a page navigation it goes to the network, and on failure answers with a small inline "can't reach your computer" page with a Retry button. It touches no other request.
+- On a page navigation it goes to the network, and on failure answers with a small inline "can't reach your computer" page with a Try again button. It does the same for a 502, 503 or 504, which is what Tailscale answers while the machine is up and runcastle is not. It touches no other request.
 
 The row has five states: off, on, blocked (says how to allow it in the phone's settings), needs the Home Screen (iPhone in Safari, says how to add it), and unsupported (this browser cannot do it, or the page was not opened over the phone link). Whether this phone is on is read from the browser's own push subscription, not from the server.
 
@@ -80,4 +80,3 @@ The cut's working agreement stops this feature before merge until a real notific
 ## Open questions
 
 - iPhone is built to the standard but untried. One vendor's page says web push is missing in the EU; Apple's 2024 reversal kept Home Screen apps there, and this could not be confirmed either way. The human is on Android, so it stays open until an iPhone user tries it.
-- Whether a project thread's `?thread=` address lands on that thread on a fresh open has to be checked while building. The hook that reads it is shared with feature chats.
