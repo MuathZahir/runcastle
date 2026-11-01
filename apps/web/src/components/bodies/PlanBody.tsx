@@ -3,6 +3,7 @@ import type { FeatureFull } from '../../lib/api'
 import { countDecisions } from '../../lib/feature-ui'
 import { relTimeAgo } from '../../lib/format'
 import { useFeatureDoc } from '../../lib/use-feature-doc'
+import { useIsPhone } from '../../lib/use-phone'
 import { IconDoc, IconExpand, IconEye, IconList } from '../../icons'
 import { EmptyState, IconButton, StatusLabel, Tabs } from '../../ui'
 import { DocProse } from '../DocReader'
@@ -25,6 +26,7 @@ export function PlanBody({ full, onOpenDesign }: { full: FeatureFull; onOpenDesi
   const lead: Part = full.preview ? 'preview' : spec ? 'spec' : 'decisions'
   const [part, setPart] = useState<Part>(lead)
   const [fullWindow, setFullWindow] = useState(false)
+  const phone = useIsPhone()
   // The count rides on the Decisions tab whichever part is on show.
   const decisionsDoc = useFeatureDoc(full.feature.id, decisions?.relPath)
   const count = countDecisions(decisionsDoc.content ?? '')
@@ -52,7 +54,8 @@ export function PlanBody({ full, onOpenDesign }: { full: FeatureFull; onOpenDesi
               </StatusLabel>
             )}
             {age !== undefined && <span className="mr-1">updated {relTimeAgo(age)}</span>}
-            {shown === 'preview' && (
+            {/* A phone's plan is already the whole screen. */}
+            {shown === 'preview' && !phone && (
               <IconButton label="Open full window" size="sm" icon={<IconExpand />} onClick={() => setFullWindow(true)} />
             )}
           </>

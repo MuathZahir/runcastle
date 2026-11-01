@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useIsPhone } from '../../lib/use-phone'
 import { BranchMenu, Button, IconButton, SplitButton, Spinner, StatusDot, StatusLabel, cx } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
 import type { ButtonVariant, StatusTone } from '../../ui'
@@ -100,6 +101,10 @@ export function NextStepBar({
   // the rest stay one click away in a "More" menu rather than disappearing.
   const shown = secondary.length > 2 ? secondary.slice(0, 2) : secondary
   const overflow = secondary.length > 2 ? secondary.slice(2) : []
+  // A phone reads a draft and starts nothing (runcastle-on-your-phone decision
+  // 7): the draft's page says to ask the Orchestrator instead.
+  const phone = useIsPhone()
+  if (phone) return null
   if (!hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
 
   const labelOf = (a: NextAction): string => (split?.kind === a.kind ? split.label : a.label)

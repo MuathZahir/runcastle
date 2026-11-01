@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow, RoundSummary, Ticket } from '@runcastle/core'
 import { laneFacts } from '../src/lib/feature-ui/run'
+import { atWidth } from './phone-width'
 
 /**
  * The panel's Tickets view (the-feature-s-right-panel decisions 17–19): which
@@ -336,5 +337,35 @@ describe('the list menu', () => {
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Spec' }))
     expect(opened).toEqual(['spec.md'])
+  })
+})
+
+/** runcastle-on-your-phone decision 3: Tickets read on a phone, and do nothing. */
+describe('on a phone', () => {
+  beforeEach(() => atWidth(true))
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads a ticket with no action on it: no model menu, edit, cancel, stop or terminal', () => {
+    server.tickets = [
+      ticket({ id: 't1', seq: 1 }),
+      ticket({ id: 't2', seq: 2, status: 'failed', conflictFiles: ['src/a.ts'], attemptBranch: 'runcastle/ticket/demo/2-x' }),
+      ticket({ id: 't3', seq: 3, status: 'burning' }),
+    ]
+    mount()
+    expect(screen.queryByRole('button', { name: 'Ticket list options' })).toBeNull()
+    for (const seq of [1, 2, 3]) {
+      const card = open(seq)
+      expect(within(card).queryByRole('combobox')).toBeNull()
+      expect(within(card).queryByRole('button', { name: /Edit|Cancel|Stop|Resolve/ })).toBeNull()
+    }
+    expect(row(1).textContent).toContain('Works')
+    expect(row(2).textContent).toContain('src/a.ts')
+  })
+
+  it('still opens a review ticket’s package to read', () => {
+    server.tickets = [ticket({ id: 'rv', seq: 5, kind: 'review', status: 'done' })]
+    mount()
+    fireEvent.click(within(open(5)).getByRole('button', { name: 'Open review package' }))
+    expect(screen.getByTestId('review-package').textContent).toBe('rv')
   })
 })
