@@ -21,6 +21,9 @@ import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './w
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
+import { useIsPhone } from '../lib/use-phone'
+import { PhoneChatBar } from './phone/PhoneChatBar'
+import { threadPhoneStatus } from './phone/phone-views'
 
 /**
  * The Orchestrator: what the sidebar's card opens, the one surface in the shell
@@ -49,6 +52,7 @@ export function ProjectWorkspace({
   onOpenPreparation,
   driveRequest = 0,
   onConsumeDriveRequest,
+  onBackToList,
 }: {
   projectId: string
   talk: ProjectTalkApi
@@ -69,7 +73,10 @@ export function ProjectWorkspace({
   /** The titlebar's drive pill asked for the project drive. */
   driveRequest?: number
   onConsumeDriveRequest?: () => void
+  /** On a phone, the chat bar's Back: the list. */
+  onBackToList?: () => void
 }) {
+  const phone = useIsPhone()
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
   const projectsQ = trpc.project.list.useQuery()
@@ -203,15 +210,17 @@ export function ProjectWorkspace({
     projectDrive.start(scenario, () => panel.dispatch({ type: 'close' }))
   }
 
-  const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // A phone shows the chat alone: the drive and the Notes inbox are the computer's.
+  const chatHidden = !phone && !!shown && !panel.state.collapsed && panel.state.share >= 1
   // The drive stays mounted while it runs, so the app is as it was left on the
   // way back (test-drive-looks-the-part decision 13).
-  const onDrive = shown === 'drive'
-  const shownDrive: SlotDrive | null =
-    drive ??
-    (projectDrive.starting
-      ? ({ state: 'idle', branch: branchesQ.data?.current ?? '', holderLabel: '', devReady: false, devConfigured: true } as SlotDrive)
-      : null)
+  const onDrive = shown === 'drive' && !phone
+  const shownDrive: SlotDrive | null = phone
+    ? null
+    : (drive ??
+      (projectDrive.starting
+        ? ({ state: 'idle', branch: branchesQ.data?.current ?? '', holderLabel: '', devReady: false, devConfigured: true } as SlotDrive)
+        : null))
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
   // The Orchestrator's chats live in the sidebar, under its card
   // (threads-in-the-sidebar); its "All N conversations" is the Conversations page.
@@ -276,6 +285,13 @@ export function ProjectWorkspace({
       {/* The one header row (design-mode decision 12): the Orchestrator, then
           the chat in front named as plain text (threads-in-the-sidebar decision
           6); at most one action; the panel toggle. */}
+      {phone ? (
+        <PhoneChatBar
+          title="Orchestrator"
+          status={threadPhoneStatus(threads.find((t) => t.id === inFront)?.state)}
+          onBack={() => onBackToList?.()}
+        />
+      ) : (
       <PageTopbar
         crumbs={[
           {
@@ -305,6 +321,7 @@ export function ProjectWorkspace({
           </>
         }
       />
+      )}
       {/* The drive's errands open their chat in this page's column. */}
       <ScenarioChatContext.Provider value={scenarioChat}>
         <PanelSplit
@@ -349,7 +366,8 @@ export function ProjectWorkspace({
           }
           panel={
             shown &&
-            shown !== 'drive' && (
+            shown !== 'drive' &&
+            !phone && (
               <FeaturePanel
                 view={shown}
                 views={tabs}
