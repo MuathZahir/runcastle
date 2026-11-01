@@ -50,6 +50,9 @@ const heldLogKey = (threadId: string) => ['runcastle.thread.log', threadId] as c
 /** What a thread says under a log the server could not bring up to date. */
 const OUT_OF_DATE = 'Could not reach the server — this may be out of date'
 
+/** How soon a thread with nothing held asks again after its opening read failed. */
+export const OPEN_RETRY_MS = 2_000
+
 const DRAFT_KEY = 'runcastle.thread.draft:'
 const AT_FILE = /(?:^|\s)@(\S*)$/
 
@@ -168,19 +171,29 @@ export function useThread({
   useEffect(() => {
     if (!threadId) return
     let left = false
+    let again: ReturnType<typeof setTimeout> | undefined
     const held = queryClient.getQueryData<ThreadEvent[]>(heldLogKey(threadId))
     const input = held?.length ? { threadId, after: held[held.length - 1].i } : { threadId }
-    const answered = (events: ThreadEvent[]) => {
-      if (left) return
-      take(threadId, events)
-      setReadFor(threadId)
+    const open = () => {
+      utils.thread.events.fetch(input, { staleTime: 0 }).then(
+        (read) => {
+          if (left) return
+          take(threadId, read.events)
+          setReadFor(threadId)
+        },
+        () => {
+          if (left) return
+          // A held log shows, marked. With nothing held the thread is unknown, not
+          // empty: it stays loading, and is asked again, until a read answers.
+          if (held?.length) setReadFor(threadId)
+          else again = setTimeout(open, OPEN_RETRY_MS)
+        },
+      )
     }
-    utils.thread.events.fetch(input, { staleTime: 0 }).then(
-      (read) => answered(read.events),
-      () => answered([]),
-    )
+    open()
     return () => {
       left = true
+      clearTimeout(again)
     }
   }, [threadId, utils, queryClient, take])
 

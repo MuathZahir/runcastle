@@ -748,6 +748,20 @@ describe('threadActivity with background work', () => {
     expect(threadActivity(reply('I asked why? Because it failed.'), true, soon)).toBe('background')
   })
 
+  it('weighs only what the latest turn said, not a question an earlier turn asked', () => {
+    const log = [
+      { type: 'prompt', id: 'p1', text: 'Go', source: 'human' },
+      { type: 'turn_started' },
+      { type: 'agent_text', messageId: 'm1', text: 'Which do you prefer?' },
+      { type: 'turn_ended', reason: 'end_turn' },
+      { type: 'prompt', id: 'p2', text: 'The first', source: 'human' },
+      { type: 'turn_started' },
+      { type: 'tasks', tasks: [{ id: 'b1', title: 'bun test', startedAt: at }] },
+      { type: 'turn_ended', reason: 'end_turn' },
+    ] as ThreadEventBody[]
+    expect(threadActivity(log.map((body, i) => line(body, i)), true, soon)).toBe('background')
+  })
+
   it('waits on the human when an ask is open, whatever runs', () => {
     const ask: ThreadEventBody = { type: 'ask', ask: { kind: 'question', id: 'a1', questions: [] } }
     expect(threadActivity([...reply('Running.'), line(ask, 6)], true, soon)).toBe('asking')

@@ -22,6 +22,7 @@ vi.mock('../src/lib/live', async (importOriginal) => ({
 
 const { ThreadColumn } = await import('../src/components/chat/ThreadColumn')
 const { putInInbox } = await import('../src/lib/composer-inbox')
+const { OPEN_RETRY_MS } = await import('../src/lib/use-thread')
 
 const at = 1_700_000_000_000
 const prompt = (i: number, id: string, text: string): ThreadEvent => ({ i, at, type: 'prompt', id, text, source: 'human' })
@@ -81,6 +82,30 @@ describe('ThreadColumn', () => {
     expect(await screen.findByText('Lined up — it had its own margin.')).toBeTruthy()
     expect(screen.queryByText('New thread')).toBeNull()
     expect(screen.queryByText('Loading the thread…')).toBeNull()
+  })
+
+  it('keeps a thread never read before loading through a failed read, and opens it when a read answers', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      let down = true
+      const api = fakeTrpc({
+        'thread.events': () => {
+          if (down) throw new Error('the server is gone')
+          return { events: HISTORY }
+        },
+      })
+      render(<ThreadColumn threadId="th1" emptyHint="One chat per feature" />, { wrapper: api.Wrapper })
+      await act(() => vi.advanceTimersByTimeAsync(OPEN_RETRY_MS / 2))
+      expect(screen.getByText('Loading the thread…')).toBeTruthy()
+      expect(screen.queryByText('New thread')).toBeNull()
+
+      down = false
+      await act(() => vi.advanceTimersByTimeAsync(OPEN_RETRY_MS))
+      expect(screen.getByText('Lined up — it had its own margin.')).toBeTruthy()
+      expect(screen.queryByText('Loading the thread…')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('welcomes a thread that is really empty once its read says so', async () => {

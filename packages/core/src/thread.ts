@@ -520,6 +520,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
       if (e.source === 'agent') answering = true
       replied = false
       inTurn = true
+      lastSaid = ''
+      lastMessage = undefined
     } else if (e.type === 'turn_ended') {
       replied = answering && e.reason !== 'cancelled'
       inTurn = false

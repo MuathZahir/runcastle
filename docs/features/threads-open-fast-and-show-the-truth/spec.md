@@ -63,8 +63,9 @@ began after it.
 **One read to open a thread (`apps/web`).** `useThread` no longer calls `thread.view`, so an open
 makes one log read and a signal causes no second. `thread.view` stays on the server for Export.
 Every opening reads past the held log, and the thread is drawn only once that read has answered.
-If it fails, the held log shows with an out-of-date line. The "Loading the thread…" line fades in
-after 250 ms, so a read that answers at once shows no flash of it. ↑ in the composer still recalls
+If it fails, the held log shows with an out-of-date line; with nothing held, the thread stays
+loading and asks again every 2 seconds, so it never reads as a new thread. The "Loading the
+thread…" line fades in after a moment (`--dur-3`), so a read that answers at once shows no flash. ↑ in the composer still recalls
 from the held log while the thread catches up.
 
 **A tail reader in the thread log (`packages/server`).** `readThreadEvents` keeps each log's
