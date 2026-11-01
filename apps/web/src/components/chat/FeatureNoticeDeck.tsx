@@ -8,6 +8,7 @@ import {
   type NoticeTicket,
   type StandingNotice,
 } from '../../lib/chat-notices'
+import { useIsPhone } from '../../lib/use-phone'
 import { NoticeStrip } from './NoticeStrip'
 
 /**
@@ -31,6 +32,7 @@ export function FeatureNoticeDeck({
   standing = [],
   active,
   onView,
+  readyToTest = false,
 }: {
   /** The feature's event log, oldest first (`useEventLog`). */
   events: readonly EventRow[]
@@ -42,8 +44,14 @@ export function FeatureNoticeDeck({
   active: boolean
   /** Switch the feature to the tab a notice points at. */
   onView: (target: ChatNoticeTarget) => void
+  /** The agent declared the feature ready to test (`READY_TO_TEST`). */
+  readyToTest?: boolean
 }) {
   const [deck, dispatch] = useReducer(deckReducer, [])
+  // A drive needs a desktop (runcastle-on-your-phone decision 4): on a phone no
+  // notice opens one, and a feature ready to test says where its drive is.
+  const phone = useIsPhone()
+  const shown = phone ? deck.filter((n) => n.target !== 'drive') : deck
   // When the tab came to front, or null while another tab is.
   const frontSince = useRef<number | null>(null)
   // The newest event already run through the mapping, so none raises twice.
@@ -82,11 +90,16 @@ export function FeatureNoticeDeck({
   }
 
   return (
-    <NoticeStrip
-      notices={deck}
-      standing={standing}
-      onAct={act}
-      onDismiss={(kind) => dispatch({ type: 'dismiss', kind })}
-    />
+    <>
+      {phone && readyToTest && (
+        <p className="m-0 mb-1.5 px-3 text-xs text-text-tertiary">Ready to test. The test drive is on your computer; you can still talk here.</p>
+      )}
+      <NoticeStrip
+        notices={shown}
+        standing={standing}
+        onAct={act}
+        onDismiss={(kind) => dispatch({ type: 'dismiss', kind })}
+      />
+    </>
   )
 }

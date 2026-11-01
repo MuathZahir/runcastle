@@ -4,6 +4,7 @@ import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget, StandingNotice } from '../../lib/chat-notices'
 import { mainChatInbox } from '../../lib/composer-inbox'
+import { READY_TO_TEST } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
@@ -115,7 +116,14 @@ export function FeatureChat({
       {...(isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
       notices={alerts}
     >
-      <FeatureNoticeDeck events={events} tickets={full.tickets} standing={standing} active onView={onView} />
+      <FeatureNoticeDeck
+        events={events}
+        tickets={full.tickets}
+        standing={standing}
+        active
+        onView={onView}
+        readyToTest={full.feature.waitingReason === READY_TO_TEST}
+      />
     </ThreadColumn>
   )
 }
