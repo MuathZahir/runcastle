@@ -23,3 +23,7 @@
 ## 6. Run as root, the script stops before installing anything
 **Decision:** Run as root or through `sudo`, the script stops at the very start, explains why, gives the two commands that create a normal user with `sudo`, and says to re-run as that user. There is no `--allow-root`. The script only names those commands; it does not run them.
 **Why:** A fresh VPS usually logs in as root, Claude Code refuses to run unattended as root, and carrying on would put everything in root's home folder and fail at the first burn. An override would only delay that failure, and it can be added later if people need it. Running inside a Dockerfile is not a job this feature aims at.
+
+## 7. The background service is a separate, Linux-only command
+**Decision:** `runcastle service install` makes Linux keep runcastle running: it starts when the machine boots and restarts if it crashes, with nobody logged in. It runs as the person's user, with the right `PATH`, after Docker has started. If a service file already exists, it replaces it and says so. `runcastle service remove` undoes it. On macOS and Windows the command says it is not supported. The service is not on the one-yes list; on a Linux machine with no desktop session, the "afterwards" part of the setup suggests it.
+**Why:** Without a service, runcastle dies with the terminal, which on a VPS means burns die at logout. People on a laptop do not want it running all the time, so it stays out of the install. Nobody has asked for macOS or Windows services, and they cannot be tested here.
