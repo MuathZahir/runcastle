@@ -258,7 +258,7 @@ function mount(
  */
 function mountWithSidebar(
   api: ProjectTalkApi = talk(),
-  page: { conversations?: boolean; onCloseConversations?: () => void } = {},
+  page: { conversations?: boolean; onCloseConversations?: () => void; onOpenConversations?: () => void } = {},
 ) {
   const tree = () => (
     <SidebarThreadsProvider>
@@ -462,6 +462,8 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
   state: 'idle',
   createdAt: updatedAt,
   updatedAt,
+  // Written in just now, so it is active: the Orchestrator lists it and lands on it.
+  lastHumanAt: Date.now(),
   runtime: 'claude-code',
 })
 
@@ -493,6 +495,16 @@ describe('opening the Orchestrator', () => {
     threads = [entry('sess_a', 'Plan the audit', 2_000), entry('sess_b', 'An older idea', 9_000)]
     rerender()
     expect(chatInFront()?.dataset.thread).toBe('sess_a')
+  })
+
+  it('lists every chat when none is active, staying there as one turns active', () => {
+    const idle = { ...entry('sess_a', 'An older idea'), lastHumanAt: undefined }
+    threads = [idle]
+    const { rerender } = mount()
+    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
+    threads = [{ ...idle, state: 'working' }]
+    rerender()
+    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
   })
 
   it('waits for the list, showing no chat until it knows the latest', () => {
@@ -550,7 +562,7 @@ describe('the Conversations page', () => {
   })
 
   it('opens from the sidebar’s last row, past its five', () => {
-    threads = Array.from({ length: 7 }, (_, i) => entry(`sess_${i}`, `Chat ${i}`, i + 1))
+    threads = Array.from({ length: 7 }, (_, i) => ({ ...entry(`sess_${i}`, `Chat ${i}`, i + 1), lastHumanAt: i === 6 ? Date.now() : undefined }))
     const onOpenConversations = vi.fn()
     render(
       <SidebarThreadsProvider>
@@ -654,6 +666,13 @@ describe('a live project chat', () => {
     fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
+  })
+
+  it('leaves idle chats out of the card, for the Conversations page', () => {
+    threads = [entry('sess_1', 'Audit the journal', 2_000), { ...entry('sess_old', 'An older idea'), lastHumanAt: undefined }]
+    mountWithSidebar(talk(), { onOpenConversations: () => {} })
+    expect(orchestratorChats()).toEqual(['Audit the journal'])
+    expect(within(sidebar()).getByText('All 2 conversations')).toBeTruthy()
   })
 
   it('keeps the chat in front in the address, and a reload reopens it', async () => {

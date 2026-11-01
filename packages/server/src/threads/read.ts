@@ -3,6 +3,7 @@ import {
   awaitsHuman,
   DEFAULT_RUNTIME,
   foldThread,
+  lastHumanAt,
   type SessionKind,
   type SessionRow,
   type ThreadEntry,
@@ -168,6 +169,7 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEn
     state: agentHost(ctx).isRunning(row.id) ? view.state : 'idle',
     createdAt: row.createdAt ?? 0,
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
+    lastHumanAt: lastHumanAt(events),
     runtime: row.runtime ?? DEFAULT_RUNTIME,
   }
 }

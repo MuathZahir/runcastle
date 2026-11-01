@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The sidebar shows only active threads preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
+.flow .node{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.flow .node.end{border-color:var(--color-accent);color:var(--color-accent-text)}
+.flow .node i{font-style:normal;color:var(--color-text-tertiary)}
+.flow .arrow{color:var(--color-text-tertiary);font-size:12px}
+.designs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:760px){.designs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The sidebar shows only active threads</h1>
+  <p class="lede">The Orchestrator's list shows only the threads that matter now, in a fixed order, named by what they're about, and shows which ones hold features. This plan was made without you.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>The lead builds it, then a review round</span><span class="mono">docs/features/the-sidebar-shows-only-active-threads/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>What puts a thread on the list</h3>
+    <p class="hint">Any one of these. Everything else lives on the Conversations page.</p>
+    <div class="flow">
+      <span class="node">Working, or an open question <a class="pin" data-d="14">14</a></span>
+      <span class="node">Holds a feature in flight or up next <a class="pin" data-d="2">2</a></span>
+      <span class="node">The thread open now <a class="pin" data-d="9">9</a></span>
+      <span class="node">You wrote in it in the last 24 hours</span>
+      <span class="arrow">then</span>
+      <span class="node end">Listed, newest started first <a class="pin" data-d="10">10</a></span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The two designed screens</h3>
+    <p class="hint">Real components on sample data, approved and committed.</p>
+    <div class="designs">
+<!-- screen:orchestrator-list -->
+<div class="designed">
+  <h3>The Orchestrator's list <a class="pin" data-d="18">18</a> <a class="pin" data-d="3">3</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="11">11</a></h3>
+  <p>The list, the rings, the hover and the "…" menu are real components. The threads and features are sample data.</p>
+  <p class="mono">apps/web/src/components/SidebarParts.tsx · preview /preview/active-threads.html</p>
+  <div class="btns">
+    <button data-open-design="/preview/active-threads.html">Open in design</button>
+    <button data-open-design="/preview/active-threads.html?state=old">An old thread open</button>
+    <button data-open-design="/preview/active-threads.html?state=quiet">Holding, idle</button>
+    <button data-open-design="/preview/active-threads.html?state=none">Nothing active</button>
+    <button data-open-design="/preview/active-threads.html?state=today">Today, to compare</button>
+  </div>
+</div>
+<!-- /screen:orchestrator-list -->
+<!-- screen:held-feature -->
+<div class="designed">
+  <h3>A feature names its holder <a class="pin" data-d="13">13</a></h3>
+  <p>The header and its crumbs are real. The names are sample data.</p>
+  <p class="mono">apps/web/src/components/Workspace.tsx · preview /preview/held-feature.html</p>
+  <div class="btns">
+    <button data-open-design="/preview/held-feature.html">Open in design</button>
+    <button data-open-design="/preview/held-feature.html?state=side">Side thread in front</button>
+    <button data-open-design="/preview/held-feature.html?state=long">Long names</button>
+  </div>
+</div>
+<!-- /screen:held-feature -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Clicking Orchestrator <a class="pin" data-d="12">12</a></h3>
+    <div class="flow">
+      <span class="node">An active thread</span><span class="arrow">then</span><span class="node end">Opens the one with the latest activity</span>
+    </div>
+    <div class="flow">
+      <span class="node">None active, chats exist</span><span class="arrow">then</span><span class="node end">Conversations page</span>
+    </div>
+    <div class="flow">
+      <span class="node">No chats at all</span><span class="arrow">then</span><span class="node end">An empty new chat</span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What a thread is called <a class="pin" data-d="5">5</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="7">7</a></h3>
+    <div class="flow">
+      <span class="node">Your rename</span><span class="arrow">else</span>
+      <span class="node">The runtime's title <i>Running Runcastle on a remote VPS</i></span><span class="arrow">else</span>
+      <span class="node">Your first message</span>
+    </div>
+    <p class="hint" style="margin-top:8px">Titles like "Runcastle project session" are skipped. In 21 real titles, 11 were that kind, and the six newest were all good.</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing deferred</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The Conversations page's list and grouping</li>
+      <li><i class="dot"></i>Threads under a feature</li>
+      <li><i class="dot"></i>How holding works</li>
+      <li><i class="dot"></i>Status truth and loading speed: "Threads open fast and show the truth"</li>
+      <li><i class="dot"></i>Hiding a row by hand</li>
+      <li><i class="dot"></i>The ADR-0016 amendment, which comes through the project session</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow">
+        <span class="node">Thread list gains when you last wrote</span><span class="arrow">+</span>
+        <span class="node">Feature list already says who holds it</span><span class="arrow">into</span>
+        <span class="node end">One pure active rule</span><span class="arrow">read by</span>
+        <span class="node">The sidebar list</span><span class="node">The Orchestrator's landing</span>
+      </div>
+      <p class="hint" style="margin-top:8px">Naming changes in one function, shared with the runtime-title check. The feature page finds its holder in the thread list. No schema change. Shared components changed: the sidebar's parts, the row menu (a rule after an item) and the tooltip (closes as the pointer leaves). The full shape is in the spec.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    [
+      "A row's hold mark takes the age's spot",
+      "The row only fits the title and one short thing, and in an active-only list the age matters least. It is the human's own idea from the brief."
+    ],
+    [
+      "The mark counts features in flight or up next",
+      "One meaning for \"holds\" in the list: the mark is the reason the thread is there. An orchestrator that cuts five backlog features would otherwise wear a 5 for work nobody started.",
+      "assumed"
+    ],
+    [
+      "Feature names show on hover, and the row's \"…\" menu opens them",
+      "The tooltip is the quick check the human asked for, and the menu is the same list where a click, a keyboard or a phone can use it. A strip in the thread would be a second new place to look.",
+      "assumed"
+    ],
+    [
+      "A thread active only by holding looks like any idle row",
+      "The mark already says why the row is there. A word such as \"holding\" has no room and repeats it.",
+      "assumed"
+    ],
+    [
+      "Runtime titles name Orchestrator threads only",
+      "The brief keeps threads under a feature as they are, and a feature lead's generated title summarises runcastle's briefing, not its subject.",
+      "assumed"
+    ],
+    [
+      "A junk title is spotted by a short list of phrases",
+      "Those phrases cover all the junk in the 21 real generated titles on this machine (11 of them; the six newest were all good), and they name the session rather than a subject. A list is one line to extend.",
+      "assumed"
+    ],
+    [
+      "Existing threads get their new names at once",
+      "The titles are on disk, and one name everywhere is how a thread stays recognisable. Terminal-era threads are read-only history, so re-reading their transcripts would cost work for names almost nobody sees.",
+      "assumed"
+    ],
+    [
+      "Codex needs no work of its own",
+      "This machine has no Codex threads to check, and both outcomes are fine. The code path is the runtime-neutral one.",
+      "assumed"
+    ],
+    [
+      "A thread opened from Conversations stays listed only while it is active",
+      "It follows from \"the thread open now\" and needs no extra rule. Writing in it is what brings a thread back for 24 hours.",
+      "assumed"
+    ],
+    [
+      "The Orchestrator's list runs newest started first",
+      "The brief keeps today's start-time sort, and the newest thread is usually the one being talked to.",
+      "assumed"
+    ],
+    [
+      "\"All N conversations\" stays, and is all the list shows when nothing is active",
+      "It stays the one way to the rest, so the shorter list hides nothing. The fold and menus work per card and per row, so they do not care how long the list is.",
+      "assumed"
+    ],
+    [
+      "A project with no chats still opens on a new chat",
+      "The brief's rule needs this one exception: a Conversations page with nothing on it is a dead end, and `the-orchestrator-s-page` decision 14 stands.",
+      "assumed"
+    ],
+    [
+      "A feature's page names its holder as the first crumb",
+      "The crumbs already read as \"what this sits under\", so this needs no new control. It is on the page at all times, one click away, without opening a panel.",
+      "assumed"
+    ],
+    [
+      "\"Waiting on the human\" means an open question",
+      "Counting every finished turn would keep nearly every thread listed for ever, and the list would not shrink. A reply to a recent message is covered by the 24-hour rule.",
+      "assumed"
+    ],
+    [
+      "A thread leaves when its reason goes, with no grace period",
+      "A grace period would be a second clock beside the 24 hours, for a moment the human is on the feature's page anyway.",
+      "assumed"
+    ],
+    [
+      "No way to dismiss a row by hand",
+      "The point of the feature is that the list needs no tending, and wrong statuses are that feature's job, next in line.",
+      "assumed"
+    ],
+    [
+      "Rows join and leave at once",
+      "It happens rarely, and freezing the list while the pointer is over it is machinery that hides news such as a thread starting to wait.",
+      "assumed"
+    ],
+    [
+      "Orchestrator thread rows show no time, and holders wear their features' rings",
+      "The human's choice from the Tweaks: a column mixing times and rings doesn't work, and in an active-only list the time says little. The rings show what a thread holds and how far along it is."
+    ],
+    [
+      "The yellow dots stay as they are",
+      "The human's call after weighing the proposal to take the dot off feature rows. The rest of the sidebar stays out of this feature, as the brief says."
+    ]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [
+      2,
+      "Count every unshipped feature the thread holds, backlog included.",
+      "A guess about what \"holds\" means to you. The challenger pointed out a backlog feature's page can say \"held by X\" while X shows nothing.",
+      "challenged"
+    ],
+    [
+      3,
+      "A line or button in the chat's header naming the features.",
+      "The brief left this open, and it decides whether you read names by hovering or by opening the thread."
+    ],
+    [
+      6,
+      "Match whole titles rather than phrases anywhere in a title.",
+      "A real title such as \"Fixing the project session skill\" would be thrown away, and runcastle is built with runcastle.",
+      "challenged"
+    ],
+    [
+      9,
+      "Keep any thread opened in the last 24 hours, not just written in.",
+      "Reading an old thread and clicking away is the \"come back to it\" case the feature exists for. Keeping it needs a stored last-opened time.",
+      "challenged"
+    ],
+    [
+      13,
+      "A \"Held by\" row in the Details panel's facts. The challenger would also keep the crumb after shipping.",
+      "A guess at how visible you want this. It is the part that reverses ADR-0016's \"no Held by line\".",
+      "challenged"
+    ]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

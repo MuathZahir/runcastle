@@ -74,7 +74,7 @@ import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, LONG_CONTEXT, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
-import { runtimeMayName, threadAbout, threadName } from './naming'
+import { namesItsSubject, runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 import { snapshotWorktree, worktreeChanges, worktreeRelative, type WorktreeSnapshot } from './worktree-changes'
@@ -1238,9 +1238,12 @@ class Host implements AgentHost {
       if (body.type === 'model' && t.state === 'starting') continue
       if (body.type === 'title') {
         // The runtime's generated title names a thread nobody named, unless it was made from
-        // runcastle's opening (see `naming.ts`); a name the human gave stays.
-        if (getSessionRow(this.ctx, t.id)?.title) continue
-        if (runtimeMayName(readThreadEvents(t.id))) setSessionTitle(this.ctx, t.id, body.title)
+        // runcastle's opening or only names the session (see `naming.ts`); a name the human gave stays.
+        const row = getSessionRow(this.ctx, t.id)
+        if (row?.title) continue
+        if (row && runtimeMayName(row, readThreadEvents(t.id)) && namesItsSubject(row, body.title)) {
+          setSessionTitle(this.ctx, t.id, body.title)
+        }
       }
       appendThreadEvent(t.id, body)
     }

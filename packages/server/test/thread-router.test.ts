@@ -190,16 +190,17 @@ describe('thread router', () => {
     ])
     const renamed = thread([{ type: 'prompt', id: 'p', text: 'whatever', source: 'human' }])
     await caller.thread.rename({ threadId: renamed, title: 'Journal audit' })
-    // Runcastle's words reached the conversation later, or rode unseen with a prompt: no generated title names it.
+    // Runcastle's words reached the conversation later, or rode unseen with a prompt: an Orchestrator
+    // chat still takes the generated title (the-sidebar-shows-only-active-threads decision 5).
     const wokenLater = thread([
       { type: 'prompt', id: 'p', text: 'Audit the journal', source: 'human' },
       { type: 'prompt', id: 'w', text: '[runcastle] The round ended.', source: 'runcastle' },
-      { type: 'title', title: 'Runcastle round summary' },
+      { type: 'title', title: 'The journal audit' },
     ])
     const briefedUnseen = thread([
       { type: 'prompt', id: 'p', text: 'Pick up the release', source: 'human' },
       { type: 'briefed' },
-      { type: 'title', title: 'Runcastle feature session' },
+      { type: 'title', title: 'Picking up the release' },
     ])
 
     const names = Object.fromEntries((await caller.thread.list({ projectId })).map((t) => [t.id, t.title]))
@@ -208,8 +209,8 @@ describe('thread router', () => {
       [firstMessage]: 'A notes inbox for the project',
       [generated]: 'Dark mode for the app',
       [renamed]: 'Journal audit',
-      [wokenLater]: 'Audit the journal',
-      [briefedUnseen]: 'Pick up the release',
+      [wokenLater]: 'The journal audit',
+      [briefedUnseen]: 'Picking up the release',
     })
   })
 

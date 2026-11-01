@@ -5,9 +5,9 @@ import { useSessionBranch } from '../lib/use-session-branch'
 import { IconOrchestrator } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { PageTopbar } from '../ui'
-import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
+import { NEW_CHAT_NAME, UNSTARTED_CHAT, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
-import { usePublishSidebarThreads } from '../lib/sidebar-threads'
+import { orchestratorLanding, usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
 import { projectViewLabel, panelTabs, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
@@ -25,11 +25,11 @@ import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
 /**
  * The Orchestrator: what the sidebar's card opens, the one surface in the shell
  * bound to a project rather than a feature. Like a feature, it is its chat
- * (the-orchestrator-s-page): it opens on the latest conversation, or on a new
- * one when the project has none, with one resizable panel on the right holding
- * the project drive or the Notes inbox. Every chat of the project lists in the
- * sidebar, and past its five, on the Conversations page. Any number of chats
- * run at once (decision 14).
+ * (the-orchestrator-s-page): it opens on the active chat that moved last, on the
+ * Conversations page when none is active, or on a new chat when the project has
+ * none, with one resizable panel on the right holding the project drive or the
+ * Notes inbox. The active chats list in the sidebar, and all of them on the
+ * Conversations page. Any number of chats run at once (decision 14).
  */
 
 /** The column of a chat started here, kept as it gets its id: its first message is already in it. */
@@ -44,6 +44,8 @@ export function ProjectWorkspace({
   onConsumeInboxRequest,
   empty = false,
   conversations = false,
+  threadRequest = null,
+  onConsumeThreadRequest,
   onOpenConversations,
   onCloseConversations,
   onOpenPreparation,
@@ -61,6 +63,9 @@ export function ProjectWorkspace({
   empty?: boolean
   /** The Conversations page is open instead of a chat. */
   conversations?: boolean
+  /** A chat to open on arrival: a feature's page asked for its holder. */
+  threadRequest?: string | null
+  onConsumeThreadRequest?: () => void
   onOpenConversations?: () => void
   /** Back to the chats, from the Conversations page. */
   onCloseConversations?: () => void
@@ -93,6 +98,8 @@ export function ProjectWorkspace({
   // live signal (lib/live.ts).
   const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const listed = listQ.data ?? []
+  // Same key the sidebar polls: a chat holding features counts as active.
+  const featuresQ = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const fallback = talk.session?.id ?? null
   // A reload or a pasted link opens the chat the address names — when it is this project's.
   const {
@@ -114,15 +121,27 @@ export function ProjectWorkspace({
   const closedErrand = !!front && front === scenarioChat.sessionId && !scenarioChat.listed
   // While the address's chat is pending, nothing is in front.
   const opening = pending !== null
-  // Arriving, or an errand's chat closing, lands on the latest conversation.
-  // Once: a chat in front stays there while others post.
-  const landingOnLatest = !opening && !!listQ.data && (front === undefined || closedErrand)
-  const latest = landingOnLatest ? (newestThread(listed, 'project') ?? fallback) : null
+  // With no active chat the page lists them all, at this address: nothing to
+  // push, so Back does not land here again. Latched, as the pick below is.
+  const [listing, setListing] = useState(false)
+  // Arriving, or an errand's chat closing, lands once: a chat in front stays
+  // there while others post, and so does the list while a chat turns active.
+  const landingOnLatest =
+    !opening &&
+    !threadRequest &&
+    !listing &&
+    !!listQ.data &&
+    (featuresQ.data !== undefined || featuresQ.isError) &&
+    (front === undefined || closedErrand)
+  const landed = landingOnLatest ? orchestratorLanding(listed, featuresQ.data ?? [], Date.now()) : null
+  const latest = landed?.kind === 'chat' ? landed.threadId : landed?.kind === 'none' ? fallback : null
   if (landingOnLatest && (latest !== null || closedErrand)) setFront(latest ?? undefined)
+  if (landed?.kind === 'conversations') setListing(true)
   const inFront = opening || closedErrand ? null : (front ?? null)
   // A project with no chats opens on a new one, which its first message starts.
-  const unstarted = !opening && !inFront && !!listQ.data && !latest
-  const inView = conversations ? null : inFront
+  const unstarted = landed?.kind === 'none' && !latest
+  const allChats = conversations || listing
+  const inView = allChats ? null : inFront
   useThreadInUrl(opening ? undefined : inView)
   // The chat started here keeps its column: the first message is already in it.
   const [started, setStarted] = useState<string | null>(null)
@@ -142,6 +161,7 @@ export function ProjectWorkspace({
   // A pick from anywhere leaves the Conversations page for that chat.
   const open = (threadId: string): void => {
     setFront(threadId)
+    setListing(false)
     if (conversations) onCloseConversations?.()
   }
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
@@ -176,6 +196,12 @@ export function ProjectWorkspace({
     newChatRef.current()
     onConsumeNewChatRequest?.()
   }, [newChatRequest, onConsumeNewChatRequest])
+  useEffect(() => {
+    if (!threadRequest) return
+    setFront(threadRequest)
+    setListing(false)
+    onConsumeThreadRequest?.()
+  }, [threadRequest, onConsumeThreadRequest, setFront])
   // Capture's View: the inbox is the panel's Notes; the card scrolls itself in.
   useEffect(() => {
     if (inboxRequest > 0) setPicked('details')
@@ -218,7 +244,7 @@ export function ProjectWorkspace({
   usePublishSidebarThreads({
     scope: { projectId },
     threads,
-    current: conversations ? null : (inFront ?? (unstarted ? UNSTARTED_CHAT : null)),
+    current: allChats ? null : (inFront ?? (unstarted ? UNSTARTED_CHAT : null)),
     pick: (id) => {
       if (id !== UNSTARTED_CHAT) open(id)
       else if (conversations) onCloseConversations?.()
@@ -281,9 +307,16 @@ export function ProjectWorkspace({
           {
             label: 'Orchestrator',
             icon: <IconOrchestrator size={14} />,
-            ...(conversations ? { onClick: () => onCloseConversations?.() } : {}),
+            ...(allChats
+              ? {
+                  onClick: () => {
+                    setListing(false)
+                    onCloseConversations?.()
+                  },
+                }
+              : {}),
           },
-          ...(conversations ? [{ label: 'Conversations' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
+          ...(allChats ? [{ label: 'Conversations' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
         trail
         actions={
@@ -311,9 +344,9 @@ export function ProjectWorkspace({
           chat={
             // One thread in front, or the Conversations page.
             <>
-              {conversations && !chatHidden && <ConversationsPage threads={listed} pending={listQ.isPending} onOpen={open} />}
-              {!conversations && opening && !chatHidden && <ThreadOpening />}
-              {!conversations && inFront && !chatHidden &&
+              {allChats && !chatHidden && <ConversationsPage threads={listed} pending={listQ.isPending} onOpen={open} />}
+              {!allChats && opening && !chatHidden && <ThreadOpening />}
+              {!allChats && inFront && !chatHidden &&
                 (scenarioInFront ? (
                   <ThreadColumn
                     key={inFront}
@@ -331,7 +364,7 @@ export function ProjectWorkspace({
                     landing={landing}
                   />
                 ))}
-              {!conversations && unstarted && !chatHidden && (
+              {!allChats && unstarted && !chatHidden && (
                 <ProjectChat
                   key={NEW_CHAT_KEY}
                   threadId={null}
