@@ -11,3 +11,7 @@
 ## 3. Docker installs automatically only where Docker's own script supports the system
 **Decision:** On Linux, `runcastle setup` installs Docker Engine with Docker's own install script on the systems that script covers: Ubuntu, Debian, Raspberry Pi OS, CentOS, RHEL, Rocky, Fedora and SLES. On any other system, Docker goes in the "you do this afterwards" part of the list with a link, as on Windows and macOS. A working Docker or Podman counts as done. Installing Docker also adds the person to the `docker` group; the list says that group is effectively root access, and the "afterwards" part says to log out and back in.
 **Why:** Writing our own install steps for other systems means more code on systems we would rarely test, for a small share of users. Those users follow one link, and a system can be added later.
+
+## 4. No terminal and no `--yes` means show the list and stop with an error
+**Decision:** The setup reads its answer directly from the terminal, so `curl | bash` can still ask. A run with no terminal at all and no `--yes` prints the full list, changes nothing further, and stops with an error saying to re-run with `--yes`. With `--yes`, it installs everything it can and prints the "afterwards" steps.
+**Why:** Silence must never count as a yes, because that yes can run `sudo` and add someone to the `docker` group. Installing anyway would be friendlier for scripts, but it makes the safe path depend on something the person cannot see. Bun and runcastle are already installed by this point, under decision 1.
