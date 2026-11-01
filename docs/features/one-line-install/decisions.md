@@ -31,3 +31,7 @@
 ## 8. A tool too old to work counts as missing
 **Decision:** This is the one exception to "never upgrade what is there". A tool below the version runcastle needs is treated as missing; anything new enough is never touched, even if it is behind the latest. An old Claude Code or Codex goes on the list as an update from one version to another, under the one yes. An old Bun must be fixed before the list can appear, so the script asks one yes for it first, as it does for `unzip`, and with `--yes` it just upgrades.
 **Why:** Leaving a too-old tool alone would report a successful install and then break. Stopping to print the update command would hand the job back to the person, which this feature exists to remove.
+
+## 9. A project's own tools are not the install's business
+**Decision:** The install says and does nothing about what a person's projects need. It adds no note, no check and no install for Node, Flutter or any other project tool.
+**Why:** Runcastle works with any language, so project tools are the person's own, like Flutter on a Flutter project. A note about them would answer a question nobody asked at install time.
