@@ -144,10 +144,14 @@ export function useThread({
   )
   const got = eventsQ.data?.events
 
-  /** Add a read's answer to the thread's held log. */
+  /**
+   * Add a read's answer to the thread's held log. `known` is the log that read
+   * was made against: the cached copy is an entry nothing watches, which the
+   * query cache drops after five minutes, so it can go while the thread is on screen.
+   */
   const take = useCallback(
-    (to: string, events: ThreadEvent[]): void => {
-      const base = queryClient.getQueryData<ThreadEvent[]>(heldLogKey(to))
+    (to: string, events: ThreadEvent[], known: ThreadEvent[] | null | undefined): void => {
+      const base = queryClient.getQueryData<ThreadEvent[]>(heldLogKey(to)) ?? known ?? undefined
       const last = base?.length ? base[base.length - 1].i : -1
       const fresh = events.filter((e) => e.i > last)
       if (fresh.length === 0 && base) return
@@ -161,8 +165,8 @@ export function useThread({
     [utils, queryClient],
   )
   useEffect(() => {
-    if (got && threadId) take(threadId, got)
-  }, [got, threadId, take])
+    if (got && threadId) take(threadId, got, log)
+  }, [got, threadId, log, take])
 
   // Which thread a read from its opening has answered for. Every opening reads
   // what came after the log held so far, all of it when none is: a thread's live
@@ -178,7 +182,7 @@ export function useThread({
       utils.thread.events.fetch(input, { staleTime: 0 }).then(
         (read) => {
           if (left) return
-          take(threadId, read.events)
+          take(threadId, read.events, held)
           setReadFor(threadId)
         },
         () => {

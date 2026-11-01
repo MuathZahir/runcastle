@@ -3,7 +3,7 @@
  * server, for the targets of threads-open-fast-and-show-the-truth (decision 7).
  *
  *   bun run --filter @runcastle/web build
- *   bun scripts/thread-timing.ts
+ *   bun scripts/thread-timing.ts [--watch]
  *
  * It works on a copy, never on the real data: the database and every thread log
  * are copied to a scratch data dir, and the server is built here with `buildApp`
@@ -13,6 +13,9 @@
  * "With agents working": two other threads gain events all the way through, at
  * the busiest rate the real logs show. A marker is a `notice` event, which the
  * thread draws as a line; a thread counts as current once its newest marker shows.
+ *
+ * `--watch` adds six minutes on a thread left open: the query cache drops the
+ * entry its log is cached in after five, and a thread on screen must not care.
  */
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -219,6 +222,15 @@ async function main(): Promise<void> {
   results.push(['working thread, typical lag behind its log', lags.length ? median(lags) : Number.POSITIVE_INFINITY, 1000])
   results.push(['working thread, worst lag', lags.length ? Math.max(...lags) : Number.POSITIVE_INFINITY, 1000])
   results.push(['working thread, markers never shown', sent - lags.length, 0])
+
+  if (process.argv.includes('--watch')) {
+    const folds = () => page.evaluate(() => document.body.innerText.match(/Worked for/g)?.length ?? 0)
+    const before = await folds()
+    await page.waitForTimeout(6 * 60_000)
+    await until(page, marker(target.id), async () => undefined)
+    await page.waitForTimeout(500)
+    results.push(['settled turns lost after six minutes open', before - (await folds()), 0])
+  }
 
   for (const timer of background) clearInterval(timer)
   await browser.close()

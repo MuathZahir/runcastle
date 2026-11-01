@@ -43,7 +43,7 @@ server and real Chrome.
 **Why:** Today a switch takes about 500 ms on a quiet machine and a reload 3.7 to 7.6 seconds in a new browser, about a second less in one that has passed the setup check. These are numbers a person can feel. The first build step confirms they can be reached, and if one cannot, the lead says so rather than quietly moving it.
 **Assumed.** Alternative: a single 500 ms target for every open, which would need work well outside threads.
 **Challenged:** Targets were set before rendering was measured. They were revised after it was.
-**Result:** Every target is met but one. The first open after a server start came in at 1.15 to 1.9 seconds against 1 second. The target stands, and `spec.md` says why it was missed.
+**Result:** Every target is met but one. The first open after a server start came in at 1.13 to 1.9 seconds against 1 second. The target stands, and `spec.md` says why it was missed.
 
 ## 8. A thread shows nothing older than the server's current state
 **Decision:** Opening a thread paints it only once a read that started at that opening has answered. A log held from an earlier visit is never drawn first. If that read fails, the held log is shown with a line saying it may be out of date, since a marked old thread beats a blank one when the server cannot be reached. With nothing held, the thread stays on its loading line and asks again until a read answers, so a long thread never reads as a new one.

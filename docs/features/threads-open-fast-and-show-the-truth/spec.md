@@ -63,6 +63,10 @@ began after it.
 **One read to open a thread (`apps/web`).** `useThread` no longer calls `thread.view`, so an open
 makes one log read and a signal causes no second. `thread.view` stays on the server for Export.
 Every opening reads past the held log, and the thread is drawn only once that read has answered.
+The cached copy of a log is an entry nothing watches, which the query cache drops after five
+minutes even with the thread on screen, so a read's answer always joins the log that read was made
+against, never the cache alone. The first build missed this and a thread watched for five minutes
+lost its history; the review's live drive caught it.
 If it fails, the held log shows with an out-of-date line; with nothing held, the thread stays
 loading and asks again every 2 seconds, so it never reads as a new thread. The "Loading the
 thread…" line fades in after a moment (`--dur-3`), so a read that answers at once shows no flash. ↑ in the composer still recalls
@@ -125,19 +129,24 @@ command runs to call `wait_for_you`.
 ### Results
 
 On the largest real thread (4.3 MB) in real Chrome, on this machine, with other threads working.
-"After" is the last two runs of `scripts/thread-timing.ts`.
+"After" is the last three runs of `scripts/thread-timing.ts`.
 
 | | Target | Before | After |
 |---|---|---|---|
-| Switch back to the thread | 300 ms | 514 ms | 190–208 ms |
-| Reload on the thread | 2 s | 2.1 s | 1.3 s |
+| Switch back to the thread | 300 ms | 514 ms | 87–208 ms |
+| Reload on the thread | 2 s | 2.1 s | 1.15–1.3 s |
 | Opens that drew an old state first | 0 | 4 of 4 | 0 of 4 |
 | Working thread, typical lag | 1 s | 746 ms | 101–113 ms |
-| Working thread, worst lag | 1 s | 5.5 s | 173–176 ms |
+| Working thread, worst lag | 1 s | 5.5 s | 150–176 ms |
 | Working thread, markers never shown | 0 | 5 | 0 |
-| First open after a server start | 1 s | 4.2 s | **1.15–1.9 s, not met** |
+| Settled turns lost after six minutes open | 0 | not measured | 0 |
+| First open after a server start | 1 s | 4.2 s | **1.13–1.9 s, not met** |
 
 One open of that thread now sends 1.06 MB, where it sent 8.6 MB.
+
+The review's live drive, with a real Claude Code agent, saw the status rule work end to end: a
+`sleep 300` left running read Agent working in the row and the header, a question flipped both to
+waiting with the command still running, and the command ending flipped them by itself.
 
 The first-open target is missed, and it stands as decision 7 set it. That wait comes once per
 server start. Nothing dominates what remains: no single read takes more than about 0.75 s, and
