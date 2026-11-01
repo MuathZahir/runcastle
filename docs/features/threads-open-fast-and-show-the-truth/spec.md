@@ -67,10 +67,11 @@ The cached copy of a log is an entry nothing watches, which the query cache drop
 minutes even with the thread on screen, so a read's answer always joins the log that read was made
 against, never the cache alone. The first build missed this and a thread watched for five minutes
 lost its history; the review's live drive caught it.
-If it fails, the held log shows with an out-of-date line; with nothing held, the thread stays
-loading and asks again every 2 seconds, so it never reads as a new thread. The "Loading the
-thread…" line fades in after a moment (`--dur-3`), so a read that answers at once shows no flash. ↑ in the composer still recalls
-from the held log while the thread catches up.
+
+If the opening read fails, the held log shows with an out-of-date line; with nothing held, the
+thread stays loading and asks again every 2 seconds, so it never reads as a new thread. The
+"Loading the thread…" line fades in after a moment (`--dur-3`), so a read that answers at once
+shows no flash. ↑ in the composer still recalls from the held log while the thread catches up.
 
 **A tail reader in the thread log (`packages/server`).** `readThreadEvents` keeps each log's
 parsed events and how far into the file it has read, and each read parses only the lines added
