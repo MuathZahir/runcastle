@@ -28,7 +28,7 @@ export interface PhoneViewChoice {
 
 /**
  * The phone's chat bar: Back to the list, the title — a sheet of the page's
- * threads when it has more than one, with New thread — the status words, and
+ * threads, with New thread — the status words, and
  * "…" when the chat offers views. The threads are what the open page
  * publishes, the same list the desktop sidebar draws.
  */
@@ -49,7 +49,8 @@ export function PhoneChatBar({
   const [sheet, setSheet] = useState<'threads' | 'views' | null>(null)
   const published = useSidebarThreads()
   const threads = published ? sidebarThreadOrder(published.threads) : []
-  const switches = threads.length > 1
+  // The sheet is also where New thread lives, so a lone chat opens it too.
+  const switches = threads.length > 0
   const close = () => setSheet(null)
   const after = (act: () => void) => () => {
     close()

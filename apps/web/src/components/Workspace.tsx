@@ -85,6 +85,7 @@ import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 import { useIsPhone } from '../lib/use-phone'
 import { PhoneChatBar, PhoneViewScreen } from './phone/PhoneChatBar'
+import { backInApp } from '../lib/use-history-sync'
 import { PhoneDesignView } from './phone/PhoneDesignView'
 import { featurePhoneStatus, phoneViewChoices, phoneViewOf } from './phone/phone-views'
 
@@ -997,7 +998,7 @@ export function Workspace({
           onBack={() => panel.dispatch({ type: 'close' })}
         />
       ) : phoneView && (
-        <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => panel.dispatch({ type: 'close' })}>
+        <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => backInApp(() => panel.dispatch({ type: 'close' }))}>
           {panelView(phoneView)}
         </PhoneViewScreen>
       )}
@@ -1011,7 +1012,7 @@ export function Workspace({
           status={featurePhoneStatus(status)}
           views={phoneViewChoices(tabs, full.tickets)}
           onView={(v) => panel.dispatch({ type: 'open', view: v, origin: 'human' })}
-          onBack={() => onBackToList?.()}
+          onBack={() => backInApp(() => onBackToList?.())}
         />
       ) : (
       <PageTopbar

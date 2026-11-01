@@ -3,7 +3,8 @@ import { trpc } from '../trpc'
 import { imageOnClipboard, toPngBlob } from '../lib/reviews'
 import { uploadProjectNoteScreenshot } from '../lib/project-notes'
 import { useToast } from '../lib/toast'
-import { cx, Dialog, IconButton, Kbd, LINK } from '../ui'
+import { useIsPhone } from '../lib/use-phone'
+import { Button, cx, Dialog, IconButton, Kbd, LINK } from '../ui'
 import { IconCheck, IconPencil, IconX } from '../icons'
 
 /**
@@ -20,7 +21,8 @@ import { IconCheck, IconPencil, IconX } from '../icons'
  * borderless line that grows downward as the note does — because that is the
  * capture gesture the app already teaches, over a light scrim so the page being
  * noted stays readable. There is no Save button: Enter saves, Shift+Enter
- * starts a new line. It runs its mechanics through `Dialog` like every
+ * starts a new line. A phone has neither key, so there Enter is a new line, as
+ * in the composer, and Close and Save are buttons. It runs its mechanics through `Dialog` like every
  * other overlay (apps/web/STYLE.md), which is what gives it Escape-discards,
  * focus on open and focus back to whatever you were doing on close.
  *
@@ -86,6 +88,7 @@ export function NoteCapture({
 }: NoteCaptureProps) {
   const utils = trpc.useUtils()
   const toast = useToast()
+  const phone = useIsPhone()
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedImage | null>(null)
   const [saving, setSaving] = useState(false)
@@ -246,13 +249,15 @@ export function NoteCapture({
             Noted in <span className="font-medium text-text">{projectName}</span>
             {openCount.data !== undefined && <> · {openCount.data} open</>}
           </span>
-          <button
-            className={cx(LINK, 'text-sm')}
-            onClick={readInbox}
-            title="Read the pile on the project workspace"
-          >
-            View
-          </button>
+          {!phone && (
+            <button
+              className={cx(LINK, 'text-sm')}
+              onClick={readInbox}
+              title="Read the pile on the project workspace"
+            >
+              View
+            </button>
+          )}
         </div>
       ) : (
         <div onPaste={onPaste}>
@@ -268,7 +273,11 @@ export function NoteCapture({
               rows={1}
               // `font-sans` and `box-border` because there is no preflight: a
               // `<textarea>` keeps the UA's face and content-box sizing otherwise.
-              className="box-border block min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-3.75 font-sans text-base text-text outline-none transition-[height] duration-(--dur-2) ease-app placeholder:text-text-tertiary"
+              className={cx(
+                'box-border block min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-3.75 font-sans text-text outline-none transition-[height] duration-(--dur-2) ease-app placeholder:text-text-tertiary',
+                // 16px on a phone, or iOS zooms the page in when the box takes the focus.
+                phone ? 'text-[16px]' : 'text-base',
+              )}
               autoComplete="off"
               aria-label="what did you just notice?"
               placeholder="What did you just notice?"
@@ -276,7 +285,7 @@ export function NoteCapture({
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 // Enter saves, as it always has; Shift+Enter is the newline.
-                if (e.key !== 'Enter' || e.shiftKey) return
+                if (phone || e.key !== 'Enter' || e.shiftKey) return
                 e.preventDefault()
                 void submit()
               }}
@@ -294,22 +303,35 @@ export function NoteCapture({
                 Screenshot
                 <IconButton size="sm" label="Remove the picture" icon={<IconX />} onClick={drop} />
               </span>
-            ) : (
+            ) : phone ? null : (
               <span>Paste a screenshot</span>
             )}
             <span className="flex-1" />
             <span>
               to <span className="font-medium text-text-secondary">{projectName}</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <Kbd>↵</Kbd> save
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Kbd>⇧↵</Kbd> new line
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Kbd>esc</Kbd> close
-            </span>
+            {phone ? (
+              <>
+                <Button size="lg" variant="ghost" onClick={onClose}>
+                  Close
+                </Button>
+                <Button size="lg" variant="primary" loading={saving} disabled={!text.trim()} onClick={() => void submit()}>
+                  Save
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <Kbd>↵</Kbd> save
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Kbd>⇧↵</Kbd> new line
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Kbd>esc</Kbd> close
+                </span>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -535,7 +535,7 @@ export function ThreadError({ children, action }: { children: ReactNode; action?
   return (
     <div className="flex items-start gap-2 text-sm text-danger-text">
       <IconAlert size={15} className="mt-0.5 shrink-0 text-danger" />
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1 wrap-anywhere">{children}</span>
       {action}
     </div>
   )

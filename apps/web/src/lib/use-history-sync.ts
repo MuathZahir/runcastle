@@ -18,10 +18,27 @@ export function currentPath(): string {
   return typeof window === 'undefined' ? '/' : window.location.pathname
 }
 
+/**
+ * What an entry the app pushed carries: the entry before it is the app's too.
+ * It survives a reload, which a count in memory would not.
+ */
+const IN_APP = { runcastle: true } as const
+
 /** Add a history entry, so Back comes back to where we were. */
 export function pushPath(path: string): void {
   if (typeof window === 'undefined' || currentPath() === path) return
-  window.history.pushState(null, '', path)
+  window.history.pushState(IN_APP, '', path)
+}
+
+/**
+ * The phone's on-screen Back: the same step as the system's Back, so the two
+ * never loop through a page already left. An entry the app did not push (a
+ * link opened straight on this page) has nothing of ours behind it, and takes
+ * `fallback` rather than leaving the app.
+ */
+export function backInApp(fallback: () => void): void {
+  if ((window.history.state as typeof IN_APP | null)?.runcastle) window.history.back()
+  else fallback()
 }
 
 /**
@@ -145,7 +162,7 @@ export function useHistorySync(
     if (currentPath() !== path) {
       // Going somewhere leaves the open thread behind; squaring up the page
       // the address already names (a view the path left out) keeps it.
-      if (normalized.current) window.history.pushState(null, '', path)
+      if (normalized.current) window.history.pushState(IN_APP, '', path)
       else {
         const keep = location && samePage(parsePath(currentPath()), location) ? window.location.search : ''
         window.history.replaceState(null, '', `${path}${keep}`)

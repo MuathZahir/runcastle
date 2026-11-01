@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AppAt } from '../../../.runcastle/preview/app-at'
 import { fakeTrpcFetch, type TrpcFakes } from '../../../.runcastle/preview/fake-api'
 import { PROJECT_ID, withShell } from '../../../.runcastle/preview/shell-fakes'
+import { App } from '../src/App'
 import { phoneDesignSrc } from '../src/components/phone/PhoneDesignView'
 import type { RouterOutputs } from '../src/lib/api'
 import { ToastProvider } from '../src/lib/toast'
@@ -76,6 +76,21 @@ function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}): TrpcFakes {
   } as TrpcFakes)
 }
 
+/**
+ * The app standing at an address, as `.runcastle/preview/app-at.tsx` does for a
+ * preview. That file belongs to no workspace, so under an isolated install it
+ * cannot resolve react from a test.
+ */
+function AppAt({ path }: { path: string }) {
+  useState(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    window.history.replaceState(null, '', path)
+    return null
+  })
+  return <App />
+}
+
 function Root({ path, threads = [], extra }: { path: string; threads?: ThreadEntry[]; extra?: TrpcFakes }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
   const [client] = useState(() =>
@@ -114,10 +129,19 @@ function browserBack(to: string) {
 beforeEach(() => {
   stubPhone()
   vi.stubGlobal('EventSource', TestEventSource)
+  // The back stack happy-dom lacks: what the on-screen Back steps through.
+  const behind: string[] = []
+  const push = window.history.pushState.bind(window.history)
+  vi.spyOn(window.history, 'pushState').mockImplementation((state, title, url) => {
+    behind.push(window.location.pathname)
+    push(state, title, url)
+  })
+  vi.spyOn(window.history, 'back').mockImplementation(() => browserBack(behind.pop() ?? '/'))
 })
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -149,6 +173,40 @@ describe('runcastle on a phone', () => {
     render(<Root path={CHAT} />)
     await screen.findByRole('button', { name: 'Back to the list' })
     expect(window.location.pathname).toBe(CHAT)
+  })
+
+  it('takes the same step on its Back as the system’s, so the two never loop through the chat', async () => {
+    render(<Root path={LIST} />)
+    await onList()
+    fireEvent.click(screen.getByRole('button', { name: /Export notes as PDF/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to the list' }))
+    await waitFor(() => expect(window.location.pathname).toBe(LIST))
+    await onList()
+    expect(window.history.back).toHaveBeenCalledTimes(1)
+    expect(window.history.pushState).toHaveBeenCalledTimes(1)
+  })
+
+  it('still reaches the list from a chat opened straight by its link', async () => {
+    render(<Root path={CHAT} />)
+    await screen.findByRole('button', { name: 'Back to the list' })
+    await act(() => new Promise((settled) => setTimeout(settled, 50))) // the shell lands on the address
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to the list' }))
+    await waitFor(() => expect(window.location.pathname).toBe(LIST))
+    expect(window.history.back).not.toHaveBeenCalled()
+  })
+
+  it('jots a note with buttons: Enter is a new line, and no key hints show', async () => {
+    render(<Root path={LIST} />)
+    await onList()
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Jot a note/ }))
+    const field = await screen.findByRole('textbox', { name: 'what did you just notice?' })
+    fireEvent.change(field, { target: { value: 'The chevron is small' } })
+    expect(fireEvent.keyDown(field, { key: 'Enter' })).toBe(true)
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save.hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
+    expect(screen.queryByText('new line')).toBeNull()
   })
 
   it('opens the Plan full screen from the chat’s “…”, never Details, and its Back is the chat', async () => {

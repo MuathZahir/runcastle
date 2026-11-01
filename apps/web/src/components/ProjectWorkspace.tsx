@@ -5,6 +5,7 @@ import { useSessionBranch } from '../lib/use-session-branch'
 import { IconOrchestrator } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { PageTopbar } from '../ui'
+import { backInApp } from '../lib/use-history-sync'
 import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
 import { useToast } from '../lib/toast'
 import { usePublishSidebarThreads } from '../lib/sidebar-threads'
@@ -289,7 +290,7 @@ export function ProjectWorkspace({
         <PhoneChatBar
           title="Orchestrator"
           status={threadPhoneStatus(threads.find((t) => t.id === inFront)?.state)}
-          onBack={() => onBackToList?.()}
+          onBack={() => backInApp(() => onBackToList?.())}
         />
       ) : (
       <PageTopbar
