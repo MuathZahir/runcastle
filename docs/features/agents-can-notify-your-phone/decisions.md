@@ -11,3 +11,7 @@
 ## 3. The server limits who may notify, with no exception for a human's request
 **Decision:** An orchestrator thread may always notify. A feature's main chat agent may notify only while no orchestrator thread holds that feature; otherwise the server refuses, and the agent says in the chat that it cannot ping and why. Side threads and workers, review workers included, do not get the tool. This holds even when the human asks a held feature's agent directly: they ask the orchestrator instead.
 **Why:** It enforces the brief's rule through the holder field "Threads hold features" already keeps, so a skill wording slip cannot break it. One rule is easier to trust, and the server cannot tell a human's request from the agent's own judgement. The cost is one extra message in a rare case.
+
+## 4. Tapping opens the thread that sent it, and an unreachable computer gets a page of its own
+**Decision:** Tapping a notification opens the chat that sent it: a feature's chat for a feature's agent, the exact orchestrator thread for an orchestrator, not the latest one. When the phone cannot reach runcastle, the service worker this feature adds shows a "can't reach your computer" page instead of the browser's error.
+**Why:** That chat is where the sender can explain and show what it wants seen. A feature's agent did not send an orchestrator's message and may have nothing to show. `runcastle-on-your-phone` decision 9 left the page to this feature, because it needs the service worker.
