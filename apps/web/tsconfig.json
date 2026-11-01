@@ -5,7 +5,10 @@
     "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "paths": {
-      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
+      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"],
+      // A test reads the fake API in `.runcastle/preview/`, which belongs to no
+      // workspace, so its one type import resolves from this package's install.
+      "@tanstack/react-query": ["./node_modules/@tanstack/react-query"]
     }
   },
   "include": ["src", "test", "vite.config.ts"]

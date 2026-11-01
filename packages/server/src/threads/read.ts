@@ -14,6 +14,7 @@ import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
+import { isRuncastlePrompt, runcastleLines } from '../services/lead-prompt'
 import { tryGetFeature } from '../services/repo'
 import { withRelativePaths } from './acp-map'
 import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
@@ -64,9 +65,11 @@ function transcriptRow(ctx: AppCtx, row: SessionRow): SessionRow | null {
 }
 
 /**
- * A terminal-era conversation's transcript as thread events: each human turn a
- * prompt, each answer a whole turn of words. The launcher's kickoff lines are
- * left out, as the transcript pane leaves them out. No process runs behind it,
+ * A conversation's transcript as thread events, for a thread with no log — one
+ * from the terminal era, or any thread in a test drive, whose copied data has
+ * the database but not the logs. Each user turn is a prompt, runcastle's or the
+ * human's by its tag, and each answer a whole turn of words. The launcher's
+ * kickoff lines are left out, as the transcript pane leaves them out. No process runs behind it,
  * so a last prompt that got no answer folds as said, not as starting an agent.
  * A slash command reads as what was typed, and the CLI's own lines are dropped
  * (see {@link typedText}).
@@ -80,7 +83,10 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   conversationTranscript(ctx, source.id).turns.forEach((turn, n) => {
     if (turn.role === 'user') {
       const text = typedText(turn.text)
-      if (text !== null) push({ type: 'prompt', id: `${row.id}-t${n}`, text, source: 'human' })
+      if (text === null) return
+      const id = `${row.id}-t${n}`
+      if (isRuncastlePrompt(text)) push({ type: 'prompt', id, text: runcastleLines(text), source: 'runcastle' })
+      else push({ type: 'prompt', id, text, source: 'human' })
     } else {
       push({ type: 'turn_started' })
       push({ type: 'agent_text', messageId: `${row.id}-t${n}`, text: turn.text })

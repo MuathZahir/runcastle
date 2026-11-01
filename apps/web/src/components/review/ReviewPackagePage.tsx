@@ -3,6 +3,7 @@ import type { PackageFinding, ReviewPackage } from '@runcastle/core'
 import { IconAlert, IconChevronRight, IconEye, IconX } from '../../icons'
 import { Dialog, Disclosure, IconButton, cx } from '../../ui'
 import { findingsWords, firstStop, packageBuild, packageShots, packageStops, type PackageStop } from '../../lib/feature-ui/review-package'
+import { useIsPhone } from '../../lib/use-phone'
 import { Markdown } from '../Markdown'
 import { PackageFrame, PackageVideoFrame } from './ReviewPackageCard'
 import { ReviewCallRow } from './ReviewCallRow'
@@ -172,6 +173,7 @@ function PackageBody({ pack, walkthrough }: { pack: ReviewPackage; walkthrough: 
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   })
+  const control = useIsPhone() ? 'touch' : 'sm'
 
   if (!stop) {
     return (
@@ -197,8 +199,8 @@ function PackageBody({ pack, walkthrough }: { pack: ReviewPackage; walkthrough: 
           <span className="shrink-0 text-xs text-text-tertiary tabular-nums">
             {at + 1} of {stops.length}
           </span>
-          <IconButton label="Previous" size="sm" disabled={at === 0} icon={<IconChevronRight className="rotate-180" />} onClick={() => step(-1)} />
-          <IconButton label="Next" size="sm" disabled={at === stops.length - 1} icon={<IconChevronRight />} onClick={() => step(1)} />
+          <IconButton label="Previous" size={control} disabled={at === 0} icon={<IconChevronRight className="rotate-180" />} onClick={() => step(-1)} />
+          <IconButton label="Next" size={control} disabled={at === stops.length - 1} icon={<IconChevronRight />} onClick={() => step(1)} />
         </div>
       </section>
       <aside aria-label="In this package" className="flex min-w-0 shrink-0 flex-col gap-4 p-3 md:w-[320px] md:overflow-auto">
@@ -234,6 +236,8 @@ function PackageBody({ pack, walkthrough }: { pack: ReviewPackage; walkthrough: 
  * phone. `walkthrough` is what plays when the walkthrough is in front.
  */
 export function ReviewPackagePage({ pack, walkthrough, onClose }: { pack: ReviewPackage; walkthrough?: ReactNode; onClose: () => void }) {
+  // On a phone the window is the whole screen (Dialog's `full`), and its buttons a thumb's size.
+  const phone = useIsPhone()
   const build = packageBuild(pack)
   const where = [pack.round !== null ? `Round ${pack.round}` : `Ticket #${pack.seq}`, build?.toLowerCase()].filter(Boolean).join(', ')
   return (
@@ -244,7 +248,7 @@ export function ReviewPackagePage({ pack, walkthrough, onClose }: { pack: Review
           {pack.passKind === 'verification' ? 'Verification package' : 'Review package'}
         </h2>
         <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{where}</span>
-        <IconButton label="Close" size="sm" icon={<IconX />} onClick={onClose} />
+        <IconButton label="Close" size={phone ? 'touch' : 'sm'} icon={<IconX />} onClick={onClose} />
       </div>
       <PackageBody pack={pack} walkthrough={walkthrough} />
     </Dialog>

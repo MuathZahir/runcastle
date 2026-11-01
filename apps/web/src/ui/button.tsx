@@ -32,11 +32,15 @@ import { Tooltip } from './tooltip'
  */
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'solid' | 'accent'
 
-/** `sm` 24 (inside rows and toolbars) · `md` 32 (default) · `lg` 36 (a page header's primary). `xs` is a deprecated alias of `sm`. */
-export type ButtonSize = 'sm' | 'md' | 'lg' | 'xs'
+/**
+ * `sm` 24 (inside rows and toolbars) · `md` 32 (default) · `lg` 36 (a page
+ * header's primary) · `touch` 40 (a thumb's target on a phone). `xs` is a
+ * deprecated alias of `sm`.
+ */
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'touch' | 'xs'
 
 type CanonicalVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost'
-type CanonicalSize = 'sm' | 'md' | 'lg'
+type CanonicalSize = 'sm' | 'md' | 'lg' | 'touch'
 
 const VARIANT_ALIAS: Record<ButtonVariant, CanonicalVariant> = {
   primary: 'primary',
@@ -48,7 +52,7 @@ const VARIANT_ALIAS: Record<ButtonVariant, CanonicalVariant> = {
   accent: 'secondary',
 }
 
-const SIZE_ALIAS: Record<ButtonSize, CanonicalSize> = { sm: 'sm', md: 'md', lg: 'lg', xs: 'sm' }
+const SIZE_ALIAS: Record<ButtonSize, CanonicalSize> = { sm: 'sm', md: 'md', lg: 'lg', touch: 'touch', xs: 'sm' }
 
 /** No `position`, margin or z-index: those are the caller's (the className rule above). */
 const BUTTON_BASE =
@@ -73,6 +77,7 @@ const BUTTON_SIZE: Record<CanonicalSize, string> = {
   sm: 'h-(--control-sm) px-2 text-xs',
   md: 'h-(--control-h) px-3 text-sm',
   lg: 'h-(--control-lg) px-4 text-sm',
+  touch: 'h-10 px-4 text-sm',
 }
 
 /**
@@ -103,6 +108,7 @@ const ICON_BOX: Record<CanonicalSize, string> = {
   sm: 'inline-flex shrink-0 opacity-85 [&>svg]:size-3.5',
   md: 'inline-flex shrink-0 opacity-85 [&>svg]:size-4',
   lg: 'inline-flex shrink-0 opacity-85 [&>svg]:size-4',
+  touch: 'inline-flex shrink-0 opacity-85 [&>svg]:size-4',
 }
 
 /** A Kbd on the inverted primary: ink colour, no outline. */
@@ -195,6 +201,7 @@ const ICON_BUTTON_SIZE: Record<CanonicalSize, string> = {
   sm: 'size-(--control-sm) [&>svg]:size-3.5',
   md: 'size-(--control-h) [&>svg]:size-4',
   lg: 'size-(--control-lg) [&>svg]:size-4',
+  touch: 'size-10 [&>svg]:size-4',
 }
 
 export type IconButtonProps = Omit<ComponentPropsWithRef<'button'>, 'children'> & {
@@ -203,7 +210,7 @@ export type IconButtonProps = Omit<ComponentPropsWithRef<'button'>, 'children'> 
   /** The one icon (an `Icon*` element). `children` is accepted as an alias. */
   icon?: ReactNode
   children?: ReactNode
-  /** `sm` 24 inside rows · `md` 32 in bars (default) · `lg` 36. `xs` = `sm`. */
+  /** `sm` 24 inside rows · `md` 32 in bars (default) · `lg` 36 · `touch` 40 on a phone. `xs` = `sm`. */
   size?: ButtonSize
   /**
    * Default `ghost` (no border or fill at rest). `danger-ghost` stays quiet at

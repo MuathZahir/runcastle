@@ -33,8 +33,11 @@ export const MARKDOWN_POLICY = {
  */
 export const MARKDOWN_CLASSES = {
   /** Self-sufficient on purpose: it states its own face and white-space so it
-      reads the same inside a mono, `pre-wrap` container as it does anywhere. */
-  root: 'font-sans whitespace-normal text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+      reads the same inside a mono, `pre-wrap` container as it does anywhere.
+      A path or a URL with no break in it breaks anywhere rather than widening
+      a phone's page; a fenced block keeps its lines and scrolls sideways, and
+      so does a table too wide to fit, its cells breaking only where words do. */
+  root: 'font-sans whitespace-normal text-pretty wrap-anywhere [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
   h1: 'mt-6 mb-2 text-[1.3em] leading-tight font-semibold tracking-tight text-text',
   h2: 'mt-6 mb-2 text-[1.12em] leading-snug font-semibold text-text',
   h3: 'mt-5 mb-1.5 text-[1em] font-semibold text-text',
@@ -56,9 +59,10 @@ export const MARKDOWN_CLASSES = {
     'mt-0 mb-3 overflow-x-auto rounded-md bg-surface-inset px-3 py-2.5 font-mono text-xs leading-[18px] ' +
     '[&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em] [&>code]:text-text-secondary [&>code]:border-0',
   blockquote: 'mx-0 mt-0 mb-2.5 border-l-2 border-border-strong pl-3 text-text-tertiary',
-  table: 'mt-0 mb-3 w-full border-collapse text-[0.93em]',
-  th: 'border-b border-border px-2 py-1.5 text-left font-medium text-text-tertiary first:pl-0',
-  td: 'border-b border-border-subtle px-2 py-1.5 text-left align-top first:pl-0',
+  tableScroll: 'mt-0 mb-3 overflow-x-auto',
+  table: 'w-full border-collapse text-[0.93em]',
+  th: 'border-b border-border px-2 py-1.5 text-left font-medium wrap-normal text-text-tertiary first:pl-0',
+  td: 'border-b border-border-subtle px-2 py-1.5 text-left align-top wrap-normal first:pl-0',
   hr: 'my-5 border-0 border-t border-border-subtle',
 } as const
 
@@ -109,7 +113,11 @@ const COMPONENTS: Components = {
   blockquote: ({ node: _n, ...p }) => (
     <blockquote className={MARKDOWN_CLASSES.blockquote} {...p} />
   ),
-  table: ({ node: _n, ...p }) => <table className={MARKDOWN_CLASSES.table} {...p} />,
+  table: ({ node: _n, ...p }) => (
+    <div className={MARKDOWN_CLASSES.tableScroll}>
+      <table className={MARKDOWN_CLASSES.table} {...p} />
+    </div>
+  ),
   th: ({ node: _n, ...p }) => <th className={MARKDOWN_CLASSES.th} {...p} />,
   td: ({ node: _n, ...p }) => <td className={MARKDOWN_CLASSES.td} {...p} />,
   hr: ({ node: _n, ...p }) => <hr className={MARKDOWN_CLASSES.hr} {...p} />,

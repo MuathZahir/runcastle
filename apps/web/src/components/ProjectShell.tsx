@@ -21,6 +21,7 @@ import {
 import { AddressSettled, currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import { SidebarThreadsProvider } from '../lib/sidebar-threads'
+import { useIsPhone } from '../lib/use-phone'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
 import { Frame, useFrame } from './Frame'
@@ -130,12 +131,15 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // The feature the landing chose by itself, until the human opens one: nobody
   // asked to open it, so its chat does not start itself (decision 10).
   const [landedOn, setLandedOn] = useState<string | null>(null)
+  // On a phone the list opens a feature on its chat, full screen: its other
+  // views are what the chat's "…" opens.
+  const phone = useIsPhone()
   const openChosen = useCallback(
     (featureId: string | null, view?: FeatureView) => {
       setLandedOn(null)
-      openFeature(featureId, view)
+      openFeature(featureId, view ?? (phone ? 'chat' : undefined))
     },
-    [openFeature],
+    [openFeature, phone],
   )
 
   // Every session launch under this shell lands on its feature's chat. On the
@@ -182,11 +186,15 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       // is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
       if (named) openFeature(named.id, addressedView(addressed))
+      else if (phone) select(null)
       else {
         const target = landingFeature(features)
         setLandedOn(target?.id ?? null)
         openFeature(target?.id ?? null)
       }
+    } else if (phone) {
+      // A phone lands on the list: nothing opens by itself, nothing stored is restored.
+      select(null)
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)
       if (target) {
@@ -204,6 +212,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     features,
     projectId,
     urlAtMount,
+    phone,
+    select,
     selectedFeatureId,
     projectSelected,
     preparing,
@@ -247,7 +257,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       // "whatever was remembered", or Back from a tab could never reach it.
       const named = features?.find((f) => f.slug === inside.featureSlug)
       if (named) select(named.id, featureViewOf(inside))
-      else openFeature(landingFeature(features ?? [])?.id ?? null)
+      else openFeature(phone ? null : (landingFeature(features ?? [])?.id ?? null))
     }
   })
 
@@ -284,6 +294,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const consumeThreadRequest = useCallback(() => setThreadRequest(null), [])
 
   const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared, empty })
+  // The phone's chat bar Back: nothing open, which on a phone is the list.
+  const backToList = () => select(null)
   // The details are one of the feature page's panel views (design-mode
   // decision 5), so the palette's toggle and the page's button are one switch.
   const detailsToggle =
@@ -319,6 +331,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onOpenPreparation={ws.startPreparation}
         driveRequest={driveRequest}
         onConsumeDriveRequest={consumeDriveRequest}
+        onBackToList={backToList}
       />
     ) : view === 'feature' && selectedFeatureId ? (
       // The feature view is the app's one unbounded render surface — it
@@ -349,13 +362,22 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             ws.select(null)
             ws.selectProject()
           }}
+          onBackToList={backToList}
         />
       </ErrorBoundary>
     ) : null
 
+  // A phone shows one thing at a time: with nothing open, the list — the bare
+  // address, which on a desktop is the project home. Before the landing it
+  // trusts the address rather than a stored selection the landing will drop.
+  const nothingOpen = landed
+    ? !ws.creating && !preparing && !projectSelected && !selectedFeatureId
+    : !insideProject(urlAtMount, projectId)
+
   const shell = (
     <>
       <Frame
+        phoneShows={nothingOpen ? 'list' : 'page'}
         sidebar={
           <Sidebar
             projectId={projectId}
@@ -388,22 +410,26 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         </div>
       </Frame>
 
-      <CommandPalette
-        open={ws.cmdkOpen}
-        onClose={() => ws.setCmdk(false)}
-        features={features ?? []}
-        selectedFeatureId={ws.selectedFeatureId}
-        onSelect={openChosen}
-        onOpenSettings={() => ws.openSettings()}
-        onOpenPreparation={ws.startPreparation}
-        // The palette navigates, it never launches: this opens the project
-        // home, where the conversation list decides new-versus-resume.
-        onOpenProjectChat={ws.selectProject}
-        onOpenNote={jot}
-        onToggleSidebar={frame.toggleSidebar}
-        onToggleDetails={detailsToggle}
-        nav={nav}
-      />
+      {/* A phone has neither the palette nor Settings: no keyboard to call them,
+          and Settings is the computer's. */}
+      {!phone && (
+        <CommandPalette
+          open={ws.cmdkOpen}
+          onClose={() => ws.setCmdk(false)}
+          features={features ?? []}
+          selectedFeatureId={ws.selectedFeatureId}
+          onSelect={openChosen}
+          onOpenSettings={() => ws.openSettings()}
+          onOpenPreparation={ws.startPreparation}
+          // The palette navigates, it never launches: this opens the project
+          // home, where the conversation list decides new-versus-resume.
+          onOpenProjectChat={ws.selectProject}
+          onOpenNote={jot}
+          onToggleSidebar={frame.toggleSidebar}
+          onToggleDetails={detailsToggle}
+          nav={nav}
+        />
+      )}
 
       {/* Mounted by the in-project shell, so capture is on every screen inside a
           project and on none of the portfolio home (decisions #2). */}
@@ -416,7 +442,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onOpenInbox={openInbox}
       />
 
-      {ws.settings && (
+      {ws.settings && !phone && (
         <SettingsDialog
           projectId={projectId}
           projectName={nav.currentProject?.name ?? ''}

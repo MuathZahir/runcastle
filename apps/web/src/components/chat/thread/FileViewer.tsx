@@ -5,6 +5,7 @@ import { previewDocument } from '../../../lib/preview-frame'
 import { useTheme } from '../../../lib/theme'
 import { fmtBytes } from '../../../lib/format'
 import { Dialog, DimLine, IconButton } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
 import { ProseSkeleton } from '../../DocReader'
 import { Markdown } from '../../Markdown'
 import { PreviewFrame } from '../../PreviewPanel'
@@ -111,6 +112,8 @@ function FileBody({ file }: { file: ShownFile }) {
  * as it is.
  */
 export function FileViewer({ file, onClose }: { file: ShownFile; onClose: () => void }) {
+  // Close is the one way out of a full-screen sheet, so on a phone it is thumb-sized.
+  const control = useIsPhone() ? 'touch' : 'sm'
   return (
     <Dialog open onClose={onClose} labelledBy="shown-file-title" size="full" className="flex h-[86vh] flex-col overflow-hidden">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
@@ -121,8 +124,8 @@ export function FileViewer({ file, onClose }: { file: ShownFile; onClose: () => 
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-tertiary" title={file.path}>
           {file.path}
         </span>
-        <IconButton label="Download" size="sm" icon={<IconDownload />} href={downloadUrl(file)} />
-        <IconButton label="Close" size="sm" icon={<IconX />} onClick={onClose} />
+        <IconButton label="Download" size={control} icon={<IconDownload />} href={downloadUrl(file)} />
+        <IconButton label="Close" size={control} icon={<IconX />} onClick={onClose} />
       </div>
       {file.caption && <p className="m-0 shrink-0 border-b border-border-subtle px-5 py-2 text-sm text-text-secondary">{file.caption}</p>}
       <FileBody file={file} />

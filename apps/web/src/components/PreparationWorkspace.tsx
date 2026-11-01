@@ -4,6 +4,7 @@ import { newestThread } from '../lib/chat-sessions'
 import { openApp, openAppWaitingLabel, type OpenApp } from '../lib/feature-ui'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
+import { useIsPhone } from '../lib/use-phone'
 import {
   Button,
   Disclosure,
@@ -38,6 +39,7 @@ import {
 } from '../lib/prep-findings'
 import type { PrepView, ProjectFinding } from '../lib/api'
 import { ThreadColumn } from './chat/ThreadColumn'
+import { OnYourComputer } from './OnYourComputer'
 
 /** What preparation is, in the one sentence every state of the page leads with. */
 const WHAT_IT_DOES =
@@ -110,6 +112,15 @@ export function PreparationWorkspace({
   const staleCount = findings.filter(isStale).length
   const [asideOpen, setAsideOpen] = useState(true)
   const hasAside = findings.length > 0 || pending.length > 0
+  // Preparation drives the app on the computer: a phone says to go there.
+  const phone = useIsPhone()
+
+  if (phone)
+    return (
+      <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+        <OnYourComputer />
+      </section>
+    )
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">

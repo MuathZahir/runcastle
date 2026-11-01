@@ -27,6 +27,7 @@ import {
 } from '../../../ui/combobox'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select'
+import { useIsPhone } from '../../../lib/use-phone'
 import { duration } from './Work'
 
 const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }
@@ -167,10 +168,12 @@ function EffortPicker({
   effort: Effort | 'default'
   onEffort: (e: Effort) => void
 }) {
+  // On a phone the level alone, so the controls fit beside Attach and Send at 390px.
+  const phone = useIsPhone()
   return (
     <Select value={effort} onValueChange={(next) => next !== 'default' && onEffort(next as Effort)}>
       <SelectTrigger aria-label="Effort" className={CHIP}>
-        <span className="text-text-tertiary">Effort</span>
+        {!phone && <span className="text-text-tertiary">Effort</span>}
         <SelectValue />
       </SelectTrigger>
       <SelectContent side="top" align="start">

@@ -15,6 +15,7 @@ import { IconSearch, IconX } from '../../icons'
 import { SETTINGS_PAGES, SettingsRail } from './SettingsRail'
 import { GeneralPage, THEME_FIELD } from './GeneralPage'
 import { ModelsPage } from './ModelsPage'
+import { PHONE_LINK_SEARCH } from './PhoneLinkSection'
 import { BurnsPage } from './BurnsPage'
 import { ProjectPage } from './ProjectPage'
 import type { FilterState, SettingsPageProps } from './types'
@@ -183,5 +184,5 @@ function searchableSettings(
     page: 'burns' as const,
     terms: [p.label, ...p.terms],
   }))
-  return [THEME_SEARCH, ...rows, ...prerequisites]
+  return [THEME_SEARCH, PHONE_LINK_SEARCH, ...rows, ...prerequisites]
 }

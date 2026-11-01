@@ -17,11 +17,13 @@ import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
+import { serveDesignPass } from './routes/design-pass'
 import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import threadsApp from './routes/threads'
 import { mountWebAppIfBuilt } from './routes/web'
+import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
@@ -172,6 +174,17 @@ export async function startServer(): Promise<void> {
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
 
+  // The phone's way to a feature's design server (routes/design-pass.ts), on its
+  // own port so project code never shares runcastle's API origin.
+  const designPass = serveDesignPass(config, (featureId) => {
+    try {
+      const status = designServerStatus(ctx, featureId)
+      return status.running ? status.url : undefined
+    } catch {
+      return undefined
+    }
+  })
+
   // Provider failures are represented per source in the persisted snapshot;
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
@@ -202,7 +215,10 @@ export async function startServer(): Promise<void> {
       killAllTrees: async () => {
         await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
       },
-      stop: () => server.stop(),
+      stop: () => {
+        void designPass?.stop()
+        return server.stop()
+      },
       exit: (code) => process.exit(code),
     })
     process.on('SIGINT', shutdown)

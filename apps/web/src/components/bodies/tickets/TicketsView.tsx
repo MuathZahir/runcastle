@@ -20,6 +20,7 @@ import { effectiveStepModel, rosterFromView } from '../../../lib/settings'
 import { useToast } from '../../../lib/toast'
 import { STOP_TIMEOUT } from '../../../lib/vocabulary'
 import { SANDBOX_MODE } from '../../../lib/env'
+import { useIsPhone } from '../../../lib/use-phone'
 import { Button, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import {
   DropdownMenu,
@@ -58,6 +59,7 @@ import { TicketEditor, type TicketPatch } from './TicketEditor'
  * the round is the list, and Stop is the page header's.
  */
 export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpenDoc: (relPath: string) => void }) {
+  const phone = useIsPhone()
   const poll = useLivePoll()
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -213,14 +215,16 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
           {runningRun && (
             <span className="text-xs text-text-tertiary tabular-nums">{fmtDuration(runningRun.startedAt, Date.now())}</span>
           )}
-          <ListMenu
-            roster={roster}
-            defaultModel={defaultModel}
-            waiting={waiting.length}
-            onModel={(model) => void bulkModel(model)}
-            docs={full.data.docs}
-            onOpenDoc={onOpenDoc}
-          />
+          {!phone && (
+            <ListMenu
+              roster={roster}
+              defaultModel={defaultModel}
+              waiting={waiting.length}
+              onModel={(model) => void bulkModel(model)}
+              docs={full.data.docs}
+              onOpenDoc={onOpenDoc}
+            />
+          )}
         </span>
       </div>
       <div className="-mx-2.5 flex flex-col gap-0.5">
@@ -478,8 +482,11 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // A phone reads a ticket and acts on none (runcastle-on-your-phone decision
+  // 3): of the row of actions, only the review package to read is left.
+  const phone = useIsPhone()
   // The server's own editable set (`assertMutable`): a stopped ticket is a failed row.
-  const editable = ticket.status === 'pending' || ticket.status === 'failed'
+  const editable = !phone && (ticket.status === 'pending' || ticket.status === 'failed')
   // A landing conflict is not a normal failure: the ticket IS implemented and
   // its commits are safe on the attempt branch, waiting to be resolved.
   const conflict = ticket.status === 'failed' ? ticket.conflictFiles : undefined
@@ -533,7 +540,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
         <div className="-ml-2 flex flex-wrap items-center gap-1">
           {/* One click, deliberately: this is the control reached for at the
               moment an agent is visibly going wrong. */}
-          {state === 'burning' && (
+          {state === 'burning' && !phone && (
             <Button
               size="sm"
               variant="danger-ghost"
@@ -545,7 +552,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               {controls.stopping === ticket.id ? 'Stopping…' : 'Stop'}
             </Button>
           )}
-          {conflict && (
+          {conflict && !phone && (
             <Button
               size="sm"
               variant="ghost"

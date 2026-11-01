@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
+import { useIsPhone } from '../lib/use-phone'
 import type { ProjectStats } from '../lib/projects'
 import type { Project } from '../lib/api'
 import { Button, ListRow, MetaLine, TEXT_INPUT } from '../ui'
@@ -40,6 +41,7 @@ export function ProjectCard({
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
+  const phone = useIsPhone()
   const [renaming, setRenaming] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [name, setName] = useState(project.name)
@@ -169,7 +171,9 @@ export function ProjectCard({
       tooltip={`Open ${project.name}`}
       actionsOverlay
       actions={
-        !renaming && (
+        // Revealed by hover, which a phone has not got: there the row only opens.
+        !renaming &&
+        !phone && (
           <FeatureActionsMenu
             label={`${project.name} actions`}
             actions={[

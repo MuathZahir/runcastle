@@ -4,6 +4,7 @@ import { stripMarkdown } from '../../lib/activity'
 import type { FeatureListItem } from '../../lib/api'
 import { dependencyState } from '../../lib/feature-ui/dependencies'
 import { pathFor } from '../../lib/routes'
+import { useIsPhone } from '../../lib/use-phone'
 import { IconCheck, IconPlus, IconX } from '../../icons'
 import { Button, IconButton, LINK, StatusLabel, cx, type StatusTone } from '../../ui'
 import {
@@ -68,12 +69,14 @@ export function DependenciesRow({
 }) {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // A phone reads a draft and edits nothing (runcastle-on-your-phone decision 7).
+  const phone = useIsPhone()
 
-  if (!isDraft) {
+  if (!isDraft || phone) {
     if (dependsOn.length === 0) return null
     return (
       <p className={LINE}>
-        <span>Waited on:</span>
+        <span>{isDraft ? 'Waits on:' : 'Waited on:'}</span>
         {dependsOn.map((d) => (
           <DependencyChip key={d.featureId} dep={d} />
         ))}

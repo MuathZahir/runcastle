@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ReviewPackageCard } from '../src/components/review/ReviewPackageCard'
 import { ReviewPackagePage } from '../src/components/review/ReviewPackagePage'
 import { packageBuild, packageHolds, packageStops } from '../src/lib/feature-ui/review-package'
+import { atWidth } from './phone-width'
 
 vi.mock('../src/components/Markdown', () => ({ Markdown: ({ source }: { source: string }) => <p>{source}</p> }))
 
@@ -46,7 +47,10 @@ const pack = (over: Partial<ReviewPackage> = {}): ReviewPackage => ({
   ...over,
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('what a package says about itself', () => {
   it('says what it holds, and how it stands against the branch', () => {
@@ -97,6 +101,20 @@ describe('the page', () => {
     expect(headings).toEqual(['Defects', 'The table is cut off', 'Observations', 'Spacing is loose'])
     expect(stage().getByText('Two columns are missing.')).toBeTruthy()
     expect(stage().getByText('Export at A5.')).toBeTruthy()
+  })
+
+  it('on a phone, reaches the walkthrough, the findings and every picture, and closes', () => {
+    atWidth(true)
+    const onClose = vi.fn()
+    render(<ReviewPackagePage pack={pack()} walkthrough={<div>the video</div>} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Walkthrough/ }))
+    expect(stage().getByText('the video')).toBeTruthy()
+    fireEvent.click(stage().getByRole('button', { name: 'Next' }))
+    expect(stage().getByText('Two columns are missing.')).toBeTruthy()
+    fireEvent.click(stage().getByRole('button', { name: 'Next' }))
+    expect(stage().getByRole('img', { name: 'The dialog' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('needs no stage for a pass that left only words', () => {

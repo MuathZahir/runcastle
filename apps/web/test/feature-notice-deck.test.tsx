@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import { FeatureNoticeDeck } from '../src/components/chat/FeatureNoticeDeck'
 import { DRIVE_NOTICE_MS } from '../src/lib/chat-notices'
+import { atWidth } from './phone-width'
 
 /**
  * The notice deck mounted over the feature Chat tab (one-chat-layout-everywhere
@@ -102,6 +103,32 @@ describe('FeatureNoticeDeck', () => {
     })
     expect(screen.queryByText('Test drive running')).toBeNull()
     expect(screen.getByText('Tickets updated')).toBeTruthy()
+  })
+
+  describe('on a phone', () => {
+    afterEach(() => vi.unstubAllGlobals())
+    const READY = 'Ready to test. The test drive is on your computer; you can still talk here.'
+
+    it('shows no notice that opens a drive, and keeps the ones that open a view', () => {
+      atWidth(true)
+      const { update, onView } = setup([])
+      update([ticketsStored(), event('testdrive.url', 'drive up', NOW + 1_000)])
+      expect(screen.queryByText('Test drive running')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /View tickets/ }))
+      expect(onView).toHaveBeenCalledWith('work')
+    })
+
+    it('says a feature ready to test has its drive on the computer', () => {
+      atWidth(true)
+      render(<FeatureNoticeDeck events={[]} tickets={[]} active onView={() => {}} readyToTest />)
+      expect(screen.getByText(READY)).toBeTruthy()
+    })
+
+    it('says nothing of it at desktop width, where the drive is', () => {
+      atWidth(false)
+      render(<FeatureNoticeDeck events={[]} tickets={[]} active onView={() => {}} readyToTest />)
+      expect(screen.queryByText(READY)).toBeNull()
+    })
   })
 
   it('counts a burst up on one card instead of adding cards', () => {

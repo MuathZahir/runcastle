@@ -3,6 +3,7 @@ import { projectStats } from '../lib/projects'
 import { useLivePoll, useLiveStatus } from '../lib/live'
 import { SANDBOX_MODE } from '../lib/env'
 import { useTheme } from '../lib/theme'
+import { useIsPhone } from '../lib/use-phone'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { Button, cx, List, NavItem, Page, PageHeader, PageTopbar } from '../ui'
 import { IconHome, IconPlus } from '../icons'
@@ -30,6 +31,7 @@ import { SidebarBackdrop } from './SidebarParts'
  * on the first-project screen instead.
  */
 export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
+  const phone = useIsPhone()
   const projects = nav.projects ?? []
 
   // One feature.list per project — the rows' runs/needs-you are derived
@@ -62,43 +64,47 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
     />
   )
 
-  return (
-    <Frame sidebar={<PortfolioSidebar nav={nav} />}>
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <PageTopbar crumbs={[{ label: 'Projects', icon: <IconHome /> }]} />
-        <Page routeKey="portfolio" className="relative isolate">
-          <SidebarBackdrop />
-          <PageHeader
-            title="Projects"
-            meta={[
-              { strong: projects.length, text: projects.length === 1 ? 'project open' : 'projects open' },
-              running > 0 && { tone: 'live', strong: running, text: 'running' },
-              waiting > 0 && { tone: 'warning', strong: waiting, text: waiting === 1 ? 'needs you' : 'need you' },
-            ]}
-            actions={
+  const page = (
+    <section className={cx('flex min-h-0 min-w-0 flex-1 flex-col', phone && 'h-dvh')}>
+      <PageTopbar crumbs={[{ label: 'Projects', icon: <IconHome /> }]} />
+      <Page routeKey="portfolio" className="relative isolate">
+        <SidebarBackdrop />
+        <PageHeader
+          title="Projects"
+          meta={[
+            { strong: projects.length, text: projects.length === 1 ? 'project open' : 'projects open' },
+            running > 0 && { tone: 'live', strong: running, text: 'running' },
+            waiting > 0 && { tone: 'warning', strong: waiting, text: waiting === 1 ? 'needs you' : 'need you' },
+          ]}
+          actions={
+            !phone && (
               <Button variant="primary" icon={<IconPlus />} onClick={nav.showOpen}>
                 Open a project
               </Button>
-            }
-          />
-          {live.length > 0 && (
-            <List
-              divided
-              label="Live projects"
-              className={cx('card relative mt-8 rounded-lg p-1', running > 0 && 'orbit-light')}
-            >
-              {live.map(row)}
-            </List>
-          )}
-          {quiet.length > 0 && (
-            <List divided label="Open projects" className={live.length > 0 ? 'mt-4 px-1' : 'mt-8'}>
-              {quiet.map((r, i) => row(r, i + live.length))}
-            </List>
-          )}
-        </Page>
-      </section>
-    </Frame>
+            )
+          }
+        />
+        {live.length > 0 && (
+          <List
+            divided
+            label="Live projects"
+            className={cx('card relative mt-8 rounded-lg p-1', running > 0 && 'orbit-light')}
+          >
+            {live.map(row)}
+          </List>
+        )}
+        {quiet.length > 0 && (
+          <List divided label="Open projects" className={live.length > 0 ? 'mt-4 px-1' : 'mt-8'}>
+            {quiet.map((r, i) => row(r, i + live.length))}
+          </List>
+        )}
+      </Page>
+    </section>
   )
+  // A phone has room for the list alone: no sidebar, which only says where
+  // this page is, and no Open a project, which needs the computer's folders.
+  if (phone) return page
+  return <Frame sidebar={<PortfolioSidebar nav={nav} />}>{page}</Frame>
 }
 
 /** The home's sidebar: the switcher, this level's two places, the status foot. */
