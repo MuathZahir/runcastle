@@ -258,13 +258,18 @@ async function versionProbe(
   }
 }
 
+export const BUN_INSTALLER: StandaloneInstaller = {
+  unix: 'curl -fsSL https://bun.sh/install | bash',
+  windowsUrl: 'bun.sh/install.ps1',
+}
+
 async function bunProbe(exec: ExecFn): Promise<ProbeResult> {
   return versionProbe(
     exec,
     'bun',
     'Bun runtime',
     'bun',
-    'Install Bun: curl -fsSL https://bun.sh/install | bash (Windows: irm bun.sh/install.ps1 | iex)',
+    `Install Bun: ${BUN_INSTALLER.unix} (Windows: irm ${BUN_INSTALLER.windowsUrl} | iex)`,
   )
 }
 
@@ -336,9 +341,34 @@ export interface RuntimeSpec {
   authFile?: (env: Record<string, string | undefined>) => string
 }
 
-/** OpenAI's standalone installers: a native binary, so Codex needs no Node. */
-const CODEX_INSTALL =
-  'curl -fsSL https://chatgpt.com/codex/install.sh | sh (Windows: powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex")'
+/**
+ * A tool's own install script: a shell pipeline for Linux and macOS, and the
+ * PowerShell script's address for Windows. The one home for these commands —
+ * the fix lines quote them and `runcastle setup` runs them.
+ */
+export interface StandaloneInstaller {
+  unix: string
+  windowsUrl: string
+}
+
+/** How a Windows installer script is run from outside PowerShell. */
+export function powershellInstall(url: string): string {
+  return `powershell -ExecutionPolicy ByPass -c "irm ${url} | iex"`
+}
+
+/** The agent CLIs' standalone installers: native binaries, so neither needs Node. */
+export const AGENT_INSTALLERS: Record<AgentRuntime, StandaloneInstaller> = {
+  'claude-code': {
+    unix: 'curl -fsSL https://claude.ai/install.sh | bash',
+    windowsUrl: 'https://claude.ai/install.ps1',
+  },
+  codex: {
+    unix: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    windowsUrl: 'https://chatgpt.com/codex/install.ps1',
+  },
+}
+
+const CODEX_INSTALL = `${AGENT_INSTALLERS.codex.unix} (Windows: ${powershellInstall(AGENT_INSTALLERS.codex.windowsUrl)})`
 
 export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
   'claude-code': {
@@ -352,8 +382,7 @@ export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
     afkKey: 'CLAUDE_CODE_OAUTH_TOKEN',
     afkNoun: 'OAuth token',
     afkFix: 'Run `claude setup-token` on this host and put CLAUDE_CODE_OAUTH_TOKEN in ~/.runcastle/.env',
-    installFix:
-      'Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash (Windows: irm https://claude.ai/install.ps1 | iex)',
+    installFix: `Install Claude Code: ${AGENT_INSTALLERS['claude-code'].unix} (Windows: irm ${AGENT_INSTALLERS['claude-code'].windowsUrl} | iex)`,
     binOverrideEnv: 'RUNCASTLE_CLAUDE_BIN',
   },
   codex: {
@@ -384,6 +413,11 @@ function statusUnsupported(out: ExecOutcome): boolean {
   )
 }
 
+/** The binary row's detail for a CLI installed as a Node script on a machine with no Node. */
+export function noNodeDetail(bin: string): string {
+  return `${bin} is a Node script (an npm or bun install), and this machine has no Node`
+}
+
 /** The runtime's CLI is resolvable — the floor for both talk sessions and burns. */
 async function runtimeBinaryProbe(
   spec: RuntimeSpec,
@@ -403,7 +437,7 @@ async function runtimeBinaryProbe(
   const noNode =
     base.status !== 'ok' && needsMissingNode(spec.bin)
       ? {
-          detail: `${spec.bin} is a Node script (an npm or bun install), and this machine has no Node`,
+          detail: noNodeDetail(spec.bin),
           fix: `Reinstall it with its standalone installer, which needs no Node. ${spec.installFix}`,
         }
       : {}
