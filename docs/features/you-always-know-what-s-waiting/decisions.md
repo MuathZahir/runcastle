@@ -24,9 +24,10 @@ Terms used throughout:
 | A merge conflict | Merge conflict | Resolve conflict |
 | Something stopped | Stopped · *why* (you stopped it, the run failed, a restart cut it off, the provider's limit, planning stopped) | Chat (resumes the agent) |
 
-The sidebar row and the status line use the same words. "Working", "Planning by itself" and "Talking with you" stay as they are.
+The sidebar row and the status line use the same words. "Working", "Planning by itself" and "Talking with you" stay as they are. Every need in the table, the two "Ready" ones and "Stopped · you stopped it" included, files the feature under Needs you: a ready feature left unseen is exactly the "I thought it was done" fear, and after Stop nothing moves until the human replies.
 **Why:** The human's words: "the user shouldn't have to look around … when he comes back to a feature." Today a plan yes, an answer, a drive and a merge all read "Waiting on you", and a feature ready to merge reads "In progress". A fixed set keeps the status line truthful, as the earlier status-line features insisted, while still telling them apart.
 **Assumed.** Alternative: keep "Waiting for you" as the label and show only the agent's free-text reason after it.
+**Challenged:** "Stopped · you stopped it" is the human's own act, so listing it under Needs you, counting it and pinging for it is noise; keep "Stopped" for failures, restarts and provider limits only. (Answered in decision 11: it never pings. It stays under Needs you because nothing moves until the human replies.)
 
 ## 2. The agent says which kind of wait it is
 **Decision:** `wait_for_you` takes an optional kind besides its reason: an answer (the default), a plan, a design, or stuck. The feature stores the kind next to the reason. The skills tell the lead which kind to use: a plan yes is "plan", a design to look at is "design", the runaway guard is "stuck". A reason sent without a kind counts as an answer, so older agents keep working.
@@ -37,16 +38,18 @@ The sidebar row and the status line use the same words. "Working", "Planning by 
 **Decision:** A turn's answer is everything the agent wrote after its last piece of real work. Tool calls that only talk to the human (waiting for you, declaring ready, pinging the phone, showing a file) no longer end the answer, so a question written before `wait_for_you` stays in view with the words after it. The skills also change: the question is the last thing the agent writes, and it never points back at words the human may not see ("that question", "my reply above").
 **Why:** Both project notes show the same failure: the agent wrote its question, called `wait_for_you`, then wrote a closing line. The chat folded the question into "Worked for 1m 50s", closed by default, and the human saw only "The feature is waiting on your answer to that question." Fixing the chat makes it safe whatever the agent does; the skill change makes it read well.
 **Assumed.** Alternative: show every word the agent wrote in a turn, and fold only tool calls and thinking.
+**Challenged:** a question followed by more real work still folds; any narration that ends in a question mark should stay in view wherever it sits. (Not taken: an agent that keeps working after a question is not waiting for its answer, and lifting mid-turn words out of the fold would scatter the turn.)
 
 ## 4. The chat itself says what it waits for
-**Decision:** While the feature waits on the human, the main chat ends with one line under the agent's last words: the same words as the status line ("Plan to approve", "Needs your answer · which model for approvals?"). It has no button of its own; the header carries it. It goes away the moment the human replies or acts.
-**Why:** Today the reason shows only as a dot and in the sidebar. Someone reading the chat should not have to look up to the header to learn that the turn ended on them.
-**Assumed.** Alternative: no line in the chat; the header alone says it.
+**Decision:** While the feature waits on the human, the main chat ends with one line under the agent's last words: the same words as the status line ("Plan to approve", "Needs your answer · which model for approvals?"), with the same button as the header beside it. An answer gets no button there, since the message box is right under it. The line goes away the moment the human replies or acts.
+**Why:** Today the reason shows only as a dot and in the sidebar. Someone reading the chat should not have to look up to the header to learn that the turn ended on them, nor to find the button. The challenger's point: a line with no button sends the eye back up to the header anyway.
+**Assumed.** Alternative: words only in the chat; the header alone carries the button.
 
 ## 5. Ready to merge means you drove it since it was declared ready
-**Decision:** A feature the agent declared ready reads "Ready to test" until the human has finished a test drive of it since that declaration. After that it reads "Ready to merge", and Merge & ship becomes the header's button, with Start test drive moved to the "⋯" menu. Notes the human sends wake the agent, and the feature reads Working again.
+**Decision:** A feature the agent declared ready reads "Ready to test" until the human has finished a test drive of it since that declaration and sent nothing to the agent since the drive ended (no drive notes, no chat message). After that it reads "Ready to merge", and Merge & ship becomes the header's button, with Start test drive moved to the "⋯" menu. A review agent's drive does not count. In a project that has no test drive set up, a declared-ready feature reads "Ready to merge" at once. Notes the human sends wake the agent, and the feature reads Working again.
 **Why:** Runcastle has no other fact that says "the human is happy". The drive is the step that comes right before merge, so a drive that ended with no notes sent is the closest truthful signal. Merge still needs the human's click, so a wrong guess costs nothing.
 **Assumed.** Alternative: the agent marks it ready to merge itself, after the human says "all good" in the chat.
+**Challenged:** projects with no drive (a library, a CLI) could never reach Ready to merge, and notes typed in the chat after a drive must count as notes. (Both taken into the decision above.)
 
 ## 6. Merge & ship is always in the header
 **Decision:** On a started feature that has not shipped, the header always shows Merge & ship as a quiet button, beside the state's own button. When the state's button is Merge itself (ready to merge), it is the main button and appears once. The "⋯" menu keeps everything else.
@@ -57,6 +60,7 @@ The sidebar row and the status line use the same words. "Working", "Planning by 
 **Decision:** A started feature's header gets a "New thread" button (a "+" icon with a tooltip) beside "⋯". The Ctrl+K palette (⌘K on a Mac) gets a "New thread" entry while a feature is open, and Ctrl+Shift+O (⌘⇧O on a Mac) opens a new thread from anywhere on a feature's page. The sidebar row keeps its hover "+".
 **Why:** The project note asks for an easily reachable button and a shortcut. Today the only door is a "+" that appears only when the mouse is over the open row. This revises the sidebar-threads decision that kept it hover-only, which the human has already said yes to changing.
 **Assumed.** Alternative: make the sidebar row's "+" always visible instead of adding a header button.
+**Challenged:** Ctrl+Shift+O is the bookmarks shortcut in Chrome and Firefox; pick a combination nothing uses, or rely on the palette. (Not taken: both browsers hand it to the page, ChatGPT uses the same keys for a new chat so many people already reach for them, and every free combination is either typed text on a Mac or reserved by the browser.)
 
 ## 8. The palette offers the open feature's actions
 **Decision:** While a feature is open, Ctrl+K shows, before the general entries: its current button (the one beside the status line), New thread, Merge & ship and Start test drive. Each is disabled with its reason where the header would disable it. The palette's feature rows also show the new state words from decision 1.
@@ -69,22 +73,23 @@ The sidebar row and the status line use the same words. "Working", "Planning by 
 **Assumed.** Alternative: only the main chat's prompts count.
 
 ## 10. A round cut off by a server restart wakes the lead
-**Decision:** When the server finds at start-up that a round was cut off by a restart, it tells the lead the same way a finished round does: a message saying the round was interrupted, how many tickets landed and how many are pending. The orchestrator holding the feature hears the same news. The lead may run the round again without a new yes, since it is work the plan already settled; if it cannot, it waits for the human with kind "stuck". If waking the lead fails, the feature reads "Stopped · the agent's run failed", as any failed wake does today.
-**Why:** Today such a round is marked failed and nobody hears, so an unattended feature simply stops: exactly "I come back the next day and it stalled". Treating it as a round ending reuses the path that already works.
+**Decision:** When the server finds at start-up that a round was cut off by a restart, it tells the lead the same way a finished round does: a message saying the round was interrupted, how many tickets landed and how many are pending. The orchestrator holding the feature hears the same news. The lead may run the round again once without a new yes, since it is work the plan already settled. If the same round is cut off a second time, the message says so and the lead waits for the human with kind "stuck" instead. If waking the lead fails, the feature reads "Stopped · the agent's run failed", as any failed wake does today.
+**Why:** Today such a round is marked failed and nobody hears, so an unattended feature simply stops: exactly "I come back the next day and it stalled". Treating it as a round ending reuses the path that already works. The one-rerun limit is the challenger's: a server that keeps crashing would otherwise rerun the round on every boot.
 **Assumed.** Alternative: don't wake anyone; show "Stopped · a restart cut the round off" and wait for the human.
 
 ## 11. Desktop pings fire when you are needed, and no longer when a round succeeds
-**Decision:** With desktop notifications on, runcastle pings when a feature enters any state of decision 1, and only on that change. It no longer pings when a round finishes or fails: the agent handles both and asks when it can't. A ping names the feature and the need ("Plan to approve — You always know what's waiting"), and clicking it opens that feature. Pings cover every project, not only the open one. As today, they fire only while the runcastle tab is hidden or out of focus.
+**Decision:** With desktop notifications on, runcastle pings when a feature enters any state of decision 1, and only on that change. It does not ping for "Stopped · you stopped it", which the human just did themselves, nor for a feature its orchestrator is handling (decision 18). It no longer pings when a round finishes or fails: the agent handles both and asks when it can't. A ping names the feature and the need ("Plan to approve — You always know what's waiting"), and clicking it opens that feature. Pings cover every project, not only the open one. As today, they fire only while the runcastle tab is hidden or out of focus.
 **Why:** The only ping today is a round finishing, the one moment the human isn't needed. The audit's direction is to ping on waiting, ready and merge conflict.
 **Assumed.** Alternative: keep the round-finished ping as well.
 
 ## 12. Runcastle pings your phone by itself only for stalls no agent can report
-**Decision:** Phone pings stay the agents' choice, as "Agents can notify your phone" decided, with one exception: runcastle itself pings the phone when a feature stalls in a way its agent cannot report: a permission prompt waiting, a round cut off by a restart that failed to wake the lead, or a lead wake that failed. For a feature an orchestrator holds, runcastle pings nobody: the orchestrator hears the news line and decides. The skills are sharpened so the lead calls `notify_human` whenever it waits for the human after working unattended (a round, a self-planning run, a headless wake).
+**Decision:** Phone pings stay the agents' choice, as "Agents can notify your phone" decided, with one exception: runcastle itself pings the phone when a feature stalls in a way no agent can report: a permission prompt waiting, or a lead wake that failed (a round cut off by a restart whose wake failed is one of these). These ping whether or not an orchestrator holds the feature, since an orchestrator can neither answer a prompt in another thread nor bring a dead process back. Everything else stays an agent's call: the lead's on a feature nobody holds, the orchestrator's on a held one. The skills are sharpened so the lead calls `notify_human` whenever it waits for the human after working unattended (a round, a self-planning run, a headless wake).
 **Why:** The human chose agent-sent pings over automatic ones, and said not to add automatic fallbacks. But a stalled agent cannot call anything: a permission prompt blocks it mid-turn, and a dead process says nothing. Those are exactly the cases behind "I come back the next day and find it stalled". Everything else stays the agent's judgement.
 **Assumed.** Alternative: runcastle pings the phone by itself on every state of decision 1, for features no orchestrator holds.
+**Challenged:** the first draft pinged nobody on a held feature, which left a permission prompt on an orchestrated feature silent, the main case. (Taken into the decision above.)
 
 ## 13. The tab title counts what needs you
-**Decision:** The browser tab reads "(2) runcastle" when two features, across all projects, need the human, and plain "runcastle" when none do.
+**Decision:** The browser tab reads "(2) runcastle" when two features, across all projects, need the human, and plain "runcastle" when none do. It counts what the sidebar files under Needs you, so a feature its orchestrator is handling (decision 18) is not counted.
 **Why:** It is the cheapest ping there is: a pinned tab shows it without any permission.
 **Assumed.** Alternative: count only the open project.
 
@@ -102,3 +107,20 @@ The sidebar row and the status line use the same words. "Working", "Planning by 
 **Decision:** This feature changes the header (state words, one or two buttons, a New thread "+"), the sidebar row's words, and adds one line at the end of the chat. These are drawn as mock-ups in the plan preview rather than as live designs on a dev server.
 **Why:** The changes are words and one or two buttons on screens whose layout stays as it is. The working agreement asks to put a design in front of the human only when the feature really needs their eyes, and to keep everything else moving.
 **Assumed.** Alternative: build live design pages for the header and the sidebar.
+
+## 17. A feature shows one need at a time, the most pressing first
+**Decision:** When a feature needs two things at once (a side thread's permission prompt while the main chat waits on a plan yes; a merge conflict on a ready feature), it shows one, in this order: permission prompt, merge conflict, answer, plan, design, stopped, ready to test, ready to merge. The next one shows once the first is dealt with.
+**Why:** One row has room for one need, and the order puts first what blocks work hardest: a permission prompt halts an agent mid-turn, a conflict blocks the merge. A "+1 more" was considered and left out: the second need is almost always the plan or ready state the human already knows about.
+**Assumed.** Alternative: show the first need with "+1 more" beside it.
+
+## 18. A feature its orchestrator is handling waits on the orchestrator, not on you
+**Decision:** When an orchestrator thread holds a feature, its waits that the orchestrator can answer (an answer, a plan yes, a stop, a merge conflict, ready to test or merge) read "With the orchestrator · *the need*". The feature sits in the working group, not under Needs you, and does not ping or count in the tab title. A design to approve and a permission prompt still need the human, since the orchestrator can approve neither: they stay under Needs you and ping as usual. If the orchestrator itself needs the human, its own thread shows as waiting in the sidebar, as it does today.
+**Why:** The challenger's point: a held feature the orchestrator answers a minute later, sitting under Needs you and pinging, teaches the human to ignore all three. This keeps Needs you meaning "nothing moves until you act". Holding still never binds the human: the header keeps its button, and they can step in at any time.
+**Assumed.** Alternative: held features show and ping like any other; the human ignores what the orchestrator is handling.
+
+## 19. A merge conflict shows once a merge has tried and failed
+**Decision:** "Merge conflict" appears when a merge (the human's or the orchestrator's) stops on a conflict, and clears when a merge lands or the conflict is resolved. Runcastle does not check ahead of time whether a feature would conflict with its base.
+**Why:** Checking every feature against its base each time the base moves is a new background job with its own costs and failure modes, and a conflict found at merge time is already one click from Resolve conflict. Checking ahead is worth its own feature if conflicts start surprising the human.
+**Assumed.** Alternative: re-check each unshipped feature for conflicts whenever its base branch moves, and show "Merge conflict" before anyone clicks Merge.
+
+Challenge pass: one separate agent read only the brief and this file. Its new branches became decisions 17 to 19 and the no-drive case of decision 5. It disagreed with decisions 1, 3, 4, 5, 7, 10, 12 and 13: decisions 4, 5, 10, 12 and 13 took its points; decisions 1, 3 and 7 carry a **Challenged:** line, and the planner's answers stand.
