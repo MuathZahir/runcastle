@@ -2212,7 +2212,7 @@ async function commitPipelineDocs(repoPath: string, docsCommitPrefix?: string): 
  */
 export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: string): Promise<string[]> {
   await commitPipelineDocs(repoPath, docsCommitPrefix)
-  return porcelainPaths((await git(repoPath).raw(['status', '--porcelain'])).trim())
+  return porcelainPaths((await git(repoPath).raw(['status', '--porcelain'])).trimEnd())
 }
 
 // --- test drive -------------------------------------------------------------
@@ -3789,7 +3789,7 @@ async function runDriveHookStep(
 /** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
 async function dirtyPaths(g: SimpleGit): Promise<string[]> {
   try {
-    return porcelainPaths((await g.raw(['status', '--porcelain'])).trim())
+    return porcelainPaths((await g.raw(['status', '--porcelain'])).trimEnd())
   } catch {
     return []
   }
