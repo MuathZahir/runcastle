@@ -133,8 +133,10 @@ interface CodexConfigInput {
  * `approval_policy = "untrusted" is no longer supported; remove this setting` —
  * which killed every interactive project session before it started.
  *
- * `bypassPermissions`, the project session's posture (`one-orchestrator-no-mode`
- * decision 1), is `never` too: the orchestrator works while the human is away.
+ * `bypassPermissions`, the orchestrator's and a feature lead's posture
+ * (`one-orchestrator-no-mode` decision 1; `small-fixes-before-publish` decision 3),
+ * is `never` too: both work while the human is away. Host-side kinds
+ * (`prepare`, `drive-fix`, `scenario`) pass no mode and stay in the sandbox.
  */
 function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-request' {
   return permissionMode === undefined ||
@@ -159,9 +161,11 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  * the CLI's sandbox. A session that asks (`on-request`) keeps `workspace-write`:
  * a downgraded write there is a question to the human, not a dead end.
  *
- * The project session, the orchestrator (`bypassPermissions`), runs unsandboxed on every platform: it
- * resolves conflicts in other features' worktrees under the data dir, outside
- * its own workspace, which `workspace-write` would refuse.
+ * The orchestrator and a feature's lead (`bypassPermissions`) run unsandboxed
+ * on every platform: the orchestrator resolves conflicts in other features'
+ * worktrees outside its own workspace, and the lead installs dependencies
+ * (network and package cache), both of which `workspace-write` would refuse.
+ * Their bounds are runcastle's edit, install and line guards, as on Claude.
  */
 function sandboxModeFor(
   permissionMode: string | undefined,

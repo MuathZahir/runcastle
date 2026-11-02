@@ -17,6 +17,7 @@ import { openProject } from '../src/services/projects'
 import { updateSettings } from '../src/services/settings'
 import { listSessionsByFeature } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { acpLaunchInput } from '../src/threads/launch'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -181,12 +182,12 @@ describe('each conversation kind’s ACP launch', () => {
     expect(brief).toContain(PROJECT_BRANCH)
   })
 
-  it('runs preparation in the real checkout with its brief, approvals on', async () => {
+  it('runs preparation in the real checkout with its brief, without prompts', async () => {
     const { sessionId } = await launchPrepareSession(ctx, { projectId: project.id }, { spawn: false })
     const spec = await acpLaunchOf(ctx, sessionId)
 
     expect(getSessionRow(ctx, sessionId)?.worktreePath).toBe(repoPath)
-    expect(spec.sessionMode).toBe('acceptEdits')
+    expect(spec.sessionMode).toBe('bypassPermissions')
     expect(await briefOf(ctx, sessionId)).toMatch(/prepar/i)
   })
 
@@ -431,5 +432,31 @@ describe('boot reconciliation', () => {
     const idle = (await caller().thread.events({ threadId: row.id })).events.length
     reconcileStaleSessions(ctx)
     expect((await caller().thread.events({ threadId: row.id })).events).toHaveLength(idle)
+  })
+})
+
+describe('permission posture by kind and runtime', () => {
+  const modeOf = async (kind: 'chat' | 'side' | 'prepare', runtime: AgentRuntime) => {
+    const f = kind === 'prepare' ? undefined : await feature()
+    const id = runtime === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5'
+    const row = createSessionRow(ctx, {
+      kind,
+      projectId: project.id,
+      ...(f ? { featureId: f.id } : {}),
+      worktreePath: f ? worktreeDir(project.id, f.slug) : repoPath,
+      model: { id, runtime },
+    })
+    return (await acpLaunchInput(ctx, row)).permissionMode
+  }
+
+  it.each([
+    ['chat', 'claude-code', 'bypassPermissions'],
+    ['side', 'claude-code', 'bypassPermissions'],
+    ['prepare', 'claude-code', 'bypassPermissions'],
+    ['chat', 'codex', 'bypassPermissions'], // danger-full-access, approvals never
+    ['side', 'codex', 'bypassPermissions'],
+    ['prepare', 'codex', undefined], // keeps workspace-write
+  ] as const)('%s on %s launches with %s', async (kind, runtime, mode) => {
+    expect(await modeOf(kind, runtime)).toBe(mode)
   })
 })

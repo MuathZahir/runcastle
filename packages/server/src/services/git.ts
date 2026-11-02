@@ -3878,6 +3878,20 @@ export async function mergeInProgressAt(worktreePath: string): Promise<boolean> 
 }
 
 /**
+ * The paths staged in the checkout at `worktreePath` (`git diff --cached
+ * --name-only`) — the checkout guard's probe before a host-side commit. Never
+ * throws: a path that is not a repo answers none, and the guard fails open.
+ */
+export async function stagedPathsAt(worktreePath: string): Promise<string[]> {
+  try {
+    const out = await git(worktreePath).raw(['diff', '--cached', '--name-only'])
+    return out.split('\n').map((l) => l.trim()).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
  * Is `ancestor` reachable from `descendant` in the repo at `repoPath` — i.e. has
  * the merge landed? Asked at the end of a `resolve-conflict` session: once the
  * resolver commits `git merge <mergeFrom>`, the branch it merged from is an

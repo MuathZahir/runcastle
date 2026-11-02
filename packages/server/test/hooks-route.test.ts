@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -407,17 +411,12 @@ describe('hooks route', () => {
       return json
     }
 
-    it('auto-allows a feature chat to edit source, whatever the feature is doing', async () => {
+    it('has no opinion on a feature chat editing source, whatever the feature is doing', async () => {
       const chat = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt/dark-mode' }).id
       for (const tool of ['Edit', 'Write', 'NotebookEdit']) {
-        expect((await preTool(chat, tool, 'src/theme.ts')).hookSpecificOutput).toEqual({
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'allow',
-        })
+        expect(await preTool(chat, tool, 'src/theme.ts')).toEqual({})
       }
-      expect((await preTool(chat, 'Edit', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
-        'allow',
-      )
+      expect(await preTool(chat, 'Edit', '/wt/dark-mode/src/theme.ts')).toEqual({})
     })
 
     it('lets a self-planning run and a side session write too: purpose no longer guards it', async () => {
@@ -429,7 +428,7 @@ describe('hooks route', () => {
       }).id
       const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt/dark-mode' }).id
       for (const id of [selfPlan, side]) {
-        expect((await preTool(id, 'Write', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe('allow')
+        expect(await preTool(id, 'Write', 'src/theme.ts')).toEqual({})
       }
     })
 
@@ -485,13 +484,10 @@ describe('hooks route', () => {
       return json
     }
 
-    it('answers allow for shell calls from the first message on', async () => {
+    it('has no opinion on a lead shell call that crosses no line', async () => {
       const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
-      expect((await shell(lead, 'git merge main')).hookSpecificOutput).toEqual({
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'allow',
-      })
-      expect((await shell(lead, 'bun run test', 'PowerShell')).hookSpecificOutput.permissionDecision).toBe('allow')
+      expect(await shell(lead, 'git merge main')).toEqual({})
+      expect(await shell(lead, 'bun run test', 'PowerShell')).toEqual({})
     })
 
     it('denies the three named acts with a reason', async () => {
@@ -512,6 +508,50 @@ describe('hooks route', () => {
       }).id
       expect(await shell(lead, 'git merge main')).toEqual({})
       expect((await shell(lead, 'git push origin main')).hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+  })
+
+  /**
+   * The checkout guard: the host-side kinds run without prompts in the human's
+   * own checkout, so the hook refuses what the prompts used to catch.
+   */
+  describe('pre-tool — the checkout guard on host-side sessions', () => {
+    let repo: string
+
+    beforeEach(() => {
+      repo = mkdtempSync(join(tmpdir(), 'rc-checkout-guard-'))
+      const run = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' })
+      run('init', '-q')
+      mkdirSync(join(repo, '.runcastle'))
+      writeFileSync(join(repo, '.runcastle', 'drive-setup.sh'), 'echo\n')
+      writeFileSync(join(repo, 'mine.ts'), 'x\n')
+      run('add', 'mine.ts', '.runcastle/drive-setup.sh')
+    })
+    afterEach(() => rmSync(repo, { recursive: true, force: true }))
+
+    async function shell(kind: SessionKind, command: string): Promise<any> {
+      const id = createSessionRow(ctx, { featureId, kind, worktreePath: repo }).id
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: id,
+        payload: { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } },
+      })
+      return json
+    }
+
+    it('denies a refused command with the reason', async () => {
+      const json = await shell('prepare', 'git push origin main')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+      expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/Leave it to them/)
+    })
+
+    it('denies a commit while the human\'s paths are staged, naming them', async () => {
+      const json = await shell('drive-fix', 'git commit -m fix')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+      expect(json.hookSpecificOutput.permissionDecisionReason).toContain('mine.ts')
+    })
+
+    it('has no opinion on a command it allows', async () => {
+      expect(await shell('scenario', 'git status')).toEqual({})
     })
   })
 
@@ -620,7 +660,7 @@ describe('hooks route', () => {
           ...(purpose ? { purpose } : {}),
           worktreePath: talkPath,
         }).id
-        expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
+        expect(await install(lead)).toEqual({})
         markSessionEnded(ctx, lead)
       }
     })
