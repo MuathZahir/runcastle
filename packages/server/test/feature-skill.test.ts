@@ -60,7 +60,7 @@ describe('the feature skill', () => {
   it('stops itself when a round makes no progress, and leaves Merge and drafts alone', () => {
     const text = skill()
     expect(text).toContain('**Runaway guard.**')
-    expect(text).toContain('`wait_for_you({ why: "stuck: <a few words>" })`')
+    expect(text).toContain('`wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`')
     expect(text).toContain("Merge is the human's, and so is starting a backlog feature.")
     expect(text).toContain('**Never reword a `ticket(<seq>): …` or `runcastle: …` commit**')
   })
@@ -143,7 +143,7 @@ describe('the feature skill, planning with no human present', () => {
   it("ends by asking for the human's yes with wait_for_you", () => {
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain("asking\n   the human for their yes to start round 1")
-    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start round 1?" })`')
+    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start round 1?", kind: "plan" })`')
   })
 
   it('designs the screens it adds or reshapes, and leaves them for the human (designs-wait-for-you)', () => {
@@ -157,7 +157,7 @@ describe('the feature skill, planning with no human present', () => {
     expect(text()).toContain('never call `show_panel`')
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain('the yes commits the designs as they stand')
-    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`')
+    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?", kind: "design" })`')
     expect(close).toContain('With no tickets, say "start the work?"')
   })
 

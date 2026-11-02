@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import { listAfter, listByProject } from '../../services/events'
+import { listAfter, listByProject, needsYouAfter } from '../../services/events'
 import { publicProcedure, router } from '../context'
 
 export const eventsRouter = router({
@@ -13,4 +13,11 @@ export const eventsRouter = router({
   listByProject: publicProcedure
     .input(z.object({ projectId: z.string(), afterId: z.number().optional() }))
     .query(({ ctx, input }) => listByProject(ctx, input.projectId, input.afterId)),
+
+  // Every project's `feature.needs_you` events, each with its feature: what the
+  // desktop pings poll. Same cursor semantics as `list`, except that a first
+  // read (no cursor) returns only the newest event, to seed the cursor.
+  needsYou: publicProcedure
+    .input(z.object({ afterId: z.number().optional() }))
+    .query(({ ctx, input }) => needsYouAfter(ctx, input.afterId)),
 })

@@ -32,6 +32,7 @@ import { getTicket } from './tickets'
  * | `session.self_plan_ended`         | end  | a self-planning run exited (`data.complete`) |
  * | `session.run_ended`               | end  | a headless run exited (rows before threads) |
  * | `run.finished`                    | end  | a round finished or failed (`data.status`)  |
+ * | `run.reconciled`                  | end  | a server restart cut a round off            |
  * | `feature.waiting`                 | end  | the agent waits for the human (`data.why`)  |
  * | `feature.ready_declared`          | end  | the agent declared the work ready to test   |
  * | `lead.wake_failed`                | end  | runcastle could not wake the agent          |
@@ -123,6 +124,13 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       const verb = data.status === 'succeeded' ? 'round finished' : 'round failed'
       return { kind: 'end', text: `${verb}${summary ? ` (${summary})` : ''}. ${tickets}` }
     }
+    case 'run.reconciled':
+      // Only a round is news; its lead is woken with the same counts.
+      if (data.workflow !== 'ticket-burner') return null
+      return {
+        kind: 'end',
+        text: `round interrupted by a server restart (${String(data.landedTickets)} landed, ${String(data.pendingTickets)} pending). ${tickets}`,
+      }
     case 'feature.waiting': {
       // "ready to test" is the ready line's; a cleared reason is not news.
       if (typeof data.why !== 'string' || data.why === READY_REASON) return null
@@ -264,7 +272,7 @@ function recipient(event: EventRow, state: NotifyState): string | null {
  * process runs. Best effort: nothing is retried or sent to another thread, and
  * nothing here throws into the emitter.
  */
-function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
+export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
   try {
     const event = getEventRow(ctx, eventId)
     if (!event) return

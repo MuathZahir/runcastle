@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sidebarLanes, triage } from '../src/lib/feature-ui'
-import { listItem } from './fixtures'
+import { listItem, need } from './fixtures'
 
 /**
  * The sidebar's grouping (the-map-of-stories-and-scenarios decisions 2, 3):
@@ -8,8 +8,12 @@ import { listItem } from './fixtures'
  * rows, the Working shelf and the Backlog / Shipped shelves. The split is pure.
  */
 
-const ready = listItem({ id: 'ready', waitingReason: 'ready to test' })
-const asking = listItem({ id: 'asking', liveSession: { status: 'live', awaitingInput: true }, leadAwaitsHuman: true })
+const ready = listItem({ id: 'ready', need: need('test', 'Ready to test · Checkout') })
+const asking = listItem({
+  id: 'asking',
+  liveSession: { status: 'live', awaitingInput: true },
+  need: need('answer', 'Needs your answer'),
+})
 const failed = listItem({
   id: 'failed',
   ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
@@ -32,8 +36,22 @@ describe('a lead that replied with work left running', () => {
   })
 
   it('needs you once it said so, whatever still runs', () => {
-    const f = listItem({ id: 'tests', ...session, leadInBackground: true, waitingReason: 'start round 1?' })
+    const f = listItem({ id: 'tests', ...session, leadInBackground: true, need: need('plan', 'Plan to approve') })
     expect(sidebarLanes([f]).inbox.map((x) => x.id)).toEqual(['tests'])
+  })
+})
+
+describe('a need its orchestrator holds (decision 18)', () => {
+  it('sits under Agent working until its hour passes, then needs you', () => {
+    const held = listItem({ id: 'held', need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) })
+    expect(sidebarLanes([held])).toEqual({ inbox: [], lanes: [{ key: 'agentWorking', label: 'Agent working', features: [held] }] })
+    const due = listItem({ id: 'due', need: need('plan', 'Plan to approve') })
+    expect(sidebarLanes([due]).inbox).toEqual([due])
+  })
+
+  it('a permission prompt during a round needs you, not Agent working', () => {
+    const f = listItem({ id: 'asks', activeRun: true, need: need('permission', 'Needs permission · Bash: git push') })
+    expect(sidebarLanes([f]).inbox).toEqual([f])
   })
 })
 

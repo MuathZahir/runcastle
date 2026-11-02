@@ -1,11 +1,16 @@
+
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
+import type { FeatureListItem } from '../src/lib/api'
 import { eventToNotification, notifyButton } from '../src/lib/notifications'
+import { tabTitle } from '../src/lib/projects'
 import { NOTIFY_OFFER } from '../src/lib/vocabulary'
 
 /**
- * Streamlining-ux ticket 10 — the events poll turns a finishing burn into a
- * desktop notification. Tested at the pure-function seam, no Notification API.
+ * you-always-know-what-s-waiting decision 11: a desktop ping fires when a
+ * feature starts needing the human, by the rule the phone push shares, and no
+ * longer when a round finishes. Tested at the pure-function seam, no
+ * Notification API.
  */
 
 function ev(overrides: Partial<EventRow>): EventRow {
@@ -14,57 +19,54 @@ function ev(overrides: Partial<EventRow>): EventRow {
     projectId: 'p1',
     featureId: 'f1',
     ts: 0,
-    type: 'run.finished',
-    message: 'run succeeded: done',
+    type: 'feature.needs_you',
+    message: 'needs you',
     ...overrides,
   }
 }
 
 describe('eventToNotification', () => {
-  it('maps a succeeded run to a review-ready ping naming the feature', () => {
+  it('pings for a need, titled with its words and naming the feature', () => {
     const n = eventToNotification(
-      ev({ data: { status: 'succeeded', summary: 'all tickets green' } }),
+      ev({ data: { kind: 'plan', words: 'Plan to approve', held: false, why: null } }),
       'Dark mode',
     )
-    expect(n).toEqual({ title: 'Round finished — the agent is checking it', body: 'Dark mode' })
-  })
-
-  it('maps a failed run to a failure ping with a short reason', () => {
-    const n = eventToNotification(
-      ev({ data: { status: 'failed', summary: 'ticket 3 never went green' } }),
-      'Dark mode',
-    )
-    expect(n).toEqual({ title: 'Round failed', body: 'Dark mode: ticket 3 never went green' })
-  })
-
-  it('trims a multi-line / overlong summary to its first line', () => {
-    const summary = `${'x'.repeat(200)}\nsecond line`
-    const n = eventToNotification(ev({ data: { status: 'failed', summary } }), 'F')
-    expect(n?.body).toBe(`F: ${'x'.repeat(139)}…`)
-    expect(n?.body).not.toContain('second line')
+    expect(n).toEqual({ title: 'Plan to approve', body: 'Dark mode' })
   })
 
   it('falls back to a generic feature name when no title is supplied', () => {
-    const n = eventToNotification(ev({ data: { status: 'succeeded', summary: 'ok' } }))
-    expect(n).toEqual({ title: 'Round finished — the agent is checking it', body: 'your feature' })
+    const n = eventToNotification(ev({ data: { kind: 'merge', words: 'Ready to merge', held: false, why: null } }))
+    expect(n).toEqual({ title: 'Ready to merge', body: 'your feature' })
   })
 
-  it('ignores a cancelled run — the human stopped it, not an away-period end', () => {
+  it('stays quiet for a need its orchestrator is handling, and for the human’s own Stop', () => {
     expect(
-      eventToNotification(ev({ data: { status: 'cancelled', summary: 'run cancelled' } })),
+      eventToNotification(ev({ data: { kind: 'plan', words: 'With the orchestrator · Plan to approve', held: true, why: null } })),
+    ).toBeNull()
+    expect(
+      eventToNotification(ev({ data: { kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: 'you stopped it' } })),
     ).toBeNull()
   })
 
-  it('ignores run.finished with a malformed or missing data payload', () => {
-    expect(eventToNotification(ev({ data: undefined }))).toBeNull()
-    expect(eventToNotification(ev({ data: { status: 'succeeded' } }))).toBeNull()
-    expect(eventToNotification(ev({ data: 'oops' }))).toBeNull()
+  it('no longer pings when a round finishes or fails', () => {
+    expect(eventToNotification(ev({ type: 'run.finished', data: { status: 'succeeded', summary: 'ok' } }))).toBeNull()
+    expect(eventToNotification(ev({ type: 'run.finished', data: { status: 'failed', summary: 'red' } }))).toBeNull()
+  })
+})
+
+/** Decision 13: the tab counts what needs the human, across every project. */
+describe('tabTitle', () => {
+  const feature = (need: FeatureListItem['need']): FeatureListItem =>
+    ({ status: 'active', need }) as FeatureListItem
+  const plan = { kind: 'plan', words: 'Plan to approve', held: false, since: 0 } as const
+
+  it('counts the Needs-you features of every project', () => {
+    expect(tabTitle([[feature(plan), feature(null)], [feature(plan)]])).toBe('(2) runcastle')
   })
 
-  it('ignores unrelated event types', () => {
-    expect(eventToNotification(ev({ type: 'run.started', data: { status: 'succeeded', summary: 'x' } }))).toBeNull()
-    expect(eventToNotification(ev({ type: 'session.kickoff' }))).toBeNull()
-    expect(eventToNotification(ev({ type: 'phase.advanced' }))).toBeNull()
+  it('leaves out a need its orchestrator is handling, and reads plain at zero', () => {
+    expect(tabTitle([[feature({ ...plan, held: true })], []])).toBe('runcastle')
+    expect(tabTitle([])).toBe('runcastle')
   })
 })
 
@@ -93,7 +95,7 @@ describe('notifyButton', () => {
   it('offers the ping in a sentence that reads without the jargon', () => {
     const b = notifyButton({ enabled: false, permission: 'default' })
     expect(b.title).toBe(NOTIFY_OFFER)
-    expect(b.title).toBe('Notify me when agents finish a run')
+    expect(b.title).toBe('Notify me when a feature needs me')
     expect(b.title).not.toMatch(/burn/i)
   })
 

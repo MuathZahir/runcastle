@@ -20,6 +20,7 @@ import {
   IconShield,
   IconSun,
 } from '../icons'
+import { useFeatureCommands, type FeatureCommand } from '../lib/feature-commands'
 import { FeatureProgressIcon, featureStateWords } from './SidebarParts'
 
 /**
@@ -68,6 +69,7 @@ type ActionKind =
   | 'details'
 
 type Row =
+  | { kind: 'command'; command: FeatureCommand }
   | { kind: 'feature'; feature: FeatureListItem }
   | { kind: 'project'; id: string; name: string }
   | { kind: 'action'; action: Action }
@@ -99,6 +101,8 @@ export function CommandPalette(props: CommandPaletteProps) {
     nav,
   } = props
   const theme = useTheme()
+  // The open feature's header actions (you-always-know-what-s-waiting decision 8).
+  const featureCommands = useFeatureCommands()
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -250,12 +254,18 @@ export function CommandPalette(props: CommandPaletteProps) {
     nav,
   ])
 
+  const commands = useMemo(
+    () => (featureCommands?.commands ?? []).filter((c) => finds(q, c.label.toLowerCase())),
+    [featureCommands, q],
+  )
+
   const rows = useMemo<Row[]>(() => {
-    const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
+    const r: Row[] = commands.map((command) => ({ kind: 'command' as const, command }))
+    for (const f of filteredFeatures) r.push({ kind: 'feature', feature: f })
     for (const p of filteredProjects) r.push({ kind: 'project', id: p.id, name: p.name })
     for (const action of actions) r.push({ kind: 'action', action })
     return r
-  }, [filteredFeatures, filteredProjects, actions])
+  }, [commands, filteredFeatures, filteredProjects, actions])
 
   if (!open) return null
 
@@ -270,6 +280,11 @@ export function CommandPalette(props: CommandPaletteProps) {
     const row = rows[index]
     if (!row) return
     switch (row.kind) {
+      // A disabled action stays listed with its reason, and does nothing.
+      case 'command':
+        if (row.command.disabled) return
+        row.command.run()
+        break
       case 'feature':
         onSelect(row.feature.id)
         break
@@ -303,10 +318,19 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
   }
 
-  const featuresEnd = filteredFeatures.length
+  const commandsEnd = commands.length
+  const featuresEnd = commandsEnd + filteredFeatures.length
   const projectsEnd = featuresEnd + filteredProjects.length
 
-  const item = (i: number, key: string, glyph: ReactNode, label: ReactNode, trailing: ReactNode, title?: string) => (
+  const item = (
+    i: number,
+    key: string,
+    glyph: ReactNode,
+    label: ReactNode,
+    trailing: ReactNode,
+    title?: string,
+    disabled = false,
+  ) => (
     <div
       key={key}
       ref={(el) => {
@@ -314,8 +338,9 @@ export function CommandPalette(props: CommandPaletteProps) {
       }}
       role="option"
       aria-selected={i === activeIndex}
+      aria-disabled={disabled || undefined}
       data-selected={i === activeIndex}
-      className={cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'min-h-8 hover:bg-transparent')}
+      className={cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'min-h-8 hover:bg-transparent', disabled && 'text-text-tertiary')}
       onMouseMove={() => i !== activeIndex && setActiveIndex(i)}
       onClick={() => activate(i)}
     >
@@ -357,10 +382,26 @@ export function CommandPalette(props: CommandPaletteProps) {
         </div>
         <div role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5 [scrollbar-width:thin]">
           {/* A group with nothing in it says nothing — not an empty heading. */}
+          {featureCommands && commands.length > 0 && group(featureCommands.title)}
+          {commands.map((c, i) =>
+            item(
+              i,
+              `command-${c.key}`,
+              c.icon,
+              c.label,
+              c.disabled ? (
+                <span className="shrink-0 text-xs text-text-tertiary">{c.disabled}</span>
+              ) : c.kbd ? (
+                <Kbd>{c.kbd}</Kbd>
+              ) : null,
+              c.disabled ? `${c.label} — ${c.disabled}` : c.label,
+              !!c.disabled,
+            ),
+          )}
           {filteredFeatures.length > 0 && group('Features')}
           {filteredFeatures.map((f, i) =>
             item(
-              i,
+              commandsEnd + i,
               f.id,
               <FeatureProgressIcon f={f} label="" />,
               f.title,

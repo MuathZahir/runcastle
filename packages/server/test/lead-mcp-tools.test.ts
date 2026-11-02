@@ -183,8 +183,18 @@ describe('the lead’s MCP tools', () => {
 
   it('wait_for_you sets the waiting reason the context shows', async () => {
     const out = await call('wait_for_you', { why: 'round 2 proposed' })
-    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'round 2 proposed' })
+    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'round 2 proposed', waitingKind: 'answer' })
     expect(getFeatureRow(ctx, featureId).waitingReason).toBe('round 2 proposed')
+  })
+
+  it('wait_for_you stores the kind of wait beside the reason, and the context shows it', async () => {
+    const out = await call('wait_for_you', { why: 'start round 1?', kind: 'plan' })
+    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'start round 1?', waitingKind: 'plan' })
+    expect(featureContext(ctx, { featureId })).toMatchObject({ waitingReason: 'start round 1?', waitingKind: 'plan' })
+    const waited = listAfter(ctx, featureId).filter((e) => e.type === 'feature.waiting').at(-1)
+    expect(waited?.data).toMatchObject({ why: 'start round 1?', kind: 'plan' })
+
+    expect((await call('wait_for_you', { why: 'x', kind: 'later' })).isError).toBe(true)
   })
 
   it('stop_round refuses when nothing is running', async () => {

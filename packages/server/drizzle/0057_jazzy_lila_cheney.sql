@@ -1,0 +1,1 @@
+ALTER TABLE `features` ADD `waiting_kind` text;

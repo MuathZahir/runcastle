@@ -27,7 +27,7 @@ export function phoneViewChoices(views: readonly PanelView[], tickets: Parameter
 /** A feature's status line in the chat bar's terms: Ready waits on you as Waiting does (the preview's amber dot). */
 export function featurePhoneStatus(status: FeatureStatus | undefined): PhoneChatStatus | undefined {
   if (!status) return undefined
-  const tone = status.kind === 'waiting' || status.kind === 'ready' ? 'waiting' : status.kind === 'working' ? 'working' : 'quiet'
+  const tone = status.held ? 'quiet' : status.kind === 'waiting' || status.kind === 'ready' ? 'waiting' : status.kind === 'working' ? 'working' : 'quiet'
   return { words: status.label, tone }
 }
 

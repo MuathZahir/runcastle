@@ -4,25 +4,28 @@ import { Button, SplitButton, type ButtonVariant } from '../../ui'
 import { ACTION_ICON } from './NextStepBar'
 
 /**
- * The feature header's one action button (design-mode decision 12) — the
- * status's primary, or Merge & ship (see `headerActions`). Small, to sit in
- * the 44px row; a disabled one says why in its title, since the row has no
- * room for a caption. Merge is `secondary` (its confirmation is the weighty
- * step); every other action is the row's primary.
+ * One of the feature header's buttons (you-always-know-what-s-waiting decision
+ * 6) — the status's primary, or the quiet Merge & ship beside it (see
+ * `headerActions`). Small, to sit in the 44px row; a disabled one says why in
+ * its title, since the row has no room for a caption. A danger action (Stop)
+ * stays danger; `quiet` is the secondary look Merge wears beside the primary.
  */
 export function HeaderAction({
   action,
   busy,
   onAction,
   split,
+  quiet = false,
 }: {
   action: NextAction
   busy: boolean
   onAction: (kind: ActionKind) => void
   /** Test drive's scenarios, behind a caret when this is Test drive. */
   split?: { kind: ActionKind; label: string; picker: ReactNode; menuLabel: string }
+  /** The second button of the row: Merge & ship beside the need's own. */
+  quiet?: boolean
 }) {
-  const variant: ButtonVariant = action.danger ? 'danger' : action.kind === 'merge' ? 'secondary' : 'primary'
+  const variant: ButtonVariant = action.danger ? 'danger' : quiet ? 'secondary' : 'primary'
   const props = {
     size: 'sm' as const,
     variant,

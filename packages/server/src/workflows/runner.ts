@@ -1,5 +1,5 @@
 import type { Feature, Project, ReviewGateRun, RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
-import { newId, resolvePreparedSettings } from '@runcastle/core'
+import { newId, PROVIDER_LIMIT as PROVIDER_LIMIT_REASON, resolvePreparedSettings } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, runs } from '../db/schema'
@@ -325,7 +325,8 @@ async function endRound(
   if (run.status === 'cancelled') return
   const halt = runHaltHeadline(ctx, featureId, runId)
   if (halt) {
-    setWaiting(ctx, featureId, PROVIDER_LIMIT.test(halt) ? 'provider limit' : halt)
+    // A halted round stops the feature: it reads "Stopped · …", not a question.
+    setWaiting(ctx, featureId, PROVIDER_LIMIT.test(halt) ? PROVIDER_LIMIT_REASON : halt, 'stuck')
     return
   }
   await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle' })

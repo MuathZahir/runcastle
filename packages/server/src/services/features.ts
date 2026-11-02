@@ -2,6 +2,7 @@ import type {
   BlockRef,
   DependencyRef,
   Feature,
+  FeatureNeed,
   FeatureStatus,
   Project,
   ReadyDeclaration,
@@ -10,7 +11,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import { newId, READY_TO_TEST, STOPPED } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -41,8 +42,10 @@ import { deliverToLead } from './lead-delivery'
 import { latestBurn, runClaimedTicketIds } from './runs'
 import { refreshLeadTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
+import { needEventsByProject, needOf } from './feature-need'
 import {
   getFeatureRow,
+  getProjectById,
   hasActiveRun,
   listRunsByFeature,
   listSessionsByFeature,
@@ -118,6 +121,8 @@ export interface FeatureListItem extends Feature {
   blocks: BlockRef[]
   /** Why an up-next draft did not start by itself (newest since the mark was set), else null. */
   upNextProblem: string | null
+  /** The one thing it waits on the human for, or null (`services/feature-need.ts`). */
+  need: FeatureNeed | null
 }
 
 export interface FeatureFull {
@@ -134,6 +139,8 @@ export interface FeatureFull {
   upNextProblem: string | null
   /** See {@link FeatureListItem.leadAwaitsHuman}: the header reads the sidebar's answer. */
   leadAwaitsHuman: boolean
+  /** See {@link FeatureListItem.need}: the header, the sidebar and the pings read one answer. */
+  need: FeatureNeed | null
 }
 
 export interface CreateFeatureInput {
@@ -434,6 +441,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
   // Telemetry only (decision 25): the lead's tokens are recorded as it works, never returned.
   refreshLeadTokens(ctx, id, { lazy: true })
+  const lead = leadState(ctx, id)
   return {
     feature,
     tickets: listByFeature(ctx, id),
@@ -450,7 +458,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     upNextProblem: feature.upNext && feature.status === 'draft'
       ? (upNextProblems(ctx, feature.projectId).get(id) ?? null)
       : null,
-    leadAwaitsHuman: leadState(ctx, id).awaitsHuman,
+    leadAwaitsHuman: lead.awaitsHuman,
+    need: needOf(ctx, feature, { lead }),
   }
 }
 
@@ -467,6 +476,8 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const deps = dependencyMaps(ctx, projectId, projectFeatures)
   const problems = upNextProblems(ctx, projectId)
   const ticketStatuses = ticketStatusCounts(ctx, projectId)
+  const needEvents = needEventsByProject(ctx, projectId)
+  const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
 
   return projectFeatures.map((feature) => {
     const byStatus = ticketStatuses.get(feature.id)
@@ -492,6 +503,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],
       upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
+      need: needOf(ctx, feature, { events: needEvents.get(feature.id) ?? [], lead, driveConfigured }),
     }
   })
 }
@@ -613,7 +625,7 @@ export async function dispatchRound(
   const { runId } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: named.map((t) => t.id) })
   ctx.db
     .update(features)
-    .set({ lastDispatchAt: Date.now(), waitingReason: null })
+    .set({ lastDispatchAt: Date.now(), waitingReason: null, waitingKind: null })
     .where(eq(features.id, featureId))
     .run()
   emit(ctx, featureId, {
@@ -662,7 +674,7 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
   const running = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
   ctx.db
     .update(features)
-    .set({ stoppedAt: Date.now(), waitingReason: 'stopped' })
+    .set({ stoppedAt: Date.now(), waitingReason: STOPPED, waitingKind: null })
     .where(eq(features.id, featureId))
     .run()
   emit(ctx, featureId, {
@@ -723,7 +735,7 @@ export function declareReady(
     .returning()
     .get()
   // Under Needs you until the human replies or a round runs; the event below speaks for it.
-  ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
+  ctx.db.update(features).set({ waitingReason: READY_TO_TEST, waitingKind: null }).where(eq(features.id, featureId)).run()
 
   const warnings = readyWarnings(ctx, lastRound)
   emit(ctx, featureId, {

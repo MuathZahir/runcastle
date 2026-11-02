@@ -13,6 +13,7 @@ import {
 } from '../src/lib/projects'
 import { readStoredNav, writeStoredNav } from '../src/lib/use-project-nav'
 import type { FeatureListItem } from '../src/lib/api'
+import { need } from './fixtures'
 import type { Project } from '../src/lib/api'
 
 /**
@@ -303,9 +304,11 @@ describe('projectStats', () => {
 
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
-      feat({ id: 'a', waitingReason: 'ready to test' }),
+      feat({ id: 'a', need: need('test', 'Ready to test · Checkout') }),
       feat({ id: 'b', activeRun: true }),
       feat({ id: 'c' }), // nothing asked: in progress, not needs-you
+      // Its orchestrator handles it: not counted until its hour passes (decision 18).
+      feat({ id: 'd', need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) }),
     ])
     expect(s.needsYou).toBe(1)
     expect(s.activeRuns).toBe(1)

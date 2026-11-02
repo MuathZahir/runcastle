@@ -21,6 +21,7 @@ import {
 import { AddressSettled, currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import { SidebarThreadsProvider } from '../lib/sidebar-threads'
+import { FeatureCommandsProvider } from '../lib/feature-commands'
 import { useIsPhone } from '../lib/use-phone'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
@@ -460,7 +461,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     <OpenSettingsProvider open={ws.openSettings}>
       <LandOnChatProvider value={landOnChat}>
         {/* The open page publishes its threads; the sidebar beside it lists them. */}
-        <SidebarThreadsProvider>{shell}</SidebarThreadsProvider>
+        <SidebarThreadsProvider>
+          {/* …and its header's actions, for the palette's first group. */}
+          <FeatureCommandsProvider>{shell}</FeatureCommandsProvider>
+        </SidebarThreadsProvider>
       </LandOnChatProvider>
     </OpenSettingsProvider>
   )

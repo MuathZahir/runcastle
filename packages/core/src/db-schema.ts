@@ -171,6 +171,11 @@ export const features = sqliteTable('features', {
    * you · <why>". Cleared by the next human message or round dispatch.
    */
   waitingReason: text('waiting_reason'),
+  /**
+   * Which kind of wait `waitingReason` is (`WaitingKind`: answer, plan, design,
+   * stuck); set and cleared with it. Null with a reason reads as an answer.
+   */
+  waitingKind: text('waiting_kind', { enum: ['answer', 'plan', 'design', 'stuck'] }),
   /** When a human message last reached the lead (ms) — the after-Stop dispatch check. */
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */

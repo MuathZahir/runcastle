@@ -4,8 +4,10 @@ import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget, StandingNotice } from '../../lib/chat-notices'
 import { mainChatInbox } from '../../lib/composer-inbox'
-import { READY_TO_TEST } from '../../lib/feature-ui'
+import { READY_TO_TEST, type ActionKind, type NextAction } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
+import { StatusDot } from '../../ui'
+import { HeaderAction } from './HeaderAction'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
@@ -49,6 +51,9 @@ export function FeatureChat({
   holdStart,
   start,
   onView,
+  needAction,
+  actionsBusy = false,
+  onAction,
 }: {
   full: FeatureFull
   column: FeatureChatColumn
@@ -66,6 +71,12 @@ export function FeatureChat({
   start: (opts: { holdOpening: boolean }) => Promise<string>
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
+  /** The header's button for the feature's need (`needButton`), for the waiting line; none for an answer. */
+  needAction?: NextAction | undefined
+  /** The header's actions are busy: the waiting line's button waits with them. */
+  actionsBusy?: boolean
+  /** The header's dispatcher, which the waiting line's button fires. */
+  onAction?: (kind: ActionKind) => void
 }) {
   const { inFront, main, scenario } = column
   const isMain = inFront === main
@@ -115,6 +126,11 @@ export function FeatureChat({
       emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : SIDE_HINT}
       {...(isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
       notices={alerts}
+      tail={
+        isMain &&
+        full.need &&
+        !full.need.held && <WaitingLine words={full.need.words} action={needAction} busy={actionsBusy} onAction={onAction} />
+      }
     >
       <FeatureNoticeDeck
         events={events}
@@ -125,5 +141,30 @@ export function FeatureChat({
         readyToTest={full.feature.waitingReason === READY_TO_TEST}
       />
     </ThreadColumn>
+  )
+}
+
+/**
+ * The main chat's last line while the feature needs the human
+ * (you-always-know-what-s-waiting decision 4): the status line's words, and the
+ * header's own button beside them, so the turn says it ended on them.
+ */
+function WaitingLine({
+  words,
+  action,
+  busy,
+  onAction,
+}: {
+  words: string
+  action: NextAction | undefined
+  busy: boolean
+  onAction: ((kind: ActionKind) => void) | undefined
+}) {
+  return (
+    <div role="status" className="flex min-h-8 items-center gap-2 text-sm text-text-secondary">
+      <StatusDot tone="warning" />
+      <span className="min-w-0 wrap-anywhere">{words}</span>
+      {action && onAction && <HeaderAction action={action} busy={busy} onAction={onAction} />}
+    </div>
   )
 }

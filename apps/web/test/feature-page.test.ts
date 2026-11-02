@@ -4,9 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EventRow } from '@runcastle/core'
+import type { EventRow, FeatureNeed } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { FeatureView } from '../src/lib/routes'
+import { FeatureCommandsProvider, useFeatureCommands, type FeatureCommands } from '../src/lib/feature-commands'
 import { full as fixture } from './fixtures'
 
 /**
@@ -24,6 +25,8 @@ const store = vi.hoisted(() => ({
   mutations: new Map<string, { onSuccess?: (...args: unknown[]) => void }>(),
   /** Every tRPC path a hook was asked for, to prove the page never reaches a retired one. */
   touched: new Set<string>(),
+  /** Every mutation fired, by its tRPC path, with its input. */
+  fired: [] as Array<[string, unknown]>,
 }))
 
 /** Every tRPC hook answers: `feature.get` the fixture, other queries from `store.queries`, mutations record their options. */
@@ -44,7 +47,11 @@ vi.mock('../src/trpc', () => {
           store.touched.add(name)
           return (options: { onSuccess?: (...args: unknown[]) => void } = {}) => {
             store.mutations.set(name, options)
-            return { mutate: () => undefined, mutateAsync: async () => undefined, isPending: false }
+            return {
+              mutate: (input: unknown) => void store.fired.push([name, input]),
+              mutateAsync: async () => undefined,
+              isPending: false,
+            }
           }
         }
         if (key === 'useUtils') return () => node([])
@@ -90,12 +97,15 @@ interface PageOptions {
   docs?: ReturnType<typeof doc>[]
   runs?: FeatureFull['runs']
   queries?: Record<string, unknown>
+  /** What the server says the feature needs. */
+  need?: FeatureNeed
 }
 
-function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {} }: PageOptions) {
+function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {}, need }: PageOptions) {
   const base = fixture({ id: 'f1', status })
   store.full = {
     ...base,
+    ...(need ? { need } : {}),
     tickets,
     docs,
     runs,
@@ -104,6 +114,7 @@ function setup({ status = 'active', preview = false, tickets = [], docs = [], ru
   store.queries = new Map(Object.entries({ 'events.list': [], ...queries }))
   store.mutations.clear()
   store.touched.clear()
+  store.fired = []
 }
 
 function workspace({ view = 'chat', onViewChange = () => undefined, driving = null }: PageOptions) {
@@ -135,6 +146,8 @@ const headerOf = (html: string) => html.slice(at(html, '<header'), at(html, '</h
 const panelOf = (html: string) => html.slice(at(html, 'data-panel'))
 
 const READY = { 'feature.readyDeclarations': [{ id: 'r1', featureId: 'f1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 5 }] }
+/** The need that declaration leaves on the feature. */
+const READY_TO_TEST: FeatureNeed = { kind: 'test', words: 'Ready to test · Checkout', why: 'Checkout', scenario: 'Checkout', held: false, since: 5 }
 
 describe('the chat-first feature page', () => {
   it('shows exactly one header row, then the chat — no strip, no chat header, no tabs', () => {
@@ -156,19 +169,20 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Talking with you with nothing running and nothing asked, and carries no button, Go or otherwise', () => {
+  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship and New thread, no Go', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Talking with you')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
-    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
-    expect(buttons.length - chrome.length).toBe(0)
+    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|New thread)"/.test(b))
+    expect(buttons.length - chrome.length).toBe(1)
+    expect(header).toContain('aria-label="New thread"')
     expect(header).not.toMatch(/>Go</)
-    expect(header).not.toContain('Merge &amp; ship')
+    expect(header).toContain('Merge &amp; ship')
   })
 
   it('offers Start test drive once the agent declared ready, with no What-to-test notice', () => {
-    const html = page({ queries: READY })
-    expect(headerOf(html)).toContain('Ready for you')
+    const html = page({ queries: READY, need: READY_TO_TEST })
+    expect(headerOf(html)).toContain('Ready to test')
     expect(headerOf(html)).toContain('Start test drive')
     expect(html).not.toContain('What to test')
   })
@@ -258,7 +272,7 @@ describe('the panel’s views', () => {
 describe('what opens the panel', () => {
   it('opens the drive on the Test drive click, before the server answers', () => {
     const onViewChange = vi.fn()
-    setup({ queries: READY })
+    setup({ queries: READY, need: READY_TO_TEST })
     render(workspace({ onViewChange }))
     fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
     expect(onViewChange).toHaveBeenCalledWith('drive')
@@ -332,5 +346,76 @@ describe('the drive page', () => {
 
   it('is not there with no drive', () => {
     expect(page({ view: 'chat' })).not.toContain('data-drive-page')
+  })
+})
+
+/** you-always-know-what-s-waiting decisions 1, 6, 7, 8: the need's button, Merge & ship, New thread. */
+describe('the header’s need, its button and New thread', () => {
+  const PLAN: FeatureNeed = { kind: 'plan', words: 'Plan to approve', held: false, since: 1 }
+  const MERGE: FeatureNeed = { kind: 'merge', words: 'Ready to merge', held: false, since: 1 }
+  const header = () => document.querySelector('header') as HTMLElement
+  const labels = () => [...header().querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '').filter(Boolean)
+
+  /** What the page published for the palette, as the palette reads it. */
+  let published: FeatureCommands | null = null
+  function Peek() {
+    published = useFeatureCommands()
+    return null
+  }
+  const mount = (options: PageOptions) => {
+    setup(options)
+    published = null
+    render(createElement(FeatureCommandsProvider, null, workspace(options), createElement(Peek)))
+  }
+
+  it('names the need and puts its button first, Merge & ship quiet beside it', () => {
+    const onViewChange = vi.fn()
+    mount({ need: PLAN, docs: [doc('decisions.md')], onViewChange })
+    expect(screen.getByRole('status').textContent).toContain('Plan to approve')
+    expect(labels()).toEqual(['Open plan', 'Merge & ship'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
+    expect(onViewChange).toHaveBeenCalledWith('plan')
+  })
+
+  it('shows Merge & ship once, as the primary, when the feature is ready to merge', () => {
+    mount({ need: MERGE })
+    const merges = screen.getAllByRole('button', { name: 'Merge & ship' })
+    expect(merges).toHaveLength(1)
+    expect(merges[0]!.className).toMatch(/\bbg-primary\b/)
+  })
+
+  it('starts a side thread from the header’s "+" and from Ctrl+Shift+O, the composer included', () => {
+    mount({})
+    fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
+    expect(store.fired).toEqual([['thread.new', { featureId: 'f1' }]])
+
+    const field = document.body.appendChild(document.createElement('textarea'))
+    field.focus()
+    const key = fireEvent.keyDown(field, { key: 'O', ctrlKey: true, shiftKey: true })
+    expect(key).toBe(false) // the browser's own Ctrl+Shift+O is prevented
+    expect(store.fired).toHaveLength(2)
+    field.remove()
+  })
+
+  it('offers no New thread on a shipped feature', () => {
+    mount({ status: 'shipped' })
+    expect(screen.queryByRole('button', { name: 'New thread' })).toBeNull()
+    fireEvent.keyDown(document.body, { key: 'o', metaKey: true, shiftKey: true })
+    expect(store.fired).toEqual([])
+    expect(published).toBeNull()
+  })
+
+  it('publishes the header’s actions for the palette, disabled with a reason where they cannot run', () => {
+    mount({ need: PLAN })
+    expect(published?.title).toBe('Demo')
+    expect(published?.commands.map((c) => [c.label, c.disabled ?? null])).toEqual([
+      ['Open plan', null],
+      ['New thread', null],
+      ['Merge & ship', null],
+      ['Start test drive', 'Nothing declared ready yet'],
+    ])
+    act(() => published!.commands[1]!.run())
+    expect(store.fired).toEqual([['thread.new', { featureId: 'f1' }]])
   })
 })

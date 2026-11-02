@@ -1,4 +1,10 @@
+import type { FeatureNeed } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+
+/** A need as `feature.list` / `feature.get` carry it; its words are the server's. */
+export function need(kind: FeatureNeed['kind'], words: string, over: Partial<FeatureNeed> = {}): FeatureNeed {
+  return { kind, words, held: false, since: 1, ...over }
+}
 
 /**
  * The wire payloads the derivation and rendering tests build their cases on.
@@ -31,6 +37,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     liveSession: over.liveSession ?? null,
     leadAwaitsHuman: over.leadAwaitsHuman ?? false,
     leadInBackground: over.leadInBackground ?? false,
+    need: over.need ?? null,
     waitingReason: over.waitingReason ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],
@@ -51,5 +58,6 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     gate: { next: null, satisfied: false },
     dependsOn: [],
     blocks: [],
+    need: null,
   } as unknown as FeatureFull
 }

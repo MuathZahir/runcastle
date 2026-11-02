@@ -16,7 +16,8 @@ const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
  * quiet, beside the title in the page's one header row (design-mode decision
  * 12): a dot and the line — "Talking with you", "Working · Round 3",
- * "Waiting for you · stopped", "Ready for you · Test drive ▸ <scenario>". It
+ * "Plan to approve", "Needs permission · Bash: git push", "Ready to test ·
+ * <scenario>" (you-always-know-what-s-waiting decision 1). It
  * replaces the stepper and the next-step sentence on the page; the header's
  * buttons are the header's.
  *
@@ -25,7 +26,8 @@ const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
 export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
   return (
     <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary" role="status">
-      <StatusDot tone={STATUS_TONE[status.kind]} />
+      {/* A need its orchestrator handles is not the human's yet: a quiet dot. */}
+      <StatusDot tone={status.held ? 'neutral' : STATUS_TONE[status.kind]} />
       {/* Squeezed, the reason gives way first, then the label truncates: the line never draws past its box. */}
       <span className="min-w-0 truncate text-text-secondary">{status.label}</span>
       {status.why && <span className="min-w-0 shrink-[100] truncate">· {status.why}</span>}

@@ -76,6 +76,12 @@ export function shortcut(key: string): string {
   return shortcutLabel(key, n.platform, n.userAgent)
 }
 
+/** A shortcut with Shift too — "⌘⇧O" on a Mac, "Ctrl+Shift+O" everywhere else — for this browser. */
+export function shiftShortcut(key: string): string {
+  const n = nav()
+  return isMacLike(n.platform, n.userAgent) ? `⌘⇧${key}` : `Ctrl+Shift+${key}`
+}
+
 /** {@link repoPathPlaceholder} for the browser this is running in. */
 export function pathPlaceholder(): string {
   const n = nav()

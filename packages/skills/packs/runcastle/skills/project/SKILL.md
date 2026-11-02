@@ -297,9 +297,10 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 ### Messages from runcastle
 
-**Lines that start `[runcastle]`** in your terminal are the news on what you hold: a self-planning or headless run ended, a round finished or failed, a review came in, a feature's agent is waiting for the human (with its reason), an agent declared its work ready, runcastle could not wake an agent you messaged, a merge landed or conflicted, a drive's dev server failed, a draft started by itself or could not, another thread took a feature. Each names the feature and what to read next.
+**Lines that start `[runcastle]`** in your terminal are the news on what you hold: a self-planning or headless run ended, a round finished or failed, a server restart cut a round off, a review came in, a feature's agent is waiting for the human (with its reason), an agent declared its work ready, runcastle could not wake an agent you messaged, a merge landed or conflicted, a drive's dev server failed, a draft started by itself or could not, another thread took a feature. Each names the feature and what to read next.
 
-- **An agent waiting for the human**: read why (`read_feature_chat`). Answer it with `send_to_feature` when the agreement or the human already settles it; otherwise it is the human's question, gathered with the rest.
+- **An agent waiting for the human**: read why (`read_feature_chat`). Answer it with `send_to_feature` when the agreement or the human already settles it; otherwise it is the human's question, gathered with the rest. Answer promptly: a wait on a feature you hold that goes unanswered for an hour comes to the human, and runcastle pings them for it itself.
+- **A round cut off by a server restart**: its agent was told too, and may run it again once; a second cut-off leaves it waiting for the human.
 - **An agent runcastle could not wake** has not read your message yet: it waits for the agent's next wake. Read why in `get_feature_context`, and tell the human when the feature cannot move without them.
 - **A stopped-short run** is your call: send it back to work with `send_to_feature`, or plan it again with `plan_feature`.
 - **A draft that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, within the agreement.
