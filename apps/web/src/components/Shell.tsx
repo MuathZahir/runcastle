@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useProjectNav } from '../lib/use-project-nav'
+import { NotificationsProvider, useNeedsYouTitle } from '../lib/use-notifications'
 import { ProjectShell } from './ProjectShell'
 import { PortfolioHome } from './PortfolioHome'
 import { OpenProject } from './OpenProject'
@@ -24,6 +25,8 @@ import { Dialog, Page, Skeleton, SkeletonBar, cx } from '../ui'
  */
 export function Shell() {
   const nav = useProjectNav()
+  // The tab counts what needs you in every project, wherever you stand.
+  useNeedsYouTitle(nav.projects ?? [])
 
   let content
   let overlay: ReactNode = null
@@ -98,10 +101,13 @@ export function Shell() {
         </>
       }
     >
-      <div className="h-full bg-canvas">
-        {content}
-        {overlay}
-      </div>
+      {/* Desktop pings watch every project, so they live above any one of them. */}
+      <NotificationsProvider>
+        <div className="h-full bg-canvas">
+          {content}
+          {overlay}
+        </div>
+      </NotificationsProvider>
     </FrameProvider>
   )
 }

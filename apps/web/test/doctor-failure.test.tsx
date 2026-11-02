@@ -64,6 +64,8 @@ vi.mock('../src/trpc', () => ({
     },
     // The update banner's own check — nothing to report in these runs.
     system: { checkUpdate: { useQuery: () => ({ data: undefined }) } },
+    // The shell's desktop pings poll every project's needs — none here.
+    events: { needsYou: { useQuery: () => ({ data: undefined }) } },
   },
 }))
 

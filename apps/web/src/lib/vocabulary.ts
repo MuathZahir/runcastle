@@ -54,12 +54,12 @@ export const BURN_EXPLAINER =
   'A round runs each ticket as its own sandboxed worker, in parallel, committing to the feature branch.'
 
 /**
- * Status bar, on the notify toggle. "Notify me when a burn finishes" met a
- * newcomer with an unexplained verb at the moment of a click (decision 9): the
- * chrome may *name* a burn, but a sentence about one has to read without the
- * word.
+ * Status bar, on the notify toggle. It names the moment a ping fires: a feature
+ * starting to need the human (you-always-know-what-s-waiting decision 11), no
+ * longer a round finishing. A sentence about it reads without the insider verbs
+ * (decision 9).
  */
-export const NOTIFY_OFFER = 'Notify me when agents finish a run'
+export const NOTIFY_OFFER = 'Notify me when a feature needs me'
 
 /**
  * Stop ticket and Cancel run, when the kill could not be confirmed. Both wait

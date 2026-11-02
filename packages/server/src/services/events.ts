@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { SessionRow } from '@runcastle/core'
-import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, EventRow, UPNEXT_CHANGED } from '@runcastle/core'
+import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, EventRow, FEATURE_NEEDS_YOU, UPNEXT_CHANGED } from '@runcastle/core'
 import { and, asc, desc, eq, gt, inArray, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
@@ -256,4 +256,27 @@ export function listByProject(ctx: AppCtx, projectId: string, afterId = 0): Even
     .orderBy(asc(events.id))
     .all()
   return rows.map(rowToEvent)
+}
+
+/** A `feature.needs_you` event with what a ping needs to name and open its feature. */
+export interface NeedsYouEvent {
+  event: EventRow
+  feature: { id: string; projectId: string; slug: string; title: string }
+}
+
+/**
+ * Every project's `feature.needs_you` events with `id > afterId`, oldest first —
+ * what the desktop pings poll (you-always-know-what-s-waiting decision 11:
+ * pings cover every project, not only the open one). Same cursor semantics as
+ * `listAfter`.
+ */
+export function needsYouAfter(ctx: AppCtx, afterId = 0): NeedsYouEvent[] {
+  const rows = ctx.db
+    .select({ event: events, feature: { id: features.id, projectId: features.projectId, slug: features.slug, title: features.title } })
+    .from(events)
+    .innerJoin(features, eq(features.id, events.featureId))
+    .where(and(eq(events.type, FEATURE_NEEDS_YOU), gt(events.id, afterId)))
+    .orderBy(asc(events.id))
+    .all()
+  return rows.map((row) => ({ event: rowToEvent(row.event), feature: row.feature }))
 }

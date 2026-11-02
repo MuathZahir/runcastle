@@ -739,7 +739,7 @@ function SidebarFoot({
   const theme = useTheme()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const healthy = !list.isError && list.data !== undefined
-  const notify = useDesktopNotifications(projectId, list.data ?? [])
+  const notify = useDesktopNotifications()
   const notifyState = notifyButton(notify)
 
   const stopDrive = trpc.feature.testDrive.useMutation({

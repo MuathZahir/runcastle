@@ -1,24 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import type { Project } from './api'
 import { trpc } from '../trpc'
 import { useLivePoll } from './live'
 import { eventToNotification, type DesktopNotification } from './notifications'
+import { tabTitle } from './projects'
+import { pathFor } from './routes'
+import { goToPath } from './use-history-sync'
 
 /**
- * Desktop-notification driver (streamlining-ux, ticket 10). Wraps the pure
+ * Desktop-notification driver (streamlining-ux ticket 10;
+ * you-always-know-what-s-waiting decisions 11, 13). Wraps the pure
  * `eventToNotification` mapping in the thin Notification-API shell it needs:
  * a persisted on/off preference, a permission request from the enable gesture,
- * and a project-wide events poll that fires only for *fresh* events while the
- * tab is in the background.
+ * and an every-project poll of `feature.needs_you` events that fires only for
+ * *fresh* ones while the tab is in the background.
  *
- * Design notes matching the ticket:
+ * Design notes:
+ * - Mounted once in the shell ({@link NotificationsProvider}), so it keeps
+ *   watching across project switches and on the portfolio home; the sidebar's
+ *   toggle reads the same state through {@link useDesktopNotifications}.
  * - The poll runs only while enabled (no overhead when off) and advances an
  *   `afterId` cursor exactly like `useEventLog`, so each batch holds only new
  *   events. The first batch after enabling is the historical backfill — skipped
- *   via `initialized` so reloads never replay old runs.
+ *   via `initialized` so reloads never replay old needs.
  * - Permission is requested only inside `toggle` (a user gesture), never on
  *   mount; the preference persists in localStorage.
  * - A ping fires only when the tab is hidden or unfocused — a visible dashboard
- *   already shows the change.
+ *   already shows the change. Clicking it focuses the window and opens the
+ *   feature.
  * - Everything degrades gracefully where `Notification` is undefined.
  */
 
@@ -32,6 +41,8 @@ export interface NotificationsControl {
   permission: NotificationPermission
   toggle: () => void
 }
+
+const UNSUPPORTED: NotificationsControl = { supported: false, enabled: false, permission: 'default', toggle: () => {} }
 
 function readPref(): boolean {
   try {
@@ -49,11 +60,12 @@ function writePref(on: boolean): void {
   }
 }
 
-function fire({ title, body }: DesktopNotification): void {
+function fire({ title, body }: DesktopNotification, open: () => void): void {
   try {
     const n = new Notification(title, { body })
     n.onclick = () => {
       window.focus()
+      open()
       n.close()
     }
   } catch {
@@ -61,10 +73,7 @@ function fire({ title, body }: DesktopNotification): void {
   }
 }
 
-export function useDesktopNotifications(
-  projectId: string,
-  features: { id: string; title: string }[],
-): NotificationsControl {
+function useNotificationsDriver(): NotificationsControl {
   const [enabled, setEnabled] = useState(() => supported && readPref())
   // Mirrored into state because `Notification.permission` is not reactive — the
   // button has to re-render when a prompt is answered.
@@ -74,26 +83,22 @@ export function useDesktopNotifications(
   const [cursor, setCursor] = useState<number | undefined>(undefined)
   const initialized = useRef(false)
 
-  // featureId → title, read at fire time without retriggering the poll effect.
-  const titles = useRef(new Map<string, string>())
-  titles.current = new Map(features.map((f) => [f.id, f.title]))
-
-  const query = trpc.events.listByProject.useQuery(
-    { projectId, afterId: cursor },
+  const query = trpc.events.needsYou.useQuery(
+    { afterId: cursor },
     { refetchInterval: useLivePoll(), enabled: supported && enabled },
   )
 
   useEffect(() => {
     const batch = query.data
     if (!batch || batch.length === 0) return
-    const maxId = batch[batch.length - 1].id // listByProject returns id-ascending
+    const maxId = batch[batch.length - 1].event.id // id-ascending
 
     const away = document.hidden || !document.hasFocus()
     if (initialized.current && Notification.permission === 'granted' && away) {
-      for (const ev of batch) {
-        const title = ev.featureId ? titles.current.get(ev.featureId) : undefined
-        const notification = eventToNotification(ev, title)
-        if (notification) fire(notification)
+      for (const { event, feature } of batch) {
+        const notification = eventToNotification(event, feature.title)
+        const path = pathFor({ kind: 'feature', projectId: feature.projectId, featureSlug: feature.slug })
+        if (notification) fire(notification, () => goToPath(path))
       }
     }
     initialized.current = true
@@ -131,4 +136,30 @@ export function useDesktopNotifications(
   }, [enabled])
 
   return { supported, enabled, permission, toggle }
+}
+
+const NotificationsContext = createContext<NotificationsControl>(UNSUPPORTED)
+
+/** Run the desktop pings for the whole app; mounted once, in the shell. */
+export function NotificationsProvider({ children }: { children: ReactNode }) {
+  return createElement(NotificationsContext.Provider, { value: useNotificationsDriver() }, children)
+}
+
+/** The desktop pings' on/off control, for the sidebar's notify button. */
+export function useDesktopNotifications(): NotificationsControl {
+  return useContext(NotificationsContext)
+}
+
+/**
+ * Keep the browser tab's title counting what needs the human across every open
+ * project (decision 13). Reads the same per-project feature lists the portfolio
+ * polls, so the queries are shared rather than doubled.
+ */
+export function useNeedsYouTitle(projects: Project[]): void {
+  const poll = useLivePoll()
+  const lists = trpc.useQueries((t) => projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })))
+  const title = tabTitle(lists.map((q) => q.data ?? []))
+  useEffect(() => {
+    document.title = title
+  }, [title])
 }
