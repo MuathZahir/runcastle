@@ -1,8 +1,9 @@
-import { DEFAULT_RUNTIME, type Feature, type SessionKind, type SessionRow } from '@runcastle/core'
+import { type Feature, type SessionKind, type SessionRow } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
-import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead } from '../launcher/edit-guard'
+import { type EditDenial, editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
+import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launcher/checkout-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
@@ -14,7 +15,7 @@ import {
   markSessionLive,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
-import { mergeInProgressAt } from '../services/git'
+import { mergeInProgressAt, stagedPathsAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
 import { isRuncastlePrompt } from '../services/lead-prompt'
@@ -403,11 +404,12 @@ function emitConversationEnded(
  * Registered only for the kinds that may not write code (see `renderSettings` /
  * {@link evaluateEditGuard}).
  *
- * Anything allowed answers `{}`, "no opinion" — except for a feature's chat or
- * side session on Claude Code, which is answered `allow` (`the-feature-lead-runs-rounds`
- * decision 27; tickets-and-review-are-tools-not-phases decision 13): every feature
- * chat is the lead, and a prompt is a stall when the lead works while the human is away.
- * Codex never asks inside its sandbox, so its hook keeps answering `{}`.
+ * A host-side session's shell call also meets the checkout guard
+ * ({@link evaluateCheckoutGuard}).
+ *
+ * Anything allowed answers `{}`, "no opinion": every Claude session runs in
+ * `bypassPermissions`, so no `allow` answer is needed to skip a prompt, and a
+ * hook `allow` would not override the human's own `ask` rules anyway.
  *
  * This is where the guard's one live input comes from: a `resolve-conflict`
  * session's worktree is asked whether its merge is still in progress, which is
@@ -454,16 +456,31 @@ async function handlePreToolUse(
           ? worktreeDir(feature.projectId, feature.slug)
           : undefined,
     }) ??
-    (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
-  if (denial) return editDenyResponse(denial)
-  return feature && isUnguardedLead(session.kind) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
-    ? LEAD_ALLOW_RESPONSE
-    : {}
+    (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null) ??
+    (await checkoutGuardDenial(session, toolName, toolInput))
+  return denial ? editDenyResponse(denial) : {}
 }
 
-/** The verified `PreToolUse` allow shape: skips the permission prompt. */
-const LEAD_ALLOW_RESPONSE = {
-  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+/**
+ * The checkout guard for a host-side session's shell call. The staged paths are
+ * git IO, probed only when the command contains a `git commit`.
+ */
+async function checkoutGuardDenial(
+  session: SessionRow,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown>,
+): Promise<EditDenial | null> {
+  if (!guardsCheckout(session.kind)) return null
+  const command = typeof toolInput.command === 'string' ? toolInput.command : undefined
+  const stagedPaths = command && mentionsCommit(command) ? await stagedPathsAt(session.worktreePath) : undefined
+  return evaluateCheckoutGuard({
+    kind: session.kind,
+    purpose: session.purpose,
+    toolName,
+    command,
+    worktreePath: session.worktreePath,
+    stagedPaths,
+  })
 }
 
 /** The lead's line guard for a feature chat's shell call, fed from the project and feature rows. */

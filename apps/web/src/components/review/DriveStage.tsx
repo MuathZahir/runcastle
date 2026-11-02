@@ -139,6 +139,18 @@ export function DriveStage({
           />,
       )
 
+    // A restart cut this drive off: nothing of it runs, so no app is opened.
+    // The head's Stop runs its stop script and returns the checkout.
+    case 'cutOff':
+      return frame(
+        <StatusLabel tone="neutral">Cut off by a restart</StatusLabel>,
+        <EmptyState
+          icon={<IconTerminal />}
+          title="This drive was cut off by a restart"
+          hint={<>Nothing of it is running any more. Stop it to run the project’s stop script and put the checkout back where the drive found it.</>}
+        />,
+      )
+
     // The review agent is at the wheel: the app shows exactly as the human's
     // own drive shows it and the toolbar says whose hands are on it. The
     // head's Stop drive is purpose-blind, so it takes the wheel back.

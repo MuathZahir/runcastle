@@ -407,6 +407,13 @@
       "when": 1793644359275,
       "tag": "0057_jazzy_lila_cheney",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1793650000000,
+      "tag": "0058_test_note_open_only",
+      "breakpoints": true
     }
   ]
 }

@@ -152,6 +152,12 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.stopFeature(ctx, input.featureId)),
 
+  // Resume after a provider halt: one message to the lead as the human, which
+  // clears the wait. Refused unless the feature waits on the provider.
+  resume: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.resumeFeature(ctx, input.featureId)),
+
   // The round trail's record (decision 16): every round, numbered from 1.
   rounds: publicProcedure
     .input(z.object({ featureId: z.string() }))

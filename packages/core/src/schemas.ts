@@ -319,11 +319,12 @@ export type Ticket = z.infer<typeof Ticket>
 // --- test notes (test-drive capture) ---------------------------------------
 
 /**
- * A note's lifecycle: `open` → editable, deletable, promotable; `done` is the
- * scratch-off (toggleable back to `open`); `promoted` is terminal and freezes
- * the note as the record of what its ticket was built from.
+ * A note's status: always `open` — editable and deletable until "Send to agent"
+ * stamps `sentAt`. The old `done`, `promoted` and `carried` had no writer left,
+ * and migration 0057 turned every such row into a sent `open` one
+ * (small-fixes-before-publish spec, "5 and 6").
  */
-export const TestNoteStatus = z.enum(['open', 'done', 'promoted', 'carried'])
+export const TestNoteStatus = z.enum(['open'])
 export type TestNoteStatus = z.infer<typeof TestNoteStatus>
 
 /**
@@ -336,8 +337,8 @@ export const TestNoteAuthor = z.enum(['human', 'agent'])
 export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
 
 /**
- * One observation jotted during a test drive. `ticketId` is set exactly when
- * `status` is `promoted`.
+ * One observation jotted during a test drive. `ticketId` is only ever set on old
+ * rows: the ticket a note was once promoted into.
  *
  * A note captured from the walkthrough annotation player additionally carries
  * `videoTimestamp` (stored) and `screenshotUrl` (never stored — the server
@@ -836,7 +837,7 @@ export const LeadWakeFailedData = z.object({
 export type LeadWakeFailedData = z.infer<typeof LeadWakeFailedData>
 
 export const DriveState = z.enum([
-  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',
+  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving', 'cut-off',
 ])
 export type DriveState = z.infer<typeof DriveState>
 

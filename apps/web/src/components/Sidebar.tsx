@@ -765,9 +765,13 @@ function SidebarFoot({
       )}
       {driving && (
         <DriveCard
-          label="Test drive"
+          label={driving.cutOff ? 'Test drive (cut off by a restart)' : 'Test drive'}
           detail={drivenTitle ?? <span className="font-mono">{driving.branch}</span>}
-          title={`Driving ${driving.branch} — back to the drive`}
+          title={
+            driving.cutOff
+              ? `A restart cut off the drive of ${driving.branch} — stop it to return the checkout`
+              : `Driving ${driving.branch} — back to the drive`
+          }
           onOpen={() => (onOpenFeatureDrive ?? onSelect)(driving.featureId)}
           onStop={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
           stopping={stopDrive.isPending}

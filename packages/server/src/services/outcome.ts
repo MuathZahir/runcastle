@@ -42,10 +42,7 @@ function findingResolution(finding: ReviewFinding): string {
 }
 
 function noteResolution(note: TestNote): string {
-  if (note.status === 'promoted') return `quick-fixed → ticket ${note.ticketId ?? 'unknown'}`
-  if (note.status === 'carried') return 'carried forward'
-  if (note.status === 'done') return 'dismissed/done'
-  return 'open'
+  return note.sentAt === undefined ? 'not sent' : 'sent to the agent'
 }
 
 /** Pure synthesis of the permanent shipped record. */
@@ -116,9 +113,12 @@ export async function promoteOutcomeDoc(
       const docsDir = join(project.repoPath, ...featureDocsRel(feature.slug).split('/'))
       mkdirSync(docsDir, { recursive: true })
       writeFileSync(join(docsDir, 'outcome.md'), doc, 'utf8')
+      // Only the outcome itself: a merge goes ahead past the human's unrelated
+      // uncommitted files (docs included), and they must stay uncommitted.
       await git.commitDocs(
         project.repoPath,
         git.docsCommitMessage(`outcome for ${feature.slug}`, project.docsCommitPrefix),
+        `${featureDocsRel(feature.slug)}/outcome.md`,
       )
     })
   } catch (error) {

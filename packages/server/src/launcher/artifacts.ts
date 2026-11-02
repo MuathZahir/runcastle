@@ -1083,21 +1083,12 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
  * Deliberately git-only — nothing here loosens beyond git + the runcastle MCP
  * tools above.
  *
- * Split by write mode because the scoped reasoning only covers half of it: the
- * WRITE rules are pre-approved on the strength of the worktree being docs-only,
- * so a session that can touch the whole repo and land it on the base branch
- * (kind `project`, decision 18) gets the read-only half and prompts for the
- * rest — the same thing the human's own Claude Code does.
- *
- * THREE kinds fail that test, not one. `prepare` and `drive-fix` both run in
- * `project.repoPath` — the developer's own checkout, with their own uncommitted
- * work in it — so a blanket `Bash(git add:*)` there pre-approves `git add -A`
- * over their whole dirty tree. The prepare brief's own drive contract warns that
- * `.runcastle/drive.env` "must never be one `git add -A` away from a commit",
- * and the permission rule was granting exactly that. They get the read rules
- * plus a `git add` narrowed to the only paths their edit guard lets them write
- * anyway ({@link DRIVE_MACHINERY_WRITABLE}); a commit still prompts, which is
- * right for a commit landing on the human's branch in the human's checkout.
+ * Every session kind now runs in `bypassPermissions`, so these allow rules are
+ * moot for the mode; they stay as the documented floor. The line the host-side
+ * kinds' prompts used to hold (`prepare`, `drive-fix` and `scenario` work in the
+ * developer's own checkout, where `git add -A` or a commit would take their
+ * uncommitted work) is held by the checkout guard, a pre-tool hook that still
+ * runs under bypass (`evaluateCheckoutGuard`).
  */
 export const SESSION_BASH_READ_RULES: readonly string[] = [
   'Bash(git status:*)',
@@ -1114,15 +1105,6 @@ export const SESSION_BASH_WRITE_RULES: readonly string[] = [
 export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
   ...SESSION_BASH_READ_RULES,
   ...SESSION_BASH_WRITE_RULES,
-]
-
-/**
- * The scoped `git add` a host-side session gets instead of the blanket one:
- * exactly the paths its edit guard permits it to have written.
- */
-export const HOST_SESSION_BASH_WRITE_RULES: readonly string[] = [
-  'Bash(git add .runcastle:*)',
-  'Bash(git add .gitignore:*)',
 ]
 
 /**
@@ -1146,9 +1128,6 @@ export function skillPackReadRule(packDir: string): string {
     .replace(/\/+$/, '')
   return `Read(/${posix}/**)`
 }
-
-/** Kinds that run in the developer's OWN checkout rather than a talk worktree. */
-const HOST_SIDE_KINDS: readonly SessionKind[] = ['prepare', 'drive-fix', 'scenario']
 
 /**
  * The `Skill(...)` DENY rules a session of `kind` is launched with: every
@@ -1188,20 +1167,12 @@ function otherEntrySkillsRule(): string {
 }
 
 /**
- * The git rules a session of `kind` is launched with (see the split above). A
- * scenario session in setup mode (`purpose`) may write the whole checkout — the
- * login route, the typecheck config — so its `git add` is not narrowed to
- * `.runcastle/`; its commit still prompts, like every host-side commit.
+ * The git rules a session of `kind` is launched with: the project session gets
+ * the read-only half, every other kind the full set (the host-side kinds'
+ * writes are bounded by the checkout guard, not by a rule).
  */
-export function sessionBashAllowRules(kind?: SessionKind, purpose?: SessionPurpose): readonly string[] {
-  if (kind === 'project') return SESSION_BASH_READ_RULES
-  if (kind === 'scenario' && purpose === 'scenario-setup') {
-    return [...SESSION_BASH_READ_RULES, 'Bash(git add:*)']
-  }
-  if (kind && HOST_SIDE_KINDS.includes(kind)) {
-    return [...SESSION_BASH_READ_RULES, ...HOST_SESSION_BASH_WRITE_RULES]
-  }
-  return SESSION_BASH_ALLOW_RULES
+export function sessionBashAllowRules(kind?: SessionKind): readonly string[] {
+  return kind === 'project' ? SESSION_BASH_READ_RULES : SESSION_BASH_ALLOW_RULES
 }
 
 /**
@@ -1261,7 +1232,7 @@ export function renderSettings(
   hookClient: string,
   kind?: SessionKind,
   skillPackDir?: string,
-  purpose?: SessionPurpose,
+  _purpose?: SessionPurpose, // no longer read: kept so the positional callers do not shift
   cropsDir?: string,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
@@ -1273,7 +1244,7 @@ export function renderSettings(
     permissions: {
       allow: [
         ...RUNCASTLE_MCP_ALLOW_RULES,
-        ...sessionBashAllowRules(kind, purpose),
+        ...sessionBashAllowRules(kind),
         ...(skillPackDir ? [skillPackReadRule(skillPackDir)] : []),
         // Select-area crops live under the data dir, outside the worktree; the
         // chat reads the path typed into it without a prompt.

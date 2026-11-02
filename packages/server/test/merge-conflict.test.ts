@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -15,6 +15,7 @@ import {
   createFeatureBranch,
   detachWorktree,
   ensureTalkWorktree,
+  mergeFeature,
   testDrive,
 } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
@@ -254,9 +255,89 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     const start = await testDrive(ctx, project, other, 'start')
     expect(start.ok).toBe(true)
 
-    await expect(caller.feature.merge({ featureId: target.id })).rejects.toThrow(/test drive/i)
+    await expect(caller.feature.merge({ featureId: target.id })).rejects.toThrow(
+      'Cannot merge while a test drive of feature/other is running — stop it first',
+    )
 
     await testDrive(ctx, project, other, 'stop')
+  })
+})
+
+/**
+ * small-fixes-before-publish decision 18: a merge commits nothing into the
+ * human's checkout, and refuses only on an uncommitted path it would touch —
+ * naming it. Everything else is carried through.
+ */
+describe('mergeFeature — uncommitted files', () => {
+  let ctx: AppCtx
+  let project: Project
+  let g: SimpleGit
+  let feature: Feature
+
+  beforeEach(async () => {
+    __resetTestDriveState()
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-md-')
+    g = await initRepo(repo)
+    mkdirSync(join(repo, 'docs'), { recursive: true })
+    writeFileSync(join(repo, 'docs', 'notes.md'), 'notes\n')
+    await g.add(['docs/notes.md'])
+    await g.commit('docs: notes')
+    project = seedProject(ctx, repo)
+    await createFeatureBranch(project, 'work', 'main')
+    await g.checkout('feature/work')
+    writeFileSync(join(repo, 'app.ts'), 'export {}\n')
+    writeFileSync(join(repo, 'README.md'), 'feature readme\n')
+    await g.add(['app.ts', 'README.md'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+    feature = seedFeature(ctx, project.id, { slug: 'work' })
+  })
+
+  /** Every commit subject on main, sorted — commits made within one second log in any order. */
+  const log = async () => (await g.raw(['log', '--format=%s', 'main'])).trim().split('\n').sort()
+
+  it('goes ahead past dirty files the merge does not touch, and leaves them uncommitted', async () => {
+    writeFileSync(join(project.repoPath, 'docs', 'notes.md'), 'edited by hand\n')
+    writeFileSync(join(project.repoPath, 'scratch.txt'), 'scratch\n')
+
+    const res = await mergeFeature(project, feature)
+
+    expect(res).toEqual({ ok: true, target: 'main' })
+    expect(await log()).toEqual(["Merge branch 'feature/work'", 'docs: notes', 'feat: work', 'initial commit'])
+    const status = (await g.raw(['status', '--porcelain'])).trimEnd().split('\n').sort()
+    expect(status).toEqual([' M docs/notes.md', '?? scratch.txt'])
+  })
+
+  it('carries untouched dirty files back when it had to switch branches to merge', async () => {
+    await g.checkoutLocalBranch('elsewhere')
+    writeFileSync(join(project.repoPath, 'scratch.txt'), 'scratch\n')
+
+    expect(await mergeFeature(project, feature)).toEqual({ ok: true, target: 'main' })
+    expect((await g.revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe('elsewhere')
+    expect((await g.raw(['status', '--porcelain'])).trim()).toBe('?? scratch.txt')
+  })
+
+  it('refuses on a dirty file the feature branch changes, naming it', async () => {
+    writeFileSync(join(project.repoPath, 'README.md'), 'local edit\n')
+
+    await expect(mergeFeature(project, feature)).rejects.toThrow(
+      'Cannot merge — 1 uncommitted file(s) the merge would touch: README.md',
+    )
+    expect(await log()).toEqual(['docs: notes', 'initial commit'])
+  })
+
+  it('refuses on an untracked file the feature branch would create', async () => {
+    writeFileSync(join(project.repoPath, 'app.ts'), 'mine\n')
+
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/would touch: app\.ts/)
+  })
+
+  it('refuses on any staged change, since the merge commit would record it', async () => {
+    writeFileSync(join(project.repoPath, 'docs', 'notes.md'), 'staged\n')
+    await g.add(['docs/notes.md'])
+
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/would touch: docs\/notes\.md/)
   })
 })
 
@@ -344,6 +425,22 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
       'runcastle: outcome for thick',
       "Merge branch 'feature/thick'",
     ])
+  })
+
+  it("commits only the outcome, leaving the human's other uncommitted docs alone", async () => {
+    const feature = await seedShippableFeature('tidy')
+    // The merge goes ahead past dirty files it does not touch (decision 18), so
+    // the outcome commit must not sweep them onto the base with it.
+    mkdirSync(join(project.repoPath, 'docs', 'features', 'other'), { recursive: true })
+    writeFileSync(join(project.repoPath, 'docs', 'features', 'other', 'draft.md'), 'mine\n')
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(true)
+    expect(await outcomeAt('main', 'tidy')).toContain('# Outcome')
+    const committed = await g.raw(['show', '--name-only', '--pretty=', 'main'])
+    expect(committed.trim().split('\n')).toEqual(['docs/features/tidy/outcome.md'])
+    expect((await g.raw(['status', '--porcelain'])).trimEnd()).toBe('?? docs/features/other/')
   })
 
   it('regenerates the doc around later work, and commits nothing when it is unchanged', async () => {

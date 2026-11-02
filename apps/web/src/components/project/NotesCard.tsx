@@ -62,6 +62,8 @@ export function NotesCard({
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [picture, setPicture] = useState<string | null>(null)
+  // The note whose Delete is asking first (decision 17): its screenshot goes with it.
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const onError = (e: { message: string }): void => toast.push(e.message)
   // One invalidation for the whole router: the badge's count and this list move
@@ -142,37 +144,61 @@ export function NotesCard({
               lead={lead(note)}
               when={relTime(note.createdAt)}
               actions={
-                <>
-                  <IconButton
-                    size="sm"
-                    label="Edit"
-                    icon={<IconPencil />}
-                    onClick={() => {
-                      setEditing(note.id)
-                      setDraft(note.text)
-                    }}
-                  />
-                  {/* Waving a note away without opening a chat for it — the
-                      same triage the session does, with outcome "dismissed". */}
-                  <IconButton
-                    size="sm"
-                    label="Dismiss"
-                    icon={<IconCheck />}
-                    disabled={busy}
-                    onClick={() => dismiss.mutate({ noteId: note.id })}
-                  />
-                  <IconButton
-                    size="sm"
-                    label="Delete"
-                    icon={<IconTrash />}
-                    variant="danger-ghost"
-                    disabled={busy}
-                    onClick={() => remove.mutate({ noteId: note.id })}
-                  />
-                </>
+                deleting === note.id ? undefined : (
+                  <>
+                    <IconButton
+                      size="sm"
+                      label="Edit"
+                      icon={<IconPencil />}
+                      onClick={() => {
+                        setEditing(note.id)
+                        setDraft(note.text)
+                      }}
+                    />
+                    {/* Waving a note away without opening a chat for it — the
+                        same triage the session does, with outcome "dismissed". */}
+                    <IconButton
+                      size="sm"
+                      label="Dismiss"
+                      icon={<IconCheck />}
+                      disabled={busy}
+                      onClick={() => dismiss.mutate({ noteId: note.id })}
+                    />
+                    <IconButton
+                      size="sm"
+                      label="Delete"
+                      icon={<IconTrash />}
+                      variant="danger-ghost"
+                      disabled={busy}
+                      onClick={() => setDeleting(note.id)}
+                    />
+                  </>
+                )
               }
             >
-              {editing === note.id ? (
+              {deleting === note.id ? (
+                // Asks inline first, as a drive note does: the screenshot goes with the note.
+                <span className="flex items-center gap-2 text-xs text-text-tertiary">
+                  <span className="min-w-0 flex-1">
+                    Delete this note{note.screenshotUrl ? ' and its screenshot' : ''}?
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleting(null)}>
+                    Keep
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={<IconTrash />}
+                    disabled={busy}
+                    onClick={() => {
+                      setDeleting(null)
+                      remove.mutate({ noteId: note.id })
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </span>
+              ) : editing === note.id ? (
                 <input
                   aria-label="edit this note"
                   className={TEXT_INPUT}

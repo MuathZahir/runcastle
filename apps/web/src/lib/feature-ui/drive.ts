@@ -39,15 +39,6 @@ export function holderSentence(holderLabel: string): string {
   return `${holderLabel.charAt(0).toUpperCase()}${holderLabel.slice(1)}`
 }
 
-/**
- * Why a feature's Test drive cannot start while another drive holds the one
- * slot (project-level-test-drive decision 9) — named by the server's own label,
- * in the same words the server's refusal uses.
- */
-export function slotHeldReason(holderLabel: string): string {
-  return `${holderSentence(holderLabel)} is running — stop it first`
-}
-
 /** A drive whose setup hook failed, as the review panel surfaces it. */
 export interface DriveFailure {
   /** The setup command the project ran, verbatim. */
@@ -148,12 +139,12 @@ export function reviewDriveDenial(
   return denial.at < Math.max(...runs.map((r) => r.startedAt), -Infinity) ? null : denial
 }
 
-export type DriveState = 'idle' | 'starting' | 'serving' | 'bare-checkout' | 'setup-failed' | 'review-agent-driving'
+export type DriveState = 'idle' | 'starting' | 'serving' | 'bare-checkout' | 'setup-failed' | 'review-agent-driving' | 'cut-off'
 export interface DriveView {
   barTitle: string
   barDesc: string
   primary: 'start' | 'stop' | 'fixDrive'
-  stageKind: 'player' | 'panel' | 'bare' | 'failed' | 'agent' | 'starting'
+  stageKind: 'player' | 'panel' | 'bare' | 'failed' | 'agent' | 'starting' | 'cutOff'
   footer: { showDevChip: boolean; showBranch: boolean; showOutput: boolean }
 }
 
@@ -165,6 +156,7 @@ const DRIVE_VIEWS: Record<DriveState, DriveView> = {
   'bare-checkout': { barTitle: 'Branch checked out for inspection', barDesc: 'Branch checked out — nothing started. This project has no dev command · Set one in Settings', primary: 'stop', stageKind: 'bare', footer: footer(true) },
   'setup-failed': { barTitle: 'Drive setup failed — fix it or stop the drive', barDesc: 'The project setup command did not complete.', primary: 'fixDrive', stageKind: 'failed', footer: footer(true) },
   'review-agent-driving': { barTitle: 'Review agent driving', barDesc: 'review agent driving — notes land below as it finds things', primary: 'stop', stageKind: 'agent', footer: footer(true) },
+  'cut-off': { barTitle: 'Drive cut off by a restart', barDesc: 'Nothing is running — stop it to run its stop script and return the checkout.', primary: 'stop', stageKind: 'cutOff', footer: footer(true) },
 }
 
 export function driveView(state: DriveState, _info: object = {}): DriveView {

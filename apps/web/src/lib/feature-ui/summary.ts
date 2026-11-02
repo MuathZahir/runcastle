@@ -211,7 +211,7 @@ export function mergeSummary(input: {
   tickets?: readonly MergeTicketFigure[]
   /** When the branch was last test-driven ({@link lastTestDriveAt}), null when it never was. */
   drivenAt: number | null
-  /** Notes captured during the test drive that were never ticked off. */
+  /** Notes captured during the test drive that were never sent to the agent. */
   openNotes?: number
   /**
    * A project drive of this feature's project, live on the checkout the merge
@@ -263,7 +263,7 @@ export function mergeSummary(input: {
   // human logged and never handled is the moment worth catching, but someone who
   // judged their open notes shippable must not be stopped.
   const open = input.openNotes ?? 0
-  if (open > 0) warnings.push(`${noun(open, 'open test-drive note')}.`)
+  if (open > 0) warnings.push(`${noun(open, 'test-drive note')} never sent to the agent.`)
   const waived = tickets.filter((t) => t.kind !== 'review' && t.status === 'cancelled').length
   if (waived > 0) {
     warnings.push(`${noun(waived, 'ticket')} waived — set aside unfinished, not delivered.`)

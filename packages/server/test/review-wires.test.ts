@@ -272,7 +272,7 @@ describe('the review agent wires', () => {
 
     expect(start).toMatchObject({
       ok: false,
-      deniedReason: 'A test drive is already active — stop it first',
+      deniedReason: 'A test drive of feature/reviewed is running — stop it first',
       deniedCode: 'slot_held',
       retriable: true,
     })
@@ -314,7 +314,7 @@ describe('the review agent wires', () => {
 
     expect(start).toMatchObject({
       ok: false,
-      deniedReason: 'A test drive is already active — stop it first',
+      deniedReason: 'A test drive of feature/reviewed is running — stop it first',
     })
     // Fail fast means the human's drive is exactly as it was, right now.
     expect(activeDriveInfo(project.id)).toEqual(held)

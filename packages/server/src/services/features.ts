@@ -11,7 +11,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { newId, READY_TO_TEST, STOPPED } from '@runcastle/core'
+import { isProviderHaltReason, newId, PROVIDER_HALT_CLEARED, READY_TO_TEST, STOPPED } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -691,6 +691,27 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
     source: 'runcastle',
   })
   return updated
+}
+
+/**
+ * Resume after a provider halt (small-fixes-before-publish decisions 10, 16):
+ * the human says the limit, billing or sign-in problem is cleared, and the lead
+ * gets one message from them — which, as a human message, clears the waiting
+ * reason. The lead decides whether to dispatch again. Refused unless the feature
+ * waits on a provider halt.
+ */
+export async function resumeFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
+  const feature = getFeatureRow(ctx, featureId)
+  if (!isProviderHaltReason(feature.waitingReason)) {
+    throw new GateError('this feature is not waiting on the provider — there is nothing to resume')
+  }
+  emit(ctx, featureId, {
+    type: 'feature.resumed',
+    message: 'resumed by the human after a provider halt',
+    data: { was: feature.waitingReason },
+  })
+  await deliverToLead(ctx, feature, { text: PROVIDER_HALT_CLEARED, source: 'human' })
+  return getFeatureRow(ctx, featureId)
 }
 
 /** The feature's ready declarations, oldest first. */

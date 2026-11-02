@@ -211,7 +211,7 @@ describe('the preparation dry-run drive', () => {
 
     const start = await drive('start')
     expect(start.ok).toBe(false)
-    expect(start.deniedReason).toBe('A test drive is already active — stop it first')
+    expect(start.deniedReason).toBe('A test drive of feature/drive is running — stop it first')
 
     await testDrive(ctx, project, feature, 'stop')
   })
@@ -223,7 +223,7 @@ describe('the preparation dry-run drive', () => {
 
     const denied = await testDrive(ctx, project, feature, 'start')
     expect(denied.ok).toBe(false)
-    expect(denied.deniedReason).toBe('A preparation dry-run is in progress — stop it first')
+    expect(denied.deniedReason).toBe('A preparation dry-run is running — stop it first')
     // A dry run holding the slot is the same fact to whoever was refused as a
     // drive holding it: somebody has it, and it frees itself.
     expect(denied.deniedCode).toBe('slot_held')

@@ -2,7 +2,6 @@ import { DEFAULT_RUNTIME, resolveModelEntry, type ModelEntry, type ModelStep, ty
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { serverUrlFor } from '../launcher/artifacts'
-import { isUnguardedLead } from '../launcher/edit-guard'
 import { buildPrepareBrief, ensureFeatureWorktree } from '../launcher/launcher'
 import { runtimeAdapterFor } from '../launcher/runtimes'
 import type { AcpLaunchSpec, RuntimeLaunchInput } from '../launcher/runtimes/types'
@@ -49,6 +48,17 @@ export function resolvedThreadModel(ctx: AppCtx, row: SessionRow): ModelEntry {
 }
 
 /**
+ * The posture of the host-side kinds (`prepare`, `drive-fix`, `scenario`), which
+ * work in the human's own checkout. Claude runs them without prompts and the
+ * checkout guard (a pre-tool hook, which holds under bypass) refuses what the
+ * prompts used to catch. Codex never asks, and passes no mode so it keeps its
+ * `workspace-write` sandbox: the only bound on shell writes in that checkout.
+ */
+function hostSidePosture(runtime: string): { permissionMode?: string } {
+  return runtime === 'claude-code' ? { permissionMode: 'bypassPermissions' } : {}
+}
+
+/**
  * What the thread's runtime is handed: the row's kind's brief, as each of
  * today's launchers wrote it, and the kind's permission posture (which
  * `acpLaunch` turns into the session mode).
@@ -75,12 +85,15 @@ export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<Runt
         feature,
         ...(row.purpose ? { purpose: row.purpose } : {}),
         // The feature's lead works while the human is away, and an approval
-        // nobody answers stalls it; the line guard holds under bypass.
-        ...(runtime === 'claude-code' && isUnguardedLead(row.kind) ? { permissionMode: 'bypassPermissions' } : {}),
+        // nobody answers stalls it; the line guard holds under bypass. On Codex
+        // this is also what lifts the sandbox (`danger-full-access`): the lead
+        // must install dependencies, which workspace-write cannot (no network,
+        // package cache outside its folder). Codex never asks either way.
+        permissionMode: 'bypassPermissions',
       }
     }
     case 'prepare':
-      return { ...base, prepare: await buildPrepareBrief(ctx, project) }
+      return { ...base, ...hostSidePosture(runtime), prepare: await buildPrepareBrief(ctx, project) }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)
       return {
@@ -107,6 +120,7 @@ export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<Runt
       }
       return {
         ...base,
+        ...hostSidePosture(runtime),
         driveFix: {
           project,
           feature,
@@ -124,6 +138,7 @@ export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<Runt
       }
       return {
         ...base,
+        ...hostSidePosture(runtime),
         // What the human asks for comes in the thread's prompts.
         scenario: {
           project,

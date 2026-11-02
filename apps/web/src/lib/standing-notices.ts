@@ -29,8 +29,60 @@ export interface StandingInput {
   denial: ReviewDriveDenial | null
   /** The latest review verified nothing (`unverifiedReview`). */
   unverified: UnverifiedReview | null
-  /** A project drive holds the drive slot while no drive of this feature is up. */
-  blockingDrive: { holderLabel: string } | null
+  /** Whatever holds the drive slot in this feature's way (`slotBlocker`). */
+  blockingDrive: SlotBlocker | null
+}
+
+/** The mutation that ends a slot holder, by its kind. */
+export type SlotStop =
+  | { kind: 'feature'; featureId: string }
+  | { kind: 'project'; projectId: string }
+  | { kind: 'dryRun'; projectId: string }
+
+/** A drive in this feature's way, named, with how to stop it — `null` for a live review round's. */
+export interface SlotBlocker {
+  holderLabel: string
+  cutOff: boolean
+  stop: SlotStop | null
+}
+
+/** The project's drive slot as `feature.driveInfo` reports it. */
+export interface SlotDriveInfo {
+  holderLabel: string
+  featureId?: string
+  projectId?: string
+  projectDrive?: boolean
+  dryRun?: boolean
+  purpose?: 'human' | 'review'
+  cutOff?: boolean
+}
+
+/**
+ * The drive holding the slot in this feature's way, or null (ADR-0014: a
+ * blocking drive is always named, and stoppable where the human owns it).
+ * Anything but this feature's own live drive blocks it: another feature's drive,
+ * a project drive, a dry run, and a drive a restart cut off — this feature's
+ * own included, since nothing of it runs any more. A live review agent's drive
+ * is named but not offered a stop: it ends with its round, which the human did
+ * not start from here. A cut-off one has no round left behind it.
+ */
+export function slotBlocker(
+  drive: SlotDriveInfo | null | undefined,
+  feature: { id: string; projectId: string },
+  /** A drive of this feature is up (or starting). */
+  driveUp: boolean,
+): SlotBlocker | null {
+  if (!drive) return null
+  const cutOff = !!drive.cutOff
+  if (!cutOff && (driveUp || drive.featureId === feature.id)) return null
+  const stop: SlotStop | null = drive.projectDrive
+    ? { kind: 'project', projectId: drive.projectId ?? feature.projectId }
+    : drive.dryRun
+      ? { kind: 'dryRun', projectId: feature.projectId }
+      : drive.featureId && (cutOff || drive.purpose !== 'review')
+        ? { kind: 'feature', featureId: drive.featureId }
+        : null
+  return { holderLabel: drive.holderLabel, cutOff, stop }
 }
 
 export interface StandingActs {
@@ -91,13 +143,21 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       ...(tooltip ? { tooltip } : {}),
     })
   }
-  if (input.blockingDrive) {
+  const blocker = input.blockingDrive
+  if (blocker) {
+    const holder = holderSentence(blocker.holderLabel)
     rows.push({
-      key: 'project-drive',
+      key: 'slot-drive',
       hue: 'review',
-      title: `${holderSentence(input.blockingDrive.holderLabel)} is running`,
-      subtitle: 'it holds the drive slot',
-      action: { label: acts.stopping ? 'Stopping…' : 'Stop it', onClick: acts.stopDrive, disabled: acts.stopping },
+      title: blocker.cutOff ? `${holder} holds the drive slot` : `${holder} is running`,
+      subtitle: !blocker.stop
+        ? 'it holds the drive slot until its review round ends'
+        : blocker.cutOff
+          ? 'nothing of it runs — stop it to run its stop script and free the slot'
+          : 'it holds the drive slot',
+      ...(blocker.stop
+        ? { action: { label: acts.stopping ? 'Stopping…' : 'Stop it', onClick: acts.stopDrive, disabled: acts.stopping } }
+        : {}),
     })
   }
   return rows

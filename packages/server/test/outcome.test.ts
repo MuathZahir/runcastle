@@ -22,7 +22,7 @@ const finding: ReviewFinding = {
   resolvedBy: 'fix-ticket', resolutionNote: null, createdAt: 1,
 }
 const note: TestNote = {
-  id: 'note_1', featureId: feature.id, text: 'Align the title', status: 'done', author: 'human',
+  id: 'note_1', featureId: feature.id, text: 'Align the title', status: 'open', author: 'human', sentAt: 2,
   createdAt: 1, updatedAt: 2,
 }
 const input: OutcomeInput = {
@@ -42,7 +42,7 @@ describe('composeOutcomeDoc', () => {
     expect(doc).toContain('### Ticket 3 · verification')
     expect(doc).toContain('- Reviewed commit: abc123\n- Landed since: 0')
     expect(doc).toContain('**Broken button** — fixed')
-    expect(doc).toContain('Align the title — dismissed/done')
+    expect(doc).toContain('Align the title — sent to the agent')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

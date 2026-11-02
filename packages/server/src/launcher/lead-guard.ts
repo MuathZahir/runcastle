@@ -72,16 +72,16 @@ const GUARD_FOOTER =
   'done, call wait_for_you and ask the human.'
 
 /** The directory-changing verbs whose first non-flag argument becomes the cwd. */
-const CD_VERBS = new Set(['cd', 'pushd', 'set-location', 'sl', 'chdir'])
+export const CD_VERBS = new Set(['cd', 'pushd', 'set-location', 'sl', 'chdir'])
 
 /** `git`, `git.exe`, or a path to either (`& "C:\Program Files\Git\cmd\git.exe"`). */
-function isGit(word: string): boolean {
+export function isGit(word: string): boolean {
   const base = word.split(/[\\/]/).pop()?.toLowerCase()
   return base === 'git' || base === 'git.exe'
 }
 
 /** Git's global options that take a value as the next word. */
-const VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env'])
+export const VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env'])
 
 function evaluateGit(input: LeadGuardInput, cwd: string, args: string[]): string | null {
   let dir = cwd
@@ -205,7 +205,7 @@ function isBranch(branch: string, ref: string): boolean {
 }
 
 /** Is `target` inside `dir`, or `dir` itself? Case-insensitive on Windows. */
-function within(dir: string, target: string): boolean {
+export function within(dir: string, target: string): boolean {
   const fold = (p: string) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p))
   const rel = relative(fold(dir), fold(target))
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))

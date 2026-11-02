@@ -42,7 +42,7 @@ const GUARD_BASE = {
 const SOURCE_FILE = '/wt/dark-mode/vitest.config.ts'
 
 /** The `PreToolUse` answer a feature chat on Claude Code gets: allowed, no prompt. */
-const ALLOW = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+const ALLOW = {}
 
 describe('evaluateEditGuard — the resolve-conflict session', () => {
   /**

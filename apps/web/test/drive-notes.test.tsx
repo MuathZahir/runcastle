@@ -9,6 +9,8 @@ import type { TestNote } from '@runcastle/core'
  * a click does. The server is the boundary, its mutations stubbed.
  */
 let notes: TestNote[] = []
+const OWN_DRIVE = { featureId: 'feat_1', state: 'starting', branch: 'feature/x' }
+let drive: typeof OWN_DRIVE | null = OWN_DRIVE
 const add = vi.fn(async (input: { featureId: string; text: string }) => ({ id: 'note_new', ...input }))
 const edit = vi.fn()
 const remove = vi.fn()
@@ -29,7 +31,7 @@ vi.mock('../src/trpc', () => ({
       send: { useMutation: () => ({ mutate: send, isPending: false }) },
     },
     feature: {
-      driveInfo: { useQuery: () => ({ data: { featureId: 'feat_1', state: 'starting', branch: 'feature/x' } }) },
+      driveInfo: { useQuery: () => ({ data: drive }) },
       driveScenarios: { useQuery: () => ({ data: { runnerConfigured: false, scenarios: [] } }) },
       runScenario: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       openScenarioChat: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -67,7 +69,11 @@ const actions = { onOpenPicture: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(), on
 
 beforeEach(() => {
   notes = []
+  drive = OWN_DRIVE
 })
+
+/** Lets a stop's settling, and whatever waits on it, run. */
+const settle = () => act(async () => {})
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -141,18 +147,27 @@ describe('the rail’s list', () => {
 })
 
 describe('Send', () => {
-  it('is not there with nothing to send: the rail never says all is good', () => {
-    const { container } = render(<SendNotesLine count={0} onSend={vi.fn()} />)
-    expect(container.textContent).toBe('')
+  it('says all is good with nothing to send', () => {
+    const onSend = vi.fn()
+    render(<SendNotesLine count={0} onSend={onSend} />)
+    fireEvent.click(screen.getByRole('button', { name: 'All good' }))
+    expect(onSend).toHaveBeenCalledTimes(1)
   })
 
-  it('files a feature’s notes: the human’s open ones oldest first, sent ones apart, the rest gone', () => {
+  it('says all is good and stops the drive in the same click while it runs', () => {
+    const onSend = vi.fn()
+    const onSendAndStop = vi.fn()
+    render(<SendNotesLine count={0} onSend={onSend} onSendAndStop={onSendAndStop} />)
+    fireEvent.click(screen.getByRole('button', { name: 'All good' }))
+    expect(onSendAndStop).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('files a feature’s notes: the human’s oldest first, sent ones apart, the agent’s gone', () => {
     const { open, sent } = featureNoteList([
       note('newer', { createdAt: 2_000 }),
       note('older', { createdAt: 1_000 }),
       note('gone', { sentAt: 3_000 }),
-      note('done', { status: 'done' }),
-      note('promoted', { status: 'promoted' }),
       note('a finding', { author: 'agent' }),
     ])
     expect(open.map((n) => n.id)).toEqual(['older', 'newer'])
@@ -161,24 +176,64 @@ describe('Send', () => {
 })
 
 describe('the feature’s drive page', () => {
-  const page = (onBack = vi.fn()) => {
+  const page = (onBack = vi.fn(), onStop: () => Promise<unknown> = vi.fn(async () => undefined)) => {
     render(
       <FeatureDriveView
         full={{ feature: { id: 'feat_1', projectId: 'proj_1', branch: 'feature/x', title: 'Coupons' }, sessions: [] } as never}
         stopping={false}
         onBack={onBack}
-        onStop={vi.fn()}
+        onStop={onStop}
       />,
     )
     return onBack
   }
 
-  it('sends the notes and goes back to the chat at once, the drive left running', () => {
+  it('can send the notes and keep driving, going back to the chat at once', () => {
     notes = [note('n1')]
-    const onBack = page()
+    const onStop = vi.fn(async () => undefined)
+    const onBack = page(vi.fn(), onStop)
+    fireEvent.click(screen.getByRole('button', { name: 'Send, keep driving' }))
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+    expect(onStop).not.toHaveBeenCalled()
+    expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops the drive first, then sends the notes', async () => {
+    notes = [note('n1')]
+    let stopped: () => void = () => undefined
+    const onStop = vi.fn(() => new Promise<void>((resolve) => (stopped = resolve)))
+    page(vi.fn(), onStop)
+    fireEvent.click(screen.getByRole('button', { name: 'Send and stop drive' }))
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+    await act(async () => stopped())
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+  })
+
+  it('still sends the notes when the stop fails', async () => {
+    notes = [note('n1')]
+    page(vi.fn(), vi.fn(async () => Promise.reject(new Error('teardown failed'))))
+    fireEvent.click(screen.getByRole('button', { name: 'Send and stop drive' }))
+    await settle()
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+  })
+
+  it('says all is good with no notes, stopping the drive first', async () => {
+    const onStop = vi.fn(async () => undefined)
+    page(vi.fn(), onStop)
+    fireEvent.click(screen.getByRole('button', { name: 'All good' }))
+    await settle()
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+  })
+
+  it('offers the plain send when this feature is not the one driving', () => {
+    drive = null
+    notes = [note('n1')]
+    page()
+    expect(screen.queryByRole('button', { name: 'Send and stop drive' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' }))
     expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
-    expect(onBack).toHaveBeenCalledTimes(1)
   })
 
   it('saves a note from the box and clears it', async () => {
@@ -261,11 +316,36 @@ describe('the feature’s drive page', () => {
 })
 
 describe('the line over the chat', () => {
-  const line = (driving: boolean) => {
-    const onStop = vi.fn()
+  const line = (driving: boolean, onStop = vi.fn(async (): Promise<unknown> => undefined)) => {
     const view = render(<DriveChatNotice featureId="feat_1" driving={driving} stopping={false} onStop={onStop} />)
     return { onStop, view }
   }
+
+  it('sends the notes and stops the drive in one click, stop first', async () => {
+    notes = [note('n1')]
+    const { onStop } = line(true)
+    expect(screen.queryByRole('button', { name: 'Stop drive' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Send and stop drive' }))
+    expect(onStop).toHaveBeenCalledTimes(1)
+    await settle()
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+  })
+
+  it('can send the notes and keep driving', () => {
+    notes = [note('n1')]
+    const { onStop } = line(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Send, keep driving' }))
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+    expect(onStop).not.toHaveBeenCalled()
+  })
+
+  it('still sends the notes when the stop fails', async () => {
+    notes = [note('n1')]
+    line(true, vi.fn(async () => Promise.reject(new Error('teardown failed'))))
+    fireEvent.click(screen.getByRole('button', { name: 'Send and stop drive' }))
+    await settle()
+    expect(send).toHaveBeenCalledWith({ featureId: 'feat_1' })
+  })
 
   it('says the agent is held while the drive runs, with the way to let it go', () => {
     const { onStop } = line(true)
