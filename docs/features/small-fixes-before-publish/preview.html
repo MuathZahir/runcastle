@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Small fixes before publish preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.fx{display:grid;grid-template-columns:28px 1fr 1fr;border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.fx > div{padding:9px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.fx .n{color:var(--color-text-tertiary);font:500 11px/20px var(--font-mono)}
+.fx .b{color:var(--color-text-secondary)}
+.fx .h{color:var(--color-text-tertiary);font-size:12px}
+.mocks{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+.mocks .cap{margin:6px 2px 0;color:var(--color-text-tertiary);font-size:12px}
+.screen{padding:12px 14px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-raised);font-weight:500}
+.btn.p{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
+.btn.q{border-color:transparent;background:none;color:var(--color-text-secondary)}
+.btn.d{background:var(--color-danger);color:#fff;border-color:transparent}
+.note{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);border-left:2px solid var(--color-warning);background:var(--color-surface-raised)}
+.note .t{flex:1;color:var(--color-text-secondary)}
+.status{display:flex;align-items:center;gap:8px;color:var(--color-text-secondary)}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.flow .st{padding:6px 10px;border-radius:var(--radius-md);background:var(--color-surface-raised);border:1px solid var(--color-border)}
+.flow .ar{color:var(--color-text-tertiary)}
+.hood ul{margin:6px 0 0;padding-left:18px}
+@media (max-width:760px){.mocks{grid-template-columns:1fr}.fx{grid-template-columns:24px 1fr}.fx .b{display:none}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Small fixes before publish</h1>
+  <p class="lede">Ten small fixes from the pre-publish audit, so nothing stops for permission, gets stranded by a restart, or blocks you without saying what. Planned without you: every decision is assumed until you confirm it.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/small-fixes-before-publish/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Before and after, one row per fix.</p>
+  <div class="fx">
+    <div class="h"></div><div class="h">Today</div><div class="h">After</div>
+    <div class="n">1</div><div class="b">Setup, Fix-it and scenario chats stop for permission.</div><div>No session asks. A guard refuses risky git in your own checkout. Your own "ask" rules still ask. <a class="pin" data-d="1">1</a> <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a></div>
+    <div class="n">2</div><div class="b">A restart mid-drive leaves the checkout on feature/x, and the app says idle.</div><div>The drive comes back "cut off by a restart". One Stop runs the stop script and returns home. <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a></div>
+    <div class="n">3</div><div class="b">"A drive is already active." Which one?</div><div>Every refusal names the drive; the feature page offers Stop. <a class="pin" data-d="6">6</a></div>
+    <div class="n">4</div><div class="b">Merge refused on a dirty checkout, no files listed.</div><div>Feature docs are committed first; the refusal names what is left. <a class="pin" data-d="7">7</a></div>
+    <div class="n">5</div><div class="b">Sending notes leaves the drive running.</div><div>"Send and stop drive" in one click. <a class="pin" data-d="8">8</a> <a class="pin" data-d="15">15</a></div>
+    <div class="n">6</div><div class="b">"All good" means typing it.</div><div>An "All good" button. <a class="pin" data-d="9">9</a></div>
+    <div class="n">7</div><div class="b">"Waiting for you · provider limit", nothing to click.</div><div>Says usage limit, billing or sign-in, shows the reset time, offers Resume. <a class="pin" data-d="10">10</a> <a class="pin" data-d="16">16</a></div>
+    <div class="n">8</div><div class="b">"merged — feature shipped"</div><div>"Merged into main on this machine — nothing was pushed"</div>
+    <div class="n">9</div><div class="b">Non-picture files vanish from the chat box.</div><div>A message names what was left out. <a class="pin" data-d="11">11</a></div>
+    <div class="n">10</div><div class="b">Deleting a project note gives no warning; screenshots are paste-only.</div><div>Delete asks first; "Add picture" picks a file. <a class="pin" data-d="17">17</a></div>
+  </div>
+
+  <div class="sub"><h3>A restart mid-drive <a class="pin" data-d="4">4</a></h3>
+    <div class="flow"><span class="st">Drive of feature/x</span><span class="ar">→</span><span class="st">Server restarts</span><span class="ar">→</span><span class="st">"Cut off by a restart"</span><span class="ar">→</span><span class="st">Stop, by you or the orchestrator <a class="pin" data-d="13">13</a></span><span class="ar">→</span><span class="st">Stop script runs, back on main</span></div>
+  </div>
+
+  <div class="sub"><h3>The new buttons</h3><p class="hint">Small changes to existing screens, drawn by hand. Nothing here needed a design session.</p>
+  <div class="mocks">
+<!-- screen:drive-notes-send -->
+    <div><div class="screen"><div class="row"><span style="flex:1;color:var(--color-text-secondary)">2 notes not sent</span><button class="btn q">Send, keep driving</button><button class="btn p">Send and stop drive</button></div>
+      <div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--color-border-subtle)"><span style="flex:1;color:var(--color-text-tertiary)">No notes</span><button class="btn p">All good</button></div></div>
+      <p class="cap">Drive notes send line: while driving (top), and with no notes (bottom). <a class="pin" data-d="8">8</a> <a class="pin" data-d="9">9</a></p></div>
+<!-- /screen:drive-notes-send -->
+<!-- screen:blocking-drive-notice -->
+    <div><div class="screen"><div class="note"><span class="t">The test drive of <b>login-rework</b> holds the checkout.</span><button class="btn">Stop drive</button></div>
+      <div class="note" style="margin-top:8px"><span class="t">The drive of <b>login-rework</b> was cut off by a restart.</span><button class="btn">Stop drive</button></div></div>
+      <p class="cap">Feature page notice, for any drive that blocks this one. <a class="pin" data-d="6">6</a> <a class="pin" data-d="4">4</a></p></div>
+<!-- /screen:blocking-drive-notice -->
+<!-- screen:provider-halt-status -->
+    <div><div class="screen"><div class="status"><i class="dot" style="background:var(--color-warning)"></i><span style="flex:1">Waiting for you · provider usage limit · resets 5pm</span><button class="btn p">Resume</button></div></div>
+      <p class="cap">Feature status line after a provider halt. <a class="pin" data-d="10">10</a></p></div>
+<!-- /screen:provider-halt-status -->
+<!-- screen:project-note-delete -->
+    <div><div class="screen"><div class="row"><span style="flex:1;color:var(--color-text-secondary)">Delete this note and its screenshot?</span><button class="btn q">Keep</button><button class="btn d">Delete</button></div>
+      <div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--color-border-subtle)"><span style="flex:1;color:var(--color-text-tertiary)">Paste a screenshot, or</span><button class="btn">Add picture</button></div></div>
+      <p class="cap">Project notes: delete asks first, and a picture can be picked. <a class="pin" data-d="17">17</a></p></div>
+<!-- /screen:project-note-delete -->
+  </div></div>
+
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing deferred to a backlog feature</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Waiting states, pings, header buttons, restart-killed rounds ("You always know what's waiting")</li>
+      <li><i class="dot"></i>Vocabulary renames ("Ready to publish")</li>
+      <li><i class="dot"></i>Attaching non-picture files to a chat turn</li>
+      <li><i class="dot"></i>Resuming by itself at the reset time</li>
+      <li><i class="dot"></i>Stopping drives on shutdown</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <h3>Who builds it <a class="pin" data-d="12">12</a></h3>
+      <div class="flow"><span class="st">1 · Permissions + checkout guard</span><span class="st">2 · Drive slot</span><span class="st">3 · Drive notes</span><span class="st">4 · Rough edges</span><span class="ar">→</span><span class="st">5 · Review round</span></div>
+      <p class="hint" style="margin-top:8px">One ticket at a time, since this project burns one at once. No ticket waits on another; the review waits on all four.</p>
+      <h3 style="margin-top:18px">Main code touched</h3>
+      <ul class="hint">
+        <li>Session launch and settings, the pre-tool hook, a new checkout guard</li>
+        <li>The drive slot in the git service, boot, the feature page's standing notices</li>
+        <li>The drive-notes send line, the chat's drive notice, a migration retiring dead note statuses</li>
+        <li>Runner halt sorting, a new feature.resume call, the status line, the chat box, project notes</li>
+      </ul>
+
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["Every session kind runs without permission prompts", "A prompt nobody answers stalls the session; Claude Code keeps your own ask rules in this mode.", "assumed"],
+    ["The checkout guard replaces the prompts that protected the human's own checkout", "Host-side chats work in your own checkout; a hook refuses staging or committing your work, and git acts that move or discard it.", "assumed"],
+    ["Codex leads run unsandboxed; other Codex sessions keep their sandbox", "Codex never asks already; the lead needs room to install dependencies, the others keep the sandbox in your checkout.", "assumed"],
+    ["A drive cut off by a restart comes back as a drive you can stop", "Reuses the slot, Stop and named refusals; also stops the next drive or merge recording feature/x as home.", "assumed"],
+    ["Shutdown still leaves the drive alone", "A crash gets no shutdown hook, so boot handles both cases.", "assumed"],
+    ["Every drive that blocks you is named, and stoppable where you own it", "ADR-0014 already says so; only project drives met it. A live review drive is named but not stoppable from another page.", "assumed"],
+    ["A merge on a dirty checkout commits the feature docs first and lists what is left", "Same check as a drive start, so the two refusals agree.", "assumed"],
+    ["Sending drive notes offers to stop the drive in the same click", "A forgotten drive blocks rounds and other merges.", "assumed"],
+    ["\"All good\" is a button", "The server already supports it; reverses the earlier rule that the notes rail never says all is good.", "assumed"],
+    ["A provider halt says which kind it is, and every kind gets Resume", "After fixing billing or a login you need the same way back as after a limit.", "assumed"],
+    ["The chat box still takes only pictures, and says so", "Stops the silent drop without adding a new kind of attachment.", "assumed"],
+    ["Four tickets and a review round, not built in this chat", "Ten changes across server and app; long unattended work suits workers.", "assumed"],
+    ["The orchestrator can stop a cut-off drive too", "Restarts are routine; a drive only you can clear would stall merges while you are away.", "assumed"],
+    ["Every kind of drive is recovered, not only feature drives", "Project drives and dry runs also leave their stop script unrun.", "assumed"],
+    ["\"Send and stop drive\" sends the notes even when the stop fails", "The notes are your work; a failed stop has its own message.", "assumed"],
+    ["Resume is a click, at any time", "Resuming by itself would spend your quota unattended.", "assumed"],
+    ["Deleting a project note asks first, and still takes its screenshot", "A screenshot belongs to its note; the problem was no warning.", "assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[1, "Keep asking, and widen the pre-allowed command list", "The challenger would make the Fix-it and scenario chats refuse anything not pre-allowed: the no-prompt mode leaves non-git shell writes in your checkout unchecked.", "challenged"], [3, "Keep the Codex lead sandboxed and only turn its network on", "The brief asked for this choice by name."], [4, "A separate \"checkout left on feature/x · Return\" notice outside the drive slot", "It shapes decisions 6, 13 and 14."], [6, "Stop on a live review agent's drive too, behind a confirmation", "The challenger reads ADR-0014 as every blocking drive being stoppable.", "challenged"], [9, "Put All good only on the chat's after-drive notice", "It reverses an earlier rule of yours, made without you.", "challenged"]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
