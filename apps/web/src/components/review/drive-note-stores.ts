@@ -8,7 +8,7 @@ import { toPngBlob, uploadScreenshot } from '../../lib/reviews'
 import { useToast } from '../../lib/toast'
 import type { DriveNote } from './DriveNotes'
 import type { DriveNoteStore } from './DrivePage'
-import { unsentNotes } from './SendToAgent'
+import { stopThenSend, unsentNotes } from './SendToAgent'
 
 /**
  * The two places a drive's notes live, as the one shape the drive page reads
@@ -29,15 +29,23 @@ function driveNote(note: TestNote | ProjectNote): DriveNote {
 }
 
 /**
- * A feature's notes on the rail: the human's own, open ones apart from what went
- * to the agent. The review agent's findings stay on the Review step.
+ * A feature's notes on the rail: the human's own, the ones still to send apart
+ * from what went to the agent. The review agent's findings stay on the Review step.
  */
 export function featureNoteList(notes: readonly TestNote[]): { open: TestNote[]; sent: TestNote[] } {
-  const live = oldestFirst(notes).filter((n) => n.author === 'human' && (n.status === 'open' || n.status === 'carried'))
+  const live = oldestFirst(notes).filter((n) => n.author === 'human')
   return { open: live.filter((n) => n.sentAt === undefined), sent: live.filter((n) => n.sentAt !== undefined) }
 }
 
-export function useFeatureDriveNotes(featureId: string, onSent: () => void): DriveNoteStore {
+/**
+ * `stop` is there while this feature's drive runs: it stops the drive, and
+ * rejects when the stop fails.
+ */
+export function useFeatureDriveNotes(
+  featureId: string,
+  onSent: () => void,
+  stop?: () => Promise<unknown>,
+): DriveNoteStore {
   const utils = trpc.useUtils()
   const toast = useToast()
   const list = trpc.notes.list.useQuery({ featureId })
@@ -66,6 +74,14 @@ export function useFeatureDriveNotes(featureId: string, onSent: () => void): Dri
         send.mutate({ featureId })
         onSent()
       },
+      ...(stop
+        ? {
+            runAndStop: () => {
+              stopThenSend(stop, () => send.mutate({ featureId }))
+              onSent()
+            },
+          }
+        : {}),
     },
     add: async (text, picture) => {
       const note = await add.mutateAsync({ featureId, text })

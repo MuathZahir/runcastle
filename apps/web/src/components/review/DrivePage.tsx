@@ -27,8 +27,11 @@ export interface DriveNoteStore extends Omit<DriveNoteActions, 'onOpenPicture'> 
   sent?: DriveNote[]
   /** Save a note, with its picture if it has one; settles once `notes` holds it. */
   add: (text: string, picture: Blob | null) => Promise<void>
-  /** A feature's notes go to its agent; with none waiting, no Send is offered. */
-  send?: { count: number; run: () => void }
+  /**
+   * A feature's notes go to its agent; with none waiting, sending says all is
+   * good. `runAndStop` is there while the feature's drive runs: stop, then send.
+   */
+  send?: { count: number; run: () => void; runAndStop?: () => void }
 }
 
 /** What the page hands the stage it frames. */
@@ -152,7 +155,12 @@ export function DrivePage({
                 foot={
                   <>
                     {store.send && (
-                      <SendNotesLine count={store.send.count} onSend={store.send.run} primary={!draft.trim() && !staged} />
+                      <SendNotesLine
+                        count={store.send.count}
+                        onSend={store.send.run}
+                        {...(store.send.runAndStop ? { onSendAndStop: store.send.runAndStop } : {})}
+                        primary={!draft.trim() && !staged}
+                      />
                     )}
                     <Composer
                       value={draft}

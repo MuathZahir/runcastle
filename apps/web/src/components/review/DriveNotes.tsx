@@ -230,28 +230,53 @@ export function DriveNotes({
 
 /**
  * The line above the note box on a feature's drive: what is waiting and the one
- * way to send it. Nothing at all with no notes: a drive with nothing to say
- * sends nothing (decision 16).
+ * way to send it. While the drive runs, sending offers to stop it in the same
+ * click; with no notes, "All good" says so for the human (small-fixes-before-
+ * publish decisions 8, 9).
  */
 export function SendNotesLine({
   count,
   onSend,
+  onSendAndStop,
   primary = true,
 }: {
   count: number
   onSend: () => void
+  /** Present while this feature's drive runs: stop it, then send. */
+  onSendAndStop?: () => void
   /** Steps down while the box below holds the one primary: a note being written. */
   primary?: boolean
 }) {
-  if (count === 0) return null
+  const variant = primary ? 'primary' : 'secondary'
+  if (count === 0) {
+    return (
+      <div className="flex items-center gap-2 px-1">
+        <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">No notes waiting</span>
+        <Button size="sm" variant={variant} icon={<IconCheck />} onClick={onSendAndStop ?? onSend}>
+          All good
+        </Button>
+      </div>
+    )
+  }
   return (
     <div className="flex items-center gap-2 px-1">
       <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">
         {count} {count === 1 ? 'note' : 'notes'} ready
       </span>
-      <Button size="sm" variant={primary ? 'primary' : 'secondary'} icon={<IconSend />} onClick={onSend}>
-        Send to the agent
-      </Button>
+      {onSendAndStop ? (
+        <>
+          <Button size="sm" variant="ghost" onClick={onSend}>
+            Send, keep driving
+          </Button>
+          <Button size="sm" variant={variant} icon={<IconSend />} onClick={onSendAndStop}>
+            Send and stop drive
+          </Button>
+        </>
+      ) : (
+        <Button size="sm" variant={variant} icon={<IconSend />} onClick={onSend}>
+          Send to the agent
+        </Button>
+      )}
     </div>
   )
 }
