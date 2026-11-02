@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
-import { type ScenarioBrief, renderScenarioPrompt, renderSettings } from '../src/launcher/artifacts'
+import { type ScenarioBrief, renderScenarioPrompt } from '../src/launcher/artifacts'
+import { evaluateCheckoutGuard } from '../src/launcher/checkout-guard'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { launchScenarioSession, launchSession } from '../src/launcher/launcher'
 import {
@@ -425,12 +426,12 @@ describe('the scenario briefing', () => {
   })
 
   it('lets setup mode `git add` anywhere, and a normal session only .runcastle/', () => {
-    expect(renderSettings('/h.ts', 'scenario', undefined, 'scenario-setup').permissions.allow).toContain(
-      'Bash(git add:*)',
-    )
-    const normal = renderSettings('/h.ts', 'scenario').permissions.allow
-    expect(normal).toContain('Bash(git add .runcastle:*)')
-    expect(normal).not.toContain('Bash(git add:*)')
+    // The checkout guard holds this line now that every kind runs without prompts.
+    const add = (command: string, purpose?: 'scenario-setup') =>
+      evaluateCheckoutGuard({ kind: 'scenario', purpose, toolName: 'Bash', command, worktreePath: join(tmpdir(), 'checkout') })
+    expect(add('git add app/routes/drive-login.ts', 'scenario-setup')).toBeNull()
+    expect(add('git add .runcastle/scenarios/a.ts')).toBeNull()
+    expect(add('git add app/routes/drive-login.ts')).not.toBeNull()
   })
 })
 
