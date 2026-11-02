@@ -765,7 +765,7 @@ function SidebarFoot({
       )}
       {driving && (
         <DriveCard
-          label={driving.cutOff ? 'Test drive · cut off by a restart' : 'Test drive'}
+          label={driving.cutOff ? 'Test drive (cut off by a restart)' : 'Test drive'}
           detail={drivenTitle ?? <span className="font-mono">{driving.branch}</span>}
           title={
             driving.cutOff
