@@ -980,7 +980,7 @@ export interface MergeConflictState {
   at: number
 }
 
-export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
+export function unresolvedMergeConflict(events: readonly Pick<EventRow, 'type' | 'ts' | 'data'>[]): MergeConflictState | null {
   let conflict: MergeConflictState | null = null
   for (const event of events) {
     if (event.type === 'merge.conflict') {

@@ -1,3 +1,4 @@
+import type { WaitingKind } from '@runcastle/core'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
@@ -15,15 +16,18 @@ import { emit } from './events'
 
 /**
  * Set (or, with `null`, clear) the "Waiting for you · <why>" reason the status
- * line shows. The next human message or round dispatch clears it.
+ * line shows, with the kind of wait it is. The next human message or round
+ * dispatch clears both.
  */
-export function setWaiting(ctx: AppCtx, featureId: string, why: string | null): void {
+export function setWaiting(ctx: AppCtx, featureId: string, why: string | null, kind?: WaitingKind): void {
   const reason = why?.trim() || null
-  ctx.db.update(features).set({ waitingReason: reason }).where(eq(features.id, featureId)).run()
+  // A reason sent with no kind is an answer (decision 2); a cleared reason takes its kind with it.
+  const waitingKind = reason ? (kind ?? 'answer') : null
+  ctx.db.update(features).set({ waitingReason: reason, waitingKind }).where(eq(features.id, featureId)).run()
   emit(ctx, featureId, {
     type: 'feature.waiting',
     message: reason ? `waiting for you · ${reason}` : 'no longer waiting for you',
-    data: { why: reason },
+    data: { why: reason, kind: waitingKind },
   })
 }
 
@@ -37,7 +41,7 @@ export function markHumanMessage(ctx: AppCtx, featureId: string, opts: { typed?:
   const at = Date.now()
   ctx.db
     .update(features)
-    .set({ lastHumanMessageAt: at, stoppedAt: null, waitingReason: null })
+    .set({ lastHumanMessageAt: at, stoppedAt: null, waitingReason: null, waitingKind: null })
     .where(eq(features.id, featureId))
     .run()
   emit(ctx, featureId, {
