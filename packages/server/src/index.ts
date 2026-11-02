@@ -27,6 +27,7 @@ import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
+import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
@@ -200,6 +201,8 @@ export async function startServer(): Promise<void> {
   // Say when a feature starts needing the human: pings hang off this one event
   // (you-always-know-what-s-waiting decision 14). Seeded now, without emitting.
   startNeedWatch(ctx)
+  // …and push each of those the human is pinged for to their phone (decision 12).
+  startNeedPush(ctx)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

@@ -1,4 +1,4 @@
-import type { FeatureNeed } from '@runcastle/core'
+import { FEATURE_NEEDS_YOU, type FeatureNeed, type NeedsYouData } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { features } from '../db/schema'
@@ -14,7 +14,7 @@ import { tryGetFeature } from './repo'
  * enters a need it was not in, and when a held need passes its hour and comes
  * to the human. Never on a re-read, an unchanged need, or at boot.
  */
-export const FEATURE_NEEDS_YOU = 'feature.needs_you'
+export { FEATURE_NEEDS_YOU }
 
 /**
  * How long a feature's changes settle before its need is read again: a service
@@ -77,11 +77,8 @@ export function startNeedWatch(ctx: AppCtx, opts: NeedWatchOptions = {}): NeedWa
       if (!entered(prev, need)) return
       emitting = true
       try {
-        emit(ctx, featureId, {
-          type: FEATURE_NEEDS_YOU,
-          message: `needs you · ${need.words}`,
-          data: { kind: need.kind, words: need.words, held: need.held, why: need.why ?? null },
-        })
+        const data: NeedsYouData = { kind: need.kind, words: need.words, held: need.held, why: need.why ?? null }
+        emit(ctx, featureId, { type: FEATURE_NEEDS_YOU, message: `needs you · ${need.words}`, data })
       } finally {
         emitting = false
       }

@@ -209,3 +209,31 @@ export function featureNeed(facts: NeedFacts, now: number): FeatureNeed | null {
   }
   return null
 }
+
+/**
+ * The one event pings hang off (decisions 11 to 14): emitted when a feature
+ * enters a need it was not in, and when a held need passes its hour.
+ */
+export const FEATURE_NEEDS_YOU = 'feature.needs_you'
+
+/** What a {@link FEATURE_NEEDS_YOU} event carries. */
+export interface NeedsYouData {
+  kind: NeedKind
+  words: string
+  held: boolean
+  why: string | null
+}
+
+/**
+ * Whether a {@link FEATURE_NEEDS_YOU} event's data pings the human, on the
+ * desktop and the phone alike (decisions 11, 12, 18): every need that is not
+ * held, except the stop the human made themselves. One rule, so the web and
+ * the server cannot disagree. Malformed data never pings.
+ */
+export function needPings(data: unknown): data is NeedsYouData {
+  if (typeof data !== 'object' || data === null) return false
+  const d = data as Record<string, unknown>
+  if (typeof d.kind !== 'string' || !(NEED_KINDS as readonly string[]).includes(d.kind)) return false
+  if (typeof d.words !== 'string' || d.held !== false) return false
+  return !(d.kind === 'stopped' && d.why === YOU_STOPPED_IT)
+}

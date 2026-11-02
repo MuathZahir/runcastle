@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HELD_NEED_GRACE_MS, featureNeed, type NeedFacts, type WaitingKind } from '../src/feature-need'
+import { HELD_NEED_GRACE_MS, YOU_STOPPED_IT, featureNeed, needPings, type NeedFacts, type WaitingKind } from '../src/feature-need'
 
 /** you-always-know-what-s-waiting ticket 1: the one need a feature shows, from plain facts. */
 
@@ -178,5 +178,27 @@ describe('featureNeed', () => {
       expect(featureNeed(facts({ held: true, openAsk: { ...approval, since } }), NOW)).toMatchObject({ kind: 'permission', held: false, words: 'Needs permission · Bash: git push' })
       expect(featureNeed(facts({ held: true, waiting: waiting('look', 'design', since) }), NOW)).toMatchObject({ kind: 'design', held: false, words: 'Design to approve' })
     })
+  })
+})
+
+/** Ticket 3: the one rule the desktop ping and the phone push share. */
+describe('needPings', () => {
+  const need = { kind: 'plan', words: 'Plan to approve', held: false, why: null }
+
+  it('pings for a need that is not held', () => {
+    expect(needPings(need)).toBe(true)
+    expect(needPings({ kind: 'stopped', words: 'Stopped · the provider’s limit', held: false, why: 'the provider’s limit' })).toBe(true)
+  })
+
+  it('stays quiet for a held need, and for the stop the human made', () => {
+    expect(needPings({ ...need, held: true, words: 'With the orchestrator · Plan to approve' })).toBe(false)
+    expect(needPings({ kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: YOU_STOPPED_IT })).toBe(false)
+  })
+
+  it('never pings for malformed data', () => {
+    expect(needPings(undefined)).toBe(false)
+    expect(needPings({ kind: 'nap', words: 'x', held: false })).toBe(false)
+    expect(needPings({ kind: 'plan', held: false })).toBe(false)
+    expect(needPings({ kind: 'plan', words: 'x' })).toBe(false)
   })
 })

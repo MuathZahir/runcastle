@@ -9,8 +9,9 @@ import { requireOrchestratorSession } from './orchestrator-tools'
 
 /**
  * The tool that notifies the human's phone (`agents-can-notify-your-phone`).
- * An agent's call is the only thing that ever sends: no event, wait or failure
- * does. Who may call follows who runs the feature (decision 3), and is checked
+ * Runcastle pings the phone itself when a feature starts needing the human
+ * (`services/need-push.ts`); this is for what an agent wants to say beyond
+ * that. Who may call follows who runs the feature (decision 3), and is checked
  * here because the rule must hold whatever an agent's instructions say. The
  * server does not look at when the human last typed (decision 2).
  */

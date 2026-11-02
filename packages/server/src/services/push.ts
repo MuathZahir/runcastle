@@ -9,8 +9,10 @@ import type { AppCtx } from '../db/types'
  * anyone running runcastle. The text is encrypted between here and the phone;
  * Apple or Google see only when a message went, its size and which device.
  *
- * Nothing here decides when to send. Who may call is the tool's rule, and only
- * an agent's own judgement ever starts a send.
+ * Nothing here decides when to send. Two callers do: runcastle itself, each
+ * time a feature starts needing the human (`need-push.ts`,
+ * you-always-know-what-s-waiting decision 12), and agents, with `notify_human`
+ * for what they want to say beyond a wait (who may call is that tool's rule).
  */
 
 /** The subject push services ask for. Apple's refuses a localhost one, so it is never the machine's. */
