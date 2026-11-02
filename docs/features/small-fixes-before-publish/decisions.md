@@ -31,7 +31,7 @@ below is assumed until they confirm it.
 **Assumed.** Alternative: a clean shutdown also stops the drive, and boot handles only crashes.
 
 ## 6. Every drive that blocks you is named, and stoppable where you own it
-**Decision:** Every refusal caused by the drive slot says which drive holds it: the "a drive is already active" refusal for feature drives and dry runs, and "Cannot merge while a test drive is active". On a feature's page, the banner with a Stop button shows for any drive held by something else (another feature's drive, a setup dry run, a cut-off drive), not only for project drives. A review agent's drive is named but has no Stop: the banner says it ends with that review round.
+**Decision:** Every refusal caused by the drive slot says which drive holds it: the "a drive is already active" refusal for feature drives and dry runs, and "Cannot merge while a test drive is active". On a feature's page, the banner with a Stop button shows for any drive held by something else (another feature's drive, a setup dry run, a cut-off drive), not only for project drives. A live review agent's drive is named but has no Stop: the banner says it ends with that review round. A cut-off one (decision 4) gets Stop, since no round is behind it any more.
 **Why:** ADR-0014 (one drive slot per project) already says a blocking drive is always named and stoppable; today only project drives meet it. Stopping a review agent's drive from another feature's page would break a round the human did not start from there.
 **Assumed.** Alternative: a Stop button on the review agent's drive too.
 **Challenged:** ADR-0014 says every blocking drive is stoppable, and a stuck review drive would block the human's merges with no way out; it would show Stop with a confirmation instead.
@@ -73,7 +73,7 @@ below is assumed until they confirm it.
 **Assumed.** Alternative: boot returns the checkout by itself whenever it is clean.
 
 ## 14. Every kind of drive is recovered, not only feature drives
-**Decision:** The boot check in decision 4 covers all three drive kinds that run a stop script: a feature drive, a project drive and a setup dry run. Whichever has a start event with no stop after it comes back cut off; Stop runs its stop script, and switches the branch back only for a feature drive (the other two never switched it).
+**Decision:** The boot check in decision 4 covers all three drive kinds that run a stop script: a feature drive (a review agent's drive included, which switches the checkout the same way), a project drive and a setup dry run. Whichever has a start event with no stop after it comes back cut off; Stop runs its stop script, and switches the branch back only for a feature drive (the other two never switched it).
 **Why:** A project drive or dry run cut off by a restart also leaves its stop script unrun, which the brief asks to fix; the events to spot them already exist.
 **Assumed.** Alternative: recover feature drives only, since only they strand the checkout on another branch.
 
