@@ -427,6 +427,22 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     ])
   })
 
+  it("commits only the outcome, leaving the human's other uncommitted docs alone", async () => {
+    const feature = await seedShippableFeature('tidy')
+    // The merge goes ahead past dirty files it does not touch (decision 18), so
+    // the outcome commit must not sweep them onto the base with it.
+    mkdirSync(join(project.repoPath, 'docs', 'features', 'other'), { recursive: true })
+    writeFileSync(join(project.repoPath, 'docs', 'features', 'other', 'draft.md'), 'mine\n')
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(true)
+    expect(await outcomeAt('main', 'tidy')).toContain('# Outcome')
+    const committed = await g.raw(['show', '--name-only', '--pretty=', 'main'])
+    expect(committed.trim().split('\n')).toEqual(['docs/features/tidy/outcome.md'])
+    expect((await g.raw(['status', '--porcelain'])).trimEnd()).toBe('?? docs/features/other/')
+  })
+
   it('regenerates the doc around later work, and commits nothing when it is unchanged', async () => {
     const feature = await seedShippableFeature('laps')
     seedTickets(feature.id, [{ title: 'First work', status: 'done', digest: '## Work\n- First lap.' }])

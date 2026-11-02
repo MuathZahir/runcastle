@@ -2142,20 +2142,20 @@ export function docsCommitMessage(
  * staged there (no-op otherwise). Uses a pathspec commit so pre-staged changes
  * to other paths are never swept into the commit.
  */
-export async function commitDocs(worktreePath: string, message: string): Promise<void> {
-  if (!existsSync(resolve(worktreePath, DOCS_PATHSPEC))) return
+export async function commitDocs(worktreePath: string, message: string, pathspec: string = DOCS_PATHSPEC): Promise<void> {
+  if (!existsSync(resolve(worktreePath, pathspec))) return
   const g = git(worktreePath)
-  await g.add([DOCS_PATHSPEC])
+  await g.add([pathspec])
 
   const staged = (await g.raw(['diff', '--cached', '--name-only']))
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
-  const docsStaged = staged.some((p) => p.startsWith(`${DOCS_PATHSPEC}/`))
+  const docsStaged = staged.some((p) => p === pathspec || p.startsWith(`${pathspec}/`))
   if (!docsStaged) return
 
-  // Pathspec commit: only docs/features changes land, other staged paths stay put.
-  await g.raw(['commit', '--no-verify', '-m', message, '--', DOCS_PATHSPEC])
+  // Pathspec commit: only changes under `pathspec` land, other staged paths stay put.
+  await g.raw(['commit', '--no-verify', '-m', message, '--', pathspec])
 }
 
 /** Commit generated docs on a named branch in the main checkout, then restore its prior branch. */
@@ -2405,6 +2405,13 @@ export async function recoverCutOffDrives(ctx: AppCtx): Promise<string[]> {
       if (state) {
         drives.set(project.id, state)
         recovered.push(project.id)
+        // Not one of DRIVE_EVENT_TYPES on purpose: the drive's own unmatched start
+        // stays the newest of those, so a second restart recovers it again.
+        emitProject(ctx, project.id, {
+          type: 'drive.cut_off',
+          message: `${holderLabel(state)} holds the drive slot; Stop runs its stop script`,
+          data: { kind: state.kind, branch: state.branch, ...(state.kind === 'feature' ? { featureId: state.featureId } : {}) },
+        })
       }
     } catch {
       // A project whose repo is gone or unreadable has no checkout to return.
@@ -4019,8 +4026,9 @@ export async function mergeInProgressAt(worktreePath: string): Promise<boolean> 
  */
 export async function stagedPathsAt(worktreePath: string): Promise<string[]> {
   try {
-    const out = await git(worktreePath).raw(['diff', '--cached', '--name-only'])
-    return out.split('\n').map((l) => l.trim()).filter(Boolean)
+    // Unquoted as the porcelain readers do: git quotes a path with spaces or
+    // special characters, and the guard compares these against plain paths.
+    return porcelainNames(await git(worktreePath).raw(['diff', '--cached', '--name-only']))
   } catch {
     return []
   }
