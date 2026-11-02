@@ -173,7 +173,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="n">1</div><div class="b">Setup, Fix-it and scenario chats stop for permission.</div><div>No session asks. A guard refuses risky git in your own checkout. Your own "ask" rules still ask. <a class="pin" data-d="1">1</a> <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a></div>
     <div class="n">2</div><div class="b">A restart mid-drive leaves the checkout on feature/x, and the app says idle.</div><div>The drive comes back "cut off by a restart". One Stop runs the stop script and returns home. <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="13">13</a> <a class="pin" data-d="14">14</a></div>
     <div class="n">3</div><div class="b">"A drive is already active." Which one?</div><div>Every refusal names the drive; the feature page offers Stop. <a class="pin" data-d="6">6</a></div>
-    <div class="n">4</div><div class="b">Merge refused on a dirty checkout, no files listed.</div><div>Feature docs are committed first; the refusal names what is left. <a class="pin" data-d="7">7</a></div>
+    <div class="n">4</div><div class="b">Merge refused on a dirty checkout, no files listed.</div><div>Only dirty files the merge would touch block it, and the refusal names them. Nothing is committed for you. <a class="pin" data-d="18">18</a></div>
     <div class="n">5</div><div class="b">Sending notes leaves the drive running.</div><div>"Send and stop drive" in one click. <a class="pin" data-d="8">8</a> <a class="pin" data-d="15">15</a></div>
     <div class="n">6</div><div class="b">"All good" means typing it.</div><div>An "All good" button. <a class="pin" data-d="9">9</a></div>
     <div class="n">7</div><div class="b">"Waiting for you · provider limit", nothing to click.</div><div>Says usage limit, billing or sign-in, shows the reset time, offers Resume. <a class="pin" data-d="10">10</a> <a class="pin" data-d="16">16</a></div>
@@ -271,7 +271,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["A drive cut off by a restart comes back as a drive you can stop", "Reuses the slot, Stop and named refusals; also stops the next drive or merge recording feature/x as home.", "assumed"],
     ["Shutdown still leaves the drive alone", "A crash gets no shutdown hook, so boot handles both cases.", "assumed"],
     ["Every drive that blocks you is named, and stoppable where you own it", "ADR-0014 already says so; only project drives met it. A live review drive is named but not stoppable from another page.", "assumed"],
-    ["A merge on a dirty checkout commits the feature docs first and lists what is left", "Same check as a drive start, so the two refusals agree.", "assumed"],
+    ["A merge on a dirty checkout commits the feature docs first and lists what is left", "Superseded by 18.", "superseded"],
     ["Sending drive notes offers to stop the drive in the same click", "A forgotten drive blocks rounds and other merges.", "assumed"],
     ["\"All good\" is a button", "The server already supports it; reverses the earlier rule that the notes rail never says all is good.", "assumed"],
     ["A provider halt says which kind it is, and every kind gets Resume", "After fixing billing or a login you need the same way back as after a limit.", "assumed"],
@@ -281,7 +281,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["Every kind of drive is recovered, not only feature drives", "Project drives and dry runs also leave their stop script unrun.", "assumed"],
     ["\"Send and stop drive\" sends the notes even when the stop fails", "The notes are your work; a failed stop has its own message.", "assumed"],
     ["Resume is a click, at any time", "Resuming by itself would spend your quota unattended.", "assumed"],
-    ["Deleting a project note asks first, and still takes its screenshot", "A screenshot belongs to its note; the problem was no warning.", "assumed"]
+    ["Deleting a project note asks first, and still takes its screenshot", "A screenshot belongs to its note; the problem was no warning.", "assumed"],
+    ["A merge never commits into the human's checkout; it refuses only on dirty paths it would touch", "Supersedes 7, changed by the orchestrator: no silent commits into your working tree, and unrelated noise no longer blocks.", "assumed"]
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

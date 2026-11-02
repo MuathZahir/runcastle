@@ -40,6 +40,7 @@ below is assumed until they confirm it.
 **Decision:** Before refusing on a dirty checkout, the merge commits pending feature docs the same way a drive start does, and then refuses only if anything else is dirty, naming the first five files and how many more.
 **Why:** It is the drive's own check, so the two refusals agree, and docs written by the agents stop blocking the merge.
 **Assumed.** Alternative: ignore the docs folder in the merge check without committing it.
+**Superseded by 18.**
 
 ## 8. Sending drive notes offers to stop the drive in the same click
 **Decision:** While the feature's drive is running, the main button where notes are sent becomes "Send and stop drive". A quieter "Send, keep driving" stays beside it. The drive is stopped first and the notes sent after, so the lead never wakes into a drive that blocks its rounds and commits.
@@ -91,3 +92,10 @@ below is assumed until they confirm it.
 **Decision:** Delete on a project note asks inline ("Delete this note and its screenshot?", Keep / Delete), the way a drive note already does; the screenshot is deleted with its note. The note form gets an "Add picture" button that picks an image file, beside paste.
 **Why:** A screenshot belongs to its note; what was wrong was deleting both with no warning.
 **Assumed.** Alternative: keep the screenshot after its note is deleted.
+
+## 18. A merge never commits into the human's checkout; it refuses only on dirty paths it would touch
+Supersedes: 7
+**Decision:** The merge commits nothing on its own. Before merging, it finds the dirty paths it would actually touch: files the feature branch changes since it split from the base, plus the files that differ between the current branch and the base when the merge has to switch branches to run. Anything staged also counts, because git would record it into the merge commit. If any such path is dirty, the merge refuses and names those files (the first five, then how many more). Other dirty files, docs-only noise included, do not block it, and git carries them through untouched.
+**Why:** A merge that silently commits into the human's working tree is the kind of surprise this batch exists to remove. Refusing only on paths the merge touches is also what keeps unrelated noise from blocking.
+**Assumed.** Alternative: commit pending feature docs first, then refuse on anything else dirty (decision 7).
+**Changed by the orchestrator:** it ruled that the merge must not commit anything into the human's checkout on its own.

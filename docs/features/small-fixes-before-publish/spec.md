@@ -34,7 +34,12 @@ The UI shows a cut-off drive wherever it shows a drive, with the words "cut off 
 
 **3. Named blockers (decision 6).** Every refusal caused by the drive slot uses the server's existing `slotHeldReason(held)`, which is already used for project drives. That covers the feature-drive start (`DENY_ACTIVE`), the dry-run start and the merge's "test drive is active" refusal. On a feature's page, the standing notice with Stop shows for any drive held by something other than this feature's own drive. The holder sentence comes from the existing web helper. Stop calls the right mutation for the holder's kind: feature drive, project drive or dry run. A live review agent's drive gets the notice without Stop, worded as ending with its review round. A cut-off drive gets Stop whatever its purpose, review included, because no round is behind it any more. The unused web `slotHeldReason` is either used for this or deleted.
 
-**4. Merge on a dirty checkout (decision 7).** The merge replaces its raw `git status` check with the drive's `driveBlockingPaths(repoPath, docsCommitPrefix)`. That commits pending `docs/features/**` first, then returns what is still dirty. The refusal names the files with the existing `truncatedFileList` (the first five, then how many more).
+**4. Merge on a dirty checkout (decision 18, which replaces 7).** The merge never commits anything itself. It computes the paths it would touch:
+- the files the feature branch changes since its merge base with the base branch (`git diff --name-only <base>...<feature>`);
+- when HEAD is not the base branch, the files that differ between HEAD and the base, since the merge checks the base out and back;
+- every staged path, because git would record those into the merge commit.
+
+It intersects that set with the dirty paths (tracked changes and untracked files). If anything is left, it refuses and names those files with the existing `truncatedFileList` (the first five, then how many more). Any other dirty file does not block the merge, docs-only noise included, and git carries it through untouched. The raw `git status` check goes.
 
 **5 and 6. Drive notes (decisions 8, 9, 15).** While this feature's drive runs, the send line on the drive page and the after-drive notice in the chat offer two buttons. "Send and stop drive" is the primary: it stops the drive through the existing stop path, then sends the notes, and sends them even if the stop failed (that failure shows as a failed Stop does). "Send, keep driving" is the quieter one. When there are no unsent notes, the send line shows "All good" instead of nothing. It calls the existing `notes.send`, which already sends "Drive done, all good — no notes", and stops a running drive first in the same way.
 
@@ -64,7 +69,7 @@ The status line shows Resume next to any of these. Resume calls a new feature-sc
 - **Pre-tool guard evaluation** (existing, extended): a new pure `evaluateCheckoutGuard` beside the edit, install and lead guards, tested on commands. The hook route wires it in and supplies the staged-paths probe.
 - **Drive slot API** (existing): `activeDriveInfo`, `testDrive(stop)`, `stopProjectDrive` and the dry-run stop, now also used for cut-off records. Add a new boot function, `recoverCutOffDrives(ctx)`, that is testable against a scratch repo with seeded events.
 - **Slot refusals** (existing): the start and merge refusals, which should now carry the holder's name.
-- **`mergeFeature`** (existing): the dirty refusal and its file list.
+- **`mergeFeature`** (existing): the dirty refusal, its file list, and a merge that goes ahead past unrelated dirty files.
 - **`notes.send` and the drive stop mutations** (existing): the web flows compose them.
 - **Runner halt classification** (existing, extended): a pure function from a halt headline to `{ kind, resetsAt? }`, plus a new tRPC `feature.resume` mutation over `deliverToLead`.
 - **Web components** (existing): the standing notices, the drive notes send line, the drive chat notice, the feature status line, the composer, the notes card and the note capture form. They are tested at the component tier `apps/web/STYLE.md` describes.
