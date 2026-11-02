@@ -1,5 +1,5 @@
 import { spawnSync, type StdioOptions } from 'node:child_process'
-import { lstatSync, readdirSync, statfsSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, statfsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -89,6 +89,33 @@ export function walkFiles(dir: string, base = '', strict = false): string[] {
     else if (entry.isFile()) files.push(rel)
   }
   return files
+}
+
+/**
+ * Every file under `path`, following links, as forward-slashed paths under `rel`.
+ * A Claude skill is often a link to a folder elsewhere, and only what it points at
+ * means anything on another machine. `node_modules` and `.git` stay out: one is
+ * built for this system and the other is not part of a skill. A link that leads
+ * nowhere, or back into itself, goes in `broken`.
+ */
+export function walkFollowing(path: string, rel: string, broken: string[], parents: string[] = []): string[] {
+  let real: string
+  let isDirectory: boolean
+  try {
+    real = realpathSync(path)
+    isDirectory = statSync(path).isDirectory()
+  } catch {
+    broken.push(rel)
+    return []
+  }
+  if (!isDirectory) return [rel]
+  if (parents.includes(real)) {
+    broken.push(rel)
+    return []
+  }
+  return readdirSync(path)
+    .filter((name) => name !== 'node_modules' && name !== '.git')
+    .flatMap((name) => walkFollowing(join(path, name), `${rel}/${name}`, broken, [...parents, real]))
 }
 
 /** Every symlink under `dir`, as forward-slashed relative paths. {@link walkFiles} skips these. */

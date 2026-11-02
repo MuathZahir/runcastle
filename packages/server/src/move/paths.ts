@@ -51,6 +51,48 @@ export function mapSourcePath(
   return null
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Rewrite every known place named inside free text, such as a stored command.
+ * A rule matches whole path segments only, as in {@link mapSourcePath}, and the
+ * rest of a matched path takes the new system's slashes. Text that names no known
+ * place comes back unchanged. Each rule's `to` is a path on a Linux or macOS host.
+ */
+export function rewritePathsInText(text: string, rules: PathRule[], sourcePlatform: string): string {
+  const windows = sourcePlatform === 'win32'
+  const ordered = [...rules].sort((a, b) => b.from.length - a.from.length)
+  if (ordered.length === 0) return text
+  const places = ordered.map((rule) =>
+    canonicalSlashes(rule.from, sourcePlatform)
+      .split('/')
+      .map(escapeRegExp)
+      .join(windows ? '[\\\\/]+' : '/'),
+  )
+  const pattern = new RegExp(
+    `(?<![\\w.-])(${places.join('|')})(?![\\w.-])((?:[\\\\/][^\\s"'\`<>|&;,()]*)?)`,
+    windows ? 'gi' : 'g',
+  )
+  return text.replace(pattern, (whole, place: string, rest: string) => {
+    const rule = ordered.find((candidate) => samePath(place, candidate.from, sourcePlatform))
+    if (!rule) return whole
+    return rule.to + (windows ? rest.replace(/\\+/g, '/') : rest)
+  })
+}
+
+/**
+ * Whether text would still only work on Windows: a drive letter, or the `cmd` and
+ * PowerShell words a path rewrite cannot help. This only ever adds a warning, so a
+ * command it misses fails where it runs, and says why.
+ */
+export function looksWindowsOnly(text: string): boolean {
+  if (/(?<![\w])[A-Za-z]:[\\/]/.test(text)) return true
+  if (/%[A-Za-z_][A-Za-z0-9_]*%/.test(text)) return true
+  return /\b(if\s+(not\s+)?exist|del\s+\/|rd\s+\/|rmdir\s+\/|cmd(\.exe)?\s+\/|powershell|pwsh|taskkill)\b|\.(bat|cmd|exe|ps1)\b/i.test(text)
+}
+
 /** The last segment of a source path: the repo's folder name. */
 export function sourceBasename(path: string, sourcePlatform: string): string {
   const canonical = canonicalSlashes(path, sourcePlatform)

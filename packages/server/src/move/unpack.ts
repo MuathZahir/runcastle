@@ -1,10 +1,14 @@
 import {
+  chmodSync,
+  closeSync,
   copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -12,14 +16,16 @@ import {
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { checkDestination, reposDirOf } from './destination'
-import { encodeClaudeFolder, mapSourcePath, type PathRule } from './paths'
+import { encodeClaudeFolder, looksWindowsOnly, mapSourcePath, rewritePathsInText, type PathRule } from './paths'
 import { countRows } from './pack'
-import { CLEARED_ON_CROSS_OS } from './scan'
-import { formatBytes, freeBytes, gitOrThrow, run, stamp, systemTar } from './shell'
+import { claudeJsonPath, HOST_COMMANDS } from './scan'
+import { formatBytes, freeBytes, gitOrThrow, run, stamp, systemTar, walkFiles } from './shell'
 import { hashFile } from './tar'
 import type {
-  ClearedCommand,
+  ChangedCommand,
   CheckoutWip,
+  ClaudeSetup,
+  ClaudeSetupResult,
   DestinationQuestion,
   MoveEnv,
   MoveInResult,
@@ -27,6 +33,7 @@ import type {
   MoveProject,
   MoveSql,
   OpenSql,
+  WindowsCommand,
 } from './types'
 
 /**
@@ -42,6 +49,9 @@ const MACHINE_SETTINGS = ['burnConcurrency', 'burnCpus'] as const
 /** Data-dir files that belong to this machine and survive a replace. */
 const KEPT_FILES = ['.env', 'install-id'] as const
 
+/** Long enough that Claude Code's own cleanup never reaches a moved chat. */
+const CHAT_KEEP_DAYS = 3650
+
 export interface MoveInInput {
   pack: string
   env: MoveEnv
@@ -49,6 +59,8 @@ export interface MoveInInput {
   replace: boolean
   reposDir?: string
   log?: (line: string) => void
+  /** Run the `claude` CLI on this machine. A test replaces it, so that no test installs anything. */
+  runClaude?: (args: string[]) => boolean
 }
 
 function extract(pack: string, into: string): void {
@@ -109,6 +121,35 @@ function mapTranscript(
   return null
 }
 
+/** What the stored commands became, for the report. */
+interface RewrittenCommands {
+  changed: ChangedCommand[]
+  windows: WindowsCommand[]
+}
+
+/**
+ * Keep every stored command, with the paths in it pointing at the new machine. The
+ * home folder counts here, though not for stored paths, because a command can name
+ * a tool or a dev database anywhere under it.
+ */
+function rewriteCommands(sql: MoveSql, rules: PathRule[], platform: string): RewrittenCommands {
+  const result: RewrittenCommands = { changed: [], windows: [] }
+  const projects = sql.all<Record<string, string | null> & { id: string; name: string }>('SELECT * FROM projects')
+  for (const project of projects) {
+    for (const { column, label } of HOST_COMMANDS) {
+      const value = project[column]
+      if (!value) continue
+      const next = rewritePathsInText(value, rules, platform)
+      if (next !== value) {
+        sql.run(`UPDATE projects SET ${column} = ? WHERE id = ?`, next, project.id)
+        result.changed.push({ project: project.name, field: label, from: value, to: next })
+      }
+      if (looksWindowsOnly(next)) result.windows.push({ project: project.name, field: label, value: next })
+    }
+  }
+  return result
+}
+
 /** Rewrite the database copy in one transaction. Returns how many paths matched nothing. */
 function rewriteDatabase(
   sql: MoveSql,
@@ -116,10 +157,10 @@ function rewriteDatabase(
   rules: PathRule[],
   renames: Map<string, string>,
   env: MoveEnv,
-): { unmapped: number; cleared: ClearedCommand[] } {
+): { unmapped: number; commands: RewrittenCommands } {
   const platform = manifest.source.platform
   let unmapped = 0
-  const cleared: ClearedCommand[] = []
+  let commands: RewrittenCommands
   sql.run('BEGIN')
   try {
     for (const row of sql.all<{ id: string; repo_path: string }>('SELECT id, repo_path FROM projects')) {
@@ -139,34 +180,15 @@ function rewriteDatabase(
       if (transcript) sql.run('UPDATE sessions SET transcript_path = ? WHERE id = ?', transcript, row.id)
       else unmapped++
     }
-    if (platform !== env.platform) cleared.push(...clearHostCommands(sql))
+    commands = rewriteCommands(sql, [...rules, { from: manifest.source.home, to: env.home }], platform)
+    // That proof came from the other system. A drive on this one stamps them again.
+    if (platform !== env.platform) sql.run('UPDATE project_findings SET verified_at = NULL, verified_sha = NULL')
     sql.run('COMMIT')
   } catch (err) {
     sql.run('ROLLBACK')
     throw err
   }
-  return { unmapped, cleared }
-}
-
-/**
- * Hand the drive and reset commands back to Prepare, and drop every "verified"
- * stamp, because that proof came from the other system. Deleting the provenance
- * row is what lets Prepare fill a field the human once typed by hand.
- */
-function clearHostCommands(sql: MoveSql): ClearedCommand[] {
-  const cleared: ClearedCommand[] = []
-  const projects = sql.all<Record<string, string | null> & { id: string; name: string }>('SELECT * FROM projects')
-  for (const project of projects) {
-    for (const command of CLEARED_ON_CROSS_OS) {
-      const value = project[command.column]
-      if (!value) continue
-      cleared.push({ project: project.name, field: command.label, value })
-      sql.run(`UPDATE projects SET ${command.column} = NULL WHERE id = ?`, project.id)
-      sql.run('DELETE FROM project_findings WHERE project_id = ? AND key = ?', project.id, command.key)
-    }
-  }
-  sql.run('UPDATE project_findings SET verified_at = NULL, verified_sha = NULL')
-  return cleared
+  return { unmapped, commands }
 }
 
 /** Rebuild one repo from its bundle in a folder of its own, ready to be renamed into place. */
@@ -187,6 +209,14 @@ function rebuildRepo(project: MoveProject, staging: string, path: string): void 
     gitOrThrow(path, ['checkout', '-q', '-f', '--detach', project.headSha])
   }
   restoreStash(project, path)
+  if (project.excludeRules) {
+    mkdirSync(join(path, '.git', 'info'), { recursive: true })
+    writeFileSync(join(path, '.git', 'info', 'exclude'), project.excludeRules)
+  }
+  for (const rel of project.carried) {
+    mkdirSync(dirname(join(path, rel)), { recursive: true })
+    copyFileSync(join(staging, 'carried', project.id, rel), join(path, rel))
+  }
 }
 
 /**
@@ -293,6 +323,80 @@ function placeClaudeFolder(from: string, to: string, swap: Swap, when: string): 
   swap.rename(from, aside)
 }
 
+/** The pack stores every file private and plain, and Windows has no bits to keep, so a script's are given back here. */
+function restoreScriptBits(dir: string): void {
+  for (const rel of walkFiles(dir)) {
+    const path = join(dir, rel)
+    const start = Buffer.alloc(2)
+    const fd = openSync(path, 'r')
+    try {
+      readSync(fd, start, 0, 2, 0)
+    } finally {
+      closeSync(fd)
+    }
+    if (start.toString() === '#!') chmodSync(path, 0o700)
+  }
+}
+
+/**
+ * Settle the staged Claude settings: what the new machine alone had stays, and
+ * Claude Code is told to keep chats, or its 30-day cleanup would delete moved ones.
+ */
+function settleClaudeSettings(staged: string, current: string): boolean {
+  if (!existsSync(staged)) return false
+  const incoming = JSON.parse(readFileSync(staged, 'utf8')) as Record<string, unknown>
+  let own: Record<string, unknown> = {}
+  try {
+    own = JSON.parse(readFileSync(current, 'utf8')) as Record<string, unknown>
+  } catch {
+    // nothing of its own yet
+  }
+  const keepChats = incoming.cleanupPeriodDays === undefined
+  const settled = { ...own, ...incoming, ...(keepChats ? { cleanupPeriodDays: CHAT_KEEP_DAYS } : {}) }
+  writeFileSync(staged, `${JSON.stringify(settled, null, 2)}\n`)
+  return keepChats
+}
+
+/** Put the old machine's MCP servers beside the new one's, in Claude Code's own user file. */
+function addMcpServers(env: MoveEnv, servers: Record<string, unknown>, aside: string): boolean {
+  if (Object.keys(servers).length === 0) return true
+  const path = claudeJsonPath(env)
+  let own: Record<string, unknown> = {}
+  if (existsSync(path)) {
+    try {
+      own = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    } catch {
+      return false
+    }
+    copyFileSync(path, aside)
+  }
+  const mcpServers = { ...(own.mcpServers as Record<string, unknown> | undefined), ...servers }
+  writeFileSync(path, `${JSON.stringify({ ...own, mcpServers }, null, 2)}\n`, { mode: 0o600 })
+  return true
+}
+
+/** Plugins are built per system, so Claude Code installs them again instead of the pack carrying them. */
+function installPlugins(setup: ClaudeSetup, runClaude: (args: string[]) => boolean): string[] {
+  const failed: string[] = []
+  for (const marketplace of setup.marketplaces) {
+    if (!runClaude(['plugin', 'marketplace', 'add', marketplace])) failed.push(`plugin marketplace ${marketplace}`)
+  }
+  for (const plugin of setup.plugins) {
+    if (!runClaude(['plugin', 'install', plugin])) failed.push(`plugin ${plugin}`)
+  }
+  return failed
+}
+
+/** The real `claude`. A non-interactive SSH session may not have its folder on the PATH. */
+function claudeOn(env: MoveEnv): (args: string[]) => boolean {
+  const childEnv = {
+    ...process.env,
+    PATH: [join(env.home, '.local', 'bin'), process.env.PATH].filter(Boolean).join(':'),
+    CLAUDE_CONFIG_DIR: env.claudeDir,
+  }
+  return (args) => run('claude', args, { env: childEnv }).ok
+}
+
 /** Put a checkout's uncommitted work back, or keep it beside the repo if it will not apply. */
 function applyWip(
   project: MoveProject,
@@ -339,9 +443,17 @@ function renderReport(manifest: MoveManifest, result: Omit<MoveInResult, 'report
     lines.push('', `## Uncommitted work still in ${result.stagingKept}/wip`, '')
     for (const w of result.wipStuck) lines.push(`- ${w}`)
   }
-  if (result.cleared.length > 0) {
-    lines.push('', '## Cleared commands, for Prepare to fill in again', '')
-    for (const c of result.cleared) lines.push(`- ${c.project}, ${c.field}: \`${c.value}\``)
+  if (result.commandsWindows.length > 0) {
+    lines.push('', '## Commands that only work on Windows', '')
+    for (const c of result.commandsWindows) lines.push(`- ${c.project}, ${c.field}: \`${c.value}\``)
+  }
+  if (result.commandsChanged.length > 0) {
+    lines.push('', '## Commands with their paths rewritten', '')
+    for (const c of result.commandsChanged) lines.push(`- ${c.project}, ${c.field}: \`${c.from}\` became \`${c.to}\``)
+  }
+  if (result.claudeSetup && result.claudeSetup.failed.length > 0) {
+    lines.push('', '## Claude setup that did not go in', '')
+    for (const item of result.claudeSetup.failed) lines.push(`- ${item}`)
   }
   if (result.wipKept.length > 0) {
     lines.push('', '## Uncommitted work kept beside the repo', '')
@@ -401,7 +513,7 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
 
     log('Rewriting paths in the database')
     const sql = open(join(staging, 'db', 'runcastle.db'), { readonly: false })
-    let rewritten: { unmapped: number; cleared: ClearedCommand[] }
+    let rewritten: { unmapped: number; commands: RewrittenCommands }
     try {
       verifyRowCounts(sql, manifest)
       rewritten = rewriteDatabase(sql, manifest, rules, renames, env)
@@ -427,6 +539,13 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
     mergeSettings(join(data, 'config.json'), join(env.dataDir, 'config.json'))
     for (const file of KEPT_FILES) {
       if (existsSync(join(env.dataDir, file))) copyFileSync(join(env.dataDir, file), join(data, file))
+    }
+
+    const stagedSetup = join(staging, 'claude-setup')
+    let chatsKept = false
+    if (manifest.claudeSetup && existsSync(stagedSetup)) {
+      restoreScriptBits(stagedSetup)
+      chatsKept = settleClaudeSettings(join(stagedSetup, 'settings.json'), join(env.claudeDir, 'settings.json'))
     }
 
     log('Swapping into place')
@@ -457,6 +576,16 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
         asideNames.add(newName)
         const staged = join(staging, 'claude', folder.name)
         if (existsSync(staged)) placeClaudeFolder(staged, target, swap, when)
+      }
+      if (manifest.claudeSetup && existsSync(stagedSetup)) {
+        for (const entry of readdirSync(stagedSetup)) {
+          const target = join(env.claudeDir, entry)
+          if (existsSync(target)) {
+            swap.rename(target, asideOf(target))
+            setAside.push({ from: target, to: asideOf(target) })
+          }
+          swap.rename(join(stagedSetup, entry), target)
+        }
       }
       if (existsSync(env.dataDir)) {
         swap.rename(env.dataDir, asideOf(env.dataDir))
@@ -497,11 +626,26 @@ export async function moveIn(input: MoveInInput): Promise<MoveInResult> {
       }
     }
 
+    // Last, because neither can undo itself and neither is worth failing a finished move.
+    let claudeSetup: ClaudeSetupResult | undefined
+    if (manifest.claudeSetup) {
+      const failed: string[] = []
+      if (!addMcpServers(env, manifest.claudeSetup.mcpServers, asideOf(claudeJsonPath(env)))) {
+        failed.push(`MCP servers: could not read ${claudeJsonPath(env)}`)
+      }
+      log('Installing your Claude plugins again')
+      failed.push(...installPlugins(manifest.claudeSetup, input.runClaude ?? claudeOn(env)))
+      claudeSetup = { failed, chatsKept }
+    }
+
     const partial = {
       repos: manifest.projects
         .filter((p) => p.repoMoves)
         .map((p) => ({ name: p.name, path: join(reposDir, p.targetFolder) })),
-      cleared: rewritten.cleared,
+      commandsChanged: rewritten.commands.changed,
+      commandsWindows: rewritten.commands.windows,
+      envCarried: manifest.envCarried,
+      ...(claudeSetup ? { claudeSetup } : {}),
       wipApplied,
       wipKept,
       wipStuck,

@@ -6,7 +6,7 @@ import type { DestinationAnswer, MoveInResult, MoveReport } from './types'
 export function formatReport(
   report: MoveReport,
   destination: { answer: DestinationAnswer | null; detail: string } | undefined,
-  cleared: string[],
+  windowsCommands: string[],
 ): string {
   const blockers = [
     ...report.blockers,
@@ -29,9 +29,9 @@ export function formatReport(
   }
   out.push('')
 
-  const attention = [...cleared, ...report.attention, ...(destination?.answer?.notes ?? [])]
+  const attention = [...windowsCommands, ...report.attention, ...(destination?.answer?.notes ?? [])]
   if (attention.length > 0) {
-    out.push('Needs you afterwards', ...attention.map((line) => `  ! ${line}`), '')
+    out.push('Worth a look', ...attention.map((line) => `  ! ${line}`), '')
   }
 
   out.push(`Stays behind  ${report.staysBehind.join(', ')}`, '')
@@ -69,9 +69,19 @@ export function formatMoveInResult(result: MoveInResult): string {
       ...result.wipStuck.map((w) => `  ${w}`),
     )
   }
-  if (result.cleared.length > 0) {
-    out.push('', 'Drive and reset commands cleared; run Prepare on these projects')
-    out.push(...result.cleared.map((c) => `  ${c.project}, ${c.field}: ${c.value}`))
+  if (result.commandsWindows.length > 0) {
+    out.push('', 'Commands that only work on Windows; change these in the project settings')
+    out.push(...result.commandsWindows.map((c) => `  ${c.project}, ${c.field}: ${c.value}`))
+  }
+  if (result.commandsChanged.length > 0) {
+    out.push('', 'Commands with their paths rewritten')
+    out.push(...result.commandsChanged.map((c) => `  ${c.project}, ${c.field}`))
+  }
+  if (result.claudeSetup) {
+    if (result.claudeSetup.chatsKept) out.push('', 'Claude Code now keeps chats for 10 years, so it will not delete moved ones.')
+    if (result.claudeSetup.failed.length > 0) {
+      out.push('', 'Claude setup that did not go in', ...result.claudeSetup.failed.map((item) => `  ${item}`))
+    }
   }
   if (result.setAside.length > 0) {
     out.push('', 'Set aside', ...result.setAside.map((s) => `  ${s.to}`))
@@ -83,7 +93,7 @@ export function formatMoveInResult(result: MoveInResult): string {
     '',
     `Full report: ${result.reportPath}`,
     '',
-    'Next: start runcastle here, run Prepare on each project, recreate the .env files.',
+    result.envCarried ? 'Next: start runcastle here.' : 'Next: start runcastle here, and recreate the .env files.',
     'This machine is now the only home. Do not work on the old one.',
   )
   return out.join('\n')

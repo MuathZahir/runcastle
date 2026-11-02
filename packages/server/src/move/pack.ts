@@ -159,6 +159,12 @@ export async function packMove(input: {
       log(`Packing ${project.name}`)
       if (Object.keys(project.refs).length > 0) await addRepo(tar, project.id, project.repoPath, scratch)
       for (const wip of project.wip) await addWip(tar, project.id, wip, scratch)
+      for (const rel of project.carried) await tar.addFile(`carried/${project.id}/${rel}`, join(project.repoPath, rel))
+    }
+
+    if (scan.claudeSetup) {
+      log('Packing your Claude setup')
+      for (const rel of scan.claudeSetup.files) await tar.addFile(`claude-setup/${rel}`, join(env.claudeDir, rel))
     }
 
     const manifest: MoveManifest = {
@@ -170,6 +176,8 @@ export async function packMove(input: {
       projects: scan.projects,
       claudeFolders: scan.claudeFolders,
       conversations: scan.conversations,
+      envCarried: scan.envCarried,
+      ...(scan.claudeSetup ? { claudeSetup: scan.claudeSetup } : {}),
       reportText: input.reportText ?? '',
       rowCounts,
       files: tar.files,

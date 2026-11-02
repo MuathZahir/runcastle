@@ -15,7 +15,7 @@ import {
   type RemoteFlags,
 } from './remote'
 import { formatMoveInResult, formatReport, isBlocked } from './report'
-import { clearedCommandLines, scanMove } from './scan'
+import { scanMove, windowsCommandLines } from './scan'
 import { formatBytes, freeBytes, stamp } from './shell'
 import type { DestinationQuestion, MoveEnv, MoveScan, MoveSql, OpenSql } from './types'
 import { moveIn } from './unpack'
@@ -29,6 +29,9 @@ export interface MoveArgs {
   replace: boolean
   reposDir?: string
   noRepo: string[]
+  withEnv: boolean
+  withClaudeSetup: boolean
+  also: string[]
   out?: string
 }
 
@@ -46,12 +49,23 @@ function takeValue(args: string[], i: number, flag: string): string {
 }
 
 export function parseMoveArgs(args: string[]): MoveArgs {
-  const parsed: MoveArgs = { dryRun: false, yes: false, replace: false, noRepo: [] }
+  const parsed: MoveArgs = {
+    dryRun: false,
+    yes: false,
+    replace: false,
+    noRepo: [],
+    withEnv: false,
+    withClaudeSetup: false,
+    also: [],
+  }
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === '--dry-run') parsed.dryRun = true
     else if (arg === '--yes') parsed.yes = true
     else if (arg === '--replace') parsed.replace = true
+    else if (arg === '--with-env') parsed.withEnv = true
+    else if (arg === '--with-claude-setup') parsed.withClaudeSetup = true
+    else if (arg === '--also') parsed.also.push(takeValue(args, i++, arg))
     else if (arg === '--repos-dir') parsed.reposDir = takeValue(args, i++, arg)
     else if (arg === '--no-repo') parsed.noRepo.push(takeValue(args, i++, arg))
     else if (arg === '--out') parsed.out = takeValue(args, i++, arg)
@@ -128,11 +142,16 @@ export async function runMoveCli(argv: string[]): Promise<number> {
 
   let scan: MoveScan
   let migrations: string[]
-  let cleared: string[]
+  let windowsCommands: string[]
   try {
-    scan = scanMove(env, sql, { noRepo: args.noRepo })
+    scan = scanMove(env, sql, {
+      noRepo: args.noRepo,
+      withEnv: args.withEnv,
+      withClaudeSetup: args.withClaudeSetup,
+      also: args.also,
+    })
     migrations = sql.all<{ name: string }>('SELECT name FROM __migrations').map((r) => r.name)
-    cleared = clearedCommandLines(sql)
+    windowsCommands = windowsCommandLines(sql, scan.projects, env)
   } finally {
     sql.close()
   }
@@ -143,8 +162,6 @@ export async function runMoveCli(argv: string[]): Promise<number> {
   const destination = args.host
     ? askDestination(args.host, questionFor(scan, migrations, env), flags)
     : undefined
-  // Commands are cleared only between systems. With no host the destination is
-  // unknown, so the report still warns.
   const pack = args.out ?? join(tmpdir(), `runcastle-move-${stamp()}.tar.gz`)
   const room = freeBytes(dirname(pack))
   const packMax = scan.report.dataBytes + scan.report.repoBytes
@@ -154,8 +171,7 @@ export async function runMoveCli(argv: string[]): Promise<number> {
     )
   }
 
-  const sameSystem = destination?.answer?.platform === env.platform
-  const reportText = formatReport(scan.report, destination, sameSystem ? [] : cleared)
+  const reportText = formatReport(scan.report, destination, windowsCommands)
   console.log(reportText)
 
   if (args.dryRun) {

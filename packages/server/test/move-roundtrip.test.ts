@@ -144,18 +144,18 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
     expect(f.manifestHasCache).toBe(false)
   })
 
-  it('clears drive and reset commands between systems, keeps the rest, and saves the old values', () => {
-    expect([f.driveSetup, f.driveStop, f.dbReset]).toEqual([null, null, null])
+  it('keeps every command between systems, so no project has to be prepared again', () => {
+    expect([f.driveSetup, f.driveStop, f.dbReset]).toEqual(['bun run db:up', 'bun run db:down', 'cmd /c reset.bat'])
     expect(f.dev).toBe('bun run dev')
     expect(f.verify).toBe('bun test')
-    expect(f.reportFile).toContain('cmd /c reset.bat')
-    expect(f.reportFile).toContain('bun run db:up')
   })
 
-  it('drops provenance for cleared fields and every verified stamp', () => {
-    expect(f.findings.map((row: { key: string }) => row.key)).toEqual(['verifyCommands'])
-    expect(f.findings[0].verified_at).toBeNull()
-    expect(f.findings[0].verified_sha).toBeNull()
+  it('keeps provenance but drops every verified stamp, which proved the other system', () => {
+    expect(f.findings.map((row: { key: string }) => row.key).sort()).toEqual(['dbResetCommand', 'verifyCommands'])
+    for (const row of f.findings) {
+      expect(row.verified_at).toBeNull()
+      expect(row.verified_sha).toBeNull()
+    }
   })
 
   it("keeps the destination's .env, install id and burn limits, and takes the other settings", () => {

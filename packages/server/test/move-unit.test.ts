@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { parseCommand } from '../src/bin/runcastle'
 import { parseMoveArgs, parseMoveInArgs } from '../src/move/cli'
 import { bytesNeeded } from '../src/move/destination'
-import { assignTargetFolders, encodeClaudeFolder, mapSourcePath, samePath, sourceBasename } from '../src/move/paths'
+import {
+  assignTargetFolders,
+  encodeClaudeFolder,
+  looksWindowsOnly,
+  mapSourcePath,
+  rewritePathsInText,
+  samePath,
+  sourceBasename,
+} from '../src/move/paths'
 import { failureMessage, manualSteps, remoteMoveInCommand, REMOTE_PATH } from '../src/move/remote'
 import { formatReport, isBlocked } from '../src/move/report'
 import type { MoveReport } from '../src/move/types'
@@ -42,6 +50,66 @@ describe('mapSourcePath', () => {
   it('keeps case and backslashes as they are on a POSIX source', () => {
     expect(mapSourcePath('/A/b\\c', [{ from: '/A', to: '/x' }], 'linux')).toBe('/x/b\\c')
     expect(mapSourcePath('/a/b', [{ from: '/A', to: '/x' }], 'linux')).toBeNull()
+  })
+})
+
+describe('rewritePathsInText', () => {
+  const rules = [
+    { from: 'C:\\Users\\me\\Projects\\app', to: '/home/muath/projects/app' },
+    { from: 'C:\\Users\\me', to: '/home/muath' },
+  ]
+
+  it('rewrites a quoted path in a command, with either slash', () => {
+    const forward = 'docker compose -f "C:/Users/me/Projects/app/docker-compose.yml" up -d'
+    expect(rewritePathsInText(forward, rules, 'win32')).toBe('docker compose -f "/home/muath/projects/app/docker-compose.yml" up -d')
+    const back = 'run C:\\Users\\me\\Projects\\app\\tools\\go.sh now'
+    expect(rewritePathsInText(back, rules, 'win32')).toBe('run /home/muath/projects/app/tools/go.sh now')
+  })
+
+  it('ignores case on Windows and not elsewhere', () => {
+    expect(rewritePathsInText('c:\\users\\ME\\Projects\\APP', rules, 'win32')).toBe('/home/muath/projects/app')
+    expect(rewritePathsInText('/Home/a/app', [{ from: '/home/a/app', to: '/x' }], 'linux')).toBe('/Home/a/app')
+  })
+
+  it('takes the longest rule, and a shorter one for what only it covers', () => {
+    const text = 'C:\\Users\\me\\Projects\\app and C:\\Users\\me\\.tool\\bin'
+    expect(rewritePathsInText(text, rules, 'win32')).toBe('/home/muath/projects/app and /home/muath/.tool/bin')
+  })
+
+  it('matches whole segments only', () => {
+    const text = 'C:\\Users\\me\\Projects\\app-old is another folder'
+    expect(rewritePathsInText(text, rules.slice(0, 1), 'win32')).toBe(text)
+    expect(rewritePathsInText('/mnt/home/a/app', [{ from: '/home/a/app', to: '/x' }], 'linux')).toBe('/mnt/home/a/app')
+  })
+
+  it('leaves text naming no known place alone, and takes a target literally', () => {
+    expect(rewritePathsInText('bun run dev', rules, 'win32')).toBe('bun run dev')
+    expect(rewritePathsInText('C:\\a', [{ from: 'C:\\a', to: '/b$&c' }], 'win32')).toBe('/b$&c')
+    expect(rewritePathsInText('C:\\a', [], 'win32')).toBe('C:\\a')
+  })
+})
+
+describe('looksWindowsOnly', () => {
+  it.each([
+    'del "C:\\Users\\me\\x"',
+    'cd d:/work',
+    'if exist "/home/muath/x" del /f /q "/home/muath/x"',
+    'cmd /c reset.bat',
+    'powershell -File go.ps1',
+    'echo %USERPROFILE%',
+  ])('flags %s', (text) => {
+    expect(looksWindowsOnly(text)).toBe(true)
+  })
+
+  it.each([
+    'curl http://localhost:4512/a',
+    'bun run db:reset',
+    '/home/muath/x',
+    'docker compose -f "/home/muath/projects/app/compose.yml" up -d',
+    'bun .runcastle/drive-setup.ts',
+    'env -u GIT_ASKPASS bun run test',
+  ])('leaves %s alone', (text) => {
+    expect(looksWindowsOnly(text)).toBe(false)
   })
 })
 
@@ -120,7 +188,25 @@ describe('the command line', () => {
   it('reads move flags', () => {
     expect(
       parseMoveArgs(['me@host', '--dry-run', '--replace', '--no-repo', 'a', '--no-repo', 'b', '--repos-dir', '/r']),
-    ).toEqual({ host: 'me@host', dryRun: true, yes: false, replace: true, noRepo: ['a', 'b'], reposDir: '/r' })
+    ).toEqual({
+      host: 'me@host',
+      dryRun: true,
+      yes: false,
+      replace: true,
+      noRepo: ['a', 'b'],
+      reposDir: '/r',
+      withEnv: false,
+      withClaudeSetup: false,
+      also: [],
+    })
+  })
+
+  it('reads what to carry beyond the defaults', () => {
+    const args = parseMoveArgs(['--with-env', '--with-claude-setup', '--also', 'app:media', '--also', 'site:.data'])
+    expect(args.withEnv).toBe(true)
+    expect(args.withClaudeSetup).toBe(true)
+    expect(args.also).toEqual(['app:media', 'site:.data'])
+    expect(() => parseMoveArgs(['--also'])).toThrow('needs a value')
   })
 
   it('refuses a flag it does not know, rather than ignoring a typo', () => {

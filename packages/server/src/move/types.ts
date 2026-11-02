@@ -41,7 +41,7 @@ export interface CheckoutWip {
   untracked: string[]
   /** Untracked folders that are git repos themselves: their files travel, their history does not. */
   nested: string[]
-  /** `.env`-style files git does not ignore. Secrets stay behind, ignored or not. */
+  /** `.env`-style files git does not ignore. They travel only when the human asks with `--with-env`. */
   heldBack: string[]
   /** Untracked symlinks. The pack holds regular files only, so these stay behind and the report names them. */
   symlinks: string[]
@@ -66,6 +66,22 @@ export interface MoveProject {
   headBranch?: string
   headSha?: string
   wip: CheckoutWip[]
+  /** Local ignore rules from `.git/info/exclude`, which a bundle does not carry. */
+  excludeRules?: string
+  /** Repo-relative files the human asked to carry that git does not: `.env` files and `--also` paths. */
+  carried: string[]
+}
+
+/** The human's Claude Code setup, carried with `--with-claude-setup`. Logins are never part of it. */
+export interface ClaudeSetup {
+  /** Files under the Claude dir, by forward-slashed path, with links already followed. */
+  files: string[]
+  /** Marketplaces to add again, as Claude's own `plugin marketplace add` takes them. */
+  marketplaces: string[]
+  /** Enabled plugins to install again, built for the new system. */
+  plugins: string[]
+  /** User-level MCP servers from `.claude.json`, by name. */
+  mcpServers: Record<string, unknown>
 }
 
 /** A Claude Code project folder that travels, and the directory it belongs to. */
@@ -93,6 +109,9 @@ export interface MoveManifest {
   claudeFolders: ClaudeFolder[]
   /** Every Claude conversation of a session, and the folder holding its transcript. */
   conversations: { id: string; folder: string }[]
+  /** Whether `.env` files were carried, so the closing message can stop asking for them. */
+  envCarried: boolean
+  claudeSetup?: ClaudeSetup
   /** The report the human saw before packing, kept in `move-report.md`. */
   reportText: string
   /** Row count of every table in the packed database. */
@@ -149,23 +168,51 @@ export interface MoveScan {
   projects: MoveProject[]
   claudeFolders: ClaudeFolder[]
   conversations: { id: string; folder: string }[]
+  envCarried: boolean
+  claudeSetup?: ClaudeSetup
 }
 
 export interface MoveOptions {
   /** Project names (or folder names) whose repo stays behind. */
   noRepo: string[]
+  /** Carry each project's `.env` files. */
+  withEnv?: boolean
+  /** Carry global Claude rules, skills, agents, settings, plugins and MCP servers. */
+  withClaudeSetup?: boolean
+  /** Paths git does not carry, each `<project>:<path inside the repo>`. */
+  also?: string[]
 }
 
-export interface ClearedCommand {
+/** A stored command whose paths a move rewrote. */
+export interface ChangedCommand {
+  project: string
+  field: string
+  from: string
+  to: string
+}
+
+/** A stored command that still looks Windows-only after the move. */
+export interface WindowsCommand {
   project: string
   field: string
   value: string
 }
 
+/** What became of a carried Claude setup. */
+export interface ClaudeSetupResult {
+  /** Plugins and marketplaces Claude would not install, with the MCP servers if they could not be written. */
+  failed: string[]
+  /** Set when the move raised `cleanupPeriodDays` so Claude keeps the moved chats. */
+  chatsKept: boolean
+}
+
 export interface MoveInResult {
   /** Repos rebuilt, by project name. */
   repos: { name: string; path: string }[]
-  cleared: ClearedCommand[]
+  commandsChanged: ChangedCommand[]
+  commandsWindows: WindowsCommand[]
+  envCarried: boolean
+  claudeSetup?: ClaudeSetupResult
   /** Uncommitted work put back in place, and work kept beside the repo instead. */
   wipApplied: string[]
   wipKept: { project: string; key: string; folder: string }[]

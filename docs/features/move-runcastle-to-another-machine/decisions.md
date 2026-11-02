@@ -42,6 +42,7 @@ decision keeps its `Assumed` mark until the human confirms it.
 **Assumed.** Alternative: take a database snapshot while the server runs, and leave anything live out of the move.
 
 ## 7. Commands are never rewritten; drive and reset commands are cleared for preparing again
+**Superseded by decision 17, on the human's word.**
 **Decision:** On a move between operating systems, the drive setup, drive stop and database reset commands are cleared on every project, along with their provenance rows, with no detection list. The dev, setup and verify commands stay. Every "verified by a dry run" stamp is dropped, because that proof came from the other machine. Old values are saved in a report file on the destination and listed on screen. The human then runs Prepare on each project; it fills in exactly the cleared fields. A move between two Linux machines clears nothing.
 **Why:** The runcastle project's reset command is `cmd` syntax, so rewriting paths cannot fix it, and a translated command would be an untested guess. Clearing is what hands a field back to preparation, even one the human typed by hand.
 **Assumed.** Alternative: clear only the commands that look tied to the old system, or keep every command as it is and let the first drive fail.
@@ -69,6 +70,7 @@ decision keeps its `Assumed` mark until the human confirms it.
 **Assumed.** Alternative: ask for a target path for each project.
 
 ## 12. What travels is everything tied to runcastle's projects
+**Amended by decisions 18 to 20:** `.env` files, ignored data and the global Claude setup can travel when the human asks. The defaults below stand.
 **Decision:** The pack holds the database, `config.json`, session folders (thread logs, chat images, shown files, Codex conversations), reviews, annotations, notes screenshots, design crops and stories. It also holds the whole Claude folder of every project repo and talk worktree: chats started by runcastle, chats started by hand in those repos, and Claude memory. Those folders are renamed for the new paths. Left behind: `.env` files, even ones git does not ignore, logins, Codex auth copies and launch files inside session folders, logs, caches, the install id, Claude's undo checkpoints, global `~/.claude` rules, skills and settings, and Claude chats in folders that are not runcastle's. Talk worktrees are not packed, because runcastle re-adds them when a session next starts there.
 **Why:** The human asked for all of runcastle's data and worktrees rebuild from branches. Hand-started chats in these repos sit in the same folders, so taking them is simpler than filtering them out. Secrets must not travel, though a secret pasted into a chat travels with that chat, as history.
 **Assumed.** Alternative: copy all of `~/.claude/projects`, 1.4 GB, whether or not it belongs to a runcastle project.
@@ -94,3 +96,23 @@ decision keeps its `Assumed` mark until the human confirms it.
 **Decision:** Supersedes the install route in decision 13. The rehearsal runs this branch from `~/move-rehearsal` on the VPS, with the destination's data dir and Claude dir pointed at scratch folders there. The installed runcastle and its service stay as they are. No release is needed, as decision 13 wanted.
 **Why:** `bun run install:local` refuses while the VPS service is running, and that service is up. Stopping it needs a `sudo` password. The script's only way past the refusal is a flag that swaps the installed files under a live server, and its own comment leaves that choice to the human. A scratch folder runs the same code without any of that.
 **Assumed.** Alternative: the human stops the service and the branch is installed globally, as the orchestrator asked.
+
+## 17. Commands are kept, with their paths rewritten, and no project needs Prepare after a move
+**Decision:** Supersedes decision 7. A move keeps every stored command and the drive instructions on every project, on any move. Paths inside them that name a project's repo, the data dir or the home folder are rewritten to their new places, with whole path segments only. Nothing is cleared, and provenance rows stay. Verified stamps still drop between systems, because that proof came from the other machine, but a stamp is only a note shown to agents and blocks nothing. The report warns before the move about any command that would still only work on Windows, by a drive letter or by `cmd` and PowerShell words. It is a warning, never a block, and old values of changed commands stay in `move-report.md`.
+**Why:** The human, reading the first dry run on real data, did not want to prepare projects again. Only 3 of the 8 projects held these commands, and of them one had a path a rewrite fixes and one was `cmd` syntax. The rest already ran on both systems. Clearing made every project pay for the two that needed a fix. The list of Windows words that decision 7 rejected as a guess is fine here: it only adds a warning, so a miss fails where the command runs, and says why.
+**Confirmed by the human, 2026-11-02.**
+
+## 18. `.env` files travel with `--with-env`
+**Decision:** With the flag, each project's `.env` files in its main checkout travel, ignored or not, and land in the rebuilt repo before it is swapped in. Example files already travel. Copies inside dot-folders and `node_modules` stay, because those are other worktrees and tools. `.env` files in talk worktrees stay and the report names them. Without the flag nothing changes. The destination's own `~/.runcastle/.env` is still kept, as in decision 10.
+**Why:** The projects do not run without them, and recreating them by hand was the largest step left. A flag keeps the safe default for every other runcastle user. The pack is private to its owner, copied over `scp` and deleted after a good move.
+**Confirmed by the human, 2026-11-02.**
+
+## 19. The global Claude setup travels with `--with-claude-setup`
+**Decision:** With the flag, `CLAUDE.md`, `rules`, `skills`, `agents`, `commands` and `settings.json` travel from the Claude dir. Links are followed, so a skill that is a link arrives as the folder it pointed at, without `node_modules` or `.git`. What the destination has under those names is set aside, except that settings only it holds stay. User-level MCP servers are added to the destination's own `.claude.json`, which is copied aside first. Plugins do not travel: Claude Code's own CLI installs the enabled ones from their marketplaces at the end of `move-in`, because they are built per system, and one that fails is named without failing the move. Logins, chat history and the plugin cache never travel. If `cleanupPeriodDays` is unset, the move sets it to 3650 on the destination, because Claude Code would otherwise delete moved chats older than 30 days.
+**Why:** Without these, agents on the new machine behave differently: they lose the human's rules and most skills. 92 of the human's 115 skills are links, which mean nothing on another machine. Installing a plugin was proved on the VPS in a scratch config dir.
+**Confirmed by the human, 2026-11-02.** The `cleanupPeriodDays` default was the session's own call, on the recommendation already made to the human.
+
+## 20. Ignored data travels when named, with `--also <project>:<path>`, and local ignore rules always do
+**Decision:** `--also` names a file or folder inside a project's repo, and may be repeated. It lands in the rebuilt repo, and the report stops listing it as staying behind. A path that is missing, or outside the repo, blocks the move. `.git/info/exclude` now always travels. It costs nothing and a bundle does not carry it.
+**Why:** This takes the alternative decision 14 set aside. No rule can tell precious ignored data from rebuildable output, so the human names it. Decision 14's report is what lets them.
+**Confirmed by the human, 2026-11-02.**

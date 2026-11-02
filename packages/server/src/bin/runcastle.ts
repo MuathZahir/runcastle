@@ -67,8 +67,9 @@ Usage:
   runcastle serve      The same, spelled out for scripts and services
   runcastle setup      List what this machine is missing and install it (--yes, --agent claude|codex|both)
   runcastle doctor     Check prerequisites (add --gate for the pre-boot gate)
-  runcastle move [user@host] [--dry-run] [--yes] [--replace]
-                 [--repos-dir <dir>] [--no-repo <project>] [--out <file>]
+  runcastle move [user@host] [--dry-run] [--yes] [--replace] [--with-env]
+                       [--with-claude-setup] [--also <project>:<path>]
+                       [--repos-dir <dir>] [--no-repo <project>] [--out <file>]
                        Move runcastle to another machine; only reads this one
   runcastle move-in <pack> [--replace] [--repos-dir <dir>]
                        Bring a move in on this machine

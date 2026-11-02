@@ -1,10 +1,28 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { assignTargetFolders, encodeClaudeFolder, sourceBasename } from './paths'
-import { formatBytes, git, gitOrThrow, isSymlink, linkInPath, nulList, pathBytes, walkSymlinks } from './shell'
+import {
+  assignTargetFolders,
+  encodeClaudeFolder,
+  looksWindowsOnly,
+  rewritePathsInText,
+  sourceBasename,
+} from './paths'
+import {
+  formatBytes,
+  git,
+  gitOrThrow,
+  isSymlink,
+  linkInPath,
+  nulList,
+  pathBytes,
+  walkFiles,
+  walkFollowing,
+  walkSymlinks,
+} from './shell'
 import type {
   CheckoutWip,
   ClaudeFolder,
+  ClaudeSetup,
   MoveEnv,
   MoveOptions,
   MoveProject,
@@ -31,31 +49,41 @@ export const DATA_ENTRIES = [
   'stories',
 ] as const
 
-/** The drive and reset commands a move between systems hands back to Prepare. */
-export const CLEARED_ON_CROSS_OS = [
-  { column: 'drive_setup_command', key: 'driveSetupCommand', label: 'drive setup' },
-  { column: 'drive_stop_command', key: 'driveStopCommand', label: 'drive stop' },
-  { column: 'db_reset_command', key: 'dbResetCommand', label: 'database reset' },
+/**
+ * The project settings a move keeps, with the paths inside them rewritten. They
+ * are never cleared: a command either works on the new system or names what is
+ * wrong when it first runs, and that beats making the human prepare every project
+ * again.
+ */
+export const HOST_COMMANDS = [
+  { column: 'dev_command', label: 'dev command' },
+  { column: 'setup_command', label: 'setup command' },
+  { column: 'verify_commands', label: 'verify commands' },
+  { column: 'drive_setup_command', label: 'drive setup command' },
+  { column: 'drive_stop_command', label: 'drive stop command' },
+  { column: 'db_reset_command', label: 'database reset command' },
+  { column: 'drive_instructions', label: 'drive instructions' },
 ] as const
 
-const STAYS_BEHIND = [
-  '.env files and logins',
-  'Codex auth copies',
-  'logs and caches',
-  'the install id',
-  "Claude's file undo checkpoints",
-  'global Claude rules, skills and settings',
-  'Claude chats outside these repos',
-]
+/** What makes up a human's Claude setup, under the Claude dir. Logins are not in it. */
+const CLAUDE_SETUP_ENTRIES = ['CLAUDE.md', 'rules', 'skills', 'agents', 'commands', 'settings.json'] as const
 
-interface ProjectRow {
-  id: string
-  name: string
-  repo_path: string
-  drive_setup_command: string | null
-  drive_stop_command: string | null
-  db_reset_command: string | null
+function staysBehind(options: MoveOptions): string[] {
+  return [
+    options.withEnv ? 'logins' : '.env files and logins',
+    'Codex auth copies',
+    'logs and caches',
+    'the install id',
+    "Claude's file undo checkpoints",
+    ...(options.withClaudeSetup ? [] : ['global Claude rules, skills and settings']),
+    'Claude chats outside these repos',
+  ]
 }
+
+type ProjectRow = { id: string; name: string; repo_path: string } & Record<
+  (typeof HOST_COMMANDS)[number]['column'],
+  string | null
+>
 
 interface SessionRow {
   project_id: string | null
@@ -133,6 +161,16 @@ function midOperation(path: string): string | null {
   return marks.find(([file]) => existsSync(join(gitDir, file)))?.[1] ?? null
 }
 
+/** Local ignore rules a bundle does not carry, or nothing when the file has only its comments. */
+function excludeRules(repoPath: string): string | null {
+  try {
+    const rules = readFileSync(join(repoPath, '.git', 'info', 'exclude'), 'utf8').replace(/\r\n/g, '\n')
+    return rules.split('\n').some((line) => line.trim() && !line.startsWith('#')) ? rules : null
+  } catch {
+    return null
+  }
+}
+
 /** A `.env` file, by name: example files hold no secrets and are left to travel. */
 function isEnvFile(rel: string): boolean {
   const name = rel.slice(rel.lastIndexOf('/') + 1)
@@ -201,16 +239,37 @@ function hasWork(wip: CheckoutWip): boolean {
  * The paths are as git gives them, not their top folders: `apps/web/dist` stays
  * behind, and saying `apps` would read as if the app itself did.
  */
-function ignoredEntries(repoPath: string): string[] {
+function ignoredEntries(repoPath: string, carried: (rel: string) => boolean): string[] {
   const listing = git(repoPath, ['ls-files', '-o', '-i', '--exclude-standard', '--directory', '-z'])
   return nulList(listing.stdout)
     .map((rel) => rel.replace(/\/$/, ''))
-    .filter((rel) => !rel.split('/').includes('node_modules') && !isBurnerPath(rel))
+    .filter((rel) => !rel.split('/').includes('node_modules') && !isBurnerPath(rel) && !carried(rel))
     .sort()
     .map((rel) => {
       const bytes = pathBytes(join(repoPath, rel))
       return bytes >= 1024 * 1024 ? `${rel} (${formatBytes(bytes)})` : rel
     })
+}
+
+/**
+ * Ignored `.env` files in a checkout. Dot-folders stay out, because that is where
+ * other worktrees and tools keep stale copies of them.
+ */
+function ignoredEnvFiles(repoPath: string): string[] {
+  const listing = git(repoPath, ['ls-files', '-o', '-i', '--exclude-standard', '-z', '--', ':(glob)**/.env', ':(glob)**/.env.*'])
+  return nulList(listing.stdout).filter((rel) => {
+    const folders = rel.split('/').slice(0, -1)
+    return isEnvFile(rel) && !folders.some((folder) => folder.startsWith('.') || folder === 'node_modules')
+  })
+}
+
+/** One `--also` request, or `null` when it does not name a path inside a project's repo. */
+function parseAlso(value: string): { project: string; path: string } | null {
+  const colon = value.indexOf(':')
+  if (colon < 1) return null
+  const path = value.slice(colon + 1).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  if (!path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.split('/').includes('..')) return null
+  return { project: value.slice(0, colon), path }
 }
 
 /** Where burns leave their worktrees inside a repo: their own branches hold their work. */
@@ -243,33 +302,25 @@ function leftoverWorktrees(repoPath: string, talkRoot: string): string[] {
   })
 }
 
-/** Local git files a bundle does not carry. Sample hooks do not count. */
-function hooksAndExcludes(project: string, repoPath: string): string[] {
-  const lines: string[] = []
+/** Local git hooks, which a bundle does not carry. Sample hooks do not count. */
+function localHooks(project: string, repoPath: string): string[] {
   try {
     const hooks = readdirSync(join(repoPath, '.git', 'hooks')).filter((name) => !name.endsWith('.sample'))
-    if (hooks.length > 0) lines.push(`${project}: local git hooks stay behind: ${hooks.join(', ')}`)
+    return hooks.length > 0 ? [`${project}: local git hooks stay behind: ${hooks.join(', ')}`] : []
   } catch {
-    // no hooks folder
+    return []
   }
-  try {
-    const excludes = readFileSync(join(repoPath, '.git', 'info', 'exclude'), 'utf8')
-    if (excludes.split('\n').some((line) => line.trim() && !line.startsWith('#'))) {
-      lines.push(`${project}: rules in .git/info/exclude stay behind`)
-    }
-  } catch {
-    // no exclude file
-  }
-  return lines
 }
 
 function usesLfsOrSubmodules(repoPath: string): boolean {
-  if (existsSync(join(repoPath, '.gitmodules'))) return true
-  try {
-    return readFileSync(join(repoPath, '.gitattributes'), 'utf8').includes('filter=lfs')
-  } catch {
-    return false
+  const holds = (file: string, text: string): boolean => {
+    try {
+      return readFileSync(join(repoPath, file), 'utf8').includes(text)
+    } catch {
+      return false
+    }
   }
+  return holds('.gitmodules', '[submodule') || holds('.gitattributes', 'filter=lfs')
 }
 
 function repoBytes(repoPath: string): number {
@@ -352,6 +403,41 @@ function findClaudeFolders(
   }
 }
 
+/** Claude Code's own user file: beside the Claude dir by default, inside it when the dir is moved. */
+export function claudeJsonPath(env: MoveEnv): string {
+  return env.claudeDir === join(env.home, '.claude') ? join(env.home, '.claude.json') : join(env.claudeDir, '.claude.json')
+}
+
+function readJsonObject(path: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** What `--with-claude-setup` carries, and the links it could not follow. */
+function findClaudeSetup(env: MoveEnv): { setup: ClaudeSetup; broken: string[] } {
+  const broken: string[] = []
+  const files = CLAUDE_SETUP_ENTRIES.filter((entry) => existsSync(join(env.claudeDir, entry))).flatMap((entry) =>
+    walkFollowing(join(env.claudeDir, entry), entry, broken),
+  )
+  const settings = readJsonObject(join(env.claudeDir, 'settings.json'))
+  const enabled = (settings.enabledPlugins ?? {}) as Record<string, unknown>
+  const plugins = Object.keys(enabled).filter((id) => enabled[id] === true)
+  const known = readJsonObject(join(env.claudeDir, 'plugins', 'known_marketplaces.json')) as Record<
+    string,
+    { source?: { repo?: string; url?: string } }
+  >
+  const needed = new Set(plugins.map((id) => id.slice(id.lastIndexOf('@') + 1)))
+  const marketplaces = Object.keys(known)
+    .filter((name) => needed.has(name))
+    .flatMap((name) => known[name].source?.repo ?? known[name].source?.url ?? [])
+  const mcpServers = (readJsonObject(claudeJsonPath(env)).mcpServers ?? {}) as Record<string, unknown>
+  return { setup: { files, marketplaces, plugins, mcpServers }, broken }
+}
+
 function fold(env: MoveEnv, name: string): string {
   return env.platform === 'win32' ? name.toLowerCase() : name
 }
@@ -380,6 +466,7 @@ function wipBytes(projects: MoveProject[]): number {
     for (const wip of project.wip) {
       for (const rel of [...wip.tracked, ...wip.untracked]) total += pathBytes(join(wip.path, rel))
     }
+    for (const rel of project.carried) total += pathBytes(join(project.repoPath, rel))
   }
   return total
 }
@@ -438,6 +525,13 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
   const blockers: string[] = []
   const attention: string[] = []
 
+  const also = (options.also ?? []).flatMap((value) => {
+    const request = parseAlso(value)
+    if (request) return [{ ...request, used: false }]
+    blockers.push(`--also ${value}: write it as <project>:<path inside its repo>`)
+    return []
+  })
+
   for (const run of running) {
     const feature = featureRows.find((f) => f.id === run.feature_id)
     blockers.push(
@@ -479,6 +573,7 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
       remotes: [],
       config: [],
       wip: [],
+      carried: [],
     }
     let bytes = 0
 
@@ -493,7 +588,27 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
       const talk = scanTalkWorktrees(env, row, featureRows)
       project.wip = [...(hasWork(main) ? [main] : []), ...talk.wips]
       blockers.push(...talk.stopped)
-      attention.push(...[main, ...talk.wips].flatMap((wip) => wipAttention(row.name, wip)))
+
+      const envFiles = options.withEnv ? [...new Set([...ignoredEnvFiles(row.repo_path), ...main.heldBack])] : []
+      const requested = also.filter((request) => request.project === row.name || request.project === folder)
+      const asked = requested.flatMap((request) => {
+        request.used = true
+        const path = join(row.repo_path, request.path)
+        if (existsSync(path)) return statSync(path).isDirectory() ? walkFiles(path, request.path) : [request.path]
+        blockers.push(`${row.name}: --also ${request.path} is not in the repo folder`)
+        return []
+      })
+      project.carried = [...new Set([...envFiles, ...asked])]
+      if (envFiles.length > 0) attention.push(`${row.name}: .env files travel: ${envFiles.join(', ')}`)
+      if (requested.length > 0) {
+        const paths = requested.map((request) => request.path).join(', ')
+        attention.push(`${row.name}: travels at your request: ${paths}`)
+      }
+
+      const shownMain = options.withEnv ? { ...main, heldBack: [] } : main
+      attention.push(...[shownMain, ...talk.wips].flatMap((wip) => wipAttention(row.name, wip)))
+      const rules = excludeRules(row.repo_path)
+      if (rules) project.excludeRules = rules
       if (git(row.repo_path, ['rev-parse', '--is-shallow-repository']).stdout.trim() === 'true') {
         blockers.push(`${row.name}: a shallow clone cannot be packed. Run git fetch --unshallow, or leave it out with --no-repo`)
       }
@@ -518,12 +633,17 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
         const lonely = commitsOnNoRemote(row.repo_path)
         if (lonely > 0) attention.push(`${row.name}: ${count(lonely, 'commit')} on no remote; they travel in the pack, nothing is pushed`)
       }
-      const ignored = ignoredEntries(row.repo_path)
+      const carried = new Set(project.carried)
+      const roots = requested.map((request) => request.path)
+      const ignored = ignoredEntries(
+        row.repo_path,
+        (rel) => carried.has(rel) || roots.some((root) => rel === root || rel.startsWith(`${root}/`)),
+      )
       if (ignored.length > 0) attention.push(`${row.name}: ignored files stay behind: ${ignored.join(', ')}`)
       const stashes = stashCount(row.repo_path)
       if (stashes > 1) attention.push(`${row.name}: ${stashes} stashes, only the newest travels`)
       if (Object.keys(project.refs).length > 0) {
-        attention.push(...hooksAndExcludes(row.name, row.repo_path))
+        attention.push(...localHooks(row.name, row.repo_path))
       }
       const leftovers = leftoverWorktrees(row.repo_path, join(env.dataDir, 'worktrees'))
       if (leftovers.length > 0) attention.push(`${row.name}: uncommitted changes in other worktrees stay behind: ${leftovers.join(', ')}`)
@@ -547,6 +667,10 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
     })
   }
 
+  for (const request of also.filter((item) => !item.used)) {
+    blockers.push(`--also ${request.project}:${request.path}: no moving repo is called ${request.project}`)
+  }
+
   const openChats = sessionRows.filter((s) => s.status === 'live' || s.status === 'launching').length
   if (openChats > 0) attention.push(`${count(openChats, 'open chat')} will end at the new machine's first boot, and can be resumed`)
 
@@ -560,24 +684,57 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
   const links = dataSymlinks(env, claude.folders)
   if (links.length > 0) attention.push(`symlinks in runcastle's folders stay behind: ${links.join(', ')}`)
 
+  let claudeSetup: ClaudeSetup | undefined
+  let setupBytes = 0
+  if (options.withClaudeSetup) {
+    const found = findClaudeSetup(env)
+    claudeSetup = found.setup
+    setupBytes = found.setup.files.reduce((total, rel) => total + pathBytes(join(env.claudeDir, rel)), 0)
+    attention.push(
+      `Claude setup travels: ${count(found.setup.files.length, 'file')}, ${count(found.setup.plugins.length, 'plugin')} to install again, ${count(Object.keys(found.setup.mcpServers).length, 'MCP server')}. What the new machine has is set aside, and its login stays`,
+    )
+    if (found.broken.length > 0) attention.push(`Claude setup links that lead nowhere stay behind: ${found.broken.join(', ')}`)
+  } else if (readJsonObject(join(env.claudeDir, 'settings.json')).cleanupPeriodDays === undefined) {
+    attention.push(
+      'Claude Code on the new machine deletes moved chats older than 30 days unless cleanupPeriodDays is raised; --with-claude-setup does that',
+    )
+  }
+
   const report: MoveReport = {
     blockers,
     projects: lines,
     attention,
-    staysBehind: STAYS_BEHIND,
-    dataBytes: dataBytes(env, claude.folders) + wipBytes(projects),
+    staysBehind: staysBehind(options),
+    dataBytes: dataBytes(env, claude.folders) + wipBytes(projects) + setupBytes,
     repoBytes: totalRepoBytes,
     openChats,
   }
-  return { report, projects, claudeFolders: claude.folders, conversations: claude.conversations }
+  return {
+    report,
+    projects,
+    claudeFolders: claude.folders,
+    conversations: claude.conversations,
+    envCarried: options.withEnv === true,
+    ...(claudeSetup ? { claudeSetup } : {}),
+  }
 }
 
-/** The commands a move between systems clears, for the report: one line per project that has any. */
-export function clearedCommandLines(sql: MoveSql): string[] {
-  const rows = sql.all<ProjectRow>('SELECT * FROM projects')
-  return rows.flatMap((row) => {
-    const labels = CLEARED_ON_CROSS_OS.filter((c) => row[c.column]).map((c) => c.label)
-    return labels.length > 0 ? [`${row.name}: ${labels.join(', ')} commands will be cleared; run Prepare`] : []
-  })
+/**
+ * The stored settings no path rewrite can fix, for the report, so the human can
+ * change them before the old machine goes. The targets are stand-ins: all this
+ * asks is whether a Windows path would be left over.
+ */
+export function windowsCommandLines(sql: MoveSql, projects: MoveProject[], env: MoveEnv): string[] {
+  const rules = [
+    ...projects.map((project) => ({ from: project.repoPath, to: `/repos/${project.targetFolder}` })),
+    { from: env.dataDir, to: '/data' },
+    { from: env.home, to: '/home' },
+  ]
+  return sql.all<ProjectRow>('SELECT * FROM projects').flatMap((row) =>
+    HOST_COMMANDS.flatMap(({ column, label }) => {
+      const value = row[column]
+      if (!value || !looksWindowsOnly(rewritePathsInText(value, rules, env.platform))) return []
+      return [`${row.name}, ${label}: only works on Windows; change it before the move or it will fail on the new machine`]
+    }),
+  )
 }
-
