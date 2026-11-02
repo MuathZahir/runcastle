@@ -73,7 +73,7 @@ result, any review findings and where the digests are.
 4. **Decide the next move**:
    - small leftovers → fix them yourself;
    - more work, or a failed ticket to retry → plan the next round;
-   - a question only the human can answer → ask it in chat and call `wait_for_you({ why })`;
+   - a question only the human can answer → call `wait_for_you({ why })` (kind `"plan"` when it is a yes to start the next round), then ask it as the last thing in the turn;
    - the feature does what the plan says → run the checks and declare ready (SKILL.md, "Ready for the human").
 
 A failed round is just what came back. Re-plan, retry or fix it yourself.

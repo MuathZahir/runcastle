@@ -154,6 +154,19 @@ export function projectStats(features: FeatureListItem[]): ProjectStats {
   return { total, needsYou, activeRuns, shipped, health }
 }
 
+/** The browser tab's title when nothing needs the human. */
+export const APP_TITLE = 'runcastle'
+
+/**
+ * The browser tab's title (you-always-know-what-s-waiting decision 13): "(2)
+ * runcastle" with the features under Needs you across every open project
+ * counted, plain "runcastle" when none are — a pinned tab shows it unasked.
+ */
+export function tabTitle(featureLists: FeatureListItem[][]): string {
+  const count = featureLists.reduce((n, features) => n + features.filter(featureNeedsYou).length, 0)
+  return count > 0 ? `(${count}) ${APP_TITLE}` : APP_TITLE
+}
+
 /**
  * The repo's folder name — the last segment of its path (decision 8).
  *

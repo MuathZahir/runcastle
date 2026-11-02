@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEntry } from '@runcastle/core'
 import type { FeatureListItem, PrepView } from '../src/lib/api'
 import type { DriveState } from '../src/lib/workspace'
-import { listItem } from './fixtures'
+import { listItem, need } from './fixtures'
 import { openMenu } from './floating'
 
 /**
@@ -197,8 +197,8 @@ describe('what needs you', () => {
       titled('Order history', {
         ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
       }),
-      titled('Coupons', { waitingReason: 'ready to test' }),
-      titled('Checkout', { waitingReason: 'stopped' }),
+      titled('Coupons', { need: need('test', 'Ready to test') }),
+      titled('Checkout', { need: need('stopped', 'Stopped · you stopped it') }),
     ]
     rail()
     const needs = screen.getByRole('region', { name: 'Needs you' })
@@ -208,15 +208,15 @@ describe('what needs you', () => {
     expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
     expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
     expect(within(needs).getByText('Ready to test')).toBeTruthy()
-    expect(within(needs).getByText('Stopped')).toBeTruthy()
+    expect(within(needs).getByText('Stopped · you stopped it')).toBeTruthy()
     expect(within(needs).getByText('In progress')).toBeTruthy()
     expect(within(needs).queryByRole('heading')).toBeNull()
   })
 
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
     data.features = [
-      titled('Coupons', { waitingReason: 'ready to test' }),
-      titled('Order history', { waitingReason: 'stopped' }),
+      titled('Coupons', { need: need('test', 'Ready to test') }),
+      titled('Order history', { need: need('stopped', 'Stopped · you stopped it') }),
     ]
     rail()
     for (const gone of ['Inbox', 'In progress', 'Agent working', 'Drafts', 'Show archived'])
@@ -229,7 +229,7 @@ describe('what needs you', () => {
 describe('the Working shelf', () => {
   it('holds the features with an agent at work, open in the bay', () => {
     data.features = [
-      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Coupons', { need: need('test', 'Ready to test') }),
       titled('Search', {
         activeRun: true,
         ticketCounts: { total: 7, pending: 4, burning: 0, done: 3, failed: 0, cancelled: 0 },
@@ -240,6 +240,19 @@ describe('the Working shelf', () => {
     expect(titles(working)).toEqual(['Search'])
     expect(within(working).getByText('Working · 3/7')).toBeTruthy()
     expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
+  })
+
+  it('holds a need its orchestrator handles, in the orchestrator’s words, and leaves a permission prompt under Needs you', () => {
+    data.features = [
+      titled('Billing emails', { need: need('test', 'With the orchestrator · Ready to test · Invoices', { held: true }) }),
+      titled('Export to CSV', { need: need('permission', 'Needs permission · Bash: git push') }),
+    ]
+    rail()
+    const working = screen.getByRole('region', { name: 'Working' })
+    expect(titles(working)).toEqual(['Billing emails'])
+    expect(within(working).getByText('With the orchestrator · Ready to test · Invoices')).toBeTruthy()
+    const needs = screen.getByRole('region', { name: 'Needs you' })
+    expect(within(needs).getByText('Needs permission · Bash: git push')).toBeTruthy()
   })
 })
 

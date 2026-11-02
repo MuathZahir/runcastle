@@ -31,6 +31,17 @@ export function pushPath(path: string): void {
 }
 
 /**
+ * Go to `path` from outside the nav hooks (a desktop ping's click): push it,
+ * then let the app's `popstate` listeners route it exactly as they route Back —
+ * the outer nav switches project, the project shell opens the feature.
+ */
+export function goToPath(path: string): void {
+  if (typeof window === 'undefined') return
+  pushPath(path)
+  window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }))
+}
+
+/**
  * The phone's on-screen Back: the same step as the system's Back, so the two
  * never loop through a page already left. An entry the app did not push (a
  * link opened straight on this page) has nothing of ours behind it, and takes

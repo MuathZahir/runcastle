@@ -325,10 +325,11 @@ async function endRound(
   if (run.status === 'cancelled') return
   const halt = runHaltHeadline(ctx, featureId, runId)
   if (halt) {
+    // A halted round stops the feature: it reads "Stopped · …", not a question.
     // A usage limit, billing or sign-in halt reads as which it is, and the
     // status line offers Resume on it; any other halt keeps its own headline.
     const provider = classifyProviderHalt(halt)
-    setWaiting(ctx, featureId, provider ? providerHaltReason(provider) : halt)
+    setWaiting(ctx, featureId, provider ? providerHaltReason(provider) : halt, 'stuck')
     return
   }
   await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle' })

@@ -43,6 +43,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     heldBy: row.heldBy ?? undefined,
     stoppedAt: row.stoppedAt,
     waitingReason: row.waitingReason,
+    waitingKind: row.waitingKind,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,
   })

@@ -52,6 +52,7 @@ export function ChatThread({
   actions,
   onDropImages,
   footer,
+  tail,
 }: {
   items: ThreadItem[]
   state: ThreadState
@@ -64,6 +65,8 @@ export function ChatThread({
   onDropImages?: (files: File[]) => void
   /** The composer, or what the agent waits on you for, docked at the foot. */
   footer: ReactNode
+  /** A line under the last item, scrolling with the thread (the feature chat's waiting line). */
+  tail?: ReactNode
 }) {
   const scroller = useRef<HTMLDivElement>(null)
   const foot = useRef<HTMLDivElement>(null)
@@ -188,6 +191,7 @@ export function ChatThread({
               )
             })
           )}
+          {tail && items.length > 0 && <div className="mt-3 flex min-w-0 flex-col">{tail}</div>}
         </div>
       </div>
 

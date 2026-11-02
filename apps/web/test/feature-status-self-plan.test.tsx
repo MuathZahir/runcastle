@@ -29,11 +29,10 @@ const plainBar: NextStep = { kick: 'NEXT STEP', secondary: [], busy: false }
 
 function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
   const status = featureStatus({
-    feature: { status: 'active', waitingReason: null },
+    feature: { status: 'active' },
+    need: null,
     rounds: [],
-    declarations: [],
     agentWorking: false,
-    leadAwaitsHuman: false,
     driving: false,
     selfPlanning,
     now: 0,
@@ -59,12 +58,13 @@ describe('the header while the feature plans itself', () => {
     expect(onAction).toHaveBeenCalledWith('stopSelfPlan')
   })
 
-  it('reads Talking with you once the run has ended, with no Go and no button', () => {
+  it('reads Talking with you once the run has ended, with no Go and only Merge & ship', () => {
     const { row } = headerRow(false)
 
     expect(screen.getByRole('status').textContent).toContain('Talking with you')
     expect(screen.queryByText('Planning by itself')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
-    expect(row.overflow.map((a) => a.label)).toEqual(['Merge & ship'])
+    expect(row.action).toBeUndefined()
+    expect(row.merge?.label).toBe('Merge & ship')
   })
 })

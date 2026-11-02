@@ -9,7 +9,7 @@ import {
 } from '../src/components/SidebarParts'
 import type { FeatureAction } from '../src/components/FeatureActionsMenu'
 import type { FeatureListItem } from '../src/lib/api'
-import { listItem } from './fixtures'
+import { listItem, need } from './fixtures'
 
 /**
  * The sidebar's pieces as they render (DESIGN.md §Frame, the project sidebar).
@@ -38,21 +38,35 @@ const blocker = (slug: string) => ({
   satisfied: false,
 })
 
-const waiting = listItem({ leadAwaitsHuman: true })
-const ready = listItem({ waitingReason: 'ready to test' })
-const stopped = listItem({ waitingReason: 'stopped' })
-const asked = listItem({ waitingReason: 'which retry policy should rounds use?' })
+const waiting = listItem({ need: need('answer', 'Needs your answer') })
+const ready = listItem({ need: need('test', 'Ready to test · Checkout') })
+const stopped = listItem({ need: need('stopped', 'Stopped · you stopped it') })
+const asked = listItem({ need: need('answer', 'Needs your answer · which retry policy?') })
+const plan = listItem({ need: need('plan', 'Plan to approve') })
+const merge = listItem({ need: need('merge', 'Ready to merge') })
+const permission = listItem({ activeRun: true, need: need('permission', 'Needs permission · Bash: git push') })
+const held = listItem({ need: need('test', 'With the orchestrator · Ready to test · Checkout', { held: true }) })
 const failed = listItem({ ticketCounts: tickets(2, 1, 0, 1) })
 const building = listItem({ activeRun: true, ticketCounts: tickets(8, 3, 1) })
 const midTurn = listItem({ liveSession: { status: 'live', awaitingInput: false } as never })
 const idle = listItem({ ticketCounts: tickets(6, 4) })
 
 describe('featureStateWords', () => {
-  it('says what a feature waiting on you waits for', () => {
-    expect(featureStateWords(waiting)).toBe('Waiting on you')
-    expect(featureStateWords(ready)).toBe('Ready to test')
-    expect(featureStateWords(stopped)).toBe('Stopped')
-    expect(featureStateWords(asked)).toBe('Which retry policy should rounds use?')
+  it('says what a feature waiting on you waits for, in the need’s own words', () => {
+    expect(featureStateWords(waiting)).toBe('Needs your answer')
+    expect(featureStateWords(ready)).toBe('Ready to test · Checkout')
+    expect(featureStateWords(stopped)).toBe('Stopped · you stopped it')
+    expect(featureStateWords(asked)).toBe('Needs your answer · which retry policy?')
+    expect(featureStateWords(plan)).toBe('Plan to approve')
+    expect(featureStateWords(merge)).toBe('Ready to merge')
+  })
+
+  it('says a permission prompt even while a round runs', () => {
+    expect(featureStateWords(permission)).toBe('Needs permission · Bash: git push')
+  })
+
+  it('says a held need among the working, with the orchestrator', () => {
+    expect(featureStateWords(held)).toBe('With the orchestrator · Ready to test · Checkout')
   })
 
   it('says an agent is at work, with the tickets landed out of those not cancelled while it builds', () => {
@@ -127,7 +141,8 @@ describe('the sidebar feature row', () => {
   it('dots amber when it needs you, and carries no dot otherwise — not even for a failed ticket', () => {
     expect(row(waiting)).toContain('bg-warning')
     expect(row(ready)).toContain('bg-warning')
-    for (const f of [failed, idle]) {
+    // A need its orchestrator handles is not the human's: no dot.
+    for (const f of [failed, idle, held]) {
       const html = row(f)
       expect(html).not.toContain('bg-warning')
       expect(html).not.toContain('bg-danger')

@@ -190,10 +190,14 @@ export interface LeadState {
   awaitsHuman: boolean
   /** It replied and its background work still runs, so nobody is being waited on yet. */
   inBackground: boolean
+  /** Its process runs and it is mid-turn or its background work still runs. */
+  working: boolean
+  /** When its main chat last logged anything: when a reply it awaits an answer to ended. */
+  since: number
 }
 
 /** What a feature with no lead at work reads as. */
-export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false }
+export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false, working: false, since: 0 }
 
 /**
  * What the feature's lead is doing (decision 15): {@link threadActivity} over its
@@ -208,10 +212,54 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
     const { events } = foldedLog(row.id)
     const at = events.at(-1)?.at ?? row.createdAt ?? 0
     if (newest && newest.at >= at) continue
-    const activity = threadActivity(events, agentHost(ctx).isRunning(row.id), Date.now())
-    newest = { at, state: { awaitsHuman: activity === 'asking' || activity === 'replied', inBackground: activity === 'background' } }
+    const running = agentHost(ctx).isRunning(row.id)
+    const activity = threadActivity(events, running, Date.now())
+    newest = {
+      at,
+      state: {
+        awaitsHuman: activity === 'asking' || activity === 'replied',
+        inBackground: activity === 'background',
+        // No process survives a restart: a log cut off mid-turn is not working.
+        working: running && (activity === 'turn' || activity === 'background'),
+        since: at,
+      },
+    }
   }
   return newest?.state ?? NO_LEAD
+}
+
+/** An ask the human has not answered, in the thread it waits in. */
+export interface OpenAsk {
+  kind: 'approval' | 'question'
+  /** The approval's call title, or the question's first question. */
+  title: string
+  threadId: string
+  /** When the ask was logged. */
+  since: number
+}
+
+/**
+ * The open approval or question ask in any of the feature's main and side
+ * threads, an approval first (a permission prompt halts its agent mid-turn).
+ * Read from each thread's log, folded as the chat folds it; only a thread whose
+ * process runs can hold one open, since no ask outlives its process. Forms and
+ * links an MCP server asks are the agent's own errand, not a need.
+ */
+export function openAskOf(ctx: AppCtx, featureId: string): OpenAsk | null {
+  const host = agentHost(ctx)
+  let found: OpenAsk | null = null
+  for (const row of featureSessions(ctx, featureId, ['chat', 'side'])) {
+    if (!host.isRunning(row.id) || !hasThreadLog(row.id)) continue
+    const { view, events } = foldedLog(row.id)
+    const ask = view.ask
+    if (ask?.kind !== 'approval' && ask?.kind !== 'question') continue
+    const since = [...events].reverse().find((e) => e.type === 'ask' && e.ask.id === ask.id)?.at ?? 0
+    const title = ask.kind === 'approval' ? (ask.call.title || 'a tool call') : (ask.questions[0]?.question ?? '')
+    const open: OpenAsk = { kind: ask.kind, title, threadId: row.id, since }
+    if (ask.kind === 'approval') return open
+    found ??= open
+  }
+  return found
 }
 
 /** A thread nothing has been said in yet. */

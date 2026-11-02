@@ -4,6 +4,7 @@
  * server writes the reason; the web's status line reads it back to offer
  * Resume, so both sides share these words rather than spelling them twice.
  */
+import { PROVIDER_LIMIT } from './feature-need'
 export type ProviderHaltKind = 'usage' | 'billing' | 'auth'
 
 export interface ProviderHalt {
@@ -72,14 +73,13 @@ export function providerHaltReason(halt: ProviderHalt): string {
   }
 }
 
-/** The one reason every provider halt set before the three were told apart; a feature may still wait on it. */
-const LEGACY_PROVIDER_LIMIT = 'provider limit'
 
 /** The feature waits on a provider halt — the state Resume is offered (and accepted) in. */
 export function isProviderHaltReason(reason: string | null | undefined): boolean {
   if (!reason) return false
   return (
-    reason === LEGACY_PROVIDER_LIMIT ||
+    // The one reason every provider halt set before the three were told apart; a feature may still wait on it.
+    reason === PROVIDER_LIMIT ||
     reason === PROVIDER_USAGE_LIMIT ||
     reason.startsWith(`${PROVIDER_USAGE_LIMIT} · `) ||
     reason === PROVIDER_BILLING_PROBLEM ||

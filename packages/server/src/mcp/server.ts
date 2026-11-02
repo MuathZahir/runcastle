@@ -29,6 +29,7 @@ import {
   ReviewFindingInput,
   TicketInput,
   TicketStatus,
+  WaitingKind,
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
   isAgentDigestDoc,
@@ -454,6 +455,8 @@ export interface FeatureContext {
   driveActive: boolean
   stopped: boolean
   waitingReason: string | null
+  /** Which kind of wait `waitingReason` is (answer, plan, design, stuck); null when nothing is waited on. */
+  waitingKind: WaitingKind | null
   /** When the human last typed in this feature's chat; null if they never have. */
   humanTypedAt: number | null
   /**
@@ -629,6 +632,7 @@ export function featureContext(
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
     stopped: feature.stoppedAt !== null,
     waitingReason: feature.waitingReason,
+    waitingKind: feature.waitingKind,
     humanTypedAt: humanTypedAt(ctx, feature.id),
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
@@ -997,11 +1001,12 @@ export function toolDeclareReady(
 export function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
-  input: { why: string },
-): { ok: true; waitingReason: string | null } {
+  input: { why: string; kind?: WaitingKind },
+): { ok: true; waitingReason: string | null; waitingKind: WaitingKind | null } {
   const featureId = requireLeadFeatureId(session)
-  setWaiting(ctx, featureId, input.why)
-  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
+  setWaiting(ctx, featureId, input.why, input.kind)
+  const { waitingReason, waitingKind } = getFeatureRow(ctx, featureId)
+  return { ok: true, waitingReason, waitingKind }
 }
 
 /** The feature a DESIGN tool acts on: design mode belongs to the feature's own chat. */
@@ -3283,7 +3288,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
         '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
         'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
-        'not replied — no round starts), `waitingReason`, `humanTypedAt` (when the human last typed in this feature’s chat, ' +
+        'not replied — no round starts), `waitingReason` and its `waitingKind` (answer, plan, design or stuck), `humanTypedAt` (when the human last typed in this feature’s chat, ' +
         'ms since the epoch, or null), `dependsOn` (the ' +
         'features it waits on to merge, each `satisfied` once shipped) and `blocks` (the ' +
         'drafts waiting on this feature, each with its `upNext` mark) and `upNext` (this ' +
@@ -3692,6 +3697,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'stuck. The human’s next message, or your next dispatch, clears it.',
         inputSchema: {
           why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
+          kind: WaitingKind.optional().describe(
+            'Which kind of wait this is — the feature shows its own words and button for each: ' +
+              '"plan" when you ask the human’s yes to the plan or a round it did not settle ("Plan to approve"); ' +
+              '"design" when a design waits for the human to look at it ("Design to approve"); ' +
+              '"stuck" when you cannot go on (the runaway guard, the same failure again) ("Stopped · <why>"); ' +
+              '"answer" (the default) for a question only the human can answer ("Needs your answer · <why>").',
+          ),
         },
       },
       async (args, extra) => {

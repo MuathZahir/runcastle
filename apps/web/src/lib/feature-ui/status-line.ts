@@ -4,7 +4,8 @@ import {
   LeadWakeFailedData,
   type EventRow,
   type Feature,
-  type ReadyDeclaration,
+  type FeatureNeed,
+  type NeedKind,
   type RoundSummary,
   type ThreadEntry,
 } from '@runcastle/core'
@@ -20,33 +21,52 @@ import type { ActionKind, NextAction, NextStep } from './next-step/types'
 export type FeatureStatusKind = 'talking' | 'working' | 'waiting' | 'ready' | 'merged'
 
 /**
- * The one primary button the status line's row carries (decision 24): Start
- * test drive when ready, Stop drive while driving, Stop while a round runs,
- * Stop while the feature plans itself, the Chat door once the agent's run
- * failed — and none in any other state.
+ * The one primary button the status line's row carries: Stop drive while
+ * driving, Stop while a round runs, Stop while the feature plans itself, and
+ * otherwise the button of what the feature needs (you-always-know-what-s-waiting
+ * decision 1) — none while nothing is needed.
  */
-export type StatusPrimary = 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat' | 'resume'
+export type StatusPrimary =
+  | 'testDriveStart'
+  | 'testDriveStop'
+  | 'stop'
+  | 'stopSelfPlan'
+  | 'chat'
+  | 'reply'
+  | 'openPlan'
+  | 'openDesign'
+  | 'showRequest'
+  | 'resolveConflict'
+  | 'merge'
+  | 'resume'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
-  /** The words before any reason: "Working · Round 3", "Waiting for you". */
+  /** The words before any reason: "Working · Round 3", "Plan to approve", "Needs your answer". */
   label: string
-  /** The words after the label: why the agent waits, or the drive it asks for. */
+  /** The words after the label: why the agent waits, the call it asks for, the drive. */
   why?: string
   /** The round in flight, or the last one the agent is checking. */
   round?: number
   /** The drive the agent asked for. */
   scenario?: string
+  /** The need its orchestrator is handling ("With the orchestrator · …"): a quiet dot, not a warning. */
+  held?: boolean
   /** The row's one primary; absent when this state has none. */
   primary?: StatusPrimary
+  /**
+   * The Stop a permission prompt pushed off the primary while a round runs or
+   * the feature plans itself: it waits in "⋯", still one click away.
+   */
+  stop?: 'stop' | 'stopSelfPlan'
 }
 
 export interface FeatureStatusInput {
-  feature: Pick<Feature, 'status' | 'waitingReason'>
+  feature: Pick<Feature, 'status'> & Partial<Pick<Feature, 'waitingReason'>>
+  /** What the feature needs from the human, as the server worked it out (`feature.get`'s `need`). */
+  need: FeatureNeed | null
   /** The feature's rounds in order, as `feature.rounds` returns them. */
   rounds: readonly Pick<RoundSummary, 'round' | 'status' | 'startedAt'>[]
-  /** Every ready declaration, oldest first, as `feature.readyDeclarations` returns them. */
-  declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'createdAt'>[]
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
   /**
@@ -55,11 +75,6 @@ export interface FeatureStatusInput {
    * so its log already says whether it works, and a wake earns no grace.
    */
   agentStateKnown?: boolean
-  /**
-   * The lead replied, or asks, and the human has not answered: the feature's
-   * `leadAwaitsHuman`, the same flag that files it under Needs you in the sidebar.
-   */
-  leadAwaitsHuman: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
   /**
@@ -116,47 +131,87 @@ export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data
   return wake
 }
 
-/** The reason an idle agent waits on after the human stopped its round. */
-export const STOPPED = 'stopped'
-
-/** The reason the feature waits on after a self-planning run stopped short: the chat picks it up with the lead. */
-export const PLANNING_STOPPED = 'planning stopped'
+/** The waiting reasons and wake-failure words are core's (one answer, worked out on the server). */
+export { PLANNING_STOPPED, STOPPED, wakeFailedWhy } from '@runcastle/core'
 
 /** The line for a feature with nothing running and nothing asked. */
 export const TALKING = 'Talking with you'
 
-/** The reason when the lead's latest wake failed to launch or died in its turn. */
-export function wakeFailedWhy(exitCode: number | null): string {
-  return exitCode === null ? 'the agent’s run failed' : `the agent’s run failed (exit ${exitCode})`
+/** Each need's button (decision 1): the primary beside the status line when nothing runs. */
+const NEED_PRIMARY: Record<NeedKind, StatusPrimary> = {
+  permission: 'showRequest',
+  conflict: 'resolveConflict',
+  answer: 'reply',
+  plan: 'openPlan',
+  design: 'openDesign',
+  stopped: 'chat',
+  test: 'testDriveStart',
+  merge: 'merge',
+}
+
+/**
+ * An open ask — a permission prompt, or a question box in one of the feature's
+ * threads (an answer that names its thread) — halts the agent mid-turn, so it
+ * outranks a running round and a self-planning run.
+ */
+function haltsAgent(need: FeatureNeed): boolean {
+  return need.kind === 'permission' || (need.kind === 'answer' && !!need.threadId)
+}
+
+/** Needs that halt the agent where it stands, so they show even while it works. */
+const SHOWN_WHILE_WORKING: ReadonlySet<NeedKind> = new Set(['permission', 'conflict'])
+
+/**
+ * The status line of a need: its words split at the first "·" into the label
+ * and the reason after it, so "Needs permission · Bash: git push" and "With the
+ * orchestrator · Plan to approve" read the same as on the sidebar row.
+ */
+function needStatus(need: FeatureNeed): FeatureStatus {
+  const cut = need.words.indexOf(' · ')
+  const label = cut < 0 ? need.words : need.words.slice(0, cut)
+  const why = cut < 0 ? undefined : need.words.slice(cut + ' · '.length)
+  return {
+    kind: need.kind === 'test' || need.kind === 'merge' ? 'ready' : 'waiting',
+    label,
+    ...(why ? { why } : {}),
+    ...(need.scenario ? { scenario: need.scenario } : {}),
+    ...(need.held ? { held: true } : {}),
+    primary: NEED_PRIMARY[need.kind],
+  }
 }
 
 /**
  * Derive the line, and the one primary its row carries. Precedence, highest first:
  *
  * - Merged — shipped is final.
+ * - Needs permission · <call>, or a question box's Needs your answer — an open
+ *   ask halts the agent mid-turn, so it shows even over a running round or a
+ *   self-planning run, whose Stop then waits in "⋯" (`stop`).
  * - Working · Round N — a round is running; nothing else is true until it returns.
  * - Planning by itself — a self-planning run is live.
- * - Ready for you · Test drive ▸ <scenario> — the latest declaration is newer
- *   than the latest round, and the agent is not working on something since
- *   (notes the human sent wake it, and it is Working again). Read before the
- *   waiting reason, because declaring ready sets it ("ready to test").
- * - Waiting for you · <why> — the agent said it needs the human (a question,
- *   stuck, stopped, a provider halt). The next human message or dispatch clears it.
+ * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
+ *   server's `need`, in the sidebar row's own words: "Plan to approve", "Needs
+ *   permission · Bash: git push", "Ready to test · <scenario>", "With the
+ *   orchestrator · Ready to merge". Test and merge read as ready, the rest as
+ *   waiting. While the main chat is mid-turn only a permission prompt or a
+ *   merge conflict shows: the rest are the server's view before the turn began.
  * - Working · Round N — only on evidence: the agent's session is mid-turn, or a
  *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
- * - Waiting for you · the agent's run failed — the newest `lead.wake_failed` is
- *   newer than the last round and the last wake.
- * - Waiting for you — the lead replied, or asks, and the human has not answered
- *   (`leadAwaitsHuman`, the sidebar's Needs you).
  * - Talking with you — otherwise: nothing running and nothing asked.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
- * while a round runs, Stop the run while the feature plans itself, Start test
- * drive when ready, the Chat door to resume an agent whose run failed, and
- * Resume after a provider halt (both set by the status itself).
+ * while a round runs, Stop the run while the feature plans itself, and the
+ * need's own button otherwise — Resume when the stop is a provider halt.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
+  // A permission prompt halts the agent mid-turn, round or self-plan included,
+  // so it outranks their Stop: Show request leads and Stop waits in "⋯".
+  // Driving keeps its own button: the human is at the drive.
+  if (input.need && haltsAgent(input.need) && !input.driving) {
+    const stop = input.rounds.at(-1)?.status === 'running' ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
+    return stop ? { ...status, stop } : status
+  }
   const primary = primaryOf(input, status)
   return primary ? { ...status, primary } : status
 }
@@ -166,13 +221,15 @@ function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrim
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
   if (input.selfPlanning) return 'stopSelfPlan'
-  if (status.kind === 'ready') return 'testDriveStart'
   return undefined
 }
 
 function statusOf(input: FeatureStatusInput): FeatureStatus {
-  const { feature, rounds, declarations, agentWorking } = input
+  const { feature, rounds, need, agentWorking } = input
   if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
+
+  // An open ask holds the agent where it stands, whatever runs.
+  if (need && haltsAgent(need)) return needStatus(need)
 
   const latest = rounds.at(-1)
   // Before any round, an agent at work is just working: there is no round to name.
@@ -182,21 +239,10 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
 
   if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
 
-  const declared = declarations.at(-1)
-  if (declared && !agentWorking && (!latest || declared.createdAt > latest.startedAt)) {
-    return {
-      kind: 'ready',
-      label: 'Ready for you',
-      why: `Test drive ▸ ${declared.scenario}`,
-      scenario: declared.scenario,
-    }
-  }
-
-  if (feature.waitingReason) {
-    const waiting: FeatureStatus = { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
-    if (feature.waitingReason === PLANNING_STOPPED) return { ...waiting, primary: 'chat' }
+  if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) {
+    const status = needStatus(need)
     // A provider halt (usage limit, billing, sign-in) is cleared outside runcastle; Resume picks the round back up.
-    return isProviderHaltReason(feature.waitingReason) ? { ...waiting, primary: 'resume' } : waiting
+    return need.kind === 'stopped' && isProviderHaltReason(feature.waitingReason) ? { ...status, primary: 'resume' } : status
   }
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
@@ -213,77 +259,96 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
     input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
-  if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
-    return { kind: 'waiting', label: 'Waiting for you', why: wakeFailedWhy(failed.exitCode), primary: 'chat' }
-  }
-  // After the lead's reply the next move is the human's (chat-as-web-components
-  // decision 15): the sidebar reads the same flag into Needs you.
-  if (input.leadAwaitsHuman) return { kind: 'waiting', label: 'Waiting for you' }
   // Nothing runs and nothing is asked: the sidebar files this under In progress.
   return { kind: 'talking', label: TALKING }
 }
 
+const MERGE: NextAction = { label: 'Merge & ship', kind: 'merge' }
+const TEST_DRIVE: NextAction = { label: 'Start test drive', kind: 'testDriveStart' }
+
 /** What each primary reads as, and the dispatcher kind it fires. */
 const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
-  testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
+  testDriveStart: TEST_DRIVE,
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
   stopSelfPlan: { label: 'Stop', kind: 'stopSelfPlan', danger: true },
   resume: { label: 'Resume', kind: 'resumeProvider' },
   chat: CHAT_ACTION,
+  reply: { label: 'Reply', kind: 'reply' },
+  openPlan: { label: 'Open plan', kind: 'openPlan' },
+  openDesign: { label: 'Open design', kind: 'openDesign' },
+  showRequest: { label: 'Show request', kind: 'showRequest' },
+  resolveConflict: { label: 'Resolve conflict', kind: 'resolveConflict' },
+  merge: MERGE,
 }
 
-const MERGE: NextAction = { label: 'Merge & ship', kind: 'merge' }
-
 /**
- * Kinds the row never offers beside the status line: Stop is the one move that
- * halts the agent, and the agent is the top bar's Agent tab, not a button in
- * the header (decision 24) — save as the primary that resumes an agent whose
- * run failed.
+ * Kinds the row never offers beside the status line: the agent is the chat,
+ * not a button in the header (decision 24) — save as the primary of a stopped
+ * feature, which resumes the agent.
  */
 const NEVER_OFFERED: readonly ActionKind[] = ['chat']
 
 /**
- * The action row beside the status line (decision 24): exactly the status's one
- * primary, Merge & ship always as the secondary, and every other action the
- * resolver chose after it — {@link headerActions} spreads it over the page's
- * one header row. The resolver's own action of the primary's kind is
- * kept when it has one, so a refusal it carries (another feature holds the drive
- * slot) still disables the button and says why.
+ * The action row beside the status line: exactly the status's one primary,
+ * Merge & ship always as the secondary (you-always-know-what-s-waiting decision
+ * 6) unless it is the primary itself, and every other action the resolver chose
+ * after it — {@link headerActions} spreads it over the page's one header row.
+ * Ready to merge puts Start test drive after Merge, for "⋯". The resolver's own
+ * action of the primary's kind is kept when it has one, so a refusal it carries
+ * (another feature holds the drive slot) still disables the button and says why.
  */
 export function leadActions(ns: NextStep, status: FeatureStatus): NextStep {
   const offered = [...(ns.primary ? [ns.primary] : []), ...ns.secondary]
   const own = (kind: ActionKind) => offered.find((a) => a.kind === kind)
   const choice = status.primary ? PRIMARY_ACTION[status.primary] : undefined
   const primary = choice ? { ...own(choice.kind), ...choice } : undefined
-  const merge = status.kind === 'merged' ? [] : [own('merge') ?? MERGE]
+  const merge = status.kind === 'merged' || primary?.kind === 'merge' ? [] : [own('merge') ?? MERGE]
+  const drive = primary?.kind === 'merge' && !own(TEST_DRIVE.kind) ? [TEST_DRIVE] : []
+  const pushed = status.stop ? PRIMARY_ACTION[status.stop] : undefined
+  const stop = pushed && !own(pushed.kind) ? [pushed] : []
   const rest = offered.filter(
     (a) => a.kind !== 'merge' && a.kind !== primary?.kind && !NEVER_OFFERED.includes(a.kind),
   )
   const { primary: _was, ...base } = ns
-  return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...rest] }
+  return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...stop, ...drive, ...rest] }
 }
 
 /** Where {@link leadActions}' row goes on the feature page's one header (design-mode decision 12). */
 export interface HeaderActions {
-  /** The header's one button besides the switcher, if any. */
+  /** The header's main button: the status's primary, if any. */
   action?: NextAction
+  /** Merge & ship, quiet beside it — absent once merged, or when it is {@link action} itself. */
+  merge?: NextAction
   /** Everything else the row offered, for the header's "⋯" menu. */
   overflow: NextAction[]
 }
 
 /**
- * Split {@link leadActions}' row over the one header row (decision 12): the
- * status's primary takes the header's one button, and with no primary Merge &
- * ship takes it, but only when the resolver `ns` itself offered a merge. Every
- * other action, a Merge the resolver did not offer among them, waits in "⋯".
+ * Split {@link leadActions}' row over the one header row (you-always-know-what-
+ * s-waiting decision 6): the status's primary takes the main button, Merge &
+ * ship always sits beside it on an unshipped feature, and every other action
+ * waits in "⋯".
  */
 export function headerActions(ns: NextStep, status: FeatureStatus): HeaderActions {
   const row = leadActions(ns, status)
-  const offersMerge = [ns.primary, ...ns.secondary].some((a) => a?.kind === 'merge')
-  const action = row.primary ?? (offersMerge ? row.secondary.find((a) => a.kind === 'merge') : undefined)
+  const merge = row.secondary.find((a) => a.kind === 'merge')
   return {
-    ...(action ? { action } : {}),
-    overflow: row.secondary.filter((a) => a !== action),
+    ...(row.primary ? { action: row.primary } : {}),
+    ...(merge ? { merge } : {}),
+    overflow: row.secondary.filter((a) => a !== merge),
   }
+}
+
+/**
+ * The header's button for the need, for the chat's waiting line (decision 4):
+ * the header's primary when it is the need's own (not Stop while something
+ * runs), and none for an answer in the main chat, whose message box is right
+ * below the line. A question asked in another thread keeps Reply, which brings
+ * that thread forward.
+ */
+export function needButton(need: FeatureNeed, header: HeaderActions, mainThreadId?: string | null): NextAction | undefined {
+  if (need.kind === 'answer' && (!need.threadId || need.threadId === mainThreadId)) return undefined
+  const own = PRIMARY_ACTION[NEED_PRIMARY[need.kind]].kind
+  return header.action?.kind === own ? header.action : undefined
 }

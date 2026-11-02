@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, type SessionRow } from '@runcastle/core'
+import { DEFAULT_RUNTIME, PLANNING_STOPPED, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { chatKickoffHeader, kickoffFor } from '../launcher/launcher'
 import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
@@ -65,9 +65,6 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
   }
 }
 
-/** Why the feature waits on the human once a self-planning run stopped short: its next step is the chat. */
-const PLANNING_STOPPED = 'planning stopped'
-
 /**
  * A self-planning run is over: say whether the plan is complete, and make the
  * thread the lead's ordinary chat again, so asks reach the human. A run that
@@ -79,7 +76,7 @@ function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
   // The plan is complete when the run ended its turn asking the human for the yes (`wait_for_you`).
   const complete = getFeatureRow(ctx, row.featureId).waitingReason !== null
-  if (!complete) setWaiting(ctx, row.featureId, PLANNING_STOPPED)
+  if (!complete) setWaiting(ctx, row.featureId, PLANNING_STOPPED, 'stuck')
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
     message: complete ? 'planning finished' : 'planning stopped before the plan was complete',

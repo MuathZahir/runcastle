@@ -97,6 +97,12 @@ describe('orchestratorLineFor — end events', () => {
       '[runcastle] export-csv round failed (2/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
+      'a round a server restart cut off',
+      event('run.reconciled', { workflow: 'ticket-burner', landedTickets: 1, pendingTickets: 2 }),
+      held,
+      '[runcastle] export-csv round interrupted by a server restart (1 landed, 2 pending). Read it with list_tickets({ slug: "export-csv" }).',
+    ],
+    [
       'a review pass that finished',
       event('ticket.done'),
       { ...held, ticket: { seq: 4, kind: 'review', passKind: 'review' } },
@@ -181,6 +187,10 @@ describe('orchestratorLineFor — end events', () => {
   it('ignores implementation tickets finishing', () => {
     const e = event('ticket.done')
     expect(orchestratorLineFor(e, { ...held, ticket: { seq: 1, kind: 'implementation', passKind: 'review' } })).toBeNull()
+  })
+
+  it('says nothing of a restart cutting off a run that is not a round', () => {
+    expect(orchestratorLineFor(event('run.reconciled', { workflow: 'design-pass' }), held)).toBeNull()
   })
 })
 

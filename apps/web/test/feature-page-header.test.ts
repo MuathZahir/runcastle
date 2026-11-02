@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { FeatureNeed } from '@runcastle/core'
 import type { NextStep } from '../src/lib/feature-ui'
 import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { ToastProvider } from '../src/lib/toast'
@@ -37,20 +38,30 @@ const ns: NextStep = {
   ],
 }
 
+/** The server's need once the agent declared ready on the Checkout drive. */
+const readyToTest: FeatureNeed = {
+  kind: 'test',
+  words: 'Ready to test · Checkout',
+  why: 'Checkout',
+  scenario: 'Checkout',
+  held: false,
+  since: 20,
+}
+
 function header(over: { driving?: boolean; running?: boolean } = {}): string {
   const status = featureStatus({
     feature: review,
+    need: readyToTest,
     rounds: [{ round: 1, status: over.running ? 'running' : 'succeeded', startedAt: 10 }],
-    declarations: [{ scenario: 'Checkout', createdAt: 20 }],
     agentWorking: false,
-    leadAwaitsHuman: false,
     driving: over.driving ?? false,
     selfPlanning: false,
     now: 0,
   })
   const row = headerActions(ns, status)
-  // The header row's left and its one action, as `Workspace` composes them
-  // (design-mode decision 12), over the body's title and meta line.
+  const onAction = () => undefined
+  // The header row's left and its buttons, as `Workspace` composes them
+  // (you-always-know-what-s-waiting decision 6), over the body's title and meta line.
   return renderToStaticMarkup(
     createElement(
       ToastProvider,
@@ -58,7 +69,12 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
       createElement(PageTopbar, {
         crumbs: [{ label: review.title }],
         status: createElement(FeatureStatusLine, { status }),
-        actions: row.action && createElement(HeaderAction, { action: row.action, busy: false, onAction: () => undefined }),
+        actions: createElement(
+          'span',
+          null,
+          row.action && createElement(HeaderAction, { action: row.action, busy: false, onAction }),
+          row.merge && createElement(HeaderAction, { action: row.merge, busy: false, onAction, quiet: true }),
+        ),
       }),
       createElement(FeatureHeader, { feature: review, isDraft: false, facts: [{ text: 'Started 15m ago' }] }),
       createElement('div', { 'data-overflow': row.overflow.map((a) => a.label).join('|') }),
@@ -75,8 +91,8 @@ describe('the feature page header', () => {
     const html = header()
     expect(html).toContain(review.title)
     expect(html).toContain('Started 15m ago')
-    expect(html).toContain('Ready for you')
-    expect(html).toContain('Test drive ▸ Checkout')
+    expect(html).toContain('Ready to test')
+    expect(html).toContain('· Checkout')
     expect(html).not.toContain('aria-label="Pipeline"')
     expect(html).not.toContain('Autonomy')
     expect(html).not.toMatch(/Run until ready|Ask before each round/)
@@ -85,13 +101,13 @@ describe('the feature page header', () => {
     expect(html).not.toContain('Agent live')
   })
 
-  it('has exactly one action — Start test drive when ready — Merge & ship and the rest in ⋯', () => {
+  it('has one primary — Start test drive when ready to test — Merge & ship quiet beside it, the rest in ⋯', () => {
     const html = header()
     expect(html.match(/<button[^>]*class="[^"]*\bbg-primary\b/g) ?? []).toHaveLength(1)
     const labels = buttons(html)
-    expect(labels).toContain('Start test drive')
-    expect(labels).not.toContain('Merge &amp; ship')
-    expect(html).toContain('data-overflow="Merge &amp; ship|Resolve conflict"')
+    // The row's two, then the meta line's branch.
+    expect(labels.slice(0, 2)).toEqual(['Start test drive', 'Merge &amp; ship'])
+    expect(html).toContain('data-overflow="Resolve conflict"')
     expect(labels.some((l) => /burn/i.test(l))).toBe(false)
   })
 
@@ -120,10 +136,9 @@ describe('the feature page header', () => {
       createElement(FeatureStatusLine, {
         status: featureStatus({
           feature: review,
+          need: readyToTest,
           rounds: [],
-          declarations: [{ scenario: 'Checkout', createdAt: 20 }],
           agentWorking: false,
-          leadAwaitsHuman: false,
           driving: false,
           selfPlanning: false,
           now: 0,

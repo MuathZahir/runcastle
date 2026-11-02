@@ -573,6 +573,20 @@ interface Turn {
 const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pending' }
 
 /**
+ * Runcastle's tools that only talk to the human: calling one is no work, so it
+ * does not end a turn's answer. Matched on the name after a runtime's prefix
+ * (`mcp__runcastle__wait_for_you`, `runcastle.wait_for_you`).
+ */
+export const TALK_ONLY_TOOLS = ['wait_for_you', 'declare_ready', 'notify_human', 'show_file'] as const
+
+const TALK_ONLY_TITLE = new RegExp(`(?:__|\\.)(?:${TALK_ONLY_TOOLS.join('|')})$`)
+
+/** A run of calls that are all talk-only. */
+const talksOnly = (seg: Segment): boolean => seg.kind === 'tools' && seg.calls.every((c) => TALK_ONLY_TITLE.test(c.title.trim()))
+
+const joinWords = (segs: Array<Extract<Segment, { kind: 'text' }>>): string => (segs.length === 1 ? segs[0].text : segs.map((s) => s.text.trim()).join('\n\n'))
+
+/**
  * The model (and effort, fast mode) the human last picked on the thread; null
  * when they never picked one. A model logged directly after its process came
  * up is the one that start ran on, never a pick, though an earlier host marked
@@ -595,11 +609,16 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
  *
  * The rules, each decided here and nowhere else:
  * - A turn's segments arrive in order (text, thinking, tool calls, subagents).
- *   Its trailing words — text after the last tool call — are its answer
- *   (`agent`); everything before goes into one `work` item, live while the
- *   turn runs and folded to "Worked for …" once it ends. Live or settled, the
- *   split is the same, so streaming words show as the answer until a tool call
- *   turns them into narration.
+ *   Its answer (`agent`) is every word after its last piece of real work:
+ *   calls that only talk to the human ({@link TALK_ONLY_TOOLS}) do not end it,
+ *   show nothing there, and the words around them read as one answer.
+ *   Everything before goes into one `work` item, live while the turn runs and
+ *   folded to "Worked for …" once it ends. Live or settled, the split is the
+ *   same, so streaming words show as the answer until real work turns them
+ *   into narration.
+ * - No question folds away: words in the work that end asking something leave
+ *   it, and show as one `agent` item after the work and ahead of the answer,
+ *   in the order written.
  * - One subagent, one card: a subagent an earlier turn showed makes no card
  *   here unless it says it is running again, and one never seen makes none
  *   from an untitled "finished". A relaunched adapter re-announces every past
@@ -638,6 +657,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const shownCalls = new Set<string>()
   let workIndex = -1
   let answerIndex = -1
+  /** Where the open turn's questions asked mid-work sit; -1 until one shows. */
+  let askedIndex = -1
   /** Where the open turn's `shown` item sits; -1 until it shows a file. */
   let shownIndex = -1
   let ask: Ask | undefined
@@ -655,15 +676,17 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const render = (live: boolean, endedAt?: number) => {
     if (!turn) return
     const segs = turn.segments
-    let last = segs.length - 1
-    while (last >= 0 && segs[last].kind === 'text' && !(segs[last] as { text: string }).text.trim()) last--
-    const answer = last >= 0 && segs[last].kind === 'text' ? (segs[last] as Extract<Segment, { kind: 'text' }>) : null
-    const work = answer ? segs.slice(0, last) : segs.slice(0, last + 1)
+    // The answer is the words after the last real work; talk-only calls among them show nothing.
+    const boundary = segs.findLastIndex((s) => s.kind !== 'text' && !talksOnly(s))
+    const isWords = (s: Segment): s is Extract<Segment, { kind: 'text' }> => s.kind === 'text' && !!s.text.trim()
+    const answerWords = segs.slice(boundary + 1).filter(isWords)
+    const work = segs.slice(0, boundary + 1)
+    const asked = work.filter((s): s is Extract<Segment, { kind: 'text' }> => isWords(s) && ENDS_ASKING.test(s.text.trimEnd()))
     const steps: WorkStep[] = work
       .map((s): WorkStep | null => {
         switch (s.kind) {
           case 'text':
-            return s.text.trim() ? { kind: 'narration', id: s.id, text: s.text } : null
+            return s.text.trim() && !asked.includes(s) ? { kind: 'narration', id: s.id, text: s.text } : null
           case 'thought':
             return { kind: 'thought', id: s.id, text: s.text, seconds: Math.max(1, Math.round((s.to - s.from) / 1000)) }
           // The segment itself, so a late update reaches a part a split settled.
@@ -677,32 +700,40 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       .filter((s): s is WorkStep => s !== null)
     const seconds = Math.max(0, Math.round(((endedAt ?? turn.startedAt) - turn.startedAt) / 1000))
     const workItem: ThreadItem | null = steps.length ? { kind: 'work', id: `work:${turn.id}`, steps, seconds, ...(live ? { live } : {}) } : null
-    const answerItem: ThreadItem | null = answer
-      ? { kind: 'agent', id: answer.id, text: answer.text, ...(turn.model ? { model: turn.model } : {}) }
-      : null
-    // Work always precedes the answer; both keep their first-seen slots.
-    if (workItem) {
-      if (workIndex < 0) {
-        workIndex = shownIndex >= 0 ? shownIndex : answerIndex >= 0 ? answerIndex : items.length
-        items.splice(workIndex, 0, workItem)
-        if (answerIndex >= 0) answerIndex++
-        if (shownIndex >= 0) shownIndex++
-      } else items[workIndex] = workItem
-    } else if (workIndex >= 0) {
-      items.splice(workIndex, 1)
-      if (answerIndex > workIndex) answerIndex--
-      if (shownIndex > workIndex) shownIndex--
-      workIndex = -1
+    const model = turn.model ? { model: turn.model } : {}
+    const askedItem: ThreadItem | null = asked.length ? { kind: 'agent', id: `asked:${turn.id}`, text: joinWords(asked), ...model } : null
+    const answerItem: ThreadItem | null = answerWords.length ? { kind: 'agent', id: answerWords[0].id, text: joinWords(answerWords), ...model } : null
+    // Work, then the questions asked along the way, then the answer; each keeps its first-seen slot.
+    const firstAfterWork = [askedIndex, shownIndex, answerIndex].filter((n) => n >= 0)
+    workIndex = place(workIndex, workItem, firstAfterWork.length ? Math.min(...firstAfterWork) : items.length)
+    askedIndex = place(askedIndex, askedItem, answerIndex >= 0 ? answerIndex : items.length)
+    answerIndex = place(answerIndex, answerItem, items.length)
+  }
+
+  /** Put the open turn's item in its slot (inserting at `at` when it has none) or take it out; returns its new slot. */
+  const place = (slot: number, item: ThreadItem | null, at: number): number => {
+    if (item && slot >= 0) {
+      items[slot] = item
+      return slot
     }
-    if (answerItem) {
-      if (answerIndex < 0) {
-        answerIndex = items.length
-        items.push(answerItem)
-      } else items[answerIndex] = answerItem
-    } else if (answerIndex >= 0) {
-      items.splice(answerIndex, 1)
-      answerIndex = -1
+    if (item) {
+      items.splice(at, 0, item)
+      shiftSlots(at, 1)
+      return at
     }
+    if (slot >= 0) {
+      items.splice(slot, 1)
+      shiftSlots(slot + 1, -1)
+    }
+    return -1
+  }
+
+  /** Move every open slot at or past `from` by `by`, after an item went in or out ahead of it. */
+  const shiftSlots = (from: number, by: number) => {
+    if (workIndex >= from) workIndex += by
+    if (askedIndex >= from) askedIndex += by
+    if (answerIndex >= from) answerIndex += by
+    if (shownIndex >= from) shownIndex += by
   }
 
   const openTurn = (e: ThreadEvent): Turn => {
@@ -710,6 +741,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       turn = { id: String(e.i), startedAt: e.at, segments: [], subagents: new Map(), calls: new Map(), model: view.model?.label, started: e.type === 'turn_started' }
       workIndex = -1
       answerIndex = -1
+      askedIndex = -1
       shownIndex = -1
       view.turnStartedAt = e.at
     }
@@ -754,6 +786,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.segments = []
     workIndex = -1
     answerIndex = -1
+    askedIndex = -1
     shownIndex = -1
   }
 
@@ -798,6 +831,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         else {
           workIndex = -1
           answerIndex = -1
+          askedIndex = -1
         }
         items.push(item)
         view.suggestion = undefined

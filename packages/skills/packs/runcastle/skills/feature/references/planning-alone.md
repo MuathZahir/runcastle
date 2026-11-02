@@ -115,8 +115,9 @@ nothing.
    they compile, and say that the yes commits the designs as they stand. Close the message by asking
    the human for their yes to start round 1 (or to start the work, if there are
    no tickets).
-6. Call `mcp__runcastle__wait_for_you({ why: "start round 1?" })`, or
-   `mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`
+6. Call `mcp__runcastle__wait_for_you({ why: "start round 1?", kind: "plan" })`, or
+   `mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?", kind: "design" })`
    if you designed. With no tickets, say "start the work?" in place of "start
-   round 1?". Then end the turn. The human answers in this chat when they
+   round 1?". Write nothing after step 5's question, so the turn ends on
+   it, and then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.

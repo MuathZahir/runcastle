@@ -28,6 +28,8 @@ import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { recoverCutOffDrives } from './services/git'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
+import { startNeedPush } from './services/need-push'
+import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -35,7 +37,7 @@ import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
-import { reconcileStaleRuns } from './workflows/reconcile-runs'
+import { reconcileStaleRuns, wakeInterruptedRounds } from './workflows/reconcile-runs'
 
 /**
  * Server boot (SPEC §3, owner A1). `buildApp` is a pure function of the DI
@@ -204,6 +206,16 @@ export async function startServer(): Promise<void> {
   // Tell a feature's holder when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).
   startOrchestratorNotifier(ctx)
+
+  // Say when a feature starts needing the human: pings hang off this one event
+  // (you-always-know-what-s-waiting decision 14). Seeded now, without emitting.
+  startNeedWatch(ctx)
+  // …and push each of those the human is pinged for to their phone (decision 12).
+  startNeedPush(ctx)
+
+  // Rounds the restart cut off wake their lead and tell their holder (decision
+  // 10) — now, with the server listening for the woken agent and the notifier up.
+  void wakeInterruptedRounds(ctx, staleRuns)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

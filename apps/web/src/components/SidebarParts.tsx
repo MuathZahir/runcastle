@@ -8,7 +8,6 @@ import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
   needsMe,
   progressState,
-  READY_TO_TEST,
   rowChip,
   ticketProgress,
   ticketShare,
@@ -63,14 +62,19 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
   return <ProgressIcon state={progressState(f)} progress={ticketShare(f)} size={size} label={label} />
 }
 
-/** A waiting reason as row words: its first letter capitalised ("Stopped"). */
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+/**
+ * A held need on a row with no round running: its words ("With the
+ * orchestrator · Plan to approve") stand in for "Agent working" (decision 18).
+ */
+function heldNeedWords(f: FeatureListItem): string | null {
+  return !f.activeRun && f.need?.held ? f.need.words : null
 }
 
 /**
- * A row's second line: where the feature is, in words. A started feature with
- * no agent at work and nothing asked of you is simply in progress.
+ * A row's second line: where the feature is, in words — what it needs in the
+ * status line's own words (you-always-know-what-s-waiting decision 1). A
+ * started feature with no agent at work and nothing asked of you is simply in
+ * progress.
  */
 export function featureStateWords(f: FeatureListItem): string {
   const lane = triageOf(f)
@@ -78,11 +82,12 @@ export function featureStateWords(f: FeatureListItem): string {
   if (lane === 'needsYou') {
     // An Up next feature that cannot start by itself (its hover says why).
     if (f.status === 'draft') return "Won't start by itself"
-    const nm = needsMe(f)
-    if (nm?.kind === 'waiting') return nm.label === READY_TO_TEST ? 'Ready to test' : capitalise(nm.label)
-    return 'Waiting on you'
+    return needsMe(f)?.label ?? 'Needs you'
   }
-  if (lane === 'agentWorking') return f.activeRun ? `Working${progress ? ` · ${progress}` : ''}` : 'Agent working'
+  if (lane === 'agentWorking') {
+    if (f.activeRun) return `Working${progress ? ` · ${progress}` : ''}`
+    return heldNeedWords(f) ?? 'Agent working'
+  }
   // Up next says what it starts after; a backlog draft whether it could start.
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Shipped'
@@ -274,7 +279,7 @@ export function SidebarFeatureRow({
       glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
       wordsClassName={cx(
-        lane === 'agentWorking' && 'text-shimmer',
+        lane === 'agentWorking' && !heldNeedWords(f) && 'text-shimmer',
         nm && (nm.kind === 'stuck' ? 'text-danger-text' : 'text-text-secondary'),
       )}
       aside={relTime(f.lastActivityAt)}
