@@ -27,6 +27,7 @@ import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
+import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -195,6 +196,10 @@ export async function startServer(): Promise<void> {
   // Tell a feature's holder when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).
   startOrchestratorNotifier(ctx)
+
+  // Say when a feature starts needing the human: pings hang off this one event
+  // (you-always-know-what-s-waiting decision 14). Seeded now, without emitting.
+  startNeedWatch(ctx)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at
