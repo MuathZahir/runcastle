@@ -128,6 +128,15 @@ writeFileSync(join(nestedRepo, 'lib.txt'), 'only copy of this file\n')
 mkdirSync(join(nestedRepo, 'node_modules'))
 writeFileSync(join(nestedRepo, 'node_modules', 'dep.js'), 'ignored by the nested repo')
 
+// A burn's leftover worktree, in a repo that does not ignore the folder.
+const burner = join(repo, '.sandcastle', 'worktrees', 'run-1')
+mkdirSync(burner, { recursive: true })
+sh(burner, 'init', '-q', '-b', 'main')
+writeFileSync(join(burner, 'burner.txt'), 'a burn left this\n')
+// An ignored folder next to tracked files, which stay.
+mkdirSync(join(repo, 'pkg', 'uploads'), { recursive: true })
+writeFileSync(join(repo, 'pkg', 'uploads', 'big.bin'), 'x')
+
 // A repo with no commits yet: staged work, a remote and a chosen branch name.
 const unborn = join(source.home, 'work', 'unborn')
 mkdirSync(unborn, { recursive: true })
@@ -354,6 +363,8 @@ const facts = {
   nestedIgnored: existsSync(join(newRepo, 'vendor', 'mylib', 'node_modules')),
   unignoredEnv: existsSync(join(newRepo, '.env.local')),
   envExample: existsSync(join(newRepo, '.env.example')),
+  burnerFile: existsSync(join(newRepo, '.sandcastle')),
+  packHasBurner: manifest.files.some((f) => f.path.includes('burner.txt')),
   symlinksArrived: [
     join(dest.dataDir, 'reviews', 't1', 'link-in-data'),
     join(dest.claudeDir, 'projects', encodeClaudeFolder(newRepo), 'link-in-claude'),

@@ -81,7 +81,7 @@ decision keeps its `Assumed` mark until the human confirms it.
 
 ## 14. Git-ignored files and old stashes are reported, not carried
 **Decision:** The report lists each project's ignored files by top-level name and size, skipping `node_modules`, so a local dev database or uploads folder is seen before it is left behind. It also counts stashes, because git bundles carry only the newest one, and burner worktrees with leftover changes. Symlinks in the folders that travel, and untracked ones in checkouts, are named too, because the pack holds regular files only; symlinks committed to a repo travel in its bundle. The newest stash travels as a real stash. None of this blocks the move, and the human can copy what matters by hand from the old machine.
-**Why:** Ignored files are mostly rebuildable or secret, and no rule can tell which are precious. Silent loss is what must be avoided, and a list does that.
+**Why:** Ignored files are mostly rebuildable or secret, and no rule can tell which are precious. Silent loss is what must be avoided, and a list does that. Real data showed top-level names mislead, since `apps` read as if the app stayed behind, so the report gives each ignored path. A worktree a burn left in `.sandcastle` never travels, even in a repo that does not ignore that folder; its work is on its branch.
 **Assumed.** Alternative: a flag naming extra ignored paths to carry.
 **Changed by the orchestrator:** Symlinks skipped without a word were a silent loss, which this decision exists to prevent, so the report names them. They do not block the move.
 

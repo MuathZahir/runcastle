@@ -148,6 +148,8 @@ function checkoutWip(key: string, path: string): CheckoutWip {
   const nested: string[] = []
   const loose: string[] = []
   for (const rel of nulList(gitOrThrow(path, ['ls-files', '-o', '--exclude-standard', '-z']))) {
+    // Not every repo ignores this folder. A worktree left in it is reported as one.
+    if (isBurnerPath(rel)) continue
     const bare = rel.replace(/\/$/, '')
     if (!rel.endsWith('/') || linkInPath(path, bare)) {
       loose.push(bare)
@@ -194,17 +196,26 @@ function hasWork(wip: CheckoutWip): boolean {
   return wip.tracked.length > 0 || wip.untracked.length > 0
 }
 
-/** Ignored names at the top of a checkout with their sizes, skipping `node_modules`. */
+/**
+ * Ignored paths in a checkout with their sizes, skipping every `node_modules`.
+ * The paths are as git gives them, not their top folders: `apps/web/dist` stays
+ * behind, and saying `apps` would read as if the app itself did.
+ */
 function ignoredEntries(repoPath: string): string[] {
   const listing = git(repoPath, ['ls-files', '-o', '-i', '--exclude-standard', '--directory', '-z'])
-  const tops = new Set(nulList(listing.stdout).map((rel) => rel.split('/')[0]))
-  tops.delete('node_modules')
-  return [...tops]
+  return nulList(listing.stdout)
+    .map((rel) => rel.replace(/\/$/, ''))
+    .filter((rel) => !rel.split('/').includes('node_modules') && !isBurnerPath(rel))
     .sort()
-    .map((name) => {
-      const bytes = pathBytes(join(repoPath, name))
-      return bytes >= 1024 * 1024 ? `${name} (${formatBytes(bytes)})` : name
+    .map((rel) => {
+      const bytes = pathBytes(join(repoPath, rel))
+      return bytes >= 1024 * 1024 ? `${rel} (${formatBytes(bytes)})` : rel
     })
+}
+
+/** Where burns leave their worktrees inside a repo: their own branches hold their work. */
+function isBurnerPath(rel: string): boolean {
+  return rel === '.sandcastle' || rel.startsWith('.sandcastle/')
 }
 
 /** Commits on local branches that no remote-tracking ref holds. */
@@ -217,8 +228,8 @@ function stashCount(repoPath: string): number {
   return git(repoPath, ['stash', 'list']).stdout.split('\n').filter(Boolean).length
 }
 
-/** Burner or stray worktrees outside runcastle's own folder that hold uncommitted changes. */
-function leftoverWorktrees(repoPath: string, talkRoot: string): number {
+/** Worktrees outside runcastle's own folder that hold uncommitted changes. */
+function leftoverWorktrees(repoPath: string, talkRoot: string): string[] {
   const listing = git(repoPath, ['worktree', 'list', '--porcelain']).stdout
   const paths = listing
     .split('\n')
@@ -229,7 +240,7 @@ function leftoverWorktrees(repoPath: string, talkRoot: string): number {
   return paths.filter((path) => {
     if (path.replace(/\\/g, '/').toLowerCase().startsWith(talk)) return false
     return existsSync(path) && git(path, ['status', '--porcelain']).stdout.trim().length > 0
-  }).length
+  })
 }
 
 /** Local git files a bundle does not carry. Sample hooks do not count. */
@@ -515,7 +526,7 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
         attention.push(...hooksAndExcludes(row.name, row.repo_path))
       }
       const leftovers = leftoverWorktrees(row.repo_path, join(env.dataDir, 'worktrees'))
-      if (leftovers > 0) attention.push(`${row.name}: ${count(leftovers, 'burner worktree')} with changes stay behind`)
+      if (leftovers.length > 0) attention.push(`${row.name}: uncommitted changes in other worktrees stay behind: ${leftovers.join(', ')}`)
       if (usesLfsOrSubmodules(row.repo_path)) {
         attention.push(`${row.name}: uses LFS or submodules, which the pack does not carry; fetch them on the new machine`)
       }
@@ -541,7 +552,9 @@ export function scanMove(env: MoveEnv, sql: MoveSql, options: MoveOptions): Move
 
   const claude = findClaudeFolders(env, projectRows.map((p) => p.repo_path), sessionRows)
   if (claude.missing > 0) {
-    attention.push(`${count(claude.missing, 'chat')} with no transcript on this machine: their history shows, they cannot be resumed`)
+    attention.push(
+      `${count(claude.missing, 'chat')} already gone from this machine: Claude Code removes transcripts after cleanupPeriodDays, 30 by default`,
+    )
   }
 
   const links = dataSymlinks(env, claude.folders)

@@ -80,4 +80,5 @@ There are no schema changes, tRPC routes or web changes: the app needs no screen
 ## Open questions
 
 - **When the real move runs.** It stops the server, and rounds must finish first, so it fits between features. It must come after a release that includes this tool. Timing against the rest of the cut (No Node, Burns build their own image, One-line install) is the human's call at the checkpoint.
+- **Claude Code's transcript cleanup.** The real dry run on 2026-11-02 found 214 conversations whose transcripts were already gone from the PC, all from before 30 September: Claude Code removes them after `cleanupPeriodDays`, 30 by default, and no setting changes that here. The same rule runs on the destination, and tar keeps file dates, so moved chats age from their real dates. That is the human's setting to change, and outside this feature.
 - **Old-machine marker.** Decision 9 leaves the old server able to start. If the human prefers a marker that refuses to start it, that is a small addition, and it changes the source after a successful move only.

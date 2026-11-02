@@ -90,7 +90,7 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
   })
 
   it('names a chat with no transcript, rather than letting it pass unseen', () => {
-    expect(f.attention.join('\n')).toContain('1 chat with no transcript')
+    expect(f.attention.join('\n')).toContain('1 chat already gone')
   })
 
   it('carries an untracked nested repo by its own ignore rules, and says its history stays', () => {
@@ -185,6 +185,16 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
     expect(text).toContain('.env')
     expect(text).toContain('uploads')
     expect(text).toContain('1 open chat will end')
+    expect(text).toContain('pkg/uploads')
+  })
+
+  it('says a chat with no transcript is already gone, not that it will show', () => {
+    expect(f.attention.join('\n')).toContain('1 chat already gone from this machine')
+  })
+
+  it("leaves a burn's worktree out, even where the repo does not ignore its folder", () => {
+    expect(f.burnerFile).toBe(false)
+    expect(f.packHasBurner).toBe(false)
   })
 
   it('refuses a relative --repos-dir, which on the new machine would land under the working folder', () => {
