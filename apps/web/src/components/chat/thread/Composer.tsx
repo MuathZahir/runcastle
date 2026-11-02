@@ -5,11 +5,20 @@ import type { Attachment, SlashCommand, ThreadState } from '../../../lib/chat-th
 import { IconDoc, IconPaperclip, IconSend, IconStop, IconX } from '../../../icons'
 import { BARE_BUTTON, IconButton, Kbd, cx } from '../../../ui'
 import { useIsPhone } from '../../../lib/use-phone'
+// The global push, not `useToast()`: the composer also renders outside the
+// toast provider (bare in its own tests), where a skipped-file toast simply drops.
+import { pushToast } from '../../../lib/toast'
 import { DOCK } from './AskDock'
 import { INSET } from './surfaces'
 
 /** The textarea grows to this many pixels, then scrolls. */
 const MAX_HEIGHT = 280
+
+/** "Only pictures can be attached: notes.pdf was left out" — every skipped file named. */
+function skippedFilesMessage(names: readonly string[]): string {
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  return `Only pictures can be attached: ${list} ${names.length === 1 ? 'was' : 'were'} left out`
+}
 
 type Suggest = { kind: 'command'; items: SlashCommand[]; query: string } | { kind: 'file'; items: string[]; query: string }
 
@@ -173,8 +182,16 @@ export function Composer({
     }
   }
 
+  /**
+   * Attach the pictures among `list`, and name any other file left out rather
+   * than dropping it silently (small-fixes-before-publish decision 11). Says
+   * whether anything was attached: a paste with no picture stays a text paste.
+   */
   const takeImages = (list: FileList | null | undefined): boolean => {
-    const images = [...(list ?? [])].filter((f) => f.type.startsWith('image/'))
+    const files = [...(list ?? [])]
+    const images = files.filter((f) => f.type.startsWith('image/'))
+    const skipped = files.filter((f) => !f.type.startsWith('image/')).map((f) => f.name)
+    if (skipped.length > 0) pushToast(skippedFilesMessage(skipped))
     if (images.length === 0) return false
     onAttach?.(images)
     return true
