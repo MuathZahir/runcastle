@@ -147,12 +147,12 @@ When the human comes back:
 - **They ask for changes**: iterate as in section 4. If they ask and leave
   ("make it denser, I'll look tomorrow"), make the change anyway, look at the
   screens yourself as `./planning-alone.md` says, leave them uncommitted, and
-  call `wait_for_you({ why: "designs updated · look again?" })`.
+  call `wait_for_you({ why: "designs updated · look again?", kind: "design" })`.
 - **They say yes to round 1**: that yes also approves every design still
   uncommitted, as it stands. Commit them before you dispatch, and say which
   you committed. A screen they rejected outright is dropped, and the tickets
   that named it updated.
 - **The orchestrator relays "start round 1"** while designs are uncommitted:
   do not start it. Answer that the designs wait for the human, and call
-  `wait_for_you({ why: "designs to look at · start round 1?" })` ("start the
-  work?" when there are no tickets).
+  `wait_for_you({ why: "designs to look at · start round 1?", kind: "design" })`
+  ("start the work?" when there are no tickets).
