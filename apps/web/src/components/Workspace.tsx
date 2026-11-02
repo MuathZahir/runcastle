@@ -121,9 +121,10 @@ function useNowPast(deadline: number | undefined): number {
  * shell's content panel:
  *
  *   the one header row (decision 12) — progress glyph + title · the quiet
- *              status line, then the session switcher, at most one action
- *              (the status's primary), "…" with everything else — Merge &
- *              ship among it — and the panel toggle
+ *              status line, then the need's button (or Stop while
+ *              something runs), Merge & ship quiet beside it, the New
+ *              thread "+", "…" with everything else, and the panel toggle
+ *              (you-always-know-what-s-waiting decisions 1, 6, 7)
  *   the chat — the feature's live session (`FeatureChat`), filling the page,
  *              with the page's notices atop it and its standing warnings on
  *              the composer's notice strip
@@ -867,8 +868,8 @@ export function Workspace({
     menuLabel: 'Choose a scenario',
     picker: <ScenarioPickerContent menu={startMenu} onPick={startDrive} align="end" />,
   }
-  // The one header row's share of the status line's actions (decision 12):
-  // one button, the rest for "⋯".
+  // The one header row's share of the status line's actions (decision 6): the
+  // primary, Merge & ship beside it, the rest for "⋯".
   const headerRow: HeaderActions = status ? headerActions(ns, status) : { overflow: [] }
 
   // A parked draft keeps its next-step bar in its header, where its body is the page.
@@ -1107,7 +1108,7 @@ export function Workspace({
       <div className={onDrive || phoneView ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
-          at most one action, "⋯" and the panel toggle. */}
+          the need's button and Merge & ship, New thread, "⋯" and the panel toggle. */}
       {phone ? (
         <PhoneChatBar
           title={feature.title}
