@@ -77,6 +77,57 @@ describe('foldThread: shown files', () => {
   })
 })
 
+describe('foldThread: words put to the human never fold away', () => {
+  const say = (messageId: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId, text })
+  const call = (id: string, title: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title, status: 'completed' } })
+  const running: ThreadEventBody[] = [prompt('p1'), { type: 'process', state: 'running' }, { type: 'turn_started' }]
+  const end: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }
+  const said = (v: ReturnType<typeof foldThread>) => v.items.filter((x) => x.kind === 'agent').map((x) => (x.kind === 'agent' ? x.text : ''))
+
+  it('keeps a question written before wait_for_you in the answer, with the words after it', () => {
+    const v = foldThread(
+      log(...running, call('c1', 'Read'), say('m1', 'Which model should approvals use?'), call('c2', 'mcp__runcastle__wait_for_you'), say('m2', 'Waiting on you.'), end),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
+    expect(said(v)).toEqual(['Which model should approvals use?\n\nWaiting on you.'])
+    expect(work(v).steps).toMatchObject([{ kind: 'tools', calls: [{ id: 'c1' }] }])
+  })
+
+  it('matches a Codex spelling of a talk-only tool too', () => {
+    const v = foldThread(log(...running, say('m1', 'Ready for a look.'), call('c1', 'runcastle.declare_ready'), say('m2', 'Drive it when you can.'), end))
+    expect(kinds(v.items)).toEqual(['user', 'agent'])
+  })
+
+  it('shows a question asked mid-turn after the fold, ahead of the final words', () => {
+    const v = foldThread(log(...running, say('m1', 'Which model should approvals use?'), call('c1', 'Bash'), say('m2', 'Done.'), end))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent', 'agent'])
+    expect(said(v)).toEqual(['Which model should approvals use?', 'Done.'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['tools'])
+  })
+
+  it('still folds narration that asks nothing', () => {
+    const v = foldThread(log(...running, say('m1', 'Running the tests.'), call('c1', 'Bash'), say('m2', 'Done.'), end))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
+  })
+
+  it('keeps the work above a question while the turn runs on', () => {
+    const v = foldThread(log(...running, say('m1', 'Should I keep the old route?'), call('c1', 'Bash'), say('m2', 'Meanwhile, tidying.'), call('c2', 'Edit')))
+    expect(v.state).toBe('working')
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
+    expect(said(v)).toEqual(['Should I keep the old route?'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['tools', 'narration', 'tools'])
+  })
+
+  it('leaves a shown file between the work and the final words', () => {
+    const file: ShownFile = { id: 'a', src: '/f/a.png', name: 'a.png', path: 'a.png', size: 1, as: 'image' }
+    const v = foldThread(log(...running, say('m1', 'Taking a look.'), call('c1', 'mcp__runcastle__show_file'), { type: 'file_shown', file }, say('m2', 'Merge it?'), end))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
+    expect(said(v)).toEqual(['Merge it?'])
+  })
+})
+
 describe('foldThread: subagents across turns and late updates', () => {
   const opened = (id: string, title: string): ThreadEventBody => ({ type: 'subagent', id, title, status: 'in_progress' })
   const finished = (id: string): ThreadEventBody => ({ type: 'subagent', id, status: 'completed' })
