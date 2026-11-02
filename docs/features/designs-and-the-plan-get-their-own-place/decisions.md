@@ -4,6 +4,8 @@ Planned by the lead alone, with no human present (2026-11-02). Every decision
 below is the lead's own recommendation, accepted so the plan could be drawn;
 each carries the alternative it was chosen over. A separate agent, given only the brief and these decisions, challenged them: decisions 17–22 answer the branches it raised, and a **Challenged** line records where it would have decided otherwise.
 
+Check first: 8, 9, 17, 6, 3
+
 ## 1. Each design is recorded by the agent's own act, which also posts its card
 **Decision:** A new agent tool, `show_design`, takes a design's page on the design server, a title, an optional screen width and an optional picture. It records the design for the feature (one entry per page, so showing it again updates it) and posts a design card in the chat. That record is the Design tab's list; nothing reads the plan's HTML to find designs.
 **Why:** The brief asks for runcastle's own record, and Review Package already works this way: one call, one card, one record. Recording and showing in one act means a design cannot be listed without being shown, or shown without being listed.

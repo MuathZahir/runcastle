@@ -99,6 +99,8 @@ the plan frame's open-design message (`PREVIEW_OPEN_DESIGN_MESSAGE`,
 `openDesignPath`) and the code answering it, and the rule that keeps Design offered
 only while the server runs or the view is requested.
 
+**The plan card's counts** come from the server: decisions are the `## n.` headings of decisions.md, "to check first" is the numbers on its `Check first:` line (a self-planning convention the skills add; absent, the card leaves it out), tickets are the implementation tickets (none: "built by the agent"), designs the record's count.
+
 **Phone.** The phone's chat renders the same cards. A design card opens the phone's
 Design screen at that design with Approve; the phone's "Design to approve" opens
 the oldest waiting design (decision 22).
