@@ -56,8 +56,9 @@ describe('the provider halt reasons', () => {
       'provider billing problem — check your account',
       'provider sign-in failed — check your login or API key',
     ])
-    for (const r of reasons) expect(isProviderHaltReason(r)).toBe(true)
-    for (const r of ['stopped', 'provider limit', 'run halted: no agent binary', null]) {
+    // A feature halted before the three were told apart still waits on the old line.
+    for (const r of [...reasons, 'provider limit']) expect(isProviderHaltReason(r)).toBe(true)
+    for (const r of ['stopped', 'run halted: no agent binary', null]) {
       expect(isProviderHaltReason(r)).toBe(false)
     }
   })
