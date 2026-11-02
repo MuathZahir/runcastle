@@ -36,7 +36,7 @@ import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
-import { reconcileStaleRuns } from './workflows/reconcile-runs'
+import { reconcileStaleRuns, wakeInterruptedRounds } from './workflows/reconcile-runs'
 
 /**
  * Server boot (SPEC §3, owner A1). `buildApp` is a pure function of the DI
@@ -203,6 +203,10 @@ export async function startServer(): Promise<void> {
   startNeedWatch(ctx)
   // …and push each of those the human is pinged for to their phone (decision 12).
   startNeedPush(ctx)
+
+  // Rounds the restart cut off wake their lead and tell their holder (decision
+  // 10) — now, with the server listening for the woken agent and the notifier up.
+  void wakeInterruptedRounds(ctx, staleRuns)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

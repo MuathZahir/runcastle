@@ -16,7 +16,13 @@ import {
 } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { storeTickets, updateTicket } from '../src/services/tickets'
-import { reconcileStaleRuns } from '../src/workflows/reconcile-runs'
+import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
+import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import type { AgentHost } from '../src/threads/types'
+import { reconcileStaleRuns, wakeInterruptedRounds } from '../src/workflows/reconcile-runs'
+import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
 import { useDataDir } from './helpers/data-dir'
@@ -215,5 +221,71 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'norepo' })
     seedRunningRun(ctx, feature.id, 'ticket-burner')
     await expect(reconcileStaleRuns(ctx)).resolves.toHaveLength(1)
+  })
+})
+
+/**
+ * you-always-know-what-s-waiting decision 10: a round a restart cut off wakes
+ * its lead, as a finished round does, rather than silently stopping. A fake
+ * ACP agent stands behind the host.
+ */
+describe('wakeInterruptedRounds', () => {
+  let ctx: AppCtx
+  let featureId: string
+  let host: AgentHost
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const project = seedProject(ctx)
+    featureId = seedFeature(ctx, project.id, { slug: 'cut-off' }).id
+    const chat = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' })
+    markSessionLive(ctx, chat.id, { ccSessionId: `cc-${chat.id}` })
+    markSessionEnded(ctx, chat.id)
+    setRuntimeCtx(ctx)
+    host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    setAgentHostForTests(host)
+    const [landed] = storeTickets(ctx, featureId, [
+      { title: 'landed', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+      { title: 'waiting', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, landed.id, { status: 'done', commits: ['abc123'] })
+  })
+
+  afterEach(async () => {
+    await host.stopAll('shutdown')
+    setAgentHostForTests(undefined)
+    clearRuntimeCtx()
+  })
+
+  const leadMessages = () =>
+    listAfter(ctx, featureId, 0)
+      .filter((e) => e.type === 'lead.message_queued')
+      .map((e) => (e.data as { text: string }).text)
+
+  async function interrupt(workflow = 'ticket-burner'): Promise<void> {
+    seedRunningRun(ctx, featureId, workflow)
+    await wakeInterruptedRounds(ctx, await reconcileStaleRuns(ctx))
+  }
+
+  it('tells the lead the round was interrupted, with its counts, and that it may rerun it once', async () => {
+    await interrupt()
+    expect(leadMessages()).toEqual([
+      '[runcastle] Round 1 was interrupted by a server restart: 1 ticket landed, 1 pending. ' +
+        'You may dispatch it again once without asking.',
+    ])
+  })
+
+  it('tells the lead to wait as stuck when the rerun is cut off too', async () => {
+    await interrupt()
+    await interrupt()
+    expect(leadMessages()[1]).toBe(
+      '[runcastle] Round 2 was interrupted by a server restart, the second time running this round: 1 ticket landed, 1 pending. ' +
+        'Do not dispatch it again: call wait_for_you with kind "stuck" and tell the human what happened.',
+    )
+  })
+
+  it('wakes nobody for a run that is not a round', async () => {
+    await interrupt('test-workflow')
+    expect(leadMessages()).toEqual([])
   })
 })

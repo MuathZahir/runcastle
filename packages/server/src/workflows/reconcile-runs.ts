@@ -1,11 +1,14 @@
-import type { Run } from '@runcastle/core'
+import type { EventRow, Run } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { releaseTalkWorktreeAfterRun } from '../services/chat-branch'
-import { emit } from '../services/events'
+import { emit, listAfter } from '../services/events'
 import { cleanupTempBranches } from '../services/git'
+import { deliverToLead } from '../services/lead-delivery'
+import { notifyOrchestrator } from '../services/orchestrator-notify'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
+import { listRounds } from '../services/runs'
 import { listByFeature, sweepOrphanedBurning } from '../services/tickets'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
@@ -107,4 +110,64 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
   }
 
   return reconciled
+}
+
+const RECONCILED = 'run.reconciled'
+
+/** A count of tickets in words: "1 ticket", "3 tickets". */
+const ticketCount = (n: number): string => `${n} ticket${n === 1 ? '' : 's'}`
+
+/** The landed/pending counts a burn's `run.reconciled` event carries. */
+function countsOf(event: EventRow): { landed: number; pending: number } {
+  const data = (event.data ?? {}) as { landedTickets?: unknown; pendingTickets?: unknown }
+  return {
+    landed: typeof data.landedTickets === 'number' ? data.landedTickets : 0,
+    pending: typeof data.pendingTickets === 'number' ? data.pendingTickets : 0,
+  }
+}
+
+/**
+ * What the lead hears about a round a restart cut off (you-always-know-what-s-
+ * waiting decision 10), or null when `run` is not a round. The round before it
+ * having been cut off too means this was its one rerun, so the lead stops and
+ * waits for the human rather than dispatching it on every boot.
+ */
+export function composeInterruptedWake(ctx: AppCtx, run: Run): string | null {
+  const reconciled = listAfter(ctx, run.featureId).filter((e) => e.type === RECONCILED)
+  const event = reconciled.find((e) => e.runId === run.id)
+  const rounds = listRounds(ctx, run.featureId)
+  const round = rounds.find((r) => r.runId === run.id)
+  if (!event || !round) return null
+  const before = rounds.find((r) => r.round === round.round - 1)
+  const again = before !== undefined && reconciled.some((e) => e.runId === before.runId)
+  const { landed, pending } = countsOf(event)
+  const counts = `${ticketCount(landed)} landed, ${pending} pending`
+  return again
+    ? `[runcastle] Round ${round.round} was interrupted by a server restart, the second time running this round: ${counts}. ` +
+        'Do not dispatch it again: call wait_for_you with kind "stuck" and tell the human what happened.'
+    : `[runcastle] Round ${round.round} was interrupted by a server restart: ${counts}. ` +
+        'You may dispatch it again once without asking.'
+}
+
+/**
+ * Tell whoever is responsible about the rounds {@link reconcileStaleRuns} cut
+ * off (decision 10): the lead hears it as it hears a round's end, and the
+ * holder gets its news line. Called once the server listens and the holders'
+ * notifier runs, since a woken agent reaches runcastle's MCP server and the
+ * `run.reconciled` events were emitted before anyone was listening. Best
+ * effort: a failed wake reads "Stopped" on its own, and nothing here throws.
+ */
+export async function wakeInterruptedRounds(ctx: AppCtx, reconciled: Run[]): Promise<void> {
+  for (const run of reconciled) {
+    if (run.workflow !== 'ticket-burner') continue
+    try {
+      const event = listAfter(ctx, run.featureId).find((e) => e.type === RECONCILED && e.runId === run.id)
+      if (event) notifyOrchestrator(ctx, event.id)
+      const feature = tryGetFeature(ctx, run.featureId)
+      const text = composeInterruptedWake(ctx, run)
+      if (feature && text) await deliverToLead(ctx, feature, { text, source: 'runcastle' })
+    } catch (err) {
+      console.error('could not wake the lead of an interrupted round', err)
+    }
+  }
 }
