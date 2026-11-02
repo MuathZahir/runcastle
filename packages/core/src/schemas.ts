@@ -1,6 +1,7 @@
 import * as z from 'zod'
 import { AgentRuntime, ModelEntry } from './config'
 import { ReviewGateRun } from './review-gates'
+import { WaitingKind } from './feature-need'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -583,6 +584,8 @@ export const Feature = z.object({
   stoppedAt: z.number().nullable().default(null),
   /** Why the feature waits on the human ("Waiting for you · <why>"); null when it does not. */
   waitingReason: z.string().nullable().default(null),
+  /** Which kind of wait the reason is (`wait_for_you`'s `kind`); null with a reason reads as an answer. */
+  waitingKind: WaitingKind.nullable().default(null),
   /** When a human message last reached the lead (ms); null before the first. */
   lastHumanMessageAt: z.number().nullable().default(null),
   /** When the lead last dispatched a round (ms); null before the first. */

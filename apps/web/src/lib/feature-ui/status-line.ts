@@ -1,6 +1,8 @@
 import {
   LEAD_WAKE_FAILED,
   LeadWakeFailedData,
+  PLANNING_STOPPED,
+  wakeFailedWhy,
   type EventRow,
   type Feature,
   type ReadyDeclaration,
@@ -115,19 +117,11 @@ export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data
   return wake
 }
 
-/** The reason an idle agent waits on after the human stopped its round. */
-export const STOPPED = 'stopped'
-
-/** The reason the feature waits on after a self-planning run stopped short: the chat picks it up with the lead. */
-export const PLANNING_STOPPED = 'planning stopped'
+/** The waiting reasons and wake-failure words are core's (one answer, worked out on the server). */
+export { PLANNING_STOPPED, STOPPED, wakeFailedWhy } from '@runcastle/core'
 
 /** The line for a feature with nothing running and nothing asked. */
 export const TALKING = 'Talking with you'
-
-/** The reason when the lead's latest wake failed to launch or died in its turn. */
-export function wakeFailedWhy(exitCode: number | null): string {
-  return exitCode === null ? 'the agent’s run failed' : `the agent’s run failed (exit ${exitCode})`
-}
 
 /**
  * Derive the line, and the one primary its row carries. Precedence, highest first:

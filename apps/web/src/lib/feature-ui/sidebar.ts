@@ -19,7 +19,7 @@ export interface NeedsMe {
 }
 
 /** The waiting reason `declare_ready` sets (tickets-and-review decision 7). */
-export const READY_TO_TEST = 'ready to test'
+export { READY_TO_TEST } from '@runcastle/core'
 
 /**
  * An open terminal whose agent is mid-turn — the HITL twin of `activeRun`.
