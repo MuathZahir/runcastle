@@ -19,7 +19,7 @@ big the plan is; a design card shows a picture of the design, its title, its
 width, and whether it waits for the human. A click opens the Plan tab, or that
 design in the Design tab. The Design tab is always there on an active feature, and
 its home is the list of every design, waiting ones first. Opening a design shows it
-live with "All designs", arrows to the previous and next design, and **Approve**.
+live with "All designs", arrows to the previous and next design, and **Approve**; the list itself approves nothing.
 A dot on the header's panel toggle and on the Plan and Design tabs says something
 there is new to the human. "Design to approve" now shows whenever a design waits,
 and its button opens the list. Merge names any design still waiting. On the phone
@@ -83,9 +83,9 @@ need only the human can answer (never held by the orchestrator).
 
 **The lead's view.** `get_feature_context` gains `designs[]`: title, path, state,
 who approved it, and whether the human opened it since it was last shown. The
-lead's rules (skills): commit a design when it is approved; at the yes to round 1,
-commit approved designs and the waiting ones the human opened, and name the
-never-opened ones and ask again (decision 9).
+lead's rules (skills): commit a design when it is approved, by the button or by the
+human's own words; at the yes to round 1, commit only approved designs, and name
+every other waiting design and ask before dispatching (decision 9).
 
 **Web (desktop).** The thread renders the plan card and design cards (the
 components `PlanCard`, `DesignCard`/`DesignCards`, from the committed designs). The
@@ -141,9 +141,5 @@ approval follows decisions 8 and 9; "design page" replaces "preview page".
 
 ## Open questions
 
-- Whether Approve belongs on the list's rows or only in the live view (decision 8,
-  challenged).
-- Whether opening a design and then saying yes to round 1 counts as approving it
-  (decision 9, challenged).
 - How long an older feature's unrecorded designs need the "Open the design server"
   fallback before it can be removed (decision 7).

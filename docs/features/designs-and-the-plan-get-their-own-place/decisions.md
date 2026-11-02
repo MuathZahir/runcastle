@@ -44,21 +44,21 @@ Check first: 8, 9, 17, 6, 3
 **Assumed.** Alternative: no fallback; such designs are reachable only by asking the agent to show them again.
 **Challenged:** The fallback is a stopgap that lingers; leads with unrecorded designs can call `show_design` once to record them.
 
-## 8. Each design gets an Approve button that records the human's own yes
-**Decision:** A design waiting for the human shows Approve in the Design tab's live view and on its row. A click records the approval as the human's own act and puts a line in the chat ("You approved the design “Plan card”"), which tells the lead to commit it. Asking for changes stays in the chat. The human may still approve in words; the lead then marks the design approved, or dropped when the human rejects it, with a small tool (`set_design_state`).
-**Why:** Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. It also turns "which designs did they approve?" from a reading of the chat into a fact the lead and the orchestrator can look up.
-**Assumed.** Alternative: no button; approval stays in the human's words only, and the list's state is whatever the lead marks.
-**Challenged:** Approve on a list row lets the human approve a design they never opened; the challenger would offer Approve only in the live view.
+## 8. Each design gets an Approve button, shown only on an opened design
+**Decision:** A design waiting for the human shows Approve only in the Design tab's live view, once the human has opened it; the list's rows show the design's state and never an Approve button. A click records the approval as the human's own act and puts a line in the chat ("You approved the design “Plan card”"), which tells the lead to commit it. Asking for changes stays in the chat. The human may still approve in words; the lead then marks the design approved, or dropped when the human rejects it, with a small tool (`set_design_state`).
+**Why:** Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. Keeping the button off the rows means nothing is approved unseen. It also turns "which designs did they approve?" from a reading of the chat into a fact the lead and the orchestrator can look up.
+**Assumed.** Alternative: Approve on the list's rows as well as in the live view (the planner's first version).
+**Changed by the orchestrator:** it took the challenger's version, so that nothing gets approved unseen (2026-11-02).
 
-## 9. The yes to round 1 no longer approves designs the human never opened
-**Decision:** When the human says yes to round 1, the lead commits the designs they approved, and also the waiting designs they opened and did not object to, as they stand. A waiting design they never opened is not committed: the lead names those and asks once more before it dispatches.
-**Why:** The brief names this as friction: today one yes commits designs the human may never have seen. "Opened" is recorded anyway for the New marks and the badge (decision 10), so the rule costs no extra machinery.
-**Assumed.** Alternative: as today, the yes approves every waiting design as it stands.
-**Challenged:** Opening a design is not consent, and the standing rule is that designs need the human's own yes; the challenger would commit only designs approved by the button or in words, and ask about every other one.
+## 9. The yes to round 1 commits only designs the human approved
+**Decision:** When the human says yes to round 1, the lead commits only the designs approved by the Approve button or by the human naming them. Every other waiting design stays uncommitted: the lead names those and asks before it dispatches. Opening a design is not approving it.
+**Why:** The brief names this as friction: today one yes commits designs the human may never have seen. The standing rule is that designs need the human's own yes, and the Approve button makes that yes cheap to give.
+**Assumed.** Alternative: also commit the waiting designs the human opened and did not object to (the planner's first version).
+**Changed by the orchestrator:** it took the challenger's version: only an explicit yes commits a design (2026-11-02).
 
 ## 10. Runcastle records what the human has looked at, on the server
 **Decision:** The plan counts as looked at when the human opens the Plan tab or the plan card after its latest `show_plan`; a design counts as looked at when the human opens it in the Design tab after its latest `show_design`. Showing it again makes it new again. The record lives on the server, so the desktop and the phone agree, and `get_feature_context` tells the lead which designs were opened and which approved.
-**Why:** The badge and the New marks need it, and decision 9 needs the lead to know it. A browser-only record would show the phone's looks as unseen on the desktop.
+**Why:** The badge and the New marks need it, and the lead uses it to say which waiting designs the human has not even opened yet. A browser-only record would show the phone's looks as unseen on the desktop.
 **Assumed.** Alternative: remember looks in the browser only.
 
 ## 11. A dot marks the plan and designs you have not looked at
