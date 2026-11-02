@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { humanizeTimestamps, relTimeAgo } from '../lib/format'
 import { useFeatureDoc } from '../lib/use-feature-doc'
+import { useIsPhone } from '../lib/use-phone'
 import { IconArrowLeft, IconChevronRight, IconDoc, IconExpand, IconX } from '../icons'
 import { Button, Dialog, DimLine, IconButton, Skeleton, SkeletonBar, cx } from '../ui'
 import { Markdown } from './Markdown'
@@ -93,6 +94,8 @@ export function DocReader({
   onBack: () => void
 }) {
   const [fullWindow, setFullWindow] = useState(false)
+  // A phone's reader is already the whole screen.
+  const phone = useIsPhone()
   const title = doc.title || doc.relPath.split(/[\\/]/).pop() || doc.relPath
   const path = (
     <p className="m-0 mb-6 flex min-w-0 items-center gap-2 text-xs text-text-tertiary">
@@ -106,7 +109,7 @@ export function DocReader({
     <div className="flex min-h-full flex-col">
       <PanelViewBar
         className="sticky top-0 z-10 bg-surface"
-        aside={<IconButton label="Open full window" size="sm" icon={<IconExpand />} onClick={() => setFullWindow(true)} />}
+        aside={!phone && <IconButton label="Open full window" size="sm" icon={<IconExpand />} onClick={() => setFullWindow(true)} />}
       >
         <Button variant="ghost" size="sm" icon={<IconArrowLeft />} onClick={onBack} className="-ml-2 shrink-0">
           {backLabel}

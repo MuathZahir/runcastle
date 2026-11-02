@@ -18,7 +18,7 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { renderRunMcpConfig } from '../src/launcher/artifacts'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { getFeatureRow, listRunsByFeature } from '../src/services/repo'
 import {
   __resetTestDriveState,
@@ -967,6 +967,8 @@ describe('what the review agent is handed', () => {
       'Lap <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
     )
     expect(template).toMatch(/renders it alone as the lap account/)
+    // The human may accept from these pictures alone, so the prompt asks for them.
+    expect(template).toContain('action: "capture"')
     expect(template).not.toMatch(/renders it verbatim as the first thing they read/)
     // The superseded contract — "code review always, drive additionally" — is
     // gone, not merely deprioritised.
@@ -1953,16 +1955,8 @@ describe('a pass that already delivered is not re-derived', () => {
 
 // --- the drive is released on both paths ------------------------------------
 
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], { cwd: process.cwd(), env: process.env })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = process.platform !== 'win32' && ptyAvailable()
+usePipePty()
+const PTY = process.platform !== 'win32'
 
 describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
   let ctx: AppCtx

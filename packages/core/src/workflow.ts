@@ -65,6 +65,8 @@ export interface WorkflowCtx {
    * Never throws.
    */
   reuseGates?(ownerId: string, sha: string): Promise<ReviewGateRun | undefined>
+  /** Put a finished review pass's package in the feature's chat. Never throws. */
+  postReviewPackage?(ticketId: string): void
   /**
    * Mirror a fix ticket's lifecycle onto the review finding it was minted from
    * (`ticket.originFindingId`), so found/fixed/open is counted from findings
@@ -90,6 +92,18 @@ export interface WorkflowCtx {
    */
   modelOverride?: string
   signal: AbortSignal
+  /**
+   * The project's stored image, for a burn that builds its own. `adopt` and
+   * `release` also refresh `project` above, because a run's snapshot would
+   * otherwise keep resolving to the image it started with. Optional: only the
+   * burner needs it, and a test fake with no store leaves image building off.
+   */
+  projectImage?: {
+    /** Runcastle may rewrite the column: false once a human typed the value. */
+    overwritable(): boolean
+    adopt(tag: string): void
+    release(): void
+  }
 }
 
 export interface WorkflowDef {

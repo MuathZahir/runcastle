@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newId } from '@runcastle/core'
 import streamApp from '../src/routes/stream'
 import { subscribeLive, type LiveSignal } from '../src/services/bus'
-import { CHUNK_COALESCE_MS, flushThreadLog, threadLogPath } from '../src/threads/log'
+import { CHUNK_COALESCE_MS, flushThreadLog, seedThreadLog, threadLogPath } from '../src/threads/log'
 import { appendThreadEvent, readThreadEvents } from '../src/threads/types'
 
 /**
@@ -41,6 +41,44 @@ describe('the thread log', () => {
     appendFileSync(threadLogPath(id), '{"i":1,"at":5,"type":"turn_en\n{"i":2,"type":"nonsense"}\n')
     appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
     expect(readThreadEvents(id).map((e) => e.type)).toEqual(['turn_started', 'turn_ended'])
+  })
+
+  it('reads what was added since the last read, and each line once', () => {
+    const id = newId('sess')
+    appendThreadEvent(id, { type: 'turn_started' })
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0])
+    appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0, 1])
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0, 1])
+    expect(readThreadEvents(id, 0).map((e) => e.i)).toEqual([1])
+    // A read's list is the caller's: changing it changes no later read.
+    readThreadEvents(id).pop()
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0, 1])
+  })
+
+  it('takes a line once a newline ends it, whole, however it arrived', () => {
+    const id = newId('sess')
+    appendThreadEvent(id, { type: 'turn_started' })
+    readThreadEvents(id)
+    const line = JSON.stringify({ i: 1, at: 5, type: 'notice', text: 'é agent wrote this' })
+    const bytes = Buffer.from(line)
+    appendFileSync(threadLogPath(id), bytes.subarray(0, 40))
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0])
+    appendFileSync(threadLogPath(id), bytes.subarray(40))
+    // Whole but not yet ended by a newline: shown, as a read of the whole file would.
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0, 1])
+    appendFileSync(threadLogPath(id), '\n')
+    expect(readThreadEvents(id).map((e) => e.i)).toEqual([0, 1])
+    expect(readThreadEvents(id).at(-1)).toMatchObject({ text: 'é agent wrote this' })
+  })
+
+  it('starts over when the log was written again', () => {
+    const id = newId('sess')
+    appendThreadEvent(id, { type: 'turn_started' })
+    appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
+    readThreadEvents(id)
+    seedThreadLog(id, [{ i: 0, at: 1, type: 'notice', text: 'a branch' }])
+    expect(readThreadEvents(id).map((e) => e.type)).toEqual(['notice'])
   })
 
   it('joins rapid chunks of one message into one event, and writes it before anything later', () => {

@@ -145,11 +145,50 @@ export interface LiveSyncHandlers {
   /** The agent transcript only. */
   resyncTranscript: () => void
   /**
-   * One thread's log grew (chat-as-web-components): its reads and the thread
-   * lists only — a streaming answer signals many times a second, and a full
-   * resync per chunk would refetch the whole app with it.
+   * One thread's log grew (chat-as-web-components): its read only — a streaming
+   * answer signals many times a second, and a full resync per chunk would
+   * refetch the whole app with it. Folded as `resyncAll` is, per thread.
    */
-  resyncThread: (threadId: string) => void
+  resyncThread: (threadId: string) => void | Promise<unknown>
+  /** Some thread's log grew: the thread lists, whose states read off the logs. Folded as `resyncAll` is. */
+  resyncThreadLists: () => void | Promise<unknown>
+}
+
+/**
+ * Run `refetch` one at a time, however often it is asked for. An invalidation
+ * cancels the refetch already in flight for the same query, and a busy feed
+ * signals on every flush (120ms), so a refetch slower than that was cancelled by
+ * the next signal and none ever landed: the header kept showing the state from
+ * before Go or Stop until a reload, and a working thread sat on an old state
+ * until its agent paused. Asks during a refetch instead mark it dirty, and
+ * exactly one more runs once it settles, so the last change is still read by a
+ * fetch that started after it.
+ */
+function oneAtATime(refetch: () => void | Promise<unknown>, gone: () => boolean): () => void {
+  let running = false
+  let again = false
+  const ask = (): void => {
+    if (running) {
+      again = true
+      return
+    }
+    const pending = refetch()
+    if (!pending) return
+    running = true
+    let hold: ReturnType<typeof setTimeout> | undefined
+    const held = new Promise<void>((resolve) => {
+      hold = setTimeout(resolve, RESYNC_HOLD_MS)
+    })
+    void Promise.race([pending.catch(() => {}), held]).then(() => {
+      clearTimeout(hold)
+      running = false
+      if (again && !gone()) {
+        again = false
+        ask()
+      }
+    })
+  }
+  return ask
 }
 
 /**
@@ -165,38 +204,17 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
   let releaseSource: (() => void) | null = null
   let lastFrameAt = Date.now()
   let disposed = false
-  let resyncing = false
-  let resyncAgain = false
-
-  /**
-   * One full resync at a time. An invalidation cancels the refetch already in
-   * flight for the same query, and a busy feed signals on every flush (120ms)
-   * — so while a round landed or the agent worked, each refetch was cancelled
-   * by the next signal and none ever landed: the header kept showing the state
-   * from before Go or Stop until a reload. Signals during a resync instead mark
-   * it dirty, and exactly one more runs once it settles, so the last change is
-   * still read by a fetch that started after it.
-   */
-  const resyncAll = (): void => {
-    if (resyncing) {
-      resyncAgain = true
-      return
+  const gone = (): boolean => disposed
+  const resyncAll = oneAtATime(handlers.resyncAll, gone)
+  const resyncThreadLists = oneAtATime(handlers.resyncThreadLists, gone)
+  const threadResyncs = new Map<string, () => void>()
+  const resyncThread = (threadId: string): void => {
+    let ask = threadResyncs.get(threadId)
+    if (!ask) {
+      ask = oneAtATime(() => handlers.resyncThread(threadId), gone)
+      threadResyncs.set(threadId, ask)
     }
-    const pending = handlers.resyncAll()
-    if (!pending) return
-    resyncing = true
-    let hold: ReturnType<typeof setTimeout> | undefined
-    const held = new Promise<void>((resolve) => {
-      hold = setTimeout(resolve, RESYNC_HOLD_MS)
-    })
-    void Promise.race([pending.catch(() => {}), held]).then(() => {
-      clearTimeout(hold)
-      resyncing = false
-      if (resyncAgain && !disposed) {
-        resyncAgain = false
-        resyncAll()
-      }
-    })
+    ask()
   }
 
   const closeSource = (): void => {
@@ -241,8 +259,10 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
         return
       }
       if (signal.kind === 'transcript') handlers.resyncTranscript()
-      else if (signal.kind === 'thread') handlers.resyncThread(signal.threadId)
-      else resyncAll()
+      else if (signal.kind === 'thread') {
+        resyncThread(signal.threadId)
+        resyncThreadLists()
+      } else resyncAll()
     }
 
     // The server's idle heartbeat. It carries no news, so it invalidates
@@ -426,19 +446,16 @@ export function useLiveSync(): LiveStatus {
       void utilsRef.current.run.agentTranscript.invalidate()
     }
 
-    // Partial inputs: `events` is keyed by its cursor too, and every cursor of
+    // Partial input: `events` is keyed by its cursor too, and every cursor of
     // this thread is invalidated — only the one on screen is active to refetch.
-    const invalidateThread = (threadId: string): void => {
-      const u = utilsRef.current
-      void u.thread.events.invalidate({ threadId })
-      void u.thread.view.invalidate({ threadId })
-      void u.thread.list.invalidate()
-    }
+    const invalidateThread = (threadId: string): Promise<unknown> => utilsRef.current.thread.events.invalidate({ threadId })
+    const invalidateThreadLists = (): Promise<unknown> => utilsRef.current.thread.list.invalidate()
 
     return startLiveSync({
       resyncAll: invalidateDbBacked,
       resyncTranscript: invalidateTranscript,
       resyncThread: invalidateThread,
+      resyncThreadLists: invalidateThreadLists,
     })
   }, [])
 

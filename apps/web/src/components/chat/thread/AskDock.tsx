@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import type { FormField, FormValues, Question, ToolCall } from '../../../lib/chat-thread'
 import { IconArrowLeft, IconArrowRight, IconCheck, IconCube, IconExternalLink, IconShield, IconSparkle } from '../../../icons'
 import { BARE_BUTTON, Button, Checkbox, Field, Kbd, LINK, TextField, cx } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
 import { DiffView } from './Work'
 import { RAISED } from './surfaces'
 
@@ -17,6 +18,16 @@ import { RAISED } from './surfaces'
 
 export const DOCK =
   `${RAISED} relative flex flex-col animate-rise-in`
+
+/**
+ * A dock on a phone (runcastle-on-your-phone): no taller than most of the
+ * screen the on-screen keyboard leaves, its body scrolling inside it so the
+ * answer buttons stay in reach. Its body wears {@link DOCK_BODY}.
+ */
+const PHONE_DOCK = 'max-h-[75dvh]'
+
+/** A dock's body: what shrinks and scrolls when the dock is capped. */
+const DOCK_BODY = 'min-h-0 overflow-y-auto'
 
 /** One numbered choice. */
 function Choice({
@@ -34,6 +45,7 @@ function Choice({
   multi?: boolean
   onPick: () => void
 }) {
+  const phone = useIsPhone()
   return (
     <button
       type="button"
@@ -42,7 +54,8 @@ function Choice({
       onClick={onPick}
       className={cx(
         BARE_BUTTON,
-        'group/choice flex min-w-0 cursor-pointer items-start gap-3 rounded-md px-2.5 py-1.5 text-left',
+        'group/choice flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-md px-2.5 text-left',
+        phone ? 'min-h-11 py-3' : 'py-1.5',
         'transition-colors duration-(--dur-1) ease-app',
         on ? 'bg-surface-selected' : 'hover:bg-surface-hover',
       )}
@@ -85,10 +98,12 @@ function OtherChoice({
     if (focused) ref.current?.focus()
   }, [focused])
   const on = value.trim() !== ''
+  const phone = useIsPhone()
   return (
     <label
       className={cx(
-        'flex min-w-0 cursor-text items-center gap-3 rounded-md px-2.5 py-1.5 transition-colors duration-(--dur-1) ease-app',
+        'flex min-w-0 cursor-text items-center gap-3 rounded-md px-2.5 transition-colors duration-(--dur-1) ease-app',
+        phone ? 'min-h-11 py-2' : 'py-1.5',
         on ? 'bg-surface-selected' : 'hover:bg-surface-hover',
       )}
     >
@@ -110,16 +125,30 @@ function OtherChoice({
           if (e.key === 'Enter' && on) onEnter?.()
         }}
         placeholder={placeholder}
-        className="h-7 min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm text-text outline-none placeholder:text-text-tertiary"
+        // 16px on a phone, or iOS zooms the page in when the field takes the focus.
+        className={cx(
+          'h-7 min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-text outline-none placeholder:text-text-tertiary',
+          phone ? 'text-lg' : 'text-sm',
+        )}
       />
     </label>
   )
 }
 
-function DockFooter({ left, children }: { left: ReactNode; children: ReactNode }) {
+/**
+ * A dock's foot: a quiet line on the left — what to do, then the keys that do
+ * it — and its buttons on the right. A phone has no keyboard to hint at, so
+ * there the keys go.
+ */
+function DockFooter({ left, keys, children }: { left?: ReactNode; keys: ReactNode; children: ReactNode }) {
+  const phone = useIsPhone()
   return (
-    <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-2">
-      <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{left}</span>
+    <div className="flex shrink-0 items-center gap-2 border-t border-border-subtle px-3 py-2">
+      <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">
+        {left}
+        {left && !phone && ' · '}
+        {!phone && keys}
+      </span>
       {children}
     </div>
   )
@@ -142,6 +171,7 @@ export function QuestionDock({
   const [picked, setPicked] = useState<Record<number, string[]>>({})
   const [other, setOther] = useState<Record<number, string>>({})
   const box = useRef<HTMLDivElement>(null)
+  const phone = useIsPhone()
   const summary = questions.length > 1 && step === questions.length
   const q = questions[Math.min(step, questions.length - 1)]
 
@@ -183,7 +213,7 @@ export function QuestionDock({
   }
 
   return (
-    <div ref={box} tabIndex={-1} onKeyDown={onKeyDown} role="group" aria-label="The agent asks" className={cx(DOCK, 'outline-none')}>
+    <div ref={box} tabIndex={-1} onKeyDown={onKeyDown} role="group" aria-label="The agent asks" className={cx(DOCK, 'outline-none', phone && PHONE_DOCK)}>
       {questions.length > 1 && (
         <div className="flex items-center gap-1 px-4 pt-3" aria-hidden>
           {[...questions.map((_, i) => (i === step ? 'now' : answerOf(i) ? 'done' : 'todo')), summary ? 'now' : 'todo'].map((st, i) => (
@@ -198,7 +228,7 @@ export function QuestionDock({
         </div>
       )}
       {summary ? (
-        <div key="summary" className="flex flex-col gap-1 px-2 pt-3 pb-2 animate-fade-in">
+        <div key="summary" className={cx('flex flex-col gap-1 px-2 pt-3 pb-2 animate-fade-in', DOCK_BODY)}>
           <p className="m-0 mb-1 px-2 text-base font-medium text-text">Check your answers</p>
           {questions.map((qq, i) => (
             <button
@@ -218,7 +248,7 @@ export function QuestionDock({
           ))}
         </div>
       ) : (
-        <div key={step} className="flex flex-col gap-1 px-2 pt-3 pb-2 animate-fade-in">
+        <div key={step} className={cx('flex flex-col gap-1 px-2 pt-3 pb-2 animate-fade-in', DOCK_BODY)}>
           <div className="mb-1 flex flex-col gap-0.5 px-2">
             <span className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary">
               <IconSparkle size={12} className="text-icon" />
@@ -252,7 +282,7 @@ export function QuestionDock({
         </div>
       )}
       <DockFooter
-        left={
+        keys={
           summary ? (
             <>
               <Kbd>Enter</Kbd> to send
@@ -305,6 +335,7 @@ export function ApprovalDock({
 }) {
   const [instead, setInstead] = useState('')
   const box = useRef<HTMLDivElement>(null)
+  const phone = useIsPhone()
   useEffect(() => box.current?.focus(), [])
   const verb =
     call.kind === 'execute' ? 'Run this command?' : call.kind === 'edit' ? `Make this edit to ${call.diff?.path ?? 'the file'}?` : call.kind === 'fetch' ? 'Fetch this page?' : 'Use this tool?'
@@ -315,47 +346,49 @@ export function ApprovalDock({
     if (e.key === 'Escape') onAnswer('deny')
   }
   return (
-    <div ref={box} tabIndex={-1} onKeyDown={onKeyDown} role="group" aria-label="The agent asks to" className={cx(DOCK, 'outline-none')}>
-      <div className="flex flex-col gap-2 px-4 pt-3">
-        <span className="flex items-center gap-2 text-sm font-medium text-text">
-          <IconShield size={15} className="shrink-0 text-warning" />
-          {verb}
-        </span>
-        {call.diff ? (
-          <DiffView lines={call.diff.lines} />
-        ) : (
-          <pre className="m-0 overflow-x-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs leading-[20px] whitespace-pre-wrap text-text ring-1 ring-inset ring-border-subtle">
-            {call.kind === 'execute' && <span className="text-text-tertiary select-none">$ </span>}
-            {call.title}
-          </pre>
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5 px-2 pt-2 pb-2">
-        <Choice n={1} on={false} label="Yes" onPick={() => onAnswer('allow')} />
-        <Choice
-          n={2}
-          on={false}
-          label={
-            call.kind === 'edit' ? (
-              'Yes, and allow edits for the rest of this thread'
-            ) : (
-              <>
-                Yes, and don’t ask again for <span className="font-mono text-xs">{first}</span> in this project
-              </>
-            )
-          }
-          onPick={() => onAnswer('always')}
-        />
-        <OtherChoice
-          n={3}
-          value={instead}
-          onChange={setInstead}
-          placeholder="No, and tell the agent what to do instead"
-          onEnter={() => onAnswer('deny', instead)}
-        />
+    <div ref={box} tabIndex={-1} onKeyDown={onKeyDown} role="group" aria-label="The agent asks to" className={cx(DOCK, 'outline-none', phone && PHONE_DOCK)}>
+      <div className={cx('flex flex-col', DOCK_BODY)}>
+        <div className="flex flex-col gap-2 px-4 pt-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-text">
+            <IconShield size={15} className="shrink-0 text-warning" />
+            {verb}
+          </span>
+          {call.diff ? (
+            <DiffView lines={call.diff.lines} />
+          ) : (
+            <pre className="m-0 overflow-x-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs leading-[20px] whitespace-pre-wrap text-text ring-1 ring-inset ring-border-subtle">
+              {call.kind === 'execute' && <span className="text-text-tertiary select-none">$ </span>}
+              {call.title}
+            </pre>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5 px-2 pt-2 pb-2">
+          <Choice n={1} on={false} label="Yes" onPick={() => onAnswer('allow')} />
+          <Choice
+            n={2}
+            on={false}
+            label={
+              call.kind === 'edit' ? (
+                'Yes, and allow edits for the rest of this thread'
+              ) : (
+                <>
+                  Yes, and don’t ask again for <span className="font-mono text-xs">{first}</span> in this project
+                </>
+              )
+            }
+            onPick={() => onAnswer('always')}
+          />
+          <OtherChoice
+            n={3}
+            value={instead}
+            onChange={setInstead}
+            placeholder="No, and tell the agent what to do instead"
+            onEnter={() => onAnswer('deny', instead)}
+          />
+        </div>
       </div>
       <DockFooter
-        left={
+        keys={
           <>
             <Kbd>1</Kbd> <Kbd>2</Kbd> to answer · <Kbd>Esc</Kbd> to deny
           </>
@@ -421,6 +454,7 @@ export function FormDock({
   const [draft, setDraft] = useState<Draft>(() => draftOf(fields))
   const [checked, setChecked] = useState(false)
   const box = useRef<HTMLFormElement>(null)
+  const phone = useIsPhone()
   useEffect(() => box.current?.focus(), [])
   const set = (key: string, v: string | boolean) => setDraft((d) => ({ ...d, [key]: v }))
 
@@ -476,10 +510,10 @@ export function FormDock({
         e.preventDefault()
         submit()
       }}
-      className={cx(DOCK, 'outline-none')}
+      className={cx(DOCK, 'outline-none', phone && PHONE_DOCK)}
     >
       <ServerAsks server={server} icon={<IconCube size={12} className="text-icon" />} message={message} />
-      <div className="flex max-h-80 flex-col gap-3 overflow-y-auto px-4 pt-3 pb-3">
+      <div className={cx('flex max-h-80 flex-col gap-3 px-4 pt-3 pb-3', DOCK_BODY)}>
         {fields.map((f) => {
           const problem = checked ? problemOf(f, draft[f.key]) : undefined
           return f.type === 'boolean' ? (
@@ -505,7 +539,7 @@ export function FormDock({
         })}
       </div>
       <DockFooter
-        left={
+        keys={
           <>
             <Kbd>Enter</Kbd> to submit · <Kbd>Esc</Kbd> to decline
           </>
@@ -568,9 +602,10 @@ export function LinkDock({
         </a>
       </div>
       <DockFooter
-        left={
+        left="Open it, then say when you are done"
+        keys={
           <>
-            Open it, then say when you are done · <Kbd>Esc</Kbd> to decline
+            <Kbd>Esc</Kbd> to decline
           </>
         }
       >

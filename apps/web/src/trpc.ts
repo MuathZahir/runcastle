@@ -29,6 +29,13 @@ export const UNBATCHED_PATHS: ReadonlySet<string> = new Set([
   'project.prep',
   'feature.mergeDelta',
   'feature.commitCount',
+  // A runtime's usage limits start a process of their own.
+  'thread.usage',
+  'thread.models',
+  // Not slow, but a thread must not wait on what shares its request: its log is
+  // what the human came for, and the list is what lets the page open it.
+  'thread.events',
+  'thread.list',
 ])
 
 /** The client's links: one batch for the fast reads, a lone request per slow one. */

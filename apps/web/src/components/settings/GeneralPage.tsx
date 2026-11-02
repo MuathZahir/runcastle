@@ -3,6 +3,7 @@ import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
 import { DimLine, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
+import { PhoneLinkSection } from './PhoneLinkSection'
 import { SettingGroup, SettingLine, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -21,35 +22,41 @@ const THEMES: readonly { value: ThemePreference; label: string; icon: ReactNode 
   { value: 'system', label: 'System', icon: <IconMonitor size={14} /> },
 ]
 
-export function GeneralPage({ globals, filter, highlightField }: SettingsPageProps) {
-  const appearance = showsSetting(filter, THEME_FIELD) && (
-    <SettingSection title="Appearance">
-      <ThemeRow />
-    </SettingSection>
+export function GeneralPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
+  // Neither section reads `settings.get`, so both stand while it loads or fails.
+  const standalone = (
+    <>
+      {showsSetting(filter, THEME_FIELD) && (
+        <SettingSection title="Appearance">
+          <ThemeRow />
+        </SettingSection>
+      )}
+      <PhoneLinkSection projectId={projectId} filter={filter} />
+    </>
   )
 
   if (globals.isLoading)
     return (
       <>
-        {appearance}
+        {standalone}
         <SettingsSkeleton groups={GENERAL_SKELETON} className="mt-9" />
       </>
     )
   if (globals.error)
     return (
       <>
-        {appearance}
+        {standalone}
         <DimLine>Could not load settings: {globals.error.message}</DimLine>
       </>
     )
-  if (!globals.data) return <>{appearance}</>
+  if (!globals.data) return <>{standalone}</>
 
   const rows = pageRows(globals.data, 'general')
   const group = (name: 'server' | 'sessions') => rows.filter((row) => row.group === name)
 
   return (
     <>
-      {appearance}
+      {standalone}
       <SettingGroup
         title="Server"
         rows={group('server')}

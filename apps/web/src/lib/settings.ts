@@ -294,7 +294,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image sessions and workers are sandboxed in. Leave blank to use sandcastle:runcastle, the image “Build image” on the Workers page produces.',
+      'The Docker image sessions and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
     control: 'text',
     page: 'general',
     group: 'sessions',

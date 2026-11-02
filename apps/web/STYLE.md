@@ -171,7 +171,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 
 | Primitive | Props | Notes |
 |---|---|---|
-| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
+| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 32 (default) · `lg` 36 · `touch` 40 (a thumb's target on a phone); `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
 | `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret) or `picker` (a `ComboboxContent`, for choices that are values), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu` or a `Combobox`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
@@ -262,9 +262,13 @@ Three of those look like details and are not:
 - **Focus is not stolen from a child that asked for it.** `Dialog` focuses the
   panel on open only when nothing inside it already has the focus.
 
-`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh · `full` 1400 or 96vw, whichever is less (the plan preview);
+`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh · `full` 1400 or 96vw, whichever is less (the plan preview), and on a phone (`useIsPhone`) the whole screen edge to edge, at least the screen's height whatever height the caller gives it · `sheet` the whole width on the screen's foot, rising in (`Sheet` below);
 `scrim`: `dim` (default) · `light` · `none` (clicks fall through). `className`
 lands on the panel and `backdropClassName` on the backdrop.
+
+| Primitive | Props | Notes |
+|---|---|---|
+| `Sheet` · `SheetRow` (`ui/sheet.tsx`) | `Sheet`: `open`, `onClose`, `title` (a quiet heading, and its name) or `label`, children (the rows). `SheetRow`: `icon` (20px, or a mark of its own), `label`, `hint`, `current`, `onClick`. | The phone's menu: a `Dialog` at `size="sheet"`, so its mechanics are the dialog's. A grab handle, then 52px rows a thumb can hit. Reference: `preview/phone.html`. |
 
 `inline` is the one escape from the portal, for `FormOverlay`, which fills the
 workspace column rather than the viewport; it claims no `aria-modal`.

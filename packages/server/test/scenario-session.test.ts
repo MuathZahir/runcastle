@@ -36,7 +36,7 @@ import {
   runScenarioOnDrive,
   testDrive,
 } from '../src/services/git'
-import { createNativePtySession } from '../src/pty/pty'
+import { usePipePty } from './helpers/pipe-pty'
 import { type PtyEntry, ptyRegistry } from '../src/pty/registry'
 import { getProjectById } from '../src/services/repo'
 import { resolveBun } from './helpers/bun'
@@ -96,16 +96,8 @@ async function waitFor(fn: () => boolean, tries = 1000): Promise<void> {
   throw new Error('waitFor timed out')
 }
 
-function ptyAvailable(): boolean {
-  try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], { cwd: process.cwd(), env: process.env })
-    p.kill()
-    return true
-  } catch {
-    return false
-  }
-}
-const PTY = !WIN && ptyAvailable()
+usePipePty()
+const PTY = !WIN
 
 function setupCommand(): string {
   const envFile = join('.runcastle', 'drive.env')

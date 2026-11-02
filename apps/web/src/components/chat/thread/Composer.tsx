@@ -4,6 +4,7 @@ import { rankNames, rankPaths } from '@runcastle/core'
 import type { Attachment, SlashCommand, ThreadState } from '../../../lib/chat-thread'
 import { IconDoc, IconPaperclip, IconSend, IconStop, IconX } from '../../../icons'
 import { BARE_BUTTON, IconButton, Kbd, cx } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
 import { DOCK } from './AskDock'
 import { INSET } from './surfaces'
 
@@ -19,6 +20,10 @@ type Suggest = { kind: 'command'; items: SlashCommand[]; query: string } | { kin
  * `@` finds a file in the worktree to point the agent at; images ride the
  * message as chips. A message sent while the agent works goes into the
  * running turn (steering), as typing does in Claude Code.
+ *
+ * On a phone (runcastle-on-your-phone decision 8) the on-screen keyboard's
+ * Enter starts a new line and only Send sends; the keyboard hints and the
+ * agent's guess go, and the controls are a thumb's size.
  *
  * Sending never waits on the agent: with no agent running, the message shows
  * at once and the agent starts behind it (decision 7). While the agent works,
@@ -36,8 +41,8 @@ export function Composer({
   onSend,
   onStop,
   onRecall,
-  suggestion,
-  placeholder = 'Message the agent — / for commands, @ for files',
+  suggestion: guess,
+  placeholder,
   autoFocus,
   top,
   footer,
@@ -84,6 +89,9 @@ export function Composer({
   /** The field, for a caller that focuses it (a selected area landing in the box). */
   inputRef?: RefObject<HTMLTextAreaElement | null>
 }) {
+  const phone = useIsPhone()
+  // The guess is taken with Tab, which a phone has not got.
+  const suggestion = phone ? undefined : guess
   const own = useRef<HTMLTextAreaElement>(null)
   const area = inputRef ?? own
   const picker = useRef<HTMLInputElement>(null)
@@ -109,6 +117,12 @@ export function Composer({
 
   const canSend = value.trim() !== '' || attachments.length > 0
   const working = state === 'working'
+  const prompt = working
+    ? phone
+      ? 'Steer the agent'
+      : 'Steer the agent — this joins the running turn'
+    : (placeholder ?? (phone ? 'Message the agent' : 'Message the agent — / for commands, @ for files'))
+  const control = phone ? 'touch' : 'md'
 
   const take = (i: number) => {
     if (!suggest) return
@@ -148,7 +162,7 @@ export function Composer({
       }
       return
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !phone) {
       e.preventDefault()
       if (canSend) onSend()
       return
@@ -190,7 +204,8 @@ export function Composer({
                     onMouseEnter={() => setActive(i)}
                     className={cx(
                       BARE_BUTTON,
-                      'flex h-8 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 text-left text-sm',
+                      'flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 text-left text-sm',
+                      phone ? 'h-11' : 'h-8',
                       i === active ? 'bg-surface-hover' : '',
                     )}
                   >
@@ -205,7 +220,7 @@ export function Composer({
                         <span className="min-w-0 truncate text-text-tertiary">{item.description}</span>
                       </>
                     )}
-                    {i === active && <Kbd className="ml-auto">Tab</Kbd>}
+                    {i === active && !phone && <Kbd className="ml-auto">Tab</Kbd>}
                   </button>
                 </li>
               )
@@ -226,7 +241,8 @@ export function Composer({
                   size="sm"
                   variant="secondary"
                   onClick={() => onRemoveAttachment?.(a.id)}
-                  className="absolute top-1 right-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  // Nothing hovers on a phone: there the button is always in view.
+                  className={cx('absolute top-1 right-1', !phone && 'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100')}
                 />
               </div>
             ))}
@@ -241,9 +257,13 @@ export function Composer({
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder={suggestion ? '' : working ? 'Steer the agent — this joins the running turn' : placeholder}
+            placeholder={suggestion ? '' : prompt}
             aria-label={label}
-            className="block w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 font-sans text-base text-text outline-none placeholder:text-text-tertiary"
+            // 16px on a phone, or iOS zooms the page in when the box takes the focus.
+            className={cx(
+              'block w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 font-sans text-text outline-none placeholder:text-text-tertiary',
+              phone ? 'text-lg' : 'text-base',
+            )}
           />
           {suggestion && !value && (
             <span aria-hidden className="pointer-events-none absolute top-3.5 right-4 left-4 flex items-center gap-2 truncate text-base text-text-tertiary">
@@ -256,7 +276,7 @@ export function Composer({
           {footer}
           <span className="ml-auto flex items-center gap-1">
             {working ? <WorkingClock since={workingSince} /> : meter}
-            <IconButton label="Attach images" icon={<IconPaperclip />} size="md" onClick={() => picker.current?.click()} />
+            <IconButton label="Attach images" icon={<IconPaperclip />} size={control} onClick={() => picker.current?.click()} />
             <input
               ref={picker}
               type="file"
@@ -268,12 +288,14 @@ export function Composer({
                 e.target.value = ''
               }}
             />
-            {working && <IconButton label="Stop" kbd="Esc" icon={<IconStop />} size="md" variant="secondary" onClick={onStop} />}
+            {working && (
+              <IconButton label="Stop" {...(phone ? {} : { kbd: 'Esc' })} icon={<IconStop />} size={control} variant="secondary" onClick={onStop} />
+            )}
             <IconButton
               label={working ? 'Send into the running turn' : sendLabel}
-              kbd="Enter"
+              {...(phone ? {} : { kbd: 'Enter' })}
               icon={sendIcon}
-              size="md"
+              size={control}
               variant={canSend ? 'primary' : 'ghost'}
               disabled={!canSend}
               onClick={onSend}

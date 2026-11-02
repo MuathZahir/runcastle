@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { IconPanelLeft } from '../icons'
 import { clampSidebarWidth, SIDEBAR_MAX_W, SIDEBAR_MIN_W, useSidebarWidth } from '../lib/sidebar-width'
 import { shortcut } from '../lib/platform'
+import { useIsPhone } from '../lib/use-phone'
 import { cx, IconButton, SidebarDoorContext } from '../ui'
 import { RailResizeHandle } from './RailResizeHandle'
 
@@ -81,7 +82,10 @@ export function FrameProvider({ notices, children }: { notices?: ReactNode; chil
     setClosed(true)
   }, [])
 
+  // A phone's frame has no sidebar to close.
+  const phone = useIsPhone()
   useEffect(() => {
+    if (phone) return
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.altKey || e.shiftKey) return
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'b') return
@@ -91,7 +95,7 @@ export function FrameProvider({ notices, children }: { notices?: ReactNode; chil
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleSidebar])
+  }, [toggleSidebar, phone])
 
   const api = useMemo<FrameApi>(
     () => ({ width, setWidth, closed, toggleSidebar, closeSidebar, notices: notices ?? null }),
@@ -160,7 +164,44 @@ const clampDrag = (px: number) => Math.min(px, SIDEBAR_MAX_W)
  * follows the pointer instead of trailing it; a drag under half the minimum
  * width closes it.
  */
-export function Frame({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
+export function Frame({
+  sidebar,
+  phoneShows = 'page',
+  children,
+}: {
+  sidebar?: ReactNode
+  /** On a phone, one thing at a time: the sidebar's content as the list, or the page. */
+  phoneShows?: 'list' | 'page'
+  children: ReactNode
+}) {
+  const phone = useIsPhone()
+  if (phone) return <PhoneFrame list={sidebar !== undefined && phoneShows === 'list' ? sidebar : null}>{children}</PhoneFrame>
+  return <DesktopFrame sidebar={sidebar}>{children}</DesktopFrame>
+}
+
+/**
+ * The phone's frame (docs/features/runcastle-on-your-phone): the list or the
+ * page at the screen's whole width, no margins, no resize handle and no closed
+ * state, padded for the notch and the home bar. Its height is `#root`'s, which
+ * follows the on-screen keyboard (index.html's `interactive-widget`).
+ */
+function PhoneFrame({ list, children }: { list: ReactNode; children: ReactNode }) {
+  const { notices } = useFrame()
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-canvas pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] text-text">
+      {list !== null ? (
+        <div className="flex min-h-0 flex-1 flex-col">{list}</div>
+      ) : (
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+          {notices}
+          <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+        </main>
+      )}
+    </div>
+  )
+}
+
+function DesktopFrame({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
   const { width, setWidth, closed, toggleSidebar, closeSidebar, notices } = useFrame()
   const [resizing, setResizing] = useState(false)
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null)

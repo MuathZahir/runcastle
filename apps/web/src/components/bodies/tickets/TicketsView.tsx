@@ -1,9 +1,10 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import type { AgentRuntime, EventRow, ModelEntry, ReviewFinding, RoundSummary, Ticket } from '@runcastle/core'
+import type { AgentRuntime, EventRow, ModelEntry, RoundSummary, Ticket } from '@runcastle/core'
 import { trpc } from '../../../trpc'
 import { useEventLog } from '../../../lib/events'
 import { useLandOnChat } from '../../../lib/land-on-chat'
 import {
+  imageBuildWords,
   laneFacts,
   laneState,
   sessionActive,
@@ -15,12 +16,12 @@ import {
 } from '../../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../../lib/format'
 import { useLivePoll } from '../../../lib/live'
-import { useReviewArtifacts, type ReviewArtifacts } from '../../../lib/reviews'
 import { effectiveStepModel, rosterFromView } from '../../../lib/settings'
 import { useToast } from '../../../lib/toast'
 import { STOP_TIMEOUT } from '../../../lib/vocabulary'
 import { SANDBOX_MODE } from '../../../lib/env'
-import { Button, Dialog, EmptyState, IconButton, Spinner, cx } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
+import { Button, EmptyState, IconButton, Spinner, cx } from '../../../ui'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,14 +39,13 @@ import {
   IconEye,
   IconMore,
   IconPencil,
-  IconPlay,
   IconStop,
   IconTerminal,
   IconX,
 } from '../../../icons'
 import { ErrorBoundary } from '../../ErrorBoundary'
 import { Markdown } from '../../Markdown'
-import { EvidenceStage } from '../../review/EvidenceStage'
+import { ReviewPackageDialog } from '../../review/ReviewPackageItem'
 import { LaneTranscript } from '../../run/LaneTranscript'
 import { MessageWithSettingsLink } from '../../settings/MessageWithSettingsLink'
 import { ModelMenu } from './ModelMenu'
@@ -59,6 +59,7 @@ import { TicketEditor, type TicketPatch } from './TicketEditor'
  * the round is the list, and Stop is the page header's.
  */
 export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpenDoc: (relPath: string) => void }) {
+  const phone = useIsPhone()
   const poll = useLivePoll()
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -66,16 +67,12 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const roundsQ = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: poll })
   const projectId = full.data?.feature.projectId
   const settings = trpc.settings.get.useQuery({ projectId: projectId ?? '' }, { enabled: !!projectId })
-  // What a done review ticket's card says it found, and the walkthrough it recorded.
-  const findings = trpc.findings.listByFeature.useQuery({ featureId })
-  const recordings = useReviewArtifacts(featureId)
   const events = useEventLog(featureId)
   const attempts = useMemo(() => latestAttempts(events), [events])
   const durations = useMemo(() => ticketDurations(attempts), [attempts])
   const facts = useMemo(() => laneFacts(attempts), [attempts])
   const roster = rosterFromView(settings.data)
   const defaultModel = effectiveStepModel(settings.data, 'implement')
-  const [watching, setWatching] = useState<ReviewArtifacts | null>(null)
 
   const onMutated = {
     onSuccess: () => utils.feature.get.invalidate({ id: featureId }),
@@ -114,6 +111,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const { folded, current } = splitRounds(tickets, roundsQ.data ?? [])
   const waiting = tickets.filter((t) => t.status === 'pending')
   const runningRun = full.data.runs.find((r) => r.status === 'running')
+  const building = imageBuildWords(events, runningRun?.id)
   // A conflict's "Resolve in terminal" opens a session, which the launcher
   // refuses while a run holds the feature branch or another terminal is open.
   const terminalBlocked = !!runningRun || full.data.sessions.some(sessionActive)
@@ -173,7 +171,6 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
         () => toast.push(`copied ${shortSha(sha)}`, 'info'),
         () => toast.push('copy failed'),
       ),
-    watch: setWatching,
     facts,
     durations,
     bootEvents: (ticket) => attempts.filter((e) => e.ticketId === ticket.id),
@@ -183,8 +180,6 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
         ticketModelChip(ticket, roster) ??
         ticketModelChip({ model: effectiveStepModel(settings.data, ticket.kind === 'review' ? 'review' : 'implement') }, roster)
       )?.runtime,
-    findings: (ticket) => (findings.data?.findings ?? []).filter((f) => f.reviewTicketId === ticket.id),
-    recording: (ticket) => recordings.data?.find((r) => r.ticketId === ticket.id && r.videoUrl),
   }
 
   // One edit per ticket, in sequence: the wire takes a single ticket at a time
@@ -214,20 +209,22 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
           {current.round ? `Round ${current.round.round}` : current.number > 1 ? `Round ${current.number}` : 'Round 1'}
         </h2>
         <span className={cx('min-w-0 truncate text-xs', current.running ? 'text-shimmer text-text-secondary' : 'text-text-tertiary')}>
-          {roundWords(current)}
+          {building ?? roundWords(current)}
         </span>
         <span className="ml-auto flex items-center gap-1">
           {runningRun && (
             <span className="text-xs text-text-tertiary tabular-nums">{fmtDuration(runningRun.startedAt, Date.now())}</span>
           )}
-          <ListMenu
-            roster={roster}
-            defaultModel={defaultModel}
-            waiting={waiting.length}
-            onModel={(model) => void bulkModel(model)}
-            docs={full.data.docs}
-            onOpenDoc={onOpenDoc}
-          />
+          {!phone && (
+            <ListMenu
+              roster={roster}
+              defaultModel={defaultModel}
+              waiting={waiting.length}
+              onModel={(model) => void bulkModel(model)}
+              docs={full.data.docs}
+              onOpenDoc={onOpenDoc}
+            />
+          )}
         </span>
       </div>
       <div className="-mx-2.5 flex flex-col gap-0.5">
@@ -235,30 +232,6 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
           <TicketItem key={ticket.id} ticket={ticket} index={i} tickets={tickets} controls={controls} />
         ))}
       </div>
-      <Dialog
-        open={!!watching}
-        onClose={() => setWatching(null)}
-        labelledBy="walkthrough-full-title"
-        size="full"
-        className="flex h-[86vh] flex-col overflow-hidden"
-      >
-        <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
-          <h2 id="walkthrough-full-title" className="m-0 min-w-0 flex-1 truncate text-sm font-medium text-text">
-            Walkthrough{watching ? ` · #${watching.seq}` : ''}
-          </h2>
-          <IconButton label="Close" size="sm" icon={<IconX />} onClick={() => setWatching(null)} />
-        </div>
-        {watching && (
-          <div className="flex min-h-0 flex-1 flex-col p-5">
-            <EvidenceStage
-              featureId={featureId}
-              recordings={[watching]}
-              notes={[]}
-              readonly
-            />
-          </div>
-        )}
-      </Dialog>
     </div>
   )
 }
@@ -280,13 +253,10 @@ interface TicketControls {
   cancel: (ticket: Ticket) => void
   resolveInTerminal: (ticket: Ticket, files: string[]) => void
   copySha: (sha: string) => void
-  watch: (recording: ReviewArtifacts) => void
   facts: Map<string, LaneFacts>
   durations: Map<string, number>
   bootEvents: (ticket: Ticket) => EventRow[]
   runtime: (ticket: Ticket) => AgentRuntime | undefined
-  findings: (ticket: Ticket) => ReviewFinding[]
-  recording: (ticket: Ticket) => ReviewArtifacts | undefined
 }
 
 /**
@@ -512,15 +482,18 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // A phone reads a ticket and acts on none (runcastle-on-your-phone decision
+  // 3): of the row of actions, only the review package to read is left.
+  const phone = useIsPhone()
   // The server's own editable set (`assertMutable`): a stopped ticket is a failed row.
-  const editable = ticket.status === 'pending' || ticket.status === 'failed'
+  const editable = !phone && (ticket.status === 'pending' || ticket.status === 'failed')
   // A landing conflict is not a normal failure: the ticket IS implemented and
   // its commits are safe on the attempt branch, waiting to be resolved.
   const conflict = ticket.status === 'failed' ? ticket.conflictFiles : undefined
   const { busy } = controls
-  const review = ticket.kind === 'review' && state === 'done'
-  const recording = review ? controls.recording(ticket) : undefined
-  const findings = review ? controls.findings(ticket) : []
+  // A pass that ended, however it ended: what it kept is in its package.
+  const review = ticket.kind === 'review' && state !== 'pending' && state !== 'burning' && state !== 'waived'
+  const [packageOpen, setPackageOpen] = useState(false)
 
   if (editing)
     return (
@@ -567,7 +540,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
         <div className="-ml-2 flex flex-wrap items-center gap-1">
           {/* One click, deliberately: this is the control reached for at the
               moment an agent is visibly going wrong. */}
-          {state === 'burning' && (
+          {state === 'burning' && !phone && (
             <Button
               size="sm"
               variant="danger-ghost"
@@ -579,7 +552,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               {controls.stopping === ticket.id ? 'Stopping…' : 'Stop'}
             </Button>
           )}
-          {conflict && (
+          {conflict && !phone && (
             <Button
               size="sm"
               variant="ghost"
@@ -595,9 +568,9 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               Resolve in terminal
             </Button>
           )}
-          {recording && (
-            <Button size="sm" variant="ghost" icon={<IconPlay />} onClick={() => controls.watch(recording)}>
-              Watch the walkthrough
+          {review && (
+            <Button size="sm" variant="ghost" icon={<IconEye />} onClick={() => setPackageOpen(true)}>
+              Open review package
             </Button>
           )}
           {editable && (
@@ -666,7 +639,6 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
           </ul>
         </Part>
       )}
-      {findings.length > 0 && <FindingsPart findings={findings} />}
       {state === 'done' && ticket.kind !== 'review' && ticket.commits.length > 0 && (
         <Part title="Commits">
           <div className="flex flex-wrap gap-1">
@@ -690,29 +662,13 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
             <LaneTranscript ticketId={ticket.id} bootEvents={controls.bootEvents(ticket)} runtime={controls.runtime(ticket)} />
           </ErrorBoundary>
         </Part>
-      ) : // A review that failed never ran: its digest only repeats the error above.
-      ticket.digest && !(ticket.kind === 'review' && state === 'failed') ? (
-        <Part title={ticket.kind === 'review' ? 'What the review found' : 'What the worker said'}>
+      ) : ticket.digest && ticket.kind !== 'review' ? (
+        <Part title="What the worker said">
           <Markdown source={ticket.digest} />
         </Part>
       ) : null}
+      {packageOpen && <ReviewPackageDialog ticketId={ticket.id} onClose={() => setPackageOpen(false)} />}
     </div>
-  )
-}
-
-/** A done review's findings: its defects by title, its observations quieter. */
-function FindingsPart({ findings }: { findings: readonly ReviewFinding[] }) {
-  const ordered = [...findings].sort((a, b) => Number(a.kind === 'observation') - Number(b.kind === 'observation'))
-  return (
-    <Part title="Findings">
-      <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-sm marker:text-text-tertiary">
-        {ordered.map((f) => (
-          <li key={f.id} className={f.kind === 'defect' ? 'text-text-secondary' : 'text-text-tertiary'}>
-            {f.title}
-          </li>
-        ))}
-      </ul>
-    </Part>
   )
 }
 

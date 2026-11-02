@@ -1,8 +1,9 @@
 import { statSync } from 'node:fs'
 import {
-  awaitsHuman,
   DEFAULT_RUNTIME,
   foldThread,
+  lastHumanAt,
+  threadActivity,
   type SessionKind,
   type SessionRow,
   type ThreadEntry,
@@ -13,6 +14,8 @@ import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
+import { isRuncastlePrompt, runcastleLines } from '../services/lead-prompt'
+import { tryGetFeature } from '../services/repo'
 import { withRelativePaths } from './acp-map'
 import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
 import { NEW_CHAT_NAME, threadAbout, threadName, type ThreadAbout } from './naming'
@@ -62,9 +65,11 @@ function transcriptRow(ctx: AppCtx, row: SessionRow): SessionRow | null {
 }
 
 /**
- * A terminal-era conversation's transcript as thread events: each human turn a
- * prompt, each answer a whole turn of words. The launcher's kickoff lines are
- * left out, as the transcript pane leaves them out. No process runs behind it,
+ * A conversation's transcript as thread events, for a thread with no log — one
+ * from the terminal era, or any thread in a test drive, whose copied data has
+ * the database but not the logs. Each user turn is a prompt, runcastle's or the
+ * human's by its tag, and each answer a whole turn of words. The launcher's
+ * kickoff lines are left out, as the transcript pane leaves them out. No process runs behind it,
  * so a last prompt that got no answer folds as said, not as starting an agent.
  * A slash command reads as what was typed, and the CLI's own lines are dropped
  * (see {@link typedText}).
@@ -78,7 +83,10 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   conversationTranscript(ctx, source.id).turns.forEach((turn, n) => {
     if (turn.role === 'user') {
       const text = typedText(turn.text)
-      if (text !== null) push({ type: 'prompt', id: `${row.id}-t${n}`, text, source: 'human' })
+      if (text === null) return
+      const id = `${row.id}-t${n}`
+      if (isRuncastlePrompt(text)) push({ type: 'prompt', id, text: runcastleLines(text), source: 'runcastle' })
+      else push({ type: 'prompt', id, text, source: 'human' })
     } else {
       push({ type: 'turn_started' })
       push({ type: 'agent_text', messageId: `${row.id}-t${n}`, text: turn.text })
@@ -158,36 +166,52 @@ function titleFrom(row: SessionRow, said: string[]): string | null {
   )
 }
 
-function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEntry {
+function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiting: boolean): ThreadEntry {
   const { view, events } = foldedLog(row.id)
+  const running = agentHost(ctx).isRunning(row.id)
+  // A lead that said it waits on the human (`wait_for_you`, declared ready) has handed over, whatever still runs.
+  const background = running && !(leadWaiting && row.kind === 'chat') && threadActivity(events, true, Date.now()) === 'background'
   return {
     id: row.id,
     title: threadName(row, events, about),
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
-    state: agentHost(ctx).isRunning(row.id) ? view.state : 'idle',
+    state: background ? 'working' : running ? view.state : 'idle',
     createdAt: row.createdAt ?? 0,
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
+    lastHumanAt: lastHumanAt(events),
     runtime: row.runtime ?? DEFAULT_RUNTIME,
   }
 }
 
+/** What a feature's lead is doing, as {@link leadState} reads it. */
+export interface LeadState {
+  /** It replied or asks, and the human has not answered. */
+  awaitsHuman: boolean
+  /** It replied and its background work still runs, so nobody is being waited on yet. */
+  inBackground: boolean
+}
+
+/** What a feature with no lead at work reads as. */
+export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false }
+
 /**
- * The feature's lead waits on the human (decision 15): {@link awaitsHuman} over
- * its main chat — the newest one with a log, as the thread list's newest main
- * entry — so the header and the sidebar read one answer. A conversation from
- * the terminal era has no log, and waits on nobody.
+ * What the feature's lead is doing (decision 15): {@link threadActivity} over its
+ * main chat — the newest one with a log, as the thread list's newest main entry
+ * — so the header and the sidebar read one answer. A conversation from the
+ * terminal era has no log, and waits on nobody.
  */
-export function leadAwaitsHuman(ctx: AppCtx, featureId: string): boolean {
-  let newest: { at: number; waits: boolean } | null = null
+export function leadState(ctx: AppCtx, featureId: string): LeadState {
+  let newest: { at: number; state: LeadState } | null = null
   for (const row of featureSessions(ctx, featureId, ['chat'])) {
     if (!hasThreadLog(row.id)) continue
     const { events } = foldedLog(row.id)
     const at = events.at(-1)?.at ?? row.createdAt ?? 0
     if (newest && newest.at >= at) continue
-    newest = { at, waits: awaitsHuman(events, agentHost(ctx).isRunning(row.id)) }
+    const activity = threadActivity(events, agentHost(ctx).isRunning(row.id), Date.now())
+    newest = { at, state: { awaitsHuman: activity === 'asking' || activity === 'replied', inBackground: activity === 'background' } }
   }
-  return newest?.waits ?? false
+  return newest?.state ?? NO_LEAD
 }
 
 /** A thread nothing has been said in yet. */
@@ -237,13 +261,14 @@ export function listThreads(ctx: AppCtx, scope: { featureId: string } | { projec
       ? featureSessions(ctx, scope.featureId, FEATURE_THREAD_KINDS)
       : PROJECT_THREAD_KINDS.flatMap((kind) => projectSessions(ctx, scope.projectId, kind))
   const about = threadAbout(ctx, 'featureId' in scope ? scope.featureId : null)
+  const leadWaiting = 'featureId' in scope && !!tryGetFeature(ctx, scope.featureId)?.waitingReason
   const conversations = new Set<string>()
   const entries: ThreadEntry[] = []
   for (const row of rows) {
     if (row.ccSessionId && conversations.has(row.ccSessionId)) continue
     if (row.ccSessionId) conversations.add(row.ccSessionId)
     if (hasThreadLog(row.id)) {
-      entries.push(loggedEntry(ctx, row, about))
+      entries.push(loggedEntry(ctx, row, about, leadWaiting))
       continue
     }
     const source = transcriptRow(ctx, row)

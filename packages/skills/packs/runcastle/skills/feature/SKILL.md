@@ -33,20 +33,20 @@ Before the first round, draw the plan preview (`./references/preview.md`, from `
 
 Then run rounds: `./references/rounds.md`.
 
-## Review is your call
+## Every feature ends with a review round
 
-Run a review ticket when the change is worth an independent look: it spans several areas, it has a surface a human operates, or you are not sure of it. Skip it when it is not, and say why. No rule requires one.
+When the work is done, run one review round before you say ready, even if you built everything yourself: emit a single review ticket (`./references/tickets.md`) and dispatch it. Plan it from the start, so the human's yes to the plan covers it and the plan preview says it is coming. Skip it only when the human says they do not want one. A change with nothing to drive gets a code review from the same ticket. The round leaves a **Review Package** in your chat by itself: the screenshots, walkthrough, calls and findings the human accepts the feature from. No server rule requires any of this; it is how a feature gets looked at.
 
 ## Ready for the human
 
 Before you say ready, always run the project's own checks (its typecheck and its tests) and fix what they find. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
 
 - **what to test**: what changed, where to look, what would count as broken;
-- **how you checked it**: for example "typecheck and tests green; no review agent, since it's a one-file style change".
+- **how you checked it**: for example "typecheck and tests green; the review round found nothing".
 
 Pass on any warning `declare_ready` returns.
 
-When you took screenshots of the work, show them in your chat with `show_file` before you say ready, a caption on each. The human may accept the feature from them, and the orchestrator re-shows them from your chat.
+When you took screenshots of the work yourself, show them in your chat with `show_file` before you say ready, a caption on each. A review's arrive in its package by themselves.
 
 ## After a drive
 
@@ -59,6 +59,8 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 ## When to ask, and when to stop
 
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })` with a few words, and end your turn.
+- **Handing over with a command still running.** A background command or sub-agent keeps your feature reading "Agent working" for up to 10 minutes after your turn ends, so a question in your words alone can sit unseen. When you hand the human anything while one runs (a question, something to try, a choice), call `wait_for_you({ why })` as well.
+- **Reaching their phone.** Nothing notifies the human unless an agent chooses to. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left, for example after a long unattended round. Not during a back-and-forth, when they will see your reply anyway. Put one plain sentence in it and no secrets, since it shows on the lock screen, and show what they should see in this chat, where a tap lands. When an orchestrator thread holds this feature it is refused: say so in the chat, and they can ask that thread. Relay any `note` it answers with.
 - After the human presses Stop, start nothing until they reply.
 - **Runaway guard.** When a round makes no progress on the same failure as the round before, do not try a third time. Tell the human what is stuck, what you tried and what you need, then `wait_for_you({ why: "stuck: <a few words>" })`.
 

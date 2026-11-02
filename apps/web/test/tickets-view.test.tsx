@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow, RoundSummary, Ticket } from '@runcastle/core'
 import { laneFacts } from '../src/lib/feature-ui/run'
+import { atWidth } from './phone-width'
 
 /**
  * The panel's Tickets view (the-feature-s-right-panel decisions 17–19): which
@@ -49,10 +50,8 @@ vi.mock('../src/components/run/LaneTranscript', () => ({
     return null
   },
 }))
-vi.mock('../src/components/review/EvidenceStage', () => ({
-  EvidenceStage: ({ recordings }: { recordings: { ticketId: string }[] }) => (
-    <div data-testid="evidence-stage">{recordings.map((r) => r.ticketId).join(',')}</div>
-  ),
+vi.mock('../src/components/review/ReviewPackageItem', () => ({
+  ReviewPackageDialog: ({ ticketId }: { ticketId: string }) => <div data-testid="review-package">{ticketId}</div>,
 }))
 vi.mock('../src/trpc', () => ({ trpc: {
   useUtils: () => ({
@@ -296,29 +295,21 @@ describe('an opened ticket’s actions', () => {
 
 describe('a done review ticket', () => {
   beforeEach(() => {
-    server.tickets = [ticket({ id: 'rv', seq: 5, kind: 'review', status: 'done' })]
-    server.findings = [
-      { id: 'o1', reviewTicketId: 'rv', kind: 'observation', title: 'Spacing is loose' },
-      { id: 'd1', reviewTicketId: 'rv', kind: 'defect', title: 'Save drops the title' },
-      { id: 'd2', reviewTicketId: 'other', kind: 'defect', title: 'Someone else’s' },
-    ]
+    server.tickets = [ticket({ id: 'rv', seq: 5, kind: 'review', status: 'done', digest: 'What it found' })]
   })
 
-  it('lists what it found, defects first', () => {
+  it('holds only the way to its package', () => {
     mount()
-    const part = within(open(5)).getByRole('heading', { name: 'Findings' }).closest('section') as HTMLElement
-    const items = within(part).getAllByRole('listitem').map((li) => li.textContent)
-    expect(items).toEqual(['Save drops the title', 'Spacing is loose'])
+    const card = within(open(5))
+    expect(card.getByRole('button', { name: 'Open review package' })).toBeTruthy()
+    expect(card.queryByText('What it found')).toBeNull()
+    expect(card.queryByRole('button', { name: 'Watch the walkthrough' })).toBeNull()
   })
 
-  it('plays its walkthrough in the evidence stage, and offers none without a recording', () => {
+  it('opens the package of this ticket', () => {
     mount()
-    expect(within(open(5)).queryByRole('button', { name: 'Watch the walkthrough' })).toBeNull()
-    cleanup()
-    server.recordings = [{ ticketId: 'rv', seq: 5, videoUrl: '/api/reviews/ticket/rv/video' }]
-    mount()
-    fireEvent.click(within(open(5)).getByRole('button', { name: 'Watch the walkthrough' }))
-    expect(screen.getByTestId('evidence-stage').textContent).toBe('rv')
+    fireEvent.click(within(open(5)).getByRole('button', { name: 'Open review package' }))
+    expect(screen.getByTestId('review-package').textContent).toBe('rv')
   })
 })
 
@@ -346,5 +337,35 @@ describe('the list menu', () => {
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Spec' }))
     expect(opened).toEqual(['spec.md'])
+  })
+})
+
+/** runcastle-on-your-phone decision 3: Tickets read on a phone, and do nothing. */
+describe('on a phone', () => {
+  beforeEach(() => atWidth(true))
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads a ticket with no action on it: no model menu, edit, cancel, stop or terminal', () => {
+    server.tickets = [
+      ticket({ id: 't1', seq: 1 }),
+      ticket({ id: 't2', seq: 2, status: 'failed', conflictFiles: ['src/a.ts'], attemptBranch: 'runcastle/ticket/demo/2-x' }),
+      ticket({ id: 't3', seq: 3, status: 'burning' }),
+    ]
+    mount()
+    expect(screen.queryByRole('button', { name: 'Ticket list options' })).toBeNull()
+    for (const seq of [1, 2, 3]) {
+      const card = open(seq)
+      expect(within(card).queryByRole('combobox')).toBeNull()
+      expect(within(card).queryByRole('button', { name: /Edit|Cancel|Stop|Resolve/ })).toBeNull()
+    }
+    expect(row(1).textContent).toContain('Works')
+    expect(row(2).textContent).toContain('src/a.ts')
+  })
+
+  it('still opens a review ticket’s package to read', () => {
+    server.tickets = [ticket({ id: 'rv', seq: 5, kind: 'review', status: 'done' })]
+    mount()
+    fireEvent.click(within(open(5)).getByRole('button', { name: 'Open review package' }))
+    expect(screen.getByTestId('review-package').textContent).toBe('rv')
   })
 })

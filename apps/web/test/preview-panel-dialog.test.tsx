@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
+import { atWidth } from './phone-width'
 
 vi.mock('../src/trpc', () => ({
   trpc: { docs: { read: { useQuery: () => ({ data: { content: '<!doctype html><p>the show</p>' }, isLoading: false, error: null }) } } },
@@ -58,6 +59,22 @@ describe('PreviewPanel full window', () => {
 
     relay(frame.contentWindow)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+/** runcastle-on-your-phone decision 3: the plan reads on a phone, already the whole screen. */
+describe('PlanBody on a phone', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps its three parts and the preview, with no full-window control', () => {
+    atWidth(true)
+    plan()
+    for (const name of [/Preview/, /Decisions/, /Spec/]) expect(screen.getByRole('tab', { name })).toBeTruthy()
+    expect(document.querySelector('iframe')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open full window' })).toBeNull()
   })
 })
 

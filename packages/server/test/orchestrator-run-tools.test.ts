@@ -140,6 +140,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
       transcriptPath: null,
       reason: 'no chat on disk yet',
       shown: [],
+      reviewShots: [],
     })
   })
 

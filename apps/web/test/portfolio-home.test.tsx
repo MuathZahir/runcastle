@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PortfolioHome } from '../src/components/PortfolioHome'
 import { ToastProvider } from '../src/lib/toast'
 import { listItem } from './fixtures'
+import { atWidth } from './phone-width'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
 
@@ -128,5 +129,27 @@ describe('PortfolioHome', () => {
     const sidebar = screen.getByRole('navigation', { name: 'Projects' })
     expect(sidebar.textContent).toContain('All projects')
     expect(screen.getByRole('main')).toBeTruthy()
+  })
+})
+
+/** runcastle-on-your-phone: the home fits a phone, to pick another project. */
+describe('PortfolioHome on a phone', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('is the project list alone, and a row opens its project', () => {
+    atWidth(true)
+    render(
+      <ToastProvider>
+        <PortfolioHome nav={nav} />
+      </ToastProvider>,
+    )
+    expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open a project' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'sandcastle actions' })).toBeNull()
+    fireEvent.click(screen.getByTitle('Open sandcastle'))
+    expect(nav.enterProject).toHaveBeenCalledWith('p2')
   })
 })

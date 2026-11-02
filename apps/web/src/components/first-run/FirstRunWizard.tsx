@@ -9,7 +9,9 @@ import {
   wizardSteps,
   type WizardScreen,
 } from '../../lib/first-run'
+import { useIsPhone } from '../../lib/use-phone'
 import { Spinner } from '../../ui'
+import { OnYourComputer } from '../OnYourComputer'
 import { OpenProject } from '../OpenProject'
 import { AfkStep } from './AfkStep'
 import { IdentityStep } from './IdentityStep'
@@ -59,9 +61,18 @@ export function FirstRunWizard({
   // pair of a runtime the operator actually authed, so a Codex-only install
   // never lands on dead Claude defaults (decision 7).
   const seed = trpc.setup.seedModelDefaults.useMutation()
+  const phone = useIsPhone()
   const finish = () => {
     seed.mutate({ runtimes: readyRuntimes(runtimes) })
     go('project', 'forward')
+  }
+
+  if (phone) {
+    return (
+      <SetupFrame>
+        <OnYourComputer />
+      </SetupFrame>
+    )
   }
 
   if (doctor.isLoading) {

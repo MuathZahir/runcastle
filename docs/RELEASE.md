@@ -29,6 +29,10 @@ If a run fails, delete the tag and re-release once fixed:
 git push --delete origin v1.0.4 && git tag -d v1.0.4
 ```
 
+**Release before a site deploy.** `site/install.sh` and `site/install.ps1` call
+`runcastle setup` on whatever npm serves as `latest`. A site deploy that changes
+what they call must wait until the release carrying it is on npm.
+
 ### Preview releases — the `next` channel
 
 To get a build onto another machine without shipping it to users, release a
@@ -176,8 +180,7 @@ RUNCASTLE_RELEASE_VERSION=1.0.0 bun run build:pkg
 > `$env:` as above.
 
 This bundles the server + bin (core inlined, deps external), builds the web SPA,
-and vendors drizzle migrations, the hook client, the PTY sidecar, the skills
-pack, the built SPA, and the sandcastle template into `build/`.
+and vendors drizzle migrations, the hook client, the skills pack, the built SPA, and the sandcastle template into `build/`.
 
 Verify before packing (PowerShell):
 
@@ -185,7 +188,7 @@ Verify before packing (PowerShell):
 cd build
 Select-String '"version"|"name"' package.json   # -> "version": "1.0.0", "name": "runcastle"
 bun pm pack                                      # -> runcastle-1.0.0.tgz
-tar tzf runcastle-1.0.0.tgz | Select-String 'bin/runcastle.js|index.js|pty-host.cjs|web/index.html'
+tar tzf runcastle-1.0.0.tgz | Select-String 'bin/runcastle.js|index.js|web/index.html'
 ```
 
 bash equivalent: `grep '"version"' package.json`, `tar tzf … | grep -E …`.
@@ -265,14 +268,24 @@ running version (`checkForUpdate` in `src/services/update-check.ts`); with
 `latest` now `1.0.0`, an up-to-date install reports `updateAvailable: false`,
 and only an older install is prompted with `bun add -g runcastle@latest`.
 
+## Changes the next release must call out
+
+GitHub generates a release's notes from its commits, which will not carry these.
+Paste them into the release, then remove them from here.
+
+- **A burn now builds its own sandbox image.** The first burn on a machine takes a
+  few minutes longer, with no click. `runcastle build-image` does the same build
+  by hand. `runcastle doctor` no longer fails on a missing image.
+- **A repo with a broken `.runcastle/sandbox/Dockerfile` that was never built now
+  fails its burn.** Until now such a repo ran on the stock image, without the tools
+  its Dockerfile asked for. Fix the Dockerfile, or delete it to go back to the stock
+  image. The run stops before any ticket starts, and names the cause and a log file.
+
 ## Notes / open decisions
 
-- **System `node` is required on Windows** for the PTY sidecar — documented in
-  the README; the doctor reports it.
-- **Linux install** relies on the vendored node-pty prebuild bridge (glibc
-  x64/arm64); musl/Alpine has a documented compile fallback. First-run asserts
-  the PTY native binary actually exists rather than trusting the install exit
-  code.
+- **Run the platform smoke before a release.** The terminal is Bun's own, so a
+  new Bun can change it with no runcastle release involved. The smoke hides Node
+  and opens real terminals on Bun's floor and on the latest Bun, on every OS.
 - Changelog format and release cadence are **not yet decided** (spec §"Further
   Notes"). This runbook covers the mechanical cut only; slot a CHANGELOG in when
   that decision lands.

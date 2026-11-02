@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OpenProject } from '../src/components/OpenProject'
 import { ToastProvider } from '../src/lib/toast'
+import { atWidth } from './phone-width'
 
 /**
  * The open-a-project screen (decision 5). The component is all tRPC, so the
@@ -122,6 +123,7 @@ describe('OpenProject', () => {
   afterEach(() => {
     restorePlatform()
     cleanup()
+    vi.unstubAllGlobals()
   })
 
   it('is a kicker, a heading, a one-line lead and one row of controls', () => {
@@ -279,5 +281,20 @@ describe('OpenProject', () => {
 
     expect(stub.opened).toEqual([{ repoPath: '/home/you/repo' }])
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('on a phone, says to open one on the computer, as a screen and as a dialog', () => {
+    atWidth(true)
+    open()
+    expect(screen.getByText('Set this up on your computer.')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Repository path' })).toBeNull()
+    cleanup()
+    render(
+      <ToastProvider>
+        <OpenProject firstRun={false} variant="dialog" onOpened={onOpened} onCancel={onCancel} />
+      </ToastProvider>,
+    )
+    expect(screen.getByText('Set this up on your computer.')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Repository path' })).toBeNull()
   })
 })

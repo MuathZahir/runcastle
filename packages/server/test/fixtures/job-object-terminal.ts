@@ -7,8 +7,8 @@ import { terminalText } from './terminal-text'
 /**
  * Shared by the Job Object Bun fixtures (`job-object-session-end.ts`,
  * `job-object-crash.ts`): open a REAL registry terminal running the claude stub
- * and read back the pids it prints. Under Bun on win32 `selectBackend()` picks
- * the sidecar, so the terminal's host is contained exactly as in production.
+ * and read back the pids it prints. The terminal's program is contained exactly
+ * as in production.
  */
 
 const STUB = fileURLToPath(new URL('./claude-stub.cjs', import.meta.url))
@@ -36,7 +36,7 @@ export async function awaitDead(pids: number[], timeoutMs: number): Promise<numb
 }
 
 export interface StubTerminal {
-  /** The sidecar host the server spawned (and contained). */
+  /** The program the terminal spawned (and contained). */
   hostPid: number
   /** The stub that starts the MCP stand-in and then exits. */
   stubPid: number
@@ -62,7 +62,6 @@ export async function openStubTerminal(sessionId: string, mode: 'exit' | 'nest')
     opts: { cwd: tmpdir(), env: process.env, cols: 200, rows: 24 },
     onExit: () => resolveExit(),
   })
-  // Read on THIS tick: the sidecar swaps in the inner node-pty pid on `ready`.
   const hostPid = entry.pty.pid
 
   const started = Date.now()

@@ -15,6 +15,7 @@ import {
 } from './ui/combobox'
 import { cx } from './ui/floating'
 import { SectionLabel } from './ui/list'
+import { useIsPhone } from './lib/use-phone'
 
 /**
  * The shared primitives (apps/web/DESIGN.md §Components, STYLE.md §Primitives).
@@ -62,6 +63,7 @@ export { Aside, AsideLayout, Crumbs, Page, PageHeader, PageSection, PageTopbar, 
 export { Checkbox, SegmentedControl, Switch } from './ui/choice'
 export { Skeleton, SkeletonBar } from './ui/skeleton'
 export { Timeline, TimelineNode } from './ui/timeline'
+export { Sheet, SheetRow } from './ui/sheet'
 export type { TimelineTone } from './ui/timeline'
 export type { SegmentItem } from './ui/choice'
 export type { Crumb } from './ui/page'
@@ -251,7 +253,19 @@ export function FailureNote({
   )
 }
 
-type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette' | 'full'
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette' | 'full' | 'sheet'
+
+/** Where the panel stands: centred near the top, or (`sheet`) on the screen's foot. */
+const DIALOG_PLACE = {
+  centred: 'items-start justify-center px-4 pb-4',
+  foot: 'items-end justify-center',
+} as const
+
+/** The panel's material: a floating card, or a sheet risen from the foot. */
+const DIALOG_LOOK = {
+  card: 'rounded-lg shadow-dialog animate-dialog-in',
+  sheet: 'flex max-h-[70%] flex-col rounded-t-lg border-t border-border pb-[calc(0.75rem+env(safe-area-inset-bottom))] animate-rise-in',
+} as const
 
 const DIALOG_SIZE: Record<DialogSize, string> = {
   sm: 'max-w-[460px]',
@@ -263,6 +277,8 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
   palette: 'max-w-[560px]',
   // The plan preview, full window: most of the viewport, whatever its size.
   full: 'max-w-[min(1400px,96vw)]',
+  // The phone's menu (`Sheet`): the screen's whole width.
+  sheet: '',
 }
 
 type DialogScrim = 'dim' | 'light' | 'none'
@@ -349,6 +365,11 @@ export function Dialog({
 }) {
   const [confirming, setConfirming] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  // On a phone the full window is the whole screen, edge to edge: no margin,
+  // no corners, and at least the screen's height whatever height the caller
+  // gave it (runcastle-on-your-phone: a review package fills the phone).
+  const phone = useIsPhone()
+  const edge = size === 'full' && !inline && phone
 
   useEffect(() => {
     if (!open) return
@@ -403,6 +424,7 @@ export function Dialog({
 
   if (!open) return null
 
+  const sheet = size === 'sheet'
   const dismiss = () => {
     if (dirty) setConfirming(true)
     else onClose()
@@ -414,9 +436,10 @@ export function Dialog({
         inline
           ? 'flex flex-1 items-center justify-center p-6'
           : cx(
-              'fixed inset-0 z-[200] flex items-start justify-center px-4 pb-4',
+              'fixed inset-0 z-[200] flex',
+              sheet ? DIALOG_PLACE.foot : edge ? 'items-start justify-center' : DIALOG_PLACE.centred,
               // The palette sits at 12vh; every other dialog at 8vh.
-              size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]',
+              !sheet && !edge && (size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]'),
               DIALOG_SCRIM[scrim],
             ),
         backdropClassName,
@@ -439,9 +462,11 @@ export function Dialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={cx(
-          'w-full rounded-lg bg-surface-raised text-sm text-text shadow-dialog animate-dialog-in',
+          'w-full bg-surface-raised text-sm text-text',
+          // On a phone the full window keeps the card's shadow and entrance but not its corners.
+          sheet ? DIALOG_LOOK.sheet : edge ? 'shadow-dialog animate-dialog-in' : DIALOG_LOOK.card,
           scrim === 'none' && 'pointer-events-auto',
-          DIALOG_SIZE[size],
+          edge ? 'min-h-dvh' : DIALOG_SIZE[size],
           className,
         )}
       >

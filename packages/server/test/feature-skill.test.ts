@@ -47,10 +47,11 @@ describe('the feature skill', () => {
     expect(text).toContain('Ask again before any round the agreed plan did not settle.')
   })
 
-  it('leaves review to its judgement, and always runs the checks before ready', () => {
+  it('ends every feature with a review round unless the human declines, and always runs the checks before ready', () => {
     const text = skill()
-    expect(text).toContain('## Review is your call')
-    expect(text).toContain('No rule requires one.')
+    expect(text).toContain('## Every feature ends with a review round')
+    expect(text).toContain('Skip it only when the human says they do not want one.')
+    expect(text).toContain('No server rule requires any of this')
     expect(text).toContain("always run the project's own checks (its typecheck and its tests)")
     expect(text).toContain('`declare_ready({ scenario })`')
     expect(text).toContain('**how you checked it**')

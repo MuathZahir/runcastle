@@ -23,10 +23,11 @@ export const READY_TO_TEST = 'ready to test'
 
 /**
  * An open terminal whose agent is mid-turn — the HITL twin of `activeRun`.
- * A terminal still launching counts: nothing has stopped for anyone yet.
+ * A terminal still launching counts: nothing has stopped for anyone yet, and so
+ * does a lead that replied while its background work runs (`leadInBackground`).
  */
 function agentMidTurn(f: FeatureListItem): boolean {
-  return !!f.liveSession && !f.liveSession.awaitingInput
+  return (!!f.liveSession && !f.liveSession.awaitingInput) || f.leadInBackground
 }
 
 /**

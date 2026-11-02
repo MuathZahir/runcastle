@@ -16,8 +16,10 @@ import {
   IconX,
 } from '../../../icons'
 import { Button, Checkbox, EmptyState, IconButton, Spinner, cx } from '../../../ui'
+import { useIsPhone } from '../../../lib/use-phone'
 import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
+import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -159,7 +161,8 @@ export function ChatThread({
       >
         <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col pt-8" style={{ paddingBottom: footH + 56 }}>
           {items.length === 0 && loading ? (
-            <p role="status" className="m-0 flex items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary">
+            // Held back a moment: a read that answers at once shows no flash of it.
+            <p role="status" className="m-0 flex animate-fade-in items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary [animation-delay:var(--dur-3)]">
               <Spinner />
               Loading the thread…
             </p>
@@ -250,6 +253,8 @@ function Item({
       return <ChangesCard files={item.files} />
     case 'shown':
       return <ShownFiles files={item.files} />
+    case 'review_package':
+      return <ReviewPackageItem ticketId={item.ticketId} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
@@ -304,9 +309,12 @@ function Divider({ children }: { children: ReactNode }) {
  * A message's actions, shown on hover or focus within it. They take no room,
  * so a thread's rhythm is its messages alone: an answer's hang under it, on
  * the turn's 12px step (`start`); yours sit beside your bubble (`beside`),
- * because what follows it in the turn is only 12px away.
+ * because what follows it in the turn is only 12px away. A phone has no
+ * hover, so there they are not shown at all: nothing in a chat needs them.
  */
 function Actions({ align, children }: { align: 'start' | 'beside'; children: ReactNode }) {
+  const phone = useIsPhone()
+  if (phone) return null
   return (
     <div
       className={cx(
@@ -467,8 +475,11 @@ function AgentMessage({
   )
 }
 
-/** The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`); the line already says who spoke. */
-const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/
+/**
+ * The tag runcastle's prompts carry for the agent (`tagRuncastlePrompt`), on each
+ * line of a gathered batch; the line already says who spoke.
+ */
+const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/gm
 
 /** How long a runcastle line's head may run before it is cut at a word: about one line of the column. */
 const RUNCASTLE_HEAD_MAX = 140
@@ -528,7 +539,7 @@ export function ThreadError({ children, action }: { children: ReactNode; action?
   return (
     <div className="flex items-start gap-2 text-sm text-danger-text">
       <IconAlert size={15} className="mt-0.5 shrink-0 text-danger" />
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1 wrap-anywhere">{children}</span>
       {action}
     </div>
   )

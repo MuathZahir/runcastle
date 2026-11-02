@@ -114,7 +114,7 @@ describe('the feature page header', () => {
   it('never overlaps in a narrow window: the thread name truncates in the breadcrumb, the status line shrinks with an ellipsis', () => {
     const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
     expect(source).not.toContain('<ThreadSwitcher')
-    expect(source).toContain('...(!isDraft && inFrontTitle ? [{ label: inFrontTitle }] : [])')
+    expect(source).toContain('...(threadCrumb ? [{ label: threadCrumb }] : [])')
 
     const line = renderToStaticMarkup(
       createElement(FeatureStatusLine, {

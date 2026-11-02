@@ -9,6 +9,7 @@ import {
 } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { list } from '../src/services/features'
+import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -73,6 +74,24 @@ describe('feature.list lastActivityAt', () => {
  * read every active ideation feature as "Needs you" whether or not someone was
  * mid-conversation with it (decisions §3).
  */
+describe('feature.list ticketCounts', () => {
+  it('counts each feature’s tickets by status, in one read for the project', async () => {
+    const ctx = await makeTestCtx()
+    const project = seedProject(ctx)
+    const busy = seedFeature(ctx, project.id, { slug: 'busy' })
+    const quiet = seedFeature(ctx, project.id, { slug: 'quiet' })
+    storeTickets(ctx, busy.id, [
+      { title: 'a: one', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+      { title: 'a: two', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+    ])
+    const [first] = listByFeature(ctx, busy.id)
+    updateTicket(ctx, first!.id, { status: 'done' })
+    const rows = new Map(list(ctx, project.id).map((f) => [f.id, f.ticketCounts]))
+    expect(rows.get(busy.id)).toEqual({ total: 2, pending: 1, burning: 0, done: 1, failed: 0, cancelled: 0 })
+    expect(rows.get(quiet.id)).toEqual({ total: 0, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 0 })
+  })
+})
+
 describe('feature.list liveSession', () => {
   let ctx: AppCtx
   let projectId: string

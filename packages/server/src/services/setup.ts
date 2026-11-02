@@ -112,11 +112,20 @@ export interface AfkTokenIo {
 }
 
 /**
+ * The shortest Claude Code token saved. Real ones run ~108 characters; a paste
+ * that wrapped on a narrow terminal saved 53 and failed a burn much later.
+ * Codex API keys are exempt.
+ */
+export const MIN_CLAUDE_TOKEN_LENGTH = 80
+
+/**
  * Captures a runtime's AFK credential — Claude Code's `setup-token` OAuth token,
  * Codex's OpenAI API key — into the data-dir env file under that runtime's own
  * key, then runs a live validity check. Always persists a non-empty value (so a
  * transient verify failure doesn't lose it) and reports the check's verdict for
- * the UI. Rejects an empty value without touching disk.
+ * the UI. Rejects an empty value without touching disk. Every space and line
+ * break goes first: a paste that wrapped carries them, and a real credential
+ * holds neither.
  */
 export async function saveAfkCredential(
   io: AfkTokenIo,
@@ -124,10 +133,12 @@ export async function saveAfkCredential(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): Promise<TokenValidity> {
   const spec = RUNTIME_SPECS[runtime]
-  const value = rawValue.trim()
+  const value = rawValue.replace(/\s+/g, '')
   if (value.length === 0) throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot be empty`)
-  if (/[\r\n]/.test(value)) {
-    throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot contain a newline`)
+  if (runtime === 'claude-code' && value.length < MIN_CLAUDE_TOKEN_LENGTH) {
+    throw new InvalidInputError(
+      `${spec.label} ${spec.afkNoun} looks cut off (${value.length} characters, expected at least ${MIN_CLAUDE_TOKEN_LENGTH}). Paste the whole value.`,
+    )
   }
   io.write(upsertEnvVar(io.read(), spec.afkKey, value))
   return io.verify(value)
@@ -247,6 +258,15 @@ export async function resolveRuntime(exec: ExecFn, preferred: Runtime): Promise<
  * key pasted straight in).
  */
 export type TerminalKind = 'setup-token' | 'build-image' | 'claude-login' | 'codex-login'
+
+/**
+ * Whether Ctrl-C ends this terminal's program on Windows. The image build only
+ * shows output, so it can only mean stop. A sign-in prompt ignores Ctrl-C, and a
+ * person may press it to copy the sign-in URL.
+ */
+export function ctrlCEndsTerminal(kind: TerminalKind): boolean {
+  return kind === 'build-image'
+}
 
 /** The login terminal kind for each runtime, as the wizard and settings offer it. */
 export const LOGIN_TERMINAL_KIND: Record<AgentRuntime, TerminalKind> = {

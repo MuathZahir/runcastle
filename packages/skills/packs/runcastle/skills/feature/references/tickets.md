@@ -70,10 +70,10 @@ Give each ticket its **blocking edges** — the tickets that must finish before 
 can start. The field is required: a ticket with no blockers gets an empty array.
 
 <review-ticket>
-**A review ticket, when you choose to run one.** Whether a batch gets a review
-is your call (SKILL.md, "Review is your call"). When it does, add **one** ticket
+**The review ticket.** Every feature ends with one, unless the human does not
+want it (SKILL.md, "Every feature ends with a review round"). Add **one** ticket
 with `kind: "review"`, blocked by every implementation ticket whose work it
-checks. It is not a slice: it is the brief for the agent that exercises the
+checks, or by nothing when you built the work yourself. It is not a slice: it is the brief for the agent that exercises the
 *integrated* work on the feature branch and reports what it finds as findings.
 Its `goal` says what to verify and its `acceptanceCriteria` are the things to
 check off, one per behaviour worth confirming — the review agent walks them in

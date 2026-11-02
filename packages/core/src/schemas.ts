@@ -808,6 +808,16 @@ export type EventRow = z.infer<typeof EventRow>
 /** A message to the lead that could not reach its chat (once: a headless wake that died). */
 export const LEAD_WAKE_FAILED = 'lead.wake_failed'
 
+/** A burn began building its own image; `data.need` says why. */
+export const IMAGE_BUILD_STARTED_EVENT = 'burn.image_build_started'
+/** The image a burn was building is ready, whoever finished it. */
+export const IMAGE_BUILT_EVENT = 'burn.image_built'
+/** A burn's own image build failed; the run ends before any ticket. */
+export const IMAGE_BUILD_FAILED_EVENT = 'burn.image_build_failed'
+
+/** Why a burn is building its image. Only `missing` and `unadopted` are a first build. */
+export type ImageBuildNeed = 'missing' | 'unadopted' | 'wrong-uid' | 'dockerfile-changed'
+
 /**
  * `lead.wake_failed`'s data: the process's exit code (null when it never
  * spawned or the code is unknown) and the reason or the last lines of its

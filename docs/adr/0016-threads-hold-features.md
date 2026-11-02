@@ -52,7 +52,10 @@ while the thread running them never heard the news.
 - The "Since you were last live" briefing is gone: only a brand-new thread read
   it, and a brand-new thread holds nothing.
 - Threads see holders in their portfolio reads. The human sees holds and takes
-  on the feature's timeline only, with no "Held by" line in the app.
+  on the feature's timeline. `the-sidebar-shows-only-active-threads` changed this
+  on 2026-11-01, at the human's request: a holding thread's sidebar row shows its
+  features' rings, and a feature's page names its holder as the first crumb.
+  Holding itself is unchanged; the app only shows it.
 - Features in flight when this shipped are placed once, on first boot, by
   matching event times to thread logs. The match has no fallback, so a feature
   it can't place stays unheld and its timeline says so. A wrong match is fixed

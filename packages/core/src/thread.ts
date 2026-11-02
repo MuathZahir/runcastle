@@ -290,7 +290,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A subagent the turn delegated to, first seen or updated. */
   z.object({ type: z.literal('subagent'), id: z.string(), title: z.string().optional(), status: ToolStatus.optional() }),
   z.object({ type: z.literal('plan'), entries: z.array(PlanEntry) }),
-  z.object({ type: z.literal('tasks'), tasks: z.array(BackgroundTask) }),
+  /** `agents`: how many sub-agents run in the background beside the commands. */
+  z.object({ type: z.literal('tasks'), tasks: z.array(BackgroundTask), agents: z.number().int().nonnegative().optional() }),
   z.object({ type: z.literal('ask'), ask: Ask }),
   /**
    * An ask answered — by the human, by the host on an unattended thread, or
@@ -334,6 +335,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
   /** An agent showed the human a file (`show_file`). */
   z.object({ type: z.literal('file_shown'), file: ShownFile }),
+  /** What a review pass left, shown as one package (`show_review_package`, or the pass's end). */
+  z.object({ type: z.literal('review_package'), ticketId: z.string() }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -387,6 +390,8 @@ export type ThreadItem =
   | { kind: 'changes'; id: string; files: FileChange[] }
   /** The files a turn showed. It stays in view when the turn's work folds. */
   | { kind: 'shown'; id: string; files: ShownFile[] }
+  /** A review pass's package: one attachment that opens everything the pass left. */
+  | { kind: 'review_package'; id: string; ticketId: string }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -435,6 +440,8 @@ export interface ThreadEntry {
   createdAt: number
   /** When it last moved, for "4m", "2d". */
   updatedAt: number
+  /** When the human last wrote in it; absent when they never did, or it has no log. */
+  lastHumanAt?: number
   runtime: 'claude-code' | 'codex'
   /** A conversation from before threads had logs: it reads back as plain turns until it is continued. */
   readOnlyTranscript?: boolean
@@ -442,6 +449,11 @@ export interface ThreadEntry {
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */
 export const EMPTY_THREAD_VIEW: ThreadView = { items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }
+
+/** When the human last wrote in a thread, rewound words aside; undefined when they never did. */
+export function lastHumanAt(events: readonly ThreadEvent[]): number | undefined {
+  return liveEvents(events).findLast((e) => e.type === 'prompt' && e.source === 'human' && !e.hidden)?.at
+}
 
 /** The events {@link foldThread} still reads after edit-and-rewind cut some out. */
 export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
@@ -456,16 +468,50 @@ export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
 }
 
 /**
- * The thread waits on the human (decision 15): the agent asks something while
- * its process runs, or its turn ended after the last message it was sent and
- * nothing has been sent since — whoever sent that message, a wake included,
- * and whether or not its process is still up. A turn the human stopped is no
- * reply, nor is one a stopped process cut off, nor one a hidden command ran.
+ * How long after its turn ended a thread's background work keeps it reading as
+ * working (threads-open-fast decision 2). Nothing reported tells a test run the
+ * agent waits for from a dev server it left up, and a false "working" hides a
+ * question, so past this the thread waits on the human whatever still runs.
  */
-export function awaitsHuman(events: readonly ThreadEvent[], running: boolean): boolean {
+export const BACKGROUND_WINDOW_MS = 10 * 60_000
+
+/** A message that ends on a question, closing marks after it aside, in any script's question mark. */
+const ENDS_ASKING = /[?？؟][\s*_`'"”’)\]]*$/
+
+/** What a thread is doing, read off its log. */
+export type ThreadActivity =
+  /** The agent asks something and waits for the answer. */
+  | 'asking'
+  /** A turn runs. */
+  | 'turn'
+  /** It replied, and background work it started still runs: the human is not being waited on yet. */
+  | 'background'
+  /** It replied and the next move is the human's. */
+  | 'replied'
+  | 'idle'
+
+/**
+ * What a thread is doing (decision 15). It waits on the human when the agent asks
+ * something while its process runs, or its turn ended after the last message it
+ * was sent and nothing has been sent since — whoever sent that message, a wake
+ * included, and whether or not its process is still up. A turn the human stopped
+ * is no reply, nor is one a stopped process cut off, nor one a hidden command ran.
+ *
+ * A reply with background work still running is not waiting yet
+ * (threads-open-fast decisions 1 to 3), unless it ends on a question, the work is
+ * no longer running with its process, or {@link BACKGROUND_WINDOW_MS} has passed
+ * since the turn ended. The chat's own `foldThread` state knows none of this: the
+ * turn is over, and the composer treats it so.
+ */
+export function threadActivity(events: readonly ThreadEvent[], running: boolean, now: number): ThreadActivity {
   let answering = false
   let replied = false
   let asking = false
+  let inTurn = false
+  let background = 0
+  let endedAt = 0
+  let lastSaid = ''
+  let lastMessage: string | undefined
   for (const e of liveEvents(events)) {
     if (e.type === 'prompt') {
       answering = !e.hidden
@@ -473,15 +519,33 @@ export function awaitsHuman(events: readonly ThreadEvent[], running: boolean): b
     } else if (e.type === 'turn_started') {
       if (e.source === 'agent') answering = true
       replied = false
+      inTurn = true
+      lastSaid = ''
+      lastMessage = undefined
     } else if (e.type === 'turn_ended') {
       replied = answering && e.reason !== 'cancelled'
+      inTurn = false
+      endedAt = e.at
+    } else if (e.type === 'agent_text') {
+      lastSaid = e.messageId === lastMessage ? lastSaid + e.text : e.text
+      lastMessage = e.messageId
+    } else if (e.type === 'tasks') {
+      background = e.tasks.length + (e.agents ?? 0)
     } else if (e.type === 'ask') {
       asking = true
-    } else if (e.type === 'ask_resolved' || (e.type === 'process' && e.state === 'stopped')) {
+    } else if (e.type === 'ask_resolved') {
       asking = false
+    } else if (e.type === 'process' && e.state === 'stopped') {
+      asking = false
+      inTurn = false
+      background = 0
     }
   }
-  return (running && asking) || replied
+  if (running && asking) return 'asking'
+  if (inTurn) return 'turn'
+  if (!replied) return 'idle'
+  const stillWorking = running && background > 0 && now - endedAt < BACKGROUND_WINDOW_MS
+  return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
 }
 
 /** One piece of a turn, in arrival order, before it is split into work and answer. */
@@ -896,6 +960,17 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           items.push({ kind: 'shown', id: `shown:${e.i}`, files: [e.file] })
           if (open) shownIndex = items.length - 1
         }
+        break
+      }
+      case 'review_package': {
+        // Placed as a shown file is: the turn's work above it, its final words below.
+        const open = turn as Turn | null
+        if (open) {
+          open.segments.push({ kind: 'answered' })
+          render(true)
+        }
+        items.push({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId })
+        if (open) shownIndex = items.length - 1
         break
       }
       case 'title':

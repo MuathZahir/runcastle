@@ -17,7 +17,7 @@ import { Button,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconPlay, IconX, ProgressIcon } from '../icons'
+import { IconOrchestrator, IconPlay, IconX, ProgressIcon } from '../icons'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
@@ -45,7 +45,7 @@ import {
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
-import { usePublishSidebarThreads } from '../lib/sidebar-threads'
+import { featureHolder, usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -83,6 +83,11 @@ import {
 import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
+import { useIsPhone } from '../lib/use-phone'
+import { PhoneChatBar, PhoneViewScreen } from './phone/PhoneChatBar'
+import { backInApp } from '../lib/use-history-sync'
+import { PhoneDesignView } from './phone/PhoneDesignView'
+import { featurePhoneStatus, phoneViewChoices, phoneViewOf } from './phone/phone-views'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
 
@@ -132,7 +137,9 @@ export function Workspace({
   driving,
   landedOn = false,
   onDriveChange,
+  onOpenThread,
   onDeleted,
+  onBackToList,
 }: {
   featureId: string
   /** The panel view beside the chat, or `chat` for none — the shell's, so the address bar can name it. */
@@ -143,12 +150,17 @@ export function Workspace({
   /** The app landed on this feature by itself; the human has not opened it. */
   landedOn?: boolean
   onDriveChange: (d: DriveState | null) => void
+  /** Open an Orchestrator thread: the header's first crumb, the thread holding this feature. */
+  onOpenThread?: (threadId: string) => void
   /**
    * The feature was deleted from this page's own menu: leave it. Without one,
    * the page's menu offers no Delete (the sidebar's still does).
    */
   onDeleted?: () => void
+  /** On a phone, the chat bar's Back: the list. */
+  onBackToList?: () => void
 }) {
+  const phone = useIsPhone()
   const utils = trpc.useUtils()
   const toast = useToast()
   const openSettings = useOpenSettings()
@@ -195,6 +207,11 @@ export function Workspace({
   // drive slot (decision 9), which only the server's drive info knows; the
   // chat's standing warnings read this same answer.
   const projectId = q.data?.feature.projectId
+  // Same key the sidebar polls: the name of the thread holding this feature.
+  const projectThreads = trpc.thread.list.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId, refetchInterval: poll },
+  )
   const driveQ = trpc.feature.driveInfo.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: poll },
@@ -529,6 +546,8 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
+  const holder = onOpenThread ? featureHolder(feature, projectThreads.data ?? []) : null
+  const threadCrumb = isDraft ? undefined : inFrontTitle
   const run = latestRun(full.runs)
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -942,11 +961,14 @@ export function Workspace({
         )
     }
   }
-  const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  // A phone shows the chat alone, or one of its views full screen in its place;
+  // Details and a drive are the computer's, so an address naming them shows the chat.
+  const phoneView = phone ? phoneViewOf(shown) : null
+  const chatHidden = !phone && !!shown && !panel.state.collapsed && panel.state.share >= 1
   // The drive stays mounted while it runs, so the app is as it was left on the
   // way back.
-  const onDrive = shown === 'drive'
-  const driveMounted = views.includes('drive')
+  const onDrive = shown === 'drive' && !phone
+  const driveMounted = views.includes('drive') && !phone
   // The header's "⋯": what the status line's row offered beyond its one
   // button, then the feature's own actions.
   const overflowActions: FeatureAction[] = headerRow.overflow.map((a) => ({
@@ -976,12 +998,48 @@ export function Workspace({
           />
         </ScenarioChatContext.Provider>
       )}
-      <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
+      {phoneView === 'design' && !reading ? (
+        <PhoneDesignView
+          featureId={featureId}
+          {...(panel.state.path ? { path: panel.state.path } : {})}
+          {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
+          title={labelOf(phoneView)}
+          sub={feature.title}
+          onBack={() => panel.dispatch({ type: 'close' })}
+        />
+      ) : phoneView && (
+        <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => backInApp(() => panel.dispatch({ type: 'close' }))}>
+          {panelView(phoneView)}
+        </PhoneViewScreen>
+      )}
+      <div className={onDrive || phoneView ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       {/* The page's one header row (decision 12): title, then the thread in
           front named as plain text (threads-in-the-sidebar decision 6) · status,
           at most one action, "⋯" and the panel toggle. */}
+      {phone ? (
+        <PhoneChatBar
+          title={feature.title}
+          status={featurePhoneStatus(status)}
+          views={phoneViewChoices(tabs, full.tickets)}
+          onView={(v) => panel.dispatch({ type: 'open', view: v, origin: 'human' })}
+          onBack={() => backInApp(() => onBackToList?.())}
+        />
+      ) : (
       <PageTopbar
         crumbs={[
+          ...(holder
+            ? [
+                {
+                  label: (
+                    <span className="block max-w-44 truncate" title={`Held by the thread "${holder.title}"`}>
+                      {holder.title}
+                    </span>
+                  ),
+                  icon: <IconOrchestrator size={14} />,
+                  onClick: () => onOpenThread?.(holder.id),
+                },
+              ]
+            : []),
           {
             label: feature.title,
             icon: (
@@ -993,9 +1051,10 @@ export function Workspace({
               />
             ),
           },
-          ...(!isDraft && inFrontTitle ? [{ label: inFrontTitle }] : []),
+          ...(threadCrumb ? [{ label: threadCrumb }] : []),
         ]}
-        trail
+        // With the holder first, a feature with no thread after it is still the page.
+        trail={!!threadCrumb}
         status={status && <FeatureStatusLine status={status} />}
         actions={
           <>
@@ -1027,6 +1086,7 @@ export function Workspace({
           </>
         }
       />
+      )}
       {isDraft ? (
         <Page routeKey={`${featureId}:draft`}>
           {bodyHeader}
@@ -1062,7 +1122,8 @@ export function Workspace({
               }
               panel={
                 shown &&
-                shown !== 'drive' && (
+                shown !== 'drive' &&
+                !phone && (
                   <FeaturePanel
                     view={shown}
                     views={tabs}

@@ -92,7 +92,7 @@ export function ShownFiles({ files }: { files: ShownFile[] }) {
     <div className="flex min-w-0 flex-col gap-3 animate-fade-in">
       {runsOf(hidden ? files.slice(0, GROUP_MAX) : files).map((run) =>
         run.images ? (
-          <div key={run.files[0].id} className="grid min-w-0 gap-3">
+          <div key={run.files[0].id} className="grid min-w-0 grid-cols-1 gap-3">
             {run.files.map((file) => (
               <ShownImage key={file.id} file={file} onOpen={() => open(file)} />
             ))}

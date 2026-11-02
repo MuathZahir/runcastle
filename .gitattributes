@@ -1,0 +1,2 @@
+# Bash fails on CRLF, and this file reaches strangers through `curl | bash`.
+site/install.sh text eol=lf

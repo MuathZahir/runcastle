@@ -1348,24 +1348,25 @@
           </div>
           <div class="install-box">
             <h2>Get started</h2>
-            <p class="lede">One global command. The doctor names anything you are missing.</p>
+            <p class="lede">One command. It shows what is missing, asks once, and installs it.</p>
 
             <div class="cmds">
               <div class="cmd">
                 <span class="cmd-prompt" aria-hidden="true">$</span>
-                <code>bun add -g runcastle</code>
-                <span class="cmd-note">Install</span>
-                <button class="copy" type="button" data-copy="bun add -g runcastle"
-                  aria-label="Copy install command">
+                <code>curl -fsSL https://runcastle.dev/install.sh | bash</code>
+                <span class="cmd-note">macOS and Linux</span>
+                <button class="copy" type="button"
+                  data-copy="curl -fsSL https://runcastle.dev/install.sh | bash"
+                  aria-label="Copy the macOS and Linux install command">
                   <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
                 </button>
               </div>
               <div class="cmd">
-                <span class="cmd-prompt" aria-hidden="true">$</span>
-                <code>runcastle doctor</code>
-                <span class="cmd-note">Check prerequisites</span>
-                <button class="copy" type="button" data-copy="runcastle doctor"
-                  aria-label="Copy doctor command">
+                <span class="cmd-prompt" aria-hidden="true">&gt;</span>
+                <code>irm https://runcastle.dev/install.ps1 | iex</code>
+                <span class="cmd-note">Windows</span>
+                <button class="copy" type="button" data-copy="irm https://runcastle.dev/install.ps1 | iex"
+                  aria-label="Copy the Windows install command">
                   <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
                 </button>
               </div>
@@ -1380,9 +1381,9 @@
             </div>
 
             <p class="install-after">
-              Needs Bun, Git, and a login for Claude Code or Codex.
-              <a href="https://github.com/MuathZahir/runcastle#prerequisites" rel="noopener"
-                target="_blank">Full prerequisites</a>
+              It installs only what is missing and leaves sign-ins to you.
+              <a href="https://github.com/MuathZahir/runcastle#install" rel="noopener"
+                target="_blank">What it installs</a>
             </p>
           </div>
         </div>

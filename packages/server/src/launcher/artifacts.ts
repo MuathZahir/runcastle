@@ -1062,9 +1062,13 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__stop_round',
   'mcp__runcastle__declare_ready',
   'mcp__runcastle__wait_for_you',
+  // A headless wake has nobody to answer a prompt, and it may be the one that
+  // needs the human most.
+  'mcp__runcastle__notify_human',
   // Showing a file only copies it into the thread: a prompt would interrupt the
   // agent for something that asks nothing of the human.
   'mcp__runcastle__show_file',
+  'mcp__runcastle__show_review_package',
 ]
 
 /**

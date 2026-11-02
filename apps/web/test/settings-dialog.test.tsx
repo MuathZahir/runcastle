@@ -35,7 +35,20 @@ vi.mock('../src/trpc', () => ({
       project: { prep: { invalidate: () => undefined } },
       setup: { doctor: { invalidate: () => undefined } },
       system: { burnCache: { status: { invalidate: () => undefined } } },
+      phoneLink: { status: { setData: () => undefined } },
     }),
+    // General's "On your phone". It has its own suite (`settings-phone-link.test.tsx`).
+    phoneLink: {
+      status: {
+        useQuery: () => ({
+          data: { tailscale: 'running', on: false, commands: [] },
+          isLoading: false,
+          error: null,
+        }),
+      },
+      turnOn: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+      turnOff: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+    },
     // The Burns page's prerequisites checklist. It has its own suite
     // (`settings-burns.test.tsx`); here it only has to render.
     setup: {
@@ -354,6 +367,17 @@ describe('SettingsDialog', () => {
     // The group heading goes with its rows rather than standing over nothing.
     expect(screen.queryByText('Server')).toBeNull()
     expect(screen.getByRole('button', { name: /General/ }).textContent).toContain('1')
+  })
+
+  it('finds the phone link by what a reader calls it', () => {
+    open()
+    expect(screen.getByText('On your phone')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'tailscale' } })
+    expect(screen.getByText('On your phone')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'image' } })
+    expect(screen.queryByText('On your phone')).toBeNull()
   })
 
   it('moves to the first page with hits when the open one has none', () => {

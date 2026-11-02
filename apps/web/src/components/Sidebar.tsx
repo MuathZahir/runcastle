@@ -16,10 +16,11 @@ import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton, type NotifyState } from '../lib/notifications'
 import { useDesktopNotifications } from '../lib/use-notifications'
 import { useTheme } from '../lib/theme'
+import { useIsPhone } from '../lib/use-phone'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { foldKey, sidebarThreadOrder, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT } from '../lib/chat-sessions'
 import {
@@ -45,8 +46,13 @@ import type { FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { CollapseSidebarButton } from './Frame'
+import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
+import { PhoneNotificationsRow } from './phone/PhoneNotificationsRow'
 import {
   DriveCard,
+  FeatureProgressIcon,
+  HoldMark,
+  HoldTip,
   OrchestratorCard,
   PrepRow,
   Shelf,
@@ -167,6 +173,8 @@ export function Sidebar(props: SidebarProps) {
   } = props
   const utils = trpc.useUtils()
   const toast = useToast()
+  // On a phone this is the list (phone decision 1): no search, no foot, no hover controls.
+  const phone = useIsPhone()
   const [archivedOpen, setArchivedOpen] = useState(readShowArchived)
   const [pendingDelete, setPendingDelete] = useState<{
     feature: FeatureListItem
@@ -291,8 +299,25 @@ export function Sidebar(props: SidebarProps) {
       ? published
       : null
   const projectThreads = view === 'project' && published && 'projectId' in published.scope ? published : null
+  // The Orchestrator's rows: its features, each opening its page, over Rename and Export.
+  const orchestratorThreadActions = (t: ThreadEntry): FeatureAction[] => {
+    const held = heldFeatures(t.id, features)
+    return [
+      ...held.map((f, i) => ({
+        key: `open-${f.id}`,
+        label: f.title,
+        icon: <FeatureProgressIcon f={f} size={14} label="" />,
+        ruleAfter: i === held.length - 1,
+        onSelect: () => onSelect(f.id),
+      })),
+      ...threadActionsFor(t),
+    ]
+  }
 
   const row = (f: FeatureListItem, nested = false) => {
+    // The phone's list (phone decision 1): only shown with nothing open, so no
+    // row is current, and a row is the whole door — no hover menu, no threads.
+    if (phone) return <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={onSelect} actions={[]} nested={nested} />
     const open = f.id === selectedFeatureId && view === 'feature'
     const own = open && featureThreads ? featureThreads : null
     const ordered = own ? sidebarThreadOrder(own.threads) : []
@@ -346,40 +371,48 @@ export function Sidebar(props: SidebarProps) {
         ]
       : []
 
-  const owesPrep = prepRow?.variant === 'todo'
+  // Preparation is the computer's: the phone's list leaves it out.
+  const owesPrep = prepRow?.variant === 'todo' && !phone
   const nothingInMotion = features.length > 0 && !owesPrep && inbox.length + inProgress.length + working.length === 0
 
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
       <SidebarBackdrop />
-      <div className="flex h-10 shrink-0 items-center gap-0.5">
-        <div className="flex min-w-0 flex-1">
-          <ProjectSwitcher nav={nav} />
+      {phone ? (
+        <>
+          <PhoneListHead nav={nav} onNewChat={onNewChat} {...(onOpenNote ? { onOpenNote } : {})} />
+          <ComputerUnreachable failed={list.isError} readAt={list.dataUpdatedAt} />
+        </>
+      ) : (
+        <div className="flex h-10 shrink-0 items-center gap-0.5">
+          <div className="flex min-w-0 flex-1">
+            <ProjectSwitcher nav={nav} />
+          </div>
+          <IconButton
+            label="Search or jump to"
+            kbd={shortcut('K')}
+            size="sm"
+            icon={<IconSearch />}
+            tooltipSide="bottom"
+            onClick={onOpenCmdk}
+          />
+          <CreateMenu onNewChat={onNewChat} onDraft={onDraft} onOpenNote={onOpenNote} />
+          <CollapseSidebarButton />
         </div>
-        <IconButton
-          label="Search or jump to"
-          kbd={shortcut('K')}
-          size="sm"
-          icon={<IconSearch />}
-          tooltipSide="bottom"
-          onClick={onOpenCmdk}
-        />
-        <CreateMenu onNewChat={onNewChat} onDraft={onDraft} onOpenNote={onOpenNote} />
-        <CollapseSidebarButton />
-      </div>
+      )}
 
-      <div className="mt-3">
+      <div className={phone ? 'mt-2' : 'mt-3'}>
         {/* The project's own door (decision 20): not a feature, never in a
             lane. It says what the chat holds — the open notes (project-notes
             decisions #10) — and waits amber while the chat waits on you. */}
         <OrchestratorCard
           status={`${CHATS_WORDS[chats]}${notesWords}`}
           state={chats}
-          active={view === 'project'}
+          active={view === 'project' && !phone}
           onOpen={onSelectProject}
-          actions={orchestratorActions}
+          actions={phone ? [] : orchestratorActions}
           title={ORCHESTRATOR_TITLE}
-          {...(projectThreads
+          {...(projectThreads && !phone
             ? {
                 onNewThread: projectThreads.newThread,
                 threads: (
@@ -388,7 +421,20 @@ export function Sidebar(props: SidebarProps) {
                     threads={sidebarThreadOrder(projectThreads.threads)}
                     current={projectThreads.current}
                     onOpen={projectThreads.pick}
-                    actionsFor={threadActionsFor}
+                    actionsFor={orchestratorThreadActions}
+                    keep={(t) =>
+                      // An open errand's chat keeps its row, which is how it is closed.
+                      t.id === projectThreads.errand?.threadId ||
+                      threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
+                    }
+                    markFor={(t) => {
+                      const held = heldFeatures(t.id, features)
+                      return held.length > 0 ? <HoldMark features={held} /> : null
+                    }}
+                    tipFor={(t) => {
+                      const held = heldFeatures(t.id, features)
+                      return held.length > 0 ? <HoldTip features={held} /> : undefined
+                    }}
                     {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
                   />
                 ),
@@ -456,7 +502,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
 
-      <SidebarFoot {...props} />
+      {phone ? <PhoneNotificationsRow projectId={projectId} /> : <SidebarFoot {...props} />}
 
       {pendingDelete && (
         <DeleteFeatureDialog

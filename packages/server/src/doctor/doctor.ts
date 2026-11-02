@@ -24,6 +24,7 @@ import {
   type RuncastleConfig,
 } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
+import { cliNeedsMissingNode, resolveTool } from '../util/resolve-executable'
 import { isOlderVersion, minimumCliVersion } from './adapter-requirements'
 import {
   type HostAgentVersions,
@@ -151,6 +152,8 @@ export interface DoctorEnv {
   minimumCliVersion?: (runtime: AgentRuntime) => string | null
   /** Injected file-existence check for the auth-file fallback; defaults to real fs. */
   fileExists?: (path: string) => boolean
+  /** Whether a CLI is a Node script on a machine with no Node; defaults to looking at the real file. */
+  needsMissingNode?: (bin: string) => boolean
   /**
    * Injected Dockerfile hash read — null when the file is not there. Defaults to
    * {@link hashDockerfile}, and is how tests drive every staleness state.
@@ -255,23 +258,18 @@ async function versionProbe(
   }
 }
 
+export const BUN_INSTALLER: StandaloneInstaller = {
+  unix: 'curl -fsSL https://bun.sh/install | bash',
+  windowsUrl: 'bun.sh/install.ps1',
+}
+
 async function bunProbe(exec: ExecFn): Promise<ProbeResult> {
   return versionProbe(
     exec,
     'bun',
     'Bun runtime',
     'bun',
-    'Install Bun: curl -fsSL https://bun.sh/install | bash (Windows: irm bun.sh/install.ps1 | iex)',
-  )
-}
-
-async function nodeProbe(exec: ExecFn): Promise<ProbeResult> {
-  return versionProbe(
-    exec,
-    'node',
-    'Node.js (PTY sidecar backend)',
-    'node',
-    'Install Node.js 22+ — required on every platform: the embedded terminal runs in a node-hosted PTY sidecar, and without node it exits instantly.',
+    `Install Bun: ${BUN_INSTALLER.unix} (Windows: irm ${BUN_INSTALLER.windowsUrl} | iex)`,
   )
 }
 
@@ -343,6 +341,35 @@ export interface RuntimeSpec {
   authFile?: (env: Record<string, string | undefined>) => string
 }
 
+/**
+ * A tool's own install script: a shell pipeline for Linux and macOS, and the
+ * PowerShell script's address for Windows. The one home for these commands —
+ * the fix lines quote them and `runcastle setup` runs them.
+ */
+export interface StandaloneInstaller {
+  unix: string
+  windowsUrl: string
+}
+
+/** How a Windows installer script is run from outside PowerShell. */
+export function powershellInstall(url: string): string {
+  return `powershell -ExecutionPolicy ByPass -c "irm ${url} | iex"`
+}
+
+/** The agent CLIs' standalone installers: native binaries, so neither needs Node. */
+export const AGENT_INSTALLERS: Record<AgentRuntime, StandaloneInstaller> = {
+  'claude-code': {
+    unix: 'curl -fsSL https://claude.ai/install.sh | bash',
+    windowsUrl: 'https://claude.ai/install.ps1',
+  },
+  codex: {
+    unix: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    windowsUrl: 'https://chatgpt.com/codex/install.ps1',
+  },
+}
+
+const CODEX_INSTALL = `${AGENT_INSTALLERS.codex.unix} (Windows: ${powershellInstall(AGENT_INSTALLERS.codex.windowsUrl)})`
+
 export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
   'claude-code': {
     runtime: 'claude-code',
@@ -355,8 +382,7 @@ export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
     afkKey: 'CLAUDE_CODE_OAUTH_TOKEN',
     afkNoun: 'OAuth token',
     afkFix: 'Run `claude setup-token` on this host and put CLAUDE_CODE_OAUTH_TOKEN in ~/.runcastle/.env',
-    installFix:
-      'Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash (Windows: irm https://claude.ai/install.ps1 | iex)',
+    installFix: `Install Claude Code: ${AGENT_INSTALLERS['claude-code'].unix} (Windows: irm ${AGENT_INSTALLERS['claude-code'].windowsUrl} | iex)`,
     binOverrideEnv: 'RUNCASTLE_CLAUDE_BIN',
   },
   codex: {
@@ -374,7 +400,7 @@ export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
     afkNoun: 'API key',
     afkFix:
       'Set CODEX_API_KEY in ~/.runcastle/.env to bill an OpenAI API key instead of your ChatGPT login',
-    installFix: 'Install Codex: npm install -g @openai/codex (or: brew install codex)',
+    installFix: `Install Codex: ${CODEX_INSTALL}`,
     binOverrideEnv: 'RUNCASTLE_CODEX_BIN',
     authFile: codexAuthFile,
   },
@@ -387,11 +413,17 @@ function statusUnsupported(out: ExecOutcome): boolean {
   )
 }
 
+/** The binary row's detail for a CLI installed as a Node script on a machine with no Node. */
+export function noNodeDetail(bin: string): string {
+  return `${bin} is a Node script (an npm or bun install), and this machine has no Node`
+}
+
 /** The runtime's CLI is resolvable — the floor for both talk sessions and burns. */
 async function runtimeBinaryProbe(
   spec: RuntimeSpec,
   exec: ExecFn,
   severity: ProbeSeverity,
+  needsMissingNode: (bin: string) => boolean,
 ): Promise<ProbeResult> {
   const base = await versionProbe(
     exec,
@@ -400,7 +432,16 @@ async function runtimeBinaryProbe(
     spec.bin,
     spec.installFix,
   )
-  return { ...base, severity, runtime: spec.runtime, check: 'binary' }
+  // Installed, but as a Node script on a machine with no Node. Saying "not found"
+  // would send the person looking for a CLI that is plainly on their PATH.
+  const noNode =
+    base.status !== 'ok' && needsMissingNode(spec.bin)
+      ? {
+          detail: noNodeDetail(spec.bin),
+          fix: `Reinstall it with its standalone installer, which needs no Node. ${spec.installFix}`,
+        }
+      : {}
+  return { ...base, ...noNode, severity, runtime: spec.runtime, check: 'binary' }
 }
 
 /**
@@ -564,12 +605,15 @@ export async function runtimeProbes(
     exec: ExecFn
     env: Record<string, string | undefined>
     fileExists?: (path: string) => boolean
+    needsMissingNode?: (bin: string) => boolean
     severity: ProbeSeverity
     afkKeyLines?: Record<string, number>
     checkToken?: (token: string) => Promise<TokenCheck>
   },
 ): Promise<ProbeResult[]> {
   const fileExists = deps.fileExists ?? existsSync
+  const needsMissingNode =
+    deps.needsMissingNode ?? ((bin: string) => cliNeedsMissingNode(resolveTool(bin)))
   const presence = runtimeAfkKeyProbe(spec, deps.env, deps.severity, deps.afkKeyLines)
   const token = deps.env[spec.afkKey]?.trim()
   const afkKeyProbe =
@@ -577,7 +621,7 @@ export async function runtimeProbes(
       ? await applyTokenCheck(presence, spec, token, deps.checkToken)
       : presence
   return [
-    await runtimeBinaryProbe(spec, deps.exec, deps.severity),
+    await runtimeBinaryProbe(spec, deps.exec, deps.severity, needsMissingNode),
     await runtimeAuthProbe(spec, deps.exec, deps.env, fileExists, deps.severity),
     ...(afkKeyProbe ? [afkKeyProbe] : []),
   ]
@@ -611,7 +655,7 @@ export async function adapterVersionProbe(
       ...base,
       status: 'stale',
       detail: `${spec.label} ${installed} is older than ${minimum}, which the chat adapter needs`,
-      fix: `Update ${spec.label} to ${minimum} or newer (${spec.runtime === 'codex' ? '`npm i -g @openai/codex@latest`' : '`claude update`'}, or however you installed it).`,
+      fix: `Update ${spec.label} to ${minimum} or newer (${spec.runtime === 'codex' ? `rerun its installer: ${CODEX_INSTALL}` : '`claude update`'}, or however you installed it).`,
     }
   }
   return { ...base, status: 'ok', detail: `${spec.label} ${installed} (the chat adapter needs ${minimum} or newer)` }
@@ -827,11 +871,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       return {
         ...IMAGE_ROW,
         status: 'not-built-yet',
-        severity: 'error',
+        // Not in the way of anything: the first round builds it (decision 6).
+        severity: 'info',
         detail: image.present
-          ? `${tag} is built but is not this project's image yet`
-          : `.runcastle/sandbox/Dockerfile is not built — ${tag} does not exist`,
-        fix: 'Open Settings → Workers (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
+          ? `${tag} is built but is not this project's image yet — the next round adopts it`
+          : `.runcastle/sandbox/Dockerfile is not built yet — the first round builds it, which takes a few minutes`,
+        fix: 'Nothing to do. To build ahead of the first round, open Settings → Workers (Build image).',
       }
     }
     // The project image's own labels, inherited through `FROM`, record the CLIs
@@ -916,9 +961,10 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     return {
       ...IMAGE_ROW,
       status: 'missing',
-      severity: 'error',
-      detail: `image ${imageName} not found locally`,
-      fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
+      // Not in the way of anything: the first round builds it (decision 6).
+      severity: 'info',
+      detail: `${imageName} is not built yet — the first round builds it, which takes a few minutes`,
+      fix: 'Nothing to do. To build ahead of the first round, run `runcastle build-image` or open Settings → Workers (Build image).',
     }
   }
   if (!stockVerdict.fresh) {
@@ -1203,7 +1249,6 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
 
   const results: ProbeResult[] = [
     await bunProbe(exec),
-    await nodeProbe(exec),
     await gitProbe(exec),
   ]
   for (const runtime of AGENT_RUNTIMES) {
@@ -1212,6 +1257,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
         exec,
         env: processEnv,
         ...(env.fileExists ? { fileExists: env.fileExists } : {}),
+        ...(env.needsMissingNode ? { needsMissingNode: env.needsMissingNode } : {}),
         severity: required.has(runtime) ? 'error' : 'info',
         ...(env.afkKeyLines ? { afkKeyLines: env.afkKeyLines } : {}),
         ...(env.checkToken && runtime === 'claude-code' ? { checkToken: env.checkToken } : {}),

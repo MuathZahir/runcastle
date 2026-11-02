@@ -10,13 +10,12 @@ import { resolveBun } from './helpers/bun'
  * is — and under node the tree-kill always settled. Production runs the server
  * under BUN on win32, where `promisify(execFile)` never settled and every drive
  * stop hung indefinitely. The node-side suite in `dev-pane.test.ts` was green
- * throughout, which is exactly why it could not be trusted: the runtime, not the
- * backend, was the variable.
+ * throughout, which is exactly why it could not be trusted.
  *
  * So this test does not test anything itself. It spawns a real `bun` child on the
  * fixture, which drives the real production stack from inside a real Bun process
- * — `devSpawnTarget` + `ptyRegistry().create` + `stopDevPane`, sidecar backend
- * auto-selected, a `cmd.exe`-shimmed grandchild holding a real TCP port — and
+ * — `devSpawnTarget` + `ptyRegistry().create` + `stopDevPane`, a
+ * `cmd.exe`-shimmed grandchild holding a real TCP port — and
  * exits non-zero unless stop returned inside the deadline, the port was freed,
  * and every pid in the tree died. All this side does is run it and report.
  *

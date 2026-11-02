@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
+import { useIsPhone } from '../../lib/use-phone'
 import { promptIdFor, useThread, type ThreadStart } from '../../lib/use-thread'
 import { Spinner } from '../../ui'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
@@ -104,8 +105,12 @@ export function ThreadColumn({
     return subscribeInbox(inbox, take)
   }, [inbox, attach])
 
+  // A phone's composer is the preview's (runcastle-on-your-phone): no meter and
+  // no quiet line under it, and no model controls while the agent works, so
+  // "Working 1m 14s" fits beside Stop and Send.
+  const phone = useIsPhone()
   const ask = view.ask
-  const line = startMeta && !t.loading && view.items.length === 0 ? startMeta : meta
+  const line = phone ? null : startMeta && !t.loading && view.items.length === 0 ? startMeta : meta
   const decline = () => ask && t.answer(ask, { kind: 'decline' })
   const footer = ask ? (
     ask.kind === 'approval' ? (
@@ -153,6 +158,7 @@ export function ThreadColumn({
       top={<PlanStrip plan={view.plan} tasks={view.tasks} />}
       {...(view.turnStartedAt ? { workingSince: view.turnStartedAt } : {})}
       meter={
+        !phone &&
         view.context && (
           <ContextMeter
             context={view.context}
@@ -164,7 +170,8 @@ export function ThreadColumn({
         )
       }
       footer={
-        t.model && (
+        t.model &&
+        !(phone && view.state === 'working') && (
           <ModelControls
             runtime={onRuntime}
             models={t.models}

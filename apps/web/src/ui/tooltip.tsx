@@ -30,6 +30,8 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
  * - `kbd` — an optional shortcut hint shown after the label.
  * - `side` — which side of the trigger it opens on (default `top`).
  * - `disabled` — render the child alone, no tooltip.
+ * - `leaves` — closes the moment the pointer leaves the trigger, for a trigger
+ *   with a control beside it on the way to the tip (a row and its "…").
  *
  * The trigger's accessible name is its own (`IconButton` sets `aria-label`
  * from the same string); Radix adds `aria-describedby` while it is open.
@@ -40,6 +42,7 @@ export function Tooltip({
   side = 'top',
   align = 'center',
   disabled = false,
+  leaves = false,
   children,
 }: {
   label: ReactNode
@@ -47,12 +50,13 @@ export function Tooltip({
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
   disabled?: boolean
+  leaves?: boolean
   children: ReactElement
 }) {
   const provided = useContext(Provided)
   if (disabled || label === undefined || label === null || label === '') return children
   const tip = (
-    <TooltipPrimitive.Root>
+    <TooltipPrimitive.Root disableHoverableContent={leaves}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content

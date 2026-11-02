@@ -54,6 +54,27 @@ It runs entirely on your machine: a Bun server plus a browser UI at
 ## Install
 
 ```sh
+curl -fsSL https://runcastle.dev/install.sh | bash     # macOS and Linux
+```
+
+```powershell
+irm https://runcastle.dev/install.ps1 | iex            # Windows
+```
+
+It installs Bun and runcastle, then shows one list: what is already there, what
+it will install (each line saying if it needs `sudo`), and what you do
+afterwards. One yes installs the lot; `--yes` answers for you on a server. It
+only lists what is missing, so it is safe to run again. On Windows and macOS it
+guides you through Docker Desktop instead of installing it, and sign-ins always
+stay yours. Both scripts can be read at those addresses before you run them.
+Then run `runcastle` and open `http://localhost:4512`.
+
+On a VPS, [the VPS guide](https://runcastle.dev/docs/vps/) goes from a fresh
+login to a running, reachable runcastle.
+
+### Install by hand
+
+```sh
 bun add -g runcastle       # install
 runcastle doctor           # check prerequisites
 runcastle move user@host   # move runcastle to another machine (add --dry-run to look first)
@@ -62,21 +83,20 @@ runcastle                  # boot the server and open http://localhost:4512
 
 `runcastle --version` prints the installed version. When a newer release is
 published an in-app banner names the exact `bun add -g runcastle@latest`
-command. runcastle never installs anything for you.
+command.
 
 ### Prerequisites
 
-runcastle drives real tools on your machine, so a few things must already be
-present. Run `runcastle doctor` at any time: it probes each one and prints a
-copy-pasteable fix for whatever is missing. (`runcastle doctor --gate` is the
-stricter pre-boot gate that stops only on the must-haves.)
+The install handles these for you. Run `runcastle doctor` at any time: it
+probes each one and prints a copy-pasteable fix for whatever is missing.
+(`runcastle doctor --gate` is the stricter pre-boot gate that stops only on the
+must-haves.)
 
 | Requirement | Why runcastle needs it |
 |---|---|
 | **[Bun](https://bun.sh) 1.3.14+** | The runtime. `curl -fsSL https://bun.sh/install \| bash`, or `irm bun.sh/install.ps1 \| iex` on Windows. |
-| **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `npm install -g @openai/codex` (or `brew install codex`); log in with `codex login`, on a ChatGPT plan or an API key. |
+| **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`, or `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` on Windows; log in with `codex login`, on a ChatGPT plan or an API key. Use these standalone installers rather than npm: an agent installed through npm or `bun add -g` is a Node script and needs Node, which runcastle itself does not. |
 | **[Git](https://git-scm.com)** | runcastle branches, worktrees, commits, and merges on your behalf. It also needs a commit identity: the first-run wizard collects one, or set it yourself. |
-| **[Node.js](https://nodejs.org) 22+** | **Every platform.** The embedded terminal runs in a `node`-hosted PTY sidecar whenever runcastle runs under Bun, because node-pty does not work in-process under Bun (its Windows ConPTY input pipe breaks, and on Linux the terminal hangs up after its first output). Without `node` on PATH, terminals exit instantly. |
 
 Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 
@@ -85,8 +105,8 @@ Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 - A **container runtime**, Docker or Podman. See
   [The AFK sandbox](#the-afk-sandbox).
 - **Agent credentials**, one step per runtime you burn on. For **Claude Code**,
-  run `claude setup-token` on this machine and put `CLAUDE_CODE_OAUTH_TOKEN=…` in
-  `~/.runcastle/.env`. For **Codex**, run `codex login` — that is the whole of it;
+  run `runcastle token`: it has you run `claude setup-token` and saves the token
+  to `~/.runcastle/.env` (`--stdin` reads it from a pipe). For **Codex**, run `codex login` — that is the whole of it;
   a burn borrows the credentials the login wrote. Either way you authenticate
   against your own subscription; nothing routes through runcastle. (A
   `CODEX_API_KEY` you put in `~/.runcastle/.env` by hand still wins over the
@@ -232,9 +252,9 @@ runcastle release.
 AFK ticket burns run inside a container via
 [sandcastle](https://github.com/mattpocock/sandcastle) (`@ai-hero/sandcastle`).
 Docker is the default and smoothest path; Podman is a fully supported free
-alternative. After installing a runtime, build the image once with
-`sandcastle docker build-image`, because nothing builds it for you.
-`runcastle doctor` reports when the image is missing.
+alternative. The first burn builds the image if it is missing, which takes a few
+minutes. To build it ahead of time, run `runcastle build-image`, or click Build
+image in Settings → Workers.
 
 <details>
 <summary><b>Docker setup, per platform</b></summary>
@@ -453,31 +473,12 @@ crash means your CPU lacks AVX2; use Bun's `x64-baseline` build.
 
 <br />
 
-node-pty's native binary is missing (`pty.node`, or `conpty.node` on Windows).
-node-pty ships it prebuilt for macOS, Windows and glibc Linux on x64 and arm64.
-Anywhere else, its install compiles from source, which needs a C++ toolchain and
-Python 3. Install those, then reinstall with `bun add -g runcastle`. A repeat
-install can exit `0` even when the binary is still missing, so check the terminal
-again rather than trusting the exit code. On musl, see below.
+The terminal is Bun's own, so nothing separate can be missing. When its program
+cannot start, the terminal says why.
 
-It can also be a missing system `node`, on any platform: the terminal runs in a
-`node`-hosted sidecar, so Node.js 22+ must be on PATH. This is the usual cause
-on Windows. See [Prerequisites](#prerequisites).
-
-</details>
-
-<details>
-<summary><b>musl / Alpine Linux</b></summary>
-
-<br />
-
-node-pty's Linux prebuild is glibc-only and crashes under musl, and a plain
-install keeps it. Build from source instead:
-
-```sh
-apk add build-base python3
-npm_config_build_from_source=true bun add -g runcastle
-```
+If terminals stopped working right after a Bun upgrade, go back to the last Bun
+that worked: `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, or
+`iex "& {$(irm https://bun.sh/install.ps1)} -Version 1.3.14"` on Windows.
 
 </details>
 
