@@ -81,7 +81,7 @@ sourceDb.run(
   `docker compose -f "${repo}/compose.yml" up`,
   'bun .runcastle/drive-stop.ts',
   `if exist "${join(source.home, 'dev.db')}" del /f /q "${join(source.home, 'dev.db')}" & echo D:\\dev\\app.db`,
-  `The repo at ${repo.replace(/\//g, '\\')} is yours. Logs are in ${join(source.home, '.dev', 'logs')}.`,
+  `The repo at ${repo} is yours. Logs are in ${join(source.home, '.dev', 'logs')}.`,
 )
 sourceDb.close()
 
