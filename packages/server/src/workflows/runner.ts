@@ -1,5 +1,5 @@
 import type { Feature, Project, ReviewGateRun, RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
-import { newId, resolvePreparedSettings } from '@runcastle/core'
+import { classifyProviderHalt, newId, providerHaltReason, resolvePreparedSettings } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, runs } from '../db/schema'
@@ -325,14 +325,14 @@ async function endRound(
   if (run.status === 'cancelled') return
   const halt = runHaltHeadline(ctx, featureId, runId)
   if (halt) {
-    setWaiting(ctx, featureId, PROVIDER_LIMIT.test(halt) ? 'provider limit' : halt)
+    // A usage limit, billing or sign-in halt reads as which it is, and the
+    // status line offers Resume on it; any other halt keeps its own headline.
+    const provider = classifyProviderHalt(halt)
+    setWaiting(ctx, featureId, provider ? providerHaltReason(provider) : halt)
     return
   }
   await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle' })
 }
-
-/** A run halt that is the provider's limit or balance rather than lapsed credentials. */
-const PROVIDER_LIMIT = /usage limit|rate limit|quota|credit balance|billing/i
 
 /**
  * Cancel an in-flight run: abort its signal, then kill every agent it has
