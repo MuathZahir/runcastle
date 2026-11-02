@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Move runcastle to another machine preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;grid-template-columns:1fr 28px 1fr 28px 1fr;align-items:stretch;gap:4px;margin-top:12px}
+.step{padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step h3{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.step ul{margin:0;padding:0;list-style:none;color:var(--color-text-secondary)}
+.step li{display:flex;align-items:center;gap:8px;min-height:22px}
+.arrow{display:grid;place-items:center;color:var(--color-icon)}
+.term{margin:0;padding:12px 14px;background:#0c0e14;color:#c9cedb;font:12px/19px var(--font-mono);overflow-x:auto;white-space:pre}
+.term b{color:#eceef4;font-weight:500}.term .ok{color:#46b67a}.term .warn{color:#e2a53b}.term .no{color:#f06363}.term .dim{color:#8a91a5}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.ba > div{padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);min-width:0}
+.ba h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.ba p{font:12px/19px var(--font-mono);color:var(--color-text-secondary);overflow-wrap:anywhere}
+.go{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.go h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.go ul{margin:0;padding:0;list-style:none}
+.go li{display:flex;align-items:center;gap:10px;min-height:26px;color:var(--color-text-secondary)}
+@media (max-width:760px){.flow{grid-template-columns:1fr}.arrow{display:none}.ba,.go{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Move runcastle to another machine</h1>
+  <p class="lede">One command moves your projects, feature list, chats, notes and unfinished work from the PC to the VPS. The PC is only read, so a failed move loses nothing.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/move-runcastle-to-another-machine/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">No new screen. You run a command, then open the same app on the VPS.</p>
+
+  <div class="sub">
+    <h3>The move</h3>
+    <p class="hint">One command on the PC. If a check fails, the VPS stays as it was.</p>
+    <div class="flow">
+      <div class="step">
+        <h3><i class="dot live"></i>PC, read only <a class="pin" data-d="9">9</a></h3>
+        <ul>
+          <li><i class="dot"></i>Report, then your yes <a class="pin" data-d="3">3</a></li>
+          <li><i class="dot"></i>Rounds and drives finished <a class="pin" data-d="6">6</a></li>
+          <li><i class="dot"></i>Server stopped <a class="pin" data-d="6">6</a></li>
+        </ul>
+      </div>
+      <div class="arrow"><svg class="i"><use href="#i-chev"/></svg></div>
+      <div class="step">
+        <h3><i class="dot live"></i>One pack <a class="pin" data-d="2">2</a></h3>
+        <ul>
+          <li><i class="dot"></i>Every repo, every branch <a class="pin" data-d="4">4</a></li>
+          <li><i class="dot"></i>Uncommitted work <a class="pin" data-d="5">5</a></li>
+          <li><i class="dot"></i>Database, chats, notes <a class="pin" data-d="12">12</a></li>
+        </ul>
+      </div>
+      <div class="arrow"><svg class="i"><use href="#i-chev"/></svg></div>
+      <div class="step">
+        <h3><i class="dot ok"></i>VPS, staged then swapped <a class="pin" data-d="9">9</a></h3>
+        <ul>
+          <li><i class="dot"></i>Repos in ~/projects <a class="pin" data-d="11">11</a></li>
+          <li><i class="dot"></i>Paths rewritten <a class="pin" data-d="8">8</a></li>
+          <li><i class="dot"></i>Old trial data set aside <a class="pin" data-d="10">10</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What you see first</h3>
+    <p class="hint">A made-up example of the dry run. It works with the server still up.</p>
+<!-- screen:dry-run-report -->
+    <div class="screen">
+<pre class="term"><span class="dim">PS C:\Users\user&gt;</span> <b>runcastle move muath@vmi3713868 --dry-run</b>
+
+<b>Blocks</b>
+  <span class="no">x</span> round 2 of checkout-redesign is still running: let it finish or press Stop
+  <span class="no">x</span> VPS holds 1 project (runcastle-trial): add --replace to set it aside
+
+<b>Moves</b>                          branches  uncommitted  features  chats
+  <span class="ok">+</span> runcastle                     212            0        96    311
+  <span class="ok">+</span> jewellery-system               41            0        12     48
+  <span class="ok">+</span> jev-browser-extension          17           44         9     37
+  <span class="ok">+</span> exam-forge                     23           21         7     22
+  <span class="dim">... 4 more; all land in ~/projects on the VPS</span>
+
+<b>Needs you afterwards</b>
+  <span class="warn">!</span> all 8 projects: drive and reset commands cleared; run Prepare
+  <span class="warn">!</span> jev-browser-extension: no remote, the VPS and PC will be its only copies
+  <span class="warn">!</span> jewellery-system: leaves behind ignored .env, uploads/ (1.2 GB)
+  <span class="warn">!</span> exam-forge: 3 stashes, only the newest travels
+
+<b>Stays behind</b>  logins, .env files, caches, logs, Claude chats outside these repos
+
+Nothing was changed. Pack size about 3.1 GB, VPS has 71 GB free.</pre>
+    </div>
+<!-- /screen:dry-run-report -->
+  </div>
+
+  <div class="sub">
+    <h3>What changes on the way <a class="pin" data-d="8">8</a></h3>
+    <p class="hint">Only the paths the app follows. History text stays as written.</p>
+    <div class="ba">
+      <div><h3>On the PC</h3>
+        <p>C:\Users\user\Projects\_Active\runcastle</p>
+        <p>C:\Users\user\.runcastle\worktrees\proj_x\checkout</p>
+        <p>.claude\projects\C--Users-user-Projects--Active--runcastle</p>
+      </div>
+      <div><h3>On the VPS</h3>
+        <p>/home/muath/projects/runcastle</p>
+        <p>/home/muath/.runcastle/worktrees/proj_x/checkout</p>
+        <p>.claude/projects/-home-muath-projects-runcastle</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What goes and what stays <a class="pin" data-d="12">12</a></h3>
+    <div class="go">
+      <div><h3>Goes</h3><ul>
+        <li><i class="dot ok"></i>Projects, features, tickets, reviews, notes</li>
+        <li><i class="dot ok"></i>Chats, including ones you started by hand in these repos</li>
+        <li><i class="dot ok"></i>Claude memory for these repos</li>
+        <li><i class="dot ok"></i>All branches and uncommitted work</li>
+        <li><i class="dot ok"></i>Settings, except burn width and CPU limits</li>
+      </ul></div>
+      <div><h3>Stays, and the report says so</h3><ul>
+        <li><i class="dot no"></i>Secrets: .env files, logins, Codex auth</li>
+        <li><i class="dot no"></i>Other ignored files and symlinks, listed by name <a class="pin" data-d="14">14</a></li>
+        <li><i class="dot no"></i>Global Claude rules, skills and settings</li>
+        <li><i class="dot no"></i>Claude's file undo checkpoints</li>
+        <li><i class="dot no"></i>Talk worktrees, which rebuild themselves</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>After the move</h3>
+    <p class="hint">Start the server on the VPS. Open chats resume where they stopped <a class="pin" data-d="6">6</a>. Run Prepare on the listed projects <a class="pin" data-d="7">7</a>, recreate the .env files, and stop working on the PC <a class="pin" data-d="9">9</a>.</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing deferred. The marker that stops the PC server is a small addition if you want it.</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Keeping two machines in sync</li>
+      <li><i class="dot"></i>Backups, the VPS itself, the installer</li>
+      <li><i class="dot"></i>Rewriting history text</li>
+      <li><i class="dot"></i>A Windows destination</li>
+      <li><i class="dot"></i>Any new screen</li>
+      <li><i class="dot"></i>Pushing to any remote</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">New server module: scan, pack, unpack, around a small pure core. No schema, API or web changes.</p>
+      <div class="flow">
+        <div class="step"><h3>scan</h3><ul>
+          <li>Read-only database connection</li><li>Git status of each checkout</li><li><span class="mono">move-in --check</span> over ssh</li>
+        </ul></div>
+        <div class="arrow"><svg class="i"><use href="#i-chev"/></svg></div>
+        <div class="step"><h3>pack</h3><ul>
+          <li><span class="mono">VACUUM INTO</span> for the database</li><li><span class="mono">git bundle --all</span> per repo</li><li>Patch and file copies per checkout</li><li>Manifest with hashes and row counts</li>
+        </ul></div>
+        <div class="arrow"><svg class="i"><use href="#i-chev"/></svg></div>
+        <div class="step"><h3>unpack</h3><ul>
+          <li>Stage, rewrite, verify</li><li>Swap into place</li><li>Apply uncommitted work</li><li>Write move-report.md</li>
+        </ul></div>
+      </div>
+      <p class="hint" style="margin-top:12px">Claude folders are renamed by Claude Code's own rule: every character outside a-z, A-Z and 0-9 becomes a dash. Existing boot handling ends stale sessions, and talk worktrees rebuild when a session opens. A real chat resume on Linux was proved in the rehearsal.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["Two published CLI commands, for a Linux or macOS destination","A published command is the only way the code reaches the VPS. A Windows destination would need its own testing, and nobody needs it.","assumed"],
+    ["One command does the whole move over SSH","The feature promises one command. The wrapper only calls scp and ssh, and with no host it stops after packing and prints the remaining commands.","assumed"],
+    ["Show the plan first, on both machines, then ask","The old machine cannot see the new one's disk, folder clashes or version, so a host means both sides are checked.","assumed"],
+    ["Repos travel inside the pack, with every branch, and nothing is pushed","Committed work is reachable by construction, so repos with no remote can move as they are and nothing lands on someone else's remote.","assumed"],
+    ["Uncommitted work travels too, and the old machine is not changed to do it","It moves as a patch plus whole copies of the files, so a line-ending failure still loses nothing. Committing it for you would change the PC.","assumed"],
+    ["Rounds and drives finish first; a real move needs both servers stopped","Chats and logs write outside the database, so a running server can be caught half-written. Open chats do not block: they resume on the VPS.","assumed"],
+    ["Commands are never rewritten; drive and reset commands are cleared for preparing again","A translated command would be an untested guess. Clearing hands a field back to Prepare. Dev, setup and verify commands stay.","assumed"],
+    ["History text is left alone","The brief rules it out. Chat images and shown files are served by id, so old chats still show them.","assumed"],
+    ["A failed move loses nothing, and the old machine stays usable","The PC is only read, and the VPS swaps in only after its checks pass. A working PC is the cheapest way back.","assumed"],
+    ["Existing data on the destination is set aside, never merged, and a second move works","Two machines' ids and histories have no safe merge at solo scale. Renaming keeps a way back and lets a repeat run work.","assumed"],
+    ["Repos land in ~/projects","runcastle already recommends this location on Linux. The tool never writes into an existing folder.","assumed"],
+    ["What travels is everything tied to runcastle's projects","You asked for all of it, and hand-started chats in these repos share their folders. Secrets stay, except anything pasted into a chat, which travels as history.","assumed"],
+    ["Proved on fake data, including a rehearsal to the VPS; the real move is the human's call","This is your second checkpoint. Only a run between the two systems proves line endings and folder names.","assumed"],
+    ["Git-ignored files and old stashes are reported, not carried","Ignored files are mostly rebuildable or secret, and no rule can tell which are precious. Silent loss is what must be avoided.","assumed"],
+    ["A project that cannot move does not hold up the others","With eight projects, one blocker should not stop the move. --no-repo keeps its history and leaves its repo for later.","assumed"],
+    ["The rehearsal runs this branch from a scratch folder on the VPS","The local install refuses while the VPS service runs, and stopping it needs a sudo password. A scratch folder runs the same code and leaves the installed runcastle alone.","assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [4,"Clone from each remote and refuse until everything is pushed, as the brief first assumed.","It removes the push you expected to do first. It also leaves jewellery-system and jev-browser-extension with only the VPS and PC as copies, so you may still want a remote."],
+    [12,"Copy all of ~/.claude/projects, 1.4 GB, or only chats runcastle started.","\"All of the data\" could mean every Claude chat on the PC. This takes the chats in project repos and leaves the rest, plus your global Claude rules and skills."],
+    [7,"Clear only the commands that look tied to Windows.","The orchestrator chose to clear these three on every project, with no detection list. You will run Prepare on every project.","orchestrator"],
+    [9,"After a good move, leave a marker that stops the PC server starting.","One closing message is the only guard against working on both machines. The orchestrator kept it that way, since you intend to turn the PC off.","challenged"],
+    [2,"Two manual commands and a manual copy, with no SSH step inside runcastle.","The wrapper is a second path. The orchestrator kept it, calling the remote binary by its Bun path, and any failure keeps the pack and prints the manual commands.","orchestrator"]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

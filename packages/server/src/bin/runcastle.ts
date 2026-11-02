@@ -12,6 +12,8 @@ import { runcastleVersion } from '../version'
  *   runcastle serve      the same, spelled out for scripts and services
  *   runcastle setup      list what this machine is missing and install it
  *   runcastle doctor     run the pre-boot gate/diagnostic (forwards --gate etc.)
+ *   runcastle move       move this machine's runcastle to another machine
+ *   runcastle move-in    the receiving end of a move
  *   runcastle token      save the unattended Claude Code token
  *   runcastle service    keep runcastle running on a Linux machine
  *   runcastle build-image  build the stock sandbox image, with no app
@@ -29,6 +31,8 @@ export type Command =
   | 'token'
   | 'service'
   | 'build-image'
+  | 'move'
+  | 'move-in'
   | 'version'
   | 'help'
 
@@ -46,6 +50,8 @@ export function parseCommand(argv: string[]): ParsedCommand {
     return { command: 'help', args: rest }
   if (first === 'setup') return { command: 'setup', args: rest }
   if (first === 'doctor') return { command: 'doctor', args: rest }
+  if (first === 'move') return { command: 'move', args: rest }
+  if (first === 'move-in') return { command: 'move-in', args: rest }
   if (first === 'token') return { command: 'token', args: rest }
   if (first === 'service') return { command: 'service', args: rest }
   if (first === 'build-image') return { command: 'build-image', args: rest }
@@ -61,6 +67,11 @@ Usage:
   runcastle serve      The same, spelled out for scripts and services
   runcastle setup      List what this machine is missing and install it (--yes, --agent claude|codex|both)
   runcastle doctor     Check prerequisites (add --gate for the pre-boot gate)
+  runcastle move [user@host] [--dry-run] [--yes] [--replace]
+                 [--repos-dir <dir>] [--no-repo <project>] [--out <file>]
+                       Move runcastle to another machine; only reads this one
+  runcastle move-in <pack> [--replace] [--repos-dir <dir>]
+                       Bring a move in on this machine
   runcastle token      Save the unattended Claude Code token (--stdin to read it from a pipe)
   runcastle service install
                        Keep runcastle running on this Linux machine (service remove undoes it)
@@ -92,6 +103,14 @@ async function main(argv: string[]): Promise<number> {
     case 'doctor': {
       const { runCli } = await import('../doctor/cli')
       return runCli(args)
+    }
+    case 'move': {
+      const { runMoveCli } = await import('../move/cli')
+      return runMoveCli(args)
+    }
+    case 'move-in': {
+      const { runMoveInCli } = await import('../move/cli')
+      return runMoveInCli(args)
     }
     case 'token': {
       const { runToken } = await import('./token')
