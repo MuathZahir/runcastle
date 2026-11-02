@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>You always know what's waiting preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+
+/* ---- the show's own styles go below this line ---- */
+.row{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:var(--radius-md);font-size:12px;font-weight:500;white-space:nowrap}
+.btn.p{background:var(--color-primary);color:var(--color-on-primary)}
+.btn.s{border:1px solid var(--color-border);color:var(--color-text)}
+.btn.g{color:var(--color-text-secondary)}
+.ib{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:var(--radius-md);color:var(--color-icon)}
+.ib:hover{background:var(--color-surface-hover)}
+.wdot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--color-warning);flex:none}
+.adot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--color-accent);flex:none}
+.ndot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--color-text-disabled);flex:none}
+.hdr{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--color-border-subtle);background:var(--color-surface)}
+.crumb{color:var(--color-text-secondary);font-size:13px;white-space:nowrap}
+.status{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;color:var(--color-text-tertiary)}
+.status b{font-weight:400;color:var(--color-text-secondary)}
+.sb{width:280px;padding:8px;background:var(--color-canvas);border-right:1px solid var(--color-border-subtle)}
+.sbh{padding:10px 10px 4px;font-size:11px;color:var(--color-text-tertiary);text-transform:none}
+.fr{padding:7px 10px;border-radius:var(--radius-lg)}
+.fr:hover{background:var(--color-surface-hover)}
+.fr .t{display:flex;align-items:center;gap:8px;font-size:14px}
+.fr .t span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr .w{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:12px;color:var(--color-text-tertiary)}
+.fr .w span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr .w.need span{color:var(--color-text-secondary)}
+.pie{width:12px;height:12px;border-radius:99px;border:1.5px solid var(--color-icon);flex:none}
+.chat{padding:20px 28px 0;max-width:720px}
+.who{display:flex;align-items:center;gap:8px;color:var(--color-text-tertiary);font-size:13px}
+.fold{margin-top:10px;color:var(--color-text-tertiary);font-size:13px}
+.say{margin-top:10px;font-size:14px;line-height:22px}
+.wline{display:flex;align-items:center;gap:10px;margin-top:16px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-fill-card);font-size:13px}
+.wline span{flex:1;color:var(--color-text-secondary)}
+.comp{margin:16px 0 18px;height:72px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-raised);padding:10px 12px;color:var(--color-text-disabled);font-size:13px}
+.pal{width:520px;margin:18px auto;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-raised);box-shadow:0 12px 40px rgb(0 0 0 / .35)}
+.pal input{width:100%;height:42px;padding:0 14px;border:0;border-bottom:1px solid var(--color-border-subtle);background:transparent;color:var(--color-text);font:inherit;font-size:14px}
+.pg{padding:6px}
+.pg h4{margin:6px 8px 4px;font-size:11px;font-weight:400;color:var(--color-text-tertiary)}
+.pi{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px;border-radius:var(--radius-md);font-size:13px}
+.pi.on{background:var(--color-surface-selected)}
+.pi.off{color:var(--color-text-disabled)}
+.pi kbd{margin-left:auto;font:11px var(--font-mono);color:var(--color-text-tertiary)}
+.pi small{margin-left:auto;color:var(--color-text-tertiary);font-size:11px}
+table.v{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+table.v th{text-align:left;font-weight:400;color:var(--color-text-tertiary);padding:4px 8px;border-bottom:1px solid var(--color-border-subtle)}
+table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary);vertical-align:top}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba .cap{font-size:12px;color:var(--color-text-tertiary);margin-bottom:6px}
+.ba .screen{padding:14px 18px}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.card{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised)}
+.card h3{display:flex;align-items:center;gap:8px}
+.card p{margin-top:6px;color:var(--color-text-secondary);font-size:12px;line-height:18px}
+.strike{text-decoration:line-through;color:var(--color-text-tertiary)}
+.tab{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px 8px 0 0;background:var(--color-surface-raised);border:1px solid var(--color-border);border-bottom:0;font-size:12px}
+@media (max-width:760px){.ba,.flow{grid-template-columns:1fr}.sb{width:100%}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>You always know what's waiting</h1>
+  <p class="lede">Coming back to runcastle, every feature says exactly what it needs from you, the button for it sits right beside those words, and you get pinged when you're needed.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>Planned without you · 4 tickets + a review</span><span class="mono">docs/features/you-always-know-what-s-waiting/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Eight needs, one row each. The same words everywhere, and the button beside them. <a class="pin" data-d="1">1</a> <a class="pin" data-d="17">17</a></p>
+  <table class="v" style="margin-top:12px">
+    <tr><th>Most pressing first</th><th>Words</th><th>Button</th><th>Who sets it</th></tr>
+    <tr><td><span class="wdot"></span></td><td>Needs permission · Bash: git push</td><td>Show request</td><td>a thread's permission prompt <a class="pin" data-d="9">9</a></td></tr>
+    <tr><td><span class="wdot"></span></td><td>Merge conflict</td><td>Resolve conflict</td><td>a merge that stopped <a class="pin" data-d="19">19</a></td></tr>
+    <tr><td><span class="wdot"></span></td><td>Needs your answer · which model?</td><td>Reply</td><td>the agent <a class="pin" data-d="2">2</a></td></tr>
+    <tr><td><span class="wdot"></span></td><td>Plan to approve</td><td>Open plan</td><td>the agent <a class="pin" data-d="2">2</a></td></tr>
+    <tr><td><span class="wdot"></span></td><td>Design to approve</td><td>Open design</td><td>the agent <a class="pin" data-d="15">15</a></td></tr>
+    <tr><td><span class="wdot"></span></td><td>Stopped · the agent's run failed</td><td>Chat</td><td>Stop, a failure, a restart</td></tr>
+    <tr><td><span class="adot"></span></td><td>Ready to test · Feature at review</td><td>Start test drive</td><td>the agent declared ready</td></tr>
+    <tr><td><span class="adot"></span></td><td>Ready to merge</td><td>Merge &amp; ship</td><td>you drove it since <a class="pin" data-d="5">5</a></td></tr>
+  </table>
+
+  <div class="sub">
+    <h3>The feature page</h3>
+    <p class="hint">Header and chat, waiting on a plan yes. Merge &amp; ship always shows. "+" is New thread.</p>
+<!-- screen:header -->
+<div class="screen">
+  <div class="hdr">
+    <span class="crumb">runcastle / You always know what's waiting</span>
+    <div class="status"><span class="wdot"></span><b>Plan to approve</b></div>
+    <span style="flex:1"></span>
+    <button class="btn p">Open plan</button>
+    <button class="btn s">Merge &amp; ship</button>
+    <button class="ib" title="New thread  (Ctrl+Shift+O)"><svg class="i" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+    <button class="ib" title="More">⋯</button>
+    <button class="ib" title="Panel">▯</button>
+  </div>
+  <div style="padding:10px 14px;font-size:12px;color:var(--color-text-tertiary)">
+    Header, left to right: crumbs · status line (dot + the need's words) · the need's button (primary) · Merge &amp; ship (quiet, always on a started unshipped feature; shown once when it is the primary) · New thread "+" (tooltip names Ctrl+Shift+O / ⌘⇧O) · "⋯" · panel toggle.
+    While a round runs or a drive is on, the primary is today's Stop / Back to the drive, and Merge &amp; ship stays beside it.
+    <table class="v">
+      <tr><th>State</th><th>Status line</th><th>Buttons</th></tr>
+      <tr><td>answer</td><td><span class="wdot"></span> Needs your answer · which model for approvals?</td><td>Reply · Merge &amp; ship</td></tr>
+      <tr><td>permission</td><td><span class="wdot"></span> Needs permission · Bash: git push</td><td>Show request · Merge &amp; ship</td></tr>
+      <tr><td>test</td><td><span class="adot"></span> Ready to test · Feature at review</td><td>Start test drive ▾ · Merge &amp; ship</td></tr>
+      <tr><td>merge</td><td><span class="adot"></span> Ready to merge</td><td>Merge &amp; ship (primary) — Start test drive moves to "⋯"</td></tr>
+      <tr><td>held, plan</td><td><span class="ndot"></span> With the orchestrator · Plan to approve</td><td>Open plan · Merge &amp; ship</td></tr>
+      <tr><td>working</td><td><span class="adot"></span> Working · Round 2</td><td>Stop · Merge &amp; ship</td></tr>
+      <tr><td>talking</td><td><span class="ndot"></span> Talking with you</td><td>Merge &amp; ship</td></tr>
+    </table>
+  </div>
+</div>
+<!-- /screen:header -->
+  </div>
+
+  <div class="sub">
+    <h3>The chat</h3>
+    <p class="hint">The question no longer folds away, and the chat ends with what it waits for. <a class="pin" data-d="3">3</a> <a class="pin" data-d="4">4</a></p>
+    <div class="ba">
+      <div><div class="cap">Today</div>
+        <div class="screen">
+          <div class="fold">Worked for 46s ›</div>
+          <div class="say">My reply above is waiting on you: a <b>yes</b> to <span class="mono">APPROVAL_MODEL</span>…</div>
+          <p class="hint" style="margin-top:10px">The question is inside the closed fold.</p>
+        </div>
+      </div>
+      <div><div class="cap">After</div>
+        <div class="screen">
+          <div class="fold">Worked for 46s ›</div>
+          <div class="say">Should approvals run on Haiku 5.5 for all three runs?</div>
+          <div class="wline"><span class="wdot"></span><span>Needs your answer · which model for approvals?</span></div>
+        </div>
+      </div>
+    </div>
+<!-- screen:chat -->
+<div class="screen">
+  <div class="chat">
+    <div class="who"><span class="ndot"></span>Runcastle · Proceed with your task…</div>
+    <div class="fold">Worked for 6m 12s ›</div>
+    <div class="say">The plan holds 19 decisions and 4 tickets plus a review. Check decisions 12 and 18 first.</div>
+    <div class="say">Can I start round 1?</div>
+    <div class="wline"><span class="wdot"></span><span>Plan to approve</span><button class="btn p">Open plan</button></div>
+    <div class="comp">Message the agent…</div>
+  </div>
+  <div style="padding:0 28px 14px;font-size:12px;color:var(--color-text-tertiary)">
+    The answer is every word after the turn's last real work: the two paragraphs above were written either side of a <span class="mono">wait_for_you</span> call and both stay in view, joined as one answer. Thoughts and real tool calls still fold into "Worked for …".
+    The waiting line sits under the last message of the <b>main</b> chat only, with the header's button; an answer gets no button (the message box is right below). It goes the moment the need clears. A held feature's handled need shows no line.
+  </div>
+</div>
+<!-- /screen:chat -->
+  </div>
+
+  <div class="sub">
+    <h3>The sidebar</h3>
+    <p class="hint">Rows say the need. A feature the orchestrator is handling waits on it, not on you. <a class="pin" data-d="18">18</a></p>
+<!-- screen:sidebar -->
+<div class="screen" style="display:flex">
+  <div class="sb">
+    <div class="sbh">Needs you</div>
+    <div class="fr"><div class="t"><span>Checkout redesign</span><span class="wdot" style="flex:none"></span></div><div class="w need"><i class="pie"></i><span>Plan to approve</span>4m</div></div>
+    <div class="fr"><div class="t"><span>Export to CSV</span><span class="wdot" style="flex:none"></span></div><div class="w need"><i class="pie"></i><span>Needs permission · Bash: git push</span>1m</div></div>
+    <div class="fr"><div class="t"><span>Dark mode</span><span class="wdot" style="flex:none"></span></div><div class="w need"><i class="pie"></i><span>Ready to merge</span>2h</div></div>
+    <div class="sbh">Agent working</div>
+    <div class="fr"><div class="t"><span>Search filters</span></div><div class="w"><i class="pie"></i><span>Working · 2/5</span>now</div></div>
+    <div class="fr"><div class="t"><span>Billing emails</span></div><div class="w"><i class="pie"></i><span>With the orchestrator · Ready to test</span>9m</div></div>
+    <div class="sbh">In progress</div>
+    <div class="fr"><div class="t"><span>Onboarding copy</span></div><div class="w"><i class="pie"></i><span>In progress</span>1d</div></div>
+  </div>
+  <div style="flex:1;padding:14px;font-size:12px;color:var(--color-text-tertiary)">
+    The row's second line is the need's words, the same as the status line. The amber dot stays for Needs you.
+    A held feature's handled need ("With the orchestrator · …") files under Agent working, gets no dot, no ping, no count. Permission and design on a held feature stay under Needs you.
+    The palette's feature rows show the same words.
+  </div>
+</div>
+<!-- /screen:sidebar -->
+  </div>
+
+  <div class="sub">
+    <h3>The palette</h3>
+    <p class="hint">Ctrl+K with a feature open: its actions first. <a class="pin" data-d="8">8</a> <a class="pin" data-d="7">7</a></p>
+<!-- screen:palette -->
+<div class="screen">
+  <div class="pal">
+    <input value="" placeholder="Search features, actions…" aria-label="Search">
+    <div class="pg">
+      <h4>Checkout redesign</h4>
+      <div class="pi on">Open plan</div>
+      <div class="pi">New thread<kbd>Ctrl+Shift+O</kbd></div>
+      <div class="pi">Merge &amp; ship</div>
+      <div class="pi off">Start test drive<small>nothing declared ready yet</small></div>
+      <h4>Features</h4>
+      <div class="pi"><span class="wdot"></span>Export to CSV<small>Needs permission · Bash: git push</small></div>
+      <h4>Actions</h4>
+      <div class="pi">New note<kbd>Ctrl+J</kbd></div>
+    </div>
+  </div>
+  <div style="padding:0 14px 14px;font-size:12px;color:var(--color-text-tertiary)">
+    The open feature's group comes first: the header's primary, New thread, Merge &amp; ship, Start test drive — each disabled with the header's reason where the header disables it. They run the same actions as the header.
+  </div>
+</div>
+<!-- /screen:palette -->
+  </div>
+
+  <div class="sub">
+    <h3>Pings</h3>
+    <p class="hint">When you are needed, not when a round finishes. <a class="pin" data-d="11">11</a> <a class="pin" data-d="12">12</a> <a class="pin" data-d="13">13</a></p>
+    <div class="flow">
+      <div class="card"><h3>Desktop</h3><p>Any feature, any project, entering a need. Title: the need's words. Click opens it.<br><span class="strike">Round finished</span> — gone.</p></div>
+      <div class="card"><h3>Phone</h3><p>Agents still choose (<span class="mono">notify_human</span>). Runcastle itself pings only for stalls no agent can report: a permission prompt, a wake that failed.</p></div>
+      <div class="card"><h3>Tab</h3><p><span class="tab"><span class="wdot"></span>(2) runcastle</span><br>Counts Needs you across all projects.</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>A round cut off by a restart</h3>
+    <p class="hint">It no longer just stops. <a class="pin" data-d="10">10</a></p>
+    <div class="flow">
+      <div class="card"><h3><span class="dot no"></span>Server restarts</h3><p>The running round is marked failed, as today.</p></div>
+      <div class="card"><h3><span class="dot live"></span>Lead woken</h3><p>"Round 2 was interrupted: 1 landed, 2 pending." It may run it again once. The orchestrator hears too.</p></div>
+      <div class="card"><h3><span class="wdot"></span>Second time</h3><p>The lead waits for you: "Stopped · round 2 interrupted twice". A failed wake pings your phone.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The designs list, design and plan cards, design badge — "Designs and the plan get their own place"</li>
+      <li><i class="dot"></i>Renaming round/burn and chat/thread — "Ready to publish"</li>
+      <li><i class="dot"></i>Checking for merge conflicts before anyone clicks Merge</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Drive and merge error messages, drive restart recovery, bypass-mode defaults, usage-limit Resume — the small-fixes sibling</li>
+      <li><i class="dot"></i>A lead chat cut off mid-turn by a restart (not a round)</li>
+      <li><i class="dot"></i>Live design pages for these screens <a class="pin" data-d="16">16</a></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">One answer, worked out on the server, read everywhere. <a class="pin" data-d="14">14</a></p>
+      <div class="flow">
+        <div class="card"><h3>Facts</h3><p>Waiting reason + its kind (new column, set by <span class="mono">wait_for_you({ why, kind })</span>), ready declarations, drives, human messages, open asks in any thread, merge conflicts, failed wakes, the holder.</p></div>
+        <div class="card"><h3><span class="mono">featureNeed(facts)</span></h3><p>Pure, in core. Precedence, words, the held rule, test vs merge. Returns one need or none.</p></div>
+        <div class="card"><h3>Readers</h3><p><span class="mono">need</span> on the feature list and the feature → sidebar, status line, header, chat line, palette, tab count. Entering a need emits <span class="mono">feature.needs_you</span> → desktop and phone pings.</p></div>
+      </div>
+      <table class="v" style="margin-top:16px">
+        <tr><th>Ticket</th><th>What</th><th>After</th></tr>
+        <tr><td>1</td><td>Needs on the server: core function, waiting kind column + migration, <span class="mono">wait_for_you</span> kind, <span class="mono">need</span> on the wire, <span class="mono">feature.needs_you</span> event</td><td>—</td></tr>
+        <tr><td>2</td><td>Header, sidebar and palette: words, need button, Merge always, New thread button + Ctrl+Shift+O</td><td>1</td></tr>
+        <tr><td>3</td><td>Pings: desktop across projects, phone for stalls, tab count, interrupted round wakes the lead</td><td>1</td></tr>
+        <tr><td>4</td><td>Chat: fold rule, waiting line, skill wording (kinds, question last, notify after unattended work)</td><td>2</td></tr>
+        <tr><td>5</td><td>Review: drive the header, sidebar, chat, palette and pings</td><td>1–4</td></tr>
+      </table>
+      <p class="hint" style="margin-top:8px">One ticket runs at a time in this project, so the order is 1, 2, 3, 4, then the review.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["What a feature needs from you is one of a fixed set, each with its words and its button", "Today a plan yes, an answer, a drive and a merge all read \"Waiting on you\", and ready-to-merge reads \"In progress\". A fixed set tells them apart and stays truthful.", "assumed"],
+    ["The agent says which kind of wait it is", "Only the agent knows what it waits for; guessing from its free text breaks the first time it words it differently.", "assumed"],
+    ["Words the agent puts to you never fold away", "Calls that only talk to you (wait_for_you, declare_ready, notify_human, show_file) no longer end the answer, so a question written before them stays in view. The skills also put the question last.", "assumed"],
+    ["The chat itself says what it waits for", "A line under the agent's last words with the need's words and its button, so the eye need not go back to the header.", "assumed"],
+    ["Ready to merge means you drove it since it was declared ready", "A finished drive with no notes since is the closest truthful signal; projects with no drive go straight to Ready to merge. Merge still needs your click.", "assumed"],
+    ["Merge & ship is always in the header", "Earlier decisions meant it to stay there, but nothing offered it, so it was always behind \"⋯\".", "assumed"],
+    ["New thread gets a button, a palette entry and a shortcut", "The only door today is a hover-only \"+\" on the sidebar row. Shortcut: Ctrl+Shift+O (⌘⇧O), the same keys ChatGPT uses.", "assumed"],
+    ["The palette offers the open feature's actions", "Its current button, New thread, Merge & ship and Start test drive, using the header's own actions so the two never disagree.", "assumed"],
+    ["A pending permission prompt is its own state", "Today a prompt waits forever with no sign outside its thread; your own \"ask before git push\" rules keep them coming.", "assumed"],
+    ["A round cut off by a server restart wakes the lead", "It is told like a finished round and may rerun it once; a second interruption makes it wait for you as stuck.", "assumed"],
+    ["Desktop pings fire when you are needed, and no longer when a round succeeds", "Ping on entering any need, every project; not for your own Stop, not for what an orchestrator is handling, not for rounds finishing.", "assumed"],
+    ["Runcastle pings your phone by itself only for stalls no agent can report", "Permission prompts and failed wakes ping automatically, held or not; everything else stays the agents' choice, as you decided for phone pings.", "assumed"],
+    ["The tab title counts what needs you", "\"(2) runcastle\" across all projects: the cheapest ping, no permission needed.", "assumed"],
+    ["The sidebar, header, chat, palette, tab title and pings read one answer", "Worked out once on the server, so the sidebar and status line stop disagreeing.", "assumed"],
+    ["A design to approve is wired now; the design list stays with the sibling", "A kind the agent can set and a button that opens the design view: the clean place the sibling plugs into.", "assumed"],
+    ["The screens are drawn in the plan, not built as live designs", "Words and one or two buttons on screens whose layout stays; the working agreement asks to keep design reviews to what needs your eyes.", "assumed"],
+    ["A feature shows one need at a time, the most pressing first", "Permission, conflict, answer, plan, design, stopped, ready to test, ready to merge.", "assumed"],
+    ["A feature its orchestrator is handling waits on the orchestrator, not on you", "\"With the orchestrator · …\", in the working group, no ping, no count, so Needs you keeps meaning \"nothing moves until you act\". Permission and design still come to you.", "assumed"],
+    ["A merge conflict shows once a merge has tried and failed", "No background conflict checks; a conflict at merge time is one click from Resolve conflict.", "assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [12, "Runcastle pings your phone by itself on every need, for features no orchestrator holds.", "You chose agent-sent pings and said no automatic fallbacks; this adds automatic pings for stalls only.", "reverses part of an earlier choice"],
+    [18, "Held features show and ping like any other; you ignore what the orchestrator is handling.", "Changes where held features sit in the sidebar; raised by the challenger.", "new behaviour"],
+    [1, "Keep \"Waiting for you\" and show only the agent's reason after it.", "The challenger would drop \"Stopped · you stopped it\" from Needs you; kept, because nothing moves until you reply.", "challenged"],
+    [3, "Show every word in a turn; fold only tool calls and thinking.", "The challenger wanted any question mark to stay in view wherever it sits; not taken.", "challenged"],
+    [7, "Make the sidebar \"+\" always visible instead; or another shortcut.", "Ctrl+Shift+O is the browser's bookmarks shortcut; the challenger would pick another.", "challenged"]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
