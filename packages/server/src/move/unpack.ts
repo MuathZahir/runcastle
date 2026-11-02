@@ -389,12 +389,8 @@ function installPlugins(setup: ClaudeSetup, runClaude: (args: string[]) => boole
 
 /** The real `claude`. A non-interactive SSH session may not have its folder on the PATH. */
 function claudeOn(env: MoveEnv): (args: string[]) => boolean {
-  const childEnv = {
-    ...process.env,
-    PATH: [join(env.home, '.local', 'bin'), process.env.PATH].filter(Boolean).join(':'),
-    CLAUDE_CONFIG_DIR: env.claudeDir,
-  }
-  return (args) => run('claude', args, { env: childEnv }).ok
+  const PATH = [join(env.home, '.local', 'bin'), process.env.PATH].filter(Boolean).join(':')
+  return (args) => run('claude', args, { env: { ...process.env, PATH } }).ok
 }
 
 /** Put a checkout's uncommitted work back, or keep it beside the repo if it will not apply. */
