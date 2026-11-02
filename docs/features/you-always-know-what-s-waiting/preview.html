@@ -276,7 +276,7 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
     <div class="comp">Message the agent…</div>
   </div>
   <div style="padding:0 28px 14px;font-size:12px;color:var(--color-text-tertiary)">
-    The answer is every word after the turn's last real work: the two paragraphs above were written either side of a <span class="mono">wait_for_you</span> call and both stay in view, joined as one answer. Thoughts and real tool calls still fold into "Worked for …".
+    The answer is every word after the turn's last real work: the two paragraphs above were written either side of a <span class="mono">wait_for_you</span> call and both stay in view, joined as one answer. Thoughts and real tool calls still fold into "Worked for …". Any other words in the turn that end in a question show after the fold, ahead of the final words, even when more work followed them.
     The waiting line sits under the last message of the <b>main</b> chat only, with the header's button; an answer gets no button (the message box is right below). It goes the moment the need clears. A held feature's handled need shows no line.
   </div>
 </div>
@@ -301,7 +301,7 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
   </div>
   <div style="flex:1;padding:14px;font-size:12px;color:var(--color-text-tertiary)">
     The row's second line is the need's words, the same as the status line. The amber dot stays for Needs you.
-    A held feature's handled need ("With the orchestrator · …") files under Agent working, gets no dot, no ping, no count. Permission and design on a held feature stay under Needs you.
+    A held feature's handled need ("With the orchestrator · …") files under Agent working, gets no dot, no ping, no count — for an hour. Unanswered after an hour, it moves here to Needs you with its plain words and pings. Permission and design on a held feature are always under Needs you.
     The palette's feature rows show the same words.
   </div>
 </div>
@@ -338,8 +338,8 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
     <h3>Pings</h3>
     <p class="hint">When you are needed, not when a round finishes. <a class="pin" data-d="11">11</a> <a class="pin" data-d="12">12</a> <a class="pin" data-d="13">13</a></p>
     <div class="flow">
-      <div class="card"><h3>Desktop</h3><p>Any feature, any project, entering a need. Title: the need's words. Click opens it.<br><span class="strike">Round finished</span> — gone.</p></div>
-      <div class="card"><h3>Phone</h3><p>Agents still choose (<span class="mono">notify_human</span>). Runcastle itself pings only for stalls no agent can report: a permission prompt, a wake that failed.</p></div>
+      <div class="card"><h3>Desktop</h3><p>Any feature, any project, entering a need (held ones after an hour). Title: the need's words. Click opens it.<br><span class="strike">Round finished</span> — gone.</p></div>
+      <div class="card"><h3>Phone</h3><p>Runcastle pushes itself at the same moments as the desktop, once the phone link is on. Held needs wait an hour first. <span class="mono">notify_human</span> stays for anything extra an agent wants to say.</p></div>
       <div class="card"><h3>Tab</h3><p><span class="tab"><span class="wdot"></span>(2) runcastle</span><br>Counts Needs you across all projects.</p></div>
     </div>
   </div>
@@ -398,7 +398,7 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
         <tr><td>4</td><td>Chat: fold rule, waiting line, skill wording (kinds, question last, notify after unattended work)</td><td>2</td></tr>
         <tr><td>5</td><td>Review: drive the header, sidebar, chat, palette and pings</td><td>1–4</td></tr>
       </table>
-      <p class="hint" style="margin-top:8px">One ticket runs at a time in this project, so the order is 1, 2, 3, 4, then the review.</p>
+      <p class="hint" style="margin-top:8px">Decisions 3, 12 and 18 were changed by the orchestrator, which then gave the yes for round 1. One ticket runs at a time in this project, so the order is 1, 2, 3, 4, then the review.</p>
     </div>
   </details>
 </section>
@@ -415,7 +415,7 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
   var D = [
     ["What a feature needs from you is one of a fixed set, each with its words and its button", "Today a plan yes, an answer, a drive and a merge all read \"Waiting on you\", and ready-to-merge reads \"In progress\". A fixed set tells them apart and stays truthful.", "assumed"],
     ["The agent says which kind of wait it is", "Only the agent knows what it waits for; guessing from its free text breaks the first time it words it differently.", "assumed"],
-    ["Words the agent puts to you never fold away", "Calls that only talk to you (wait_for_you, declare_ready, notify_human, show_file) no longer end the answer, so a question written before them stays in view. The skills also put the question last.", "assumed"],
+    ["Words the agent puts to you never fold away", "No question folds away: words before a talk-only call (wait_for_you, declare_ready, notify_human, show_file) stay in the answer, and any other words ending in a question show after the folded work. Changed by the orchestrator.", "assumed"],
     ["The chat itself says what it waits for", "A line under the agent's last words with the need's words and its button, so the eye need not go back to the header.", "assumed"],
     ["Ready to merge means you drove it since it was declared ready", "A finished drive with no notes since is the closest truthful signal; projects with no drive go straight to Ready to merge. Merge still needs your click.", "assumed"],
     ["Merge & ship is always in the header", "Earlier decisions meant it to stay there, but nothing offered it, so it was always behind \"⋯\".", "assumed"],
@@ -423,24 +423,24 @@ table.v td{padding:5px 8px;border-bottom:1px solid var(--color-border-subtle);co
     ["The palette offers the open feature's actions", "Its current button, New thread, Merge & ship and Start test drive, using the header's own actions so the two never disagree.", "assumed"],
     ["A pending permission prompt is its own state", "Today a prompt waits forever with no sign outside its thread; your own \"ask before git push\" rules keep them coming.", "assumed"],
     ["A round cut off by a server restart wakes the lead", "It is told like a finished round and may rerun it once; a second interruption makes it wait for you as stuck.", "assumed"],
-    ["Desktop pings fire when you are needed, and no longer when a round succeeds", "Ping on entering any need, every project; not for your own Stop, not for what an orchestrator is handling, not for rounds finishing.", "assumed"],
-    ["Runcastle pings your phone by itself only for stalls no agent can report", "Permission prompts and failed wakes ping automatically, held or not; everything else stays the agents' choice, as you decided for phone pings.", "assumed"],
-    ["The tab title counts what needs you", "\"(2) runcastle\" across all projects: the cheapest ping, no permission needed.", "assumed"],
+    ["Desktop pings fire when you are needed, and no longer when a round succeeds", "Ping on entering any need, every project; not for your own Stop, not for rounds finishing, and not for what an orchestrator is handling until it has waited an hour.", "assumed"],
+    ["Runcastle pings your phone itself, at the same moments as the desktop", "A phone ping should not depend on an agent remembering. Reverses the \"no automatic fallbacks\" line of Agents can notify your phone. Changed by the orchestrator.", "assumed"],
+    ["The tab title counts what needs you", "\"(2) runcastle\" across all projects: the cheapest ping, no permission needed. Held needs count once they have waited an hour.", "assumed"],
     ["The sidebar, header, chat, palette, tab title and pings read one answer", "Worked out once on the server, so the sidebar and status line stop disagreeing.", "assumed"],
     ["A design to approve is wired now; the design list stays with the sibling", "A kind the agent can set and a button that opens the design view: the clean place the sibling plugs into.", "assumed"],
     ["The screens are drawn in the plan, not built as live designs", "Words and one or two buttons on screens whose layout stays; the working agreement asks to keep design reviews to what needs your eyes.", "assumed"],
     ["A feature shows one need at a time, the most pressing first", "Permission, conflict, answer, plan, design, stopped, ready to test, ready to merge.", "assumed"],
-    ["A feature its orchestrator is handling waits on the orchestrator, not on you", "\"With the orchestrator · …\", in the working group, no ping, no count, so Needs you keeps meaning \"nothing moves until you act\". Permission and design still come to you.", "assumed"],
+    ["A feature its orchestrator is handling waits on the orchestrator, not on you", "\"With the orchestrator · …\" in the working group, no ping, no count; after an hour unanswered it comes to you and pings. Permission and design always come to you. The hour was added by the orchestrator.", "assumed"],
     ["A merge conflict shows once a merge has tried and failed", "No background conflict checks; a conflict at merge time is one click from Resolve conflict.", "assumed"]
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [12, "Runcastle pings your phone by itself on every need, for features no orchestrator holds.", "You chose agent-sent pings and said no automatic fallbacks; this adds automatic pings for stalls only.", "reverses part of an earlier choice"],
-    [18, "Held features show and ping like any other; you ignore what the orchestrator is handling.", "Changes where held features sit in the sidebar; raised by the challenger.", "new behaviour"],
+    [12, "Phone pings stay the agents' choice, except for stalls no agent can report.", "Changed by the orchestrator; it reverses your earlier \"no automatic fallbacks\" for phone pings.", "changed by the orchestrator"],
+    [18, "Held features show and ping like any other; or stay with the orchestrator with no time limit.", "New behaviour for held features; the one-hour fallback was the orchestrator's.", "changed by the orchestrator"],
+    [3, "Fold mid-turn questions with the rest of the work; keep only the turn's last words in view.", "Changed by the orchestrator: every question stays in view, which may show more mid-turn text than you want.", "changed by the orchestrator"],
     [1, "Keep \"Waiting for you\" and show only the agent's reason after it.", "The challenger would drop \"Stopped · you stopped it\" from Needs you; kept, because nothing moves until you reply.", "challenged"],
-    [3, "Show every word in a turn; fold only tool calls and thinking.", "The challenger wanted any question mark to stay in view wherever it sits; not taken.", "challenged"],
-    [7, "Make the sidebar \"+\" always visible instead; or another shortcut.", "Ctrl+Shift+O is the browser's bookmarks shortcut; the challenger would pick another.", "challenged"]
+    [5, "The agent marks it ready to merge after you say \"all good\".", "A guess at what counts as \"you're happy\": a finished drive with no notes since.", ""]
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
