@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CommandPalette } from '../src/components/CommandPalette'
+import { FeatureCommandsValue } from '../src/lib/feature-commands'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
+import { listItem } from './fixtures'
 import { Dialog } from '../src/ui'
 
 const nav: ProjectNavApi = {
@@ -119,5 +121,49 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(onOpenNote).toHaveBeenCalledOnce()
+  })
+
+  /** you-always-know-what-s-waiting decision 8: the open feature's header actions come first. */
+  it('lists the open feature’s actions first, and a disabled one says why and does nothing', () => {
+    const openPlan = vi.fn()
+    const drive = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <FeatureCommandsValue
+        value={{
+          title: 'Checkout redesign',
+          commands: [
+            { key: 'openPlan', label: 'Open plan', run: openPlan },
+            { key: 'newThread', label: 'New thread', kbd: 'Ctrl+Shift+O', run: vi.fn() },
+            { key: 'testDriveStart', label: 'Start test drive', disabled: 'Nothing declared ready yet', run: drive },
+          ],
+        }}
+      >
+        <CommandPalette
+          open
+          onClose={onClose}
+          features={[listItem()]}
+          selectedFeatureId={null}
+          onSelect={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onOpenPreparation={vi.fn()}
+          onOpenProjectChat={vi.fn()}
+          onOpenNote={vi.fn()}
+          nav={nav}
+        />
+      </FeatureCommandsValue>,
+    )
+
+    const rows = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(rows.slice(0, 4)).toEqual(['Open plan', 'New threadCtrl+Shift+O', 'Start test driveNothing declared ready yet', expect.stringContaining('Demo')])
+    expect(screen.getByText('Checkout redesign')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('option', { name: /Start test drive/ }))
+    expect(drive).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+    expect(openPlan).toHaveBeenCalledOnce()
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })
