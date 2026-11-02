@@ -9,12 +9,16 @@ import {
   IconArchive,
   IconArrowRight,
   IconClock,
+  IconDoc,
+  IconEye,
   IconGitMerge,
   IconInbox,
   IconMessage,
   IconMore,
   IconPlay,
+  IconPlus,
   IconSettings,
+  IconShield,
   IconSparkle,
   IconStop,
   IconTerminal,
@@ -36,6 +40,11 @@ export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   merge: <IconGitMerge />,
   resolveConflict: <IconAlert />,
   unarchive: <IconArchive />,
+  reply: <IconMessage />,
+  openPlan: <IconDoc />,
+  openDesign: <IconEye />,
+  showRequest: <IconShield />,
+  newThread: <IconPlus />,
 }
 
 // A tone is a whole literal, never an interpolated colour name (STYLE.md).

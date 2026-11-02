@@ -21,6 +21,11 @@ export const ACTION_KINDS = [
   'merge', // feature.merge — ships the feature, reachable from every state
   'resolveConflict', // launchSession { kind: 'chat', kickoffLine: mergeConflictKickoff(…) }
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
+  'reply', // an answer is needed: bring the main chat to the front and focus its composer
+  'openPlan', // a plan to approve: open the panel's plan view
+  'openDesign', // a design to approve: open the design view on the feature's design server
+  'showRequest', // a permission prompt: bring the asking thread to the front
+  'newThread', // a new side thread on the feature, as the sidebar row's "+"
 ] as const
 
 export type ActionKind = (typeof ACTION_KINDS)[number]

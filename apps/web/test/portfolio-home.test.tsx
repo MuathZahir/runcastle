@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PortfolioHome } from '../src/components/PortfolioHome'
 import { ToastProvider } from '../src/lib/toast'
-import { listItem } from './fixtures'
+import { listItem, need } from './fixtures'
 import { atWidth } from './phone-width'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
@@ -92,7 +92,7 @@ describe('PortfolioHome', () => {
 
   it('sits live projects first in their own card, waiting before running', () => {
     const running: FeatureListItem = listItem({ activeRun: true })
-    const waiting: FeatureListItem = listItem({ waitingReason: 'ready to test' })
+    const waiting: FeatureListItem = listItem({ need: need('test', 'Ready to test') })
     stub.features = [[], [running], [waiting]]
     render(
       <ToastProvider>

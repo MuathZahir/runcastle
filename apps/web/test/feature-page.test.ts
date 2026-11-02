@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EventRow } from '@runcastle/core'
+import type { EventRow, FeatureNeed } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { FeatureView } from '../src/lib/routes'
 import { full as fixture } from './fixtures'
@@ -90,12 +90,15 @@ interface PageOptions {
   docs?: ReturnType<typeof doc>[]
   runs?: FeatureFull['runs']
   queries?: Record<string, unknown>
+  /** What the server says the feature needs. */
+  need?: FeatureNeed
 }
 
-function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {} }: PageOptions) {
+function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {}, need }: PageOptions) {
   const base = fixture({ id: 'f1', status })
   store.full = {
     ...base,
+    ...(need ? { need } : {}),
     tickets,
     docs,
     runs,
@@ -135,6 +138,8 @@ const headerOf = (html: string) => html.slice(at(html, '<header'), at(html, '</h
 const panelOf = (html: string) => html.slice(at(html, 'data-panel'))
 
 const READY = { 'feature.readyDeclarations': [{ id: 'r1', featureId: 'f1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 5 }] }
+/** The need that declaration leaves on the feature. */
+const READY_TO_TEST: FeatureNeed = { kind: 'test', words: 'Ready to test · Checkout', why: 'Checkout', scenario: 'Checkout', held: false, since: 5 }
 
 describe('the chat-first feature page', () => {
   it('shows exactly one header row, then the chat — no strip, no chat header, no tabs', () => {
@@ -156,19 +161,20 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Talking with you with nothing running and nothing asked, and carries no button, Go or otherwise', () => {
+  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship and New thread, no Go', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Talking with you')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
-    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
-    expect(buttons.length - chrome.length).toBe(0)
+    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|New thread)"/.test(b))
+    expect(buttons.length - chrome.length).toBe(1)
+    expect(header).toContain('aria-label="New thread"')
     expect(header).not.toMatch(/>Go</)
-    expect(header).not.toContain('Merge &amp; ship')
+    expect(header).toContain('Merge &amp; ship')
   })
 
   it('offers Start test drive once the agent declared ready, with no What-to-test notice', () => {
-    const html = page({ queries: READY })
-    expect(headerOf(html)).toContain('Ready for you')
+    const html = page({ queries: READY, need: READY_TO_TEST })
+    expect(headerOf(html)).toContain('Ready to test')
     expect(headerOf(html)).toContain('Start test drive')
     expect(html).not.toContain('What to test')
   })
@@ -258,7 +264,7 @@ describe('the panel’s views', () => {
 describe('what opens the panel', () => {
   it('opens the drive on the Test drive click, before the server answers', () => {
     const onViewChange = vi.fn()
-    setup({ queries: READY })
+    setup({ queries: READY, need: READY_TO_TEST })
     render(workspace({ onViewChange }))
     fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
     expect(onViewChange).toHaveBeenCalledWith('drive')

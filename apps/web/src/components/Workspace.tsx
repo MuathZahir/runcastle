@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import type { RefObject } from 'react'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
@@ -17,7 +17,14 @@ import { Button,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconOrchestrator, IconPlay, IconX, ProgressIcon } from '../icons'
+import { IconOrchestrator, IconPlay, IconPlus, IconX, ProgressIcon } from '../icons'
+import {
+  isNewThreadHotkey,
+  newThreadShortcut,
+  PublishFeatureCommands,
+  type FeatureCommand,
+  type FeatureCommands,
+} from '../lib/feature-commands'
 import { settingsLocationFromMessage } from '../lib/settings'
 import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
@@ -42,6 +49,7 @@ import {
   verificationState,
   type ActionKind,
   type DraftBaseMissing,
+  type NextAction,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
@@ -330,6 +338,24 @@ export function Workspace({
         },
   )
   const inFrontTitle = column.threads.find((t) => t.id === column.current)?.title
+  // The page's root, where Reply finds the composer to put the cursor in.
+  const frame = useRef<HTMLElement>(null)
+  // A started, unshipped feature takes new threads: the header's "+", the
+  // palette's entry and Ctrl+Shift+O (decision 7). The shortcut works from
+  // anywhere on the page, the composer included, so it listens in the capture
+  // phase, before any field can keep the key to itself.
+  const threadable = q.data?.feature.status === 'active'
+  const newThread = column.newThread
+  useEffect(() => {
+    if (!threadable) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!isNewThreadHotkey(e)) return
+      e.preventDefault()
+      newThread()
+    }
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
+  }, [threadable, newThread])
 
   // Settles once the refetches land, for a mutation that must stay pending
   // until the page shows what it caused.
@@ -618,6 +644,16 @@ export function Workspace({
     )
   }
 
+  /**
+   * Bring one of the feature's threads to the front of the chat column, giving
+   * the column back if the panel or the drive has the whole page.
+   */
+  const bringForward = (threadId: string) => {
+    column.pick(threadId)
+    const v = panel.state.view
+    if (v === 'drive' || (v && !panel.state.collapsed && panel.state.share >= 1)) panel.dispatch({ type: 'close' })
+  }
+
   const runAction = (kind: ActionKind) => {
     switch (kind) {
       case 'startDraft':
@@ -698,6 +734,27 @@ export function Workspace({
       // promises: end that one first, because only one runs per feature.
       case 'resolveConflict':
         if (conflict) void resolveConflict.resolve(conflict, liveSession?.id)
+        break
+      // An answer is needed: the main chat in front, the cursor in its message box.
+      case 'reply':
+        bringForward(column.main ?? column.current)
+        requestAnimationFrame(() =>
+          frame.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(),
+        )
+        break
+      case 'openPlan':
+        panel.dispatch({ type: 'open', view: 'plan', origin: 'human' })
+        break
+      // The design view starts the feature's recorded design server itself.
+      case 'openDesign':
+        panel.dispatch({ type: 'open', view: 'design', origin: 'human' })
+        break
+      // A permission prompt: the asking thread in front, its answer box in the ask dock.
+      case 'showRequest':
+        if (full.need?.threadId) bringForward(full.need.threadId)
+        break
+      case 'newThread':
+        column.newThread()
         break
       // A kind with no case above is a button that does nothing on click, and
       // nothing says so — the bug this switch shipped with. `never` makes the
@@ -789,11 +846,10 @@ export function Workspace({
     ? undefined
     : featureStatus({
         feature,
+        need: full.need,
         rounds: roundsQ.data ?? [],
-        declarations: declarationsQ.data ?? [],
         agentWorking: mainChatWorking(column.mainState, liveSession),
         agentStateKnown: column.mainState !== undefined,
-        leadAwaitsHuman: full.leadAwaitsHuman,
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.
@@ -980,13 +1036,49 @@ export function Workspace({
     onSelect: () => runAction(a.kind),
   }))
 
+  // The ⌘K palette's group for this feature (decision 8): the header's own
+  // buttons, through the same dispatcher, disabled where the header disables them.
+  const commandOf = (a: NextAction): FeatureCommand => ({
+    key: a.kind,
+    label: a.kind === testDriveSplit.kind ? testDriveSplit.label : a.label,
+    icon: ACTION_ICON[a.kind],
+    ...(a.disabled ? { disabled: a.disabled } : {}),
+    run: () => runAction(a.kind),
+  })
+  const offeredDrive = [headerRow.action, ...headerRow.overflow].find((a) => a?.kind === 'testDriveStart')
+  const driveCommand: NextAction = offeredDrive ?? {
+    label: 'Start test drive',
+    kind: 'testDriveStart',
+    ...(isDriving
+      ? { disabled: 'This feature is on its drive already' }
+      : !declared
+        ? { disabled: 'Nothing declared ready yet' }
+        : {}),
+  }
+  const paletteActions = [
+    headerRow.action,
+    { label: 'New thread', kind: 'newThread' as const },
+    headerRow.merge,
+    driveCommand,
+  ].filter((a, i, all): a is NextAction => !!a && all.findIndex((b) => b?.kind === a.kind) === i)
+  const paletteCommands: FeatureCommands | null = threadable
+    ? {
+        title: feature.title,
+        commands: paletteActions.map((a) => ({
+          ...commandOf(a),
+          ...(a.kind === 'newThread' ? { kbd: newThreadShortcut() } : {}),
+        })),
+      }
+    : null
+
   return (
     // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
     // render surface, and anything that does escape its column must not become
     // the frame's scrollable overflow. `clip` refuses the scroll instead of
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
-    <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+    <section ref={frame} className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+      <PublishFeatureCommands commands={paletteCommands} />
       {driveMounted && (
         <ScenarioChatContext.Provider value={column.scenario}>
           <FeatureDriveView
@@ -1063,23 +1155,32 @@ export function Workspace({
                 Offline, retrying
               </StatusLabel>
             )}
-            {headerRow.action && (
-              <span className="mr-1 flex">
+            {(headerRow.action || headerRow.merge) && (
+              <span className="mr-1 flex gap-1.5">
                 {/* Stop is the drive page's, and said over the chat; from here the
                     one step is back to the drive (decision 13). */}
-                {headerRow.action.kind === 'testDriveStop' && views.includes('drive') ? (
+                {headerRow.action?.kind === 'testDriveStop' && views.includes('drive') ? (
                   <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' })}>
                     Back to the drive
                   </Button>
                 ) : (
-                  <HeaderAction
-                    action={headerRow.action}
-                    busy={actionsBusy}
-                    onAction={runAction}
-                    split={testDriveSplit}
-                  />
+                  headerRow.action && (
+                    <HeaderAction
+                      action={headerRow.action}
+                      busy={actionsBusy}
+                      onAction={runAction}
+                      split={testDriveSplit}
+                    />
+                  )
+                )}
+                {/* Always in reach on an unshipped feature (decision 6), quiet beside the need's own. */}
+                {headerRow.merge && (
+                  <HeaderAction action={headerRow.merge} busy={actionsBusy} onAction={runAction} quiet />
                 )}
               </span>
+            )}
+            {threadable && (
+              <IconButton label="New thread" kbd={newThreadShortcut()} icon={<IconPlus />} onClick={() => runAction('newThread')} />
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
             <PanelToggle open={!!shown} views={tabs} onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })} />

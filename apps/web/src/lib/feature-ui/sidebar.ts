@@ -1,4 +1,4 @@
-import { stuckReason, unstartedState, type UnstartedState } from '@runcastle/core'
+import { stuckReason, unstartedState, type NeedKind, type UnstartedState } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem } from '../api'
 import { relTime } from '../format'
 import { blockerList, blockers, upNextHint } from './dependencies'
@@ -7,14 +7,15 @@ import { blockerList, blockers, upNextHint } from './dependencies'
 const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState(f, f.dependsOn)
 
 /**
- * Why a feature needs me: its lead replied or asks, awaiting my `input`, it is `waiting`
- * with a reason — the agent's own words, 'stopped', or 'ready to test' — or it
- * is an Up next draft that is `stuck` and cannot start by itself.
+ * Why a feature needs me: one of the server's needs (you-always-know-what-s-
+ * waiting decision 1) — an answer, a plan, a permission prompt, a drive, a
+ * merge… — or it is an Up next draft that is `stuck` and cannot start by itself.
  */
-export type NeedsMeKind = 'input' | 'waiting' | 'stuck'
+export type NeedsMeKind = NeedKind | 'stuck'
 
 export interface NeedsMe {
   kind: NeedsMeKind
+  /** The need's words, as the status line says them ("Plan to approve"). */
   label: string
 }
 
@@ -31,12 +32,11 @@ function agentMidTurn(f: FeatureListItem): boolean {
 }
 
 /**
- * Which features need me, from facts alone (tickets-and-review decision 7):
- * a running round or an agent mid-turn wants nothing from me; a chat stopped
- * for my answer does; so does a waiting reason — the agent asked, the human
- * pressed Stop, the provider halted, or the agent declared ready. Neither the
- * phase nor failed tickets count: failures are the agent's to handle after the
- * round wakes it, and it asks when it can't.
+ * Which features need me: the feature's `need`, worked out once on the server
+ * (you-always-know-what-s-waiting decision 14), so this row, the status line and
+ * the pings never disagree. A need its orchestrator is handling is not mine
+ * until its hour passes (decision 18): it reads "With the orchestrator · …"
+ * among the working.
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
   // A parked draft claims no attention until the human clicks Start (decision 9).
@@ -47,16 +47,8 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
       ? { kind: 'stuck', label: f.upNextProblem ?? stuckReason(f.dependsOn) }
       : null
   }
-  if (f.status === 'shipped' || f.status === 'archived') return null
-  if (f.activeRun) return null // a round running: shown as working, not a needs-me dot
-  // An agent mid-turn is working, whatever reason it left earlier.
-  if (f.liveSession && !f.liveSession.awaitingInput) return null
-  // The reason outranks the bare "lead replied": an agent that declared ready
-  // or asked a question ends its turn, so its chat waits on the human too.
-  if (f.waitingReason) return { kind: 'waiting', label: f.waitingReason }
-  // The header reads the same flag (chat-as-web-components decision 15).
-  if (f.leadAwaitsHuman) return { kind: 'input', label: 'the lead waits on your answer' }
-  return null
+  if (f.status !== 'active' || !f.need || f.need.held) return null
+  return { kind: f.need.kind, label: f.need.words }
 }
 
 /**
@@ -203,9 +195,9 @@ export interface TriageGroup {
  * match wins. Archived wins over everything: an archived feature carries no
  * needs-me / working state, it only sits in the archived lane.
  *
- * `needsMe` has already claimed a feature whose lead replied or asks
- * (`leadAwaitsHuman`), so a session left here is Agent working while its agent
- * is mid-turn, and In progress once it is not.
+ * `needsMe` has already claimed a feature the server says needs the human, so
+ * a session left here is Agent working while its agent is mid-turn or its
+ * orchestrator handles its need, and In progress otherwise.
  */
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'
@@ -218,8 +210,10 @@ export function triageOf(f: FeatureListItem): TriageKey {
   if (state === 'upNext') return 'upNext'
   if (state === 'stuck') return 'needsYou'
   if (state) return 'drafts'
-  if (f.activeRun) return 'agentWorking'
+  // A need outranks a running round: a permission prompt halts it where it stands.
   if (needsMe(f)) return 'needsYou'
+  // A need its orchestrator handles sits with the work in motion (decision 18).
+  if (f.activeRun || f.need?.held) return 'agentWorking'
   if (agentMidTurn(f)) return 'agentWorking'
   return 'inProgress'
 }
