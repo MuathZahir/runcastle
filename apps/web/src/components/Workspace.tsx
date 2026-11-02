@@ -58,6 +58,7 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
 import { DriveChatNotice } from './review/DriveChatNotice'
 import { FeatureDriveView } from './review/FeatureDriveView'
+import { unsentNotes } from './review/SendToAgent'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { useStandingNotices } from './workspace/use-standing-notices'
@@ -189,7 +190,8 @@ export function Workspace({
     { refetchInterval: useLivePoll(5000), enabled: confirmMerge },
   )
   const notes = trpc.notes.list.useQuery({ featureId }, { enabled: confirmMerge })
-  const openNotes = notes.data ? notes.data.filter((n) => n.status === 'open').length : undefined
+  // Every note is `open` now; what is worth a warning is a note never sent to the agent.
+  const openNotes = notes.data ? unsentNotes(notes.data).length : undefined
   const artifacts = useReviewArtifacts(featureId, confirmMerge)
   const stamped = stampedReview(artifacts.data ?? [], q.data?.tickets ?? [])
   const reviewFreshness = freshness(
@@ -730,7 +732,7 @@ export function Workspace({
           if (res.ok) {
             onDriveChange(null)
             // The merge commits locally and pushes nothing: say so, not "shipped".
-            toast.push(`Merged into ${feature.baseBranch ?? 'the base branch'} on this machine — nothing was pushed`, 'success')
+            toast.push(`Merged into ${res.base ?? feature.baseBranch ?? 'the base branch'} on this machine — nothing was pushed`, 'success')
           } else if (res.conflict) {
             const n = res.files.length
             toast.push(
