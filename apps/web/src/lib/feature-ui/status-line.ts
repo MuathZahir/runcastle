@@ -1,4 +1,5 @@
 import {
+  isProviderHaltReason,
   LEAD_WAKE_FAILED,
   LeadWakeFailedData,
   type EventRow,
@@ -24,7 +25,7 @@ export type FeatureStatusKind = 'talking' | 'working' | 'waiting' | 'ready' | 'm
  * Stop while the feature plans itself, the Chat door once the agent's run
  * failed — and none in any other state.
  */
-export type StatusPrimary = 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
+export type StatusPrimary = 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat' | 'resume'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -140,7 +141,7 @@ export function wakeFailedWhy(exitCode: number | null): string {
  *   (notes the human sent wake it, and it is Working again). Read before the
  *   waiting reason, because declaring ready sets it ("ready to test").
  * - Waiting for you · <why> — the agent said it needs the human (a question,
- *   stuck, stopped, provider limit). The next human message or dispatch clears it.
+ *   stuck, stopped, a provider halt). The next human message or dispatch clears it.
  * - Working · Round N — only on evidence: the agent's session is mid-turn, or a
  *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
  * - Waiting for you · the agent's run failed — the newest `lead.wake_failed` is
@@ -151,8 +152,8 @@ export function wakeFailedWhy(exitCode: number | null): string {
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
  * while a round runs, Stop the run while the feature plans itself, Start test
- * drive when ready, and the Chat door to resume an agent whose run failed (set
- * by the status itself).
+ * drive when ready, the Chat door to resume an agent whose run failed, and
+ * Resume after a provider halt (both set by the status itself).
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
@@ -193,7 +194,9 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
 
   if (feature.waitingReason) {
     const waiting: FeatureStatus = { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
-    return feature.waitingReason === PLANNING_STOPPED ? { ...waiting, primary: 'chat' } : waiting
+    if (feature.waitingReason === PLANNING_STOPPED) return { ...waiting, primary: 'chat' }
+    // A provider halt (usage limit, billing, sign-in) is cleared outside runcastle; Resume picks the round back up.
+    return isProviderHaltReason(feature.waitingReason) ? { ...waiting, primary: 'resume' } : waiting
   }
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
@@ -226,6 +229,7 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
   stopSelfPlan: { label: 'Stop', kind: 'stopSelfPlan', danger: true },
+  resume: { label: 'Resume', kind: 'resumeProvider' },
   chat: CHAT_ACTION,
 }
 

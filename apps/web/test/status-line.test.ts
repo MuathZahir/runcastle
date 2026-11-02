@@ -179,13 +179,29 @@ describe('featureStatus', () => {
   })
 
   it('reads Waiting for you · <why> with the agent’s reason, round or no round', () => {
-    for (const why of ['which coupon rule wins?', 'start round 1?', 'provider limit', 'stopped']) {
+    for (const why of ['which coupon rule wins?', 'start round 1?', 'run halted: no agent binary', 'stopped']) {
       expect(featureStatus(input({ feature: { waitingReason: why } }))).toEqual({
         kind: 'waiting',
         label: 'Waiting for you',
         why,
       })
       expect(featureStatus(input({ feature: { waitingReason: why }, rounds: [round(3, 'failed', 30)] })).why).toBe(why)
+    }
+  })
+
+  it('a provider halt reads as which it is and offers Resume; other reasons offer nothing', () => {
+    for (const why of [
+      'provider usage limit · resets 5pm',
+      'provider usage limit',
+      'provider billing problem — check your account',
+      'provider sign-in failed — check your login or API key',
+    ]) {
+      expect(featureStatus(input({ feature: { waitingReason: why } }))).toEqual({
+        kind: 'waiting',
+        label: 'Waiting for you',
+        why,
+        primary: 'resume',
+      })
     }
   })
 
@@ -346,6 +362,10 @@ describe('the action row beside the status line', () => {
     expect(leadActions(ns({}), status({ primary: 'testDriveStop' })).primary).toEqual({
       label: 'Stop drive',
       kind: 'testDriveStop',
+    })
+    expect(leadActions(ns({}), status({ kind: 'waiting', primary: 'resume' })).primary).toEqual({
+      label: 'Resume',
+      kind: 'resumeProvider',
     })
     expect(leadActions(ns({}), status({ primary: 'stop' })).primary).toEqual({
       label: 'Stop',

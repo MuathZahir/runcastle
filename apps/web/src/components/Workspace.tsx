@@ -369,6 +369,14 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Resume, the status row's primary after a provider halt: one message to the lead.
+  const resumeAgent = trpc.feature.resume.useMutation({
+    onSuccess: () => {
+      invalidate()
+      toast.push('resumed — the agent picks up where the round stopped', 'info')
+    },
+    onError: (e) => toast.push(e.message),
+  })
   // The end half of every end-and-proceed compound (decision 4). No surface
   // refuses a click because a terminal is live any more: the label says the
   // session will be closed, and this is the close it promised.
@@ -663,6 +671,9 @@ export function Workspace({
       case 'stopAgent':
         setConfirmStop(true)
         break
+      case 'resumeProvider':
+        resumeAgent.mutate({ featureId })
+        break
       // A burn that could not start named its fix in the summary — open the
       // settings row that summary points at (the image rebuild).
       case 'openBurnSettings': {
@@ -718,7 +729,8 @@ export function Workspace({
           setConfirmMerge(false)
           if (res.ok) {
             onDriveChange(null)
-            toast.push('merged — feature shipped', 'success')
+            // The merge commits locally and pushes nothing: say so, not "shipped".
+            toast.push(`Merged into ${feature.baseBranch ?? 'the base branch'} on this machine — nothing was pushed`, 'success')
           } else if (res.conflict) {
             const n = res.files.length
             toast.push(
@@ -804,7 +816,7 @@ export function Workspace({
         leadWake,
         now,
       })
-  const actionsBusy = busy || stopAgent.isPending
+  const actionsBusy = busy || stopAgent.isPending || resumeAgent.isPending
   // Stop waits for the start: a second mutate would drop the first's callbacks.
   const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
