@@ -95,7 +95,7 @@ export function useReviewArtifacts(
  * route accepts (decision 7a).
  *
  * The route checks the PNG signature — everything downstream of it, from the
- * `.png` on disk to the `.runcastle-attachments/<id>.png` a promoted ticket
+ * `.png` on disk to the `.runcastle-attachments/<id>.png` a ticket made from a note
  * hands its burner, assumes that one format — so a screenshot pasted as JPEG or
  * WebP is re-encoded here rather than rejected at the door. A PNG passes through
  * untouched: re-encoding one would cost a decode for no change.

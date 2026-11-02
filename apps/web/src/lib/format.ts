@@ -78,7 +78,7 @@ export function relTimeAgo(ts: number, now: number = Date.now()): string {
 }
 
 // A player position as a clock (`0:07`, `1:04:12`) is `fmtClock` in
-// @runcastle/core — the promoted ticket's context paragraph renders the same
+// @runcastle/core — a ticket's context paragraph made from a note renders the same
 // walkthrough moment server-side, and the two copies had drifted.
 
 /** Elapsed duration between two epochs as `1m 04s` / `12s` / `1h 03m`. */

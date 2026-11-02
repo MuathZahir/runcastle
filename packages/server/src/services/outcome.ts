@@ -42,10 +42,7 @@ function findingResolution(finding: ReviewFinding): string {
 }
 
 function noteResolution(note: TestNote): string {
-  if (note.status === 'promoted') return `quick-fixed → ticket ${note.ticketId ?? 'unknown'}`
-  if (note.status === 'carried') return 'carried forward'
-  if (note.status === 'done') return 'dismissed/done'
-  return 'open'
+  return note.sentAt === undefined ? 'not sent' : 'sent to the agent'
 }
 
 /** Pure synthesis of the permanent shipped record. */

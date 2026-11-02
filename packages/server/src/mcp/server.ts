@@ -1659,7 +1659,7 @@ export async function toolReviewScenario(
 /**
  * Append one review finding as a test note, attributed to the agent
  * (improve-workflow decision 2). Findings ride the channel the human's own
- * observations already use, so promote-to-fix-ticket works on them unchanged.
+ * observations already use.
  */
 export function toolAddTestNote(
   ctx: AppCtx,

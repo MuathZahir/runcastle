@@ -2,8 +2,8 @@
  * Formatting shared across the wire's two ends. Presentation normally belongs
  * to the web app alone — this is here because both ends render the SAME fact
  * and a human compares them: the moment in a walkthrough a note was captured at
- * is shown by the player, by the note's thumbnail, and in the promoted ticket's
- * context paragraph that a fix agent reads.
+ * is shown by the player, by the note's thumbnail, and in the context paragraph
+ * of a ticket made from the note, which a fix agent reads.
  */
 
 /**
