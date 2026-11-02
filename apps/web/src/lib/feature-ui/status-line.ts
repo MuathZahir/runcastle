@@ -147,6 +147,15 @@ const NEED_PRIMARY: Record<NeedKind, StatusPrimary> = {
   merge: 'merge',
 }
 
+/**
+ * An open ask — a permission prompt, or a question box in one of the feature's
+ * threads (an answer that names its thread) — halts the agent mid-turn, so it
+ * outranks a running round and a self-planning run.
+ */
+function haltsAgent(need: FeatureNeed): boolean {
+  return need.kind === 'permission' || (need.kind === 'answer' && !!need.threadId)
+}
+
 /** Needs that halt the agent where it stands, so they show even while it works. */
 const SHOWN_WHILE_WORKING: ReadonlySet<NeedKind> = new Set(['permission', 'conflict'])
 
@@ -173,9 +182,9 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  * Derive the line, and the one primary its row carries. Precedence, highest first:
  *
  * - Merged — shipped is final.
- * - Needs permission · <call> — a permission prompt halts the agent mid-turn,
- *   so it shows even over a running round or a self-planning run, whose Stop
- *   then waits in "⋯" (`stop`).
+ * - Needs permission · <call>, or a question box's Needs your answer — an open
+ *   ask halts the agent mid-turn, so it shows even over a running round or a
+ *   self-planning run, whose Stop then waits in "⋯" (`stop`).
  * - Working · Round N — a round is running; nothing else is true until it returns.
  * - Planning by itself — a self-planning run is live.
  * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
@@ -197,7 +206,7 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   // A permission prompt halts the agent mid-turn, round or self-plan included,
   // so it outranks their Stop: Show request leads and Stop waits in "⋯".
   // Driving keeps its own button: the human is at the drive.
-  if (input.need?.kind === 'permission' && !input.driving) {
+  if (input.need && haltsAgent(input.need) && !input.driving) {
     const stop = input.rounds.at(-1)?.status === 'running' ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
     return stop ? { ...status, stop } : status
   }
@@ -217,8 +226,8 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   const { feature, rounds, need, agentWorking } = input
   if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
 
-  // A permission prompt holds the agent where it stands, whatever runs.
-  if (need?.kind === 'permission') return needStatus(need)
+  // An open ask holds the agent where it stands, whatever runs.
+  if (need && haltsAgent(need)) return needStatus(need)
 
   const latest = rounds.at(-1)
   // Before any round, an agent at work is just working: there is no round to name.

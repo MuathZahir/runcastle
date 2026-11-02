@@ -306,6 +306,12 @@ describe('the header’s share of the row', () => {
     })
   })
 
+  it('lets a question box outrank a working agent, with Reply as its button', () => {
+    const ask = need('answer', 'Needs your answer · Which database?', { why: 'Which database?', threadId: 'side_1' })
+    expect(featureStatus(input({ need: ask, agentWorking: true }))).toMatchObject({ label: 'Needs your answer', primary: 'reply' })
+    expect(featureStatus(input({ need: ask, rounds: [round(1, 'running', 1)] })).stop).toBe('stop')
+  })
+
   it('lets a permission prompt outrank planning by itself, its Stop kept in the menu', () => {
     const permission = need('permission', 'Needs permission · Bash: ls', { why: 'Bash: ls', threadId: 't' })
     const stopSelfPlan = { label: 'Stop', kind: 'stopSelfPlan' } as const
