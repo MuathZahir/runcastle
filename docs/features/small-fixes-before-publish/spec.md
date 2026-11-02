@@ -55,7 +55,7 @@ It sets a waiting reason the status line recognises:
 - "provider billing problem — check your account";
 - "provider sign-in failed — check your login or API key".
 
-The status line shows Resume next to any of these. Resume calls a new feature-scoped mutation that delivers one message to the lead as the human ("The provider halt is cleared — pick up where the round stopped."). That delivery already clears the waiting reason.
+Since "You always know what's waiting" merged, a halted round is a stop (waiting kind `stuck`), so the line reads "Stopped · provider usage limit · resets 5pm". The status line shows Resume as that stop's button for any of these three; other stops keep the Chat door. Resume calls a new feature-scoped mutation that delivers one message to the lead as the human ("The provider halt is cleared — pick up where the round stopped."). That delivery already clears the waiting reason.
 
 **8. Merge toast.** It becomes "Merged into <base branch> on this machine — nothing was pushed".
 
