@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Designs and the plan get their own place preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+
+/* ---- this plan's own parts ---- */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.flow .st{padding:10px 12px;border-radius:var(--radius-md);background:var(--color-fill-card);border:1px solid var(--color-border-subtle)}
+.flow .st b{display:block;font-weight:500;margin-bottom:2px}
+.flow .st span{color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba > div{padding:12px 14px;border-radius:var(--radius-md);border:1px solid var(--color-border-subtle)}
+.ba h3{font-size:12px;font-weight:400;color:var(--color-text-tertiary);margin:0 0 6px}
+.ba ul{margin:0;padding:0;list-style:none}
+.ba li{display:flex;gap:10px;align-items:baseline;min-height:24px;color:var(--color-text-secondary)}
+.designs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.small{margin-top:12px}
+.small li{display:flex;gap:10px;align-items:baseline;min-height:26px;color:var(--color-text-secondary)}
+.small ul{margin:0;padding:0;list-style:none}
+.tk{display:grid;grid-template-columns:28px 1fr auto;gap:2px 10px;padding:8px 0;border-bottom:1px solid var(--color-border-subtle)}
+.tk .n{font:500 12px/20px var(--font-mono);color:var(--color-text-tertiary)}
+.tk .g{color:var(--color-text-secondary);grid-column:2}
+.tk .b{font-size:12px;color:var(--color-text-tertiary)}
+pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);padding:10px 12px;font:12px/18px var(--font-mono);color:var(--color-text-secondary);overflow:auto}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Designs and the plan get their own place</h1>
+  <p class="lede">The plan and every design arrive in the chat as cards, like a Review Package, and the Design tab always lists every design, so nobody digs through the plan to find them or misses that they wait.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/designs-and-the-plan-get-their-own-place/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <p class="hint">Before and after, for the human who comes back to a planned feature.</p>
+  <div class="ba">
+    <div><h3>Today</h3><ul>
+      <li><i class="dot no"></i>The plan opens only if the agent opens it while you watch; the chat keeps nothing.</li>
+      <li><i class="dot no"></i>Designs hide behind "Open in design" buttons inside the plan page.</li>
+      <li><i class="dot no"></i>The Design tab vanishes when its server stops.</li>
+      <li><i class="dot no"></i>Your yes to round 1 commits designs you may never have opened.</li>
+    </ul></div>
+    <div><h3>With this feature</h3><ul>
+      <li><i class="dot ok"></i>A Plan card and a card per design wait in the chat. <a class="pin" data-d="2">2</a> <a class="pin" data-d="1">1</a></li>
+      <li><i class="dot ok"></i>The Design tab is always there and lists every design. <a class="pin" data-d="6">6</a></li>
+      <li><i class="dot ok"></i>A dot says something is new to you. <a class="pin" data-d="11">11</a></li>
+      <li><i class="dot ok"></i>Approve records your own yes, per design. <a class="pin" data-d="8">8</a></li>
+    </ul></div>
+  </div>
+
+  <div class="sub">
+    <h3>A design's life</h3>
+    <div class="flow">
+      <div class="st"><b>Shown</b><span>The agent calls show_design: a card in the chat, a row in the list, marked New. <a class="pin" data-d="1">1</a></span></div>
+      <div class="st"><b>Waiting</b><span>"Design to approve" shows while it waits and the agent is idle. <a class="pin" data-d="17">17</a></span></div>
+      <div class="st"><b>Opened</b><span>You open it from its card or the list; New clears. <a class="pin" data-d="10">10</a></span></div>
+      <div class="st"><b>Approved</b><span>Approve, or your words; the agent commits it. <a class="pin" data-d="8">8</a> <a class="pin" data-d="9">9</a></span></div>
+      <div class="st"><b>Shown again</b><span>A changed design goes back to waiting; older cards say so. <a class="pin" data-d="18">18</a> <a class="pin" data-d="19">19</a></span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The designed screens</h3>
+    <p class="hint">Real components on sample data, waiting for your look. One design page, a state per screen; the bar at its top switches states, and cards, rows, Approve and the arrows all work.</p>
+    <div class="designs">
+<!-- screen:cards-in-the-chat -->
+<div class="designed">
+  <h3>Plan and design cards in the chat <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="11">11</a></h3>
+  <p>The plan card and four design cards a planning run leaves, two to a row, with the dot on the panel toggle. The cards and the dot are real; the feature, pictures and words are sample data.</p>
+  <p class="mono">apps/web/src/components/chat/thread/PlanCard.tsx, components/design/DesignCard.tsx, FeaturePanel.tsx (dot) · design page /preview/designs.html?state=chat</p>
+  <button data-open-design="/preview/designs.html?state=chat">Open in design</button>
+</div>
+<!-- /screen:cards-in-the-chat -->
+<!-- screen:design-tab-list -->
+<div class="designed">
+  <h3>The Design tab: every design <a class="pin" data-d="6">6</a> <a class="pin" data-d="8">8</a> <a class="pin" data-d="11">11</a></h3>
+  <p>The list, waiting designs first, each with its picture, width, age and Approve; dots on the Plan and Design tabs. Real list and tabs; sample designs.</p>
+  <p class="mono">apps/web/src/components/design/DesignList.tsx (DesignList), FeaturePanel.tsx (tab dots) · design page /preview/designs.html?state=list</p>
+  <button data-open-design="/preview/designs.html?state=list">Open in design</button>
+</div>
+<!-- /screen:design-tab-list -->
+<!-- screen:an-open-design -->
+<div class="designed">
+  <h3>An open design <a class="pin" data-d="6">6</a> <a class="pin" data-d="8">8</a></h3>
+  <p>"All designs", the design’s name and width, the step to its neighbours and Approve, over the live Design view. The bar is real; a sample shop page stands in for the live design.</p>
+  <p class="mono">apps/web/src/components/design/DesignList.tsx (DesignBar) · design page /preview/designs.html?state=open</p>
+  <button data-open-design="/preview/designs.html?state=open">Open in design</button>
+</div>
+<!-- /screen:an-open-design -->
+<!-- screen:design-tab-empty -->
+<div class="designed">
+  <h3>The Design tab with no designs <a class="pin" data-d="7">7</a></h3>
+  <p>The empty tab, and (state "Older design server") the same tab offering a design server from before the list. Real empty state.</p>
+  <p class="mono">apps/web/src/components/design/DesignList.tsx (empty states) · design page /preview/designs.html?state=empty</p>
+  <button data-open-design="/preview/designs.html?state=empty">Open in design</button>
+</div>
+<!-- /screen:design-tab-empty -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Small changes, described rather than designed</h3>
+    <div class="small"><ul>
+      <li><i class="dot live"></i>"Design to approve" in the header opens the Design list. <a class="pin" data-d="12">12</a></li>
+      <li><i class="dot live"></i>Merge names any design still waiting and says it will not ship. <a class="pin" data-d="21">21</a></li>
+      <li><i class="dot live"></i>The phone's chat shows the same cards; a design card opens the phone's Design screen with Approve. <a class="pin" data-d="16">16</a> <a class="pin" data-d="22">22</a></li>
+      <li><i class="dot live"></i>Words: "Plan" and "design" everywhere you read; never "preview". <a class="pin" data-d="13">13</a></li>
+      <li><i class="dot live"></i>The plan page's "Open in design" buttons go once cards and the list exist. <a class="pin" data-d="14">14</a></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A design list screen on the phone</li>
+      <li><i class="dot"></i>Removing the "Open the design server" fallback once older features have shipped</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Runcastle taking its own pictures of designs</li>
+      <li><i class="dot"></i>A Drop button</li>
+      <li><i class="dot"></i>Designs on shipped features</li>
+      <li><i class="dot"></i>Renaming preview.html or the preview folders</li>
+      <li><i class="dot"></i>Waiting words and pings, Review Package internals, app-wide renames</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+<p class="hint">Four tickets and a review round. This project burns one ticket at a time, so they run in order.</p>
+      <div class="tk"><span class="n">1</span><b>Designs: the record, the agent's tools and the cards' events</b><span class="b">first</span>
+        <span class="g">Design table and plan columns; show_design, show_plan, set_design_state; show_panel narrowed; thread events folded into card items; tRPC list, approve, seen; the lead's designs in its context; the design need from the record.</span></div>
+      <div class="tk"><span class="n">2</span><b>Designs: the cards, the Design tab and the dots on the desktop</b><span class="b">after 1</span>
+        <span class="g">Wire the approved components to real data; Design tab always offered; Approve; dots; "Design to approve" opens the list; merge names waiting designs; the open-design bridge removed.</span></div>
+      <div class="tk"><span class="n">3</span><b>Designs: the cards on the phone</b><span class="b">after 2</span>
+        <span class="g">Cards in the phone chat; a design card opens the phone's Design screen with Approve; the phone's need button opens the oldest waiting design.</span></div>
+      <div class="tk"><span class="n">4</span><b>Skills: the plan and designs in the agent's words</b><span class="b">after 1</span>
+        <span class="g">Feature skill's design, preview, self-planning and starter files and the tool descriptions: show_plan, show_design, approval rules, "design page".</span></div>
+      <div class="tk"><span class="n">5</span><b>Review: a drive through cards, list, Approve and the dots</b><span class="b">after all</span>
+        <span class="g">Kind review.</span></div>
+      <div class="sub"><h3>The record, as the designs were drawn against it</h3>
+<pre class="shape">type DesignState = 'waiting' | 'approved' | 'dropped'
+interface DesignEntry {
+  id: string; title: string; path: string; width?: number; picture?: string
+  state: DesignState; isNew: boolean; shownAt: number
+}
+show_design({ path, title, width?, picture? })   // record + card (+ panel when attended)
+show_plan()                                      // card (+ panel when attended)
+set_design_state({ path, state })                // a yes or a no given in words</pre></div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    [
+    "Each design is recorded by the agent's own act, which also posts its card",
+    "The brief asks for runcastle's own record, and Review Package already works this way: one call, one card, one record. Recording and showing in one act means a design cannot be listed without being shown, or shown without being listed.",
+    "assumed"
+    ],
+    [
+    "The plan gets a card too, posted by its own tool",
+    "`show_panel` leaves nothing in the chat, so a plan shown while the human was away is invisible when they come back. A card stays where they read.",
+    "assumed"
+    ],
+    [
+    "`show_panel` stops offering the plan and the design views",
+    "Two ways to show the same thing, one leaving a card and one not, is how designs got lost. Removing the second way keeps every showing in the chat.",
+    "assumed"
+    ],
+    [
+    "A design card shows its title, its width, a picture when there is one, and whether it waits for you",
+    "A picture is what makes a design card recognisable, and a self-planning run already takes one to check its own screens, so it costs nothing to pass. Runcastle taking its own pictures would need a browser on the server for a nice-to-have.",
+    "assumed"
+    ],
+    [
+    "The plan card says what the plan holds",
+    "The counts tell the human how big a read it is before they open it, and \"to check first\" tells a returning human where to start.",
+    "assumed"
+    ],
+    [
+    "The Design tab is always there, and its home is the list of every design",
+    "The brief agreed the tab is always present and is the list. Stepping between designs from the live view keeps a review of several screens to one place.",
+    "assumed"
+    ],
+    [
+    "With no recorded designs, the tab says so, and offers the old server if there is one",
+    "Features in flight today have designs with no record. The fallback keeps them reachable now that the plan's \"Open in design\" buttons go (decision 14), without a backfill.",
+    "assumed"
+    ],
+    [
+    "Each design gets an Approve button that records the human's own yes",
+    "Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. It also turns \"which designs did they approve?\" from a reading of the chat into a fact the lead and the orchestrator can look up.",
+    "assumed"
+    ],
+    [
+    "The yes to round 1 no longer approves designs the human never opened",
+    "The brief names this as friction: today one yes commits designs the human may never have seen. \"Opened\" is recorded anyway for the New marks and the badge (decision 10), so the rule costs no extra machinery.",
+    "assumed"
+    ],
+    [
+    "Runcastle records what the human has looked at, on the server",
+    "The badge and the New marks need it, and decision 9 needs the lead to know it. A browser-only record would show the phone's looks as unseen on the desktop.",
+    "assumed"
+    ],
+    [
+    "A dot marks the plan and designs you have not looked at",
+    "The brief agreed a badge. A dot says \"something here is new\"; the list says what. A count on a toggle reads like an inbox the human must clear.",
+    "assumed"
+    ],
+    [
+    "\"Design to approve\" opens the list",
+    "The sibling feature (\"You always know what's waiting\", its decision 15) left this button pointing at the bare design server and handed the list to this feature.",
+    "assumed"
+    ],
+    [
+    "Humans read \"the Plan\" and \"Designs\"; file names stay",
+    "The brief asks to stop calling designs previews. The confusion is in the words people read, not in file names they never see.",
+    "assumed"
+    ],
+    [
+    "The plan's \"Open in design\" buttons and their message bridge go",
+    "The brief prefers removing that machinery once the list exists; a button that only works when the agent remembered to add it is the problem the feature solves.",
+    "assumed"
+    ],
+    [
+    "A run with no human present posts cards but opens no panel",
+    "Nobody is watching a headless run, and a panel that springs open later on stale news would be a surprise. The cards are what the human comes back to.",
+    "assumed"
+    ],
+    [
+    "On the phone, the cards show and open the design; no phone list",
+    "The phone reads the same chat, so the cards come nearly free; a list screen is a new phone view for a job the cards already do there.",
+    "assumed"
+    ],
+    [
+    "\"Design to approve\" shows while any design waits, from the record",
+    "The brief asked how a waiting design plugs into the sibling feature's waiting states. Reading it from the record makes the header, the sidebar and the pings true by themselves.",
+    "assumed"
+    ],
+    [
+    "A design shown again goes back to waiting",
+    "An approval should cover the version the human saw. Changes after a yes are what a second look is for.",
+    "assumed"
+    ],
+    [
+    "A card always opens the current version; older cards say so",
+    "After a few rounds of changes the chat holds several cards for one thing; they must not disagree about its state or open a stale page.",
+    "assumed"
+    ],
+    [
+    "Rejecting a design is done in words, not by a button",
+    "A rejection nearly always carries a reason or a next step, and the chat is where those go. A Drop button would drop the design and leave the lead guessing why.",
+    "assumed"
+    ],
+    [
+    "Merge names designs still waiting",
+    "Uncommitted designs vanish with the worktree at merge. The human should know before, not find out after; nothing is held, since merge is theirs.",
+    "assumed"
+    ],
+    [
+    "On the phone, \"Design to approve\" opens the oldest waiting design",
+    "The waiting need from decision 17 needs a target on the phone, and the oldest waiting design is the one to look at first.",
+    "assumed"
+    ]
+    ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[8, "No button; approval stays in your words, and the list shows whatever the lead marks.", "A new button you may find to be one click too many; the challenger would also keep it off the list rows so nothing is approved unseen.", "challenged"], [9, "As today: your yes to round 1 approves every waiting design as it stands.", "It treats \"opened and said yes\" as approval; the challenger would commit only designs you approved by the button or by name.", "challenged"], [17, "The need comes only from the lead saying it waits on a design.", "It makes \"Design to approve\" show whenever a design waits and the agent is idle, including mid-conversation."], [6, "The list as a narrow rail always beside the open design.", "The list is the tab’s home and a design opens over it; shipped features lose the tab (the challenger would keep a read-only list).", "challenged"], [3, "Keep plan and design on show_panel beside the new tools.", "A removal: the agent can no longer open the Plan or a design without leaving a card."]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
