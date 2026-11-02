@@ -90,7 +90,16 @@ function useNotificationsDriver(): NotificationsControl {
 
   useEffect(() => {
     const batch = query.data
-    if (!batch || batch.length === 0) return
+    if (!batch) return
+    if (batch.length === 0) {
+      // Nothing has ever needed anyone: start from the beginning, so the very
+      // first event pings rather than being taken for the backfill.
+      if (!initialized.current) {
+        initialized.current = true
+        setCursor(0)
+      }
+      return
+    }
     const maxId = batch[batch.length - 1].event.id // id-ascending
 
     const away = document.hidden || !document.hasFocus()

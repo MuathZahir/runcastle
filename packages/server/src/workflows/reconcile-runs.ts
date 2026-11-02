@@ -138,8 +138,13 @@ export function composeInterruptedWake(ctx: AppCtx, run: Run): string | null {
   const rounds = listRounds(ctx, run.featureId)
   const round = rounds.find((r) => r.runId === run.id)
   if (!event || !round) return null
+  // A second interruption is a rerun of the round before it that a restart
+  // also cut off: the same tickets, not merely the next round number.
   const before = rounds.find((r) => r.round === round.round - 1)
-  const again = before !== undefined && reconciled.some((e) => e.runId === before.runId)
+  const again =
+    before !== undefined &&
+    reconciled.some((e) => e.runId === before.runId) &&
+    round.ticketSeqs.some((seq) => before.ticketSeqs.includes(seq))
   const { landed, pending } = countsOf(event)
   const counts = `${ticketCount(landed)} landed, ${pending} pending`
   return again

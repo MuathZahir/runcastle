@@ -267,16 +267,18 @@ export interface NeedsYouEvent {
 /**
  * Every project's `feature.needs_you` events with `id > afterId`, oldest first —
  * what the desktop pings poll (you-always-know-what-s-waiting decision 11:
- * pings cover every project, not only the open one). Same cursor semantics as
- * `listAfter`.
+ * pings cover every project, not only the open one). With no `afterId` the
+ * caller only wants to know where the stream stands, never to ping on it, so
+ * that first read is the newest event alone rather than the whole history.
  */
-export function needsYouAfter(ctx: AppCtx, afterId = 0): NeedsYouEvent[] {
-  const rows = ctx.db
+export function needsYouAfter(ctx: AppCtx, afterId?: number): NeedsYouEvent[] {
+  const query = ctx.db
     .select({ event: events, feature: { id: features.id, projectId: features.projectId, slug: features.slug, title: features.title } })
     .from(events)
     .innerJoin(features, eq(features.id, events.featureId))
-    .where(and(eq(events.type, FEATURE_NEEDS_YOU), gt(events.id, afterId)))
-    .orderBy(asc(events.id))
-    .all()
+  const rows =
+    afterId === undefined
+      ? query.where(eq(events.type, FEATURE_NEEDS_YOU)).orderBy(desc(events.id)).limit(1).all()
+      : query.where(and(eq(events.type, FEATURE_NEEDS_YOU), gt(events.id, afterId))).orderBy(asc(events.id)).all()
   return rows.map((row) => ({ event: rowToEvent(row.event), feature: row.feature }))
 }

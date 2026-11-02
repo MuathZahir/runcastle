@@ -92,6 +92,12 @@ export interface FeatureNeed {
   threadId?: string
   /** The drive to start, for `test`. */
   scenario?: string
+  /**
+   * An answer the lead only implied by ending its turn: no `wait_for_you`, no
+   * ask. It shows and counts like any need, but never pings (decision 20): a
+   * back-and-forth in the chat would otherwise buzz the phone on every reply.
+   */
+  quiet?: true
 }
 
 /** The needs an orchestrator can answer itself; a permission prompt and a design need the human's own eyes. */
@@ -160,7 +166,7 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       if (!idle) return null
       if (waitingKind === 'answer') return { kind: 'answer', why: waiting!.reason, since: waiting!.since }
       // A lead that declared ready waits on the drive, not on an answer.
-      if (!waiting && !ready && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since }
+      if (!waiting && !ready && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since, quiet: true }
       return null
     },
     () => idle && waitingKind === 'plan' ? { kind: 'plan', since: waiting!.since } : null,
@@ -222,18 +228,20 @@ export interface NeedsYouData {
   words: string
   held: boolean
   why: string | null
+  /** A bare reply's answer ({@link FeatureNeed.quiet}): news, but no ping. */
+  quiet?: true
 }
 
 /**
  * Whether a {@link FEATURE_NEEDS_YOU} event's data pings the human, on the
- * desktop and the phone alike (decisions 11, 12, 18): every need that is not
- * held, except the stop the human made themselves. One rule, so the web and
+ * desktop and the phone alike (decisions 11, 12, 18, 20): every need that is
+ * not held, except the stop the human made themselves and a bare reply's answer. One rule, so the web and
  * the server cannot disagree. Malformed data never pings.
  */
 export function needPings(data: unknown): data is NeedsYouData {
   if (typeof data !== 'object' || data === null) return false
   const d = data as Record<string, unknown>
   if (typeof d.kind !== 'string' || !(NEED_KINDS as readonly string[]).includes(d.kind)) return false
-  if (typeof d.words !== 'string' || d.held !== false) return false
+  if (typeof d.words !== 'string' || d.held !== false || d.quiet === true) return false
   return !(d.kind === 'stopped' && d.why === YOU_STOPPED_IT)
 }

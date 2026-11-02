@@ -28,7 +28,7 @@ export const NEED_SETTLE_MS = 50
 export const HELD_SWEEP_MS = 60_000
 
 /** What a feature was last seen needing. */
-type Seen = Pick<FeatureNeed, 'kind' | 'held'>
+type Seen = Pick<FeatureNeed, 'kind' | 'held' | 'quiet'>
 
 export interface NeedWatchOptions {
   /** The clock needs are read against; the hour a held need waits is measured on it. */
@@ -42,11 +42,19 @@ export interface NeedWatch {
   stop(): void
 }
 
-/** Whether `need` is news against what was last seen: a new kind, or a held need come to the human. */
+/**
+ * Whether `need` is news against what was last seen: a new kind, a held need
+ * come to the human, or a quiet answer the lead then asked for out loud.
+ */
 function entered(prev: Seen | undefined, need: FeatureNeed | null): need is FeatureNeed {
   if (!need) return false
   if (!prev || prev.kind !== need.kind) return true
-  return prev.held && !need.held
+  return (prev.held && !need.held) || (!!prev.quiet && !need.quiet)
+}
+
+/** What the watcher remembers of a need. */
+function seenOf(need: FeatureNeed | null): Seen | null {
+  return need ? { kind: need.kind, held: need.held, ...(need.quiet ? { quiet: true } : {}) } : null
 }
 
 /**
@@ -73,11 +81,17 @@ export function startNeedWatch(ctx: AppCtx, opts: NeedWatchOptions = {}): NeedWa
     try {
       const need = read(featureId)
       const prev = seen.get(featureId) ?? undefined
-      seen.set(featureId, need ? { kind: need.kind, held: need.held } : null)
+      seen.set(featureId, seenOf(need))
       if (!entered(prev, need)) return
       emitting = true
       try {
-        const data: NeedsYouData = { kind: need.kind, words: need.words, held: need.held, why: need.why ?? null }
+        const data: NeedsYouData = {
+          kind: need.kind,
+          words: need.words,
+          held: need.held,
+          why: need.why ?? null,
+          ...(need.quiet ? { quiet: true } : {}),
+        }
         emit(ctx, featureId, { type: FEATURE_NEEDS_YOU, message: `needs you · ${need.words}`, data })
       } finally {
         emitting = false
@@ -105,7 +119,7 @@ export function startNeedWatch(ctx: AppCtx, opts: NeedWatchOptions = {}): NeedWa
   for (const { id } of active) {
     try {
       const need = read(id)
-      seen.set(id, need ? { kind: need.kind, held: need.held } : null)
+      seen.set(id, seenOf(need))
     } catch (err) {
       console.error('need watch failed', err)
     }

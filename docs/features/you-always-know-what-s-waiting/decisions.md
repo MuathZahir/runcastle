@@ -126,6 +126,12 @@ The sidebar row and the status line use the same words. "Working", "Planning by 
 **Why:** Checking every feature against its base each time the base moves is a new background job with its own costs and failure modes, and a conflict found at merge time is already one click from Resolve conflict. Checking ahead is worth its own feature if conflicts start surprising the human.
 **Assumed.** Alternative: re-check each unshipped feature for conflicts whenever its base branch moves, and show "Merge conflict" before anyone clicks Merge.
 
+## 20. A bare chat reply shows and counts, but never pings
+**Decision:** When the lead simply ends its turn after replying, with no `wait_for_you` and no question box, the feature still reads "Needs your answer" under Needs you and counts in the tab title, but it pings neither the desktop nor the phone. A wait the lead says out loud (`wait_for_you`, an ask, a permission prompt) pings as decisions 11 and 12 say, including one that follows a bare reply.
+**Why:** The review round found that decision 12 made every ordinary reply buzz the phone, even while the human sat at the desk chatting. The skill tells the lead to call `wait_for_you` whenever it needs the human, so a bare reply is a back-and-forth, not a stall.
+**Assumed.** Alternative: ping on bare replies too, and accept the noise while chatting.
+**Supersedes:** part of 12 (bare replies were among "a feature entering a need").
+
 Orchestrator review (2026-11-02): the project's orchestrator changed decisions 3, 12 and 18, each marked above; it found decisions 5 and 7 fine, which leaves them assumed until the human confirms. It then gave the yes to start round 1, under the brief's working agreement (the orchestrator carries this feature; only designs wait for the human, and this plan has none).
 
 Challenge pass: one separate agent read only the brief and this file. Its new branches became decisions 17 to 19 and the no-drive case of decision 5. It disagreed with decisions 1, 3, 4, 5, 7, 10, 12 and 13: decisions 4, 5, 10, 12 and 13 took its points; decisions 1, 3 and 7 carry a **Challenged:** line, and the planner's answers stand.

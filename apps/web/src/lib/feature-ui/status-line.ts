@@ -52,6 +52,11 @@ export interface FeatureStatus {
   held?: boolean
   /** The row's one primary; absent when this state has none. */
   primary?: StatusPrimary
+  /**
+   * The Stop a permission prompt pushed off the primary while a round runs or
+   * the feature plans itself: it waits in "⋯", still one click away.
+   */
+  stop?: 'stop' | 'stopSelfPlan'
 }
 
 export interface FeatureStatusInput {
@@ -168,6 +173,9 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  * Derive the line, and the one primary its row carries. Precedence, highest first:
  *
  * - Merged — shipped is final.
+ * - Needs permission · <call> — a permission prompt halts the agent mid-turn,
+ *   so it shows even over a running round or a self-planning run, whose Stop
+ *   then waits in "⋯" (`stop`).
  * - Working · Round N — a round is running; nothing else is true until it returns.
  * - Planning by itself — a self-planning run is live.
  * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
@@ -186,6 +194,13 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
+  // A permission prompt halts the agent mid-turn, round or self-plan included,
+  // so it outranks their Stop: Show request leads and Stop waits in "⋯".
+  // Driving keeps its own button: the human is at the drive.
+  if (input.need?.kind === 'permission' && !input.driving) {
+    const stop = input.rounds.at(-1)?.status === 'running' ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
+    return stop ? { ...status, stop } : status
+  }
   const primary = primaryOf(input, status)
   return primary ? { ...status, primary } : status
 }
@@ -201,6 +216,9 @@ function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrim
 function statusOf(input: FeatureStatusInput): FeatureStatus {
   const { feature, rounds, need, agentWorking } = input
   if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
+
+  // A permission prompt holds the agent where it stands, whatever runs.
+  if (need?.kind === 'permission') return needStatus(need)
 
   const latest = rounds.at(-1)
   // Before any round, an agent at work is just working: there is no round to name.
@@ -271,11 +289,13 @@ export function leadActions(ns: NextStep, status: FeatureStatus): NextStep {
   const primary = choice ? { ...own(choice.kind), ...choice } : undefined
   const merge = status.kind === 'merged' || primary?.kind === 'merge' ? [] : [own('merge') ?? MERGE]
   const drive = primary?.kind === 'merge' && !own(TEST_DRIVE.kind) ? [TEST_DRIVE] : []
+  const pushed = status.stop ? PRIMARY_ACTION[status.stop] : undefined
+  const stop = pushed && !own(pushed.kind) ? [pushed] : []
   const rest = offered.filter(
     (a) => a.kind !== 'merge' && a.kind !== primary?.kind && !NEVER_OFFERED.includes(a.kind),
   )
   const { primary: _was, ...base } = ns
-  return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...drive, ...rest] }
+  return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...stop, ...drive, ...rest] }
 }
 
 /** Where {@link leadActions}' row goes on the feature page's one header (design-mode decision 12). */
@@ -307,10 +327,12 @@ export function headerActions(ns: NextStep, status: FeatureStatus): HeaderAction
 /**
  * The header's button for the need, for the chat's waiting line (decision 4):
  * the header's primary when it is the need's own (not Stop while something
- * runs), and none for an answer, whose message box is right below the line.
+ * runs), and none for an answer in the main chat, whose message box is right
+ * below the line. A question asked in another thread keeps Reply, which brings
+ * that thread forward.
  */
-export function needButton(need: FeatureNeed, header: HeaderActions): NextAction | undefined {
-  if (need.kind === 'answer') return undefined
+export function needButton(need: FeatureNeed, header: HeaderActions, mainThreadId?: string | null): NextAction | undefined {
+  if (need.kind === 'answer' && (!need.threadId || need.threadId === mainThreadId)) return undefined
   const own = PRIMARY_ACTION[NEED_PRIMARY[need.kind]].kind
   return header.action?.kind === own ? header.action : undefined
 }

@@ -296,6 +296,26 @@ describe('the header’s share of the row', () => {
     })
   })
 
+  it('lets a permission prompt outrank a running round: Show request leads, Stop waits in the menu', () => {
+    const permission = need('permission', 'Needs permission · Bash: git push', { why: 'Bash: git push', threadId: 't' })
+    expect(featureStatus(input({ need: permission, rounds: [round(1, 'running', 1)] })).label).toBe('Needs permission')
+    expect(header({ need: permission, rounds: [round(1, 'running', 1)] })).toEqual({
+      action: { label: 'Show request', kind: 'showRequest' },
+      merge: MERGE,
+      overflow: [{ label: 'Stop', kind: 'stopAgent', danger: true }],
+    })
+  })
+
+  it('lets a permission prompt outrank planning by itself, its Stop kept in the menu', () => {
+    const permission = need('permission', 'Needs permission · Bash: ls', { why: 'Bash: ls', threadId: 't' })
+    const stopSelfPlan = { label: 'Stop', kind: 'stopSelfPlan' } as const
+    expect(header({ need: permission, selfPlanning: true }, ns({ primary: stopSelfPlan }))).toEqual({
+      action: { label: 'Show request', kind: 'showRequest' },
+      merge: MERGE,
+      overflow: [stopSelfPlan],
+    })
+  })
+
   it('keeps Stop as the button while a round runs, with Merge & ship beside it', () => {
     expect(header({ need: need('plan', 'Plan to approve'), rounds: [round(1, 'running', 1)] })).toEqual({
       action: { label: 'Stop', kind: 'stopAgent', danger: true },

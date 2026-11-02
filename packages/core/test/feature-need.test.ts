@@ -61,8 +61,12 @@ describe('featureNeed', () => {
 
   it('reads a lead that replied with no reason as an answer without a why', () => {
     const need = featureNeed(facts({ leadAwaitsHuman: { since: 4_000 } }), NOW)
-    expect(need).toMatchObject({ kind: 'answer', words: 'Needs your answer', since: 4_000 })
+    expect(need).toMatchObject({ kind: 'answer', words: 'Needs your answer', since: 4_000, quiet: true })
     expect(need?.why).toBeUndefined()
+  })
+
+  it('keeps an answer the lead asked for out loud from being quiet', () => {
+    expect(featureNeed(facts({ waiting: waiting('which model?'), leadAwaitsHuman: { since: 4_000 } }), NOW)?.quiet).toBeUndefined()
   })
 
   it('reads an open question ask as an answer in its thread', () => {
@@ -193,6 +197,10 @@ describe('needPings', () => {
   it('stays quiet for a held need, and for the stop the human made', () => {
     expect(needPings({ ...need, held: true, words: 'With the orchestrator · Plan to approve' })).toBe(false)
     expect(needPings({ kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: YOU_STOPPED_IT })).toBe(false)
+  })
+
+  it('stays quiet for a bare reply, which only shows and counts', () => {
+    expect(needPings({ kind: 'answer', words: 'Needs your answer', held: false, why: null, quiet: true })).toBe(false)
   })
 
   it('never pings for malformed data', () => {

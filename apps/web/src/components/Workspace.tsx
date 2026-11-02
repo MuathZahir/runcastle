@@ -739,7 +739,8 @@ export function Workspace({
         break
       // An answer is needed: the main chat in front, the cursor in its message box.
       case 'reply':
-        bringForward(column.main ?? column.current)
+        // A question asked in a side thread is answered there, not in the main chat.
+        bringForward(full.need?.kind === 'answer' && full.need.threadId ? full.need.threadId : (column.main ?? column.current))
         requestAnimationFrame(() =>
           frame.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(),
         )
@@ -1221,7 +1222,7 @@ export function Workspace({
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
-                  needAction={full.need ? needButton(full.need, headerRow) : undefined}
+                  needAction={full.need ? needButton(full.need, headerRow, column.main) : undefined}
                   actionsBusy={actionsBusy}
                   onAction={runAction}
                 />
