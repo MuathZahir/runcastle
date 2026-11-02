@@ -55,6 +55,7 @@ export function ThreadColumn({
   meta,
   startMeta,
   notices,
+  tail,
   label = 'Chat',
   children,
 }: {
@@ -80,6 +81,8 @@ export function ThreadColumn({
   startMeta?: ReactNode
   /** Lines above the thread (a failed resume, a drive's prerequisites). */
   notices?: ReactNode
+  /** A line under the thread's last item (the main chat's waiting line). */
+  tail?: ReactNode
   /** The region's accessible name. */
   label?: string
   /** What sits on the foot's top edge, above the composer or an ask: the notice strip. */
@@ -205,6 +208,7 @@ export function ThreadColumn({
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}
           loading={t.loading}
+          tail={tail}
           footer={
             <div className="flex flex-col gap-1.5">
               {children && <div className="mb-0.5 empty:hidden">{children}</div>}
