@@ -141,12 +141,7 @@ export function NoteRow({
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {editor ?? (
-          <p
-            className={cx(
-              'm-0 text-sm text-pretty whitespace-pre-wrap',
-              note?.status === 'done' ? 'text-text-tertiary line-through' : 'text-text',
-            )}
-          >
+          <p className="m-0 text-sm text-pretty whitespace-pre-wrap text-text">
             {text}
           </p>
         )}
