@@ -6,6 +6,7 @@ import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { listByProject } from '../src/services/events'
 import {
   __resetTestDriveState,
   activeDriveInfo,
@@ -105,9 +106,34 @@ describe('recoverCutOffDrives', () => {
       holderLabel: 'a test drive of feature/cut (cut off by a restart)',
     })
     expect(activeDriveInfo(project.id)?.devPaneId).toBeUndefined()
+    expect(listByProject(ctx, project.id).filter((e) => e.type === 'drive.cut_off')).toHaveLength(1)
+    // A second restart before anyone stops it brings it back again.
+    restart()
+    expect(await recoverCutOffDrives(ctx)).toEqual([project.id])
 
     const stop = await testDrive(ctx, project, feature, 'stop')
     expect(stop).toMatchObject({ ok: true, branch: 'develop' })
+    expect(await head(g)).toBe('develop')
+    expect(readFileSync(stopped, 'utf8')).toContain('stopped')
+    expect(activeDriveInfo(project.id)).toBeNull()
+  })
+
+  it("puts a review agent's drive back as cut off too, and its Stop returns the checkout", async () => {
+    // A review drive switches the main checkout exactly as a human's does, so a
+    // restart strands it the same way (decision 14).
+    expect((await testDrive(ctx, project, feature, 'start', 'review')).ok).toBe(true)
+    restart()
+
+    expect(await recoverCutOffDrives(ctx)).toEqual([project.id])
+    expect(activeDriveInfo(project.id)).toMatchObject({
+      featureId: feature.id,
+      purpose: 'review',
+      cutOff: true,
+      state: 'cut-off',
+      branch: 'feature/cut',
+    })
+
+    expect(await testDrive(ctx, project, feature, 'stop', 'review')).toMatchObject({ ok: true, branch: 'develop' })
     expect(await head(g)).toBe('develop')
     expect(readFileSync(stopped, 'utf8')).toContain('stopped')
     expect(activeDriveInfo(project.id)).toBeNull()
