@@ -12,7 +12,7 @@ import {
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
-import { standingNotices } from '../../lib/standing-notices'
+import { slotBlocker, standingNotices, type SlotDriveInfo } from '../../lib/standing-notices'
 import { useToast } from '../../lib/toast'
 import type { useResolveConflict } from '../../lib/use-resolve-conflict'
 
@@ -33,7 +33,7 @@ export function useStandingNotices({
   events: EventRow[]
   conflict: MergeConflictState | null
   /** The project's drive slot (`feature.driveInfo`). */
-  drive: { featureId?: string; projectId?: string; projectDrive?: boolean; holderLabel: string } | null | undefined
+  drive: SlotDriveInfo | null | undefined
   /** A drive of this feature is up. */
   driveUp: boolean
   resolveConflict: ReturnType<typeof useResolveConflict>
@@ -47,15 +47,20 @@ export function useStandingNotices({
   const artifacts = useReviewArtifacts(featureId, reviewed && !shipped)
   // Keyed on the event id, so a NEW denial is a new id and the row comes back.
   const [dismissedDenial, setDismissedDenial] = useState<number | null>(null)
-  const stop = trpc.project.testDrive.useMutation({
-    onSuccess: () => void utils.feature.driveInfo.invalidate(),
-    onError: (e) => toast.push(e.message),
-  })
+  // Each kind of holder ends through its own stop; a refused stop says why.
+  const stopped = {
+    onSuccess: (res: { ok: boolean; deniedReason?: string }) => {
+      if (!res.ok && res.deniedReason) toast.push(res.deniedReason)
+      void utils.feature.driveInfo.invalidate()
+    },
+    onError: (e: { message: string }) => toast.push(e.message),
+  }
+  const stopFeature = trpc.feature.testDrive.useMutation(stopped)
+  const stopProject = trpc.project.testDrive.useMutation(stopped)
+  const stopDryRun = trpc.project.dryRunStop.useMutation(stopped)
   if (!full) return []
   const { feature } = full
-  // Somebody else holds the slot; a project drive is the human's own, so it is offered a stop.
-  const slotHolder = drive && drive.featureId !== feature.id ? drive : undefined
-  const blockingProjectId = slotHolder?.projectDrive && slotHolder.projectId ? slotHolder.projectId : undefined
+  const blocker = slotBlocker(drive, feature, driveUp)
   const liveSessionId = liveSessionLine(full.sessions)?.sessionId ?? null
   const denial = reviewDriveDenial(events, full.runs, dismissedDenial)
   return standingNotices(
@@ -68,7 +73,7 @@ export function useStandingNotices({
       liveSessionId,
       denial,
       unverified: unverifiedReview({ passes: artifacts.data ?? [], tickets: full.tickets }),
-      blockingDrive: !driveUp && slotHolder && blockingProjectId ? { holderLabel: slotHolder.holderLabel } : null,
+      blockingDrive: blocker,
     },
     {
       resolve: () => {
@@ -77,9 +82,12 @@ export function useStandingNotices({
       resolving: resolveConflict.pending,
       dismissDenial: () => setDismissedDenial(denial?.eventId ?? null),
       stopDrive: () => {
-        if (blockingProjectId) stop.mutate({ projectId: blockingProjectId, action: 'stop' })
+        const stop = blocker?.stop
+        if (stop?.kind === 'feature') stopFeature.mutate({ featureId: stop.featureId, action: 'stop' })
+        else if (stop?.kind === 'project') stopProject.mutate({ projectId: stop.projectId, action: 'stop' })
+        else if (stop?.kind === 'dryRun') stopDryRun.mutate({ projectId: stop.projectId })
       },
-      stopping: stop.isPending,
+      stopping: stopFeature.isPending || stopProject.isPending || stopDryRun.isPending,
     },
   )
 }

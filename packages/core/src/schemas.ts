@@ -833,7 +833,7 @@ export const LeadWakeFailedData = z.object({
 export type LeadWakeFailedData = z.infer<typeof LeadWakeFailedData>
 
 export const DriveState = z.enum([
-  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',
+  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving', 'cut-off',
 ])
 export type DriveState = z.infer<typeof DriveState>
 

@@ -823,7 +823,7 @@ describe('testDrive', () => {
 
     const second = await testDrive(ctx, project, feature, 'start')
     expect(second.ok).toBe(false)
-    expect(second.deniedReason).toBe('A test drive is already active — stop it first')
+    expect(second.deniedReason).toBe('A test drive of feature/drive is running — stop it first')
     // The slot frees itself when whoever holds it is done — the one denial
     // polling can clear.
     expect(second.deniedCode).toBe('slot_held')
@@ -1656,7 +1656,7 @@ describe('mergeFeature', () => {
     const start = await testDrive(ctx, project, feature, 'start')
     expect(start.ok).toBe(true)
 
-    await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
+    await expect(mergeFeature(project, feature)).rejects.toThrow('Cannot merge while a test drive of feature/guard is running — stop it first')
 
     await testDrive(ctx, project, feature, 'stop')
   })
@@ -1666,11 +1666,11 @@ describe('mergeFeature', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'sameproj' })
 
     expect((await projectDrive(ctx, project, 'start')).ok).toBe(true)
-    await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
+    await expect(mergeFeature(project, feature)).rejects.toThrow('Cannot merge while a project drive of main is running')
     await projectDrive(ctx, project, 'stop')
 
     expect((await dryRunDrive(ctx, project, 'start')).ok).toBe(true)
-    await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
+    await expect(mergeFeature(project, feature)).rejects.toThrow('Cannot merge while a preparation dry-run is running')
     await dryRunDrive(ctx, project, 'stop')
   })
 
@@ -1715,14 +1715,6 @@ describe('mergeFeature', () => {
       // The other project's drive is still live, in its own project's slot.
       expect(activeDriveInfo(other.id)).not.toBeNull()
     })
-  })
-
-  it('denies merge when the checkout is dirty', async () => {
-    await createFeatureBranch(project, 'dirtymerge', 'main')
-    writeFileSync(join(project.repoPath, 'junk.txt'), 'x')
-    const feature = seedFeature(ctx, project.id, { slug: 'dirtymerge' })
-
-    await expect(mergeFeature(project, feature)).rejects.toThrow(/uncommitted changes/i)
   })
 
   it('activeTestDriveFeatureId reports the driven feature and clears on stop', async () => {

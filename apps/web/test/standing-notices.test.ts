@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { standingNotices, type StandingActs, type StandingInput } from '../src/lib/standing-notices'
+import {
+  slotBlocker,
+  standingNotices,
+  type SlotDriveInfo,
+  type SlotStop,
+  type StandingActs,
+  type StandingInput,
+} from '../src/lib/standing-notices'
 
 /**
  * the-feature-s-right-panel decision 21: what the retired Review view warned
@@ -18,7 +25,8 @@ const NONE: StandingInput = {
 }
 const CONFLICT = { base: 'main', files: ['index.html', 'src/App.tsx'], at: 1 }
 const DENIAL = { eventId: 7, at: 1, dirtyFiles: ['a.ts'], message: 'review drive denied — 1 uncommitted file(s)' }
-const UNVERIFIED = { kind: 'unverified' as const, line: 'Nothing was verified', reason: 'no browser' }
+const PROJECT_STOP: SlotStop = { kind: 'project', projectId: 'p1' }
+const UNVERIFIED ={ kind: 'unverified' as const, line: 'Nothing was verified', reason: 'no browser' }
 
 function acts(over: Partial<StandingActs> = {}): StandingActs {
   return { resolve: vi.fn(), resolving: false, dismissDenial: vi.fn(), stopDrive: vi.fn(), stopping: false, ...over }
@@ -82,18 +90,71 @@ describe('standingNotices', () => {
 
   it('names a project drive holding the slot and offers to stop it', () => {
     const a = acts()
-    const [row] = rows({ blockingDrive: { holderLabel: 'a project drive of main' } }, a)
+    const [row] = rows({ blockingDrive: { holderLabel: 'a project drive of main', cutOff: false, stop: PROJECT_STOP } }, a)
     expect(row.title).toBe('A project drive of main is running')
     row.action?.onClick()
     expect(a.stopDrive).toHaveBeenCalled()
-    expect(rows({ blockingDrive: { holderLabel: 'x' } }, acts({ stopping: true }))[0].action).toMatchObject({
+    expect(rows({ blockingDrive: { holderLabel: 'x', cutOff: false, stop: PROJECT_STOP } }, acts({ stopping: true }))[0].action).toMatchObject({
       label: 'Stopping…',
       disabled: true,
     })
   })
 
+  it('names a live review round’s drive with no stop, and says when it ends', () => {
+    const [row] = rows({ blockingDrive: { holderLabel: "the review agent's drive of feature/x", cutOff: false, stop: null } })
+    expect(row.title).toBe("The review agent's drive of feature/x is running")
+    expect(row.subtitle).toContain('review round ends')
+    expect(row.action).toBeUndefined()
+  })
+
+  it('says a cut-off drive holds the slot rather than runs, and offers to stop it', () => {
+    const label = 'a test drive of feature/x (cut off by a restart)'
+    const [row] = rows({ blockingDrive: { holderLabel: label, cutOff: true, stop: { kind: 'feature', featureId: 'f2' } } })
+    expect(row.title).toBe('A test drive of feature/x (cut off by a restart) holds the drive slot')
+    expect(row.action?.label).toBe('Stop it')
+  })
+
   it('stands every warning at once, the conflict first', () => {
-    const keys = rows({ conflict: CONFLICT, denial: DENIAL, unverified: UNVERIFIED, blockingDrive: { holderLabel: 'x' } }).map((r) => r.key)
-    expect(keys).toEqual(['conflict', 'denial-7', 'unverified', 'project-drive'])
+    const keys = rows({
+      conflict: CONFLICT,
+      denial: DENIAL,
+      unverified: UNVERIFIED,
+      blockingDrive: { holderLabel: 'x', cutOff: false, stop: PROJECT_STOP },
+    }).map((r) => r.key)
+    expect(keys).toEqual(['conflict', 'denial-7', 'unverified', 'slot-drive'])
+  })
+})
+
+/** ADR-0014: whatever holds the slot in a feature's way is named, and stopped by its own kind's mutation. */
+describe('slotBlocker', () => {
+  const FEATURE = { id: 'f1', projectId: 'p1' }
+  const block = (drive: SlotDriveInfo | null, driveUp = false) => slotBlocker(drive, FEATURE, driveUp)
+
+  it('stands nothing while the slot is free or held by this feature’s own live drive', () => {
+    expect(block(null)).toBeNull()
+    expect(block({ holderLabel: 'a test drive of feature/one', featureId: 'f1' }, true)).toBeNull()
+  })
+
+  it('stops another feature’s drive through that feature', () => {
+    expect(block({ holderLabel: 'a test drive of feature/two', featureId: 'f2', purpose: 'human' })).toEqual({
+      holderLabel: 'a test drive of feature/two',
+      cutOff: false,
+      stop: { kind: 'feature', featureId: 'f2' },
+    })
+  })
+
+  it('stops a project drive and a dry run through the project', () => {
+    expect(block({ holderLabel: 'a project drive of main', projectDrive: true, projectId: 'p1' })?.stop).toEqual(PROJECT_STOP)
+    expect(block({ holderLabel: 'a preparation dry-run', dryRun: true })?.stop).toEqual({ kind: 'dryRun', projectId: 'p1' })
+  })
+
+  it('offers no stop for a live review agent’s drive', () => {
+    const blocker = block({ holderLabel: "the review agent's drive of feature/two", featureId: 'f2', purpose: 'review' })
+    expect(blocker).toMatchObject({ stop: null })
+  })
+
+  it('offers a stop for a cut-off drive of any purpose, this feature’s own included', () => {
+    const own = { holderLabel: "the review agent's drive of feature/one (cut off by a restart)", featureId: 'f1', purpose: 'review' as const, cutOff: true }
+    expect(block(own, true)).toEqual({ holderLabel: own.holderLabel, cutOff: true, stop: { kind: 'feature', featureId: 'f1' } })
   })
 })

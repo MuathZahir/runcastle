@@ -316,7 +316,7 @@ describe('the project drive', () => {
     expect((await testDrive(ctx, project, other, 'start')).ok).toBe(true)
 
     await expect(caller().feature.merge({ featureId: feature.id })).rejects.toThrow(
-      /test drive is active/,
+      'Cannot merge while a test drive of feature/other is running — stop it first',
     )
   }, 20_000)
 

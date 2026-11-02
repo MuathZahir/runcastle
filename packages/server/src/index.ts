@@ -25,6 +25,7 @@ import threadsApp from './routes/threads'
 import { mountWebAppIfBuilt } from './routes/web'
 import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
+import { recoverCutOffDrives } from './services/git'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
@@ -138,6 +139,14 @@ export async function startServer(): Promise<void> {
   const staleRuns = await reconcileStaleRuns(ctx)
   if (staleRuns.length > 0) {
     console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
+  }
+
+  // A drive the restart cut off comes back into its project's slot, so it is
+  // named wherever it blocks and one Stop runs its stop script and returns the
+  // checkout home. After both reconciliations: a review drive's round is dead by now.
+  const cutOff = await recoverCutOffDrives(ctx)
+  if (cutOff.length > 0) {
+    console.log(`recovered ${cutOff.length} drive(s) cut off by the restart — stop them to tidy up`)
   }
 
   // Talk worktrees of shipped/archived features and of projects that are gone

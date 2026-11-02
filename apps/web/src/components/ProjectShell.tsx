@@ -110,7 +110,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const projectDrive = isThisProjectDrive(slot, projectId) ? slot : null
   // The drive this shell started, or the feature drive the server says is up:
   // after a reload, or the review agent's, the way back to it is the same.
-  const driving = startedDrive ?? (slot?.featureId ? { featureId: slot.featureId, branch: slot.branch } : null)
+  const driving =
+    startedDrive ??
+    (slot?.featureId
+      ? { featureId: slot.featureId, branch: slot.branch, ...(slot.cutOff ? { cutOff: true } : {}) }
+      : null)
 
   const features = list.data
 

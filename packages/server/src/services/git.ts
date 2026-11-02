@@ -35,10 +35,10 @@ import { describeHookResult, runDriveHook } from './drive-hooks'
 import type { DriveIdentity } from './drive-env'
 import { describeDriveEnv, driveIdentityEnv, driveProcessEnv, parseEnvFile } from './drive-env'
 import type { EmitScope } from './events'
-import { emit, emitProject, emitScoped } from './events'
+import { emit, emitProject, emitScoped, newestProjectEvent } from './events'
 import { markVerified } from './findings'
 import { fillHttpRequest, parseHttpRequest } from './http-request'
-import { getProjectById, hasActiveRun, tryGetFeature } from './repo'
+import { allProjects, getProjectById, hasActiveRun, tryGetFeature } from './repo'
 import type { ScenarioRunResult } from './scenarios'
 import {
   callFileOf,
@@ -198,12 +198,19 @@ export interface DriveInfo {
   scenario?: DriveScenario
   /** The `scenario` session docked beside this drive, while one is attached. */
   scenarioSessionId?: string
+  /**
+   * A drive a server restart cut off, put back in the slot at boot
+   * ({@link recoverCutOffDrives}): nothing of it is running any more, and Stop
+   * is what runs its stop script and, for a feature drive, returns the checkout.
+   */
+  cutOff?: true
 }
 
 type DriveStateInput = Omit<DriveInfo, 'state' | 'holderLabel'>
 
 export function deriveDriveState(info: DriveStateInput | null): import('@runcastle/core').DriveState {
   if (!info) return 'idle'
+  if (info.cutOff) return 'cut-off'
   if (info.hookFailure) return 'setup-failed'
   if (info.purpose === 'review') return 'review-agent-driving'
   if (!info.devConfigured) return 'bare-checkout'
@@ -243,10 +250,8 @@ export function migrationPaths(paths: readonly string[]): string[] {
 
 /** Human-readable test-drive denial reasons (surfaced verbatim in the UI). */
 const DENY_DIRTY = 'Working tree has uncommitted changes — commit or stash first'
-const DENY_ACTIVE = 'A test drive is already active — stop it first'
 const DENY_ACTIVE_RUN = 'Feature has an active run — wait for it to finish'
 const DENY_NONE_ACTIVE = 'No test drive is active'
-const DENY_DRY_RUN_ACTIVE = 'A preparation dry-run is in progress — stop it first'
 const DENY_NO_DRY_RUN = 'No preparation dry-run is in progress'
 const DENY_NO_REVIEW_DRIVE = 'No review drive is in progress for this feature'
 
@@ -2244,7 +2249,14 @@ interface ScenarioDriveFields {
   scenarioRunning?: boolean
 }
 
-type DriveState =
+/** What every kind of drive in the slot can carry. */
+interface CommonDriveFields {
+  /** Put back by {@link recoverCutOffDrives}: a restart cut this drive off. */
+  cutOff?: true
+}
+
+type DriveState = CommonDriveFields &
+  (
   | (ScenarioDriveFields & {
       kind: 'feature'
       purpose: DrivePurpose
@@ -2297,6 +2309,7 @@ type DriveState =
       envKeys?: string[]
       setupJob?: Containment
     })
+  )
 
 /**
  * Where the sniffed URL is in its journey from printed to openable. Absent
@@ -2355,6 +2368,90 @@ export function __resetTestDriveState(): void {
   reviewDriveReleases.clear()
 }
 
+/** Every event that starts or stops a drive holding the slot, of all three kinds. */
+const DRIVE_START_TYPES = ['testdrive.started', 'projectdrive.started', 'prep.dryrun.started'] as const
+const DRIVE_EVENT_TYPES = [
+  ...DRIVE_START_TYPES,
+  'testdrive.stopped',
+  'projectdrive.stopped',
+  'prep.dryrun.stopped',
+] as const
+
+/**
+ * Put back every drive a server restart cut off (small-fixes-before-publish
+ * decisions 4 and 14), once at boot. The slot lives only in memory, so a
+ * restart mid-drive leaves its stop script unrun — and, for a feature drive,
+ * the human's checkout parked on the feature branch — while the app says
+ * nothing is driving.
+ *
+ * Per project, the slot held one drive at a time, so only the project's newest
+ * drive event can describe a drive still up: when it is a start, that drive
+ * never stopped. It comes back `cutOff`, with no dev pane and no readiness poll,
+ * and from then on it is an ordinary slot holder — named wherever it blocks, and
+ * ended by the normal stop of its kind (stop script, then for a feature drive
+ * the return to the branch its start recorded). A feature drive is recovered
+ * only while the checkout is still on that feature's branch: a checkout the
+ * human moved since has nothing left to return.
+ *
+ * Shutdown deliberately stops nothing (decision 5); this is the one path back,
+ * for a crash and a clean exit alike. Returns the projects it recovered a drive in.
+ */
+export async function recoverCutOffDrives(ctx: AppCtx): Promise<string[]> {
+  const recovered: string[] = []
+  for (const project of allProjects(ctx)) {
+    if (driveOf(project.id)) continue
+    try {
+      const state = await cutOffDriveOf(ctx, project)
+      if (state) {
+        drives.set(project.id, state)
+        recovered.push(project.id)
+      }
+    } catch {
+      // A project whose repo is gone or unreadable has no checkout to return.
+    }
+  }
+  return recovered
+}
+
+/** The cut-off drive `project`'s events describe, or `undefined` when none is. */
+async function cutOffDriveOf(ctx: AppCtx, project: Project): Promise<DriveState | undefined> {
+  const last = newestProjectEvent(ctx, project.id, DRIVE_EVENT_TYPES)
+  if (!last || !(DRIVE_START_TYPES as readonly string[]).includes(last.type)) return undefined
+  const data = (last.data ?? {}) as Record<string, unknown>
+  const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+  const g = git(project.repoPath)
+  const head = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
+  const common = { projectId: project.id, devConfigured: !!project.devCommand, cutOff: true as const }
+
+  switch (last.type) {
+    case 'testdrive.started': {
+      const feature = last.featureId ? tryGetFeature(ctx, last.featureId) : null
+      if (!feature) return undefined
+      const branch = featureBranch(feature.slug)
+      if (head !== branch) return undefined
+      return {
+        ...common,
+        kind: 'feature',
+        purpose: data.purpose === 'review' ? 'review' : 'human',
+        featureId: feature.id,
+        branch,
+        previousBranch:
+          text(data.previousBranch) ?? feature.baseBranch ?? (await detectMainBranch(project.repoPath)),
+      }
+    }
+    case 'projectdrive.started':
+      return {
+        ...common,
+        kind: 'project',
+        branch: text(data.branch) ?? head,
+        commit: text(data.commit) ?? '',
+        startedAt: last.ts,
+      }
+    default:
+      return { ...common, kind: 'dryRun', branch: text(data.branch) ?? head, observed: {} }
+  }
+}
+
 /** Overridden only by the test hook below; `undefined` means the shipped timing. */
 let readinessTiming: AppReadyTiming | undefined
 
@@ -2411,12 +2508,18 @@ export function activeDriveInfo(projectId: string): DriveInfo | null {
     devReady: state.devReadiness === 'ready',
     ...(state.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
     devConfigured: state.devConfigured,
+    ...(state.cutOff ? { cutOff: true as const } : {}),
   }
   return { ...info, holderLabel: holderLabel(state), state: deriveDriveState(info) }
 }
 
 /** Who holds the slot, as every refusal and disabled state names it. */
 function holderLabel(state: DriveState): string {
+  const label = liveHolderLabel(state)
+  return state.cutOff ? `${label} (cut off by a restart)` : label
+}
+
+function liveHolderLabel(state: DriveState): string {
   switch (state.kind) {
     case 'project':
       return `a project drive of ${state.branch}`
@@ -2551,7 +2654,7 @@ export async function testDrive(
     if (held.kind === 'project') {
       return { ok: false, deniedReason: slotHeldReason(held) }
     }
-    if (held.kind !== 'feature') return { ok: false, deniedReason: DENY_DRY_RUN_ACTIVE }
+    if (held.kind !== 'feature') return { ok: false, deniedReason: slotHeldReason(held) }
     const previousBranch = held.previousBranch
     const detachedWorktree = held.detachedWorktree
     const devPaneId = held.devPaneId
@@ -2658,7 +2761,7 @@ export async function testDrive(
   }
   const held = driveOf(project.id)
   if (held) {
-    return deniedStart(held.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE, 'slot_held')
+    return deniedStart(slotHeldReason(held), 'slot_held')
   }
   // The review carve-out (improve-workflow decision 4): a review ticket burns at
   // the tail of its own run, once every implementation ticket is terminal and
@@ -2961,16 +3064,7 @@ export async function dryRunDrive(
 async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult> {
   const held = driveOf(project.id)
   if (held) {
-    return {
-      ok: false,
-      action: 'start',
-      deniedReason:
-        held.kind === 'dryRun'
-          ? DENY_DRY_RUN_ACTIVE
-          : held.kind === 'project'
-            ? slotHeldReason(held)
-            : DENY_ACTIVE,
-    }
+    return { ok: false, action: 'start', deniedReason: slotHeldReason(held) }
   }
 
   const scope: EmitScope = { projectId: project.id }
@@ -3767,7 +3861,8 @@ async function detectDbDrift(
  * Merge `feature/<slug>` into its base branch (`feature.baseBranch`) with
  * `--no-ff` — a feature lands back on the branch it was forked from, and on no
  * other, main included. Denies (via `GateError` → PRECONDITION_FAILED) while a
- * test drive is active or the main checkout is dirty. On conflict it aborts and
+ * drive holds the slot, naming it, or while an uncommitted path is one the merge
+ * would touch, naming those ({@link mergeBlockingPaths}). On conflict it aborts and
  * reports `{ ok: false, conflict: true }`, leaving the checkout clean either
  * way. The resolved `target` is always returned so the caller can report/record
  * it.
@@ -3788,16 +3883,12 @@ async function detectDbDrift(
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
   const target = featureBase(feature)
 
-  if (driveOf(project.id)) {
-    throw new GateError('Cannot merge while a test drive is active — stop it first')
+  const held = driveOf(project.id)
+  if (held) {
+    throw new GateError(`Cannot merge while ${holderLabel(held)} is running — stop it first`)
   }
 
   const g = git(project.repoPath)
-  const porcelain = (await g.raw(['status', '--porcelain'])).trim()
-  if (porcelain !== '') {
-    throw new GateError('Cannot merge — working tree has uncommitted changes')
-  }
-
   const branches = await g.branchLocal()
   if (!branches.all.includes(target)) {
     throw new GateError(`Cannot merge — base branch "${target}" no longer exists`)
@@ -3805,6 +3896,17 @@ export async function mergeFeature(project: Project, feature: Feature): Promise<
 
   const previous = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   const branch = featureBranch(feature.slug)
+
+  // Never committed for the human (decision 18): only an uncommitted path the
+  // merge would actually touch refuses it, and git carries the rest through.
+  const blocking = await mergeBlockingPaths(g, { head: previous, target, branch })
+  if (blocking.length > 0) {
+    throw new GateError(
+      `Cannot merge — ${blocking.length} uncommitted file(s) the merge would touch: ` +
+        `${truncatedFileList(blocking)}. Commit or discard them first.`,
+    )
+  }
+
   await g.checkout(target)
 
   try {
@@ -3824,6 +3926,39 @@ export async function mergeFeature(project: Project, feature: Feature): Promise<
     // Not a conflict (e.g. unknown branch) — surface the real failure.
     throw e instanceof Error ? e : new Error(errMsg(e))
   }
+}
+
+/**
+ * The uncommitted paths that refuse a merge (decision 18), sorted: the dirty
+ * paths — tracked changes and untracked files — that the merge would touch,
+ * plus every staged path whatever it is, since git would record it into the
+ * merge commit. The merge touches what the feature branch changed since it
+ * split from `target`, and, when it has to switch away from `head` to build
+ * the commit, whatever differs between `head` and `target`.
+ *
+ * Asks git and commits nothing: a dirty path outside that set is carried
+ * through the checkout and the merge untouched.
+ */
+export async function mergeBlockingPaths(
+  g: SimpleGit,
+  { head, target, branch }: { head: string; target: string; branch: string },
+): Promise<string[]> {
+  const names = async (args: string[]) =>
+    porcelainNames((await g.raw(['diff', '--name-only', '--no-renames', ...args])).trim())
+  const touched = new Set(await names([`${target}...${branch}`]))
+  if (head !== target) for (const p of await names([head, target])) touched.add(p)
+  // `trimEnd`, never `trim`: the first line's leading status column is a
+  // space for an unstaged edit (` M path`), and the path is read by offset.
+  const dirty = porcelainPaths(
+    (await g.raw(['status', '--porcelain', '--untracked-files=all'])).trimEnd(),
+  )
+  const blocking = new Set([...dirty.filter((p) => touched.has(p)), ...(await names(['--cached']))])
+  return [...blocking].sort()
+}
+
+/** One path per line of `--name-only` output, unquoted as {@link porcelainPaths} does. */
+function porcelainNames(out: string): string[] {
+  return out ? out.split('\n').map((p) => p.trim().replace(/^"|"$/g, '')).filter(Boolean) : []
 }
 
 /**
