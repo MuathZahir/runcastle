@@ -237,6 +237,22 @@ describe('NoteCapture', () => {
     expect(uploadProjectNoteScreenshot.mock.calls[0]).toEqual(['pnote_1', PNG])
   })
 
+  it('Add picture stages a picked image and uploads it to the new note, as a paste does', async () => {
+    popover()
+
+    fireEvent.change(line(), { target: { value: 'the crumbs overflow at 900px' } })
+    expect(screen.getByRole('button', { name: 'Add picture' })).toBeTruthy()
+    const picker = screen.getByRole('dialog').querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe('image/*')
+    fireEvent.change(picker, { target: { files: [PNG] } })
+    await screen.findByAltText('the picture this note will carry')
+
+    fireEvent.keyDown(line(), { key: 'Enter' })
+
+    await waitFor(() => expect(uploadProjectNoteScreenshot).toHaveBeenCalled())
+    expect(uploadProjectNoteScreenshot.mock.calls[0]).toEqual(['pnote_1', PNG])
+  })
+
   it('converts a pasted image that is not a PNG before uploading it', async () => {
     popover()
 
