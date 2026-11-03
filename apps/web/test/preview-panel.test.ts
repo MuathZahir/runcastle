@@ -25,7 +25,7 @@ describe('PreviewPanel', () => {
     const html = render()
     expect(html.match(/<iframe/g)).toHaveLength(1)
     expect(html).toMatch(/<iframe[^>]* sandbox="allow-scripts"/)
-    expect(html).toContain('title="Preview"')
+    expect(html).toContain('title="The plan"')
     // The file reaches the frame through the policy-bearing frame document.
     expect(html).toContain('Content-Security-Policy')
     expect(html).toContain('the show')
@@ -42,7 +42,7 @@ describe('PreviewPanel', () => {
     doc.content = undefined
     const html = render()
     expect(html).not.toContain('<iframe')
-    expect(html).toContain('Loading the preview')
+    expect(html).toContain('Loading the plan')
     doc.content = '<!doctype html><p>the show</p>'
   })
 })

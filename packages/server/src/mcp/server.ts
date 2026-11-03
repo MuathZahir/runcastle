@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
   DependencyRef,
+  DesignState,
   DriveCallResult,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
@@ -44,7 +45,9 @@ import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
 import { RUN_HEADER } from '../launcher/artifacts'
-import { showFile } from '../threads/shown'
+import { appendThreadEvent } from '../threads/log'
+import { seedFromTranscript } from '../threads/read'
+import { showFile, showableFile } from '../threads/shown'
 import { showReviewPackage } from '../threads/review-package'
 import { requireProjectFeature } from './orchestrator-tools'
 import { reviewShots, type ReviewShots } from '../services/review-package'
@@ -72,6 +75,14 @@ import {
   validateDependencies,
 } from '../services/dependencies'
 import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
+import {
+  type LeadDesign,
+  copyDesignPicture,
+  leadDesigns,
+  markPlanShown,
+  recordDesign,
+  setDesignState,
+} from '../services/designs'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { claimHold, holderName, holderOf, requireHold } from '../services/holding'
@@ -407,6 +418,12 @@ export interface FeatureContext {
   /** The pictures reviews kept, newest pass first. Empty when none took any. */
   reviewShots: ReviewShots[]
   /**
+   * The feature's recorded designs (`show_design`), each with its state, who
+   * approved it, and whether the human opened it since it was last shown: where
+   * the lead reads the human's quiet approvals (designs decisions 10, 25).
+   */
+  designs: LeadDesign[]
+  /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
    * (decisions.md #7). Absent on a feature that has never burned, which is the
@@ -644,6 +661,7 @@ export function featureContext(
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
     reviewShots: reviewShots(ctx, feature.id),
+    designs: leadDesigns(ctx, feature.id),
   }
   const toDo = { openDefects, findings }
   let rows = allTickets.map(ticketRow)
@@ -1025,22 +1043,36 @@ export function toolStartDesignServer(
 ): Promise<DesignServerInfo> {
   const featureId = requireChatFeatureId(session)
   // An unattended run owns the server it starts, so its end stops it (designs-wait-for-you decision 3).
-  const unattended = session.headless || session.purpose === 'self-plan'
-  return startDesignServer(ctx, featureId, input.command, unattended ? { sessionId: session.id } : {})
+  return startDesignServer(ctx, featureId, input.command, unattended(session) ? { sessionId: session.id } : {})
 }
 
-/** The views the human's panel can show (decision 8). */
-const PanelView = z.enum(['plan', 'work', 'review', 'details', 'design', 'drive'])
+/** A run with no human watching: a headless run, or a self-planning one. */
+function unattended(session: SessionRow): boolean {
+  return session.headless || session.purpose === 'self-plan'
+}
+
+/**
+ * The views `show_panel` opens (decision 8). The plan and a design are not among
+ * them: `show_plan` and `show_design` show those, leaving a card in the chat
+ * (designs-and-the-plan-get-their-own-place decision 3).
+ */
+const PanelView = z.enum(['work', 'review', 'details', 'drive'], {
+  error: 'show_panel opens work, review, details or drive. Show the plan with show_plan and a design with show_design',
+})
 type PanelViewT = z.infer<typeof PanelView>
+
+/** Every view a `panel.show` event can open: `show_panel`'s, and the plan and the design view the card tools open. */
+type PanelOpenView = PanelViewT | 'plan' | 'design'
 
 /**
  * The `panel.show` event the web opens a view on — always the agent's own act,
- * whether it asked by name (`show_panel`) or by emitting tickets.
+ * whether it asked by name (`show_panel`), showed the plan or a design, or
+ * emitted tickets.
  */
 function emitPanelShow(
   ctx: AppCtx,
   featureId: string,
-  input: { view: PanelViewT; path?: string; width?: number },
+  input: { view: PanelOpenView; path?: string; width?: number },
 ): void {
   const width = input.view === 'design' ? input.width : undefined
   const where = `${input.path ? ` at ${input.path}` : ''}${width !== undefined ? `, ${width}px wide` : ''}`
@@ -1055,27 +1087,73 @@ function emitPanelShow(
   })
 }
 
+/** Open the human's panel on a view. */
+export function toolShowPanel(ctx: AppCtx, session: SessionRow, input: { view: PanelViewT }): { ok: true } {
+  emitPanelShow(ctx, requireChatFeatureId(session), input)
+  return { ok: true }
+}
+
 /**
- * Open the human's panel on a view. `design` needs something to show: a server
- * running, or a recorded command the panel can start one from.
+ * Show a design (designs-and-the-plan-get-their-own-place decisions 1, 15, 18):
+ * record it for the feature, post its card in this chat, and, with a human
+ * watching, open the Design view on it. `picture` is copied into runcastle's own
+ * store with `show_file`'s reach.
  */
-export function toolShowPanel(
+export function toolShowDesign(
   ctx: AppCtx,
   session: SessionRow,
-  input: { view: PanelViewT; path?: string; width?: number },
-): { ok: true } {
+  input: { path: string; title: string; width?: number; picture?: string },
+): { recorded: true; state: DesignState } {
   const featureId = requireChatFeatureId(session)
-  if (input.view === 'design') {
-    const status = designServerStatus(ctx, featureId)
-    if (!status.running && !status.hasRecordedCommand) {
-      throw new GateError(
-        'no design server runs and none is recorded — call start_design_server with a command first',
-      )
-    }
-    if (input.path) rememberDesignPath(featureId, input.path)
+  // A design nobody can serve later is a dead card: as the skill says, it needs
+  // a running server or a recorded command to open from.
+  const server = designServerStatus(ctx, featureId)
+  if (!server.running && !server.hasRecordedCommand) {
+    throw new GateError('no design server runs and none is recorded — call start_design_server with a command first')
   }
-  emitPanelShow(ctx, featureId, input)
-  return { ok: true }
+  const picture = input.picture
+    ? copyDesignPicture(featureId, showableFile(ctx, session, input.picture, 'show_design').real)
+    : undefined
+  const design = recordDesign(ctx, featureId, { path: input.path, title: input.title, width: input.width, picture })
+  seedFromTranscript(ctx, session.id)
+  appendThreadEvent(session.id, { type: 'design_shown', designId: design.id })
+  if (!unattended(session)) {
+    rememberDesignPath(featureId, design.path)
+    emitPanelShow(ctx, featureId, { view: 'design', path: design.path, ...(input.width ? { width: input.width } : {}) })
+  }
+  return { recorded: true, state: design.state }
+}
+
+/** The docs that make a feature's plan: one of them must exist before the plan can be shown. */
+const PLAN_DOCS = ['preview.html', 'decisions.md', 'spec.md']
+
+/**
+ * Show the feature's plan (decisions 2, 15): post a plan card in this chat, make
+ * the plan new to the human, and, with a human watching, open the Plan view.
+ */
+export function toolShowPlan(ctx: AppCtx, session: SessionRow): { shown: true } {
+  const featureId = requireChatFeatureId(session)
+  const feature = getFeatureRow(ctx, featureId)
+  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
+  if (!PLAN_DOCS.some((doc) => existsSync(join(docsDir, doc)))) {
+    throw new GateError(
+      `${feature.slug} has no plan yet: write its plan page (preview.html), decisions.md or spec.md in ${docsDir} first`,
+    )
+  }
+  markPlanShown(ctx, featureId)
+  seedFromTranscript(ctx, session.id)
+  appendThreadEvent(session.id, { type: 'plan_shown' })
+  if (!unattended(session)) emitPanelShow(ctx, featureId, { view: 'plan' })
+  return { shown: true }
+}
+
+/** Record a yes or a rejection the human gave in words for a design (decisions 8, 20). */
+export function toolSetDesignState(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { path: string; state: 'approved' | 'dropped' },
+): { ok: true; state: DesignState } {
+  return { ok: true, state: setDesignState(ctx, requireChatFeatureId(session), input).state }
 }
 
 /**
@@ -2598,6 +2676,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
+  // The plan and the designs (`designs-and-the-plan-get-their-own-place`): the feature's chat.
+  show_plan: ['chat'],
+  show_design: ['chat'],
+  set_design_state: ['chat'],
   // Every session with a thread to show it in; a run agent has none.
   show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
@@ -3301,7 +3383,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), ' +
-        '`reviewShots` (the pictures reviews kept, newest pass first), `reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
+        '`reviewShots` (the pictures reviews kept, newest pass first), `designs` (every design ' +
+        'recorded with show_design: `title`, `path`, `state` — waiting, approved or dropped — ' +
+        '`approvedBy` — human by the Approve button, lead when you marked a yes they gave in words ' +
+        '— and `opened`, whether the human opened it since it was last shown; the human approves ' +
+        'quietly, so read approvals here), `reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
         'walkthrough — read them before planning more work; null until a review has run). Then ' +
         'every ticket as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
@@ -3721,7 +3807,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Start the design server',
         description:
           'Run the project’s own frontend dev server in your worktree so the human can see a ' +
-          'preview page live. Runcastle picks a free port and passes it as the env var ' +
+          'design page live. Runcastle picks a free port and passes it as the env var ' +
           'RUNCASTLE_DESIGN_PORT: put it in your command, pinned (for Vite: `bunx vite --port ' +
           '$RUNCASTLE_DESIGN_PORT --strictPort`). Write the `$RUNCASTLE_DESIGN_PORT` form on every ' +
           'OS, Windows included: runcastle substitutes the port before running, and records your ' +
@@ -3738,7 +3824,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .min(1)
             .optional()
             .describe(
-              'The shell command that serves the preview pages on $RUNCASTLE_DESIGN_PORT. Omit it ' +
+              'The shell command that serves the design pages on $RUNCASTLE_DESIGN_PORT. Omit it ' +
                 'to run the command recorded in `.runcastle/design.json`.',
             ),
         },
@@ -3758,34 +3844,107 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human a panel',
         description:
           'Open the panel beside the chat on the human’s screen, while you are talking about what ' +
-          'it shows: `plan` (the plan preview, with the decisions and spec inside it), `work` (the ' +
-          'feature’s tickets by round, with live status), `review` (ready declarations, findings ' +
-          'and evidence), `details` (timeline, docs and sessions), `design` (the live design ' +
-          'server at `path`, e.g. `/preview/checkout-empty.html`) or `drive` (the test drive). ' +
-          '`design` refuses until ' +
-          'start_design_server has run or a command is recorded. For `design`, `width` lays the page ' +
-          'out at that screen width, scaled to fit the pane (e.g. `width: 390` for the mobile layout); ' +
-          'without it the human’s own choice holds (Desktop 1440 by default).',
+          'it shows: `work` (the feature’s tickets by round, with live status), `review` (ready ' +
+          'declarations, findings and evidence), `details` (timeline, docs and sessions) or ' +
+          '`drive` (the test drive). The plan is shown with show_plan and a design with ' +
+          'show_design: both leave a card in the chat, which this does not.',
         inputSchema: {
           view: PanelView.describe('Which view the panel shows.'),
-          path: z
-            .string()
-            .min(1)
-            .optional()
-            .describe('For `design`: the path on the design server to open, e.g. `/preview/cart.html`.'),
-          width: z
-            .number()
-            .int()
-            .min(200)
-            .max(3840)
-            .optional()
-            .describe('For `design`: the screen width in CSS pixels to lay the page out at, e.g. `390` (mobile), `768`, `1440`.'),
         },
       },
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolShowPanel(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_design')) {
+    server.registerTool(
+      'show_design',
+      {
+        title: 'Show the human a design',
+        description:
+          'Show one design page on the feature’s design server: it is recorded as one of the ' +
+          'feature’s designs (one per page, so showing the same page again updates it), a design ' +
+          'card is posted in this chat, and, when the human is watching, the Design view opens on ' +
+          'it. Call it for every design you want the human to look at, again after every change: ' +
+          'showing a design again sets it back to waiting for the human, even if they had approved ' +
+          'it. The human approves a design with its Approve button; when they approve in words, ' +
+          'mark it with set_design_state. Start the server with start_design_server first. Returns ' +
+          '{ recorded, state }.',
+        inputSchema: {
+          path: z
+            .string()
+            .min(1)
+            .describe('The design page on the design server, e.g. `/preview/checkout-empty.html`.'),
+          title: z.string().min(1).max(120).describe('What the design is, in a few words, e.g. `Empty checkout`.'),
+          width: z
+            .number()
+            .int()
+            .min(200)
+            .max(3840)
+            .optional()
+            .describe('The screen width in CSS pixels the design is laid out at, e.g. `390` (mobile), `768`, `1440`.'),
+          picture: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              'A screenshot of the design (png, jpg, gif, webp or svg) for its card. A relative path ' +
+                'starts at your working folder; same places as show_file. A run with no human ' +
+                'watching passes the screenshot it took to check the screen.',
+            ),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolShowDesign(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_plan')) {
+    server.registerTool(
+      'show_plan',
+      {
+        title: 'Show the human the plan',
+        description:
+          'Post a plan card in this chat and, when the human is watching, open the Plan view beside ' +
+          'it: the plan page (preview.html) with the decisions and spec. Call it when you ask for ' +
+          'the yes to the plan and after every redraw, so the human finds the plan in the chat when ' +
+          'they come back. Refused while the feature has no plan page, decisions or spec.',
+        inputSchema: {},
+      },
+      async (_args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolShowPlan(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('set_design_state')) {
+    server.registerTool(
+      'set_design_state',
+      {
+        title: 'Mark a design approved or dropped',
+        description:
+          'Record what the human said in words about a design shown with show_design: `approved` ' +
+          'when they said yes to it (then commit it as "design: <title>"), `dropped` when they ' +
+          'rejected it. Only for their own words: a design they approved with its button is ' +
+          'already marked.',
+        inputSchema: {
+          path: z.string().min(1).describe('The design page, as passed to show_design.'),
+          state: z.enum(['approved', 'dropped']).describe('What the human said.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolSetDesignState(rs.ctx, rs.session, args))
       },
     )
   }

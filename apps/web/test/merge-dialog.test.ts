@@ -141,3 +141,16 @@ describe('MergeFeatureDialog', () => {
     })
   })
 })
+
+describe('designs still waiting at merge (designs-and-the-plan-get-their-own-place decision 21)', () => {
+  it('names them and says they will not ship, leaving Merge enabled', () => {
+    const html = render({ waitingDesigns: ['Cart', 'Invite list'] })
+    expect(html).toContain('2 designs are still waiting for you and will not ship: Cart, Invite list.')
+    expect(html).toContain('Merge &amp; ship')
+    expect(html).not.toContain('disabled=""')
+  })
+
+  it('says nothing when none waits', () => {
+    expect(render({ waitingDesigns: [] })).not.toContain('will not ship')
+  })
+})

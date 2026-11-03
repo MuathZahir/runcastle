@@ -75,6 +75,10 @@ export interface NeedFacts {
   wakeFailed: { at: number; exitCode: number | null } | null
   /** When the newest message for the lead was queued. */
   wakeQueuedAt: number | null
+  /** How many recorded designs wait for the human (designs-and-the-plan decision 17). */
+  designsWaiting: number
+  /** When the oldest of them was last shown; null when none waits. */
+  oldestDesignWaitingSince: number | null
 }
 
 /** The one thing a feature waits on the human for. */
@@ -170,7 +174,13 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       return null
     },
     () => idle && waitingKind === 'plan' ? { kind: 'plan', since: waiting!.since } : null,
-    () => idle && waitingKind === 'design' ? { kind: 'design', since: waiting!.since } : null,
+    () => {
+      // From the design record, so it needs no `wait_for_you`; the lead's design wait still counts.
+      if (!idle) return null
+      if (waitingKind === 'design') return { kind: 'design', since: waiting!.since }
+      if (facts.designsWaiting > 0) return { kind: 'design', since: facts.oldestDesignWaitingSince ?? 0 }
+      return null
+    },
     () => {
       if (!idle) return null
       if (waitingKind === 'stopped') return { kind: 'stopped', why: stoppedWhy(waiting!.reason), since: waiting!.since }

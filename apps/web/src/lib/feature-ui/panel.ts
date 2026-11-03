@@ -7,8 +7,8 @@
  */
 
 /**
- * What the panel can show, one at a time: three fixed views — Plan, Tickets
- * (`work`), Details — and Design and Drive while they run
+ * What the panel can show, one at a time: Plan, Tickets (`work`), Details,
+ * Design (the list of the feature's designs), and Drive while it runs
  * (the-feature-s-right-panel decisions 14, 17).
  */
 export type PanelView = 'plan' | 'work' | 'details' | 'design' | 'drive'
@@ -52,8 +52,6 @@ export interface PanelFacts {
   /** The feature has any ticket. */
   hasTickets: boolean
   shipped: boolean
-  /** A design server runs for the feature. */
-  designRunning: boolean
   /** A drive of the feature is up. */
   driveActive: boolean
 }
@@ -69,7 +67,9 @@ export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: str
 /**
  * The views a feature offers right now, each once it has something to show:
  * Plan once there is a plan to read, Tickets once there is a ticket, Details
- * always, and Design and Drive only while they run.
+ * always, Design on every feature not yet shipped — its home is the list of
+ * the feature's designs, server or not (designs-and-the-plan-get-their-own-place
+ * decision 6) — and Drive only while it runs.
  */
 export function availableViews(facts: PanelFacts): PanelView[] {
   if (facts.isDraft) return []
@@ -77,7 +77,7 @@ export function availableViews(facts: PanelFacts): PanelView[] {
     plan: facts.hasPlan,
     work: facts.hasTickets,
     details: true,
-    design: facts.designRunning,
+    design: !facts.shipped,
     drive: facts.driveActive,
   }
   return PANEL_VIEWS.filter((view) => offered[view])
@@ -192,6 +192,12 @@ export type PanelAction =
   | { type: 'openDoc'; doc: string }
   /** The reader's way back: the open view's own body again. */
   | { type: 'closeDoc' }
+  /**
+   * The Design view at its home, the list of designs, with no design open
+   * (designs-and-the-plan-get-their-own-place decisions 6, 12): All designs,
+   * a design group's "Design tab", "Design to approve".
+   */
+  | { type: 'designList' }
 
 /** A share inside 0..1; anything non-finite reads as the even split. */
 export function clampShare(share: number): number {
@@ -242,6 +248,10 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       return state.view ? { ...state, doc: action.doc, collapsed: false } : state
     case 'closeDoc':
       return withoutDoc(state)
+    case 'designList': {
+      const { path: _path, width: _width, ...rest } = withView(state, 'design', 'human')
+      return rest
+    }
   }
 }
 

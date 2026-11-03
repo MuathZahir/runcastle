@@ -6,6 +6,7 @@ import {
   type PanelState,
   type PanelView,
 } from '../../lib/feature-ui/panel'
+import { StatusDot } from '../../ui/status'
 import { useRailWidth, type RailWidthSpec } from '../../lib/rail-width'
 import type { FeatureView } from '../../lib/routes'
 import { IconButton, Tabs, cx } from '../../ui'
@@ -231,14 +232,14 @@ function PanelDivider({
 
 /**
  * The open panel: a header with the view switcher (the views this state
- * offers), the design view's path, fold and close — then the view itself,
+ * offers), fold and close — then the view itself,
  * scrolling on its own.
  */
 export function FeaturePanel({
   view,
   views,
   label,
-  path,
+  fresh,
   onSwitch,
   onCollapse,
   onClose,
@@ -247,7 +248,8 @@ export function FeaturePanel({
   view: PanelView
   views: readonly PanelView[]
   label: (view: PanelView) => string
-  path?: string
+  /** The views holding something the human has not looked at: a plan or a design (decision 11). */
+  fresh?: readonly PanelView[]
   onSwitch: (view: PanelView) => void
   onCollapse: () => void
   onClose: () => void
@@ -263,16 +265,14 @@ export function FeaturePanel({
             id: v,
             label: <span className={cx(v !== view && '@max-[520px]/panel:sr-only')}>{label(v)}</span>,
             icon: PANEL_VIEW_ICON[v],
-            ...(v !== view ? { tooltip: label(v) } : {}),
+            ...(fresh?.includes(v) ? { count: <StatusDot tone="accent" className="ml-0.5" /> } : {}),
+            ...(v !== view ? { tooltip: fresh?.includes(v) ? `${label(v)} · new` : label(v) } : {}),
           }))}
           value={view}
           onChange={onSwitch}
           label="Panel views"
           className="-ml-1 min-w-0"
         />
-        {view === 'design' && path && (
-          <span className="min-w-0 truncate font-mono text-xs text-text-tertiary">{path}</span>
-        )}
         <span className="flex-1" />
         <IconButton label="Fold the panel" size="sm" icon={<IconChevronRight />} onClick={onCollapse} />
         <IconButton label="Close the panel" size="sm" icon={<IconX />} onClick={onClose} />
@@ -301,6 +301,7 @@ export function PanelToggle({
   open,
   views,
   badge,
+  dot,
   onToggle,
 }: {
   open: boolean
@@ -308,16 +309,25 @@ export function PanelToggle({
   views: readonly PanelView[]
   /** A count waiting inside (the project's open notes). */
   badge?: number
+  /** Something inside the human has not looked at yet: the plan or a design (decision 11). */
+  dot?: boolean
   onToggle: () => void
 }) {
   if (views.length === 0) return null
-  return (
+  const button = (
     <IconButton
-      label={open ? 'Hide the panel' : 'Show the panel'}
+      label={`${open ? 'Hide the panel' : 'Show the panel'}${dot && !badge ? ' — something new to look at' : ''}`}
       icon={<IconPanelRight />}
       active={open}
       {...(badge ? { badge } : {})}
       onClick={onToggle}
     />
+  )
+  if (!dot || badge) return button
+  return (
+    <span className="relative inline-flex">
+      {button}
+      <StatusDot tone="accent" className="pointer-events-none absolute top-1 right-1 size-2 ring-2 ring-surface animate-pop-in" />
+    </span>
   )
 }

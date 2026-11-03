@@ -337,6 +337,10 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('file_shown'), file: ShownFile }),
   /** What a review pass left, shown as one package (`show_review_package`, or the pass's end). */
   z.object({ type: z.literal('review_package'), ticketId: z.string() }),
+  /** The agent showed the feature's plan (`show_plan`): a plan card. */
+  z.object({ type: z.literal('plan_shown') }),
+  /** The agent showed one recorded design (`show_design`): a design card, which reads the record by id. */
+  z.object({ type: z.literal('design_shown'), designId: z.string() }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -392,6 +396,13 @@ export type ThreadItem =
   | { kind: 'shown'; id: string; files: ShownFile[] }
   /** A review pass's package: one attachment that opens everything the pass left. */
   | { kind: 'review_package'; id: string; ticketId: string }
+  /** The plan, shown as a card; `older` when a later plan card follows it (it still opens the current plan). */
+  | { kind: 'plan_card'; id: string; older?: boolean }
+  /**
+   * The designs a turn showed, one card each, in order. `older` names the
+   * designs a later card for the same design follows (decision 19).
+   */
+  | { kind: 'design_cards'; id: string; designIds: string[]; older: string[] }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -602,6 +613,31 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
 }
 
 /**
+ * Mark every plan card a later plan card follows, and every design a later card
+ * for the same design follows (decision 19): walked newest first, so the newest
+ * card for each stays unmarked.
+ */
+function markOlderCards(items: ThreadItem[]): void {
+  let planSeen = false
+  const designsSeen = new Set<string>()
+  for (let n = items.length - 1; n >= 0; n--) {
+    const item = items[n]
+    if (item.kind === 'plan_card') {
+      if (planSeen) item.older = true
+      planSeen = true
+    } else if (item.kind === 'design_cards') {
+      const older = new Set<string>()
+      for (let d = item.designIds.length - 1; d >= 0; d--) {
+        const id = item.designIds[d]
+        if (designsSeen.has(id)) older.add(id)
+        designsSeen.add(id)
+      }
+      item.older = item.designIds.filter((id) => older.has(id))
+    }
+  }
+}
+
+/**
  * Fold a thread's log into what the web renders. Pure, total and deterministic:
  * unknown orderings (an update before its call, a turn end with no start) are
  * absorbed, never thrown on, because a log written by a crashed process still
@@ -803,6 +839,17 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     }
   }
 
+  /** A card a turn posts (a review package, the plan, designs): placed as a shown file is, the turn's work above it, its final words below. */
+  const placeCard = (item: ThreadItem) => {
+    const open = turn as Turn | null
+    if (open) {
+      open.segments.push({ kind: 'answered' })
+      render(true)
+    }
+    items.push(item)
+    if (open) shownIndex = items.length - 1
+  }
+
   for (const e of events) {
     switch (e.type) {
       case 'prompt': {
@@ -996,15 +1043,21 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         }
         break
       }
-      case 'review_package': {
-        // Placed as a shown file is: the turn's work above it, its final words below.
-        const open = turn as Turn | null
-        if (open) {
-          open.segments.push({ kind: 'answered' })
+      case 'review_package':
+        placeCard({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId })
+        break
+      case 'plan_shown':
+        placeCard({ kind: 'plan_card', id: `plan_card:${e.i}` })
+        break
+      case 'design_shown': {
+        // Designs shown one after another in a turn are one group of cards, as shown files are.
+        const group = turn && shownIndex >= 0 ? items[shownIndex] : undefined
+        if (group?.kind === 'design_cards') {
+          const open = turn as Turn | null
+          open?.segments.push({ kind: 'answered' })
           render(true)
-        }
-        items.push({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId })
-        if (open) shownIndex = items.length - 1
+          group.designIds.push(e.designId)
+        } else placeCard({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] })
         break
       }
       case 'title':
@@ -1031,6 +1084,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     closeTurn(events[events.length - 1], 'end_turn')
     ask = open
   }
+  markOlderCards(items)
   view.ask = ask
   view.state = ask ? 'waiting' : turn ? 'working' : 'idle'
   if (view.state === 'idle') view.plan = []

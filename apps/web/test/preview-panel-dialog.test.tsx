@@ -9,16 +9,14 @@ vi.mock('../src/trpc', () => ({
 }))
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
 
-const { PreviewPanel } = await import('../src/components/PreviewPanel')
 const { PlanBody } = await import('../src/components/bodies/PlanBody')
 
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() }
 /** The Plan view on a feature with a preview: its bar holds the open-full-window button. */
-const plan = (onOpenDesign: (path: string) => void = () => undefined) =>
+const plan = () =>
   render(
     <PlanBody
       full={{ feature: { id: 'f1' }, docs: [{ relPath: 'decisions.md', title: 'Decisions' }], preview: PREVIEW } as unknown as FeatureFull}
-      onOpenDesign={onOpenDesign}
     />,
   )
 
@@ -34,7 +32,7 @@ describe('PreviewPanel full window', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
-    const dialog = screen.getByRole('dialog', { name: 'Preview' })
+    const dialog = screen.getByRole('dialog', { name: 'Plan' })
     const frame = dialog.querySelector('iframe')
     expect(frame?.getAttribute('sandbox')).toBe('allow-scripts')
     expect(frame?.getAttribute('srcdoc')).toBe(document.querySelector('iframe')?.getAttribute('srcdoc'))
@@ -72,52 +70,8 @@ describe('PlanBody on a phone', () => {
   it('keeps its three parts and the preview, with no full-window control', () => {
     atWidth(true)
     plan()
-    for (const name of [/Preview/, /Decisions/, /Spec/]) expect(screen.getByRole('tab', { name })).toBeTruthy()
+    for (const name of [/Overview/, /Decisions/, /Spec/]) expect(screen.getByRole('tab', { name })).toBeTruthy()
     expect(document.querySelector('iframe')).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Open full window' })).toBeNull()
-  })
-})
-
-/** design-mode decision 7: a designed-screen entry's Open in design posts out of the sandboxed frame. */
-describe('PreviewPanel Open in design', () => {
-  afterEach(cleanup)
-
-  const post = (data: unknown, source: Window | null) =>
-    act(() => {
-      window.dispatchEvent(new MessageEvent('message', { data, source }))
-    })
-
-  it("opens the design view at the path its own frame posts, and ignores other sources and shapes", () => {
-    const onOpenDesign = vi.fn()
-    render(
-      <PreviewPanel
-        featureId="f1"
-        preview={{ relPath: 'preview.html', updatedAt: Date.now() }}
-        onOpenDesign={onOpenDesign}
-      />,
-    )
-    const frame = document.querySelector('iframe')!
-
-    post({ type: 'runcastle:open-design', path: '/preview/invites' }, window)
-    post({ type: 'runcastle:open-design', path: '/preview/invites' }, null)
-    post({ type: 'runcastle:open-design' }, frame.contentWindow)
-    post({ type: 'something-else', path: '/preview/invites' }, frame.contentWindow)
-    post('runcastle:open-design', frame.contentWindow)
-    expect(onOpenDesign).not.toHaveBeenCalled()
-
-    post({ type: 'runcastle:open-design', path: '/preview/invites' }, frame.contentWindow)
-    expect(onOpenDesign).toHaveBeenCalledTimes(1)
-    expect(onOpenDesign).toHaveBeenCalledWith('/preview/invites')
-  })
-
-  it('closes the full window as it opens the design view from there', () => {
-    const onOpenDesign = vi.fn()
-    plan(onOpenDesign)
-    fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
-    const frame = screen.getByRole('dialog').querySelector('iframe')!
-
-    post({ type: 'runcastle:open-design', path: '/preview/list' }, frame.contentWindow)
-    expect(onOpenDesign).toHaveBeenCalledWith('/preview/list')
-    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

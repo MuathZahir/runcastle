@@ -28,32 +28,30 @@ describe('availableViews', () => {
     hasPlan: false,
     hasTickets: false,
     shipped: false,
-    designRunning: false,
     driveActive: false,
   }
 
-  it('offers only the details to a started feature with nothing to show yet', () => {
-    expect(availableViews(none)).toEqual(['details'])
+  it('offers the details and the Design list to a started feature with nothing else to show yet, server or not', () => {
+    expect(availableViews(none)).toEqual(['details', 'design'])
   })
 
   it('offers each view once its fact holds, in the switcher’s order', () => {
-    expect(availableViews({ ...none, hasPlan: true })).toEqual(['plan', 'details'])
-    expect(availableViews({ ...none, hasTickets: true })).toEqual(['work', 'details'])
-    expect(availableViews({ ...none, designRunning: true })).toEqual(['details', 'design'])
-    expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'drive'])
+    expect(availableViews({ ...none, hasPlan: true })).toEqual(['plan', 'details', 'design'])
+    expect(availableViews({ ...none, hasTickets: true })).toEqual(['work', 'details', 'design'])
+    expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'design', 'drive'])
   })
 
-  it('adds no view for a ship (decision 14)', () => {
+  it('takes Design away from a shipped feature, whose designs can no longer be served (decision 6)', () => {
     expect(availableViews({ ...none, shipped: true })).toEqual(['details'])
   })
 
   it('lists plan, tickets, details, design, drive when every fact holds', () => {
-    const all = { isDraft: false, hasPlan: true, hasTickets: true, shipped: true, designRunning: true, driveActive: true }
+    const all = { isDraft: false, hasPlan: true, hasTickets: true, shipped: false, driveActive: true }
     expect(availableViews(all)).toEqual(['plan', 'work', 'details', 'design', 'drive'])
   })
 
   it('gives a draft no panel at all', () => {
-    const all = { isDraft: true, hasPlan: true, hasTickets: true, shipped: false, designRunning: true, driveActive: true }
+    const all = { isDraft: true, hasPlan: true, hasTickets: true, shipped: false, driveActive: true }
     expect(availableViews(all)).toEqual([])
   })
 
@@ -118,6 +116,15 @@ describe('panelReducer', () => {
       view: 'design',
       path: '/p',
     })
+  })
+
+  it('goes back to the list of designs, the open design and its width dropped, from any view', () => {
+    const open = run({ type: 'open', view: 'design', path: '/p', width: 390, origin: 'agent' })
+    const list = panelReducer(open, { type: 'designList' })
+    expect(list).toMatchObject({ view: 'design', origin: 'human' })
+    expect(list.path).toBeUndefined()
+    expect(list.width).toBeUndefined()
+    expect(panelReducer({ ...open, view: 'plan' }, { type: 'designList' })).toMatchObject({ view: 'design', last: 'design' })
   })
 
   it("holds the agent's screen width for that design open only", () => {

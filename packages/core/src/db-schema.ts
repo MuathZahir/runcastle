@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { AgentRuntime } from './config'
 import type {
   FeatureStatus,
@@ -180,7 +180,36 @@ export const features = sqliteTable('features', {
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */
   lastDispatchAt: integer('last_dispatch_at'),
+  /** When the lead last showed the plan (`show_plan`, ms); null until it has. */
+  planShownAt: integer('plan_shown_at'),
+  /** When the human last opened the plan (ms): new to them while older than `planShownAt`. */
+  planSeenAt: integer('plan_seen_at'),
 })
+
+/**
+ * A feature's designs (designs-and-the-plan-get-their-own-place decisions 1,
+ * 8, 10, 18): one row per page on its design server, recorded by the agent's
+ * `show_design`. Showing a page again updates its row and sets it back to
+ * waiting. `picture` is the absolute path of runcastle's own copy.
+ */
+export const designs = sqliteTable(
+  'designs',
+  {
+    id: text('id').primaryKey(),
+    featureId: text('feature_id').notNull(),
+    path: text('path').notNull(),
+    title: text('title').notNull(),
+    width: integer('width'),
+    picture: text('picture'),
+    state: text('state', { enum: ['waiting', 'approved', 'dropped'] }).notNull(),
+    approvedBy: text('approved_by', { enum: ['human', 'lead'] }),
+    shownAt: integer('shown_at').notNull(),
+    /** When the human last opened it; null until they have. */
+    seenAt: integer('seen_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('designs_feature_path').on(t.featureId, t.path)],
+)
 
 /**
  * The lead's "Ready for you" declarations (decision 9): each one put a drive in

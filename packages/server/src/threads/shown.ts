@@ -125,9 +125,38 @@ function mayShow(ctx: AppCtx, session: SessionRow, path: string): boolean {
 }
 
 /** The extension a copy is stored under: the file's own when it is short and plain. */
-function storedExt(name: string): string {
+export function storedExt(name: string): string {
   const ext = extname(name).slice(1).toLowerCase()
   return /^[a-z0-9]{1,10}$/.test(ext) ? ext : 'bin'
+}
+
+/**
+ * A file an agent's tool may copy out to show: `path` (relative to the
+ * session's worktree) resolved, its links followed, inside the places agents
+ * may show from, and under the size cap. `tool` names the asking tool in every
+ * refusal, a sentence the agent can act on.
+ */
+export function showableFile(
+  ctx: AppCtx,
+  session: SessionRow,
+  path: string,
+  tool: string,
+): { full: string; real: string; size: number } {
+  const full = resolve(session.worktreePath, path)
+  const real = realPath(full)
+  if (!real) throw new GateError(`there is no file at ${full}`)
+  const stat = statSync(real)
+  if (!stat.isFile()) throw new GateError(`${full} is not a file: ${tool} shows one file, not a folder`)
+  if (!mayShow(ctx, session, real)) {
+    throw new GateError(
+      `${full} is outside the places ${tool} reads from: this project, its worktrees, review ` +
+        'evidence, files already shown, and the temp folder. Copy it to the temp folder if the human asked to see it',
+    )
+  }
+  if (stat.size > SHOWN_MAX_BYTES) {
+    throw new GateError(`${full} is ${Math.ceil(stat.size / 1_000_000)} MB, and ${tool} takes at most 100 MB`)
+  }
+  return { full, real, size: stat.size }
 }
 
 /**
@@ -139,20 +168,7 @@ export function showFile(
   session: SessionRow,
   input: { path: string; caption?: string | undefined },
 ): { shown: true; name: string; as: ShownAs } {
-  const full = resolve(session.worktreePath, input.path)
-  const real = realPath(full)
-  if (!real) throw new GateError(`there is no file at ${full}`)
-  const stat = statSync(real)
-  if (!stat.isFile()) throw new GateError(`${full} is not a file: show_file shows one file, not a folder`)
-  if (!mayShow(ctx, session, real)) {
-    throw new GateError(
-      `${full} is outside the places show_file reads from: this project, its worktrees, review ` +
-        'evidence, files already shown, and the temp folder. Copy it to the temp folder if the human asked to see it',
-    )
-  }
-  if (stat.size > SHOWN_MAX_BYTES) {
-    throw new GateError(`${full} is ${Math.ceil(stat.size / 1_000_000)} MB, and show_file takes at most 100 MB`)
-  }
+  const { full, real, size } = showableFile(ctx, session, input.path, 'show_file')
 
   const name = basename(full)
   const ext = storedExt(name)
@@ -169,7 +185,7 @@ export function showFile(
     src: shownUrl(session.id, file),
     name,
     path: inWorktree ? relative(session.worktreePath, full).replaceAll('\\', '/') : full,
-    size: stat.size,
+    size,
     as,
     ...(caption ? { caption } : {}),
   }

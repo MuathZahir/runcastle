@@ -26,6 +26,7 @@ export function MergeFeatureDialog({
   branch,
   base,
   summary,
+  waitingDesigns,
   busy,
   resolving,
   onConfirm,
@@ -37,6 +38,8 @@ export function MergeFeatureDialog({
   /** The branch this will merge into, as git reported it. */
   base?: string
   summary: MergeSummary
+  /** The titles of designs still waiting for the human, which do not ship. */
+  waitingDesigns?: readonly string[] | undefined
   busy: boolean
   /** A resolve session is being launched — the conflict primary's own pending. */
   resolving?: boolean
@@ -61,6 +64,7 @@ export function MergeFeatureDialog({
         branch={branch}
         base={base}
         summary={summary}
+        waitingDesigns={waitingDesigns}
         busy={busy}
         resolving={resolving}
         onConfirm={onConfirm}
@@ -105,6 +109,7 @@ export function MergeConfirmation({
   branch,
   base,
   summary,
+  waitingDesigns = [],
   busy,
   resolving,
   onConfirm,
@@ -115,6 +120,7 @@ export function MergeConfirmation({
   branch: string
   base?: string
   summary: MergeSummary
+  waitingDesigns?: readonly string[] | undefined
   busy: boolean
   resolving?: boolean
   onConfirm: () => void
@@ -122,6 +128,14 @@ export function MergeConfirmation({
   onCancel: () => void
 }) {
   const conflicted = !!summary.conflictRow && !!onResolve
+  // Uncommitted designs go with the worktree at merge (decision 21): said, never held.
+  const warnings =
+    waitingDesigns.length === 0
+      ? summary.warnings
+      : [
+          ...summary.warnings,
+          `${waitingDesigns.length === 1 ? 'A design is' : `${waitingDesigns.length} designs are`} still waiting for you and will not ship: ${waitingDesigns.join(', ')}.`,
+        ]
 
   return (
     <>
@@ -159,7 +173,7 @@ export function MergeConfirmation({
           ))}
         </section>
 
-        <ConfirmWarnings warnings={summary.warnings} />
+        <ConfirmWarnings warnings={warnings} />
 
         {/* The last moment to say what the button does (decision 31c). */}
         <p className="m-0 text-sm text-text-tertiary">{summary.next}</p>

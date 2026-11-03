@@ -12,6 +12,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, readyDeclarations } from '../db/schema'
 import { leadState, NO_LEAD, openAskOf, type LeadState } from '../threads/read'
+import { designsWaiting } from './designs'
 import { getProjectById, hasActiveRun } from './repo'
 import { latestBurn } from './runs'
 
@@ -126,6 +127,7 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     .limit(1)
     .get()
   const driveConfigured = inputs.driveConfigured ?? !!getProjectById(ctx, feature.projectId)?.devCommand
+  const designs = designsWaiting(ctx, feature.id)
   return {
     status: feature.status,
     held: !!feature.heldBy,
@@ -143,6 +145,8 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     driveConfigured,
     wakeFailed: timeline.wakeFailed,
     wakeQueuedAt: timeline.wakeQueuedAt,
+    designsWaiting: designs.count,
+    oldestDesignWaitingSince: designs.since,
   }
 }
 

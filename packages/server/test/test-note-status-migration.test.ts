@@ -11,7 +11,6 @@ import { schema } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx, Db } from '../src/db/types'
 import { listByFeature, sendNotes } from '../src/services/test-notes'
-import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * Test notes keep one status, `open` (0058). A note left `done`, `promoted` or
@@ -45,7 +44,16 @@ describe('test notes keep only the open status (0058)', () => {
     const db = drizzle(new SQL.Database(), { schema }) as unknown as Db
     const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
     runMigrations(db, preOpenOnlyDir())
-    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    // Raw rows, as the other migration tests seed: the current schema has columns
+    // later migrations add, which this pre-0058 database does not have yet.
+    const featureId = 'feat_1'
+    db.run(sql.raw("INSERT INTO projects (id, name, repo_path) VALUES ('proj_1', 'P', '/repo')"))
+    db.run(
+      sql.raw(
+        'INSERT INTO features (id, project_id, slug, title, one_liner, branch, status, created_at)' +
+          " VALUES ('feat_1', 'proj_1', 'notes', 'Notes', 'n', 'feature/notes', 'active', 1)",
+      ),
+    )
     insertNote(db, featureId, 'note_done', 'done', null)
     insertNote(db, featureId, 'note_promoted', 'promoted', null)
     insertNote(db, featureId, 'note_carried', 'carried', 500)

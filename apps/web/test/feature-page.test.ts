@@ -234,9 +234,10 @@ describe('the panel’s views', () => {
   it('switches the views by tabs in the panel’s header, Review never among them', () => {
     const panel = panelOf(page({ view: 'plan', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('spec.md')] }))
     const views = panel.slice(at(panel, 'aria-label="Panel views"'), at(panel, 'aria-label="Fold the panel"'))
-    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(3)
+    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(4)
     expect(views).toContain('Tickets')
     expect(views).toContain('Details')
+    expect(views).toContain('Design')
     expect(views).not.toContain('Review')
   })
 
@@ -244,7 +245,7 @@ describe('the panel’s views', () => {
     const docs = [doc('brief.md'), doc('decisions.md'), doc('spec.md')]
     const panel = panelOf(page({ view: 'plan', preview: true, docs, queries: { 'docs.read': { content: '<p>the show</p>' } } }))
     const bar = panel.slice(at(panel, 'role="tablist" aria-label="Plan"'))
-    expect(bar).toContain('Preview</button>')
+    expect(bar).toContain('Overview</button>')
     expect(bar).toContain('Decisions</button>')
     expect(bar).toContain('Spec</button>')
     expect(bar).not.toContain('brief.md')
@@ -254,7 +255,7 @@ describe('the panel’s views', () => {
 
   it('reads the decisions in Plan before a preview exists, in the panel and not a dialog', () => {
     const panel = panelOf(page({ view: 'plan', docs: [doc('decisions.md')] }))
-    expect(panel).not.toContain('Preview</button>')
+    expect(panel).not.toContain('Overview</button>')
     expect(panel).toContain('Decisions</button>')
     expect(panel).not.toContain('role="dialog"')
     expect(panel).not.toContain('<iframe')

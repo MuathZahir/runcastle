@@ -165,11 +165,11 @@ When the feature has a `preview.html` and a ticket **builds a screen that appear
 
 A ticket with no screen does not mention the preview.
 
-A **designed-screen block** holds no mock. It names a component committed in design mode and its preview page. Point the ticket at that component file and that preview page path, not at markup.
+A **designed-screen block** holds no mock. It names a component committed in design mode and its design page. Point the ticket at that component file and that design page path, not at markup.
 </preview-screen-block>
 
 <connect-designed-screens>
-A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its preview page in its `context`, and says plainly that **the look is approved**. Its job is to **connect, never restyle**:
+A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its design page in its `context`, and says plainly that **the look is approved**. Its job is to **connect, never restyle**:
 
 - swap the sample data for real data (queries, API calls);
 - add the behaviour the design left out;
