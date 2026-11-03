@@ -7,7 +7,8 @@ import {
   startDesignServer,
   stopDesignServer,
 } from '../../services/design'
-import { approveDesign, listDesigns, markDesignSeen, markPlanSeen, planIsNew } from '../../services/designs'
+import { approveDesign, listDesigns, markDesignSeen, markPlanSeen, planFigures, planIsNew } from '../../services/designs'
+import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -20,9 +21,14 @@ import { publicProcedure, router } from '../context'
  * Approve, and what they have opened — is thin over `services/designs.ts`.
  */
 export const designRouter = router({
+  /**
+   * The server's state, and the design pass-through's port (decisions 23, 26):
+   * every place a design opens loads it through that port on the page's own
+   * host, never the design server's localhost address.
+   */
   status: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => designServerStatus(ctx, input.featureId)),
+    .query(({ ctx, input }) => ({ ...designServerStatus(ctx, input.featureId), passPort: phoneDesignPort(ctx.config) })),
 
   start: publicProcedure
     .input(z.object({ featureId: z.string() }))
@@ -61,6 +67,11 @@ export const designRouter = router({
       designs: listDesigns(ctx, input.featureId),
       plan: { isNew: planIsNew(ctx, input.featureId) },
     })),
+
+  /** The plan card's figures (decision 5): decisions, to check first, tickets, designs. */
+  planFigures: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => planFigures(ctx, input.featureId)),
 
   /** The human's Approve on an opened design (decisions 8, 25): quiet until the last waiting one. */
   approve: publicProcedure

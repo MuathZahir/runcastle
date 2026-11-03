@@ -108,6 +108,14 @@ describe('the entry path', () => {
   })
 })
 
+describe('the reachability probe', () => {
+  it('answers 204, readable from the app’s own origin, without a cookie or a running server', async () => {
+    const res = await designPassFetch(new Request(`${PASS}/__runcastle/ping`), () => undefined)
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+})
+
 describe('forwarding', () => {
   it('returns the page, not the blocked-host 403, for a request from the tailnet', async () => {
     const res = await designPassFetch(

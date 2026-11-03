@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { newId, type DesignApprover, type DesignEntry, type DesignState } from '@runcastle/core'
 import { designPicturesDir } from '@runcastle/core/paths'
@@ -8,8 +8,10 @@ import { designs, features } from '../db/schema'
 import { GateError, NotFoundError } from '../errors'
 import { SHOWN_TYPES, storedExt } from '../threads/shown'
 import { emit } from './events'
+import { featureDocPath } from './feature-docs'
 import { deliverToLead } from './lead-delivery'
-import { getFeatureRow } from './repo'
+import { getFeatureRow, projectForFeature } from './repo'
+import { listByFeature } from './tickets'
 
 /**
  * Runcastle's own record of a feature's designs and of its plan being shown
@@ -254,6 +256,37 @@ export function leadDesigns(ctx: AppCtx, featureId: string): LeadDesign[] {
     approvedBy: row.approvedBy,
     opened: opened(row),
   }))
+}
+
+/** What the plan card counts (decision 5); `tickets` null when the agent builds the feature itself. */
+export interface PlanFigures {
+  decisions: number
+  checkFirst: number
+  tickets: number | null
+  designs: number
+}
+
+/**
+ * decisions.md's figures: its `## n.` headings, and how many numbers sit on
+ * its `Check first: 17, 6, 3` line (0 without one — the card then leaves it out).
+ */
+export function decisionFigures(markdown: string): Pick<PlanFigures, 'decisions' | 'checkFirst'> {
+  const decisions = markdown.split(/\r?\n/).filter((line) => /^## \d+\./.test(line)).length
+  const checkLine = /^Check first:(.*)$/m.exec(markdown)?.[1] ?? ''
+  return { decisions, checkFirst: checkLine.match(/\d+/g)?.length ?? 0 }
+}
+
+/** The plan card's figures, read from the feature's decisions.md, its tickets and the design record. */
+export function planFigures(ctx: AppCtx, featureId: string): PlanFigures {
+  const feature = getFeatureRow(ctx, featureId)
+  const path = featureDocPath(projectForFeature(ctx, feature), feature, 'decisions.md')
+  const markdown = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  const tickets = listByFeature(ctx, featureId).filter((t) => t.kind === 'implementation').length
+  return {
+    ...decisionFigures(markdown),
+    tickets: tickets > 0 ? tickets : null,
+    designs: designRows(ctx, featureId).length,
+  }
 }
 
 /** How many designs wait for the human, and since when the oldest of them was shown (decision 17). */

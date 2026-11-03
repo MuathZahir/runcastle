@@ -25,6 +25,14 @@ export const DESIGN_COOKIE = 'runcastle_design'
 /** The entry path's prefix; the feature id follows it. */
 export const DESIGN_OPEN_PREFIX = '/__runcastle/open/'
 
+/**
+ * The page's reachability probe (decisions 23, 26): a browser on another
+ * machine asks this before it loads a design, so a port its tunnel does not
+ * forward is said in words rather than as a browser error. Readable from any
+ * origin, since the app is on a different port.
+ */
+export const DESIGN_PING_PATH = '/__runcastle/ping'
+
 /** The URL a feature's running design server printed, or undefined when none runs. */
 export type DesignLookup = (featureId: string) => string | undefined
 
@@ -136,6 +144,9 @@ function rewriteOrigins(headers: Headers, target: URL): void {
  */
 export async function designPassFetch(req: Request, lookup: DesignLookup): Promise<Response> {
   const url = new URL(req.url)
+  if (url.pathname === DESIGN_PING_PATH) {
+    return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' } })
+  }
   if (url.pathname.startsWith(DESIGN_OPEN_PREFIX)) {
     return req.method === 'GET' ? open(url) : page(405, 'Not allowed', 'Open the design with a link.')
   }

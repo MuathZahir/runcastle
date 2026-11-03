@@ -12,6 +12,7 @@ import { recordDesign } from '../src/services/designs'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { getFeatureRow } from '../src/services/repo'
+import { storeTickets } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -158,6 +159,30 @@ describe('show_plan', () => {
     await call(session('self-plan'), 'show_plan')
     expect((await list()).plan.isNew).toBe(true)
     expect(events('panel.show')).toHaveLength(1)
+  })
+})
+
+describe('design.planFigures', () => {
+  const ticket = (title: string) => ({ title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] })
+
+  it('counts the numbered decisions, the Check first line, the implementation tickets and the recorded designs', async () => {
+    const docs = join(repo, 'docs', 'features', 'checkout')
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(
+      join(docs, 'decisions.md'),
+      '# Decisions\n\nCheck first: 17, 6, 3\n\n## 1. One\ntext\n## 2. Two\n## Notes\n## 3. Three\n',
+    )
+    storeTickets(ctx, feature.id, [ticket('First'), ticket('Second')])
+    await call(session(), 'show_design', { path: '/preview/a.html', title: 'A' })
+
+    expect(await caller().design.planFigures({ featureId: feature.id })).toEqual({ decisions: 3, checkFirst: 3, tickets: 2, designs: 1 })
+  })
+
+  it('leaves "to check first" at 0 without the line, and tickets null when the agent builds it alone', async () => {
+    const docs = join(repo, 'docs', 'features', 'checkout')
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(join(docs, 'decisions.md'), '# Decisions\n\n## 1. One\n')
+    expect(await caller().design.planFigures({ featureId: feature.id })).toEqual({ decisions: 1, checkFirst: 0, tickets: null, designs: 0 })
   })
 })
 
