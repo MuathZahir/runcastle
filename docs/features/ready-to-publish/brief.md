@@ -33,3 +33,8 @@ The human asked how ready the phone connection setup is for real users ("does it
 
 ## Added 2026-11-03: running runcastle on another machine
 The owner runs runcastle on a remote VPS and reaches it over an SSH tunnel or Tailscale. The design server and its pass-through need port `serverPort + 2` (4514) as well as 4512. The README must document the remote setup: forward both 4512 and 4514 over SSH (`ssh -L 4512:localhost:4512 -L 4514:localhost:4514 user@host`), or use Tailscale. "Designs and the plan get their own place" is making the desktop Design view load through that pass-through, so check the README against what it shipped.
+
+## Added by the orchestrator, 2026-11-03
+
+## Added 2026-11-03: a sibling feature adds chat text
+"Orchestrator actions show as cards" runs in parallel. It adds new card text to the orchestrator's chat, and it reads this feature's word choices from decisions.md. Whichever of the two merges second fixes any words that disagree.
