@@ -60,7 +60,9 @@ import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
 import { TicketsView } from './bodies/tickets/TicketsView'
-import { DesignView, useDesignPath } from './design/DesignView'
+import { DesignTab } from './design/DesignTab'
+import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
+import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
 import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
@@ -275,20 +277,19 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
-  // Whether the feature's design server runs — the Design view is offered
-  // only then. The design view polls the same key.
-  const designQ = trpc.design.status.useQuery({ featureId }, { enabled: !!q.data && !isDraft, refetchInterval: poll })
+  // The feature's design record: the dots on the panel toggle and the Plan and
+  // Design tabs (designs-and-the-plan-get-their-own-place decision 11), and the
+  // designs the merge dialog names as still waiting (decision 21).
+  const record = useDesignRecord(featureId, !!q.data && !isDraft)
 
   // The panel (decision 8): the views the feature's facts offer, and the one
   // open — the shell's, shown only while it is still offered (a drive that
-  // stopped takes its view with it). Design stays offered while it is the open
-  // view: the agent's `show_panel` and the preview's Open in design open it
-  // before its server is up, and the view itself starts the server.
+  // stopped takes its view with it). Design is offered on every feature not
+  // shipped, its home the list; opening a design starts its server.
   const isDriving = driving?.featureId === featureId
   // A Test drive click is the drive's page at once, before the server answers.
   const [driveStarting, setDriveStarting] = useState(false)
   const requested = viewProp === 'chat' ? null : viewProp
-  const designOpenable = !!q.data && !isDraft && !shipped
   const driveActive = isDriving || driveStarting || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle')
   const views = q.data
     ? availableViews({
@@ -296,25 +297,33 @@ export function Workspace({
         hasPlan: hasPlan(q.data),
         hasTickets: q.data.tickets.length > 0,
         shipped,
-        designRunning: !!designQ.data?.running || (designOpenable && requested === 'design'),
         driveActive,
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
   const tabs = panelTabs(views)
+  // What is new to the human: the plan shown since they last opened it, a
+  // design not opened since it was last shown (decision 11).
+  const fresh = tabs.filter((v) => (v === 'plan' && record.planIsNew) || (v === 'design' && !!record.designs?.some((d) => d.isNew)))
+  // The Plan view on screen is the plan seen (decision 10), from its card or its tab.
+  const { mutate: markPlanSeen } = trpc.design.planSeen.useMutation()
+  useMarkSeen(panel.state.view === 'plan' ? featureId : undefined, record.planIsNew, () => markPlanSeen({ featureId }))
   // The agent's `show_panel` and `emit_tickets`, for a view this feature offers.
   // Work is taken on trust: `emit_tickets` opens it the moment it stores them,
   // and the panel shows it once the refetched feature has the tickets.
   usePanelShow(events, featureId, (request) => {
-    const offered =
-      views.includes(request.view) ||
-      (request.view === 'work' && !!q.data && !isDraft) ||
-      (request.view === 'design' && designOpenable)
+    const offered = views.includes(request.view) || (request.view === 'work' && !!q.data && !isDraft)
     // A drive is the page: the agent does not take the human away from it.
     if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
-  // The page the design view loads, for the panel header to name.
-  const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
+  // What the plan and design cards in the chat open.
+  const cardsTarget: ThreadCardsTarget = {
+    featureId,
+    oneLiner: q.data?.feature.oneLiner ?? '',
+    onOpenPlan: () => panel.dispatch({ type: 'open', view: 'plan', origin: 'human' }),
+    onOpenDesign: (path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' }),
+    onOpenDesignList: () => panel.dispatch({ type: 'designList' }),
+  }
   // The chat column (chat-as-web-components decision 7): every thread of the
   // feature, one in front — the drive errand's scenario chat comes to the
   // front when an errand opens it.
@@ -748,9 +757,9 @@ export function Workspace({
       case 'openPlan':
         panel.dispatch({ type: 'open', view: 'plan', origin: 'human' })
         break
-      // The design view starts the feature's recorded design server itself.
+      // "Design to approve" opens the Design list, which leads with what waits (decision 12).
       case 'openDesign':
-        panel.dispatch({ type: 'open', view: 'design', origin: 'human' })
+        panel.dispatch({ type: 'designList' })
         break
       // A permission prompt: the asking thread in front, its answer box in the ask dock.
       case 'showRequest':
@@ -986,25 +995,17 @@ export function Workspace({
       )
     switch (v) {
       case 'plan':
-        return documentView(
-          v,
-          <PlanBody
-            full={full}
-            // The human's own click inside the preview; the design view starts the server.
-            onOpenDesign={(path) => {
-              if (designOpenable) panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })
-            }}
-          />,
-        )
+        return documentView(v, <PlanBody full={full} />)
       case 'work':
         // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
         return documentView(v, <TicketsView featureId={featureId} onOpenDoc={openDoc} />)
       case 'design':
         return (
-          <DesignView
+          <DesignTab
             featureId={featureId}
             {...(panel.state.path ? { path: panel.state.path } : {})}
-            {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
+            onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
+            onList={() => panel.dispatch({ type: 'designList' })}
           />
         )
       // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
@@ -1186,7 +1187,12 @@ export function Workspace({
               <IconButton label="New thread" kbd={newThreadShortcut()} icon={<IconPlus />} onClick={() => runAction('newThread')} />
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
-            <PanelToggle open={!!shown} views={tabs} onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })} />
+            <PanelToggle
+              open={!!shown}
+              views={tabs}
+              dot={fresh.length > 0}
+              onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
+            />
           </>
         }
       />
@@ -1202,6 +1208,7 @@ export function Workspace({
         <>
           {/* The drive's errands open their chat in this page's column. */}
           <ScenarioChatContext.Provider value={column.scenario}>
+            <ThreadCardsContext.Provider value={cardsTarget}>
             <PanelSplit
               chat={
                 // The switcher picks which thread is in front; the column is
@@ -1235,7 +1242,7 @@ export function Workspace({
                     view={shown}
                     views={tabs}
                     label={labelOf}
-                    path={designPath}
+                    fresh={fresh}
                     onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
                     onCollapse={() => panel.dispatch({ type: 'collapse' })}
                     onClose={() => panel.dispatch({ type: 'close' })}
@@ -1258,6 +1265,7 @@ export function Workspace({
               onResize={(share) => panel.dispatch({ type: 'setWidth', share })}
               onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
             />
+            </ThreadCardsContext.Provider>
           </ScenarioChatContext.Provider>
         </>
       )}
@@ -1275,6 +1283,7 @@ export function Workspace({
           title={feature.title}
           branch={feature.branch}
           base={delta.data?.base}
+          waitingDesigns={record.designs?.filter((d) => d.state === 'waiting').map((d) => d.title)}
           summary={mergeSummary({
             branch: feature.branch,
             ...(delta.data?.base ? { base: delta.data.base } : {}),

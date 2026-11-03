@@ -232,14 +232,13 @@ function PanelDivider({
 
 /**
  * The open panel: a header with the view switcher (the views this state
- * offers), the design view's path, fold and close — then the view itself,
+ * offers), fold and close — then the view itself,
  * scrolling on its own.
  */
 export function FeaturePanel({
   view,
   views,
   label,
-  path,
   fresh,
   onSwitch,
   onCollapse,
@@ -249,7 +248,6 @@ export function FeaturePanel({
   view: PanelView
   views: readonly PanelView[]
   label: (view: PanelView) => string
-  path?: string
   /** The views holding something the human has not looked at: a plan or a design (decision 11). */
   fresh?: readonly PanelView[]
   onSwitch: (view: PanelView) => void
@@ -275,9 +273,6 @@ export function FeaturePanel({
           label="Panel views"
           className="-ml-1 min-w-0"
         />
-        {view === 'design' && path && (
-          <span className="min-w-0 truncate font-mono text-xs text-text-tertiary">{path}</span>
-        )}
         <span className="flex-1" />
         <IconButton label="Fold the panel" size="sm" icon={<IconChevronRight />} onClick={onCollapse} />
         <IconButton label="Close the panel" size="sm" icon={<IconX />} onClick={onClose} />

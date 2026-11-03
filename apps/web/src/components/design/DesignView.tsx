@@ -23,14 +23,6 @@ export interface DesignViewProps {
 /** How often a visible design view tells the server it is still being looked at. */
 export const DESIGN_HEARTBEAT_MS = 60_000
 
-/**
- * The page the design view loads: the path asked for, else the one the server
- * remembers. The panel header names it, so it reads what the frame shows.
- */
-export function useDesignPath(featureId: string, path?: string, enabled = true): string | undefined {
-  const status = trpc.design.status.useQuery({ featureId }, { enabled: enabled && !path })
-  return path ?? status.data?.lastPath
-}
 
 /**
  * A design view's hold on its feature's design server, shared by the desktop

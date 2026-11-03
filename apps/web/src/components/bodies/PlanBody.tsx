@@ -14,13 +14,13 @@ type Part = 'preview' | 'decisions' | 'spec'
 
 /**
  * The panel's Plan view (the-feature-s-right-panel decisions 5, 6): the plan is
- * three documents, so the view is one bar with three small tabs (Preview,
- * Decisions with its count, Spec) and the part on show filling the rest. The
- * preview fills the view edge to edge with its own scrollbar; decisions and
- * spec are prose at the reading width. Before a preview exists the bar has
- * Decisions and Spec only, and the spec leads once it is written.
+ * three documents, so the view is one bar with three small tabs (Overview —
+ * the plan page —, Decisions with its count, Spec) and the part on show filling
+ * the rest. The plan page fills the view edge to edge with its own scrollbar;
+ * decisions and spec are prose at the reading width. Before a plan page exists
+ * the bar has Decisions and Spec only, and the spec leads once it is written.
  */
-export function PlanBody({ full, onOpenDesign }: { full: FeatureFull; onOpenDesign: (path: string) => void }) {
+export function PlanBody({ full }: { full: FeatureFull }) {
   const decisions = full.docs.find((doc) => doc.relPath.endsWith('decisions.md'))
   const spec = full.docs.find((doc) => doc.relPath.endsWith('spec.md'))
   const lead: Part = full.preview ? 'preview' : spec ? 'spec' : 'decisions'
@@ -33,7 +33,7 @@ export function PlanBody({ full, onOpenDesign }: { full: FeatureFull; onOpenDesi
   const updating = useSpecUpdating(full.feature.id, spec?.relPath)
 
   const items = [
-    ...(full.preview ? [{ id: 'preview' as const, label: 'Preview', icon: <IconEye /> }] : []),
+    ...(full.preview ? [{ id: 'preview' as const, label: 'Overview', icon: <IconEye /> }] : []),
     { id: 'decisions' as const, label: 'Decisions', icon: <IconList />, ...(count > 0 ? { count } : {}) },
     { id: 'spec' as const, label: 'Spec', icon: <IconDoc /> },
   ]
@@ -69,7 +69,6 @@ export function PlanBody({ full, onOpenDesign }: { full: FeatureFull; onOpenDesi
           preview={full.preview}
           fullWindow={fullWindow}
           onFullWindow={setFullWindow}
-          onOpenDesign={onOpenDesign}
         />
       ) : (
         <div className="min-h-0 flex-1">

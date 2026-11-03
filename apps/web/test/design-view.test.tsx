@@ -60,25 +60,7 @@ vi.mock('../src/components/TerminalView', () => ({
   TerminalView: ({ sessionId }: { sessionId: string }) => <div data-testid="terminal">{sessionId}</div>,
 }))
 
-const { DesignView, DESIGN_HEARTBEAT_MS, useDesignPath } = await import('../src/components/design/DesignView')
-const { FeaturePanel } = await import('../src/components/workspace/FeaturePanel')
-
-/** The design view in the panel, its header's path wired as the feature page wires it. */
-function HeaderedDesignView({ path }: { path?: string }) {
-  return (
-    <FeaturePanel
-      view="design"
-      views={['design']}
-      label={() => 'Design'}
-      path={useDesignPath('f1', path)}
-      onSwitch={() => {}}
-      onCollapse={() => {}}
-      onClose={() => {}}
-    >
-      <DesignView featureId="f1" {...(path ? { path } : {})} />
-    </FeaturePanel>
-  )
-}
+const { DesignView, DESIGN_HEARTBEAT_MS } = await import('../src/components/design/DesignView')
 
 const RUNNING: Status = { running: true, url: 'http://localhost:30001/', port: 30001, hasRecordedCommand: true, passPort: 4514 }
 /** The pass-through's entry on this page's own host — never the design server's localhost:30001. */
@@ -162,13 +144,6 @@ describe('DesignView', () => {
     openMenu(screen.getByRole('button', { name: 'Design server' }))
     expect(screen.getByRole('menuitem', { name: 'Restart server' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Show output' })).toBeTruthy()
-  })
-
-  it('names the page it loads in the panel header, the remembered one included', () => {
-    status = { ...RUNNING, lastPath: '/preview/invites' }
-    render(<HeaderedDesignView />)
-    const header = screen.getByRole('tablist', { name: 'Panel views' }).parentElement!
-    expect(header.textContent).toContain('/preview/invites')
   })
 
   it('tells the server the path it opened, so a bare reopen lands there', () => {

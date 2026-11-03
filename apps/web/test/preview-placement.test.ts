@@ -55,7 +55,7 @@ function fullWith({ preview = null as FeatureFull['preview'], docs = ['decisions
  */
 const withoutIds = (html: string) => html.replace(/_R_\w+_/g, '_R_')
 const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(element))
-const plan = (full: FeatureFull) => markup(createElement(PlanBody, { full, onOpenDesign: () => undefined }))
+const plan = (full: FeatureFull) => markup(createElement(PlanBody, { full }))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
 
 /** The bar's tabs, in order, the selected one marked `*`. */
@@ -67,18 +67,18 @@ function tabs(html: string): string[] {
 
 /**
  * the-feature-s-right-panel decisions 5, 6: the plan is three documents, so
- * the Plan view is one bar of tabs — Preview once one exists, then Decisions
+ * the Plan view is one bar of tabs — Overview once a plan page exists, then Decisions
  * and Spec — and the part on show fills the rest, never a doc in a dialog.
  */
 describe('the Plan view', () => {
   it('leads with the preview once one exists, the decisions and the spec tabs beside it', () => {
     const html = plan(fullWith({ preview: PREVIEW, docs: ['brief.md', 'decisions.md', 'spec.md'] }))
-    expect(tabs(html)).toEqual(['Preview*', 'Decisions', 'Spec'])
+    expect(tabs(html)).toEqual(['Overview*', 'Decisions', 'Spec'])
     expect(html).toContain('<iframe')
     expect(html).not.toContain('role="dialog"')
   })
 
-  it('has no Preview tab before a preview exists, and reads the decisions as prose', () => {
+  it('has no Overview tab before a plan page exists, and reads the decisions as prose', () => {
     const html = plan(fullWith())
     expect(tabs(html)).toEqual(['Decisions*', 'Spec'])
     expect(html).not.toContain('<iframe')

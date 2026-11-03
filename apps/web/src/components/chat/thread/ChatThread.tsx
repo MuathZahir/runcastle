@@ -20,6 +20,7 @@ import { useIsPhone } from '../../../lib/use-phone'
 import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
+import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -259,10 +260,10 @@ function Item({
       return <ShownFiles files={item.files} />
     case 'review_package':
       return <ReviewPackageItem ticketId={item.ticketId} />
-    // The plan and design cards are drawn by the web wiring that follows the record.
     case 'plan_card':
+      return <PlanCardItem {...(item.older ? { older: true } : {})} />
     case 'design_cards':
-      return null
+      return <DesignCardsItem designIds={item.designIds} older={item.older} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
