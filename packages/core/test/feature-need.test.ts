@@ -21,6 +21,8 @@ function facts(over: Partial<NeedFacts> = {}): NeedFacts {
     driveConfigured: true,
     wakeFailed: null,
     wakeQueuedAt: null,
+    designsWaiting: 0,
+    oldestDesignWaitingSince: null,
     ...over,
   }
 }
@@ -79,6 +81,16 @@ describe('featureNeed', () => {
   it('reads kind plan and kind design as their own needs', () => {
     expect(featureNeed(facts({ waiting: waiting('start round 1?', 'plan') }), NOW)).toMatchObject({ kind: 'plan', words: 'Plan to approve' })
     expect(featureNeed(facts({ waiting: waiting('look at the header', 'design') }), NOW)).toMatchObject({ kind: 'design', words: 'Design to approve' })
+  })
+
+  it('reads a design waiting in the record as a design need with no wait_for_you, since the oldest was shown, and not while the lead works', () => {
+    const designs = { designsWaiting: 2, oldestDesignWaitingSince: 4_000 }
+    expect(featureNeed(facts(designs), NOW)).toEqual({ kind: 'design', words: 'Design to approve', held: false, since: 4_000 })
+    expect(featureNeed(facts({ ...designs, agentWorking: true }), NOW)).toBeNull()
+    // Never held, like every design need.
+    expect(featureNeed(facts({ ...designs, held: true }), NOW)).toMatchObject({ kind: 'design', held: false })
+    // A plan the lead waits on still comes first.
+    expect(featureNeed(facts({ ...designs, waiting: waiting('start round 1?', 'plan') }), NOW)).toMatchObject({ kind: 'plan' })
   })
 
   it('reads stuck, the human’s Stop, the provider’s limit and a stopped plan as Stopped', () => {

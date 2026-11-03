@@ -10,6 +10,8 @@ import mcpApp, { featureContext } from '../src/mcp/server'
 import designsApp from '../src/routes/designs'
 import { recordDesign } from '../src/services/designs'
 import { listAfter } from '../src/services/events'
+import { needOf } from '../src/services/feature-need'
+import { getFeatureRow } from '../src/services/repo'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -156,6 +158,17 @@ describe('show_plan', () => {
     await call(session('self-plan'), 'show_plan')
     expect((await list()).plan.isNew).toBe(true)
     expect(events('panel.show')).toHaveLength(1)
+  })
+})
+
+describe('the design need', () => {
+  it('shows "Design to approve" from the record while a design waits, and clears once none does', async () => {
+    const chat = session()
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toBeNull()
+    await call(chat, 'show_design', { path: '/preview/a.html', title: 'A' })
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ kind: 'design', words: 'Design to approve' })
+    await call(chat, 'set_design_state', { path: '/preview/a.html', state: 'dropped' })
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toBeNull()
   })
 })
 
