@@ -126,3 +126,8 @@ round.
 **Decision:** The README gets a short "Feedback" line pointing at the repository's GitHub Issues. It puts no maturity label (alpha, beta) on the product; that is the human's call to add.
 **Why:** A stranger who hits a problem needs one obvious place to say so; how to label the product's maturity is a launch decision, not a wording one.
 **Assumed.** Alternative: also label the README "beta".
+
+## 22. The sibling feature's new card text follows these words
+**Decision:** "Orchestrator actions show as cards" runs in parallel and reads its words from decision 15. If it merges first, this feature's word sweep and its guard test cover its card text when this branch takes main; if this feature merges first, the guard test is what tells the sibling which words to fix. No ticket here waits for it.
+**Why:** The brief's addition says whichever merges second fixes the words; the guard test (spec, "Words") makes that a failing test rather than a reading job.
+**Assumed.** Alternative: hold this feature until the sibling merges.
