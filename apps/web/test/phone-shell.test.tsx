@@ -12,8 +12,9 @@ import { ToastProvider } from '../src/lib/toast'
 import { PHONE_QUERY } from '../src/lib/use-phone'
 import { trpc, trpcLinks } from '../src/trpc'
 import { TooltipProvider } from '../src/ui/tooltip'
-import { full, listItem } from './fixtures'
-import type { ThreadEntry } from '@runcastle/core'
+import { full, listItem, need as needOf } from './fixtures'
+import type { DesignEntry, ThreadEntry, ThreadEvent } from '@runcastle/core'
+import type { FeatureFull } from '../src/lib/api'
 
 /**
  * The phone view (runcastle-on-your-phone ticket 1): at a phone's width the app
@@ -57,9 +58,10 @@ class TestEventSource extends EventTarget {
   }
 }
 
-function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}): TrpcFakes {
+/** `over` lays over what `feature.get` answers: its need, its sessions. */
+function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}, over: Partial<FeatureFull> = {}): TrpcFakes {
   const item = listItem({ id: FEATURE.id, slug: SLUG, waitingReason: 'question', leadAwaitsHuman: true })
-  const feature = full({ id: FEATURE.id, slug: SLUG })
+  const feature = { ...full({ id: FEATURE.id, slug: SLUG }), ...over }
   return withShell({
     ...extra,
     feature: {
@@ -72,7 +74,7 @@ function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}): TrpcFakes {
         }) as never,
       driveInfo: () => null,
     },
-    thread: { list: () => threads },
+    thread: { ...(extra.thread as object), list: () => threads },
   } as TrpcFakes)
 }
 
@@ -91,10 +93,10 @@ function AppAt({ path }: { path: string }) {
   return <App />
 }
 
-function Root({ path, threads = [], extra }: { path: string; threads?: ThreadEntry[]; extra?: TrpcFakes }) {
+function Root({ path, threads = [], extra, over }: { path: string; threads?: ThreadEntry[]; extra?: TrpcFakes; over?: Partial<FeatureFull> }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
   const [client] = useState(() =>
-    trpc.createClient({ links: trpcLinks('/api/trpc', fakeTrpcFetch('/api/trpc', fakes(threads, extra))) }),
+    trpc.createClient({ links: trpcLinks('/api/trpc', fakeTrpcFetch('/api/trpc', fakes(threads, extra, over))) }),
   )
   return (
     <trpc.Provider client={client} queryClient={queryClient}>
@@ -360,6 +362,71 @@ describe('a design on a phone', () => {
     await screen.findByText(new RegExp(`cannot reach port 4514 on ${host}`))
     expect(screen.queryByTitle('The design')).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  /**
+   * A feature whose main chat holds a group of design cards and that waits on
+   * a design: Invite shown last, Cart before it, Menu approved.
+   */
+  function withDesigns() {
+    const { extra } = designFakes(RUNNING)
+    const entry = (id: string, title: string, shownAt: number, state: DesignEntry['state'] = 'waiting'): DesignEntry => ({
+      id,
+      title,
+      path: `/preview/${id}.html`,
+      state,
+      isNew: state === 'waiting',
+      shownAt,
+    })
+    const seen: unknown[] = []
+    const fakes: TrpcFakes = {
+      design: {
+        ...extra.design,
+        list: () => ({
+          designs: [entry('newer', 'Invite', 3), entry('older', 'Cart', 2), entry('done', 'Menu', 1, 'approved')],
+          plan: { isNew: false },
+        }),
+        showPath: () => ({}),
+        seen: (input: unknown) => (seen.push(input), {}),
+      },
+      thread: {
+        view: () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
+        events: ({ after }: { after?: number }) => ({ events: LOG.filter((e) => after === undefined || e.i > after) }),
+      },
+    } as TrpcFakes
+    const over = { need: needOf('design', 'A design waits for you') } as Partial<FeatureFull>
+    const threads: ThreadEntry[] = [
+      { id: 'th_main', title: 'Agent', role: 'main', state: 'idle', createdAt: 1, updatedAt: 1, runtime: 'claude-code' },
+    ]
+    return { fakes, over, seen, threads }
+  }
+  const LOG: ThreadEvent[] = [
+    { i: 0, at: 1, type: 'prompt', id: 'p1', text: 'Draw the screens', source: 'human' },
+    { i: 1, at: 1, type: 'turn_started' },
+    { i: 2, at: 1, type: 'design_shown', designId: 'newer' },
+    { i: 3, at: 1, type: 'design_shown', designId: 'older' },
+    { i: 4, at: 1, type: 'design_shown', designId: 'done' },
+    { i: 5, at: 1, type: 'turn_ended', reason: 'end_turn' },
+  ]
+
+  it('shows the design cards in the chat with no Design tab link, and a tapped card opens that design, seen', async () => {
+    const { fakes, over, seen, threads } = withDesigns()
+    render(<Root path={CHAT} threads={threads} extra={fakes} over={over} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open the design Invite' }))
+    expect(screen.queryByRole('button', { name: /Design tab/ })).toBeNull()
+    await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
+    expect(await screen.findByRole('region', { name: 'Invite' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Approve & next' })).toBeTruthy()
+    await waitFor(() => expect(seen).toEqual([{ designId: 'newer' }]))
+  })
+
+  it('opens the oldest waiting design from the need’s button', async () => {
+    const { fakes, over, seen, threads } = withDesigns()
+    render(<Root path={CHAT} threads={threads} extra={fakes} over={over} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open design' }))
+    await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
+    expect(await screen.findByRole('region', { name: 'Cart' })).toBeTruthy()
+    await waitFor(() => expect(seen).toEqual([{ designId: 'older' }]))
   })
 
   it('starts a stopped server from its recorded command', async () => {
