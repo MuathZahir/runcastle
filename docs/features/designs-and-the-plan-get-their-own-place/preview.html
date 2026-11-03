@@ -166,7 +166,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
 <section id="show">
   <h2>The show</h2>
 
-  <p class="hint">You settled 8, 9, 24 and 25 (2026-11-03); the orchestrator settled 23; the rest are the planner’s, marked assumed.</p>
+  <p class="hint">You settled 8, 9, 23, 24, 25 and 26 (2026-11-03); the rest are the planner’s, marked assumed.</p>
   <p class="hint">Before and after, for the human who comes back to a planned feature.</p>
   <div class="ba">
     <div><h3>Today</h3><ul>
@@ -244,7 +244,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
   <div class="sub">
     <h3>Small changes, described rather than designed</h3>
     <div class="small"><ul>
-      <li><i class="dot live"></i>Designs open from anywhere runcastle is opened: the desktop loads them through the same pass-through as the phone (port 4514), and says which port to forward when it cannot reach it. <a class="pin" data-d="23">23</a></li>
+      <li><i class="dot live"></i>Designs open from anywhere runcastle is opened: the desktop and the phone load them through one pass-through (port 4514), on a phone, over Tailscale or through an SSH tunnel, and say which port to forward when it cannot be reached. <a class="pin" data-d="23">23</a> <a class="pin" data-d="26">26</a></li>
       <li><i class="dot live"></i>"Design to approve" in the header opens the Design list. <a class="pin" data-d="12">12</a></li>
       <li><i class="dot live"></i>Merge names any design still waiting and says it will not ship. <a class="pin" data-d="21">21</a></li>
       <li><i class="dot live"></i>The phone's chat shows the same cards; a design card opens the phone's Design screen with Approve. <a class="pin" data-d="16">16</a> <a class="pin" data-d="22">22</a></li>
@@ -428,8 +428,7 @@ set_design_state({ path, state })                // a yes or a no given in words
     ],
     [
     "The desktop loads designs through the design pass-through, so they work from another machine",
-    "Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows \"localhost refused to connect\". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too.",
-    "orchestrator"
+    "Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows \"localhost refused to connect\". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too."
     ],
     [
     "Approve moves you to the next design still waiting",
@@ -438,6 +437,10 @@ set_design_state({ path, state })                // a yes or a no given in words
     [
     "One message to the agent, when the last waiting design is approved",
     "The human's words (2026-11-03): \"I don't want every approve to send a message to the agent. Maybe when approving all designs, the message is sent.\" One message at the end keeps the chat quiet and wakes the agent once, when there is something to do."
+    ],
+    [
+    "Designs open on a phone and from a remote server, through one path",
+    "The human (2026-11-03): \"make sure the user will be able to open the designs on a mobile too (and remotely through VPSs) since we had an issue with ports before\". The phone's current fallback to the design server's localhost address fails the same way the desktop did; one shared path removes that class of bug for both."
     ]
     ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
