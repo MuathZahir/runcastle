@@ -379,15 +379,12 @@ describe('a design on a phone', () => {
       shownAt,
     })
     const seen: unknown[] = []
+    const designs = [entry('newer', 'Invite', 3), entry('older', 'Cart', 2), entry('done', 'Menu', 1, 'approved')]
     const fakes: TrpcFakes = {
       design: {
         ...extra.design,
-        list: () => ({
-          designs: [entry('newer', 'Invite', 3), entry('older', 'Cart', 2), entry('done', 'Menu', 1, 'approved')],
-          plan: { isNew: false },
-        }),
-        showPath: () => ({}),
-        seen: (input: unknown) => (seen.push(input), {}),
+        list: () => ({ designs, plan: { isNew: false } }),
+        seen: (input: { designId: string }) => (seen.push(input), designs.find((d) => d.id === input.designId)!),
       },
       thread: {
         view: () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
