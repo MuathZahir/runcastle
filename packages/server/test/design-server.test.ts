@@ -480,7 +480,8 @@ describe.skipIf(!AVAILABLE)('design tRPC procedures', () => {
   it('status, start from the recorded command, heartbeat and stop', async () => {
     const design = createCallerFactory(appRouter)(ctx).design
 
-    expect(await design.status({ featureId: feature.id })).toEqual({ running: false, hasRecordedCommand: false })
+    // The pass-through's port rides on the status: serverPort + 2, every design's way in.
+    expect(await design.status({ featureId: feature.id })).toEqual({ running: false, hasRecordedCommand: false, passPort: 4514 })
     await expect(design.start({ featureId: feature.id })).rejects.toThrow(/no design command/)
 
     mkdirSync(join(worktree, '.runcastle'), { recursive: true })
@@ -493,6 +494,7 @@ describe.skipIf(!AVAILABLE)('design tRPC procedures', () => {
       port: started.port,
       paneId: designPaneId(feature.id),
       hasRecordedCommand: true,
+      passPort: 4514,
     })
 
     expect(await design.heartbeat({ featureId: feature.id })).toEqual({ running: true })
