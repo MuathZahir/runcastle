@@ -259,6 +259,10 @@ function Item({
       return <ShownFiles files={item.files} />
     case 'review_package':
       return <ReviewPackageItem ticketId={item.ticketId} />
+    // The plan and design cards are drawn by the web wiring that follows the record.
+    case 'plan_card':
+    case 'design_cards':
+      return null
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">

@@ -34,6 +34,32 @@ describe('foldThread: shown files', () => {
     expect(kinds(v.items)).toEqual(['user', 'work', 'review_package', 'agent'])
   })
 
+  it('places a plan card and a group of design cards as a review package, the work above and the final words below', () => {
+    const design = (designId: string): ThreadEventBody => ({ type: 'design_shown', designId })
+    const v = foldThread(log(...running, tool('c1'), { type: 'plan_shown' }, tool('c2'), design('d1'), design('d2'), say('m2', 'Have a look.'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'work', 'plan_card', 'design_cards', 'agent'])
+    expect(v.items[3]).toMatchObject({ kind: 'design_cards', designIds: ['d1', 'd2'], older: [] })
+    expect(v.items[2]).toEqual({ kind: 'plan_card', id: expect.any(String) })
+  })
+
+  it('starts a new group of design cards in the next turn, and marks the earlier cards of a design and the plan shown again as older', () => {
+    const design = (designId: string): ThreadEventBody => ({ type: 'design_shown', designId })
+    const end: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }
+    const v = foldThread(
+      log(
+        ...running, { type: 'plan_shown' }, design('d1'), design('d2'), end,
+        prompt('p2'), { type: 'turn_started' }, { type: 'plan_shown' }, design('d2'), end,
+      ),
+    )
+    const cards = v.items.filter((x) => x.kind === 'design_cards' || x.kind === 'plan_card')
+    expect(cards).toEqual([
+      { kind: 'plan_card', id: expect.any(String), older: true },
+      { kind: 'design_cards', id: expect.any(String), designIds: ['d1', 'd2'], older: ['d2'] },
+      { kind: 'plan_card', id: expect.any(String) },
+      { kind: 'design_cards', id: expect.any(String), designIds: ['d2'], older: [] },
+    ])
+  })
+
   it('keeps the file in view after the work folds, ahead of the final words', () => {
     const v = foldThread(log(...running, say('m1', 'Taking a look.'), tool('c1'), shown('a'), say('m2', 'Merge it?'), { type: 'turn_ended', reason: 'end_turn' }))
     expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])

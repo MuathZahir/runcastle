@@ -1,31 +1,12 @@
 /**
  * A feature's designs, as the chat's cards and the Design tab read them
  * (designs-and-the-plan-get-their-own-place decisions 1, 4, 6, 10, 18). Pure:
- * the record comes from the server, this module says how it reads.
- *
- * Design-time shape: the record's wire type moves to `@runcastle/core` when the
- * server side is built; the words and the order here are what was designed.
+ * the record and its wire type come from the server (`@runcastle/core`), this
+ * module says how it reads.
  */
+import type { DesignEntry, DesignState } from '@runcastle/core'
 
-/** Where a design stands with the human. */
-export type DesignState = 'waiting' | 'approved' | 'dropped'
-
-/** One recorded design: one page on the feature's design server. */
-export interface DesignEntry {
-  id: string
-  title: string
-  /** The page on the design server, e.g. `/preview/designs.html?state=list`. */
-  path: string
-  /** The screen width it is laid out at; unset, the human's own choice (Desktop). */
-  width?: number
-  /** A picture of it, when the agent passed one. */
-  picture?: string
-  state: DesignState
-  /** Shown since the human last opened it (decision 10). */
-  isNew: boolean
-  /** When it was last shown. */
-  shownAt: number
-}
+export type { DesignEntry, DesignState }
 
 /** What a width reads as: "Mobile · 390", "Tablet · 768", "Desktop". */
 export function designWidthLabel(width: number | undefined): string {
