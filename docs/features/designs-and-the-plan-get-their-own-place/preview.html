@@ -166,7 +166,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
 <section id="show">
   <h2>The show</h2>
 
-  <p class="hint">Decisions 8, 9 and 23 were settled by the project’s orchestrator (8 and 9 on 2026-11-02, 23 on 2026-11-03); everything else is the planner’s, waiting for you.</p>
+  <p class="hint">You settled 8, 9, 24 and 25 (2026-11-03); the orchestrator settled 23; the rest are the planner’s, marked assumed.</p>
   <p class="hint">Before and after, for the human who comes back to a planned feature.</p>
   <div class="ba">
     <div><h3>Today</h3><ul>
@@ -189,7 +189,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
       <div class="st"><b>Shown</b><span>The agent calls show_design: a card in the chat, a row in the list, marked New. <a class="pin" data-d="1">1</a></span></div>
       <div class="st"><b>Waiting</b><span>"Design to approve" shows while it waits and the agent is idle. <a class="pin" data-d="17">17</a></span></div>
       <div class="st"><b>Opened</b><span>You open it from its card or the list; New clears. <a class="pin" data-d="10">10</a></span></div>
-      <div class="st"><b>Approved</b><span>Approve on the open design, or your words; only then does the agent commit it. <a class="pin" data-d="8">8</a> <a class="pin" data-d="9">9</a></span></div>
+      <div class="st"><b>Approved</b><span>Approve &amp; next on the open design, or your words. The last approval tells the agent, once. <a class="pin" data-d="8">8</a> <a class="pin" data-d="24">24</a> <a class="pin" data-d="25">25</a></span></div>
       <div class="st"><b>Shown again</b><span>A changed design goes back to waiting; older cards say so. <a class="pin" data-d="18">18</a> <a class="pin" data-d="19">19</a></span></div>
     </div>
   </div>
@@ -216,12 +216,20 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
 <!-- /screen:design-tab-list -->
 <!-- screen:an-open-design -->
 <div class="designed">
-  <h3>An open design <a class="pin" data-d="6">6</a> <a class="pin" data-d="8">8</a></h3>
-  <p>"All designs", the design’s name and width, the step to its neighbours and Approve, over the live Design view. The bar is real; a sample shop page stands in for the live design.</p>
+  <h3>An open design <a class="pin" data-d="6">6</a> <a class="pin" data-d="8">8</a> <a class="pin" data-d="24">24</a></h3>
+  <p>"All designs", the design’s name and width, the step to its neighbours, and “Approve & next”, which moves on to the next waiting design, over the live Design view. The bar is real; a sample shop page stands in for the live design.</p>
   <p class="mono">apps/web/src/components/design/DesignList.tsx (DesignBar) · design page /preview/designs.html?state=open</p>
   <button data-open-design="/preview/designs.html?state=open">Open in design</button>
 </div>
 <!-- /screen:an-open-design -->
+<!-- screen:all-approved -->
+<div class="designed">
+  <h3>Every design approved <a class="pin" data-d="24">24</a> <a class="pin" data-d="25">25</a></h3>
+  <p>Back on the list after the last Approve: it says all are approved and that the agent was told; the chat shows the one message the agent got. Real list; sample designs.</p>
+  <p class="mono">apps/web/src/components/design/DesignList.tsx (DesignList, done), DesignCard.tsx (ApprovalMeter) · design page /preview/designs.html?state=done</p>
+  <button data-open-design="/preview/designs.html?state=done">Open in design</button>
+</div>
+<!-- /screen:all-approved -->
 <!-- screen:design-tab-empty -->
 <div class="designed">
   <h3>The Design tab with no designs <a class="pin" data-d="7">7</a></h3>
@@ -347,13 +355,11 @@ set_design_state({ path, state })                // a yes or a no given in words
     ],
     [
     "Each design gets an Approve button, shown only on an opened design",
-    "Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. Keeping the button off the rows means nothing is approved unseen. It also turns \"which designs did they approve?\" from a reading of the chat into a fact the lead and the orchestrator can look up.",
-    "orchestrator"
+    "Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. Keeping the button off the rows means nothing is approved unseen. It also turns \"which designs did they approve?\" from a reading of the chat into a fact the lead and the orchestrator can look up."
     ],
     [
     "The yes to round 1 commits only designs the human approved",
-    "The brief names this as friction: today one yes commits designs the human may never have seen. The standing rule is that designs need the human's own yes, and the Approve button makes that yes cheap to give.",
-    "orchestrator"
+    "The brief names this as friction: today one yes commits designs the human may never have seen. The standing rule is that designs need the human's own yes, and the Approve button makes that yes cheap to give."
     ],
     [
     "Runcastle records what the human has looked at, on the server",
@@ -424,11 +430,19 @@ set_design_state({ path, state })                // a yes or a no given in words
     "The desktop loads designs through the design pass-through, so they work from another machine",
     "Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows \"localhost refused to connect\". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too.",
     "orchestrator"
+    ],
+    [
+    "Approve moves you to the next design still waiting",
+    "The human's words (2026-11-03): \"When I approve, I want to be moved to the next non-approved design.\" Looking through designs is one pass, not a trip back to the list after each."
+    ],
+    [
+    "One message to the agent, when the last waiting design is approved",
+    "The human's words (2026-11-03): \"I don't want every approve to send a message to the agent. Maybe when approving all designs, the message is sent.\" One message at the end keeps the chat quiet and wakes the agent once, when there is something to do."
     ]
     ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [[8, "Approve on the list rows too (the planner’s first version).", "The orchestrator chose this for you: Approve only on an opened design, so nothing is approved unseen. It is one more click per design.", "orchestrator"], [9, "Also commit designs you opened and did not object to (the planner’s first version).", "The orchestrator chose this for you: only a design you approved by button or by name is committed; the agent names the rest and asks.", "orchestrator"], [17, "The need comes only from the lead saying it waits on a design.", "It makes \"Design to approve\" show whenever a design waits and the agent is idle, including mid-conversation."], [6, "The list as a narrow rail always beside the open design.", "The list is the tab’s home and a design opens over it; shipped features lose the tab (the challenger would keep a read-only list).", "challenged"], [3, "Keep plan and design on show_panel beside the new tools.", "A removal: the agent can no longer open the Plan or a design without leaving a card."]]
+  var C = [[17, "The need comes only from the lead saying it waits on a design.", "It makes \"Design to approve\" show whenever a design waits and the agent is idle, including mid-conversation."], [6, "The list as a narrow rail always beside the open design.", "The list is the tab’s home and a design opens over it; shipped features lose the tab (the challenger would keep a read-only list).", "challenged"], [3, "Keep plan and design on show_panel beside the new tools.", "A removal: the agent can no longer open the Plan or a design without leaving a card."]]
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

@@ -4,7 +4,7 @@ Planned by the lead alone, with no human present (2026-11-02). Every decision
 below is the lead's own recommendation, accepted so the plan could be drawn;
 each carries the alternative it was chosen over. A separate agent, given only the brief and these decisions, challenged them: decisions 17–22 answer the branches it raised, and a **Challenged** line records where it would have decided otherwise.
 
-Check first: 8, 9, 17, 6, 3
+Check first: 17, 6, 3
 
 ## 1. Each design is recorded by the agent's own act, which also posts its card
 **Decision:** A new agent tool, `show_design`, takes a design's page on the design server, a title, an optional screen width and an optional picture. It records the design for the feature (one entry per page, so showing it again updates it) and posts a design card in the chat. That record is the Design tab's list; nothing reads the plan's HTML to find designs.
@@ -47,14 +47,10 @@ Check first: 8, 9, 17, 6, 3
 ## 8. Each design gets an Approve button, shown only on an opened design
 **Decision:** A design waiting for the human shows Approve only in the Design tab's live view, once the human has opened it; the list's rows show the design's state and never an Approve button. A click records the approval as the human's own act and puts a line in the chat ("You approved the design “Plan card”"), which tells the lead to commit it. Asking for changes stays in the chat. The human may still approve in words; the lead then marks the design approved, or dropped when the human rejects it, with a small tool (`set_design_state`).
 **Why:** Runcastle records a click as the human's, so no orchestrator message can stand in for it, which is what the working agreement asks of designs. Keeping the button off the rows means nothing is approved unseen. It also turns "which designs did they approve?" from a reading of the chat into a fact the lead and the orchestrator can look up.
-**Assumed.** Alternative: Approve on the list's rows as well as in the live view (the planner's first version).
-**Changed by the orchestrator:** it took the challenger's version, so that nothing gets approved unseen (2026-11-02).
 
 ## 9. The yes to round 1 commits only designs the human approved
 **Decision:** When the human says yes to round 1, the lead commits only the designs approved by the Approve button or by the human naming them. Every other waiting design stays uncommitted: the lead names those and asks before it dispatches. Opening a design is not approving it.
 **Why:** The brief names this as friction: today one yes commits designs the human may never have seen. The standing rule is that designs need the human's own yes, and the Approve button makes that yes cheap to give.
-**Assumed.** Alternative: also commit the waiting designs the human opened and did not object to (the planner's first version).
-**Changed by the orchestrator:** it took the challenger's version: only an explicit yes commits a design (2026-11-02).
 
 ## 10. Runcastle records what the human has looked at, on the server
 **Decision:** The plan counts as looked at when the human opens the Plan tab or the plan card after its latest `show_plan`; a design counts as looked at when the human opens it in the Design tab after its latest `show_design`. Showing it again makes it new again. The record lives on the server, so the desktop and the phone agree, and `get_feature_context` tells the lead which designs were opened and which approved.
@@ -127,3 +123,12 @@ Check first: 8, 9, 17, 6, 3
 **Why:** Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows "localhost refused to connect". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too.
 **Assumed.** Alternative: keep loading the design server directly when the page is on localhost, and use the pass-through only when it is not.
 **Changed by the orchestrator:** added after the human's designs would not open over the VPS tunnel ("localhost refused to connect"), 2026-11-03.
+
+## 24. Approve moves you to the next design still waiting
+**Decision:** Approving a design moves the Design view straight to the next design still waiting, in the list's order. After the last one, the view goes back to the list, which now says every design is approved. The button says what it will do: "Approve & next" while others wait, "Approve" on the last.
+**Why:** The human's words (2026-11-03): "When I approve, I want to be moved to the next non-approved design." Looking through designs is one pass, not a trip back to the list after each.
+
+## 25. One message to the agent, when the last waiting design is approved
+**Decision:** An Approve click no longer puts a line in the chat. Approvals are recorded quietly; when the human approves the last design still waiting, runcastle sends the lead one message naming every approved design, which tells it to commit them. Approvals made before the human leaves with designs still waiting stay recorded, and the lead reads them from its context when the human next writes.
+**Why:** The human's words (2026-11-03): "I don't want every approve to send a message to the agent. Maybe when approving all designs, the message is sent." One message at the end keeps the chat quiet and wakes the agent once, when there is something to do.
+**Supersedes:** the line decision 8 put in the chat for every Approve click.

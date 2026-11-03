@@ -19,7 +19,7 @@ big the plan is; a design card shows a picture of the design, its title, its
 width, and whether it waits for the human. A click opens the Plan tab, or that
 design in the Design tab. The Design tab is always there on an active feature, and
 its home is the list of every design, waiting ones first. Opening a design shows it
-live with "All designs", arrows to the previous and next design, and **Approve**; the list itself approves nothing.
+live with "All designs", arrows to the previous and next design, and **Approve & next**, which moves straight on to the next design still waiting (plain **Approve** on the last, which returns to the list); the list itself approves nothing. Approvals are quiet: the agent hears once, when the last waiting design is approved.
 A dot on the header's panel toggle and on the Plan and Design tabs says something
 there is new to the human. "Design to approve" now shows whenever a design waits,
 and its button opens the list. Merge names any design still waiting. On the phone
@@ -70,9 +70,7 @@ The fold also marks a card older when a later card for the same design, or a lat
 plan card, follows it (decision 19).
 
 **Human actions (tRPC).** `design.list({ featureId })`, `design.approve({ designId })`
-(the human's click: records `approved` by `human`, emits, and delivers a runcastle
-line to the lead's main chat through the lead-delivery path, "You approved the
-design “<title>”", which wakes it to commit), `design.seen({ designId })` (opening a
+(the human's click: records `approved` by `human` and emits; when it leaves no design waiting, it delivers one runcastle line to the lead's main chat through the lead-delivery path, naming every approved design, which wakes it to commit them — decision 25; earlier clicks deliver nothing), `design.seen({ designId })` (opening a
 design) and `plan.seen({ featureId })` (opening the Plan tab or card). The existing
 design-server routes stay; opening a design starts the server at its path as today.
 
