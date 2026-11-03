@@ -115,10 +115,10 @@ describe('the preview starter', () => {
 })
 
 describe('designed screens in the preview', () => {
-  it('wires [data-open-design] buttons to the message the app listens for, still inline', () => {
+  it('has no open-design button or click handler, and still styles the entry with tokens', () => {
     const text = starter()
-    expect(text).toContain("e.target.closest('[data-open-design]')")
-    expect(text).toContain("parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')")
+    expect(text).not.toContain('data-open-design')
+    expect(text).not.toContain('runcastle:open-design')
     expect(text).toMatch(/\.designed\{[^}]*var\(--color-/)
   })
 
@@ -127,9 +127,9 @@ describe('designed screens in the preview', () => {
     const section = text.slice(text.indexOf('## Designed screens'), text.indexOf('## Inline only'))
     expect(section).toContain('is **not mocked\nagain**')
     expect(section).toContain('**designed-screen entry**')
-    expect(section).toContain('**Open in design**')
-    expect(section).toContain('data-open-design')
-    expect(section).toContain('committed component file and the preview page path')
+    expect(section).toContain('**no button**')
+    expect(section).not.toContain('data-open-design')
+    expect(section).toContain('committed component file and the design page path')
     expect(section).toContain('Hand mocks remain')
   })
 })
@@ -153,8 +153,8 @@ describe('the design guide', () => {
       'start_design_server({ command? })',
       'RUNCASTLE_DESIGN_PORT',
       '.runcastle/design.json',
-      "show_panel({ view: 'design', path })",
-      '`plan`, `work`, `review`, `details` and `drive`',
+      'show_design({ path, title, width?, picture? })',
+      '`work`, `review`, `details` or `drive`',
       '[Screenshot: <absolute png path>] <their words>',
       '**Tweaks.**',
       'delete the Tweaks\n   menu',
@@ -168,9 +168,9 @@ describe('the design guide', () => {
     expect(text).not.toMatch(/\bGo\b/)
   })
 
-  it('is pointed to by the feature skill, and a self-planned feature designs but never shows', () => {
+  it('is pointed to by the feature skill, and a self-planned feature designs and shows only by cards', () => {
     expect(read('feature', 'SKILL.md')).toContain('./references/design.md')
-    expect(read('feature', 'references', 'planning-alone.md')).toContain('**Design, but never show.**')
+    expect(read('feature', 'references', 'planning-alone.md')).toContain('**Show with cards, never the panel.**')
     expect(read('feature', 'references', 'design.md')).toContain('## 8. Designs that wait for the human')
   })
 })
@@ -243,7 +243,8 @@ describe('the feature skill’s preview step', () => {
 
   it('shows it in the Plan view, waits, and redraws on a correction', () => {
     const step = rules().slice(rules().indexOf('## Show it, then get the yes'), rules().indexOf('## The file'))
-    expect(step).toContain("`show_panel({ view: 'plan' })`")
+    expect(step).toContain('`show_plan()`')
+    expect(step).not.toContain('show_panel')
     expect(step).toContain('Then wait for the answer.')
     expect(step).toContain('**A correction is a decision edit plus a redraw.**')
     expect(step).toContain('**Never skip the preview on your own judgement**')
@@ -274,7 +275,7 @@ describe('the tickets reference and the preview', () => {
   it('tells planners to connect designed components and never restyle them', () => {
     const text = skill()
     const rule = text.slice(text.indexOf('<connect-designed-screens>'), text.indexOf('</connect-designed-screens>'))
-    expect(rule).toContain('names the committed component and its preview page')
+    expect(rule).toContain('names the committed component and its design page')
     expect(rule).toContain('**the look is approved**')
     expect(rule).toContain('**connect, never restyle**')
     expect(rule).toContain('swap the sample data for real data')

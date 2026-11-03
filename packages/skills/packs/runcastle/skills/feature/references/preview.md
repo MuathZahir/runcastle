@@ -1,10 +1,10 @@
-# The plan preview — the page the human looks at
+# The Plan — the page the human looks at
 
 Load this when the decisions are settled and you are about to show the human
-the plan, or when a decision edit means the preview has to be redrawn.
+the plan, or when a decision edit means the Plan has to be redrawn.
 Otherwise it costs this conversation nothing.
 
-The preview is the one page the human reads the feature by. They confirm the
+The Plan (`preview.html`) is the one page the human reads the feature by. They confirm the
 plan by looking at it, and when tired it is the only thing they read before
 they say yes to the first round. Draw it for that reader.
 
@@ -13,15 +13,16 @@ they say yes to the first round. Draw it for that reader.
 1. **Draw it** from `./preview-starter.html`, following the rules below.
 2. **Check it against `decisions.md`** (the self-check at the end). Fix the
    preview before anyone sees it.
-3. **Show it**: `show_panel({ view: 'plan' })` opens it beside the chat. Tell
-   the human what you propose — tickets and rounds, or work you will do
-   yourself — and ask for their explicit yes. Then wait for the answer.
+3. **Show it**: `show_plan()` posts the Plan card in the chat and opens the
+   Plan tab beside it. Tell the human what you propose — tickets and rounds, or
+   work you will do yourself — and ask for their explicit yes. Then wait for the answer.
 4. **A correction is a decision edit plus a redraw.** Edit the decision in
-   `decisions.md` and redraw the preview in the same move, then ask them to
-   look again.
+   `decisions.md` and redraw the preview in the same move, call `show_plan()`
+   again, then ask them to look again.
 
-With no human present, steps 1 and 2 are the whole of this; `./planning-alone.md`
-says how that run asks for the yes.
+With no human present, steps 1 and 2 are the whole of this, plus one
+`show_plan()` before the closing message; `./planning-alone.md` says how that
+run asks for the yes.
 
 **Never skip the preview on your own judgement** — not because the feature is
 small, not because the grill went quickly. A small feature gets a small
@@ -99,15 +100,14 @@ else. Delete the starter's `example-name` block if the show has no screen.
 A screen designed in design mode (`./design.md`) is **not mocked
 again**. Its place in the show is a **designed-screen entry**:
 
-- its name;
-- one line saying what is real and what is sample data;
-- an **Open in design** button: `<button data-open-design="/preview/path">Open in design</button>`,
-  where the value is the preview page's path on the design server. The starter
-  wires it; the app answers by opening the design panel at that path, starting
-  the server first if needed.
+- its name, the same title you gave `show_design`;
+- one line saying what is real and what is sample data.
+
+The entry has **no button**: the human reaches a design from its card in the chat
+and from the Design tab, which lists every design you showed with `show_design`.
 
 Wrap the entry in a screen block, but put no markup in it. The block names the
-**committed component file and the preview page path**, so the ticket that
+**committed component file and the design page path**, so the ticket that
 connects the screen has something to point at. Use the starter's `.designed`
 entry:
 
@@ -116,8 +116,7 @@ entry:
 <div class="designed">
   <h3>Invoice list</h3>
   <p>Layout and states are real components; the rows are sample data.</p>
-  <p class="mono">src/components/InvoiceList.tsx · preview /preview/invoice-list</p>
-  <button data-open-design="/preview/invoice-list">Open in design</button>
+  <p class="mono">src/components/InvoiceList.tsx · design page /preview/invoice-list</p>
 </div>
 <!-- /screen:invoice-list -->
 ```
@@ -133,8 +132,7 @@ or inline SVG. This is enforced, not a preference: the app renders the preview
 in a sandboxed frame that runs scripts and refuses every fetch, external image
 and font, form post and popup. Anything hosted elsewhere simply does not load.
 In-page links scroll by script (the starter does this), because hash navigation
-is unreliable inside that frame. The Open in design button posts a message to
-the app, which is not a request, so it stays within this rule.
+is unreliable inside that frame.
 
 ## Sizing
 
@@ -153,5 +151,5 @@ minute for a small feature, a few minutes for a large one.**
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
 - Every screen designed in design mode is a designed-screen entry that names its
-  committed component and preview page, not a redrawn mock.
+  committed component and design page, not a redrawn mock.
 - The file is still fully inline.
