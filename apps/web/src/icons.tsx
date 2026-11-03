@@ -143,6 +143,14 @@ export function IconChevronRight(p: IconProps) {
   )
 }
 
+export function IconChevronLeft(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="m10 4-4 4 4 4" />
+    </svg>
+  )
+}
+
 export function IconMore(p: IconProps) {
   return (
     <svg {...base(p)}>
