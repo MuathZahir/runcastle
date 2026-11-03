@@ -454,7 +454,7 @@ export const testNotes = sqliteTable('test_notes', {
    * rows written before review agents existed read back as the human's.
    */
   author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
-  /** The ticket a `promoted` note was turned into; null for every other status. */
+  /** The ticket a note was once promoted into; null on every note written since promotion went. */
   ticketId: text('ticket_id'),
   reviewTicketId: text('review_ticket_id'),
   /**

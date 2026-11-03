@@ -25,13 +25,14 @@ export function FeatureDriveView({
   stopping: boolean
   /** Back to the chat page. */
   onBack: () => void
-  onStop: () => void
+  /** Stop this feature's drive; rejects when the stop fails. */
+  onStop: () => Promise<unknown>
 }) {
   const { feature } = full
   const drive = trpc.feature.driveInfo.useQuery({ projectId: feature.projectId }, { refetchInterval: useLivePoll() })
   // The slot is shared with preparation's dry run, which belongs to no feature.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
-  const notes = useFeatureDriveNotes(feature.id, onBack)
+  const notes = useFeatureDriveNotes(feature.id, onBack, ownDrive ? onStop : undefined)
   return (
     <DrivePage
       title={feature.title}
@@ -39,7 +40,7 @@ export function FeatureDriveView({
       hidden={hidden}
       stopping={stopping}
       onBack={onBack}
-      onStop={onStop}
+      onStop={() => void onStop().catch(() => undefined)}
       stage={(slots) => (
         <DriveStage
           projectId={feature.projectId}

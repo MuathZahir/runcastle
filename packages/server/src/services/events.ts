@@ -190,6 +190,22 @@ export function latestEventTs(ctx: AppCtx, featureId: string, type: string): num
   return row?.ts
 }
 
+/** A project's newest event of any of `types` (feature-scoped or not), or null. */
+export function newestProjectEvent(
+  ctx: AppCtx,
+  projectId: string,
+  types: readonly string[],
+): EventRow | null {
+  const row = ctx.db
+    .select()
+    .from(events)
+    .where(and(eq(events.projectId, projectId), inArray(events.type, [...types])))
+    .orderBy(desc(events.id))
+    .limit(1)
+    .get()
+  return row ? rowToEvent(row) : null
+}
+
 /**
  * When each feature in a project last did anything, keyed by feature id.
  *

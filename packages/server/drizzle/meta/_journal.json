@@ -411,8 +411,15 @@
     {
       "idx": 58,
       "version": "6",
+      "when": 1793650000000,
+      "tag": "0058_test_note_open_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
       "when": 1793701206096,
-      "tag": "0058_milky_black_knight",
+      "tag": "0059_milky_black_knight",
       "breakpoints": true
     }
   ]

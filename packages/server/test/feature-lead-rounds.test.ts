@@ -387,7 +387,25 @@ describe('the feature lead runs rounds', () => {
       await done
 
       expect(leadMessages(ctx, featureId)).toEqual([])
-      expect(getFeatureRow(ctx, featureId).waitingReason).toBe('provider limit')
+      expect(getFeatureRow(ctx, featureId).waitingReason).toBe('provider usage limit')
+    })
+
+    it('Resume after a provider halt sends the lead one message as the human and clears the wait', async () => {
+      workflowRegistry.set('ticket-burner', haltingBurner)
+      const featureId = seedFeature(ctx, projectId, {}).id
+      storeTickets(ctx, featureId, [ticketInput('a')])
+      const { done } = await startRun(ctx, featureId, 'ticket-burner')
+      await done
+      const caller = createCallerFactory(appRouter)(ctx)
+
+      await caller.feature.resume({ featureId })
+
+      expect(leadMessages(ctx, featureId)).toEqual(['The provider halt is cleared — pick up where the round stopped.'])
+      expect(getFeatureRow(ctx, featureId).waitingReason).toBeNull()
+      expect(eventsOf(ctx, featureId, 'feature.resumed')).toHaveLength(1)
+      // Nothing waits on the provider any more, so a second Resume is refused.
+      await expect(caller.feature.resume({ featureId })).rejects.toThrow(/not waiting on the provider/)
+      expect(leadMessages(ctx, featureId)).toHaveLength(1)
     })
   })
 

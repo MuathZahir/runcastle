@@ -379,7 +379,7 @@ export function useLiveSync(): LiveStatus {
       // without this the scenario just made stayed off the menu until a reload.
       refetches.push(u.feature.driveScenarios.invalidate())
       // Test-drive notes: the review checklist is a live surface — a note added,
-      // ticked, edited or promoted has to show up at push speed, not on the 30s
+      // edited or sent has to show up at push speed, not on the 30s
       // safety poll.
       refetches.push(u.notes.invalidate())
       // Project notes: the rail's badge and the inbox are both counts of a pile

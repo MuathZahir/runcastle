@@ -157,30 +157,16 @@ describe('renderSettings', () => {
   })
 
   /**
-   * The blanket `git add`/`git commit` grant was justified on the worktree being
-   * docs-only. That is false for the two HOST-SIDE kinds: `prepare` and
-   * `drive-fix` both run in `project.repoPath` — the developer's own checkout,
-   * with their own uncommitted work in it — where an unprompted `git add -A`
-   * commits their entire dirty tree. Doubly pointed because the prepare brief's
-   * own drive contract warns that `.runcastle/drive.env` "must never be one
-   * `git add -A` away from a commit".
+   * Every kind runs under bypass, so the allow rules are moot. The host-side
+   * kinds' git writes in the developer's checkout are bounded by the checkout
+   * guard (a hook), and no narrowed host-side rule remains.
    */
-  it('narrows the git write surface for the kinds that hold the real checkout', () => {
-    for (const kind of ['prepare', 'drive-fix'] as const) {
-      const allow = sessionBashAllowRules(kind)
-      expect(allow).not.toContain('Bash(git add:*)')
-      expect(allow).not.toContain('Bash(git commit:*)')
-      // scoped to exactly what their edit guard lets them have written
-      expect(allow).toContain('Bash(git add .runcastle:*)')
-      expect(allow).toContain('Bash(git add .gitignore:*)')
-      // and the read rules are untouched
-      expect(allow).toEqual(expect.arrayContaining([...SESSION_BASH_READ_RULES]))
-    }
-    // the docs-only talk kinds keep the blanket grant the reasoning covers
-    for (const kind of ['chat'] as const) {
+  it('leaves host-side git writes to the checkout guard, not to allow rules', () => {
+    for (const kind of ['prepare', 'drive-fix', 'scenario', 'chat'] as const) {
       expect(sessionBashAllowRules(kind)).toEqual(
         expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]),
       )
+      expect(sessionBashAllowRules(kind)).not.toContain('Bash(git add .runcastle:*)')
     }
     // and `project` still gets read-only (whole-repo write, prompts for the rest)
     expect(sessionBashAllowRules('project')).toEqual([...SESSION_BASH_READ_RULES])

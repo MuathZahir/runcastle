@@ -181,6 +181,22 @@ describe('featureStatus', () => {
     )
   })
 
+  it('a provider halt reads Stopped as which it is and offers Resume; other stops keep the Chat door', () => {
+    for (const why of [
+      'provider usage limit · resets 5pm',
+      'provider usage limit',
+      'provider billing problem — check your account',
+      'provider sign-in failed — check your login or API key',
+    ]) {
+      expect(
+        featureStatus(input({ feature: { waitingReason: why }, need: need('stopped', `Stopped · ${why}`) })),
+      ).toEqual({ kind: 'waiting', label: 'Stopped', why, primary: 'resume' })
+    }
+    expect(
+      featureStatus(input({ feature: { waitingReason: 'stopped' }, need: need('stopped', 'Stopped · you stopped it') })).primary,
+    ).toBe('chat')
+  })
+
   it('an idle agent after any round, with nothing asked, reads Talking with you, as the sidebar files it In progress', () => {
     for (const status of ['cancelled', 'failed', 'succeeded'] as const) {
       expect(featureStatus(input({ rounds: [round(2, status, 20)] }))).toEqual({
@@ -239,6 +255,10 @@ describe('the action row beside the status line', () => {
     expect(leadActions(ns({}), status({ primary: 'testDriveStop' })).primary).toEqual({
       label: 'Stop drive',
       kind: 'testDriveStop',
+    })
+    expect(leadActions(ns({}), status({ kind: 'waiting', primary: 'resume' })).primary).toEqual({
+      label: 'Resume',
+      kind: 'resumeProvider',
     })
     expect(leadActions(ns({}), status({ primary: 'stop' })).primary).toEqual({
       label: 'Stop',

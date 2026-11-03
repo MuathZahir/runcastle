@@ -69,6 +69,7 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
 import { DriveChatNotice } from './review/DriveChatNotice'
 import { FeatureDriveView } from './review/FeatureDriveView'
+import { unsentNotes } from './review/SendToAgent'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { useStandingNotices } from './workspace/use-standing-notices'
@@ -202,7 +203,8 @@ export function Workspace({
     { refetchInterval: useLivePoll(5000), enabled: confirmMerge },
   )
   const notes = trpc.notes.list.useQuery({ featureId }, { enabled: confirmMerge })
-  const openNotes = notes.data ? notes.data.filter((n) => n.status === 'open').length : undefined
+  // Every note is `open` now; what is worth a warning is a note never sent to the agent.
+  const openNotes = notes.data ? unsentNotes(notes.data).length : undefined
   const artifacts = useReviewArtifacts(featureId, confirmMerge)
   const stamped = stampedReview(artifacts.data ?? [], q.data?.tickets ?? [])
   const reviewFreshness = freshness(
@@ -405,6 +407,14 @@ export function Workspace({
       invalidate()
       void utils.feature.rounds.invalidate({ featureId })
       toast.push('stopped — nothing new starts until you reply to the agent', 'info')
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // Resume, the status row's primary after a provider halt: one message to the lead.
+  const resumeAgent = trpc.feature.resume.useMutation({
+    onSuccess: () => {
+      invalidate()
+      toast.push('resumed — the agent picks up where the round stopped', 'info')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -658,6 +668,18 @@ export function Workspace({
   }
 
   /**
+   * Stop this feature's drive. Rejects when the stop fails, which the mutation
+   * has already said in a toast; sending notes waits on it (decision 8).
+   */
+  const stopDrive = () =>
+    testDrive.mutateAsync({ featureId, action: 'stop' }).then(() => {
+      invalidate()
+      onDriveChange(null)
+      // Stop lands on the chat at once, not when the drive's poll catches up.
+      if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
+    })
+
+  /**
    * Bring one of the feature's threads to the front of the chat column, giving
    * the column back if the panel or the drive has the whole page.
    */
@@ -700,6 +722,9 @@ export function Workspace({
       case 'stopAgent':
         setConfirmStop(true)
         break
+      case 'resumeProvider':
+        resumeAgent.mutate({ featureId })
+        break
       // A burn that could not start named its fix in the summary — open the
       // settings row that summary points at (the image rebuild).
       case 'openBurnSettings': {
@@ -716,17 +741,7 @@ export function Workspace({
         startDrive(startMenu.defaultScenario?.file ?? null)
         break
       case 'testDriveStop':
-        testDrive.mutate(
-          { featureId, action: 'stop' },
-          {
-            onSuccess: () => {
-              invalidate()
-              onDriveChange(null)
-              // Stop lands on the chat at once, not when the drive's poll catches up.
-              if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
-            },
-          },
-        )
+        void stopDrive().catch(() => undefined)
         break
       // A drive whose setup command died: an agent reads the failure on the
       // human's machine and repairs the environment, with the branch left
@@ -791,7 +806,8 @@ export function Workspace({
           setConfirmMerge(false)
           if (res.ok) {
             onDriveChange(null)
-            toast.push('merged — feature shipped', 'success')
+            // The merge commits locally and pushes nothing: say so, not "shipped".
+            toast.push(`Merged into ${res.base ?? feature.baseBranch ?? 'the base branch'} on this machine — nothing was pushed`, 'success')
           } else if (res.conflict) {
             const n = res.files.length
             toast.push(
@@ -876,7 +892,7 @@ export function Workspace({
         leadWake,
         now,
       })
-  const actionsBusy = busy || stopAgent.isPending
+  const actionsBusy = busy || stopAgent.isPending || resumeAgent.isPending
   // Stop waits for the start: a second mutate would drop the first's callbacks.
   const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
@@ -929,7 +945,7 @@ export function Workspace({
           featureId={featureId}
           driving={isDriving}
           stopping={driveStopping}
-          onStop={() => runAction('testDriveStop')}
+          onStop={stopDrive}
         />
       )}
     </>
@@ -1096,7 +1112,7 @@ export function Workspace({
             hidden={!onDrive}
             stopping={driveStopping}
             onBack={() => panel.dispatch({ type: 'close' })}
-            onStop={() => runAction('testDriveStop')}
+            onStop={stopDrive}
           />
         </ScenarioChatContext.Provider>
       )}

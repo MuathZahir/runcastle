@@ -5,7 +5,7 @@ import { uploadProjectNoteScreenshot } from '../lib/project-notes'
 import { useToast } from '../lib/toast'
 import { useIsPhone } from '../lib/use-phone'
 import { Button, cx, Dialog, IconButton, Kbd, LINK } from '../ui'
-import { IconCheck, IconPencil, IconX } from '../icons'
+import { IconCheck, IconImage, IconPencil, IconX } from '../icons'
 
 /**
  * Jot a project note, from wherever you were standing (project-notes,
@@ -94,6 +94,7 @@ export function NoteCapture({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
   // Every open is a fresh note, and the reset happens DURING the render that
   // opens it (decision #18). The component stays mounted while closed, so the
@@ -303,8 +304,25 @@ export function NoteCapture({
                 Screenshot
                 <IconButton size="sm" label="Remove the picture" icon={<IconX />} onClick={drop} />
               </span>
-            ) : phone ? null : (
-              <span>Paste a screenshot</span>
+            ) : (
+              // A picture picked from a file stages exactly as a pasted one (decision 17).
+              <span className="inline-flex items-center gap-2">
+                <input
+                  ref={picker}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void stage(file)
+                    e.target.value = ''
+                  }}
+                />
+                <Button size="sm" variant="ghost" icon={<IconImage />} onClick={() => picker.current?.click()}>
+                  Add picture
+                </Button>
+                {!phone && <span>Paste a screenshot</span>}
+              </span>
             )}
             <span className="flex-1" />
             <span>

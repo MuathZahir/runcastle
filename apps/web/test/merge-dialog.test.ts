@@ -66,7 +66,7 @@ describe('MergeFeatureDialog', () => {
 
     it('enumerates the warnings box when there is something to ship over', () => {
       const html = render({ summary: summary({ openNotes: 2, drivenAt: null }) })
-      expect(html).toContain('2 open test-drive notes.')
+      expect(html).toContain('2 test-drive notes never sent to the agent.')
       expect(html).toContain('Not run')
     })
 

@@ -16,6 +16,7 @@ describe('deriveDriveState', () => {
     [{ ...base, devConfigured: false }, 'bare-checkout'],
     [{ ...base, hookFailure: { command: 'setup', exitCode: 1, timedOut: false, output: 'bad' } }, 'setup-failed'],
     [{ ...base, purpose: 'review' }, 'review-agent-driving'],
+    [{ ...base, purpose: 'review', devReady: true, cutOff: true }, 'cut-off'],
   ] as const)('maps drive information to %s', (input, expected) => {
     expect(deriveDriveState(input)).toBe(expected)
   })

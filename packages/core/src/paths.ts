@@ -243,9 +243,9 @@ export function designCropsDir(featureId: string): string {
 export const ATTACHMENTS_DIR = '.runcastle-attachments'
 
 /**
- * Where a promoted note's screenshot sits inside the burning ticket's
+ * Where a note's screenshot sits inside the burning ticket's
  * workspace: `.runcastle-attachments/<noteId>.png`. This exact string is what
- * the promotion writes into the ticket context and what the burner scans back
+ * a ticket made from the note carries in its context and what the burner scans back
  * out of it — the path convention IS the contract between the two, since the
  * ticket payload carries no attachment field.
  *

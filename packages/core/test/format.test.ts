@@ -3,8 +3,8 @@ import { fmtClock, ticketTitleFromNote } from '../src/format'
 
 /**
  * The walkthrough moment, as every reader of it sees it: the player's time
- * readout, the note thumbnail's tooltip, and the promoted ticket's context
- * paragraph. It lives here because those readers straddle the wire — lap 1
+ * readout, the note thumbnail's tooltip, and the context paragraph of a
+ * ticket made from the note. It lives here because those readers straddle the wire — lap 1
  * shipped a server copy that dropped hours and a web copy that kept them, so
  * the same note read `61:40` in one place and `1:01:40` in the other.
  *

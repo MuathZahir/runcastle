@@ -148,8 +148,22 @@ describe('the Notes card', () => {
 
     fireEvent.click(button('Dismiss'))
     expect(dismissNote).toHaveBeenCalledWith({ noteId: 'pnote_1' })
+    // Delete asks inline first: Keep gives the row back, Delete deletes
+    fireEvent.click(button('Delete'))
+    expect(screen.getByText('Delete this note?')).toBeTruthy()
+    fireEvent.click(button('Keep'))
+    expect(deleteNote).not.toHaveBeenCalled()
+    expect(screen.queryByText('Delete this note?')).toBeNull()
+    fireEvent.click(button('Delete'))
     fireEvent.click(button('Delete'))
     expect(deleteNote).toHaveBeenCalledWith({ noteId: 'pnote_1' })
+  })
+
+  it('names the screenshot a delete takes with its note', () => {
+    notes.mockReturnValue([note({ screenshotUrl: '/api/shot.png' })])
+    card()
+    fireEvent.click(button('Delete'))
+    expect(screen.getByText('Delete this note and its screenshot?')).toBeTruthy()
   })
 
   it('opens the screenshot in the app when its thumbnail is clicked', () => {

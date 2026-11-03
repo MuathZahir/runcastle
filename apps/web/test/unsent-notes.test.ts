@@ -6,9 +6,9 @@ const note = (over: Partial<TestNote>): TestNote =>
   ({ id: 'n', featureId: 'f', text: 'x', status: 'open', author: 'human', ...over }) as TestNote
 
 describe('what Send to agent would carry', () => {
-  it('is the human’s unsent notes, never a promoted one or the review agent’s', () => {
+  it('is the human’s unsent notes, never a sent one or the review agent’s', () => {
     const kept = note({ id: 'kept' })
-    const notes = [kept, note({ id: 'sent', sentAt: 1 }), note({ id: 'agent', author: 'agent' }), note({ id: 'promoted', status: 'promoted' })]
+    const notes = [kept, note({ id: 'sent', sentAt: 1 }), note({ id: 'agent', author: 'agent' })]
     expect(unsentNotes(notes)).toEqual([kept])
   })
 })

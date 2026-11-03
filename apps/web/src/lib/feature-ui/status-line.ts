@@ -1,4 +1,5 @@
 import {
+  isProviderHaltReason,
   LEAD_WAKE_FAILED,
   LeadWakeFailedData,
   type EventRow,
@@ -37,6 +38,7 @@ export type StatusPrimary =
   | 'showRequest'
   | 'resolveConflict'
   | 'merge'
+  | 'resume'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -60,7 +62,7 @@ export interface FeatureStatus {
 }
 
 export interface FeatureStatusInput {
-  feature: Pick<Feature, 'status'>
+  feature: Pick<Feature, 'status'> & Partial<Pick<Feature, 'waitingReason'>>
   /** What the feature needs from the human, as the server worked it out (`feature.get`'s `need`). */
   need: FeatureNeed | null
   /** The feature's rounds in order, as `feature.rounds` returns them. */
@@ -199,7 +201,7 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
  * while a round runs, Stop the run while the feature plans itself, and the
- * need's own button otherwise.
+ * need's own button otherwise — Resume when the stop is a provider halt.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
@@ -237,7 +239,11 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
 
   if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
 
-  if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) return needStatus(need)
+  if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) {
+    const status = needStatus(need)
+    // A provider halt (usage limit, billing, sign-in) is cleared outside runcastle; Resume picks the round back up.
+    return need.kind === 'stopped' && isProviderHaltReason(feature.waitingReason) ? { ...status, primary: 'resume' } : status
+  }
 
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
@@ -266,6 +272,7 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
   stopSelfPlan: { label: 'Stop', kind: 'stopSelfPlan', danger: true },
+  resume: { label: 'Resume', kind: 'resumeProvider' },
   chat: CHAT_ACTION,
   reply: { label: 'Reply', kind: 'reply' },
   openPlan: { label: 'Open plan', kind: 'openPlan' },

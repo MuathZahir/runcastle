@@ -17,6 +17,8 @@ import type { SettingsLocation } from './settings'
 export interface DriveState {
   featureId: string
   branch: string
+  /** A restart cut the drive off: nothing runs, and Stop returns the checkout. */
+  cutOff?: boolean
 }
 
 const SELECTED_KEY = 'runcastle.selected.v1'

@@ -31,8 +31,6 @@ export type NoteItem =
   | {
       kind: 'note'
       note: TestNote
-      /** The ticket a quick-fixed note was frozen into, when it was one. */
-      ticket?: { seq: number; title: string }
     }
   | {
       kind: 'defect'
@@ -112,14 +110,6 @@ export function NoteRow({
 }) {
   const note = item.kind === 'note' ? item.note : undefined
   const finding = item.kind === 'defect' ? item.finding : undefined
-  // Where a note ended up, as a statement rather than a control: it is part of
-  // the record and so survives `readonly`, which drops every action (decision 33a).
-  const standing =
-    note?.status === 'promoted'
-      ? `Promoted to ${item.kind === 'note' && item.ticket ? `#${item.ticket.seq} ${item.ticket.title}` : 'a ticket'}`
-      : note?.status === 'carried'
-        ? 'carried'
-        : null
   const text = note?.text ?? finding?.title ?? ''
   const moment = note?.videoTimestamp
   const mode = timestampMode(
@@ -151,12 +141,7 @@ export function NoteRow({
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {editor ?? (
-          <p
-            className={cx(
-              'm-0 text-sm text-pretty whitespace-pre-wrap',
-              note?.status === 'done' ? 'text-text-tertiary line-through' : 'text-text',
-            )}
-          >
+          <p className="m-0 text-sm text-pretty whitespace-pre-wrap text-text">
             {text}
           </p>
         )}
@@ -181,7 +166,6 @@ export function NoteRow({
               <span className="font-mono tabular-nums">{fmtClock(moment)} · earlier walkthrough</span>
             ))}
           {why && <span className="text-warning-text">{why}</span>}
-          {standing && <span>{standing}</span>}
           {note?.sentAt !== undefined && <span>{waitingForAgent ? 'Waiting for the agent' : 'Sent to the agent'}</span>}
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
           {fixing &&

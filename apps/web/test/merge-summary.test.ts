@@ -179,12 +179,12 @@ describe('mergeSummary', () => {
    * shipping over, and every one of them at once rather than the first.
    */
   describe('the warnings box', () => {
-    it('counts open test-drive notes, pluralised', () => {
+    it('counts test-drive notes never sent, pluralised', () => {
       expect(mergeSummary({ ...clean, openNotes: 3 }).warnings).toEqual([
-        '3 open test-drive notes.',
+        '3 test-drive notes never sent to the agent.',
       ])
       expect(mergeSummary({ ...clean, openNotes: 1 }).warnings).toEqual([
-        '1 open test-drive note.',
+        '1 test-drive note never sent to the agent.',
       ])
     })
 
