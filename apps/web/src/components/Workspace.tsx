@@ -1243,7 +1243,8 @@ export function Workspace({
                     views={tabs}
                     label={labelOf}
                     fresh={fresh}
-                    onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
+                    // The Design tab opens on its list (decision 6), whatever design was open last.
+                    onSwitch={(v) => panel.dispatch(v === 'design' ? { type: 'designList' } : { type: 'switch', view: v })}
                     onCollapse={() => panel.dispatch({ type: 'collapse' })}
                     onClose={() => panel.dispatch({ type: 'close' })}
                   >
