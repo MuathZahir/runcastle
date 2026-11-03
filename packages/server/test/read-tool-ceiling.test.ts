@@ -149,6 +149,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'burnConcurrency',
         'reviewEvidence',
         'reviewShots',
+        'designs',
         'tickets',
         ...(backlogged ? ['ticketsNotInlined'] : []),
         'ticketsNote',
