@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { trpc } from '../../trpc'
-import { useToast } from '../../lib/toast'
-import { useDesignRecord, useMarkSeen } from '../../lib/use-designs'
-import { nextWaiting, orderDesigns } from '../../lib/feature-ui/designs'
+import { useApproveAndNext, useDesignRecord, useMarkSeen } from '../../lib/use-designs'
+import { orderDesigns } from '../../lib/feature-ui/designs'
 import { IconArrowLeft } from '../../icons'
 import { Button, Skeleton, SkeletonBar } from '../../ui'
 import { PanelViewBar } from '../workspace/PanelViewBar'
@@ -34,13 +32,11 @@ export function DesignTab({
   /** Back to the list. */
   onList: () => void
 }) {
-  const toast = useToast()
   const utils = trpc.useUtils()
   const { designs } = useDesignRecord(featureId)
   const status = trpc.design.status.useQuery({ featureId })
   const { mutate: markSeen } = trpc.design.seen.useMutation({ onSettled: () => utils.design.list.invalidate({ featureId }) })
-  const approve = trpc.design.approve.useMutation({ onError: (e) => toast.push(e.message) })
-  const [approving, setApproving] = useState(false)
+  const { approve } = useApproveAndNext(featureId, designs, { onNext: onOpen, onDone: onList })
 
   const ordered = designs ? orderDesigns(designs) : []
   const open = path === undefined ? undefined : ordered.find((d) => d.path === path)
@@ -84,24 +80,6 @@ export function DesignTab({
     )
   }
 
-  // Approve & next (decision 24): where to go is read before the approval
-  // changes the record, then the view moves there once the server has it.
-  const approveOpen = async () => {
-    if (approving) return
-    const next = nextWaiting(designs, open.id)
-    setApproving(true)
-    try {
-      await approve.mutateAsync({ designId: open.id })
-      await utils.design.list.invalidate({ featureId })
-      if (next) onOpen(next.path)
-      else onList()
-    } catch {
-      // Said by the mutation's toast; the human stays on the design.
-    } finally {
-      setApproving(false)
-    }
-  }
-
   const index = ordered.indexOf(open)
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -115,7 +93,7 @@ export function DesignTab({
           const step = ordered[to]
           if (step) onOpen(step.path)
         }}
-        onApprove={() => void approveOpen()}
+        onApprove={() => approve(open)}
       />
       <div className="min-h-0 flex-1">
         <DesignView featureId={featureId} path={open.path} {...(open.width !== undefined ? { width: open.width } : {})} />

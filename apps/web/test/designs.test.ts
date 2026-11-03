@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approvalProgress, nextWaiting, type DesignEntry } from '../src/lib/feature-ui/designs'
+import { approvalProgress, nextWaiting, oldestWaiting, type DesignEntry } from '../src/lib/feature-ui/designs'
 
 /**
  * Where Approve & next goes and how far the human is
@@ -30,6 +30,16 @@ describe('nextWaiting', () => {
 
   it('is null when no other design waits, so the view returns to the list', () => {
     expect(nextWaiting([design('a', 1), design('d', 4, 'approved')], 'a')).toBeNull()
+  })
+})
+
+describe('oldestWaiting', () => {
+  it('is the waiting design shown earliest, whatever the order given — what the phone’s Design to approve opens', () => {
+    expect(oldestWaiting([design('c', 3), design('x', 0, 'approved'), design('a', 1), design('b', 2)])?.id).toBe('a')
+  })
+
+  it('is null when no design waits', () => {
+    expect(oldestWaiting([design('d', 4, 'approved'), design('e', 5, 'dropped')])).toBeNull()
   })
 })
 

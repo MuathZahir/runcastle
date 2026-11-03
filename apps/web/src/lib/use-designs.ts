@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import { useLivePoll } from './live'
-import type { DesignEntry } from './feature-ui/designs'
+import { nextWaiting, type DesignEntry } from './feature-ui/designs'
+import { useToast } from './toast'
 
 /**
  * A feature's design record as the web reads it
@@ -16,6 +17,39 @@ export function useDesignRecord(featureId: string, enabled = true): { designs?: 
     ...(list.data ? { designs: list.data.designs } : {}),
     planIsNew: list.data?.plan.isNew === true,
   }
+}
+
+/**
+ * Approve on an open design (decision 24), the desktop's and the phone's:
+ * where to go next is read before the approval changes the record, then, once
+ * the server has it, `onNext` opens the next design still waiting or `onDone`
+ * leaves after the last. A failure is said by a toast and the human stays put.
+ */
+export function useApproveAndNext(
+  featureId: string,
+  designs: readonly DesignEntry[] | undefined,
+  { onNext, onDone }: { onNext: (path: string) => void; onDone: () => void },
+): { approve: (design: DesignEntry) => void; approving: boolean } {
+  const toast = useToast()
+  const utils = trpc.useUtils()
+  const approve = trpc.design.approve.useMutation({ onError: (e) => toast.push(e.message) })
+  const [approving, setApproving] = useState(false)
+  const run = async (design: DesignEntry) => {
+    if (approving || !designs) return
+    const next = nextWaiting(designs, design.id)
+    setApproving(true)
+    try {
+      await approve.mutateAsync({ designId: design.id })
+      await utils.design.list.invalidate({ featureId })
+      if (next) onNext(next.path)
+      else onDone()
+    } catch {
+      // Said by the mutation's toast.
+    } finally {
+      setApproving(false)
+    }
+  }
+  return { approve: (design) => void run(design), approving }
 }
 
 /**

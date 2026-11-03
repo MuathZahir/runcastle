@@ -63,6 +63,7 @@ import { TicketsView } from './bodies/tickets/TicketsView'
 import { DesignTab } from './design/DesignTab'
 import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
 import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
+import { oldestWaiting } from '../lib/feature-ui/designs'
 import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
@@ -322,7 +323,8 @@ export function Workspace({
     oneLiner: q.data?.feature.oneLiner ?? '',
     onOpenPlan: () => panel.dispatch({ type: 'open', view: 'plan', origin: 'human' }),
     onOpenDesign: (path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' }),
-    onOpenDesignList: () => panel.dispatch({ type: 'designList' }),
+    // The phone has no design list (decision 16): its cards open designs only.
+    ...(phone ? {} : { onOpenDesignList: () => panel.dispatch({ type: 'designList' }) }),
   }
   // The chat column (chat-as-web-components decision 7): every thread of the
   // feature, one in front — the drive errand's scenario chat comes to the
@@ -757,10 +759,14 @@ export function Workspace({
       case 'openPlan':
         panel.dispatch({ type: 'open', view: 'plan', origin: 'human' })
         break
-      // "Design to approve" opens the Design list, which leads with what waits (decision 12).
-      case 'openDesign':
-        panel.dispatch({ type: 'designList' })
+      // "Design to approve" opens the Design list, which leads with what waits
+      // (decision 12); the phone has no list, so it opens the design that has
+      // waited longest (decision 22).
+      case 'openDesign': {
+        const oldest = phone ? oldestWaiting(record.designs ?? []) : null
+        panel.dispatch(oldest ? { type: 'open', view: 'design', path: oldest.path, origin: 'human' } : { type: 'designList' })
         break
+      }
       // A permission prompt: the asking thread in front, its answer box in the ask dock.
       case 'showRequest':
         if (full.need?.threadId) bringForward(full.need.threadId)
@@ -1101,6 +1107,7 @@ export function Workspace({
           {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
           title={labelOf(phoneView)}
           sub={feature.title}
+          onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
           onBack={() => panel.dispatch({ type: 'close' })}
         />
       ) : phoneView && (

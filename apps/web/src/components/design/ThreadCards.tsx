@@ -17,8 +17,8 @@ export interface ThreadCardsTarget {
   onOpenPlan: () => void
   /** Open this design (its page) in the Design view. */
   onOpenDesign: (path: string) => void
-  /** Open the Design view's list. */
-  onOpenDesignList: () => void
+  /** Open the Design view's list; none where there is no list (the phone). */
+  onOpenDesignList?: () => void
 }
 
 export const ThreadCardsContext = createContext<ThreadCardsTarget | null>(null)
@@ -56,7 +56,7 @@ export function DesignCardsItem({ designIds, older }: { designIds: readonly stri
         const design = shown.find((d) => d.id === id)
         if (design) target.onOpenDesign(design.path)
       }}
-      onOpenList={target.onOpenDesignList}
+      {...(target.onOpenDesignList ? { onOpenList: target.onOpenDesignList } : {})}
     />
   )
 }

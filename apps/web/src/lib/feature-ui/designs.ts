@@ -66,6 +66,14 @@ export function nextWaiting(designs: readonly DesignEntry[], currentId: string):
   return rest.find((d) => d.state === 'waiting' && d.id !== currentId) ?? null
 }
 
+/**
+ * What the phone's "Design to approve" opens (decision 22): the design that
+ * has waited longest, the smallest `shownAt` still waiting; null when none waits.
+ */
+export function oldestWaiting(designs: readonly DesignEntry[]): DesignEntry | null {
+  return designs.filter((d) => d.state === 'waiting').reduce<DesignEntry | null>((old, d) => (old && old.shownAt <= d.shownAt ? old : d), null)
+}
+
 /** How far the human is through the designs: approved of those not dropped. */
 export function approvalProgress(designs: readonly DesignEntry[]): { approved: number; total: number; done: boolean } {
   const counted = designs.filter((d) => d.state !== 'dropped')
