@@ -7,6 +7,7 @@ import {
   startDesignServer,
   stopDesignServer,
 } from '../../services/design'
+import { approveDesign, listDesigns, markDesignSeen, markPlanSeen, planIsNew } from '../../services/designs'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -15,7 +16,8 @@ import { publicProcedure, router } from '../context'
  * recorded one (Open in design, Restart server), remembers the path it opened, keeps it alive
  * while the design view is on screen, and stops it. Its Select area puts a crop
  * in the chat's composer, on the web side. Thin over `services/design.ts`,
- * which owns the events.
+ * which owns the events. The feature's design record — the list, the human's
+ * Approve, and what they have opened — is thin over `services/designs.ts`.
  */
 export const designRouter = router({
   status: publicProcedure
@@ -48,4 +50,33 @@ export const designRouter = router({
     .mutation(async ({ ctx, input }) => ({
       stopped: await stopDesignServer(ctx, input.featureId, 'stopped'),
     })),
+
+  /**
+   * The feature's recorded designs (designs-and-the-plan-get-their-own-place
+   * decision 6), and whether its plan is new to the human (decision 10).
+   */
+  list: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => ({
+      designs: listDesigns(ctx, input.featureId),
+      plan: { isNew: planIsNew(ctx, input.featureId) },
+    })),
+
+  /** The human's Approve on an opened design (decisions 8, 25): quiet until the last waiting one. */
+  approve: publicProcedure
+    .input(z.object({ designId: z.string() }))
+    .mutation(({ ctx, input }) => approveDesign(ctx, input.designId)),
+
+  /** The human opened a design in the Design tab. */
+  seen: publicProcedure
+    .input(z.object({ designId: z.string() }))
+    .mutation(({ ctx, input }) => markDesignSeen(ctx, input.designId)),
+
+  /** The human opened the plan: the Plan tab or its card. */
+  planSeen: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => {
+      markPlanSeen(ctx, input.featureId)
+      return { ok: true as const }
+    }),
 })

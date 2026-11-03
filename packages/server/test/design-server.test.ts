@@ -447,46 +447,6 @@ describe('design MCP tools', () => {
     expect(panelShows()).toEqual([])
   })
 
-  it('show_panel refuses design with no server and no recorded command, and opens it once one is recorded', async () => {
-    const refused = await call('show_panel', { view: 'design', path: '/preview/cart.html' })
-    expect(refused.isError).toBe(true)
-    expect(refused.text).toMatch(/start_design_server/)
-    expect(panelShows()).toEqual([])
-
-    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
-    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
-    const opened = await call('show_panel', { view: 'design', path: '/preview/cart.html' })
-    expect(opened.isError).toBe(false)
-    expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html' }])
-  })
-
-  it('show_panel carries the screen width the design view opens at, and refuses a width no screen has', async () => {
-    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
-    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
-    const opened = await call('show_panel', { view: 'design', path: '/preview/cart.html', width: 390 })
-    expect(opened.isError).toBe(false)
-    expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html', width: 390 }])
-
-    const refused = await call('show_panel', { view: 'design', width: -1 })
-    expect(refused.isError).toBe(true)
-    expect(panelShows()).toHaveLength(1)
-  })
-
-  it('show_panel remembers the design path it opened, for design.status to hand back', async () => {
-    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
-    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
-    expect(designServerStatus(ctx, feature.id).lastPath).toBeUndefined()
-
-    await call('show_panel', { view: 'design', path: '/preview/cart.html' })
-    await call('show_panel', { view: 'body' })
-
-    expect(designServerStatus(ctx, feature.id)).toEqual({
-      running: false,
-      hasRecordedCommand: true,
-      lastPath: '/preview/cart.html',
-    })
-  })
-
   it.skipIf(!AVAILABLE)('start_design_server returns the running server’s URL and port', async () => {
     const out = await call('start_design_server', { command: FAKE_DEV })
     expect(out.isError).toBe(false)

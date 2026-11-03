@@ -1069,6 +1069,10 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // agent for something that asks nothing of the human.
   'mcp__runcastle__show_file',
   'mcp__runcastle__show_review_package',
+  // The plan and the designs: a card and a record, never anything to answer.
+  'mcp__runcastle__show_plan',
+  'mcp__runcastle__show_design',
+  'mcp__runcastle__set_design_state',
 ]
 
 /**

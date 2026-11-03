@@ -162,23 +162,23 @@ describe('the lead’s MCP tools', () => {
     expect(events[shown].data).toEqual({ view: 'work' })
   })
 
-  it('show_panel accepts the six fixed views and rejects body and preview', async () => {
-    for (const view of ['plan', 'work', 'review', 'details', 'drive']) {
+  it('show_panel accepts its four views and refuses the plan and a design, naming the tools that show them', async () => {
+    for (const view of ['work', 'review', 'details', 'drive']) {
       expect((await call('show_panel', { view })).isError, view).toBe(false)
     }
-    // `design` is in the enum but refuses until a design server exists — with
-    // its own reason, not a schema error.
-    expect((await call('show_panel', { view: 'design' })).text).toMatch(/no design server runs/)
-    for (const view of ['body', 'preview']) {
+    for (const view of ['plan', 'design']) {
       const out = await call('show_panel', { view })
       expect(out.isError, view).toBe(true)
-      expect(out.text, view).toMatch(/invalid/i)
+      expect(out.text, view).toMatch(/show_plan.*show_design/)
+    }
+    for (const view of ['body', 'preview']) {
+      expect((await call('show_panel', { view })).isError, view).toBe(true)
     }
     expect(
       listAfter(ctx, featureId, 0)
         .filter((e) => e.type === 'panel.show')
         .map((e) => (e.data as { view: string }).view),
-    ).toEqual(['plan', 'work', 'review', 'details', 'drive'])
+    ).toEqual(['work', 'review', 'details', 'drive'])
   })
 
   it('wait_for_you sets the waiting reason the context shows', async () => {

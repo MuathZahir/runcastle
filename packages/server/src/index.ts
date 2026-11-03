@@ -22,6 +22,7 @@ import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import threadsApp from './routes/threads'
+import designsApp from './routes/designs'
 import { mountWebAppIfBuilt } from './routes/web'
 import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
@@ -94,6 +95,8 @@ export function buildApp(ctx: AppCtx): Hono {
   app.route('/api/stream', streamApp)
   // Thread media (routes/threads.ts) — images sent with a thread's prompts.
   app.route('/api/threads', threadsApp)
+  // Design pictures (routes/designs.ts) — the copies `show_design` keeps for the cards.
+  app.route('/api/designs', designsApp)
   app.route('/mcp', mcpApp)
 
   // Production: serve the built SPA from this same origin (issue #38). No-op in

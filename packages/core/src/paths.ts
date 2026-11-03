@@ -118,6 +118,15 @@ export function modelCatalogPath(runtime: string): string {
   return join(dataDir(), 'model-catalog', `${runtime}.json`)
 }
 
+/**
+ * Runcastle's own copies of a feature's design pictures (`show_design`):
+ * `~/.runcastle/designs/<featureId>/`, so a card keeps its picture after the
+ * agent's temp file is gone.
+ */
+export function designPicturesDir(featureId: string): string {
+  return join(dataDir(), 'designs', featureId)
+}
+
 /** Launch artifacts for a Claude Code session: `~/.runcastle/sessions/<id>/`. */
 export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)
