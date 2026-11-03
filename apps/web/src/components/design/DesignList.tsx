@@ -143,6 +143,7 @@ export function DesignBar({
   index,
   count,
   othersWaiting,
+  showing = true,
   onBack,
   onStep,
   onApprove,
@@ -153,6 +154,8 @@ export function DesignBar({
   count: number
   /** How many other designs still wait: Approve moves on to the next of them. */
   othersWaiting: number
+  /** The design is on screen; until it is, Approve stays hidden (decision 8). */
+  showing?: boolean
   onBack: () => void
   onStep: (to: number) => void
   onApprove: () => void
@@ -176,15 +179,17 @@ export function DesignBar({
         <IconButton size="sm" label="Next design" icon={<IconChevronRight />} disabled={index >= count - 1} onClick={() => onStep(index + 1)} />
       </span>
       {design.state === 'waiting' ? (
-        <Button
-          size="sm"
-          variant="primary"
-          icon={<IconCheck />}
-          onClick={onApprove}
-          {...(othersWaiting > 0 ? { title: `${othersWaiting} more waiting` } : {})}
-        >
-          {othersWaiting > 0 ? 'Approve & next' : 'Approve'}
-        </Button>
+        showing && (
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<IconCheck />}
+            onClick={onApprove}
+            {...(othersWaiting > 0 ? { title: `${othersWaiting} more waiting` } : {})}
+          >
+            {othersWaiting > 0 ? 'Approve & next' : 'Approve'}
+          </Button>
+        )
       ) : (
         <DesignStateLabel state={design.state} />
       )}

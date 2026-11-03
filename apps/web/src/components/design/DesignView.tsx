@@ -18,6 +18,12 @@ export interface DesignViewProps {
   path?: string
   /** The screen width the design was shown at; else the width the human last picked. */
   width?: number
+  /**
+   * Told whether the design is on screen: the server up and its pass-through
+   * reachable. The bar above shows Approve only then, so nothing is approved
+   * unseen (decision 8), as the phone does.
+   */
+  onShowingChange?: (showing: boolean) => void
 }
 
 /** How often a visible design view tells the server it is still being looked at. */
@@ -121,7 +127,7 @@ export type DesignServer = ReturnType<typeof useDesignServer>
  * command (a dev server wedged on a build error) and shows what the server
  * printed. A server that dies says so, with its last output.
  */
-export function DesignView({ featureId, path, width }: DesignViewProps) {
+export function DesignView({ featureId, path, width, onShowingChange }: DesignViewProps) {
   const server = useDesignServer(featureId, path)
   const { shownPath } = server
   // Bumped to remount the frame at the agent's page, wherever the frame has wandered.
@@ -130,6 +136,10 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
   const [showOutput, setShowOutput] = useState(false)
   const restartServer = () => server.restartServer(home)
   const pass = usePassReachable(server.address ? server.passPort : undefined)
+  const showing = !!server.address && server.passPort !== undefined && pass.reach === 'reachable'
+  useEffect(() => {
+    onShowingChange?.(showing)
+  }, [showing, onShowingChange])
 
   if (server.address && server.passPort !== undefined) {
     if (pass.reach !== 'reachable') return <PassCheck reach={pass.reach} passPort={server.passPort} onRetry={pass.retry} />

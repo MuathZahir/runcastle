@@ -1,8 +1,9 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Feature } from '@runcastle/core'
+import { worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
@@ -51,6 +52,13 @@ afterEach(async () => {
 
 const caller = () => createCallerFactory(appRouter)(ctx)
 
+/** The feature's talk worktree with a recorded design-server command, so show_design has a server to open from. */
+function recordDesignCommand(): void {
+  const dir = join(worktreeDir(feature.projectId, feature.slug), '.runcastle')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'design.json'), JSON.stringify({ command: 'bunx vite --port $RUNCASTLE_DESIGN_PORT --strictPort' }))
+}
+
 function session(purpose?: 'self-plan'): string {
   const id = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo, ...(purpose ? { purpose } : {}) }).id
   markSessionLive(ctx, id)
@@ -75,6 +83,16 @@ const shownIn = (sessionId: string) => readThreadEvents(sessionId).filter((e) =>
 const list = () => caller().design.list({ featureId: feature.id })
 
 describe('show_design', () => {
+  beforeEach(recordDesignCommand)
+
+  it('refuses with no design server running and none recorded, and records nothing', async () => {
+    rmSync(join(worktreeDir(feature.projectId, feature.slug), '.runcastle'), { recursive: true, force: true })
+    const out = await call(session(), 'show_design', { path: '/preview/cart.html', title: 'Cart' })
+    expect(out.isError).toBe(true)
+    expect(out.text).toMatch(/start_design_server/)
+    expect((await list()).designs).toEqual([])
+  })
+
   it('records one design per page: showing it again updates it, resets an approval, and posts another card', async () => {
     const chat = session()
     const first = await call(chat, 'show_design', { path: '/preview/cart.html', title: 'Cart', width: 390 })
@@ -173,7 +191,7 @@ describe('design.planFigures', () => {
       '# Decisions\n\nCheck first: 17, 6, 3\n\n## 1. One\ntext\n## 2. Two\n## Notes\n## 3. Three\n',
     )
     storeTickets(ctx, feature.id, [ticket('First'), ticket('Second')])
-    await call(session(), 'show_design', { path: '/preview/a.html', title: 'A' })
+    recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
 
     expect(await caller().design.planFigures({ featureId: feature.id })).toEqual({ decisions: 3, checkFirst: 3, tickets: 2, designs: 1 })
   })
@@ -187,6 +205,8 @@ describe('design.planFigures', () => {
 })
 
 describe('the design need', () => {
+  beforeEach(recordDesignCommand)
+
   it('shows "Design to approve" from the record while a design waits, and clears once none does', async () => {
     const chat = session()
     expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toBeNull()
@@ -198,6 +218,8 @@ describe('the design need', () => {
 })
 
 describe('set_design_state', () => {
+  beforeEach(recordDesignCommand)
+
   it('records a yes in words as the lead’s approval, and a rejection as dropped, which the lead’s context shows', async () => {
     const chat = session()
     await call(chat, 'show_design', { path: '/preview/a.html', title: 'A' })
@@ -216,6 +238,8 @@ describe('set_design_state', () => {
 })
 
 describe('design.approve', () => {
+  beforeEach(recordDesignCommand)
+
   /** The feature's main chat, its conversation on record and no process running. */
   function leadChat(): void {
     const row = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })

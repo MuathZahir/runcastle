@@ -74,7 +74,7 @@ import {
   setUpNext,
   validateDependencies,
 } from '../services/dependencies'
-import { type DesignServerInfo, rememberDesignPath, startDesignServer } from '../services/design'
+import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
 import {
   type LeadDesign,
   copyDesignPicture,
@@ -1105,6 +1105,12 @@ export function toolShowDesign(
   input: { path: string; title: string; width?: number; picture?: string },
 ): { recorded: true; state: DesignState } {
   const featureId = requireChatFeatureId(session)
+  // A design nobody can serve later is a dead card: as the skill says, it needs
+  // a running server or a recorded command to open from.
+  const server = designServerStatus(ctx, featureId)
+  if (!server.running && !server.hasRecordedCommand) {
+    throw new GateError('no design server runs and none is recorded — call start_design_server with a command first')
+  }
   const picture = input.picture
     ? copyDesignPicture(featureId, showableFile(ctx, session, input.picture, 'show_design').real)
     : undefined

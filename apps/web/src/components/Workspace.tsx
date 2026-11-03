@@ -63,7 +63,7 @@ import { TicketsView } from './bodies/tickets/TicketsView'
 import { DesignTab } from './design/DesignTab'
 import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
 import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
-import { oldestWaiting } from '../lib/feature-ui/designs'
+import { newestDesign, oldestWaiting } from '../lib/feature-ui/designs'
 import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureFacts } from './inspector/FeatureFacts'
@@ -1123,8 +1123,12 @@ export function Workspace({
         <PhoneChatBar
           title={feature.title}
           status={featurePhoneStatus(status)}
-          views={phoneViewChoices(tabs, full.tickets)}
-          onView={(v) => panel.dispatch({ type: 'open', view: v, origin: 'human' })}
+          views={phoneViewChoices(tabs, full.tickets, record.designs)}
+          onView={(v) => {
+            // The phone has no design list: Design opens the oldest design still waiting, else the newest.
+            const design = v === 'design' ? (oldestWaiting(record.designs ?? []) ?? newestDesign(record.designs ?? [])) : null
+            panel.dispatch({ type: 'open', view: v, origin: 'human', ...(design ? { path: design.path } : {}) })
+          }}
           onBack={() => backInApp(() => onBackToList?.())}
         />
       ) : (

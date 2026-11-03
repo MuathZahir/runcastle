@@ -26,32 +26,12 @@ export function orderDesigns(designs: readonly DesignEntry[]): DesignEntry[] {
   return [...designs].sort((a, b) => rank[a.state] - rank[b.state] || b.shownAt - a.shownAt)
 }
 
-/** The list's one summary line: "4 designs · 2 waiting for you". */
-export function designsSummary(designs: readonly DesignEntry[]): string {
-  const waiting = designs.filter((d) => d.state === 'waiting').length
-  const count = `${designs.length} ${designs.length === 1 ? 'design' : 'designs'}`
-  return waiting > 0 ? `${count} · ${waiting} waiting for you` : count
-}
-
 /** What the plan card counts (decision 5). `tickets` null means the agent builds it itself. */
 export interface PlanCounts {
   decisions: number
   checkFirst: number
   tickets: number | null
   designs: number
-}
-
-/** The plan card's line of counts: "22 decisions · 5 to check first · 5 tickets · 4 designs". */
-export function planCountsLine(counts: PlanCounts): string {
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
-  return [
-    plural(counts.decisions, 'decision', 'decisions'),
-    counts.checkFirst > 0 ? `${counts.checkFirst} to check first` : null,
-    counts.tickets === null ? 'built by the agent' : plural(counts.tickets, 'ticket', 'tickets'),
-    counts.designs > 0 ? plural(counts.designs, 'design', 'designs') : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
 }
 
 /**
@@ -72,6 +52,11 @@ export function nextWaiting(designs: readonly DesignEntry[], currentId: string):
  */
 export function oldestWaiting(designs: readonly DesignEntry[]): DesignEntry | null {
   return designs.filter((d) => d.state === 'waiting').reduce<DesignEntry | null>((old, d) => (old && old.shownAt <= d.shownAt ? old : d), null)
+}
+
+/** The design shown most recently, or null when there is none. */
+export function newestDesign(designs: readonly DesignEntry[]): DesignEntry | null {
+  return designs.reduce<DesignEntry | null>((best, d) => (best && best.shownAt >= d.shownAt ? best : d), null)
 }
 
 /** How far the human is through the designs: approved of those not dropped. */

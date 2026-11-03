@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useApproveAndNext, useDesignRecord, useMarkSeen } from '../../lib/use-designs'
 import { orderDesigns } from '../../lib/feature-ui/designs'
@@ -37,6 +38,9 @@ export function DesignTab({
   const status = trpc.design.status.useQuery({ featureId })
   const { mutate: markSeen } = trpc.design.seen.useMutation({ onSettled: () => utils.design.list.invalidate({ featureId }) })
   const { approve } = useApproveAndNext(featureId, designs, { onNext: onOpen, onDone: onList })
+  // Approve waits for the design to be on screen (decision 8), as on the phone.
+  // Held per design, so stepping to the next one never shows its Approve before its page is up.
+  const [showingId, setShowingId] = useState<string | null>(null)
 
   const ordered = designs ? orderDesigns(designs) : []
   const open = path === undefined ? undefined : ordered.find((d) => d.path === path)
@@ -88,6 +92,7 @@ export function DesignTab({
         index={index}
         count={ordered.length}
         othersWaiting={designs.filter((d) => d.state === 'waiting' && d.id !== open.id).length}
+        showing={showingId === open.id}
         onBack={onList}
         onStep={(to) => {
           const step = ordered[to]
@@ -96,7 +101,13 @@ export function DesignTab({
         onApprove={() => approve(open)}
       />
       <div className="min-h-0 flex-1">
-        <DesignView featureId={featureId} path={open.path} {...(open.width !== undefined ? { width: open.width } : {})} />
+        <DesignView
+          key={open.id}
+          featureId={featureId}
+          path={open.path}
+          onShowingChange={(on) => setShowingId(on ? open.id : null)}
+          {...(open.width !== undefined ? { width: open.width } : {})}
+        />
       </div>
     </div>
   )

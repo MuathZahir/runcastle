@@ -71,7 +71,7 @@ plan card, follows it (decision 19).
 
 **Human actions (tRPC).** `design.list({ featureId })`, `design.approve({ designId })`
 (the human's click: records `approved` by `human` and emits; when it leaves no design waiting, it delivers one runcastle line to the lead's main chat through the lead-delivery path, naming every approved design, which wakes it to commit them — decision 25; earlier clicks deliver nothing), `design.seen({ designId })` (opening a
-design) and `plan.seen({ featureId })` (opening the Plan tab or card). The existing
+design) and `design.planSeen({ featureId })` (opening the Plan tab or card). The existing
 design-server routes stay; opening a design starts the server at its path as today.
 
 **The need (core, `feature-need`).** A new fact, how many designs wait, feeds the
@@ -120,7 +120,7 @@ approval follows decisions 8 and 9; "design page" replaces "preview page".
   out — the card items, their grouping and the older marks.
 - **`featureNeed`** (existing, pure): facts in, the need out — the design need from
   the record.
-- **tRPC `design.*` and `plan.seen`** (existing router, new procedures): the
+- **tRPC `design.*`** (including `design.planSeen`) (existing router, new procedures): the
   human's approve and seen, observed through `design.list` and the lead's delivered
   line.
 - **`get_feature_context`** (existing): the lead's `designs[]`.
