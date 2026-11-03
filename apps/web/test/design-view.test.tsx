@@ -21,6 +21,7 @@ type Status = {
   hasRecordedCommand: boolean
   lastPath?: string
   lastError?: string
+  passPort?: number
 }
 let status: Status | undefined
 let start: { isPending: boolean; isError: boolean; error: { message: string } | null }
@@ -44,6 +45,13 @@ vi.mock('../src/trpc', () => ({
   },
 }))
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => 1500 }))
+// The pass-through's ping is a network boundary: whether it answers is set per test.
+let reach: 'checking' | 'reachable' | 'unreachable' = 'reachable'
+const retry = vi.fn()
+vi.mock('../src/lib/design-address', async (original) => ({
+  ...(await original<typeof import('../src/lib/design-address')>()),
+  usePassReachable: () => ({ reach, retry }),
+}))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 vi.mock('../src/lib/reviews', () => ({ uploadScreenshot: vi.fn() }))
 vi.mock('../src/lib/project-notes', () => ({ uploadProjectNoteScreenshot: vi.fn() }))
@@ -72,7 +80,9 @@ function HeaderedDesignView({ path }: { path?: string }) {
   )
 }
 
-const RUNNING: Status = { running: true, url: 'http://localhost:30001/', port: 30001, hasRecordedCommand: true }
+const RUNNING: Status = { running: true, url: 'http://localhost:30001/', port: 30001, hasRecordedCommand: true, passPort: 4514 }
+/** The pass-through's entry on this page's own host — never the design server's localhost:30001. */
+const PASS = `${location.protocol}//${location.hostname}:4514/__runcastle/open/f1?path=`
 
 // The frame points at a dev server that is not there; nothing should try to load it.
 ;(window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true
@@ -80,7 +90,8 @@ const RUNNING: Status = { running: true, url: 'http://localhost:30001/', port: 3
 let visibility: DocumentVisibilityState
 beforeEach(() => {
   status = undefined
-  start = { isPending: false, isError: false, error: null }
+  reach = 'reachable'
+  start ={ isPending: false, isError: false, error: null }
   restart = { isPending: false }
   visibility = 'visible'
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
@@ -104,14 +115,24 @@ describe('DesignView', () => {
     render(<DesignView featureId="f1" path="/preview/invites" />)
 
     const frame = document.querySelector('iframe')!
-    expect(frame.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(frame.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
     expect(frame.getAttribute('title')).toBe('the design preview')
     expect(screen.getByRole('button', { name: 'Select area' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open in a new tab' }).getAttribute('href')).toBe(
-      'http://localhost:30001/preview/invites',
+      `${PASS}%2Fpreview%2Finvites`,
     )
     expect(startMutate).not.toHaveBeenCalled()
+  })
+
+  it('when this browser cannot reach the pass-through, says which port to forward in place of the frame, with Retry', () => {
+    status = RUNNING
+    reach = 'unreachable'
+    render(<DesignView featureId="f1" path="/preview/invites" />)
+    expect(document.querySelector('iframe')).toBeNull()
+    expect(screen.getByText(new RegExp(`cannot reach port 4514 on ${location.hostname}`))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledTimes(1)
   })
 
   it('holds every control in one toolbar row above the preview, with nothing else above it', () => {
@@ -159,15 +180,15 @@ describe('DesignView', () => {
   it('reopened with no path, loads the last path the server remembers, else the root', () => {
     status = { ...RUNNING, lastPath: '/preview/invites' }
     const { rerender } = render(<DesignView featureId="f1" />)
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
     expect(showPath).not.toHaveBeenCalled()
 
     rerender(<DesignView featureId="f1" path="/preview/empty" />)
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/preview/empty')
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Fempty`)
 
     status = RUNNING
     rerender(<DesignView featureId="f1" />)
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/')
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${PASS}%2F`)
   })
 
   it('starts the server from the recorded command when none runs, saying so', () => {
@@ -183,7 +204,7 @@ describe('DesignView', () => {
     start = { ...start, isPending: false }
     status = RUNNING
     rerender(<DesignView featureId="f1" path="/preview/invites" />)
-    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
     expect(startMutate).toHaveBeenCalledTimes(1)
   })
 
@@ -247,7 +268,7 @@ describe('DesignView', () => {
 
     const after = document.querySelector('iframe')!
     expect(after).not.toBe(before)
-    expect(after.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(after.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
   })
 
   it('Back names the root when no path was opened', () => {
@@ -276,7 +297,7 @@ describe('DesignView', () => {
     rerender(<DesignView featureId="f1" path="/preview/invites" />)
     const after = document.querySelector('iframe')!
     expect(after).not.toBe(before)
-    expect(after.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(after.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
   })
 
   it('Show output opens the design server’s own terminal', () => {

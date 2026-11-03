@@ -304,42 +304,43 @@ describe('a design on a phone', () => {
   const DESIGN = `/p/${PROJECT_ID}/f/${SLUG}/design`
   type DesignStatus = RouterOutputs['design']['status']
 
-  /** The design server in `status`, the app opened on the phone link's machine, and what the view asks of the server. */
-  function designFakes(status: DesignStatus) {
-    const calls = { heartbeat: [] as unknown[], start: [] as unknown[] }
-    const host = window.location.hostname
+  /** The design server in `status`, what the view asks of the server, and whether the pass-through answers its ping. */
+  function designFakes(status: DesignStatus, passAnswers = true) {
+    const calls = { heartbeat: [] as unknown[], start: [] as unknown[], ping: [] as string[] }
+    const { protocol, hostname: host } = window.location
+    vi.stubGlobal('fetch', async (url: RequestInfo | URL) => {
+      calls.ping.push(String(url))
+      if (!passAnswers) throw new TypeError('Failed to fetch')
+      return new Response(null, { status: 204 })
+    })
     const extra: TrpcFakes = {
       design: {
         status: () => status,
         heartbeat: (input: unknown) => (calls.heartbeat.push(input), { running: true }),
         start: (input: unknown) => (calls.start.push(input), { url: 'http://localhost:30001/', port: 30001, command: 'vite' }),
       },
-      phoneLink: {
-        status: () => ({
-          tailscale: 'running' as const,
-          on: true,
-          url: `https://${host}:4512`,
-          designUrl: `https://${host}:4514`,
-          commands: [],
-        }),
-      },
     }
-    return { calls, extra, host }
+    return { calls, extra, host, protocol }
   }
 
-  it('shows the live page through the phone link at desktop width, then the phone’s, and keeps the server alive', async () => {
-    const { calls, extra, host } = designFakes({
-      running: true,
-      url: 'http://localhost:30001/',
-      port: 30001,
-      hasRecordedCommand: true,
-      lastPath: '/preview/x.html',
-    })
+  const RUNNING: DesignStatus = {
+    running: true,
+    url: 'http://localhost:30001/',
+    port: 30001,
+    hasRecordedCommand: true,
+    lastPath: '/preview/x.html',
+    passPort: 4514,
+  }
+
+  it('shows the live page through the pass-through at desktop width, then the phone’s, and keeps the server alive', async () => {
+    const { calls, extra, host, protocol } = designFakes(RUNNING)
     render(<Root path={DESIGN} extra={extra} />)
     const frame = (await screen.findByTitle('The design')) as HTMLIFrameElement
+    // No phone link set up, and still never the design server's own localhost address.
     await waitFor(() =>
-      expect(frame.getAttribute('src')).toBe(`https://${host}:4514/__runcastle/open/${FEATURE.id}?path=%2Fpreview%2Fx.html`),
+      expect(frame.getAttribute('src')).toBe(`${protocol}//${host}:4514/__runcastle/open/${FEATURE.id}?path=%2Fpreview%2Fx.html`),
     )
+    expect(calls.ping).toEqual([`${protocol}//${host}:4514/__runcastle/ping`])
     expect(frame.style.width).toBe('1440px')
     expect(screen.getByText('Tap around it. Say what to change in the chat.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Select area/ })).toBeNull()
@@ -353,20 +354,28 @@ describe('a design on a phone', () => {
     await waitFor(() => expect(window.location.pathname).toBe(CHAT))
   })
 
+  it('says which port to forward, in place of the frame, when the pass-through cannot be reached', async () => {
+    const { extra, host } = designFakes(RUNNING, false)
+    render(<Root path={DESIGN} extra={extra} />)
+    await screen.findByText(new RegExp(`cannot reach port 4514 on ${host}`))
+    expect(screen.queryByTitle('The design')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
   it('starts a stopped server from its recorded command', async () => {
-    const { calls, extra } = designFakes({ running: false, hasRecordedCommand: true })
+    const { calls, extra } = designFakes({ running: false, hasRecordedCommand: true, passPort: 4514 })
     render(<Root path={DESIGN} extra={extra} />)
     await waitFor(() => expect(calls.start).toEqual([{ featureId: FEATURE.id }]))
   })
 })
 
 describe('phoneDesignSrc', () => {
-  it('goes through the pass-through only when the app is open on the link’s machine', () => {
-    const designUrl = 'https://desk.tail1234.ts.net:4514'
-    expect(phoneDesignSrc('http://localhost:30001/', '/a b', 'f1', designUrl, 'desk.tail1234.ts.net')).toBe(
-      `${designUrl}/__runcastle/open/f1?path=%2Fa%20b`,
+  it('always goes through the pass-through on the page’s own host, phone link or not', () => {
+    expect(phoneDesignSrc({ protocol: 'https:', hostname: 'desk.tail1234.ts.net' }, 4514, 'f1', '/a b')).toBe(
+      'https://desk.tail1234.ts.net:4514/__runcastle/open/f1?path=%2Fa%20b',
     )
-    expect(phoneDesignSrc('http://localhost:30001/', '/a', 'f1', designUrl, 'localhost')).toBe('http://localhost:30001/a')
-    expect(phoneDesignSrc('http://localhost:30001/', undefined, 'f1', undefined, 'localhost')).toBe('http://localhost:30001/')
+    expect(phoneDesignSrc({ protocol: 'http:', hostname: 'localhost' }, 4514, 'f1', undefined)).toBe(
+      'http://localhost:4514/__runcastle/open/f1?path=%2F',
+    )
   })
 })

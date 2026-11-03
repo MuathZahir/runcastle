@@ -9,22 +9,19 @@ import { DrivePanel } from '../review/DrivePanel'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 import { mainChatInbox, putInInbox } from '../../lib/composer-inbox'
+import { designAddress, usePassReachable, type PassReach } from '../../lib/design-address'
+import { PassUnreachable } from './PassUnreachable'
 
 export interface DesignViewProps {
   featureId: string
-  /** Where in the design server to point, as `show_panel` or Open in design named it; else the server's `lastPath`. */
+  /** Where in the design server to point, as the open design names it; else the server's `lastPath`. */
   path?: string
-  /** The screen width `show_panel` asked for; else the width the human last picked. */
+  /** The screen width the design was shown at; else the width the human last picked. */
   width?: number
 }
 
 /** How often a visible design view tells the server it is still being looked at. */
 export const DESIGN_HEARTBEAT_MS = 60_000
-
-/** The frame's address: the server's URL with the path appended, one slash between. */
-export function designFrameUrl(url: string, path?: string): string {
-  return path ? `${url.replace(/\/+$/, '')}${path}` : url
-}
 
 /**
  * The page the design view loads: the path asked for, else the one the server
@@ -40,7 +37,7 @@ export function useDesignPath(featureId: string, path?: string, enabled = true):
  * panel and the phone's Design screen.
  *
  * A server that is down but has a recorded command is started once on open
- * (Open in design, a reload); one that stops while the view is up shows that it
+ * (a design opened, a reload); one that stops while the view is up shows that it
  * stopped and waits for the human, so an idle stop is never undone behind
  * their back. While the view is on screen it heartbeats, which is what keeps
  * the server from idling out; closing the view leaves the server to idle out
@@ -99,10 +96,17 @@ export function useDesignServer(featureId: string, path?: string) {
     return () => clearInterval(timer)
   }, [running, beat, featureId])
 
+  const passPort = status.data?.passPort
   return {
     status: status.data,
     /** The running server's URL, or undefined while it is not up. */
     url: running ? status.data?.url : undefined,
+    /**
+     * Where the frame loads the running design (decisions 23, 26): through the
+     * pass-through on this page's own host, never the server's localhost URL.
+     */
+    address: running && passPort !== undefined ? designAddress(window.location, passPort, featureId, shownPath) : undefined,
+    passPort,
     shownPath,
     seen,
     start,
@@ -115,12 +119,12 @@ export function useDesignServer(featureId: string, path?: string) {
 export type DesignServer = ReturnType<typeof useDesignServer>
 
 /**
- * The panel's design view (design-mode decisions 3, 4, 5): the live preview the
+ * The panel's design view (design-mode decisions 3, 4, 5): the live design the
  * agent serves from the feature's talk worktree, in the drive's frame and
  * toolbar — Select area sends the crop to the chat rather than to a note.
  *
  * The human is never stranded on a page the agent did not show: the frame's one
- * toolbar row goes Back to the agent's page (a link in the preview can take the
+ * toolbar row goes Back to the agent's page (a link in the design can take the
  * frame anywhere), and its server menu restarts the server from its recorded
  * command (a dev server wedged on a build error) and shows what the server
  * printed. A server that dies says so, with its last output.
@@ -133,8 +137,10 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
   const home = () => setHomeCount((n) => n + 1)
   const [showOutput, setShowOutput] = useState(false)
   const restartServer = () => server.restartServer(home)
+  const pass = usePassReachable(server.address ? server.passPort : undefined)
 
-  if (server.url) {
+  if (server.address && server.passPort !== undefined) {
+    if (pass.reach !== 'reachable') return <PassCheck reach={pass.reach} passPort={server.passPort} onRetry={pass.retry} />
     const paneId = server.status?.paneId
     // The server's own controls ride the frame's one toolbar row, folded into a
     // menu so the row never wraps into a second bar.
@@ -166,7 +172,7 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
             putInInbox(mainChatInbox(featureId), [new File([png], 'selection.png', { type: 'image/png' })])
           }
           frameKey={String(homeCount)}
-          url={designFrameUrl(server.url, shownPath)}
+          url={server.address}
           leading={
             <IconButton
               label={`Back to ${shownPath ?? '/'}`}
@@ -189,6 +195,19 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
     )
   }
   return <DesignServerDown server={server} onRestart={restartServer} />
+}
+
+/**
+ * A design view's frame before the pass-through answers: a quiet line while
+ * the probe is out, the port to forward when it cannot be reached.
+ */
+export function PassCheck({ reach, passPort, onRetry }: { reach: PassReach; passPort: number; onRetry: () => void }) {
+  if (reach === 'unreachable') return <PassUnreachable hostname={window.location.hostname} passPort={passPort} onRetry={onRetry} />
+  return (
+    <div className="flex items-center justify-center gap-2 px-6 py-12">
+      <DimLine>Opening the design…</DimLine>
+    </div>
+  )
 }
 
 /**

@@ -1,27 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { trpc } from '../../trpc'
+import { designAddress, usePassReachable, type PageAddress } from '../../lib/design-address'
 import { DEFAULT_PREVIEW_WIDTH, frameSize } from '../../lib/preview-width'
 import { Button } from '../../ui'
-import { designFrameUrl, DesignServerDown, useDesignServer } from '../design/DesignView'
+import { DesignServerDown, PassCheck, useDesignServer } from '../design/DesignView'
 import { PhoneViewScreen } from './PhoneChatBar'
 
 /**
- * Where the phone's frame loads the design: through the pass-through's entry
- * path when the app itself is open on the phone link's machine, so the frame is
- * same-site and gets its cookie; else, on plain localhost at phone width, the
- * design server directly, as the desktop does.
+ * Where the phone's frame loads the design: through the pass-through on the
+ * page's own host, as every design view does (decision 26) — whether or not
+ * the phone link is set up, and never the design server's own localhost URL.
  */
-export function phoneDesignSrc(
-  serverUrl: string,
-  path: string | undefined,
-  featureId: string,
-  designUrl: string | undefined,
-  pageHost: string,
-): string {
-  if (designUrl && new URL(designUrl).hostname === pageHost) {
-    return `${designUrl}/__runcastle/open/${encodeURIComponent(featureId)}?path=${encodeURIComponent(path ?? '/')}`
-  }
-  return designFrameUrl(serverUrl, path)
+export function phoneDesignSrc(page: PageAddress, passPort: number, featureId: string, path: string | undefined): string {
+  return designAddress(page, passPort, featureId, path)
 }
 
 /**
@@ -49,7 +39,7 @@ export function PhoneDesignView({
   onBack: () => void
 }) {
   const server = useDesignServer(featureId, path)
-  const link = trpc.phoneLink.status.useQuery(undefined, { refetchOnWindowFocus: false })
+  const pass = usePassReachable(server.url ? server.passPort : undefined)
   const [wide, setWide] = useState(true)
   const stage = useRef<HTMLDivElement>(null)
   const [pane, setPane] = useState({ width: 0, height: 0 })
@@ -61,7 +51,7 @@ export function PhoneDesignView({
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [server.url])
+  }, [server.url, pass.reach])
   const size = frameSize(wide ? (width ?? DEFAULT_PREVIEW_WIDTH) : 'fit', pane)
 
   return (
@@ -77,12 +67,14 @@ export function PhoneDesignView({
         )
       }
     >
-      {server.url ? (
+      {server.url && server.passPort !== undefined && pass.reach !== 'reachable' ? (
+        <PassCheck reach={pass.reach} passPort={server.passPort} onRetry={pass.retry} />
+      ) : server.url && server.passPort !== undefined ? (
         <>
           <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden bg-surface-inset">
             <iframe
               title="The design"
-              src={phoneDesignSrc(server.url, server.shownPath, featureId, link.data?.designUrl, window.location.hostname)}
+              src={phoneDesignSrc(window.location, server.passPort, featureId, server.shownPath)}
               className="absolute top-0 left-0 origin-top-left border-0 bg-surface"
               style={{ width: size.width, height: size.height, transform: `scale(${size.scale})` }}
             />
