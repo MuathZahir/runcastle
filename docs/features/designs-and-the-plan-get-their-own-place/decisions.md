@@ -121,3 +121,9 @@ Check first: 8, 9, 17, 6, 3
 **Decision:** With no design list on the phone (decision 16), the phone's "Design to approve" button opens its Design screen on the oldest design still waiting.
 **Why:** The waiting need from decision 17 needs a target on the phone, and the oldest waiting design is the one to look at first.
 **Assumed.** Alternative: the phone's button opens the chat, where the cards are.
+
+## 23. The desktop loads designs through the design pass-through, so they work from another machine
+**Decision:** The desktop Design view, its pop-out, the design cards and the plan's "Open in design" buttons load a design through the design pass-through that the phone already uses, at the page's own host and protocol on the server's port plus two (4514 by default), through its `/__runcastle/open/<feature>?path=…` entry. They never put the design server's own `localhost` address in the frame. When that port cannot be reached from the page, the frame says so in words, naming the port to forward (for an SSH tunnel, `-L 4514:localhost:4514` beside 4512), instead of a bare browser error.
+**Why:** Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows "localhost refused to connect". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too.
+**Assumed.** Alternative: keep loading the design server directly when the page is on localhost, and use the pass-through only when it is not.
+**Changed by the orchestrator:** added after the human's designs would not open over the VPS tunnel ("localhost refused to connect"), 2026-11-03.

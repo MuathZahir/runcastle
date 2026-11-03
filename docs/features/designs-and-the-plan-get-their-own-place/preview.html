@@ -166,7 +166,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
 <section id="show">
   <h2>The show</h2>
 
-  <p class="hint">Decisions 8 and 9 were settled by the project’s orchestrator on 2026-11-02; everything else is the planner’s, waiting for you.</p>
+  <p class="hint">Decisions 8, 9 and 23 were settled by the project’s orchestrator (8 and 9 on 2026-11-02, 23 on 2026-11-03); everything else is the planner’s, waiting for you.</p>
   <p class="hint">Before and after, for the human who comes back to a planned feature.</p>
   <div class="ba">
     <div><h3>Today</h3><ul>
@@ -236,6 +236,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
   <div class="sub">
     <h3>Small changes, described rather than designed</h3>
     <div class="small"><ul>
+      <li><i class="dot live"></i>Designs open from anywhere runcastle is opened: the desktop loads them through the same pass-through as the phone (port 4514), and says which port to forward when it cannot reach it. <a class="pin" data-d="23">23</a></li>
       <li><i class="dot live"></i>"Design to approve" in the header opens the Design list. <a class="pin" data-d="12">12</a></li>
       <li><i class="dot live"></i>Merge names any design still waiting and says it will not ship. <a class="pin" data-d="21">21</a></li>
       <li><i class="dot live"></i>The phone's chat shows the same cards; a design card opens the phone's Design screen with Approve. <a class="pin" data-d="16">16</a> <a class="pin" data-d="22">22</a></li>
@@ -279,7 +280,7 @@ pre.shape{background:var(--color-surface-inset);border-radius:var(--radius-md);p
       <div class="tk"><span class="n">1</span><b>Designs: the record, the agent's tools and the cards' events</b><span class="b">first</span>
         <span class="g">Design table and plan columns; show_design, show_plan, set_design_state; show_panel narrowed; thread events folded into card items; tRPC list, approve, seen; the lead's designs in its context; the design need from the record.</span></div>
       <div class="tk"><span class="n">2</span><b>Designs: the cards, the Design tab and the dots on the desktop</b><span class="b">after 1</span>
-        <span class="g">Wire the approved components to real data; Design tab always offered; Approve; dots; "Design to approve" opens the list; merge names waiting designs; the open-design bridge removed.</span></div>
+        <span class="g">Wire the approved components to real data; Design tab always offered; Approve; dots; "Design to approve" opens the list; merge names waiting designs; the open-design bridge removed; designs loaded through the pass-through, with a forward-this-port line when it is unreachable.</span></div>
       <div class="tk"><span class="n">3</span><b>Designs: the cards on the phone</b><span class="b">after 2</span>
         <span class="g">Cards in the phone chat; a design card opens the phone's Design screen with Approve; the phone's need button opens the oldest waiting design.</span></div>
       <div class="tk"><span class="n">4</span><b>Skills: the plan and designs in the agent's words</b><span class="b">after 1</span>
@@ -418,6 +419,11 @@ set_design_state({ path, state })                // a yes or a no given in words
     "On the phone, \"Design to approve\" opens the oldest waiting design",
     "The waiting need from decision 17 needs a target on the phone, and the oldest waiting design is the one to look at first.",
     "assumed"
+    ],
+    [
+    "The desktop loads designs through the design pass-through, so they work from another machine",
+    "Runcastle can run on another machine (a VPS, reached over an SSH tunnel or Tailscale). There, the design server's `localhost` address is the server's, not the browser's, so every design shows \"localhost refused to connect\". The pass-through already proxies the design server for the phone and works on the VPS, so one path serves every case: the same machine, Tailscale (which already serves 4514), and a tunnel that forwards 4514 too.",
+    "orchestrator"
     ]
     ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
