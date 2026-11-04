@@ -17,6 +17,7 @@ import {
 import { cx } from '../../../ui'
 import { StatusDot } from '../../../ui/status'
 import type { FeatureListItem } from '../../../lib/api'
+import type { FeatureAction } from '../../../lib/chat-thread'
 import { triageOf } from '../../../lib/feature-ui/sidebar'
 import { FeatureProgressIcon, featureStateWords } from '../../SidebarParts'
 import { INSET, WELL } from './surfaces'
@@ -31,21 +32,6 @@ import { INSET, WELL } from './surfaces'
  */
 
 // ---- what a turn did ----
-
-/** What an orchestrator action did to a feature (decision 1). */
-export type FeatureAction =
-  | 'created'
-  | 'parked'
-  | 'started'
-  | 'planning'
-  | 'planningStopped'
-  | 'messaged'
-  | 'relayed'
-  | 'brief'
-  | 'taken'
-  | 'merged'
-  | 'driveStarted'
-  | 'driveStopped'
 
 /** One feature a turn acted on: one row of a features card. */
 export interface FeatureActionRow {

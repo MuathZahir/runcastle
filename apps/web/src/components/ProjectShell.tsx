@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import { rememberedView, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
@@ -35,6 +35,7 @@ import { CommandPalette } from './CommandPalette'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
+import { FeatureLinksContext, type FeatureLinks } from './chat/thread/FeatureCardItems'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -145,6 +146,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       openFeature(featureId, view ?? (phone ? 'chat' : undefined))
     },
     [openFeature, phone],
+  )
+  // A chat's feature rows read the sidebar's list and open a feature as its row does.
+  const featureLinks = useMemo<FeatureLinks>(
+    () => ({ features: features ?? [], openFeature: (featureId) => openChosen(featureId) }),
+    [features, openChosen],
   )
 
   // Every session launch under this shell lands on its feature's chat. On the
@@ -464,11 +470,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   return (
     <OpenSettingsProvider open={ws.openSettings}>
       <LandOnChatProvider value={landOnChat}>
-        {/* The open page publishes its threads; the sidebar beside it lists them. */}
-        <SidebarThreadsProvider>
-          {/* …and its header's actions, for the palette's first group. */}
-          <FeatureCommandsProvider>{shell}</FeatureCommandsProvider>
-        </SidebarThreadsProvider>
+        <FeatureLinksContext.Provider value={featureLinks}>
+          {/* The open page publishes its threads; the sidebar beside it lists them. */}
+          <SidebarThreadsProvider>
+            {/* …and its header's actions, for the palette's first group. */}
+            <FeatureCommandsProvider>{shell}</FeatureCommandsProvider>
+          </SidebarThreadsProvider>
+        </FeatureLinksContext.Provider>
       </LandOnChatProvider>
     </OpenSettingsProvider>
   )
