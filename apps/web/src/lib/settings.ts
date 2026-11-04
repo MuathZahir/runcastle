@@ -39,6 +39,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
+  usageSignal: 'RUNCASTLE_USAGE_SIGNAL',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnMaxIterations: 'RUNCASTLE_BURN_MAX_ITERATIONS',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
@@ -246,7 +247,27 @@ interface FieldMeta {
   optionLabels?: Record<string, string>
   /** A word tagged beside the label: what the field *is* (`experimental`). */
   tag?: string
+  /**
+   * For a `switch` whose stored value is not a boolean: the two values it
+   * writes. Anything but `off` (unset included) reads as on.
+   */
+  switchValues?: SwitchValues
+  /** More words the filter box finds this row by, beyond its label and tooltip. */
+  searchTerms?: string[]
 }
+
+/** The two stored values a non-boolean switch writes. */
+export interface SwitchValues {
+  on: string
+  off: string
+}
+
+/**
+ * What the usage ping sends, in one line — the Settings row, the wizard and the
+ * one-time notice all say it, so they cannot drift apart.
+ */
+export const USAGE_PING_SENDS =
+  'It sends a random install ID, the version and the platform. Nothing about your projects or code.'
 
 /**
  * What drive instructions may and may not license, in one line (decision 7).
@@ -312,6 +333,15 @@ const FIELD_META: Record<string, FieldMeta> = {
       inherit: 'Inherit mine — my servers alongside runcastle’s',
       runcastleOnly: 'runcastle only — nothing else',
     },
+  },
+  usageSignal: {
+    label: 'Usage ping',
+    tooltip: `At each boot runcastle checks for a newer version and counts this install as active. ${USAGE_PING_SENDS} Off, the update check asks npm instead. DO_NOT_TRACK=1 turns it off whatever this says.`,
+    control: 'switch',
+    page: 'general',
+    group: 'server',
+    switchValues: { on: 'on', off: 'off' },
+    searchTerms: ['usage', 'ping', 'telemetry', 'tracking', 'analytics', 'privacy'],
   },
   burnConcurrency: {
     label: 'Concurrency',
@@ -594,6 +624,25 @@ export interface SettingRow {
   evidence?: string
   /** The repo has moved far enough since this was measured to be worth a nudge. */
   stale: boolean
+  /** A non-boolean switch's two stored values (see {@link switchWrite}). */
+  switchValues?: SwitchValues
+  /** More words the filter box finds this row by. */
+  searchTerms?: string[]
+}
+
+/** What flipping a switch row writes: its mapped value, or the boolean itself. */
+export function switchWrite(row: Pick<SettingRow, 'switchValues'>, on: boolean): string | boolean {
+  if (!row.switchValues) return on
+  return on ? row.switchValues.on : row.switchValues.off
+}
+
+/**
+ * A switch row's value as the control reads it (`'true'`/`'false'`). A mapped
+ * switch is on unless its value is the `off` one, so an unset value reads as
+ * the default it stands for.
+ */
+function switchDisplay(value: unknown, values: SwitchValues): string {
+  return value === values.off ? 'false' : 'true'
 }
 
 function toDisplay(value: unknown): string {
@@ -768,8 +817,10 @@ export function describeField(
     ...(unit ? { unit } : {}),
     page: meta.page,
     group: meta.group,
-    value: toDisplay(field.value),
+    value: meta.switchValues ? switchDisplay(field.value, meta.switchValues) : toDisplay(field.value),
     control: meta.control,
+    ...(meta.switchValues ? { switchValues: meta.switchValues } : {}),
+    ...(meta.searchTerms ? { searchTerms: meta.searchTerms } : {}),
     // A model row's choices are the roster (curated + the operator's own), so a
     // custom id they added is a pick rather than something to retype.
     options: isModel ? roster.map((m) => m.id) : (meta.options ?? []),
@@ -1163,7 +1214,7 @@ export interface SettingsFilter {
 
 /** What a settings row offers the filter box. */
 export function rowSearchTerms(row: SettingRow): string[] {
-  return [row.label, row.key, row.tooltip]
+  return [row.label, row.key, row.tooltip, ...(row.searchTerms ?? [])]
 }
 
 /**

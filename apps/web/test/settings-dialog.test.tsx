@@ -380,6 +380,36 @@ describe('SettingsDialog', () => {
     expect(screen.queryByText('On your phone')).toBeNull()
   })
 
+  // The usage ping's switch stores 'on'/'off', not a boolean, and an unset
+  // value is the default (on) — so the switch reads it and writes the word.
+  it('turns the usage ping off and on from General, writing the setting’s words', () => {
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: null, source: 'default' })])
+    open()
+
+    const ping = screen.getByRole('switch', { name: 'Usage ping' })
+    expect(ping.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(ping)
+    expect(server.updates).toEqual([{ key: 'usageSignal', value: 'off' }])
+
+    cleanup()
+    server.updates = []
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: 'off' })])
+    open()
+    const off = screen.getByRole('switch', { name: 'Usage ping' })
+    expect(off.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(off)
+    expect(server.updates).toEqual([{ key: 'usageSignal', value: 'on' }])
+  })
+
+  it.each(['telemetry', 'ping', 'privacy'])('finds the usage ping by “%s”', (query) => {
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: 'on' })])
+    open()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: query } })
+    expect(screen.getByRole('switch', { name: 'Usage ping' })).toBeTruthy()
+    expect(screen.queryByLabelText('Sandbox image')).toBeNull()
+  })
+
   it('moves to the first page with hits when the open one has none', () => {
     open()
 
