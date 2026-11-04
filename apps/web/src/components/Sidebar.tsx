@@ -45,6 +45,7 @@ import { RailResizeHandle } from './RailResizeHandle'
 import type { FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { ProjectSwitcher } from './ProjectSwitcher'
+import { useOpenGlossary } from './GlossaryDialog'
 import { CollapseSidebarButton } from './Frame'
 import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
 import { PhoneNotificationsRow } from './phone/PhoneNotificationsRow'
@@ -96,6 +97,8 @@ export interface SidebarProps {
   onOpenNote?: () => void
   onOpenCmdk?: () => void
   onOpenSettings?: () => void
+  /** Settings → General at "On your phone": the help menu's phone entry. */
+  onOpenPhoneSetup?: () => void
   /** The branch this project's live project drive is driving, or null. */
   projectDriveBranch?: string | null
   onOpenProjectDrive?: () => void
@@ -674,6 +677,10 @@ export interface SidebarFootState {
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   onOpenSettings?: () => void
+  /** The help menu's Glossary; no help menu without it. */
+  onOpenGlossary?: () => void
+  /** The help menu's way onto a phone; absent on a phone. */
+  onOpenPhoneSetup?: () => void
   /** Rows above the status line (live drives). */
   rows?: ReactNode
 }
@@ -692,6 +699,8 @@ export function SidebarFootChrome({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenGlossary,
+  onOpenPhoneSetup,
   rows,
 }: SidebarFootState) {
   const healthTip =
@@ -713,6 +722,8 @@ export function SidebarFootChrome({
         theme={theme}
         onToggleTheme={onToggleTheme}
         onOpenSettings={onOpenSettings}
+        onOpenGlossary={onOpenGlossary}
+        onOpenPhoneSetup={onOpenPhoneSetup}
       />
     </div>
   )
@@ -727,6 +738,7 @@ function SidebarFoot({
   projectId,
   onSelect,
   onOpenSettings,
+  onOpenPhoneSetup,
   projectDriveBranch = null,
   onOpenProjectDrive,
   onOpenFeatureDrive,
@@ -734,6 +746,7 @@ function SidebarFoot({
   onDriveChange,
 }: SidebarProps) {
   const toast = useToast()
+  const openGlossary = useOpenGlossary()
   const utils = trpc.useUtils()
   const live = useLiveStatus()
   const theme = useTheme()
@@ -791,6 +804,8 @@ function SidebarFoot({
       theme={theme.resolved}
       onToggleTheme={theme.toggle}
       onOpenSettings={onOpenSettings}
+      onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
+      onOpenPhoneSetup={onOpenPhoneSetup}
       rows={rows}
     />
   )

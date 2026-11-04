@@ -3,7 +3,7 @@ import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
 import { DimLine, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
-import { PhoneLinkSection } from './PhoneLinkSection'
+import { PHONE_LINK_FIELD, PhoneLinkSection } from './PhoneLinkSection'
 import { SettingGroup, SettingLine, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -31,7 +31,7 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
           <ThemeRow />
         </SettingSection>
       )}
-      <PhoneLinkSection projectId={projectId} filter={filter} />
+      <PhoneLinkSection projectId={projectId} filter={filter} highlight={highlightField === PHONE_LINK_FIELD} />
     </>
   )
 

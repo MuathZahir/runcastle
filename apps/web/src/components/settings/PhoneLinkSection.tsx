@@ -8,6 +8,7 @@ import { IconCopy, IconExternalLink } from '../../icons'
 import { copyText } from '../workspace/copy-text'
 import { SettingLine, SettingSection } from './SettingRow'
 import { showsSetting, type FilterState } from './types'
+import { HIGHLIGHT_RING, useHighlight } from './highlight'
 
 /**
  * "On your phone" (runcastle-on-your-phone, decision 6): the private Tailscale
@@ -40,10 +41,14 @@ export const TAILSCALE_HTTPS_PAGE = 'https://login.tailscale.com/admin/dns'
 export function PhoneLinkSection({
   projectId,
   filter,
+  highlight = false,
 }: {
   projectId: string
   filter: FilterState
+  /** A link named this section ("Use runcastle on your phone"): scroll to it and flash it. */
+  highlight?: boolean
 }) {
+  const { ref, flash } = useHighlight<HTMLDivElement>(highlight)
   const utils = trpc.useUtils()
   const status = trpc.phoneLink.status.useQuery(undefined, { refetchOnWindowFocus: false })
   // Each mutation answers the fresh status, so the section updates at once
@@ -55,16 +60,20 @@ export function PhoneLinkSection({
   const turnOff = trpc.phoneLink.turnOff.useMutation(settle)
 
   if (!showsSetting(filter, PHONE_LINK_FIELD)) return null
+  // The wrapper takes over the section's own top spacing, so it can carry the
+  // flash without moving the section.
   return (
-    <PhoneLinkBody
-      link={status.data}
-      loading={status.isLoading}
-      loadError={status.error?.message}
-      turningOn={turnOn.isPending}
-      turningOff={turnOff.isPending}
-      onTurnOn={() => turnOn.mutate({ projectId })}
-      onTurnOff={() => turnOff.mutate({ projectId })}
-    />
+    <div ref={ref} className={cx('mt-9 first:mt-0', flash && HIGHLIGHT_RING)}>
+      <PhoneLinkBody
+        link={status.data}
+        loading={status.isLoading}
+        loadError={status.error?.message}
+        turningOn={turnOn.isPending}
+        turningOff={turnOff.isPending}
+        onTurnOn={() => turnOn.mutate({ projectId })}
+        onTurnOff={() => turnOff.mutate({ projectId })}
+      />
+    </div>
   )
 }
 

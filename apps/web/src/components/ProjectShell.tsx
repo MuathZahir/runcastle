@@ -35,6 +35,8 @@ import { CommandPalette } from './CommandPalette'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
+import { PHONE_LINK_FIELD } from './settings/PhoneLinkSection'
+import { useOpenGlossary } from './GlossaryDialog'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -78,6 +80,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     setCapturing(true)
     setJots((n) => n + 1)
   }
+  // The help menu's and the palette's two doors (ready-to-publish decisions 9, 16).
+  const openGlossary = useOpenGlossary()
+  const openPhoneSetup = () => ws.openSettings({ page: 'general', field: PHONE_LINK_FIELD })
   // The saved line's View: the project workspace, with its Notes card brought
   // into view — selecting the workspace alone does nothing visible from the
   // workspace itself, or with the card scrolled off (decisions #16).
@@ -397,6 +402,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenNote={jot}
             onOpenCmdk={() => setCmdk(true)}
             onOpenSettings={() => ws.openSettings()}
+            onOpenPhoneSetup={openPhoneSetup}
             projectDriveBranch={projectDrive?.branch ?? null}
             onOpenProjectDrive={openDrive}
             onOpenFeatureDrive={(featureId) => openFeature(featureId, 'drive')}
@@ -425,6 +431,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           selectedFeatureId={ws.selectedFeatureId}
           onSelect={openChosen}
           onOpenSettings={() => ws.openSettings()}
+          onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
+          onOpenPhoneSetup={openPhoneSetup}
           onOpenPreparation={ws.startPreparation}
           // The palette navigates, it never launches: this opens the project
           // home, where the conversation list decides new-versus-resume.

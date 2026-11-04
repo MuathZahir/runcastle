@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { IconMessage, IconPencil, IconPlus } from '../../icons'
+import { IconList, IconMessage, IconPencil, IconPlus } from '../../icons'
 import { relTimeAgo } from '../../lib/format'
 import { useLiveStatus } from '../../lib/live'
 import type { ProjectNavApi } from '../../lib/use-project-nav'
 import { IconButton, Sheet, SheetRow, StatusDot } from '../../ui'
 import { ProjectSwitcher } from '../ProjectSwitcher'
+import { useOpenGlossary } from '../GlossaryDialog'
 
 /**
  * The phone list's head (docs/features/runcastle-on-your-phone decision 7):
  * the project switcher, and a "+" whose sheet holds the two things worth doing
- * with a thumb — a new Orchestrator chat and a note. Adding to the backlog is
+ * with a thumb — a new Orchestrator chat and a note — and the Glossary, which
+ * the phone has no help menu for. Adding to the backlog is
  * asked of the Orchestrator in chat.
  */
 export function PhoneListHead({
@@ -22,6 +24,7 @@ export function PhoneListHead({
   onOpenNote?: () => void
 }) {
   const [creating, setCreating] = useState(false)
+  const openGlossary = useOpenGlossary()
   const pick = (act: () => void) => () => {
     setCreating(false)
     act()
@@ -36,6 +39,9 @@ export function PhoneListHead({
         <SheetRow icon={<IconMessage />} label="New chat" hint="A new chat with the orchestrator — talk an idea through before it becomes a feature" onClick={pick(onNewChat)} />
         {onOpenNote && (
           <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
+        )}
+        {openGlossary && (
+          <SheetRow icon={<IconList />} label="Glossary" hint="The words runcastle uses, in one sentence each" onClick={pick(() => openGlossary())} />
         )}
       </Sheet>
     </div>

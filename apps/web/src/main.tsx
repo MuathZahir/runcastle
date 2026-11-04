@@ -2,6 +2,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { GlossaryProvider } from './components/GlossaryDialog'
 import { unhandledMutationError } from './lib/mutation-errors'
 import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
@@ -62,7 +63,10 @@ function Root() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ToastProvider>
-            <App />
+            {/* Once, so every Term hint and menu can open the one Glossary. */}
+            <GlossaryProvider>
+              <App />
+            </GlossaryProvider>
           </ToastProvider>
         </TooltipProvider>
       </QueryClientProvider>
