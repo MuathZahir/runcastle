@@ -54,11 +54,17 @@ export const TAILSCALE_HTTPS_PAGE = 'https://login.tailscale.com/admin/dns'
 const SERVE_NOT_ENABLED = /Serve is not enabled on your tailnet/i
 const ADDRESS = /https:\/\/\S+/
 
+/** The output from Tailscale's "not enabled" notice on, or undefined without one. */
+function httpsNotice(output: string): string | undefined {
+  const notice = SERVE_NOT_ENABLED.exec(output)
+  return notice ? output.slice(notice.index) : undefined
+}
+
 /** Where to allow HTTPS, when the output is Tailscale's "not enabled" answer. */
 function httpsNeededIn(output: string): string | undefined {
-  const notice = SERVE_NOT_ENABLED.exec(output)
-  if (!notice) return undefined
-  return ADDRESS.exec(output.slice(notice.index))?.[0] ?? TAILSCALE_HTTPS_PAGE
+  const notice = httpsNotice(output)
+  if (notice === undefined) return undefined
+  return ADDRESS.exec(notice)?.[0] ?? TAILSCALE_HTTPS_PAGE
 }
 
 /**
@@ -66,10 +72,7 @@ function httpsNeededIn(output: string): string | undefined {
  * whitespace after the link proves it was not cut mid-chunk. A notice with no
  * link is read when the command exits, or at its timeout.
  */
-const stopAtHttpsNotice = (output: string): boolean => {
-  const notice = SERVE_NOT_ENABLED.exec(output)
-  return !!notice && /https:\/\/\S+\s/.test(output.slice(notice.index))
-}
+const stopAtHttpsNotice = (output: string): boolean => /https:\/\/\S+\s/.test(httpsNotice(output) ?? '')
 
 export interface PhoneLinkDeps {
   exec: ExecFn
