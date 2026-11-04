@@ -64,7 +64,7 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
         highlightField={highlightField}
       />
       <SettingGroup
-        title="Sessions"
+        title="Chats"
         rows={group('sessions')}
         filter={filter}
         highlightField={highlightField}

@@ -178,7 +178,7 @@ function provenanceNote(f: {
     f.source === 'build'
       ? 'Built by runcastle from the repo Dockerfile'
       : f.source === 'session'
-        ? 'Established in a conversation on this machine'
+        ? 'Established in a chat on this machine'
           : HOST_ONLY_PREPARED.has(f.key)
             ? 'Proposed by preparation from config (not executed)'
             : 'Established by preparation'
@@ -233,7 +233,7 @@ export function findingSource(f: { key: string; source: string }): { label: stri
   if (f.source === 'build')
     return { label: 'Built', title: "Built by runcastle from this repo's own Dockerfile" }
   if (f.source === 'session')
-    return { label: 'Verified', title: 'Established in a conversation on your own machine' }
+    return { label: 'Verified', title: 'Established in a chat on your own machine' }
   return HOST_ONLY_PREPARED.has(f.key)
     ? { label: 'Proposed', title: 'Read from config by an older automatic run, not executed' }
     : { label: 'Measured', title: 'Measured by an older automatic run, in a sandbox' }

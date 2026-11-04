@@ -23,7 +23,7 @@ import { FeatureActionsMenu } from './FeatureActionsMenu'
 const RENAME_INPUT = `${TEXT_INPUT} h-7 w-full font-medium`
 
 /** The reason removal is refused while the project still has a run going. */
-const IN_FLIGHT_REASON = 'A run is in flight — it has to finish before this project can go.'
+const IN_FLIGHT_REASON = 'A round is in flight — it has to finish before this project can go.'
 
 export function ProjectCard({
   project,

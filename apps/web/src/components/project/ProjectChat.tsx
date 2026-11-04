@@ -34,7 +34,7 @@ export function ProjectChat({
 }) {
   return (
     <ThreadColumn
-      label="Project chat"
+      label="Orchestrator chat"
       threadId={threadId}
       {...(runtime ? { runtime } : {})}
       {...(start ? { start } : {})}

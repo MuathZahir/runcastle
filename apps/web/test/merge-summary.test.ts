@@ -93,7 +93,7 @@ describe('mergeSummary', () => {
     it('says outright that no ticket ever burned on this branch', () => {
       expect(row(mergeSummary({ ...clean, tickets: [] }), 'run')).toEqual({
         key: 'run',
-        value: 'no tickets burned',
+        value: 'no tickets built',
         tone: 'warn',
       })
     })

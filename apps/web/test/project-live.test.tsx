@@ -51,7 +51,7 @@ describe('a project chat', () => {
     const api = server()
     render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
 
-    const chat = screen.getByRole('region', { name: 'Project chat' })
+    const chat = screen.getByRole('region', { name: 'Orchestrator chat' })
     expect(await screen.findByText('Three features: capture, triage, export.')).toBeTruthy()
     expect(chat.textContent).toContain('Lands on main')
     expect(screen.getByLabelText('Message')).toBeTruthy()
@@ -73,7 +73,7 @@ describe('a project chat', () => {
     const api = server()
     render(<ProjectChat threadId="th_new" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
     expect(await screen.findByRole('heading', { name: 'What are we building?' })).toBeTruthy()
-    expect(screen.queryByText('New thread')).toBeNull()
+    expect(screen.queryByText('New chat')).toBeNull()
   })
 
   it('starts a project’s first chat on its first message, and the question gives way', async () => {

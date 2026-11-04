@@ -468,7 +468,7 @@ export type ThreadApi = ReturnType<typeof useThread>
 /** A Markdown file's name from a thread's title, without what file systems refuse. */
 export function markdownFileName(title: string): string {
   const name = title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
-  return `${name || 'Thread'}.md`
+  return `${name || 'Chat'}.md`
 }
 
 /**
@@ -496,7 +496,7 @@ export function useThreadActions(): {
       link.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      toast.push(e instanceof Error ? e.message : 'the thread could not be exported')
+      toast.push(e instanceof Error ? e.message : 'the chat could not be exported')
     }
   }
   return {

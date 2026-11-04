@@ -168,11 +168,11 @@ export function ChatThread({
             // Held back a moment: a read that answers at once shows no flash of it.
             <p role="status" className="m-0 flex animate-fade-in items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary [animation-delay:var(--dur-3)]">
               <Spinner />
-              Loading the thread…
+              Loading the chat…
             </p>
           ) : items.length === 0 ? (
             <div className="pt-[12vh]">
-              {empty ?? <EmptyState icon={<IconMessage />} title="New thread" hint={emptyHint} />}
+              {empty ?? <EmptyState icon={<IconMessage />} title="New chat" hint={emptyHint} />}
             </div>
           ) : (
             items.map((item, i) => {
@@ -280,7 +280,7 @@ function Item({
         </p>
       )
     case 'compacted':
-      return <Divider>Conversation compacted — earlier turns are summarised for the agent</Divider>
+      return <Divider>Chat compacted — earlier turns are summarised for the agent</Divider>
     case 'model':
       return (
         <Divider>
@@ -376,7 +376,7 @@ function UserMessage({
           className="w-full resize-none border-0 bg-transparent font-sans text-base text-text outline-none"
         />
         <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2">
-          <span className="text-xs text-text-tertiary">Rewinds the thread to here and sends this instead.</span>
+          <span className="text-xs text-text-tertiary">Rewinds the chat to here and sends this instead.</span>
           {actions?.canUndoFiles && (
             <Checkbox checked={undoFiles} onChange={setUndoFiles} label="Also undo the agent’s file edits since — changes made by shell commands stay" />
           )}
@@ -404,7 +404,7 @@ function UserMessage({
     <Actions align="beside">
       <CopyButton text={item.text} />
       {actions?.onBranch && (
-        <IconButton label="Branch into a new thread from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
+        <IconButton label="Branch into a new chat from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
       )}
       {actions?.onEdit && (
         <IconButton
@@ -476,7 +476,7 @@ function AgentMessage({
       <Actions align="start">
         <CopyButton text={item.text} />
         {actions?.onBranch && (
-          <IconButton label="Branch into a new thread from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
+          <IconButton label="Branch into a new chat from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
         )}
         {item.model && <span className="self-center pl-1 text-xs text-text-tertiary">{item.model}</span>}
       </Actions>

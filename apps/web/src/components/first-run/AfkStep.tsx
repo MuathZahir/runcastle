@@ -25,7 +25,10 @@ export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
   return (
     <>
-      <StepHeading title="Run workers unattended?">{AFK_BURN_EXPLAINER}</StepHeading>
+      <StepHeading title="Run workers unattended?">
+        {AFK_BURN_EXPLAINER} You can skip it for now, but you need it before your first round can build
+        anything.
+      </StepHeading>
 
       {settingUp && (
         <div className="mt-8 animate-rise-in">

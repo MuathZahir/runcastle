@@ -256,11 +256,11 @@ describe('SettingsDialog', () => {
     expect(screen.getByLabelText('Server port')).toBeTruthy()
     expect(screen.getByLabelText('Sandbox')).toBeTruthy()
     expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
-    expect(screen.getByLabelText('MCP servers in sessions')).toBeTruthy()
+    expect(screen.getByLabelText('MCP servers in chats')).toBeTruthy()
 
     // The explanation is the row's description: one quiet line under the
     // label, and the control's accessible description — no hover to find it.
-    const about = screen.getByText(/The Docker image sessions and workers are sandboxed in/)
+    const about = screen.getByText(/The Docker image chats and workers are sandboxed in/)
     expect(about.className).toContain('text-text-tertiary')
     expect(screen.getByLabelText('Sandbox image').getAttribute('aria-describedby')).toContain(
       about.id,
@@ -390,6 +390,15 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe(
       'page',
     )
+  })
+
+  it.each(['burn', 'AFK', 'lane'])('still finds the Workers page by its older name %s', (word) => {
+    open()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: word } })
+
+    expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe('page')
+    // The checklist itself waits on the doctor, which this harness leaves loading.
   })
 
   it('says so when nothing matches, rather than showing an empty page', () => {

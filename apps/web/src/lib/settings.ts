@@ -198,8 +198,8 @@ const STEP_META: readonly {
   group: StepGroup
 }[] = [
   // Sessions — you are in the terminal.
-  { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature conversation' },
-  { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
+  { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature chat' },
+  { step: 'project', label: 'Orchestrator chat', group: 'sessions', description: 'The project-level chat' },
   // Unattended — burns and scripted runs.
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
@@ -281,7 +281,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandbox: {
     label: 'Sandbox',
     tooltip:
-      'Where launched sessions and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
+      'Where chats and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
     control: 'select',
     page: 'general',
     group: 'sessions',
@@ -294,16 +294,16 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image sessions and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
+      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
     control: 'text',
     page: 'general',
     group: 'sessions',
     placeholder: 'sandcastle:runcastle',
   },
   sessionMcp: {
-    label: 'MCP servers in sessions',
+    label: 'MCP servers in chats',
     tooltip:
-      'Inherit mine — sessions see your own MCP servers (user, project and plugin) alongside runcastle’s. runcastle only — sessions see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.',
+      'Inherit mine — chats see your own MCP servers (user, project and plugin) alongside runcastle’s. runcastle only — chats see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.',
     control: 'select',
     page: 'general',
     group: 'sessions',
@@ -335,7 +335,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   burnAttempts: {
     label: 'Attempts per ticket',
     tooltip:
-      'Fresh agent attempts per ticket per run (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
+      'Fresh agent attempts per ticket per round (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
     control: 'number',
     page: 'burns',
     group: 'width',
@@ -457,7 +457,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sessionBranch: {
     label: 'Commits land on',
     tooltip:
-      'The branch the project chat’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
+      'The branch the orchestrator’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
     control: 'text',
     page: 'project',
     group: 'chat',
@@ -483,7 +483,7 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
   sandbox: { page: 'project', group: 'model' },
   sandboxImage: {
     tooltip:
-      'The Docker image THIS project’s sessions and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
+      'The Docker image THIS project’s chats and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
     page: 'project',
     group: 'model',
   },
@@ -708,7 +708,7 @@ function provenanceChipFor(f: FindingLike): ProvenanceChip {
     f.source === 'human'
       ? 'You'
       : f.source === 'session'
-        ? 'Set in a session'
+        ? 'Set in a chat'
         : f.source === 'build'
           ? 'Built by runcastle'
           : 'Prepared'

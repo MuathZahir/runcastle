@@ -52,7 +52,7 @@ export function useResumeFailedBanner(
     const last = failed[failed.length - 1]
     if (last) {
       setAlert({
-        message: last.message || 'session resume failed — relaunch to continue',
+        message: last.message || 'the chat could not resume — relaunch to continue',
         sticky: heldByBackgroundSession(last),
       })
     }

@@ -251,7 +251,7 @@ export function ContextMeter({
             </div>
             <Bar percent={percent} />
             {context.costUsd !== undefined && (
-              <span className="text-xs tabular-nums text-text-tertiary">This thread so far: ${context.costUsd.toFixed(2)}</span>
+              <span className="text-xs tabular-nums text-text-tertiary">This chat so far: ${context.costUsd.toFixed(2)}</span>
             )}
           </section>
           {limits.length > 0 && (

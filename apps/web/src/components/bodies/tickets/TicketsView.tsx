@@ -117,7 +117,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const terminalBlocked = !!runningRun || full.data.sessions.some(sessionActive)
 
   const onStopped = (r: { stopped: boolean; swept: boolean; confirmed: boolean }) => {
-    if (r.swept) toast.push('no live agent — the lane was orphaned; marked failed', 'info')
+    if (r.swept) toast.push('no live agent — the worker was orphaned; marked failed', 'info')
     else if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
     // The kill ran out of time: the ticket still reads stopped, so this is the
     // only place the human hears that it may not be.
@@ -560,7 +560,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               disabled={busy || controls.terminalBlocked}
               title={
                 controls.terminalBlocked
-                  ? 'available once this run finishes and no terminal is open'
+                  ? 'available once this round finishes and no terminal is open'
                   : 'open a terminal on the feature branch, briefed with this ticket and its conflicting files, and resolve it yourself'
               }
               onClick={() => controls.resolveInTerminal(ticket, conflict)}

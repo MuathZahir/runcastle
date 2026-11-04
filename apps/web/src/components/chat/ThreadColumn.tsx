@@ -23,7 +23,7 @@ export function ThreadOpening({ label = 'Chat' }: { label?: string }) {
       data-thread-column=""
       className="flex min-h-0 min-w-0 flex-1 items-center justify-center gap-2 bg-surface text-sm text-text-tertiary"
     >
-      <Spinner /> Opening the thread…
+      <Spinner /> Opening the chat…
     </section>
   )
 }

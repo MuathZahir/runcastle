@@ -33,7 +33,7 @@ import type { FilterState, SettingsPageProps } from './types'
 
 /** What the header says over each page, under the page's own name. */
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
-  general: 'How runcastle looks, where its server listens, and how sessions are sandboxed.',
+  general: 'How runcastle looks, where its server listens, and how chats are sandboxed.',
   models: 'The default model, the roster this machine offers, and which model runs each step.',
   burns: 'What workers need before a round can start, and how hard they try once it does.',
   project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',

@@ -33,7 +33,7 @@ export function PhoneListHead({
       </div>
       <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
       <Sheet open={creating} onClose={() => setCreating(false)} label="New">
-        <SheetRow icon={<IconMessage />} label="New chat" hint="Talk to the Orchestrator" onClick={pick(onNewChat)} />
+        <SheetRow icon={<IconMessage />} label="New chat" hint="A new chat with the orchestrator — talk an idea through before it becomes a feature" onClick={pick(onNewChat)} />
         {onOpenNote && (
           <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
         )}

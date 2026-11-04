@@ -231,7 +231,7 @@ function TwoLineRow({
 function NewThreadButton({ onClick }: { onClick: () => void }) {
   return (
     <span data-new-thread="" className="inline-flex">
-      <IconButton size="sm" label="New thread" icon={<IconPlus />} onClick={onClick} />
+      <IconButton size="sm" label="New chat" icon={<IconPlus />} onClick={onClick} />
     </span>
   )
 }
@@ -620,7 +620,7 @@ export function SidebarThreadRow({
       )}
       {actions.length > 0 && (
         <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-hover/thread:opacity-100 group-has-[:focus-visible]/thread:opacity-100">
-          <FeatureActionsMenu actions={actions} label="Thread actions" />
+          <FeatureActionsMenu actions={actions} label="Chat actions" />
         </span>
       )}
     </div>
@@ -656,7 +656,7 @@ export function SidebarThreadList({
   onOpen,
   actionsFor,
   more,
-  label = 'Threads',
+  label = 'Chats',
   keep,
   markFor,
   tipFor,
@@ -702,7 +702,7 @@ export function SidebarThreadList({
       {hidden > 0 && (
         <li>
           {more ? (
-            <ThreadListMore label={`All ${threads.length} conversations`} icon={<IconArrowRight size={12} />} onClick={more} />
+            <ThreadListMore label={`All ${threads.length} chats`} icon={<IconArrowRight size={12} />} onClick={more} />
           ) : (
             <ThreadListMore label={`Show ${hidden} more`} icon={<IconChevronDown size={12} />} onClick={() => setAll(true)} />
           )}

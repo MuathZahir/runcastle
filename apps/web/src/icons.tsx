@@ -710,10 +710,10 @@ export const PHASE_TEXT: Record<PhaseIconPhase, string> = {
 /** Sentence-case name of each phase — the glyph's accessible label. */
 export const PHASE_NAME: Record<PhaseIconPhase, string> = {
   draft: 'Backlog',
-  ideation: 'Ideation',
-  spec: 'Spec',
+  ideation: 'Planning',
+  spec: 'Planning',
   planning: 'Planning',
-  tickets: 'Tickets',
+  tickets: 'Planning',
   implementation: 'Build',
   building: 'Build',
   review: 'Review',

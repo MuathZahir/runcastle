@@ -82,8 +82,15 @@ function credentialPrerequisite(runtime: AgentRuntime): BurnPrerequisite {
   }
 }
 
+/**
+ * The Workers page's older names (ready-to-publish decision 3): the app no
+ * longer says them, but anyone who learned them still types them, so every
+ * checklist row answers to them and the search lands on the page.
+ */
+const WORKERS_PAGE_ALIASES = ['burn', 'AFK', 'lane', 'unattended']
+
 /** The checklist, in render order. */
-export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = [
+export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = ([
   {
     field: 'container-runtime',
     label: 'Container runtime',
@@ -102,7 +109,7 @@ export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = [
     label: 'Worker cache',
     terms: ['Worker cache', 'Burn cache', 'volume', 'clear'],
   },
-]
+] satisfies BurnPrerequisite[]).map((row) => ({ ...row, terms: [...row.terms, ...WORKERS_PAGE_ALIASES] }))
 
 /** How the checklist's summary line reads, over the rows that gate a burn. */
 export interface AfkReadiness {

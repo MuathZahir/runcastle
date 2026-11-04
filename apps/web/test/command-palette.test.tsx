@@ -134,7 +134,7 @@ describe('CommandPalette', () => {
           title: 'Checkout redesign',
           commands: [
             { key: 'openPlan', label: 'Open plan', run: openPlan },
-            { key: 'newThread', label: 'New thread', kbd: 'Ctrl+Shift+O', run: vi.fn() },
+            { key: 'newThread', label: 'New chat', kbd: 'Ctrl+Shift+O', run: vi.fn() },
             { key: 'testDriveStart', label: 'Start test drive', disabled: 'Nothing declared ready yet', run: drive },
           ],
         }}
@@ -155,7 +155,7 @@ describe('CommandPalette', () => {
     )
 
     const rows = screen.getAllByRole('option').map((o) => o.textContent)
-    expect(rows.slice(0, 4)).toEqual(['Open plan', 'New threadCtrl+Shift+O', 'Start test driveNothing declared ready yet', expect.stringContaining('Demo')])
+    expect(rows.slice(0, 4)).toEqual(['Open plan', 'New chatCtrl+Shift+O', 'Start test driveNothing declared ready yet', expect.stringContaining('Demo')])
     expect(screen.getByText('Checkout redesign')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('option', { name: /Start test drive/ }))

@@ -43,7 +43,7 @@ import { OnYourComputer } from './OnYourComputer'
 
 /** What preparation is, in the one sentence every state of the page leads with. */
 const WHAT_IT_DOES =
-  'Repo facts an agent establishes once — how to install, how to verify, what is already red — so no burn agent re-derives them per ticket.'
+  'Repo facts an agent establishes once — how to install, how to verify, what is already red — so no worker re-derives them per ticket.'
 
 /**
  * The preparation workspace — the whole body, not a card in an overlay.

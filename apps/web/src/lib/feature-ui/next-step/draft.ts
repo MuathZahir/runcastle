@@ -94,7 +94,7 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
       return {
         kick: 'NEXT STEP',
         title: 'Start this feature',
-        desc: 'In the backlog — Start cuts its branch, writes the brief, and opens the grill with you. Plan it yourself makes the plan without you.',
+        desc: 'In the backlog — Start cuts its branch, writes the brief, and opens its chat with you. Plan it yourself makes the plan without you.',
         primary: start,
         secondary: [selfPlan],
         busy: false,

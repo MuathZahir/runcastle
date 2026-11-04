@@ -123,7 +123,7 @@ describe('NoteRow', () => {
       { kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } },
       { onViewLane: () => undefined },
     )
-    expect(html).toContain('being fixed in the running burn · lane #9')
+    expect(html).toContain('being fixed in the running round · worker #9')
   })
 
   it('states the fix as history when there is nowhere live to go', () => {
@@ -153,7 +153,7 @@ describe('NoteRow', () => {
         resolutionNote: 'addressed by lap 2’s ticket 7',
       },
     })
-    expect(attested).toContain('closed by a session as addressed')
+    expect(attested).toContain('closed in a chat as addressed')
     expect(attested).toContain('addressed by lap 2’s ticket 7')
     expect(attested).toContain('text-warning-text')
 

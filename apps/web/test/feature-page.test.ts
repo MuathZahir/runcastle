@@ -169,13 +169,13 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship and New thread, no Go', () => {
+  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship and New chat, no Go', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Talking with you')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
-    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|New thread)"/.test(b))
+    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|New chat)"/.test(b))
     expect(buttons.length - chrome.length).toBe(1)
-    expect(header).toContain('aria-label="New thread"')
+    expect(header).toContain('aria-label="New chat"')
     expect(header).not.toMatch(/>Go</)
     expect(header).toContain('Merge &amp; ship')
   })
@@ -350,8 +350,8 @@ describe('the drive page', () => {
   })
 })
 
-/** you-always-know-what-s-waiting decisions 1, 6, 7, 8: the need's button, Merge & ship, New thread. */
-describe('the header’s need, its button and New thread', () => {
+/** you-always-know-what-s-waiting decisions 1, 6, 7, 8: the need's button, Merge & ship, New chat. */
+describe('the header’s need, its button and New chat', () => {
   const PLAN: FeatureNeed = { kind: 'plan', words: 'Plan to approve', held: false, since: 1 }
   const MERGE: FeatureNeed = { kind: 'merge', words: 'Ready to merge', held: false, since: 1 }
   const header = () => document.querySelector('header') as HTMLElement
@@ -388,7 +388,7 @@ describe('the header’s need, its button and New thread', () => {
 
   it('starts a side thread from the header’s "+" and from Ctrl+Shift+O, the composer included', () => {
     mount({})
-    fireEvent.click(screen.getByRole('button', { name: 'New thread' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
     expect(store.fired).toEqual([['thread.new', { featureId: 'f1' }]])
 
     const field = document.body.appendChild(document.createElement('textarea'))
@@ -399,9 +399,9 @@ describe('the header’s need, its button and New thread', () => {
     field.remove()
   })
 
-  it('offers no New thread on a shipped feature', () => {
+  it('offers no New chat on a shipped feature', () => {
     mount({ status: 'shipped' })
-    expect(screen.queryByRole('button', { name: 'New thread' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
     fireEvent.keyDown(document.body, { key: 'o', metaKey: true, shiftKey: true })
     expect(store.fired).toEqual([])
     expect(published).toBeNull()
@@ -412,7 +412,7 @@ describe('the header’s need, its button and New thread', () => {
     expect(published?.title).toBe('Demo')
     expect(published?.commands.map((c) => [c.label, c.disabled ?? null])).toEqual([
       ['Open plan', null],
-      ['New thread', null],
+      ['New chat', null],
       ['Merge & ship', null],
       ['Start test drive', 'Nothing declared ready yet'],
     ])

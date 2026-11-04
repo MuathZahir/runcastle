@@ -31,9 +31,9 @@ const TICKETS: ChatNotice = {
 const RUN: ChatNotice = {
   kind: 'run',
   hue: 'danger',
-  title: 'Run finished with failures',
+  title: 'Round finished with failures',
   subtitle: '4 of 6 landed',
-  actionLabel: 'View run',
+  actionLabel: 'View round',
   target: 'work',
   count: 1,
   eventId: 3,
@@ -63,7 +63,7 @@ describe('NoticeStrip', () => {
     renderStrip()
     expect(screen.getByText('+2 more')).toBeTruthy()
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'View run' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'View round' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'View tickets' })).toBeNull()
   })
 
@@ -125,7 +125,7 @@ describe('NoticeStrip', () => {
       expect(screen.getAllByRole('article').map((a) => within(a).getAllByText(/./)[0].textContent)).toEqual([
         'Merge conflict',
         'Nothing verified',
-        'Run finished with failures',
+        'Round finished with failures',
       ])
       expect(screen.getByText('+2 more')).toBeTruthy()
     })
@@ -151,7 +151,7 @@ describe('NoticeStrip', () => {
 
     it('leaves the event notices acting by kind as before', () => {
       const { onAct } = renderStanding([CONFLICT])
-      fireEvent.click(screen.getByRole('button', { name: 'View run' }))
+      fireEvent.click(screen.getByRole('button', { name: 'View round' }))
       expect(onAct).toHaveBeenCalledWith('run')
     })
   })

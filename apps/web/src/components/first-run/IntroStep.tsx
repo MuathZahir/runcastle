@@ -22,7 +22,7 @@ export function IntroStep({ onNext }: { onNext: () => void }) {
         <LogoMark size={26} />
       </AccentTile>
       <StepHeading title="Your coding agent, driven through a pipeline">
-        Describe a feature and runcastle runs the agent sessions that carry it from idea to merged.
+        Describe a feature and runcastle runs the agents that carry it from idea to merged.
         You test-drive the result and decide when it ships.
       </StepHeading>
       <ol className="m-0 mt-8 flex list-none flex-col p-0">

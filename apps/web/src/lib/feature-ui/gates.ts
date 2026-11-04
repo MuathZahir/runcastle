@@ -74,7 +74,7 @@ export function ticketConflictKickoff(input: {
  * the same words, because they fire the same compound.
  */
 export const ONE_TERMINAL_WARNING =
-  'One terminal per feature — your live session will be closed to open the resolve session.'
+  'One terminal per feature — your live chat will be closed to open the resolve chat.'
 
 
 /**

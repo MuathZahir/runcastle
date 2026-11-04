@@ -103,7 +103,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
     const files = conflict.files.length > 0 ? `${plural(conflict.files.length, 'file')} · ` : ''
     const tooltip = [
       ...conflict.files,
-      ...(input.resolveEnded ? ['The resolve session ended but the merge hasn’t landed — resolve by hand or retry.'] : []),
+      ...(input.resolveEnded ? ['The resolve chat ended but the merge hasn’t landed — resolve by hand or retry.'] : []),
       ...(input.liveSessionId ? [ONE_TERMINAL_WARNING] : []),
     ].join('\n')
     rows.push({
@@ -113,7 +113,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       subtitle: `${files}${conflict.base} into ${input.branch}`,
       ...(tooltip ? { tooltip } : {}),
       action: {
-        label: input.liveSessionId ? 'End session & resolve' : 'Resolve with agent',
+        label: input.liveSessionId ? 'End the chat & resolve' : 'Resolve with agent',
         onClick: acts.resolve,
         disabled: acts.resolving,
       },

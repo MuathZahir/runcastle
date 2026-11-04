@@ -130,7 +130,7 @@ describe('the rows', () => {
     const html = list({ keep: (t) => t.id === 'a', markFor: () => null })
     expect(html).toContain('title="a"')
     expect(html).not.toContain('title="b"')
-    expect(html).toContain('All 2 conversations')
+    expect(html).toContain('All 2 chats')
   })
 
   it('shows no age on a row marked null, and a ring per feature on a holder', () => {

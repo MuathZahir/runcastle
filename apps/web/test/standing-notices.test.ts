@@ -55,7 +55,7 @@ describe('standingNotices', () => {
 
   it('offers to end a live session on the way in, and holds the button while the resolve launches', () => {
     const [row] = rows({ conflict: CONFLICT, liveSessionId: 'ses_1' }, acts({ resolving: true }))
-    expect(row.action).toMatchObject({ label: 'End session & resolve', disabled: true })
+    expect(row.action).toMatchObject({ label: 'End the chat & resolve', disabled: true })
     expect(row.tooltip).toContain('One terminal per feature')
   })
 

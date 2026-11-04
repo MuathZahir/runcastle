@@ -150,7 +150,7 @@ describe('a new feature’s chat', () => {
     })
     const first = render(<Chat start={start} />, { wrapper: api.Wrapper })
     await waitFor(() => expect(toasts).toEqual(['Claude Code is not ready']))
-    expect(screen.getByText('New thread')).toBeTruthy()
+    expect(screen.getByText('New chat')).toBeTruthy()
     first.rerender(<Chat start={start} />)
     await settle()
     expect(start).toHaveBeenCalledOnce()

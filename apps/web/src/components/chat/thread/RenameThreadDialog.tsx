@@ -17,9 +17,9 @@ export function RenameThreadDialog({ title, onClose, onSave }: { title: string; 
           save()
         }}
       >
-        <DialogHeader id="rename-thread-title" title="Rename thread" />
+        <DialogHeader id="rename-thread-title" title="Rename chat" />
         <DialogBody>
-          <TextField aria-label="Thread name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={200} autoFocus />
+          <TextField aria-label="Chat name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={200} autoFocus />
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>

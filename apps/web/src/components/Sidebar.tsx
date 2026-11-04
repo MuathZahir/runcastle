@@ -417,7 +417,7 @@ export function Sidebar(props: SidebarProps) {
                 onNewThread: projectThreads.newThread,
                 threads: (
                   <SidebarThreadList
-                    label="Conversations"
+                    label="Chats"
                     threads={sidebarThreadOrder(projectThreads.threads)}
                     current={projectThreads.current}
                     onOpen={projectThreads.pick}
@@ -551,7 +551,7 @@ export function CreateMenu({
         <CreateItem
           icon={<IconMessage />}
           label="New chat"
-          hint="A conversation with the feature's agent — it plans the work, builds it and runs rounds when you say yes"
+          hint="A new chat with the orchestrator — talk an idea through before it becomes a feature"
           onSelect={onNewChat}
         />
         <CreateItem
@@ -757,9 +757,9 @@ function SidebarFoot({
     <>
       {projectDriveBranch !== null && (
         <DriveCard
-          label="Project drive"
+          label="Test drive · main"
           detail={<span className="font-mono">{projectDriveBranch}</span>}
-          title={`A project drive is live on ${projectDriveBranch} — back to it`}
+          title={`A test drive is live on ${projectDriveBranch} — back to it`}
           onOpen={onOpenProjectDrive}
         />
       )}
