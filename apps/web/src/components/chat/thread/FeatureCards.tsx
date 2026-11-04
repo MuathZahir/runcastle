@@ -430,7 +430,7 @@ export function OrchestratorMessage({ text, relayed = false }: { text: string; r
         <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{text}</div>
         <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
           <IconOrchestrator size={12} className="text-icon" />
-          Your answer, relayed by the Orchestrator
+          Your answer, relayed by the orchestrator
         </span>
       </div>
     )
