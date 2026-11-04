@@ -221,8 +221,8 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
     <div class="flow">
       <span class="box">a git step in a worktree exports <span class="mono">GIT_DIR</span></span><span class="arr">→</span>
       <span class="box">a test run inherits it</span><span class="arr">→</span>
-      <span class="box">fixture runs <span class="mono">git init</span>, then stashes "keep me"</span><span class="arr">→</span>
-      <span class="box bad">your repo gets <span class="mono">core.bare = true</span> and the stash</span>
+      <span class="box">the move fixture's git commands land in your repo</span><span class="arr">→</span>
+      <span class="box bad">a <span class="mono">git init</span> sets <span class="mono">core.bare = true</span>; a stash, a commit, two branches and a tag are left behind</span>
     </div>
     <p class="hint" style="margin-top:16px">After</p>
     <div class="flow">
@@ -230,7 +230,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
       <span class="box">every git child works only in its scratch dir</span><span class="arr">→</span>
       <span class="box good">the run compares your repo's [core] config and stash before and after, and fails loudly if they changed <a class="pin" data-d="8">8</a></span>
     </div>
-    <p class="hint" style="margin-top:12px">The two failing move tests are traced to a cause and fixed where it is <a class="pin" data-d="9">9</a>. The stray "keep me" stash stays for you to drop <a class="pin" data-d="10">10</a>.</p>
+    <p class="hint" style="margin-top:12px">The two failing move tests are traced to a cause and fixed where it is <a class="pin" data-d="9">9</a>. What that run left in your repo stays for you to delete <a class="pin" data-d="10">10</a>.</p>
   </div>
 
   <div class="sub">
@@ -257,7 +257,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
       <li><i class="dot"></i>The grey palette ("Fewer, darker greys")</li>
       <li><i class="dot"></i>The rest of "You always know what's waiting"</li>
       <li><i class="dot"></i>Stripping git variables in the product's own git calls <a class="pin" data-d="13">13</a></li>
-      <li><i class="dot"></i>Dropping the "keep me" stash</li>
+      <li><i class="dot"></i>Deleting the fixture's leftovers from your repo</li>
     </ul></div>
   </div>
 </section>
@@ -295,10 +295,10 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
     ["Approving the last waiting design clears the lead's design wait", 'Approving already tells the lead, but that message does not clear the wait; without this you would click Approve and then see "Needs your answer".', 'assumed'],
     ['The skill and the tool say what the "design" kind is for', 'The kind was misused because nothing said it is only for designs recorded with show_design.'],
     ["Git's repo-location variables are stripped once, in the shared test setup", 'One place, so a new test cannot forget; the guard strips them in the main process too.', 'assumed'],
-    ['The mechanism is confirmed: an inherited worktree GIT_DIR plus git init', 'Reproduced in scratch repos on git 2.43. The build pins down which run carried the variable.'],
+    ['The mechanism is confirmed: an inherited worktree GIT_DIR plus git init', 'Reproduced in scratch repos and through vitest itself. Your repo shows the move fixture ran inside it on 2026-11-02; what exported GIT_DIR was not found.'],
     ["A guard fails the test run if the real repo's config or stash changed", 'Loud and never self-repairing. It can rarely fire because another session changed the repo; its message says so.', 'assumed'],
-    ['The two failing move tests get a root cause, and the fix goes where the cause is', 'Both check that uncommitted work comes back after a move; if that really fails, a user loses work. Never skipped; a move fix is capped at that.', 'assumed'],
-    ['The stray "keep me" stash stays in the human\'s repo', 'It is your repo; the outcome names it for you to drop.'],
+    ['The two failing move tests get a root cause, and the fix goes where the cause is', 'The cause was in the move: a copied index with a fresh time hid same-size edits from git diff, losing uncommitted work. Fixed; 10 of 10 runs pass.', 'assumed'],
+    ['The fixture\'s leftovers stay in the human\'s repo', 'The stash, a commit "first", branches feature/idle and feature/login and tag v1, all from the same run. Your repo; the outcome names them.'],
     ['The lead builds it; a review round closes it', 'A few files per fix, nothing to run in parallel; a ticket would cost more than the change.', 'assumed'],
     ['A design wait with no recorded design is an answer the orchestrator may hold', 'One rule: only the design record makes a design need. Anything that needs your own eyes gets recorded with show_design, which is never held.', 'assumed'],
     ["Only tests are cleaned; the product's own git calls stay as they are", 'The damage came from a test; the server and the move are not started from inside a git hook.', 'assumed']
@@ -309,7 +309,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
     [2, 'Give the phone\'s chat bar the need\'s button.', 'The line was the phone\'s only button for some needs; I judged each has another way in, which you may not find good enough.'],
     [4, 'Leave the design wait standing, so it reads "Needs your answer" until you reply.', 'Clearing it on approval is a new rule beyond the brief; the challenger argued for it and I agreed.'],
     [8, 'Compare the whole config file.', 'The orchestrator narrowed it to [core], so burns writing receive.denyCurrentBranch don\'t fail healthy runs. A test that damaged branch config would now go unseen.', 'orchestrator'],
-    [9, 'Fix only the test side; park any move bug as its own feature.', 'It may turn into a product change to runcastle move, which you might want separate.'],
+    [9, 'Fix only the test side; park any move bug as its own feature.', 'It did turn into a product change: a small fix to runcastle move, which you might have wanted separate.'],
     [12, 'Keep a design-kind wait never-held, so only you can answer it.', 'Under it the orchestrator could say yes to a picture like the README banner on your behalf for its first hour.']
   ]
   var list = $('#dlist')

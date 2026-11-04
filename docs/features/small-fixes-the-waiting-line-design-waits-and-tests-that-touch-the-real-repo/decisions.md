@@ -32,8 +32,9 @@ Check first: 2, 4, 8, 9, 12
 **Assumed.** Alternative: a shared `gitEnv()` helper that every test and fixture passes to git, with a lint check for direct spawns.
 
 ## 7. The mechanism is confirmed: an inherited worktree `GIT_DIR` plus `git init`
-**Decision:** The plan works from this cause. Reproduced in scratch repos on git 2.43: running `git init` in an empty folder with `GIT_DIR` set to a linked worktree's git dir re-initialises that worktree's repo and writes `core.bare = true` into the main repo's config. Git exports `GIT_DIR` to hooks and some other children, and a ticket or feature worktree is a linked worktree. The build pins down which run carried the variable and why the stash came 8 seconds before the config write, and corrects this decision if the evidence says otherwise.
-**Why:** The brief asked to confirm or correct the mechanism. The variable strip in decision 6 closes every source, whichever run it was.
+**Decision:** The fix works from this cause. Reproduced in scratch repos on git 2.43: running `git init` in an empty folder with `GIT_DIR` set to a linked worktree's git dir re-initialises that worktree's repo and writes `core.bare = true` into the main repo's config. The same happens through vitest itself: a test that runs `git init` in a temp dir, in a vitest run started with that `GIT_DIR`, made a stand-in repo bare. With the new setup it did not.
+The human's repo shows the move fixture ran inside it at 20:31:26 on 2026-11-02, from a detached HEAD. That run left a commit "first" by `t <t@t>` (the fixture's identity) on top of 086da9e8, the branches `feature/idle` and `feature/login` and the tag `v1` pointing at it, and the "keep me" stash. The fixture's `git remote add origin` then failed, because the real repo already has an origin, and the fixture stopped. The config file's 20:31:34 time is just its last write, so the stash coming "first" is no puzzle. Which process exported `GIT_DIR` into that test run was not found. The strip closes every source.
+**Why:** The brief asked to confirm or correct the mechanism.
 
 ## 8. A guard fails the test run if the real repo's `[core]` config or stash changed
 **Decision:** Once per test run, before any test starts, the suite records the `[core]` section of the real repo's git config (`core.bare`, `core.worktree` and the rest) and its stash list. "The real repo" is the git common dir of the checkout the tests run from, which is the human's main repo when tests run in a worktree. After the run, if either changed, the run fails with a message naming what changed and saying another session working in the same repo could also be the cause. It never repairs anything itself. The rest of the config file is not watched.
@@ -42,13 +43,14 @@ Check first: 2, 4, 8, 9, 12
 **Changed by the orchestrator:** narrowed from the whole config file to `[core]`, because runcastle's own burns and branch setup write the shared config during test runs.
 
 ## 9. The two failing move tests get a root cause, and the fix goes where the cause is
-**Decision:** "puts the main checkout's uncommitted work back" and "moves again with --replace" in the move round-trip test are reproduced and traced before anything changes. If the cause is in `runcastle move` itself (the command that carries a runcastle install to another machine), the move is fixed; if it is in the test or its fixture, the test is fixed. They are never skipped or loosened to pass. A fix to the move is capped at bringing the uncommitted work back; anything larger becomes its own backlog feature.
-**Why:** Both assert that the main checkout's uncommitted file comes back after a move. If that really fails sometimes, a user loses work on a move, so "flaky" is not an answer.
+**Decision:** "puts the main checkout's uncommitted work back" and "moves again with --replace" are reproduced and traced before anything changes. If the cause is in `runcastle move` itself (the command that carries a runcastle install to another machine), the move is fixed; if it is in the test or its fixture, the test is fixed. They are never skipped or loosened to pass. A fix to the move is capped at bringing the uncommitted work back; anything larger becomes its own backlog feature.
+The cause was in the move, and it lost real work. To read uncommitted changes without touching the source repo's index, the move copies the index and runs `git diff` against the copy. The copy got a fresh modification time. That defeats git's check for "racy" files, ones written in the same instant as the index. A same-size edit made in that instant then looked unchanged and was left out of the patch. The copy now keeps the original's time, minus a millisecond. With no `GIT_DIR` set, the test failed in 4 of 7 runs before the fix and passed in 10 of 10 after.
+**Why:** Both tests assert that the main checkout's uncommitted file comes back after a move. If that really fails sometimes, a user loses work on a move, so "flaky" is not an answer.
 **Assumed.** Alternative: fix only the test side and park any product bug in `runcastle move` as its own backlog feature.
 
-## 10. The stray "keep me" stash stays in the human's repo
-**Decision:** Nothing in this feature drops or touches the "keep me" stash ("On (no branch)") in /home/muath/projects/runcastle. The outcome names it so the human can drop it.
-**Why:** The brief. It is the human's repo.
+## 10. The fixture's leftovers stay in the human's repo
+**Decision:** Nothing in this feature touches what the 2026-11-02 run left in /home/muath/projects/runcastle: the "keep me" stash ("On (no branch)"), the commit "first" (b846b3fb, by `t <t@t>`), the branches `feature/idle` and `feature/login`, and the tag `v1`. The outcome names them so the human can delete them. None is on `main`.
+**Why:** The brief said this for the stash. It is the human's repo, and the rest came from the same run.
 
 ## 11. The lead builds it; a review round closes it
 **Decision:** The lead builds all three fixes in its own checkout, in one pass, then runs one review round. No implementation tickets.
