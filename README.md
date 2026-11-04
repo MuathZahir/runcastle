@@ -133,7 +133,8 @@ over the borrowed login, if you would rather bill an OpenAI API key.)
    - **First project.** Point runcastle at a git repo.
 3. **Prepare the project.** One chat, once, that records how your repo
    installs, verifies, and runs, so no agent has to guess.
-4. Start something from the sidebar's **+** menu: **New chat** opens a chat
+4. Start something from the **Create** menu (the pencil at the top of the
+   sidebar): **New chat** opens a chat
    with the orchestrator, **Add to backlog** parks a feature for later, and
    **Jot a note** takes a note. A new chat is the place to bring an idea or a
    complaint; the orchestrator turns it into a feature.
@@ -151,9 +152,9 @@ step. You are asked twice: say yes to the plan, then merge.
 
 | Stage | What happens |
 |---|---|
-| **Planning** | You talk the idea through with the feature's agent, a real agent terminal with the brief, the rules and runcastle's skill pack pre-injected. The decisions and the plan are written into your repo under `docs/features/<slug>/`, split into small tickets in dependency order, each with a model picked for it. **You say yes to the plan in the chat.** |
+| **Planning** | You talk the idea through with the feature's agent in the app's chat, an agent that starts with the brief, the rules and runcastle's skill pack. The decisions and the plan are written into your repo under `docs/features/<slug>/`, split into small tickets in dependency order, each with a model picked for it. **You say yes to the plan in the chat.** |
 | **Build** | Rounds of workers build the tickets inside containers, in parallel, committing to the feature's branch. You can close the tab. |
-| **Review** | A review round checks the result: it test drives the running app, records a walkthrough, runs your checks, and fixes what it finds. It leaves a review package of the verdict, the checks and the walkthrough. Then you test drive the branch yourself. **You merge.** |
+| **Review** | A review round checks the result: it test drives the running app, records a walkthrough, runs your checks, and reports what it finds. It leaves a review package of the verdict, the checks, the findings and the walkthrough, and the feature's agent fixes what it found. Then you test drive the branch yourself. **You merge.** |
 | **Shipped** | The branch is merged. The plan, decisions and round history stay queryable. |
 
 ### Build: workers build tickets in parallel
@@ -170,9 +171,10 @@ away.
 ### Review: the agent test drives it first
 
 Before you look, a review round runs the app, clicks through the feature, and
-records it. Defects it finds become fix tickets and are built in the same round;
-a second pass verifies the fixes. You get a verdict, the checks, and the
-walkthrough, and the one next step is **Merge & ship**.
+records it. It changes no code: what it finds comes back to the feature's agent,
+which fixes it itself or in another round. You get a review package in the chat
+with the verdict, the checks, the findings and the walkthrough, and when nothing
+is left the one next step is **Merge & ship**.
 
 <p align="center">
   <img src="site/assets/screens/review.png" alt="A feature ready to merge: round 1 landed 3 of 3 tickets with checks passed, and the review package in the chat says it was verified on a test drive, with its walkthrough and screenshots, and Merge and ship as the next step" width="100%" />
@@ -199,7 +201,7 @@ checkout. It is also where `CONTEXT.md`, the project's standing decisions, gets
 written.
 
 The **backlog** holds features you parked: a title, a one-liner and an optional
-brief, with no branch cut and nothing committed. You add to it from the **+**
+brief, with no branch cut and nothing committed. You add to it from the **Create**
 menu, and feature chats park the scope they find that does not belong to them.
 **Start** cuts the branch and opens Planning.
 
@@ -313,28 +315,29 @@ optional. sandcastle drives whichever runtime is on your PATH.
 
 ## How it works
 
-runcastle is the orchestration, memory, and observation layer. It never rebuilds
-the chat UX.
+runcastle is the orchestration, memory, and observation layer around the
+agents you already have.
 
-- **Chats** run in **real agent terminals** that runcastle launches with
-  context pre-injected. For Claude Code that is a generated brief via
-  `--append-system-prompt-file`, per-chat hooks via inline `--settings`,
-  stage-scoped skill packs via `--plugin-dir`, and runcastle's own MCP server
-  via `--mcp-config`. Codex takes no per-launch flags, so each chat gets its
-  own `CODEX_HOME` holding the same things as files: `config.toml`, `hooks.json`,
-  `AGENTS.md`, and a copy of your `auth.json`. Terminals are server-owned PTYs
-  streamed to an in-app xterm view.
+- **Chats** run your installed Claude Code or Codex through their official
+  [Agent Client Protocol](https://agentclientprotocol.com) adapters, as
+  processes the server owns, and runcastle shows the conversation in its own
+  chat view. Each chat starts with context pre-injected: a generated brief,
+  per-chat hooks and guards, stage-scoped skill packs, and runcastle's own MCP
+  server (for Codex, a per-chat `CODEX_HOME` holding the same things as files).
+  A chat's process starts on its first message and stops when it has been idle
+  for a while; the conversation stays readable either way. Terminals remain for
+  program output: dev servers and the sign-in and image-build flows in
+  Settings.
 - **Unattended work** runs headless through sandcastle, in a Docker or Podman
   container, committing back to the feature branch.
 - **Knowledge lives in your repo** at `docs/features/<slug>/`: spec, decisions,
   research, notes. Versioned and agent-readable, and it outlives the tool.
 - **Machinery lives in the app's SQLite** at `~/.runcastle/`: stage state,
   chat links, round history, notes, transcript index.
-- **Git topology:** one branch per feature; chats get instant docs-only
-  worktrees so several features can be planned in parallel; the
-  orchestrator gets its own worktree on `runcastle/project`; the main
-  checkout stays reserved for you, with a guarded test-drive switch that stashes
-  and restores your work.
+- **Git topology:** one branch per feature; each feature's chat works in its
+  own worktree on that branch, so several features move in parallel; workers
+  build in containers and land on the branch; the orchestrator gets its own
+  worktree on `runcastle/project`.
 
 ### Packages
 

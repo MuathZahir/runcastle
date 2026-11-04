@@ -120,7 +120,7 @@ function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
 const REVEAL_NAV = 'opacity-0 group-hover/nav:opacity-100 group-has-[:focus-visible]/nav:opacity-100'
 const CONCEAL_NAV = 'group-hover/nav:opacity-0 group-has-[:focus-visible]/nav:opacity-0'
 
-/** The chevron that folds and unfolds the open row's threads (threads-in-the-sidebar decision 10). */
+/** The chevron that folds and unfolds the open row's chats (threads-in-the-sidebar decision 10). */
 function FoldToggle({ folded, onToggle, what }: { folded: boolean; onToggle: () => void; what: string }) {
   return (
     <span data-fold-toggle="" className="inline-flex">
@@ -300,7 +300,7 @@ export function SidebarFeatureRow({
       }
       toggle={
         threads !== undefined && onToggleThreads ? (
-          <FoldToggle folded={folded} onToggle={onToggleThreads} what="threads" />
+          <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
         ) : undefined
       }
     />
@@ -814,7 +814,7 @@ export function OrchestratorCard({
         )}
         {toggles && onToggleThreads && (
           <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
-            <FoldToggle folded={folded} onToggle={onToggleThreads} what="conversations" />
+            <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
           </span>
         )}
       </div>

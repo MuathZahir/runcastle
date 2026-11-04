@@ -342,9 +342,9 @@ describe('the open feature’s threads in the sidebar', () => {
     const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
     render(<Page />, { wrapper: api.Wrapper })
     await waitFor(() => expect(options()).toHaveLength(2))
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Hide threads' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Hide chats' }))
     expect(threadList()).toBeNull()
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Show threads' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Show chats' }))
     expect(options()).toHaveLength(2)
   })
 
