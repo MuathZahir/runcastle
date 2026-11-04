@@ -1,4 +1,4 @@
-import type { AskAnswer, Effort, ThreadModels, UsageReport } from '@runcastle/core'
+import type { AskAnswer, Effort, PromptDisplay, ThreadModels, UsageReport } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { processAgentHost } from './host'
 
@@ -36,6 +36,8 @@ export interface PromptOptions {
    * chat's opening held for the human's first message, decision 12).
    */
   hold?: boolean
+  /** What the human reads of this prompt in place of its text (runcastle's own); logged beside it, never sent to the agent. */
+  display?: PromptDisplay
   /** The model, effort and fast mode for this message, when they differ from the thread's. */
   model?: string
   effort?: Effort

@@ -18,6 +18,7 @@ import {
   type Attachment,
   type BackgroundTask,
   type FileChange,
+  type PromptDisplay,
   type SessionRow,
   type ThreadEvent,
   type ThreadEventBody,
@@ -302,6 +303,8 @@ interface Queued {
   source: PromptOptions['source']
   /** A command (Compact now): logged so the fold knows a turn is coming, never shown as a message. */
   hidden?: boolean
+  /** What the human reads of a runcastle prompt; logged with it. */
+  display?: PromptDisplay
   /** Already in the log (a human's words show at once); runcastle's are logged when sent. */
   logged: boolean
 }
@@ -455,7 +458,7 @@ class Host implements AgentHost {
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
     seedFromTranscript(this.ctx, threadId)
-    if (opts.hold) return this.hold(threadId, input.text, opts.source)
+    if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display)
     const change = this.configChange(threadId, opts)
     if (change) await this.setConfig(threadId, change)
     const images = (input.images ?? []).map((image) => saveThreadImage(threadId, image))
@@ -470,6 +473,7 @@ class Host implements AgentHost {
         ...(input.images ?? []).map((image): acp.ContentBlock => ({ type: 'image', data: image.data, mimeType: image.mimeType })),
       ],
       source: opts.source,
+      ...(opts.display ? { display: opts.display } : {}),
       logged: false,
     }
     const t = this.threads.get(threadId)
@@ -1063,6 +1067,7 @@ class Host implements AgentHost {
       source: item.source,
       ...(steered ? { steered: true } : {}),
       ...(item.hidden ? { hidden: true } : {}),
+      ...(item.display ? { display: item.display } : {}),
     })
     item.logged = true
     // A message answers the lead's reply (`leadAwaitsHuman`): the header and the
@@ -1083,8 +1088,8 @@ class Host implements AgentHost {
   }
 
   /** Log a held prompt and keep its text, on disk, as the preface of the thread's next prompt. */
-  private hold(threadId: string, text: string, source: PromptOptions['source']): { promptId: string } {
-    const item: Queued = { id: newId('prompt'), text, blocks: [], source, logged: false }
+  private hold(threadId: string, text: string, source: PromptOptions['source'], display?: PromptDisplay): { promptId: string } {
+    const item: Queued = { id: newId('prompt'), text, blocks: [], source, ...(display ? { display } : {}), logged: false }
     this.logPrompt(threadId, item)
     const pending = readPendingFork(threadId)
     writePendingFork(threadId, { ...pending, preface: pending.preface !== undefined ? `${pending.preface}\n\n${text}` : text })

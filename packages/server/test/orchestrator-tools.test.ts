@@ -15,10 +15,12 @@ import {
 import { toolCreateFeature, toolGetProjectContext, toolsForAudience } from '../src/mcp/server'
 import {
   orchestratorTool,
+  toolTakeFeature,
   requireOrchestratorSession,
   requireProjectFeature,
 } from '../src/mcp/orchestrator-tools'
 import { emit, listAfter } from '../src/services/events'
+import { readThreadEvents } from '../src/threads/types'
 import { openProject } from '../src/services/projects'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -93,6 +95,23 @@ describe('the orchestrator’s gate', () => {
       expect(events.length, out.slug).toBeGreaterThan(0)
       for (const e of events) expect((e.data as { actor?: string })?.actor, `${out.slug} ${e.type}`).toBe('orchestrator')
     }
+  })
+
+  it('logs a feature_acted in the calling chat for each feature it creates or takes, and none for a refused call', async () => {
+    const session = projectSession()
+    const made = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
+    const parked = await toolCreateFeature(ctx, session, { title: 'Later thing', oneLiner: 'parked', draft: true })
+    const other = seedFeature(ctx, projectId, { slug: 'humans' })
+    toolTakeFeature(ctx, session, { slug: 'humans' })
+    await expect(toolCreateFeature(ctx, session, { title: 'No line', oneLiner: ' ' })).rejects.toThrow()
+    expect(() => toolTakeFeature(ctx, session, { slug: 'nope' })).toThrow(GateError)
+
+    const acted = readThreadEvents(session.id).filter((e) => e.type === 'feature_acted')
+    expect(acted.map((e) => e.type === 'feature_acted' && [e.featureId, e.title, e.action])).toEqual([
+      [made.id, 'Login form', 'created'],
+      [parked.id, 'Later thing', 'parked'],
+      [other.id, other.title, 'taken'],
+    ])
   })
 
   it('accepts any feature of its project, one it did not create included', () => {
