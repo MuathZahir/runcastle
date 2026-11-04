@@ -80,7 +80,19 @@ describe('featureNeed', () => {
 
   it('reads kind plan and kind design as their own needs', () => {
     expect(featureNeed(facts({ waiting: waiting('start round 1?', 'plan') }), NOW)).toMatchObject({ kind: 'plan', words: 'Plan to approve' })
-    expect(featureNeed(facts({ waiting: waiting('look at the header', 'design') }), NOW)).toMatchObject({ kind: 'design', words: 'Design to approve' })
+    expect(featureNeed(facts({ waiting: waiting('look at the header', 'design'), designsWaiting: 1 }), NOW)).toMatchObject({ kind: 'design', words: 'Design to approve', since: 5_000 })
+  })
+
+  it('reads a design wait with no recorded design waiting as an answer with its reason (small-fixes decision 3)', () => {
+    // A README banner shown as a file: nothing in the Design tab to approve.
+    expect(featureNeed(facts({ waiting: waiting('banner to approve', 'design') }), NOW)).toEqual({
+      kind: 'answer', words: 'Needs your answer · banner to approve', why: 'banner to approve', held: false, since: 5_000,
+    })
+    // An answer like any other: an orchestrator may hold it (decision 12), and it pings.
+    const since = NOW - 10 * 60_000
+    const held = featureNeed(facts({ held: true, waiting: waiting('banner to approve', 'design', since) }), NOW)
+    expect(held).toMatchObject({ kind: 'answer', held: true, words: 'With the orchestrator · Needs your answer · banner to approve' })
+    expect(needPings(featureNeed(facts({ waiting: waiting('banner to approve', 'design') }), NOW))).toBe(true)
   })
 
   it('reads a design waiting in the record as a design need with no wait_for_you, since the oldest was shown, and not while the lead works', () => {
@@ -156,7 +168,7 @@ describe('featureNeed', () => {
       [{ ...ready, waiting: waiting('which model?'), conflictSince: 1 }, 'conflict'],
       [{ ...ready, waiting: waiting('which model?') }, 'answer'],
       [{ ...ready, waiting: waiting('go?', 'plan') }, 'plan'],
-      [{ ...ready, waiting: waiting('look', 'design') }, 'design'],
+      [{ ...ready, waiting: waiting('look', 'design'), designsWaiting: 1 }, 'design'],
       [{ ...ready, waiting: waiting('stopped') }, 'stopped'],
       [{ ...ready, driveConfigured: true }, 'test'],
       [ready, 'merge'],
@@ -192,7 +204,7 @@ describe('featureNeed', () => {
 
     it('never holds a permission prompt or a design', () => {
       expect(featureNeed(facts({ held: true, openAsk: { ...approval, since } }), NOW)).toMatchObject({ kind: 'permission', held: false, words: 'Needs permission · Bash: git push' })
-      expect(featureNeed(facts({ held: true, waiting: waiting('look', 'design', since) }), NOW)).toMatchObject({ kind: 'design', held: false, words: 'Design to approve' })
+      expect(featureNeed(facts({ held: true, waiting: waiting('look', 'design', since), designsWaiting: 1 }), NOW)).toMatchObject({ kind: 'design', held: false, words: 'Design to approve' })
     })
   })
 })

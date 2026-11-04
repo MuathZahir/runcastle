@@ -10,6 +10,7 @@ import { createSessionRow, markSessionEnded, markSessionLive } from '../src/laun
 import mcpApp, { featureContext } from '../src/mcp/server'
 import designsApp from '../src/routes/designs'
 import { recordDesign } from '../src/services/designs'
+import { setWaiting } from '../src/services/lead-status'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { getFeatureRow } from '../src/services/repo'
@@ -272,6 +273,27 @@ describe('design.approve', () => {
     expect(delivered()).toHaveLength(1)
     expect(events('design.approved')).toHaveLength(2)
     expect(featureContext(ctx, { featureId: feature.id }).designs.map((d) => d.approvedBy)).toEqual(['human', 'human', null])
+  })
+
+  it('clears the lead’s design wait with the click that leaves none waiting, and leaves any other wait alone (small-fixes decision 4)', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const b = recordDesign(ctx, feature.id, { path: '/preview/b.html', title: 'B' })
+    setWaiting(ctx, feature.id, 'look at the designs', 'design')
+
+    await caller().design.approve({ designId: a.id })
+    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: 'look at the designs', waitingKind: 'design' })
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ kind: 'design' })
+
+    await caller().design.approve({ designId: b.id })
+    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: null, waitingKind: null })
+    expect(events('feature.waiting').at(-1)?.data).toEqual({ why: null, kind: null })
+
+    // An answer the lead waits on is the human's to give, approval or not.
+    const c = recordDesign(ctx, feature.id, { path: '/preview/c.html', title: 'C' })
+    setWaiting(ctx, feature.id, 'which font?', 'answer')
+    await caller().design.approve({ designId: c.id })
+    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: 'which font?', waitingKind: 'answer' })
   })
 
   it('is cleared by design.seen in the list and in the lead’s context, until the design is shown again', async () => {

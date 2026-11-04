@@ -3789,7 +3789,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           kind: WaitingKind.optional().describe(
             'Which kind of wait this is — the feature shows its own words and button for each: ' +
               '"plan" when you ask the human’s yes to the plan or a round it did not settle ("Plan to approve"); ' +
-              '"design" when a design waits for the human to look at it ("Design to approve"); ' +
+              '"design" only when a design you recorded with show_design waits for the human ("Design to approve"); ' +
+              'anything else you show for a yes — a file, a picture — is an answer, and a "design" wait with no ' +
+              'recorded design waiting reads as one; ' +
               '"stuck" when you cannot go on (the runaway guard, the same failure again) ("Stopped · <why>"); ' +
               '"answer" (the default) for a question only the human can answer ("Needs your answer · <why>").',
           ),

@@ -181,4 +181,8 @@ When the human comes back:
   start it. Answer that the designs wait for the human, and ask them.
 
 "Design to approve" shows by itself while any design waits, so you need no
-`wait_for_you` for it. `wait_for_you({ …, kind: "design" })` stays allowed.
+`wait_for_you` for it. `wait_for_you({ …, kind: "design" })` stays allowed, but
+only for designs recorded with `show_design`: anything else you show for a yes
+(a file, a picture) is an answer. When the human's own eyes must be on
+something visual, record it with `show_design`; an answer can be held and given
+by an orchestrator, a design never is.
