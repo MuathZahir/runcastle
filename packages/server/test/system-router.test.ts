@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { getInstallId } from '../src/services/install-id'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -15,12 +17,16 @@ const pkgVersion = JSON.parse(
   readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'),
 ).version as string
 
-// A minimal ctx — the system router touches neither db nor config.
-const caller = createCallerFactory(appRouter)({} as never)
+// A minimal ctx — the system router touches no db, and of the config only the
+// usage ping's switch, which these cases set per test.
+const config: { usageSignal?: 'on' | 'off' } = {}
+const caller = createCallerFactory(appRouter)({ config } as never)
 
 afterEach(() => {
   resetUpdateCache()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  delete config.usageSignal
 })
 
 describe('runcastleVersion', () => {
@@ -58,5 +64,34 @@ describe('system router', () => {
     const info = await caller.system.checkUpdate()
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
+  })
+})
+
+// The one-time notice reads the live config, so the settings write that answers
+// it (write-through to `ctx.config`) is what ends it.
+describe('system.usageNotice', () => {
+  const withInstallId = () => {
+    vi.stubEnv('RUNCASTLE_DATA_DIR', mkdtempSync(join(tmpdir(), 'runcastle-usage-')))
+    vi.stubEnv('DO_NOT_TRACK', '')
+    getInstallId()
+  }
+
+  it('asks an install that pinged before the switch, until it answers', async () => {
+    withInstallId()
+    expect(await caller.system.usageNotice()).toEqual({ show: true })
+    config.usageSignal = 'off'
+    expect(await caller.system.usageNotice()).toEqual({ show: false })
+  })
+
+  it('never asks a fresh install, which the wizard tells instead', async () => {
+    vi.stubEnv('RUNCASTLE_DATA_DIR', mkdtempSync(join(tmpdir(), 'runcastle-usage-')))
+    vi.stubEnv('DO_NOT_TRACK', '')
+    expect(await caller.system.usageNotice()).toEqual({ show: false })
+  })
+
+  it('never asks under DO_NOT_TRACK', async () => {
+    withInstallId()
+    vi.stubEnv('DO_NOT_TRACK', '1')
+    expect(await caller.system.usageNotice()).toEqual({ show: false })
   })
 })
