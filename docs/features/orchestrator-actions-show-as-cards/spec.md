@@ -63,9 +63,9 @@ The look is designed and approved with the plan: `apps/web/src/components/chat/t
 - Grouping a feature's news across deliveries (decision 6).
 - Changing what the agent receives: its lines, tool results and kickoffs stay word for word.
 - The waiting states, header buttons and pings, and the plan and design cards' insides (the brief's "must not swallow").
-- App-wide word changes, which "Ready to publish" owns (decision 10).
+- App-wide word changes, which "Ready to publish" owns (the cards follow its list, decision 15).
 
 ## Open questions
 
 - Settled 2026-11-04: the human approved the three designs as they stood, so the live state shows on every row and news sits quietly in the thread. The Tweaks menu is gone from the preview page.
-- Card words follow the app's current words. If "Ready to publish" merges first with different words, this feature adopts them; if this one merges first, that one fixes them (decision 10).
+- Card words follow "Ready to publish" decision 15's word list (decision 15 here). If that list changes before it merges, whichever of the two merges second fixes any word that disagrees.
