@@ -248,7 +248,7 @@ function Item({
     case 'user':
       return item.from === 'runcastle' ? (
         item.display ? (
-          <RuncastleDisplay display={item.display} agentText={untagRuncastle(item.text)} />
+          <RuncastleDisplay display={item.display} agentText={untagRuncastle(item.text)} {...(item.at !== undefined ? { at: item.at } : {})} />
         ) : (
           <RuncastleLine text={item.text} />
         )

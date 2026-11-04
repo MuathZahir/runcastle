@@ -72,6 +72,8 @@ describe('the features card in a thread', () => {
     expect(screen.getByText('Dark mode')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull()
     expect(screen.queryByText('In progress')).toBeNull()
+    // Nothing is gone here: the rows are not dimmed like a feature the list dropped.
+    expect(screen.getByText('Dark mode').closest('.opacity-70')).toBeNull()
   })
 })
 
@@ -98,6 +100,17 @@ describe("runcastle's lines in a thread", () => {
     expect(screen.getByText(agentText)).toBeTruthy()
     fireEvent.click(row)
     expect(l.openFeature).toHaveBeenCalledWith('f2')
+  })
+
+  it('says when the news arrived', () => {
+    const item = {
+      ...runcastle('[runcastle] f2-slug finished planning.', {
+        news: [{ featureId: 'f2', title: 'Offline sync', events: [{ tone: 'done', words: 'Finished planning' }] }],
+      }),
+      at: Date.now() - 6 * 60_000,
+    } as ThreadItem
+    render(thread([item], links()))
+    expect(screen.getByText('6m ago')).toBeTruthy()
   })
 
   it('draws a kickoff with a summary as one Runcastle line', () => {

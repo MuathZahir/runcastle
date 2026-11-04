@@ -149,14 +149,17 @@ export function FeatureRow({
   detail,
   state,
   onOpen,
+  gone = false,
 }: {
   title: string
   glyph: ReactNode
   detail: ReactNode
   /** Where the feature is now; absent when the row shows no live state. */
   state?: ReactNode
-  /** Open the feature; absent for a feature the list no longer holds. */
+  /** Open the feature; absent when it cannot be opened from here. */
   onOpen?: () => void
+  /** The feature list no longer holds it: the row is dimmed. */
+  gone?: boolean
 }) {
   const body = (
     <>
@@ -187,7 +190,7 @@ export function FeatureRow({
       {body}
     </button>
   ) : (
-    <div className={cx(row, 'opacity-70')}>{body}</div>
+    <div className={cx(row, gone && 'opacity-70')}>{body}</div>
   )
 }
 
@@ -223,10 +226,13 @@ export function FeaturesCard({
   rows,
   onOpen,
   showState = () => true,
+  linked = true,
 }: {
   rows: readonly FeatureActionRow[]
   onOpen: (featureId: string) => void
   showState?: (row: FeatureActionRow) => boolean
+  /** The chat reads a feature list, so a row with no feature is one that is gone; false where there is no list. */
+  linked?: boolean
 }) {
   const heading = featuresCardHeading(rows)
   return (
@@ -246,6 +252,7 @@ export function FeaturesCard({
             detail={<ActionDetail row={row} />}
             {...(row.feature && showState(row) && !row.actions.includes('merged') ? { state: <LiveState feature={row.feature} /> } : {})}
             {...(row.feature ? { onOpen: () => onOpen(row.featureId) } : {})}
+            gone={linked && !row.feature}
           />
         ))}
       </div>
@@ -337,6 +344,7 @@ export function NewsBlock({
   onOpen,
   showState = () => true,
   framed = false,
+  linked = true,
 }: {
   rows: readonly NewsRow[]
   /** "2m ago", "10:42". */
@@ -346,6 +354,8 @@ export function NewsBlock({
   onOpen: (featureId: string) => void
   showState?: (row: NewsRow) => boolean
   framed?: boolean
+  /** As the features card's: false where the chat reads no feature list. */
+  linked?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -371,6 +381,7 @@ export function NewsBlock({
             detail={<span className="line-clamp-2">{row.events.map((e) => e.words).join(' · ')}</span>}
             {...(row.feature && showState(row) ? { state: <LiveState feature={row.feature} /> } : {})}
             {...(row.feature ? { onOpen: () => onOpen(row.featureId) } : {})}
+            gone={linked && !row.feature}
           />
         ))}
       </div>

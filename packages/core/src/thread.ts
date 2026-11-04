@@ -431,6 +431,8 @@ export type ThreadItem =
       from?: 'runcastle'
       /** What the human reads of a runcastle line, in place of its text. */
       display?: PromptDisplay
+      /** When the line arrived; carried with `display`, for a news block's "6m ago". */
+      at?: number
     }
   /**
    * A turn's work. While the turn runs it shows step by step; once settled it
@@ -931,7 +933,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           ...(e.images?.length ? { images: e.images } : {}),
           ...(e.steered ? { steered: true } : {}),
           ...(e.source === 'runcastle' ? { from: 'runcastle' as const } : {}),
-          ...(e.display ? { display: e.display } : {}),
+          ...(e.display ? { display: e.display, at: e.at } : {}),
         }
         if (view.process !== 'running' && !e.steered) {
           // Only the latest prompt waits visibly: a held opening's next prompt takes its place.
