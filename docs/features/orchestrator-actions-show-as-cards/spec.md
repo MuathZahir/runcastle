@@ -15,7 +15,7 @@ The Orchestrator's chat is where features get created, started, planned, message
 - **The Orchestrator's words** (decision 9). The project skill tells it the card shows the features, so its words say why and what comes next.
 - **Phone** (decision 11). Rows stack at the chat's width: title (two lines at most), what happened, then the live state. Nothing is dropped.
 
-The look is designed and approved with the plan: `apps/web/src/components/chat/thread/FeatureCards.tsx` (`FeaturesCard`, `NewsBlock`, `RuncastleNote`, `OrchestratorMessage`, the shared `FeatureRow` and `LiveState`), shown on the preview page `/preview/orchestrator-cards.html` with its sample data. Two choices are left to the human as Tweaks on that page: which rows carry the live state (every row, as decision 3 says, or only the newest row per feature, as the challenger argued, or none), and whether news sits quietly in the thread or in a card. Whatever they pick is written into the components and the Tweaks menu deleted.
+The look is designed and approved with the plan: `apps/web/src/components/chat/thread/FeatureCards.tsx` (`FeaturesCard`, `NewsBlock`, `RuncastleNote`, `OrchestratorMessage`, the shared `FeatureRow` and `LiveState`), shown on the preview page `/preview/orchestrator-cards.html` with its sample data. The human approved the designs as they stood (2026-11-04): every row carries the live state, and news sits quietly in the thread.
 
 **The shape of it.** Everything rides on the thread log, which the server writes and both the server and the web fold with one pure reducer (`foldThread` in `packages/core/src/thread.ts`).
 
@@ -67,5 +67,5 @@ The look is designed and approved with the plan: `apps/web/src/components/chat/t
 
 ## Open questions
 
-- The two Tweaks on `/preview/orchestrator-cards.html`: live state on every row, the newest row per feature, or none; news quiet or in a card. The human picks before round 1. The defaults if they say nothing are every row and quiet.
+- Settled 2026-11-04: the human approved the three designs as they stood, so the live state shows on every row and news sits quietly in the thread. The Tweaks menu is gone from the preview page.
 - Card words follow the app's current words. If "Ready to publish" merges first with different words, this feature adopts them; if this one merges first, that one fixes them (decision 10).
