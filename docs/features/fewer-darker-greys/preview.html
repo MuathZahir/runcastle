@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fewer, darker greys — plan</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+.ladder{display:grid;grid-template-columns:72px 1fr 1fr;gap:10px 16px;align-items:center;margin-top:12px}
+.ladder .lab{color:var(--color-text-tertiary);font-size:12px}
+.ladder .colh{font-size:12px;color:var(--color-text-secondary)}
+.sw{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:grid;gap:4px;justify-items:start}
+.chip i{display:block;width:68px;height:32px;border-radius:var(--radius-md);box-shadow:inset 0 0 0 1px var(--color-border-subtle)}
+.chip span{font:11px/14px var(--font-mono);color:var(--color-text-tertiary)}
+.chip.t i{display:grid;place-items:center;font:500 13px/1 var(--font-sans);font-style:normal}
+.arrow{color:var(--color-text-tertiary)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+.pair figcaption{font-size:12px;color:var(--color-text-secondary);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+/* the mock: runcastle's own frame, painted from local token sets */
+.mock{display:grid;grid-template-columns:150px 1fr;height:230px;background:var(--m-canvas);padding:6px 6px 6px 0;font:12px/16px var(--font-sans);color:var(--m-text)}
+.mock .side{padding:8px 8px 0 10px;display:grid;align-content:start;gap:2px}
+.mock .row{padding:5px 6px;border-radius:6px}
+.mock .row b{display:block;font-weight:500;color:var(--m-text)}
+.mock .row small{color:var(--m-ter);font-size:11px}
+.mock .row.q{color:var(--m-sec)}
+.mock .row.sel{background:var(--m-card);box-shadow:inset 0 0 0 1px var(--m-sub)}
+.mock .sec{color:var(--m-sec);padding:8px 6px 2px;font-size:11px}
+.mock .pg{background:var(--m-surface);border:1px solid var(--m-border);border-radius:8px;padding:10px 14px;overflow:hidden}
+.mock .tl{color:var(--m-ter);font-size:11px;display:flex;gap:6px;align-items:center;margin:6px 0}
+.mock .tl::before{content:"";width:9px;height:9px;border:1.3px solid var(--m-icon);border-radius:3px}
+.mock .well{background:var(--m-well);border-radius:8px;padding:6px 8px;margin:6px 0;color:var(--m-sec);box-shadow:inset 0 0 0 1px var(--m-sub)}
+.mock .code{background:var(--m-inset);border-radius:6px;padding:4px 8px;font:11px/15px var(--font-mono);color:var(--m-text);box-shadow:inset 0 0 0 1px var(--m-sub)}
+.mock .menu{margin-top:8px;width:150px;background:var(--m-raised);border-radius:8px;padding:4px;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 8px 24px -6px rgba(0,0,0,.6)}
+.mock .menu div{padding:3px 6px;border-radius:5px}
+.mock .menu div.h{background:var(--m-hover)}
+.mock .menu small{color:var(--m-ter);display:block;font-size:10px}
+.before{--m-canvas:#0a0c11;--m-surface:#10131a;--m-raised:#161a24;--m-inset:#0c0e14;--m-border:#222837;--m-text:#eceef4;--m-sec:#a2a8b9;--m-ter:#8a91a5;--m-icon:#8990a4;--m-sub:rgb(200 215 255 / .06);
+  --m-card:color-mix(in oklab,#eceef4 2.5%,transparent);--m-hover:color-mix(in oklab,#eceef4 3.5%,transparent);--m-well:color-mix(in oklab,#eceef4 6%,transparent)}
+.after{--m-canvas:#06080e;--m-surface:#0b0f17;--m-raised:#111621;--m-inset:#06080e;--m-border:#1c2331;--m-text:#eceef4;--m-sec:#a9b1c1;--m-ter:#798294;--m-icon:#798294;--m-sub:rgb(200 215 255 / .06);
+  --m-card:color-mix(in oklab,#eceef4 3%,transparent);--m-hover:color-mix(in oklab,#eceef4 3%,transparent);--m-well:color-mix(in oklab,#eceef4 6%,transparent)}
+.steps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.step{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--radius-md);background:var(--color-fill-card);box-shadow:inset 0 0 0 1px var(--color-border-subtle);color:var(--color-text-secondary)}
+.step b{color:var(--color-text);font-weight:500}
+.hood-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;color:var(--color-text-secondary)}
+.hood-grid div{display:flex;gap:8px;align-items:baseline}
+.hood-grid .mono{color:var(--color-text);flex:none}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Fewer, darker greys</h1>
+  <p class="lede">Two clearly different quiet greys instead of three near-twins, and darker, slightly bluer grounds in the dark theme. Only colours change: no layout, type or component changes.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>planned without you · built by the lead, then one review round</span><span class="mono">docs/features/fewer-darker-greys/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">The live before-and-after is the design page; this is the gist, in the dark theme.</p>
+
+  <div class="sub">
+    <h3>The same corner of the app, today and proposed</h3>
+    <p class="hint">Sidebar rows, a tool-call line, a well, a code line, a menu.</p>
+<!-- screen:greys-gist -->
+    <div class="pair">
+      <figure style="margin:0"><figcaption>Today</figcaption>
+        <div class="screen before"><div class="mock">
+          <div class="side">
+            <div class="row sel"><b>Cut the UI work…</b><small>Waiting for you</small></div>
+            <div class="row q">Triage the notes…</div>
+            <div class="sec">Backlog 3</div>
+          </div>
+          <div class="pg">
+            <div class="tl">Worked for 41s</div>
+            <div>The PDF flattens the note.</div>
+            <div class="well">Subagent · find how Markdown renders</div>
+            <div class="code">bun test src/export.test.ts</div>
+            <div class="menu"><div class="h">Sonnet 5.5<small>Most everyday tasks</small></div><div>Opus 5.5<small>Involved work</small></div></div>
+          </div>
+        </div></div>
+      </figure>
+      <figure style="margin:0"><figcaption>Proposed <a class="pin" data-d="1">1</a><a class="pin" data-d="2">2</a><a class="pin" data-d="3">3</a><a class="pin" data-d="6">6</a></figcaption>
+        <div class="screen after"><div class="mock">
+          <div class="side">
+            <div class="row sel"><b>Cut the UI work…</b><small>Waiting for you</small></div>
+            <div class="row q">Triage the notes…</div>
+            <div class="sec">Backlog 3</div>
+          </div>
+          <div class="pg">
+            <div class="tl">Worked for 41s</div>
+            <div>The PDF flattens the note.</div>
+            <div class="well">Subagent · find how Markdown renders</div>
+            <div class="code">bun test src/export.test.ts</div>
+            <div class="menu"><div class="h">Sonnet 5.5<small>Most everyday tasks</small></div><div>Opus 5.5<small>Involved work</small></div></div>
+          </div>
+        </div></div>
+      </figure>
+    </div>
+<!-- /screen:greys-gist -->
+  </div>
+
+  <div class="sub">
+    <h3>The ladder, dark theme</h3>
+    <div class="ladder">
+      <span></span><span class="colh">Today</span><span class="colh">Proposed</span>
+      <span class="lab">Grounds <a class="pin" data-d="2">2</a><a class="pin" data-d="3">3</a></span>
+      <div class="sw">
+        <div class="chip"><i style="background:#0a0c11"></i><span>sidebar</span></div>
+        <div class="chip"><i style="background:#0c0e14"></i><span>well</span></div>
+        <div class="chip"><i style="background:#10131a"></i><span>panel</span></div>
+        <div class="chip"><i style="background:#161a24"></i><span>menus</span></div>
+      </div>
+      <div class="sw">
+        <div class="chip"><i style="background:#06080e"></i><span>sidebar + well</span></div>
+        <div class="chip"><i style="background:#0b0f17"></i><span>panel</span></div>
+        <div class="chip"><i style="background:#111621"></i><span>menus</span></div>
+      </div>
+      <span class="lab">Quiet text <a class="pin" data-d="1">1</a></span>
+      <div class="sw">
+        <div class="chip t"><i style="background:#10131a;color:#a2a8b9">Aa</i><span>secondary</span></div>
+        <div class="chip t"><i style="background:#10131a;color:#8a91a5">Aa</i><span>tertiary</span></div>
+        <div class="chip t"><i style="background:#10131a;color:#8990a4">Aa</i><span>icon</span></div>
+        <div class="chip t"><i style="background:#10131a;color:#4b5163">Aa</i><span>disabled</span></div>
+      </div>
+      <div class="sw">
+        <div class="chip t"><i style="background:#0b0f17;color:#a9b1c1">Aa</i><span>secondary</span></div>
+        <div class="chip t"><i style="background:#0b0f17;color:#798294">Aa</i><span>muted + icon</span></div>
+        <div class="chip t"><i style="background:#0b0f17;color:#424a5b">Aa</i><span>disabled</span></div>
+      </div>
+      <span class="lab">Tints <a class="pin" data-d="6">6</a></span>
+      <span class="hint">hover 3.5% · card 2.5% · pressed 6% · well 6%</span>
+      <span class="hint">hover + card 3% · pressed + well 6%</span>
+    </div>
+    <p class="hint" style="margin-top:10px">Light theme: the same two greys (secondary darker, icons join muted); grounds unchanged <a class="pin" data-d="4">4</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Designed screen</h3>
+    <p class="hint">Open it from its card in the chat or the Design tab. Its Tweaks hold the two open choices.</p>
+<!-- screen:greys-before-after -->
+    <div class="designed">
+      <h3>Fewer, darker greys: before and after</h3>
+      <p>The real app's design pages (sidebar + Orchestrator, chat with tool calls, feature page + panel, a dialog, a menu) with the proposal laid over them. Split, Before, After, or all four (both themes). Tweaks: dark grounds (four strengths) and quiet text (two greys or one). Sample data throughout.</p>
+      <p class="mono">apps/web/preview/greys.tsx · design page /preview/greys.html</p>
+    </div>
+<!-- /screen:greys-before-after -->
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <div class="steps">
+      <span class="step"><b>You pick</b> the Tweaks and approve the design</span><span class="arrow">→</span>
+      <span class="step"><b>Lead</b> moves the values into the theme, sweeps the rest <a class="pin" data-d="5">5</a></span><span class="arrow">→</span>
+      <span class="step"><b>Lead</b> retakes the README pictures</span><span class="arrow">→</span>
+      <span class="step"><b>Review round</b> drives both themes</span><span class="arrow">→</span>
+      <span class="step"><b>You</b> test-drive and merge</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The public website's own app pictures, if they still show the old colours</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Layout, spacing, type, radii, motion, component designs</li>
+      <li><i class="dot"></i>Accent and status colours, and their tinted grounds</li>
+      <li><i class="dot"></i>The main text colour and the primary button</li>
+      <li><i class="dot"></i>Light theme grounds and lines</li>
+      <li><i class="dot"></i>Favicon, public website, old plan pages</li>
+      <li><i class="dot"></i>Moving any component from one grey to the other</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint" style="margin-bottom:10px">Token names stay; only values change. Picked in OKLCH at hue 264; both quiet greys hold 4.5:1 on every dark ground.</p>
+      <div class="hood-grid">
+        <div><span class="mono">theme.css</span><span>dark and light values; inset = canvas; icon = tertiary; two tint strengths</span></div>
+        <div><span class="mono">lib/terminal.ts</span><span>fallback tokens, and the ANSI greys onto the slate</span></div>
+        <div><span class="mono">index.html · manifest · sw.js</span><span>pre-load colour and offline page</span></div>
+        <div><span class="mono">preview-starter.html</span><span>plan pages match the app</span></div>
+        <div><span class="mono">DESIGN.md · STYLE.md</span><span>the ladder described as it now is</span></div>
+        <div><span class="mono">theme-contrast.test.ts</span><span>a dark floor for both quiet greys</span></div>
+        <div><span class="mono">preview/readme-shots.html</span><span>README pictures retaken (from "Ready to publish")</span></div>
+        <div><span class="mono">review ticket</span><span>a drive of sidebar, chat, panel, menu, dialog in both themes</span></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Two quiet text greys, clearly apart, plus disabled', 'Today three near-identical greys sit below the main text; the sidebar rows and the tool-call lines wear two of them. Two greys, pushed apart, keep the hierarchy and make the difference look deliberate. Icons join the muted grey.', 'assumed'],
+    ['Dark grounds: darker, and a touch bluer', 'The human asked for darker and a bit bluer. Sidebar, panel and menus each go about two steps darker with a little more blue; lines follow; spacing between them stays. The exact strength is a Tweak.', 'assumed'],
+    ['Code and input wells take the sidebar’s ground', 'The well was a near-twin of the sidebar. Three solid grounds instead of four, as the light theme already does.', 'assumed'],
+    ['The light theme gets the same two greys, but keeps its grounds', 'The darker-and-bluer ask was about dark. Light has the same near-twin greys, so the ladder fix applies; its cool off-white grounds stay.', 'assumed'],
+    ['The sweep reaches the greys outside the theme file', 'Components already use the tokens. The terminal’s own greys, the pre-load colour, the offline page and the plan-page starter follow; the favicon and the website do not.', 'assumed'],
+    ['The see-through fills drop from four strengths to two', 'Hover and the selected card were near twins (3.5% vs 2.5%). Faint for hover and card, strong for pressed and the well.', 'assumed']
+  ]
+  var C = [
+    [1, 'One quiet grey for everything below the main text, so the sidebar rows and tool-call lines become the same grey', 'Your example was those two looking different; two greys keeps them different, just clearly so. The challenger would have picked one grey. Try the Quiet text Tweak.', 'challenged'],
+    [2, 'Darker only, keeping today’s hue; or one of the other three strengths', 'Pure taste. The darkest options risk crushing to black on some screens. Try the Dark grounds Tweak.', 'challenged'],
+    [4, 'Also cool the light grounds a touch so both themes feel like one family', 'The brief left it to this feature; I kept light’s grounds because they were just retuned for contrast.'],
+    [6, 'Keep the four tint strengths and change only the grounds under them', 'You may have meant the tool-call blocks’ background, not only their words; this is the part of that I could act on.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
