@@ -339,16 +339,3 @@ export function headerActions(ns: NextStep, status: FeatureStatus): HeaderAction
     overflow: row.secondary.filter((a) => a !== merge),
   }
 }
-
-/**
- * The header's button for the need, for the chat's waiting line (decision 4):
- * the header's primary when it is the need's own (not Stop while something
- * runs), and none for an answer in the main chat, whose message box is right
- * below the line. A question asked in another thread keeps Reply, which brings
- * that thread forward.
- */
-export function needButton(need: FeatureNeed, header: HeaderActions, mainThreadId?: string | null): NextAction | undefined {
-  if (need.kind === 'answer' && (!need.threadId || need.threadId === mainThreadId)) return undefined
-  const own = PRIMARY_ACTION[NEED_PRIMARY[need.kind]].kind
-  return header.action?.kind === own ? header.action : undefined
-}
