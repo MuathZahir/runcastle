@@ -1,3 +1,4 @@
+import { HelpMenu } from './HelpMenu'
 import { Fragment, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, StatusDot, Tooltip } from '../ui'
@@ -896,6 +897,8 @@ export function SidebarStatusLine({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenGlossary,
+  onOpenPhoneSetup,
 }: {
   healthTone: StatusTone
   healthTip: string
@@ -905,6 +908,10 @@ export function SidebarStatusLine({
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   onOpenSettings?: () => void
+  /** The help menu's Glossary (ready-to-publish decision 16); no menu without it. */
+  onOpenGlossary?: () => void
+  /** The help menu's way onto a phone (decision 9); absent on a phone. */
+  onOpenPhoneSetup?: () => void
 }) {
   const next = theme === 'dark' ? 'light' : 'dark'
   return (
@@ -924,6 +931,9 @@ export function SidebarStatusLine({
           active={notify.state === 'on'}
           onClick={notify.onToggle}
         />
+      )}
+      {onOpenGlossary && (
+        <HelpMenu onOpenGlossary={onOpenGlossary} {...(onOpenPhoneSetup ? { onOpenPhoneSetup } : {})} />
       )}
       <span className="flex-1" />
       <Tooltip label={`${healthTip} · agents run sandboxed via ${sandbox}`}>
