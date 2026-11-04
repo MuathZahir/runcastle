@@ -24,9 +24,9 @@ Two texts change. The feature skill's "Say which kind of wait it is" bullet and 
 - *Guard (decision 8).* A vitest global setup, which runs once in the main process before workers start:
   - it strips the same variables from the main process's env;
   - it finds the real repo with `git rev-parse --git-common-dir` from the repo root, using the cleaned env; outside a git repo it does nothing;
-  - it snapshots the common dir's `config` file bytes and `git stash list --format=%H %gs`.
+  - it snapshots the common dir's `[core]` section (`git config --file <common dir>/config --get-regexp '^core\.'`) and `git stash list --format=%H %gs`. The rest of the config is not watched: burns write `receive.denyCurrentBranch` and branch setup writes `branch.*` there during test runs (decision 8, changed by the orchestrator).
 
-  Its teardown compares both and throws if either changed. The error names the config lines that differ and the stash entries that appeared or vanished. It says the run may have damaged the repo the tests run from, or that another session working in the same repo changed it meanwhile. It repairs nothing. In a burn container or CI clone it guards that clone, which is harmless.
+  Its teardown compares both and throws if either changed. The error names the `core.*` entries that differ and the stash entries that appeared or vanished. It says the run may have damaged the repo the tests run from, or that another session working in the same repo changed it meanwhile. It repairs nothing. In a burn container or CI clone it guards that clone, which is harmless.
 - *The two move tests (decision 9).* Reproduce "puts the main checkout's uncommitted work back" and "moves again with --replace" first. Run the move round-trip test repeatedly, alone and in the full suite, and with a `GIT_DIR` or `GIT_INDEX_FILE` set to see whether an inherited variable explains them. Both read the main checkout's `app.txt` after a move, which the move restores from a patch. Fix the cause where it lies. A fix in `runcastle move` is capped at bringing the uncommitted work back.
 - *The stray stash (decision 10).* Not touched. The outcome names it ("keep me", "On (no branch)", in /home/muath/projects/runcastle) for the human to drop.
 

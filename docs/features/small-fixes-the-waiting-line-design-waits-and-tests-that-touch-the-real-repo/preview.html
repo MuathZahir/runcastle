@@ -228,7 +228,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
     <div class="flow">
       <span class="box good">test setup strips git's repo-location variables, once <a class="pin" data-d="6">6</a></span><span class="arr">→</span>
       <span class="box">every git child works only in its scratch dir</span><span class="arr">→</span>
-      <span class="box good">the run compares your repo's config and stash before and after, and fails loudly if they changed <a class="pin" data-d="8">8</a></span>
+      <span class="box good">the run compares your repo's [core] config and stash before and after, and fails loudly if they changed <a class="pin" data-d="8">8</a></span>
     </div>
     <p class="hint" style="margin-top:12px">The two failing move tests are traced to a cause and fixed where it is <a class="pin" data-d="9">9</a>. The stray "keep me" stash stays for you to drop <a class="pin" data-d="10">10</a>.</p>
   </div>
@@ -272,7 +272,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
         <li><b>Design need</b>: in core's <span class="mono">featureNeed</span>, a "design" wait with no recorded design waiting is treated as an "answer" wait. On the server, the Approve button's path clears a "design" wait when it empties the waiting designs.</li>
         <li><b>Words</b>: the feature skill's wait-kinds bullet, its design reference, and the <span class="mono">wait_for_you</span> tool description.</li>
         <li><b>Strip</b>: the worker setup file that already deletes <span class="mono">RUNCASTLE_*</span> also deletes git's <span class="mono">--local-env-vars</span> list.</li>
-        <li><b>Guard</b>: a vitest global setup strips the same list in the main process, snapshots the real repo's <span class="mono">config</span> and stash list, and throws at teardown if either changed.</li>
+        <li><b>Guard</b>: a vitest global setup strips the same list in the main process, snapshots the real repo's <span class="mono">[core]</span> config and stash list, and throws at teardown if either changed.</li>
         <li><b>Move tests</b>: reproduce alone, in the full suite, and with an injected <span class="mono">GIT_DIR</span>/<span class="mono">GIT_INDEX_FILE</span>; fix the cause.</li>
       </ul>
     </div>
@@ -308,7 +308,7 @@ table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);
   var C = [
     [2, 'Give the phone\'s chat bar the need\'s button.', 'The line was the phone\'s only button for some needs; I judged each has another way in, which you may not find good enough.'],
     [4, 'Leave the design wait standing, so it reads "Needs your answer" until you reply.', 'Clearing it on approval is a new rule beyond the brief; the challenger argued for it and I agreed.'],
-    [8, 'Watch only core.bare, core.worktree and new stash entries, so another session\'s write never fails a run.', 'The challenger expects false alarms from sessions sharing the stash; I kept the broad guard because it catches new kinds of damage.', 'challenged'],
+    [8, 'Compare the whole config file.', 'The orchestrator narrowed it to [core], so burns writing receive.denyCurrentBranch don\'t fail healthy runs. A test that damaged branch config would now go unseen.', 'orchestrator'],
     [9, 'Fix only the test side; park any move bug as its own feature.', 'It may turn into a product change to runcastle move, which you might want separate.'],
     [12, 'Keep a design-kind wait never-held, so only you can answer it.', 'Under it the orchestrator could say yes to a picture like the README banner on your behalf for its first hour.']
   ]
