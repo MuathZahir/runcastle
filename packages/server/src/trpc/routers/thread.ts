@@ -10,7 +10,7 @@ import {
   type UsageReport,
 } from '@runcastle/core'
 import * as z from 'zod'
-import { createProjectThread, createSideThread, kickoffFor } from '../../launcher/launcher'
+import { createProjectThread, createSideThread, kickoffFor, openingSummary } from '../../launcher/launcher'
 import { setSessionTitle } from '../../launcher/sessions'
 import { rosterConfig } from '../../services/model-discovery'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../../services/repo'
@@ -80,7 +80,12 @@ export const threadRouter = router({
       // A thread opened empty (New thread) is briefed ahead of the human's first
       // words, in the same prompt, so the agent answers once (decision 12).
       if (!row.ccSessionId && !hasThreadLog(id)) {
-        await agentHost(ctx).prompt(id, { text: kickoffFor(ctx, row, { held: true }) }, { source: 'runcastle', hold: true })
+        const summary = openingSummary(row)
+        await agentHost(ctx).prompt(
+          id,
+          { text: kickoffFor(ctx, row, { held: true }) },
+          { source: 'runcastle', hold: true, ...(summary ? { display: { summary } } : {}) },
+        )
       }
       return agentHost(ctx).prompt(
         id,

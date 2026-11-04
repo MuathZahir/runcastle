@@ -120,7 +120,7 @@ describe('a self-planning run', () => {
     expect(launching?.data?.purpose).toBe('self-plan')
 
     const said = kickoffOf(sessionId)
-    expect(promptsOf(sessionId)[0].source).toBe('runcastle')
+    expect(promptsOf(sessionId)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started this chat to plan the feature by itself' } })
     expect(said).toContain('Proceed with your task: no human is present')
     expect(said).toContain('/runcastle:feature')
     expect(said).toContain('references/planning-alone.md')
