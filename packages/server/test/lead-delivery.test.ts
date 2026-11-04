@@ -126,6 +126,22 @@ describe('deliverToLead', () => {
     await logUntil(id, turnsEnded(1))
   })
 
+  it('logs the orchestrator’s words without their marking line for the human, and sends the agent the marked text', async () => {
+    const f = feature()
+    const id = chat(f.id)
+
+    await deliverToLead(ctx, f, {
+      text: "From the project's orchestrator, not the human:\n\nFix the login",
+      source: 'human',
+      orchestrator: { text: 'Fix the login', relayed: false },
+    })
+
+    const [logged] = promptsOf(id)
+    expect(logged).toMatchObject({ text: expect.stringContaining('not the human:'), display: { orchestrator: [{ text: 'Fix the login', relayed: false }] } })
+    await logUntil(id, turnsEnded(1))
+    expect(sentToAgent()[0]).toContain("From the project's orchestrator, not the human:")
+  })
+
   it('hands a resumed lead the feature’s current state with the first prompt after its process starts, and only then', async () => {
     const f = feature()
     const id = chat(f.id)

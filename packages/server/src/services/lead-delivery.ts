@@ -25,6 +25,17 @@ import { listByIds } from './tickets'
 export interface LeadMessage {
   text: string
   source: 'human' | 'runcastle'
+  /**
+   * The orchestrator's own words, without the line that marks them for the
+   * agent: what the feature's chat shows the human in place of the marked text.
+   */
+  orchestrator?: { text: string; relayed: boolean }
+}
+
+/** A message waiting for the lead: the tagged text it goes out as, and what the human reads of it. */
+interface HeldLine {
+  text: string
+  orchestrator?: { text: string; relayed: boolean }
 }
 
 /**
@@ -40,10 +51,20 @@ export interface LeadMessage {
  */
 export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMessage): Promise<void> {
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
-  const lines = [...(held.get(feature.id) ?? []), tagRuncastlePrompt(msg.text)]
+  const lines: HeldLine[] = [
+    ...(held.get(feature.id) ?? []),
+    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator },
+  ]
+  // The human reads the orchestrator's words only when every line going out is one.
+  const said = lines.flatMap((l) => (l.orchestrator ? [l.orchestrator] : []))
+  const display = said.length === lines.length ? { orchestrator: said } : undefined
   try {
     const threadId = await leadThread(ctx, feature)
-    await agentHost(ctx).prompt(threadId, { text: lines.join('\n\n') }, { source: 'runcastle' })
+    await agentHost(ctx).prompt(
+      threadId,
+      { text: lines.map((l) => l.text).join('\n\n') },
+      { source: 'runcastle', ...(display ? { display } : {}) },
+    )
     held.delete(feature.id)
     failures.delete(feature.id)
     emit(ctx, feature.id, {
@@ -57,6 +78,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     const at = Date.now()
     failures.set(feature.id, { reason, at, since: failures.get(feature.id)?.since ?? at })
     const data: LeadWakeFailedData & LeadMessage = { exitCode: null, tail: reason, messages: lines.length, ...msg }
+    delete data.orchestrator
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
   }
 }
@@ -74,7 +96,7 @@ export function isLeadSession(session: Pick<SessionRow, 'kind' | 'featureId'>): 
 }
 
 /** Messages a failed delivery kept, per feature, oldest first. */
-const held = new Map<string, string[]>()
+const held = new Map<string, HeldLine[]>()
 
 /** The last failed delivery per feature, and when the oldest kept message was sent. */
 const failures = new Map<string, { reason: string; at: number; since: number }>()

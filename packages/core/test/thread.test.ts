@@ -21,6 +21,47 @@ const prompt = (id: string, text = 'hi', extra: Partial<Extract<ThreadEventBody,
 
 const work = (v: ReturnType<typeof foldThread>, n = 0) => v.items.filter((x): x is Extract<ThreadItem, { kind: 'work' }> => x.kind === 'work')[n]
 
+describe('foldThread: features card and prompt display', () => {
+  const acted = (featureId: string, action: 'created' | 'parked' | 'planning' | 'messaged', extra: { quote?: string } = {}): ThreadEventBody => ({
+    type: 'feature_acted',
+    featureId,
+    title: `Title ${featureId}`,
+    action,
+    ...extra,
+  })
+  const running: ThreadEventBody[] = [prompt('p1'), { type: 'process', state: 'running' }, { type: 'turn_started' }]
+  const tool = (id: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title: 'create_feature', status: 'completed' } })
+  const end: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }
+  const say = (text: string): ThreadEventBody => ({ type: 'agent_text', messageId: 'm', text })
+
+  it('folds a turn\'s actions into one card after the work and before the final words, a second action joining its row', () => {
+    const v = foldThread(
+      log(...running, tool('c1'), acted('a', 'created'), tool('c2'), acted('b', 'created'), acted('c', 'parked'), acted('d', 'parked'), acted('a', 'planning'), acted('b', 'messaged', { quote: 'Go' }), say('Done.'), end),
+    )
+    expect(kinds(v.items)).toEqual(['user', 'work', 'features_card', 'agent'])
+    const card = v.items[2]
+    expect(card.kind === 'features_card' && card.rows.map((r) => [r.featureId, r.actions])).toEqual([
+      ['a', ['created', 'planning']],
+      ['b', ['created', 'messaged']],
+      ['c', ['parked']],
+      ['d', ['parked']],
+    ])
+    expect(card.kind === 'features_card' && card.rows[1].quote).toBe('Go')
+  })
+
+  it('starts a new card after a prompt or in a new turn', () => {
+    const v = foldThread(log(...running, acted('a', 'created'), prompt('p2', 'steer', { steered: true }), acted('b', 'created'), end, prompt('p3'), { type: 'turn_started' }, acted('c', 'created'), end))
+    expect(v.items.filter((x) => x.kind === 'features_card')).toHaveLength(3)
+  })
+
+  it('copies a prompt\'s display onto its user item', () => {
+    const display = { summary: 'Started this chat' }
+    const v = foldThread(log(prompt('p1', 'Proceed', { source: 'runcastle', display })))
+    expect(v.items[0]).toMatchObject({ kind: 'user', from: 'runcastle', display })
+    expect(foldThread(log(prompt('p2'))).items[0]).not.toHaveProperty('display')
+  })
+})
+
 describe('foldThread: shown files', () => {
   const file = (id: string): ShownFile => ({ id, src: `/f/${id}.png`, name: `${id}.png`, path: `${id}.png`, size: 1, as: 'image' })
   const shown = (id: string): ThreadEventBody => ({ type: 'file_shown', file: file(id) })

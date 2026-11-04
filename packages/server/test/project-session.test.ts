@@ -43,7 +43,7 @@ import { rmTemp, seedProject } from './helpers/fixtures'
 import { createAgentHost } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
-import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
+import { acpLaunchOf, briefOf, kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * The project session (feature-grouping decisions 17–20): a project-scoped
@@ -572,6 +572,7 @@ describe('launching, resuming and landing a project session', () => {
 
     expect(sessionId).not.toBe(prior.sessionId)
     const said = kickoffOf(sessionId)
+    expect(promptsOf(sessionId)[0]).toMatchObject({ display: { summary: 'Started this orchestrator chat' } })
     expect(said).toContain('list_project_notes')
     expect(said).toContain('/runcastle:project')
     expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resumed')

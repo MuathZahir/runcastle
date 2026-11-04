@@ -10,6 +10,7 @@ import {
   noSession,
   ok,
   orchestratorTool,
+  recordFeatureAction,
   requireHeldFeature,
   requireProjectFeature,
   type ResolveSession,
@@ -38,9 +39,23 @@ export async function toolSendToFeature(
 ): Promise<SendToFeatureResult> {
   const feature = requireHeldFeature(ctx, session, input.slug)
   const from = input.relaysHuman ? RELAYED_HUMAN_LINE : FROM_ORCHESTRATOR_LINE
-  await deliverToLead(ctx, feature, { text: `${from}\n\n${input.message}`, source: 'human' })
+  const relayed = input.relaysHuman === true
+  await deliverToLead(ctx, feature, {
+    text: `${from}\n\n${input.message}`,
+    source: 'human',
+    orchestrator: { text: input.message, relayed },
+  })
+  recordFeatureAction(ctx, session, feature.id, relayed ? 'relayed' : 'messaged', { quote: firstLine(input.message) })
   return { deliveredToLead: true }
 }
+
+/** The first non-empty line of `message`, clipped for a card row. */
+function firstLine(message: string): string {
+  const line = message.split(/\r?\n/).find((l) => l.trim() !== '')?.trim() ?? ''
+  return line.length > QUOTE_MAX ? `${line.slice(0, QUOTE_MAX - 1)}…` : line
+}
+
+const QUOTE_MAX = 120
 
 /** What `read_feature_chat` returns: the chat's recent turns, or why there are none. */
 export type ReadFeatureChatResult = {

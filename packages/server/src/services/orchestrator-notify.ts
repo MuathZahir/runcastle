@@ -1,4 +1,4 @@
-import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, type EventRow, type SessionRow, type Ticket } from '@runcastle/core'
+import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, type EventRow, type PromptDisplay, type SessionRow, type Ticket } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
@@ -56,6 +56,7 @@ export interface NotifyState {
   /** The event's feature; absent for a project-level event. */
   feature?: {
     slug: string
+    title: string
     /** The thread holding it; null when none does, or once it has shipped. */
     holderId: string | null
     /** Whether the holder's process is running. */
@@ -66,6 +67,8 @@ export interface NotifyState {
   /** The ticket the event is about, when there is one. */
   ticket?: Pick<Ticket, 'seq' | 'kind' | 'passKind'>
 }
+
+type NewsEntry = Extract<PromptDisplay, { news: unknown }>['news'][number]
 
 type Described = { kind: 'end' | 'act'; text: string }
 
@@ -204,19 +207,105 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
   }
 }
 
+/** What the human reads of one event: its tone, and plain words with no slug or tool name. */
+export interface NewsEvent {
+  tone: 'done' | 'needsYou' | 'failed' | 'info'
+  words: string
+}
+
+/** The human's words for an event {@link describe} has a line for (decision 5: plain words, no plumbing). */
+function humanWords(event: EventRow, ticket: NotifyState['ticket']): NewsEvent | null {
+  const data = record(event.data)
+  switch (event.type) {
+    case 'session.self_plan_ended':
+      return data.complete === true
+        ? { tone: 'done', words: 'Finished planning' }
+        : { tone: 'failed', words: 'Stopped before the plan was complete' }
+    case 'session.run_ended':
+      return data.complete === true
+        ? { tone: 'done', words: 'Worker finished' }
+        : { tone: 'failed', words: 'Worker stopped before it finished' }
+    case 'run.finished': {
+      if (data.status === 'succeeded') {
+        return { tone: 'done', words: typeof data.round === 'number' ? `Round ${data.round} finished` : 'Round finished' }
+      }
+      const summary = typeof data.summary === 'string' ? clip(data.summary) : ''
+      return { tone: 'failed', words: `Round failed${summary ? `: ${summary}` : ''}` }
+    }
+    case 'run.reconciled':
+      return { tone: 'failed', words: 'Round cut off by a restart' }
+    case 'feature.waiting':
+      return { tone: 'needsYou', words: `Waits for you: ${typeof data.why === 'string' ? clip(data.why, WHY_MAX) : ''}` }
+    case 'feature.ready_declared':
+      return { tone: 'needsYou', words: 'Ready to test' }
+    case 'lead.wake_failed':
+      return { tone: 'failed', words: 'Could not wake its agent' }
+    case 'ticket.done':
+    case 'ticket.failed': {
+      const pass = ticket?.passKind === 'verification' ? 'Verification pass' : 'Review pass'
+      return event.type === 'ticket.done'
+        ? { tone: 'done', words: `${pass} finished` }
+        : { tone: 'failed', words: `${pass} failed` }
+    }
+    case 'feature.shipped':
+      return { tone: 'done', words: 'Merged — shipped' }
+    case 'merge.conflict': {
+      const files = Array.isArray(data.files) ? data.files.length : 0
+      return { tone: 'failed', words: files > 0 ? `Merge conflicted in ${files} ${files === 1 ? 'file' : 'files'}` : 'Merge conflicted' }
+    }
+    case 'testdrive.dev_failed':
+      return { tone: 'failed', words: 'Test drive failed to start' }
+    case 'feature.started':
+      return { tone: 'info', words: `Started by itself after ${String(data.autoStartedBy)} shipped` }
+    case AUTOSTART_SKIPPED:
+    case AUTOSTART_FAILED:
+      return { tone: 'failed', words: clip(event.message, WHY_MAX) }
+    case 'feature.taken':
+      return { tone: 'info', words: typeof data.name === 'string' ? `Taken by the chat “${clip(data.name)}”` : 'Taken by another chat' }
+    case 'session.launching':
+      return { tone: 'info', words: 'You had it plan itself' }
+    case 'session.process_started':
+      return { tone: 'info', words: 'You are talking to its chat' }
+    case 'session.process_stopped':
+      return { tone: 'info', words: 'Its chat went quiet' }
+    case 'testdrive.started':
+      return { tone: 'info', words: 'You started a test drive' }
+    case 'testdrive.stopped':
+      return { tone: 'info', words: 'You stopped the test drive' }
+    default:
+      return null
+  }
+}
+
+/** What an event says to its holder, or null when it says nothing; the gate both the line and the news go through. */
+function described(event: EventRow, state: NotifyState): Described | null {
+  if (!event.featureId || !state.feature?.holderId) return null
+  const said = describe(event, state.session, state.ticket, state.feature.slug)
+  if (!said) return null
+  if (said.kind === 'act' && !state.feature.holderRunning) return null
+  if (record(event.data).actor === 'orchestrator' && (said.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
+    return null
+  }
+  return said
+}
+
 /**
  * The line to deliver to the holder for `event`, or null for none.
  * Pure: everything it needs about the feature, session and ticket is in `state`.
  */
 export function orchestratorLineFor(event: EventRow, state: NotifyState): string | null {
-  if (!event.featureId || !state.feature?.holderId) return null
-  const described = describe(event, state.session, state.ticket, state.feature.slug)
-  if (!described) return null
-  if (described.kind === 'act' && !state.feature.holderRunning) return null
-  if (record(event.data).actor === 'orchestrator' && (described.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
-    return null
-  }
-  return `${PREFIX} ${state.feature.slug} ${described.text}`
+  const said = described(event, state)
+  return said && state.feature ? `${PREFIX} ${state.feature.slug} ${said.text}` : null
+}
+
+/** The same event in the human's words, with the feature it is about; null exactly when there is no line. */
+export function orchestratorNewsFor(
+  event: EventRow,
+  state: NotifyState,
+): ({ featureId: string; title: string } & NewsEvent) | null {
+  if (!described(event, state) || !event.featureId || !state.feature) return null
+  const news = humanWords(event, state.ticket)
+  return news ? { featureId: event.featureId, title: state.feature.title, ...news } : null
 }
 
 /** Read the feature, session and ticket an event names. Missing rows are left out. */
@@ -229,7 +318,7 @@ function stateFor(ctx: AppCtx, event: EventRow): NotifyState {
     const over = feature.status === 'shipped' && event.type !== AUTOSTART_FAILED
     const holderId = over ? null : (feature.heldBy ?? null)
     const holderRunning = holderId !== null && agentHost(ctx).isRunning(holderId)
-    state.feature = { slug: feature.slug, holderId, holderRunning }
+    state.feature = { slug: feature.slug, title: feature.title, holderId, holderRunning }
   }
   const sessionId = record(event.data).sessionId
   if (typeof sessionId === 'string') {
@@ -256,7 +345,19 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
 export const ORCHESTRATOR_GATHER_MS = 300
 
 /** Lines gathering per orchestrator thread, until their prompt goes. */
-const gathering = new Map<string, string[]>()
+const gathering = new Map<string, { line: string; news: ReturnType<typeof orchestratorNewsFor> }[]>()
+
+/** A batch's news for the human: one entry per feature, its events in arrival order. */
+function newsByFeature(batch: { news: ReturnType<typeof orchestratorNewsFor> }[]): NewsEntry[] {
+  const byFeature = new Map<string, NewsEntry>()
+  for (const { news } of batch) {
+    if (!news) continue
+    const entry = byFeature.get(news.featureId) ?? { featureId: news.featureId, title: news.title, events: [] }
+    entry.events.push({ tone: news.tone, words: news.words })
+    byFeature.set(news.featureId, entry)
+  }
+  return [...byFeature.values()]
+}
 
 /** The thread a line about `event` goes to: the holder, or for a take the thread that lost it. */
 function recipient(event: EventRow, state: NotifyState): string | null {
@@ -280,17 +381,23 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
     const line = orchestratorLineFor(event, state)
     const threadId = recipient(event, state)
     if (!line || !threadId) return
-    const lines = gathering.get(threadId)
-    if (lines) {
-      lines.push(line)
+    const entry = { line, news: orchestratorNewsFor(event, state) }
+    const gathered = gathering.get(threadId)
+    if (gathered) {
+      gathered.push(entry)
       return
     }
-    gathering.set(threadId, [line])
+    gathering.set(threadId, [entry])
     setTimeout(() => {
       const batch = gathering.get(threadId) ?? []
       gathering.delete(threadId)
+      const news = newsByFeature(batch)
       agentHost(ctx)
-        .prompt(threadId, { text: batch.join('\n') }, { source: 'runcastle' })
+        .prompt(
+          threadId,
+          { text: batch.map((b) => b.line).join('\n') },
+          { source: 'runcastle', ...(news.length > 0 ? { display: { news } } : {}) },
+        )
         .catch((err) => console.error('orchestrator notifier failed', err))
     }, ORCHESTRATOR_GATHER_MS).unref?.()
   } catch (err) {

@@ -241,14 +241,16 @@ async function sayToThread(
   line: string,
   message: string,
   opts: LaunchSessionOptions,
+  summary?: string,
 ): Promise<void> {
+  const display = summary ? { summary } : undefined
   if (opts.spawn === false) {
-    appendThreadEvent(row.id, { type: 'prompt', id: newId('prompt'), text: line, source: 'runcastle' })
+    appendThreadEvent(row.id, { type: 'prompt', id: newId('prompt'), text: line, source: 'runcastle', ...(display ? { display } : {}) })
     return
   }
   const hold = opts.holdOpening === true
   const text = hold ? heldOpening(line) : line
-  await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', ...(hold ? { hold } : {}) })
+  await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', ...(display ? { display } : {}), ...(hold ? { hold } : {}) })
   emitForSession(ctx, row, {
     type: 'session.kickoff',
     message,
@@ -273,6 +275,24 @@ export function heldOpening(line: string): string {
 export function kickoffFor(ctx: AppCtx, row: SessionRow, opts: { held?: boolean } = {}): string {
   const line = openingLine(ctx, row, opts.held === true)
   return opts.held ? heldOpening(line) : line
+}
+
+/** What the human reads of a thread's opening in place of its briefing; absent for a kind with no plain words (it keeps the raw look). */
+export function openingSummary(row: SessionRow, selfPlan = false): string | undefined {
+  switch (row.kind) {
+    case 'chat':
+      return selfPlan ? 'Started this chat to plan the feature by itself' : 'Started this chat'
+    case 'side':
+      return 'Started this side chat'
+    case 'project':
+      return 'Started this orchestrator chat'
+    case 'prepare':
+      return 'Started preparing the project'
+    case 'drive-fix':
+      return "The test drive's setup failed; started this chat to fix it"
+    default:
+      return undefined
+  }
 }
 
 function openingLine(ctx: AppCtx, row: SessionRow, held: boolean): string {
@@ -420,7 +440,14 @@ async function openMainChat(
   const header = hostSaysHeader(ctx, thread, opts) ? undefined : chatKickoffHeader(ctx, feature, runtime, opening)
   const said = [plan.line, header].filter(Boolean).join(' ') || opening
   const line = tagRuncastlePrompt(kickoffLineFor('chat', said, runtime))
-  await sayToThread(ctx, thread, line, selfPlan ? 'opening the self-planning run with its briefing' : 'opening chat with its briefing', opts)
+  await sayToThread(
+    ctx,
+    thread,
+    line,
+    selfPlan ? 'opening the self-planning run with its briefing' : 'opening chat with its briefing',
+    opts,
+    openingSummary(thread, selfPlan),
+  )
   return { sessionId: thread.id, resumed }
 }
 
@@ -524,7 +551,7 @@ export async function launchSideSession(
     message: 'launching a new side session',
     data: { sessionId: row.id, kind: 'side', worktreePath: row.worktreePath, ...modelStamp(row) },
   })
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side session with its briefing', opts)
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side session with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
@@ -601,7 +628,7 @@ export async function launchPrepareSession(
     return { sessionId: row.id, resumed: true }
   }
 
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening preparation session with its briefing', opts)
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening preparation session with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
@@ -680,7 +707,7 @@ export async function launchDriveFixSession(
     })
   }
 
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening drive-fix session with its briefing', opts)
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening drive-fix session with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: !!reopen && underway(reopen) }
 }
 
@@ -863,7 +890,7 @@ export async function launchProjectSession(
 
   const runtime = row.runtime ?? DEFAULT_RUNTIME
   const line = input.purpose === 'triage' ? kickoffLineFor('project', projectTriageKickoffFor(runtime), runtime) : kickoffFor(ctx, row)
-  await sayToThread(ctx, row, line, 'opening project session with its briefing', opts)
+  await sayToThread(ctx, row, line, 'opening project session with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
