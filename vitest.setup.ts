@@ -1,6 +1,6 @@
 /**
  * Test-env firewall: the state a test file must never inherit — the
- * developer's runcastle env, and Bun's unusable `localStorage`.
+ * developer's runcastle env, git's repo-location variables, and Bun's unusable `localStorage`.
  *
  * Runs in every worker before any test file. It deletes every `RUNCASTLE_*`
  * variable it finds, so a test process can never inherit the developer's live
@@ -23,10 +23,16 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, vi } from 'vitest'
+import { stripGitRepoEnv } from './vitest.git-guard'
 
 for (const key of Object.keys(process.env)) {
   if (key.startsWith('RUNCASTLE_')) delete process.env[key]
 }
+
+// Git's repo-location variables too (GIT_DIR & co): inherited from a git hook,
+// they point every git child a test spawns at the real repo instead of its
+// scratch dir. That is how a test run once made the developer's repo bare.
+stripGitRepoEnv()
 
 /**
  * The same win32 allowance `vitest.config.ts` gives `testTimeout`, for the two

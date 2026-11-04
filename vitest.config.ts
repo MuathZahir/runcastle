@@ -20,6 +20,10 @@ export default defineConfig({
     // imports core's paths, and swaps Bun's throwing `localStorage` placeholder
     // for a working in-memory one.
     setupFiles: ['./vitest.setup.ts'],
+    // Test-repo guard: strips git's repo-location variables in the main process
+    // and fails the run if it changed the [core] config or stash of the repo it
+    // runs from (vitest.git-guard.ts).
+    globalSetup: ['./vitest.git-guard.ts'],
     // The git-heavy server tests each spawn dozens of `git` children (init,
     // config, add, commit, worktree add). Off win32 that is ~600–1100ms against
     // the 5s default — comfortable. On win32 every one of those spawns pays
