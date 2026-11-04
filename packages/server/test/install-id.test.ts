@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installIdPath } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { getInstallId } from '../src/services/install-id'
+import { getInstallId, hasInstallId } from '../src/services/install-id'
 
 /**
  * The anonymous install ID the boot update-check carries. Read-or-create over
@@ -44,6 +44,15 @@ describe('getInstallId', () => {
     const repaired = getInstallId()
     expect(repaired).toMatch(UUID_RE)
     expect(readFileSync(installIdPath(), 'utf8').trim()).toBe(repaired)
+  })
+
+  it('reports whether an ID exists without ever creating one', () => {
+    expect(hasInstallId()).toBe(false)
+    expect(hasInstallId()).toBe(false)
+    getInstallId()
+    expect(hasInstallId()).toBe(true)
+    writeFileSync(installIdPath(), 'not-a-uuid\n')
+    expect(hasInstallId()).toBe(false)
   })
 
   it('creates the data dir when it does not exist yet', () => {

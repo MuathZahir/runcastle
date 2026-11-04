@@ -3,7 +3,8 @@ import * as z from 'zod'
 import { createSystemExec } from '../../doctor/system-exec'
 import { InvalidInputError } from '../../errors'
 import { emitProject } from '../../services/events'
-import { getUpdateInfo } from '../../services/update-check'
+import { hasInstallId } from '../../services/install-id'
+import { getUpdateInfo, usageNoticeNeeded } from '../../services/update-check'
 import {
   type BurnCacheEngine,
   burnCacheVolumeName,
@@ -39,7 +40,22 @@ function burnCacheEngine(sandbox: RuncastleConfig['sandbox']): BurnCacheEngine |
 
 export const systemRouter = router({
   version: publicProcedure.query(() => ({ version: runcastleVersion() })),
-  checkUpdate: publicProcedure.query(() => getUpdateInfo(runcastleVersion())),
+  checkUpdate: publicProcedure.query(({ ctx }) =>
+    getUpdateInfo(runcastleVersion(), { usageSignal: ctx.config.usageSignal }),
+  ),
+  /**
+   * Whether to show the one-time usage-ping notice (decision 18): an install
+   * from before the switch that has never answered. The answer is a write of
+   * `usageSignal` through `settings.update`, whose `settings.updated` event
+   * refreshes this query.
+   */
+  usageNotice: publicProcedure.query(({ ctx }) => ({
+    show: usageNoticeNeeded({
+      env: process.env,
+      usageSignal: ctx.config.usageSignal,
+      installIdExists: hasInstallId(),
+    }),
+  })),
 
   burnCache: router({
     /**

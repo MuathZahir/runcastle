@@ -142,6 +142,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.enum(['inherit', 'runcastleOnly']),
     parseEnv: idEnv,
   },
+  // The usage ping's switch. Read by the update check on each check (not
+  // cached at boot), so no restart is needed.
+  {
+    key: 'usageSignal',
+    configKey: 'usageSignal',
+    envVar: 'RUNCASTLE_USAGE_SIGNAL',
+    restartRequired: false,
+    valueSchema: z.enum(['on', 'off']),
+    parseEnv: idEnv,
+  },
   {
     key: 'burnConcurrency',
     configKey: 'burnConcurrency',

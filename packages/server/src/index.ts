@@ -224,8 +224,9 @@ export async function startServer(): Promise<void> {
   // page load: a server booted without anyone opening the app never checked at
   // all, and "booted a server" is the honest definition of an active install.
   // Fire-and-forget — the result is memoized for the banner's tRPC query, and
-  // the `catch` keeps even an unforeseen rejection off the boot path.
-  void getUpdateInfo(runcastleVersion()).catch(() => {})
+  // the `catch` keeps even an unforeseen rejection off the boot path. Whether it
+  // also counts the install (the usage ping) is the `usageSignal` setting's.
+  void getUpdateInfo(runcastleVersion(), { usageSignal: config.usageSignal }).catch(() => {})
 
   // Kill every live PTY on shutdown so no orphaned claude processes survive.
   // Registered once even across `bun --hot` reloads (which re-run `main`) to
