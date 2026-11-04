@@ -14,6 +14,7 @@ import {
 import { useReviewArtifacts } from '../../lib/reviews'
 import { slotBlocker, standingNotices, type SlotDriveInfo } from '../../lib/standing-notices'
 import { useToast } from '../../lib/toast'
+import { useIsPhone } from '../../lib/use-phone'
 import type { useResolveConflict } from '../../lib/use-resolve-conflict'
 
 /**
@@ -58,6 +59,7 @@ export function useStandingNotices({
   const stopFeature = trpc.feature.testDrive.useMutation(stopped)
   const stopProject = trpc.project.testDrive.useMutation(stopped)
   const stopDryRun = trpc.project.dryRunStop.useMutation(stopped)
+  const phone = useIsPhone()
   if (!full) return []
   const { feature } = full
   const blocker = slotBlocker(drive, feature, driveUp)
@@ -74,6 +76,7 @@ export function useStandingNotices({
       denial,
       unverified: unverifiedReview({ passes: artifacts.data ?? [], tickets: full.tickets }),
       blockingDrive: blocker,
+      phone,
     },
     {
       resolve: () => {
