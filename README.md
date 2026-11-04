@@ -45,7 +45,7 @@ It runs entirely on your machine: a Bun server plus a browser UI at
 `http://localhost:4512`. There is no runcastle account and no hosted backend.
 
 <p align="center">
-  <img src="site/assets/screens/tickets.png" alt="A feature in Planning with ten tickets in dependency order, each after the ones it needs, and a button to start the first round as the one next step" width="100%" />
+  <img src="site/assets/screens/tickets.png" alt="A feature in Planning: the agent has cut the plan into ten tickets in dependency order, each with its own model, and waits for a yes in the chat to start round 1" width="100%" />
 </p>
 
 > New here? [runcastle.dev](https://runcastle.dev) has the sixty-second film,
@@ -175,7 +175,7 @@ a second pass verifies the fixes. You get a verdict, the checks, and the
 walkthrough, and the one next step is **Merge & ship**.
 
 <p align="center">
-  <img src="site/assets/screens/review.png" alt="A feature in Review: verified by a test drive with checks 2 of 2 passed, 3 of 3 tickets landed, Merge and ship as the primary action, and the review round's recorded walkthrough of the app below" width="100%" />
+  <img src="site/assets/screens/review.png" alt="A feature ready to merge: round 1 landed 3 of 3 tickets with checks passed, and the review package in the chat says it was verified on a test drive, with its walkthrough and screenshots, and Merge and ship as the next step" width="100%" />
 </p>
 
 ---
@@ -191,7 +191,7 @@ checks the idea against what is already built and in flight, talks through what
 is left, and cuts the rest into features, backlog items, or a quick change.
 
 <p align="center">
-  <img src="site/assets/screens/project-chat.png" alt="An orchestrator chat in a real Claude Code terminal. Given an idea for a shared team feed with a Friday recap email, the agent reports that two-thirds of it is already in flight in two existing features, lists what neither covers, and asks the first deciding question" width="100%" />
+  <img src="site/assets/screens/project-chat.png" alt="An orchestrator chat. Given an idea for a shared team feed with a Friday recap email, the agent reports that two-thirds of it is already in flight in two existing features, lists what neither covers, and asks the first deciding question" width="100%" />
 </p>
 
 It runs in a worktree runcastle owns, on `runcastle/project`, never in your
@@ -211,7 +211,7 @@ shipped on `main`. A note can take a pasted screenshot, and it remembers the
 branch and commit it was written against.
 
 <p align="center">
-  <img src="site/assets/screens/drive.png" alt="A test drive of main: the shiplog demo app running inside runcastle, with a Notes panel listing the note just taken on this drive above three notes already open" width="100%" />
+  <img src="site/assets/screens/drive.png" alt="A test drive of main: the shiplog demo app running inside runcastle, with a Notes panel listing three notes already open and the note just taken on this drive" width="100%" />
 </p>
 
 You do not have to be driving to take one. **Ctrl+J** (**⌘J** on a Mac) opens
