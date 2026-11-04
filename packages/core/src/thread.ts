@@ -243,6 +243,39 @@ export type TurnEnd = z.infer<typeof TurnEnd>
 /** What a turn a server restart cut off reads as, in place of "Stopped by you". */
 export const RESTART_INTERRUPTED = 'Interrupted — runcastle restarted'
 
+/** What an orchestrator tool did to a feature, as the features card says it. */
+export const FeatureAction = z.enum([
+  'created',
+  'parked',
+  'started',
+  'planning',
+  'planningStopped',
+  'messaged',
+  'relayed',
+  'brief',
+  'taken',
+  'merged',
+  'driveStarted',
+  'driveStopped',
+])
+export type FeatureAction = z.infer<typeof FeatureAction>
+
+/** What the human reads of a runcastle prompt, beside the text the agent gets. */
+export const PromptDisplay = z.union([
+  z.object({
+    news: z.array(
+      z.object({
+        featureId: z.string(),
+        title: z.string(),
+        events: z.array(z.object({ tone: z.enum(['done', 'needsYou', 'failed', 'info']), words: z.string() })),
+      }),
+    ),
+  }),
+  z.object({ summary: z.string() }),
+  z.object({ orchestrator: z.array(z.object({ text: z.string(), relayed: z.boolean() })) }),
+])
+export type PromptDisplay = z.infer<typeof PromptDisplay>
+
 export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A prompt sent to the agent: the human's, or runcastle's own (a kickoff, a wake, an orchestrator line). */
   z.object({
@@ -255,6 +288,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     steered: z.boolean().optional(),
     /** A command runcastle sent for the human (Compact now's `/compact`): it runs a turn but is no message in the thread. */
     hidden: z.boolean().optional(),
+    /** What the human reads of a runcastle prompt; the agent never gets it. */
+    display: PromptDisplay.optional(),
   }),
   /** The agent process: starting on a prompt, running, stopped (idle, shutdown, crash). */
   z.object({
@@ -341,6 +376,17 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_shown') }),
   /** The agent showed one recorded design (`show_design`): a design card, which reads the record by id. */
   z.object({ type: z.literal('design_shown'), designId: z.string() }),
+  /** An orchestrator tool changed a feature (`create_feature`, `merge_feature`…): a row of the turn's features card. */
+  z.object({
+    type: z.literal('feature_acted'),
+    featureId: z.string(),
+    title: z.string(),
+    action: FeatureAction,
+    /** The first line of a message sent to the feature. */
+    quote: z.string().optional(),
+    /** The branch a merge landed in. */
+    into: z.string().optional(),
+  }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -383,6 +429,8 @@ export type ThreadItem =
       steered?: boolean
       /** Runcastle's own message to the agent (a round's end, Go), not the human's. */
       from?: 'runcastle'
+      /** What the human reads of a runcastle line, in place of its text. */
+      display?: PromptDisplay
     }
   /**
    * A turn's work. While the turn runs it shows step by step; once settled it
@@ -403,6 +451,12 @@ export type ThreadItem =
    * designs a later card for the same design follows (decision 19).
    */
   | { kind: 'design_cards'; id: string; designIds: string[]; older: string[] }
+  /** What a turn's orchestrator tools did to features: one row per feature. */
+  | {
+      kind: 'features_card'
+      id: string
+      rows: { featureId: string; title: string; actions: FeatureAction[]; quote?: string; into?: string }[]
+    }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -670,6 +724,9 @@ function markOlderCards(items: ThreadItem[]): void {
  *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
  * - A thread is `working` only inside a turn a `turn_started` opened: words
  *   logged after a turn's end (with no turn around them) fold as settled.
+ * - A turn's `feature_acted` events are one `features_card`, placed as a shown
+ *   file is: a feature acted on twice is one row; a prompt or a new turn starts
+ *   a new card. A prompt's `display` rides on its `user` item.
  * - A shown file sits after the turn's work and ahead of its final words, from
  *   the moment it is shown. Words before it are no longer the answer, as with
  *   an answered ask. A turn's files are one `shown` item, and a steered message
@@ -850,6 +907,14 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     if (open) shownIndex = items.length - 1
   }
 
+  const featureRow = (e: Extract<ThreadEvent, { type: 'feature_acted' }>) => ({
+    featureId: e.featureId,
+    title: e.title,
+    actions: [e.action],
+    ...(e.quote ? { quote: e.quote } : {}),
+    ...(e.into ? { into: e.into } : {}),
+  })
+
   for (const e of events) {
     switch (e.type) {
       case 'prompt': {
@@ -866,6 +931,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           ...(e.images?.length ? { images: e.images } : {}),
           ...(e.steered ? { steered: true } : {}),
           ...(e.source === 'runcastle' ? { from: 'runcastle' as const } : {}),
+          ...(e.display ? { display: e.display } : {}),
         }
         if (view.process !== 'running' && !e.steered) {
           // Only the latest prompt waits visibly: a held opening's next prompt takes its place.
@@ -1058,6 +1124,22 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           render(true)
           group.designIds.push(e.designId)
         } else placeCard({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] })
+        break
+      }
+      case 'feature_acted': {
+        // Actions one after another in a turn are one card; a feature acted on twice is one row.
+        const card = turn && shownIndex >= 0 ? items[shownIndex] : undefined
+        if (card?.kind === 'features_card') {
+          const open = turn as Turn | null
+          open?.segments.push({ kind: 'answered' })
+          render(true)
+          const row = card.rows.find((r) => r.featureId === e.featureId)
+          if (row) {
+            row.actions.push(e.action)
+            if (e.quote) row.quote = e.quote
+            if (e.into) row.into = e.into
+          } else card.rows.push(featureRow(e))
+        } else placeCard({ kind: 'features_card', id: `features_card:${e.i}`, rows: [featureRow(e)] })
         break
       }
       case 'title':
