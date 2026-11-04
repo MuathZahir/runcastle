@@ -10,6 +10,11 @@ agreement they wait for the human's own yes: the screens are left uncommitted
 until then, and the redrawn banner is shown to the human before the review
 round.
 
+On 2026-11-04 the human approved all seven designs in the Design tab. The
+project's orchestrator then agreed the plan as it stands and started round 1,
+under the brief's working agreement; the human has not confirmed the decisions
+themselves, so they stay assumed.
+
 ## 1. The README is fixed to the app; the server does not open a browser
 **Decision:** The README says what the app does today: run `runcastle`, then open the address it prints. The server does not open a browser by itself.
 **Why:** runcastle often runs where no browser can open (a VPS, SSH, WSL, a container), and the owner runs it that way. Detecting a desktop reliably on three platforms is new machinery for a one-click saving; most terminals already make the printed address clickable.
