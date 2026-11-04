@@ -78,12 +78,10 @@ themselves, so they stay assumed.
 ## 13. The README's screenshots and banner are recaptured after the sweep
 **Decision:** After the words change, every README screenshot that shows an old word or the six phases is recaptured from the real app on a scratch data dir, the way the current ones were made. The banner's six coloured phase blocks become the four stages. The lead does this between the build round and the review round, so the review checks the README with its new pictures. The banner is a design, so the lead shows it to the human for their yes before the review round; the screenshots are captures of approved screens and need none.
 **Why:** A README whose pictures say "Burn 10 tickets" and show six phases contradicts its own text. Capturing needs the running app with sample data, which a sandboxed worker cannot set up.
-**Assumed.** Alternative: keep the old pictures and fix only the text and alt text.
 
 ## 14. runcastle.dev is not part of this feature
-**Decision:** The website's pages under `site/` keep their words; only the README's pictures, which happen to live in `site/assets/`, change (decision 13). The site's redesign lives on a separate, unmerged branch, so sweeping it here would collide. The README is the stranger's first read on GitHub and npm, and that is what this feature fixes. The outcome lists every old word and the six phases still on the site, as a handoff to the redesign branch.
+**Decision:** The website's pages under `site/` keep their words; only the README's pictures, which happen to live in `site/assets/`, change (decision 13). The site's redesign lives on a separate, unmerged branch, so sweeping it here would collide. The README is the stranger's first read on GitHub and npm, and that is what this feature fixes.
 **Why:** Two branches rewriting the same pages would conflict, and the site's own redesign is the right place to adopt the new words.
-**Assumed.** Alternative: sweep `site/` too in this feature.
 
 ## 15. One word per concept
 **Decision:** Every place a person reads uses these words, and only these:
@@ -136,3 +134,7 @@ themselves, so they stay assumed.
 **Decision:** "Orchestrator actions show as cards" runs in parallel and reads its words from decision 15. If it merges first, this feature's word sweep and its guard test cover its card text when this branch takes main; if this feature merges first, the guard test is what tells the sibling which words to fix. No ticket here waits for it.
 **Why:** The brief's addition says whichever merges second fixes the words; the guard test (spec, "Words") makes that a failing test rather than a reading job.
 **Assumed.** Alternative: hold this feature until the sibling merges.
+
+## 23. The landing page is left alone entirely
+**Decision:** This feature makes no change to runcastle.dev and writes no handoff about it: the human is building a new landing page separately. The README's pictures stay, since only the README uses them.
+**Why:** The human said so on 2026-11-04 ("forget about updating the landing page"). Supersedes: the handoff line in 14.
