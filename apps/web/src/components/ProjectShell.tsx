@@ -149,7 +149,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   )
   // A chat's feature rows read the sidebar's list and open a feature as its row does.
   const featureLinks = useMemo<FeatureLinks>(
-    () => ({ features: features ?? [], openFeature: (featureId) => openChosen(featureId) }),
+    () => ({ features: features ?? [], openFeature: openChosen }),
     [features, openChosen],
   )
 
