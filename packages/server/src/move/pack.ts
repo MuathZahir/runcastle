@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, mkdtempSync, openSync, rmSync, statSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdtempSync, openSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { runcastleVersion } from '../version'
@@ -100,7 +100,17 @@ async function addWip(tar: TarWriter, projectId: string, wip: CheckoutWip, scrat
     // it. A copy of the index takes that write, so the source's own stays as it was.
     const index = resolve(wip.path, gitOrThrow(wip.path, ['rev-parse', '--git-path', 'index']).trim())
     const indexCopy = join(scratch, 'index')
-    if (existsSync(index)) copyFileSync(index, indexCopy)
+    if (existsSync(index)) {
+      copyFileSync(index, indexCopy)
+      // The copy must not look newer than the index it copies. Git trusts a
+      // file's cached stat only when the file is older than the index; a file
+      // written in the same instant as the index ("racy") gets its content
+      // compared instead. A fresh mtime on the copy made such a file look
+      // clean, and an edit that kept the size (`one` → `two`) left the patch.
+      // A millisecond earlier, so rounding can never land after the original.
+      const { atime, mtimeMs } = statSync(index)
+      utimesSync(indexCopy, atime, new Date(mtimeMs - 1))
+    }
     const fd = openSync(patch, 'w')
     try {
       const diff = spawnSync('git', ['-c', 'core.quotepath=off', 'diff', '--binary', 'HEAD'], {
