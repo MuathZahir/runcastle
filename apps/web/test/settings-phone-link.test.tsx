@@ -107,7 +107,7 @@ describe('On your phone', () => {
   it('says to start Tailscale when it is stopped', () => {
     setStatus({ tailscale: 'stopped', on: false, commands: COMMANDS })
     show()
-    expect(screen.getByText('Tailscale is not running')).toBeTruthy()
+    expect(screen.getByText('Tailscale is not running on this computer')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull()
   })
 
@@ -125,7 +125,7 @@ describe('On your phone', () => {
     // A scannable code: a light ground under dark modules, and modules drawn.
     expect(qr.querySelector('rect')?.getAttribute('fill')).toBe('#fff')
     expect(qr.querySelector('path')?.getAttribute('d')).toMatch(/^M\d+,\d+h1v1h-1z/)
-    expect(screen.getByText(/scan this/)).toBeTruthy()
+    expect(screen.getByText('Scan the code')).toBeTruthy()
   })
 
   it('turns the link off and goes back to the Turn on button at once', () => {
