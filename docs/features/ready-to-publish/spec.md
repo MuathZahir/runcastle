@@ -131,7 +131,7 @@ build round, and shows the banner to the human before the review round.
 ## Out of scope
 
 - Renaming code identifiers, tables, tRPC/MCP names, settings keys or CLI commands (decision 3).
-- The website's pages under `site/` (decision 14); the outcome lists their old words as a handoff to the site redesign branch.
+- The website under `site/` (decisions 14, 23): the human is building a new landing page separately.
 - Opening a browser on boot (decision 1).
 - Enabling HTTPS on the tailnet through Tailscale's API (decision 7).
 - Behaviour of waiting states, designs, drives and merges, owned by the sibling features.
