@@ -76,10 +76,21 @@ export interface ExecOutcome {
   stderr: string
   /** The command never answered and was killed — `ok` stays true, `code` is null. */
   timedOut?: boolean
+  /** {@link ExecOptions.stopWhen} matched and the command was killed — `ok` stays true, `code` is null. */
+  stopped?: boolean
+}
+
+export interface ExecOptions {
+  /**
+   * Read the output so far (stdout then stderr) as it arrives; once this
+   * answers true the command is killed and resolves at once with what it said.
+   * For a command that may print a question and then wait for an answer.
+   */
+  stopWhen?: (output: string) => boolean
 }
 
 /** The single injected seam: run a command, never throw. */
-export type ExecFn = (command: string, args: string[]) => Promise<ExecOutcome>
+export type ExecFn = (command: string, args: string[], opts?: ExecOptions) => Promise<ExecOutcome>
 
 /**
  * A probe's precise verdict. `ok` is healthy; everything else is a distinct,

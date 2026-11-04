@@ -20,8 +20,9 @@ const projectInput = z.object({ projectId: z.string() })
 
 /**
  * `tailscale serve` can wait on the human — a tailnet without HTTPS enabled
- * prints a link to enable it and blocks — so a command is given up on well
- * before the default backstop, and with no stdin it could wait on.
+ * prints a link to enable it and may block. Turn-on stops at that link; this
+ * is the last resort for anything else that hangs, well before the default
+ * backstop, and with no stdin to wait on.
  */
 const PHONE_LINK_TIMEOUT_MS = 15_000
 

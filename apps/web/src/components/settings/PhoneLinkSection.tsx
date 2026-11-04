@@ -29,14 +29,11 @@ export const PHONE_LINK_SEARCH: SearchableSetting = {
 type PhoneLinkStatus = RouterOutputs['phoneLink']['status']
 
 /**
- * The status the section draws. `httpsNeeded` is the address Tailscale printed
- * when the tailnet has not allowed HTTPS yet (ready-to-publish decision 7);
- * the server fills it once its turn-on reads that answer.
+ * The status the section draws. `httpsNeeded` is the page that allows HTTPS on
+ * a tailnet that has not yet (ready-to-publish decision 7); the server fills it
+ * once its turn-on reads Tailscale's answer.
  */
-export type PhoneLinkView = PhoneLinkStatus & { httpsNeeded?: string }
-
-/** Tailscale's own page for the tailnet's HTTPS switch, when the CLI printed none. */
-export const TAILSCALE_HTTPS_PAGE = 'https://login.tailscale.com/admin/dns'
+export type PhoneLinkView = PhoneLinkStatus
 
 export function PhoneLinkSection({
   projectId,
