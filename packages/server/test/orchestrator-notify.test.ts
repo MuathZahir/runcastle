@@ -42,8 +42,8 @@ function event(type: string, data?: Record<string, unknown>, extra: Partial<Even
   }
 }
 
-const held: NotifyState = { feature: { slug: 'export-csv', holderId: 'thread', holderRunning: true } }
-const unheld: NotifyState = { feature: { slug: 'export-csv', holderId: null, holderRunning: false } }
+const held: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: true } }
+const unheld: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: null, holderRunning: false } }
 const chat = { kind: 'chat', purpose: undefined, headless: false } as const
 
 describe('orchestratorLineFor — end events', () => {
@@ -168,7 +168,7 @@ describe('orchestratorLineFor — end events', () => {
   })
 
   it('wakes a stopped holder for an ending', () => {
-    const stopped: NotifyState = { feature: { slug: 'export-csv', holderId: 'thread', holderRunning: false } }
+    const stopped: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: false } }
     expect(orchestratorLineFor(event('merge.conflict', { files: [] }), stopped)).toContain('merge conflicted')
   })
 
@@ -242,7 +242,7 @@ describe('orchestratorLineFor — act events', () => {
   })
 
   it('does not reach a holder whose process is stopped', () => {
-    const stopped: NotifyState = { feature: { slug: 'export-csv', holderId: 'thread', holderRunning: false } }
+    const stopped: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: false } }
     expect(orchestratorLineFor(event('testdrive.started'), stopped)).toBeNull()
   })
 
@@ -364,6 +364,27 @@ describe('the notifier', () => {
       ['[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).'],
     ])
     expect(host.isRunning(id)).toBe(true)
+  })
+
+  it('logs a batch’s news for the human, one entry per feature, in plain words', async () => {
+    const id = projectSession()
+    const csv = heldFeature(id, 'export-csv', { title: 'Export CSV' })
+    const other = heldFeature(id, 'other', { title: 'Other thing' })
+
+    emit(ctx, csv.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
+    emit(ctx, other.id, { type: 'feature.ready_declared', message: 'ready' })
+    emit(ctx, csv.id, { type: 'run.finished', message: 'run failed', data: { status: 'failed', summary: 'boom' } })
+
+    await promptLines(id, 1)
+    const [prompt] = promptsOf(id)
+    expect(prompt.display).toEqual({
+      news: [
+        { featureId: csv.id, title: 'Export CSV', events: [{ tone: 'done', words: 'Finished planning' }, { tone: 'failed', words: 'Round failed: boom' }] },
+        { featureId: other.id, title: 'Other thing', events: [{ tone: 'needsYou', words: 'Ready to test' }] },
+      ],
+    })
+    expect(JSON.stringify(prompt.display)).not.toMatch(/export-csv|Read it with|get_feature_context/)
+    expect(prompt.text).toContain('Read it with get_feature_context')
   })
 
   it('says two events ending together as one prompt with two separate lines', async () => {
