@@ -123,6 +123,49 @@ describe('CommandPalette', () => {
     expect(onOpenNote).toHaveBeenCalledOnce()
   })
 
+  /** ready-to-publish decisions 9, 16: the Glossary and the phone setup, found by old words too. */
+  describe('the Glossary and phone entries', () => {
+    const palette = (extra: { onOpenGlossary?: () => void; onOpenPhoneSetup?: () => void }) =>
+      render(
+        <CommandPalette
+          open
+          onClose={vi.fn()}
+          features={[]}
+          selectedFeatureId={null}
+          onSelect={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onOpenPreparation={vi.fn()}
+          onOpenProjectChat={vi.fn()}
+          onOpenNote={vi.fn()}
+          nav={nav}
+          {...extra}
+        />,
+      )
+    const type = (value: string) => fireEvent.change(screen.getByRole('textbox'), { target: { value } })
+
+    it('finds the Glossary by a word it replaced, and opens it', () => {
+      const onOpenGlossary = vi.fn()
+      palette({ onOpenGlossary, onOpenPhoneSetup: vi.fn() })
+      type('burn')
+      fireEvent.click(screen.getByRole('option', { name: 'Glossary' }))
+      expect(onOpenGlossary).toHaveBeenCalledOnce()
+    })
+
+    it('finds the phone setup by tailscale, and opens it', () => {
+      const onOpenPhoneSetup = vi.fn()
+      palette({ onOpenGlossary: vi.fn(), onOpenPhoneSetup })
+      type('tailscale')
+      fireEvent.click(screen.getByRole('option', { name: 'Use runcastle on your phone' }))
+      expect(onOpenPhoneSetup).toHaveBeenCalledOnce()
+    })
+
+    it('leaves the phone entry out when there is nowhere to open it', () => {
+      palette({ onOpenGlossary: vi.fn() })
+      type('phone')
+      expect(screen.queryByRole('option', { name: 'Use runcastle on your phone' })).toBeNull()
+    })
+  })
+
   /** you-always-know-what-s-waiting decision 8: the open feature's header actions come first. */
   it('lists the open feature’s actions first, and a disabled one says why and does nothing', () => {
     const openPlan = vi.fn()
