@@ -40,6 +40,7 @@ import {
 import type { PrepView, ProjectFinding } from '../lib/api'
 import { ThreadColumn } from './chat/ThreadColumn'
 import { OnYourComputer } from './OnYourComputer'
+import { Term } from './Term'
 
 /** What preparation is, in the one sentence every state of the page leads with. */
 const WHAT_IT_DOES =
@@ -131,7 +132,7 @@ export function PreparationWorkspace({
             icon: <IconFolder />,
             ...(onClose ? { onClick: onClose } : {}),
           },
-          { label: 'Preparation', icon: <IconShield /> },
+          { label: <Term id="preparation">Preparation</Term>, icon: <IconShield /> },
         ]}
         actions={
           hasAside ? (

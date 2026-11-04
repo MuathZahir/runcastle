@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AFK_BURN_EXPLAINER,
   agentName,
   BURN_EXPLAINER,
   sessionAgentName,
@@ -13,19 +12,15 @@ import {
  */
 
 describe('the explainers', () => {
-  it('says where a round runs and where its commits land', () => {
-    expect(BURN_EXPLAINER).toContain('sandboxed worker')
-    expect(BURN_EXPLAINER).toContain('feature branch')
+  it('says who builds a round and where its work lands', () => {
+    expect(BURN_EXPLAINER).toContain('workers build')
+    expect(BURN_EXPLAINER).toContain('feature’s branch')
   })
 
   // The surfaces that show these have not launched anything, so they cannot
   // know which runtime the session will open on (decision 11).
   it('does not name a runtime it cannot know yet', () => {
     expect(BURN_EXPLAINER).not.toMatch(/Claude|Codex/)
-  })
-
-  it('defines AFK as unattended', () => {
-    expect(AFK_BURN_EXPLAINER).toContain('unattended')
   })
 })
 

@@ -13,6 +13,7 @@
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
 import type { AgentRuntime } from '@runcastle/core'
+import { glossaryEntry } from './glossary'
 
 /**
  * What to call the thing on the other side of a session (decision 11).
@@ -47,11 +48,11 @@ export function sessionAgentName(session: { runtime?: AgentRuntime | null }): st
 }
 
 /**
- * Tickets + build bodies: the mechanics behind Burn, which the bar's "review,
- * then burn" never says (finding F12) — where the work runs and where it lands.
+ * Tickets + build bodies: the mechanics behind a round (finding F12) — who
+ * builds it and where the work lands. The glossary's sentence, so the app says
+ * it in one way everywhere (ready-to-publish decision 16).
  */
-export const BURN_EXPLAINER =
-  'A round runs each ticket as its own sandboxed worker, in parallel, committing to the feature branch.'
+export const BURN_EXPLAINER = glossaryEntry('round').definition
 
 /**
  * Status bar, on the notify toggle. It names the moment a ping fires: a feature
@@ -69,7 +70,3 @@ export const NOTIFY_OFFER = 'Notify me when a feature needs me'
  * offered.
  */
 export const STOP_TIMEOUT = 'stop timed out — the process may still be running'
-
-/** First-run wizard, on the step that configures them. */
-export const AFK_BURN_EXPLAINER =
-  'Workers run a round’s tickets in containers, unattended, and you read the result when you are back.'

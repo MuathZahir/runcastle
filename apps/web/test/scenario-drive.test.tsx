@@ -326,7 +326,7 @@ describe('the Blank app nudge', () => {
   it('opens New scenario from its link on a project with no scenarios, and ✕ hides it', () => {
     listed = []
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'Make it a scenario.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Make it a' }))
     expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Hide this hint' }))
