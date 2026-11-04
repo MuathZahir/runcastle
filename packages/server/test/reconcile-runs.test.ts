@@ -95,7 +95,7 @@ describe('reconcileStaleRuns — in-memory db', () => {
 
     const event = listAfter(ctx, featureId, 0).find((entry) => entry.type === 'run.reconciled')
     expect(event?.runId).toBe(runId)
-    expect(event?.message).toBe('A burn was interrupted by a server restart: 1 ticket landed, 2 pending')
+    expect(event?.message).toBe('A round was interrupted by a server restart: 1 ticket landed, 2 pending')
     expect(event?.data).toMatchObject({ landedTickets: 1, pendingTickets: 2 })
     expect(waiting.status).toBe('pending')
   })

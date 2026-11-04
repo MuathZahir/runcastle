@@ -167,7 +167,7 @@ describe('the feature lead runs rounds', () => {
       await expect(dispatchRound(ctx, featureId, [t.seq])).rejects.toThrow(/already running/)
     })
 
-    it('refuses an unknown seq and one with nothing left to burn', async () => {
+    it('refuses an unknown seq and one with nothing left to build', async () => {
       const featureId = seedFeature(ctx, projectId, {}).id
       const [done] = storeTickets(ctx, featureId, [ticketInput('a')])
       updateTicket(ctx, done.id, { status: 'done', commits: ['abc'] })

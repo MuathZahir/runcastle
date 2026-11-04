@@ -127,7 +127,7 @@ export async function startServer(): Promise<void> {
 
   // An older runcastle wrote a project's built image into the MACHINE-WIDE
   // config, where every project without an image of its own inherits it. Boot is
-  // where that gets named — the alternative is learning it from a burn that dies
+  // where that gets named — the alternative is learning it from a round that dies
   // inside a container built for somebody else's repo. Named, never deleted.
   warnLegacyGlobalImage(ctx)
 

@@ -47,8 +47,8 @@ describe('other threads keep their naming', () => {
   })
 
   it('an unbriefed side thread takes it, whatever it says', () => {
-    expect(threadName(row({ kind: 'side' }), [human('hi'), generated('Fixing the project session skill')])).toBe(
-      'Fixing the project session skill',
+    expect(threadName(row({ kind: 'side' }), [human('hi'), generated('Fixing the orchestrator skill')])).toBe(
+      'Fixing the orchestrator skill',
     )
     expect(namesItsSubject(row({ kind: 'side' }), 'Runcastle project session')).toBe(true)
   })

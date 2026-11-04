@@ -31,8 +31,8 @@ import {
 import { type BurnUser, resolveBurnUser } from './burn-user'
 
 /**
- * A burn builds its own image (feature `burns-build-their-own-image`). This runs
- * after the cheap checks and before the toolchain probe, so a burn that cannot
+ * A round builds its own image (feature `burns-build-their-own-image`). This runs
+ * after the cheap checks and before the toolchain probe, so a round that cannot
  * run anyway never pays for a build, and the probe sees the image the run will use.
  */
 
@@ -53,8 +53,8 @@ export interface BurnImageNeedInput {
 }
 
 /**
- * Why this burn should build, or null when it runs on what is there. An image
- * that can run is left alone: a burn only replaces one that would stop it
+ * Why this round should build, or null when it runs on what is there. An image
+ * that can run is left alone: a round only replaces one that would stop it
  * (decision 2) or that the repo has asked to change (decision 12). The stock
  * image's own hash and every CLI version are deliberately not read here.
  */
@@ -110,7 +110,7 @@ export async function ensureBurnImage(
 
   const check = async (): Promise<{ need: ImageBuildNeed; tag: string; dockerfile: string } | null> => {
     // A stored image runcastle wrote, whose Dockerfile has gone, on the doctor's
-    // own terms: a burn may get here before the doctor has looked.
+    // own terms: a round may get here before the doctor has looked.
     if (
       ctx.project.sandboxImage?.trim() &&
       columns.overwritable() &&

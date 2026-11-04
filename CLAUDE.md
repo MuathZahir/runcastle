@@ -18,7 +18,6 @@ the correction in `docs/research/CORRECTIONS.md`.
 - **TypeScript strict; ESM only.** No `any` unless quarantined with a comment.
   Server runs TS directly with Bun (no build step); web is Vite.
 - **Never touch files outside your assigned dirs** (see ownership table below).
-  `NotImplementedError` stubs are wave-B sockets — replace, don't redesign.
 - **Windows paths: always `node:path`** (`join`, `resolve`); never
   hand-concatenate; quote paths in shell commands.
 - **Every service function that mutates emits an event** — events are the UI's
@@ -60,7 +59,7 @@ depends on it for wire types.
 
 ## Server file ownership (SPEC §3 — waves edit disjoint dirs)
 
-A1 creates B-owned files as typed stubs (`throw new NotImplementedError('B1')`)
+In the build era A1 created B-owned files as typed stubs
 so typecheck + the UI work end-to-end before wave B lands.
 
 | File                              | Owner | Role |
@@ -75,7 +74,7 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/services/events.ts`          | A1 | emit, listAfter |
 | `src/services/knowledge.ts`       | A1 | scaffoldDocs, listDocs, readDoc |
 | `src/services/git.ts`             | B2 | simple-git: branch, worktree, test-drive guard, merge (§7) |
-| `src/trpc/*`                      | A1 | context, router, routers (§4); B-owned behavior throws NotImplementedError |
+| `src/trpc/*`                      | A1 | context, router, routers (§4); B-owned behavior |
 | `src/launcher/launcher.ts`        | B1 | spawn injected Claude Code terminal (§5) |
 | `src/launcher/artifacts.ts`       | B1 | write settings.json / mcp.json / system-prompt.md |
 | `src/launcher/hook-client.ts`     | B1 | standalone bun hook script (runs inside sessions) |

@@ -95,7 +95,7 @@ function slotRelease(): () => void {
 
 /**
  * The server's one image build slot, or null while a build holds it. The Build
- * button takes this form: a human clicking it should hear at once that a burn is
+ * button takes this form: a human clicking it should hear at once that a round is
  * already building, not sit behind a spinner.
  *
  * One queue, not one per image: the stock image is shared by every project and a

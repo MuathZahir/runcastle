@@ -67,7 +67,7 @@ import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * Per-kind execution in the burn (improve-workflow seam 2): a review ticket
+ * Per-kind execution in the round (improve-workflow seam 2): a review ticket
  * runs LAST, host-side, against the integrated feature branch — and its outcome
  * obeys the advisory bargain, where finding bugs is success and only "could not
  * review" is failure.
@@ -232,7 +232,7 @@ describe('a review ticket waits for a whole feature', () => {
     await release(1)
     await release(2)
 
-    // Never started, never cascaded to failed: the next burn picks it up once
+    // Never started, never cascaded to failed: the next round picks it up once
     // the human has retried or cancelled ticket 1 (decision 2).
     expect(started).toEqual([1, 2])
     expect(tickets[2]).toMatchObject({ status: 'pending' })
@@ -746,7 +746,7 @@ describe('what the review agent is handed', () => {
     // not exist.
     expect(prompt).toContain('ticket 1 — Add the ledger')
     expect(prompt).toContain('the API lied')
-    expect(prompt).not.toMatch(/only agent in the burn that can answer/)
+    expect(prompt).not.toMatch(/only agent in the round that can answer/)
     // The two wires and the report paths are the contract with the burner.
     expect(prompt).toContain('review_drive')
     expect(prompt).toContain('report_finding')
@@ -758,7 +758,7 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('agent-browser record stop')
     // Both modes are handed the server's run of the project's own commands.
     expect(prompt).toContain('`bun run typecheck` — passed')
-    // And Drive mode is told how this particular app wants to be driven.
+    // And the test drive is told how this particular app wants to be driven.
     expect(prompt).toContain('Drive the sample project at /tmp/sample.')
   })
 
@@ -805,13 +805,13 @@ describe('what the review agent is handed', () => {
       SCENARIOS: buildScenarioBlock([], false),
       GATE_NOTES: buildGateNotes(ranGates('bun test'), 'tkt_4', {}), DIGEST_PATH: '/digest',
       BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
-      LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
+      LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · the test drive',
       AUTO_FIX_CAP: String(AUTO_FIX_CAP),
     })
     expect(prompt).not.toContain('{{')
     expect(prompt).toContain('Log in as demo@example.com.')
     expect(prompt).toContain('#2 Fix save — repro: click Save')
-    expect(prompt).toContain('#1 · Drive mode')
+    expect(prompt).toContain('#1 · the test drive')
     expect(prompt).toContain(`auto-fix cap is ${AUTO_FIX_CAP}`)
     expect(prompt).toContain('verification pass')
   })
@@ -953,9 +953,9 @@ describe('what the review agent is handed', () => {
     // The choice is step 1, before any tool call — not something discovered
     // partway through a drive that has already switched the human's checkout.
     expect(template).toMatch(/### 1\. Choose your mode — before anything else/)
-    expect(template).toMatch(/### 2a\. Drive mode/)
+    expect(template).toMatch(/### 2a\. the test drive/)
     expect(template).toMatch(/### 2b\. Gates mode/)
-    // Drive mode stops at the walk; it does not go on to read the diff.
+    // the test drive stops at the walk; it does not go on to read the diff.
     expect(template).toContain('Do not read the diff afterwards')
     // A refused drive falls back rather than sinking the review.
     expect(template).toContain('switch to Gates mode')
@@ -964,9 +964,9 @@ describe('what the review agent is handed', () => {
     // account and keeps the rest behind a disclosure.
     expect(template).toContain('**Open with one short line naming the mode**')
     expect(template).toContain(
-      'Lap <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
+      'Round <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
     )
-    expect(template).toMatch(/renders it alone as the lap account/)
+    expect(template).toMatch(/renders it alone as the round account/)
     // The human may accept from these pictures alone, so the prompt asks for them.
     expect(template).toContain('action: "capture"')
     expect(template).not.toMatch(/renders it verbatim as the first thing they read/)
@@ -1003,7 +1003,7 @@ describe('what the review agent is handed', () => {
 
     // A UI feature once shipped undriven because its review ticket said Gates.
     expect(reviewTemplate).toContain('A ticket that says "use Gates" is evidence about whether there is a surface, nothing more')
-    expect(reviewTemplate).toContain('Both yes → **Drive mode**, step 2a — even when the ticket\'s text tells you to use Gates.')
+    expect(reviewTemplate).toContain('Both yes → **the test drive**, step 2a — even when the ticket\'s text tells you to use Gates.')
     expect(reviewTemplate).toMatch(/goes against a mode the ticket states, that same sentence says so and gives the reason/)
     // The pass runs on the installed runcastle; the drive boots the branch.
     for (const template of [reviewTemplate, verificationTemplate]) {
@@ -1028,24 +1028,24 @@ describe('the mode the review is handed', () => {
     const open = buildDriveAvailability('/browser', 'bun dev', 'gates', undefined, '/ffmpeg')
     expect(open).toContain('Inherited mode: **Gates**')
     expect(open).toContain('only because its ticket told it to')
-    expect(open).toContain('run Drive mode instead')
+    expect(open).toContain('run the test drive instead')
     // The block renders near the top of verify-fixes.md; the digests come later.
     expect(open).toContain('"Run digests" below')
     expect(open).not.toContain('above')
 
     // With no drive to be had, the inherited Gates stays flat and final.
     const closed = buildDriveAvailability(undefined, 'bun dev', 'gates')
-    expect(closed).toContain('do not choose Drive mode')
+    expect(closed).toContain('do not choose the test drive')
     expect(closed).not.toContain('only because its ticket told it to')
   })
-  it('opens Drive mode when the browser and a dev command are both there', () => {
+  it('opens the test drive when the browser and a dev command are both there', () => {
     const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, undefined, '/usr/bin/ffmpeg')
 
     expect(block).toContain('A drive **is** available')
     expect(block).toContain('take it if, and only if')
   })
 
-  it('closes Drive mode, and says which half is missing', () => {
+  it('closes the test drive, and says which half is missing', () => {
     const noBrowser = buildDriveAvailability(undefined, 'bun dev')
     expect(noBrowser).toContain('not** available')
     expect(noBrowser).toContain(AGENT_BROWSER_BIN)
@@ -1226,7 +1226,7 @@ describe('the mode the review is handed', () => {
       expect(notes).toContain(`Its captured output is at \`${reviewGateLogPath('tkt_9', 'run.log')}\`.`)
       expect(notes).toMatch(/an observation about the environment, not a defect against the branch/)
       expect(notes).toContain('Never describe the gates as passed.')
-      expect(notes).toContain('may well predate this lap')
+      expect(notes).toContain('may well predate this round')
       expect(notes).toContain(NO_SELF_RUN)
     })
 
@@ -1308,7 +1308,7 @@ describe('review declaration resolution', () => {
 
   it('names the missing prerequisite when Drive is declared while withheld', () => {
     // Still unverified — no recording, no evidence — but the trail says which
-    // piece was missing instead of a generic "Drive mode was unavailable".
+    // piece was missing instead of a generic "the test drive was unavailable".
     const withheld = driveWithheldReason('/browser', 'bun dev', undefined, null)!
     const resolution = resolveReviewDeclaration(digest('drive', 'verified'), {
       webmExists: false,
@@ -1324,7 +1324,7 @@ describe('review declaration resolution', () => {
 
     // An inherited Gates pass has no missing piece to name.
     expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: true, offeredMode: 'gates' }).reason).toBe(
-      'Drive was declared even though Drive mode was unavailable.',
+      'Drive was declared even though the test drive was unavailable.',
     )
   })
 
@@ -1378,7 +1378,7 @@ describe('review declaration resolution', () => {
         reason: 'The browser could not attach.',
       }, 'Agent prose that used to become the headline.'),
     ).toBe(
-      'drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
+      'test drive · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
       'Agent prose that used to become the headline.',
     )
   })
@@ -1453,14 +1453,14 @@ describe('the drive instructions the project hands the reviewer', () => {
       return index
     }
 
-    expect(at(review, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(review, '### 2a. Drive mode'))
+    expect(at(review, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(review, '### 2a. the test drive'))
     expect(at(review, '{{DRIVE_INSTRUCTIONS}}')).toBeLessThan(at(review, '### 2b. Gates mode'))
     // Its own block: it neither replaces nor rides inside the other two.
     expect(review).toContain('{{DRIVE_AVAILABILITY}}')
     expect(review).toContain('{{GATE_NOTES}}')
 
     const verify = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
-    expect(at(verify, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(verify, 'In **Drive mode**'))
+    expect(at(verify, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(verify, 'In **the test drive**'))
     expect(at(verify, '{{DRIVE_INSTRUCTIONS}}')).toBeLessThan(at(verify, 'In **Gates mode**'))
   })
 })
@@ -1899,7 +1899,7 @@ describe('the agent-browser probe', () => {
     const original = process.env.PATH
     process.env.PATH = dir // empty — no agent-browser here
     try {
-      // What the probe now feeds: the block that closes Drive mode. It used to
+      // What the probe now feeds: the block that closes the test drive. It used to
       // fail the whole ticket here, which withheld Gates mode — a review that
       // needs no browser at all — because the browser was missing.
       const block = buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), 'bun dev')
@@ -2185,7 +2185,7 @@ describe('the burner mints its verification pass into a lap that already has a r
     expect(stored[3]).toMatchObject({
       kind: 'review',
       passKind: 'verification',
-      // The feature's own lap: a burn from planning runs the lap it is on.
+      // The feature's own lap: a round from planning runs the lap it is on.
       status: 'done',
       title: 'Verify the fixes that landed',
     })

@@ -23,7 +23,7 @@ import { updateSettings, type SettingsIO } from './settings'
  */
 
 /**
- * The env var each runtime's AFK burns authenticate with. Codex's is an OpenAI
+ * The env var each runtime's unattended rounds authenticate with. Codex's is an OpenAI
  * API key — verified against codex-rs, `CODEX_API_KEY` is its highest-precedence
  * auth path and the one designed for headless use. Interactive Codex sessions
  * are NOT this: they inherit the human's own `codex login` (decision 5).
@@ -33,7 +33,7 @@ export const CODEX_API_KEY = RUNTIME_SPECS.codex.afkKey
 
 /**
  * The env var each runtime's unattended burns authenticate with, by runtime. One
- * map so the env-file reader, the burn env builder and the setup UI never
+ * map so the env-file reader, the round env builder and the setup UI never
  * disagree about which key a runtime needs.
  */
 export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
@@ -42,7 +42,7 @@ export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
 }
 
 /**
- * What to tell a human whose burn aborted for missing auth, per runtime. The
+ * What to tell a human whose round aborted for missing auth, per runtime. The
  * two runtimes end in different places: Claude Code burns on a long-lived token
  * captured into `~/.runcastle/.env`, while a Codex burn borrows the operator's
  * own ChatGPT login, so its only setup step is `codex login` and naming
@@ -50,7 +50,7 @@ export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
  */
 export const RUNTIME_AUTH_SETUP_HINT: Record<AgentRuntime, string> = {
   'claude-code': RUNTIME_SPECS['claude-code'].afkFix,
-  codex: `Run \`${RUNTIME_SPECS.codex.loginCommand}\` on this host, then burn again`,
+  codex: `Run \`${RUNTIME_SPECS.codex.loginCommand}\` on this host, then start the round again`,
 }
 
 /** Result of a live token validity check (a real `claude` call, injected). */
@@ -113,7 +113,7 @@ export interface AfkTokenIo {
 
 /**
  * The shortest Claude Code token saved. Real ones run ~108 characters; a paste
- * that wrapped on a narrow terminal saved 53 and failed a burn much later.
+ * that wrapped on a narrow terminal saved 53 and failed a round much later.
  * Codex API keys are exempt.
  */
 export const MIN_CLAUDE_TOKEN_LENGTH = 80

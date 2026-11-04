@@ -19,13 +19,13 @@ import { publicProcedure, router } from '../context'
  * npm update check that drives the dismissible update banner. Both are process
  * facts, not per-request — the update check is memoized in the service.
  *
- * `burnCache` is the operator surface for the persistent burn cache volume
+ * `burnCache` is the operator surface for the persistent worker cache volume
  * (decision 6): a cache the operator can neither see nor drop is a support
  * ticket waiting to happen, so the AFK card gets its size and one button that
  * clears it.
  */
 
-/** The project the burn cache volume belongs to — one volume per project. */
+/** The project the worker cache volume belongs to — one volume per project. */
 const projectInput = z.object({ projectId: z.string() })
 
 /**
@@ -63,7 +63,7 @@ export const systemRouter = router({
     }),
 
     /**
-     * Drop the volume. Refused while a burn holds a slot — those slots ARE the
+     * Drop the volume. Refused while a round holds a slot — those slots ARE the
      * checkouts on the volume — which `removeBurnCacheVolume` decides from the
      * allocator's `held()`, so no `volume rm` is issued in that case.
      *
@@ -74,7 +74,7 @@ export const systemRouter = router({
       const engine = burnCacheEngine(ctx.config.sandbox)
       if (!engine) {
         throw new InvalidInputError(
-          `the burn cache needs a docker or podman sandbox; this one is "${ctx.config.sandbox}"`,
+          `the worker cache needs a docker or podman sandbox; this one is "${ctx.config.sandbox}"`,
         )
       }
       const volumeName = burnCacheVolumeName(input.projectId)
@@ -86,7 +86,7 @@ export const systemRouter = router({
       })
       emitProject(ctx, input.projectId, {
         type: 'burn-cache.cleared',
-        message: `cleared the burn cache volume ${volumeName}`,
+        message: `cleared the worker cache volume ${volumeName}`,
       })
       return { volumeName }
     }),

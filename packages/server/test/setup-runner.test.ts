@@ -110,7 +110,7 @@ describe('runcastle setup', () => {
       'You do afterwards',
       '  1. Log out and back in, so the docker group applies',
       '  2. Sign in: claude auth login',
-      '  3. For burns: runcastle token',
+      '  3. For unattended rounds: runcastle token',
     ])
   })
 

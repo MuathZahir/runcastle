@@ -206,7 +206,7 @@ describe('burnRun — scheduling and summary', () => {
     expect(res.status).toBe('succeeded')
   })
 
-  describe('who the burn runs as', () => {
+  describe('who the round runs as', () => {
     const dockerConfig = {
       serverPort: 4512,
       model: 'm',
@@ -317,7 +317,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -374,7 +374,7 @@ describe('burnRun — scheduling and summary', () => {
   })
 
   /**
-   * A project's own prepared columns are what the burn actually runs, so they
+   * A project's own prepared columns are what the round actually runs, so they
    * are what gets probed — the global config is only the fallback.
    */
   it('preflights the project’s own setup command over the global one', async () => {
@@ -435,7 +435,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -576,7 +576,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this round runs on Claude Code 2.1.270. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
           data: {
             warning: true,
             managed: true,
@@ -640,7 +640,7 @@ describe('burnRun — scheduling and summary', () => {
           message:
             'sandcastle:runcastle-bl has Claude Code 2.1.215, the host has 2.1.280 — it is a ' +
             'custom image managed outside runcastle, so rebuild it with the tool that built it; ' +
-            'this burn runs on it as it is.',
+            'this round runs on it as it is.',
           data: expect.objectContaining({ warning: true, managed: false }),
         }),
       )
@@ -717,7 +717,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this round runs on Codex 0.45.0. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
           data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
       ])

@@ -17,9 +17,9 @@ export interface BuildImageDeps {
 
 /**
  * `runcastle build-image`: the stock image, with no app and no project. It is how
- * an install builds ahead of the first burn, and a server's Rebuild. It always
+ * an install builds ahead of the first round, and a server's Rebuild. It always
  * runs the build, so an image with nothing to change finishes from the layer cache.
- * Project images are left to burns, because they need the database. Returns the
+ * Project images are left to rounds, because they need the database. Returns the
  * process exit code.
  */
 export async function runBuildImage(argv: string[], deps: BuildImageDeps = {}): Promise<number> {
@@ -28,7 +28,7 @@ export async function runBuildImage(argv: string[], deps: BuildImageDeps = {}): 
     log(BUILD_IMAGE_USAGE)
     return 1
   }
-  // The image takes the host's UID, and one built for UID 0 helps no burn.
+  // The image takes the host's UID, and one built for UID 0 helps no round.
   if (deps.runningAsRoot ?? runningAsRoot()) {
     log(ROOT_BURN_REFUSED)
     return 1

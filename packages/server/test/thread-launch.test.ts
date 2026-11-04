@@ -258,7 +258,7 @@ describe('thread.new', () => {
     expect((await caller().thread.list({ featureId: f.id })).map((t) => t.id)).toContain(threadId)
   })
 
-  it('opens a fresh project chat in the project’s worktree, with nothing started', async () => {
+  it('opens a fresh orchestrator chat in the project’s worktree, with nothing started', async () => {
     const fake = fakeHost()
 
     const { threadId } = await caller().thread.new({ projectId: project.id })
@@ -268,7 +268,7 @@ describe('thread.new', () => {
     expect((await caller().thread.list({ projectId: project.id })).map((t) => t.id)).toEqual([threadId])
   })
 
-  it('announces a new project chat on the live stream so the project’s thread list refreshes', async () => {
+  it('announces a new orchestrator chat on the live stream so the project’s thread list refreshes', async () => {
     fakeHost()
     const signals: LiveSignal[] = []
     const unsubscribe = subscribeLive((s) => signals.push(s))
@@ -393,7 +393,7 @@ describe('a launch’s opening held for the human’s first message', () => {
 
   it.each([
     ['the feature’s main chat', async (opts: LaunchSessionOptions) => launchSession(ctx, { featureId: (await feature()).id, kind: 'chat' }, opts)],
-    ['a new project chat', (opts: LaunchSessionOptions) => launchProjectSession(ctx, { projectId: project.id, fresh: true }, opts)],
+    ['a new orchestrator chat', (opts: LaunchSessionOptions) => launchProjectSession(ctx, { projectId: project.id, fresh: true }, opts)],
     ['the preparation chat', (opts: LaunchSessionOptions) => launchPrepareSession(ctx, { projectId: project.id }, opts)],
   ])('%s sends its opening and the first message as one prompt in one turn', async (_, launch) => {
     const { id, fake } = await startOnFirstSend(launch)

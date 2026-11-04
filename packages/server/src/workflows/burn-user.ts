@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process'
 
 /**
- * Who burns run as — the one answer to that question (feature
+ * Who workers run as — the one answer to that question (feature
  * `burns-work-for-any-linux-user`, decisions 1 and 2).
  *
  * Four things have to agree on it: the `AGENT_UID`/`AGENT_GID` the image is
- * built with, the owner of the burn cache volume, the container's `--user`, and
+ * built with, the owner of the worker cache volume, the container's `--user`, and
  * what the doctor holds them to. They used to answer separately: the build read
  * the host while the cache chown hardcoded 1000, so every host whose UID was not
  * 1000 got a cache volume its own burns could not write to.
@@ -66,7 +66,7 @@ function systemHostIdentity(): HostIdentity {
 }
 
 /**
- * Resolve the burn user for an engine.
+ * Resolve the worker user for an engine.
  *
  * Podman is always 1000: rootless podman maps the host's user onto 1000 inside
  * the container, and its image is built with no host ids at all (decision 10).

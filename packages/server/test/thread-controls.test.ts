@@ -216,7 +216,7 @@ describe('the model the composer shows is the one the agent runs on', () => {
     options: 'claude',
   }
 
-  /** A project chat nobody has talked to yet, as `thread.new` opens it. */
+  /** An orchestrator chat nobody has talked to yet, as `thread.new` opens it. */
   const unstarted = () => createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' }).id
   const dividers = (id: string) => foldThread(readThreadEvents(id)).items.filter((i) => i.kind === 'model')
 
@@ -887,7 +887,7 @@ describe('branch', () => {
     expect(said(id)).toEqual(['user:first', 'agent:answer 1', 'user:second', 'agent:answer 2'])
   })
 
-  it('branches a project chat into a new project chat', async () => {
+  it('branches an orchestrator chat into a new orchestrator chat', async () => {
     setup()
     answerWithIds()
     const id = chat({ kind: 'project' })

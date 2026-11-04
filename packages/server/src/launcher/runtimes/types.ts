@@ -49,7 +49,7 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
   resumeSourceSessionId?: string
   /** The native positional initial prompt; omitted for every resumed conversation. */
   kickoffLine?: string
-  /** Overrides the runtime's default permission posture (the project session's `default`). */
+  /** Overrides the runtime's default permission posture (the orchestrator's `default`). */
   permissionMode?: string
   /**
    * Run non-interactively to completion with {@link kickoffLine} as the prompt

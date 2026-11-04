@@ -98,8 +98,8 @@ describe('upsertEnvVar', () => {
 
 /**
  * Which key an unattended burn authenticates with is a property of the runtime,
- * and this is the one table that says so — the env-file reader, the burn env
- * builder and the setup UI all read it, so a disagreement here is a burn that
+ * and this is the one table that says so — the env-file reader, the round env
+ * builder and the setup UI all read it, so a disagreement here is a round that
  * starts with no credentials at all.
  */
 describe('per-runtime AFK auth', () => {

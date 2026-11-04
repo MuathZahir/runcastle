@@ -43,7 +43,7 @@ import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir, reviewSh
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
+import { GateError, InvalidInputError, NotFoundError } from '../errors'
 import { RUN_HEADER } from '../launcher/artifacts'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
@@ -265,7 +265,7 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
 
 /**
  * The feature a PROJECT session reads: any feature of its own project, named by
- * slug. The project session sees the whole portfolio, and as the orchestrator
+ * slug. The orchestrator sees the whole portfolio, and as the orchestrator
  * it reads features through these tools (`one-orchestrator-no-mode`).
  */
 export function projectFeatureReader(
@@ -426,7 +426,7 @@ export interface FeatureContext {
   /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
-   * (decisions.md #7). Absent on a feature that has never burned, which is the
+   * (decisions.md #7). Absent on a feature that has never run a round, which is the
    * only thing its absence means.
    */
   latestRun?: {
@@ -477,7 +477,7 @@ export interface FeatureContext {
   /** When the human last typed in this feature's chat; null if they never have. */
   humanTypedAt: number | null
   /**
-   * How many tickets this project burns at once (`config.burnConcurrency`). The
+   * How many tickets this project builds at once (`config.burnConcurrency`). The
    * tickets skill budgets the batch's parallelism against it — a lap whose
    * tickets chain end to end is one sandbox at a time however wide the pool is
    * — and before this the emitting session had no way to read the number at
@@ -544,11 +544,11 @@ function notInlinedReason(relPath: string): string {
 
 /**
  * The newest burn as a headline, or nothing at all when the feature has never
- * burned — spread into the payload, so "never burned" is a missing key rather
+ * burned — spread into the payload, so "never run a round" is a missing key rather
  * than a run-shaped object full of zeroes.
  *
  * Counted over the tickets that run HELD rather than over the feature's ledger:
- * a lap's tickets outlive the burn that ran them, and the question the chat is
+ * a lap's tickets outlive the round that ran them, and the question the chat is
  * answering ("how did the last burn go?") is about one run's lanes.
  */
 function latestBurnSummary(
@@ -926,7 +926,7 @@ export function toolEmitTickets(
  * session's feature, and no live burn may already hold that ticket.
  *
  * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
- * across state changes — a burn starts and finishes under it — so the audience
+ * across state changes — a round starts and finishes under it — so the audience
  * table, which is built once at spawn, cannot speak for what is running now. It
  * is deliberately narrow: only the lanes the live burn holds are frozen, and
  * every other ticket stays editable mid-burn, which is how the chat shapes the
@@ -1225,7 +1225,7 @@ export function toolResolveFinding(
  * The one tool both halves of the surface share, so it emits at whatever scope
  * the calling session has: a feature's timeline for every pipeline kind, the
  * project's for a project-scoped session (`feature_id` null, which the events
- * table already supports). A project session has milestones worth recording —
+ * table already supports). An orchestrator has milestones worth recording —
  * features created, a charter drafted — and refusing them a note would leave
  * the project stream blind to the one session that works at its scope.
  */
@@ -1249,10 +1249,10 @@ export function toolRecordEvent(
 
 /**
  * Checkpoint the feature's knowledge docs into the talk worktree (SPEC §6):
- * best-effort, tolerating B2's `commitDocs` stub. Any failure is a warning
+ * best-effort. Any failure is a warning
  * event, never a tool error.
  *
- * While a burn holds the feature branch the commit goes onto the chat's temp
+ * While a round holds the feature branch the commit goes onto the chat's temp
  * branch, so it is landed straight away through the feature's serial landing
  * queue (`one-chat-per-feature` decision 2) — a note or a ticket edit is durable
  * on `feature/<slug>` even if the run then crashes.
@@ -1270,14 +1270,12 @@ async function commitDocsCheckpoint(
   } catch (e) {
     emit(ctx, feature.id, {
       type: 'git.commit_pending',
-      message: isNotImplemented(e)
-        ? 'docs checkpoint skipped (git service pending)'
-        : `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
+      message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
       data: { message },
     })
     return
   }
-  // Outside a burn this is a no-op (the commit is already on the feature
+  // Outside a round this is a no-op (the commit is already on the feature
   // branch); a landing that conflicts keeps its branch and says so, and the
   // run-end boundary tries again.
   await landChatCommits(ctx, project, feature)
@@ -1347,7 +1345,7 @@ function requireNotesProject(ctx: AppCtx, session: SessionRow): Project {
   const project = requireProject(ctx, session)
   if (session.kind !== 'project') {
     throw new GateError(
-      `project note tools belong to a project session, and this is a ${session.kind} session.`,
+      `project note tools belong to an orchestrator, and this is a ${session.kind} session.`,
     )
   }
   return project
@@ -1898,7 +1896,7 @@ export function toolSetScenarioRunner(
   return { scenarioRunner: getProjectById(ctx, project.id)?.scenarioRunner ?? command }
 }
 
-// --- the project session's three tools (decisions 15, 19, 21) ---------------
+// --- the orchestrator's three tools (decisions 15, 19, 21) ---------------
 
 export interface CreateFeatureResult {
   id: string
@@ -1923,7 +1921,7 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
  * somewhere to go instead of swallowing the feature being grilled — its project
  * is the one its own feature belongs to. Anything beyond parking is refused,
  * because a grill that can spawn live features is an orchestrator, and that is
- * the project session's job. Other session kinds cannot create features,
+ * the orchestrator's job. Other session kinds cannot create features,
  * because even a parked draft is still a write.
  */
 function createFeatureProject(
@@ -1935,21 +1933,21 @@ function createFeatureProject(
   if (!DRAFTING_KINDS.includes(session.kind)) {
     throw new GateError(
       `a ${session.kind} session may not create features, drafts included. ` +
-        'Tell the human what is worth capturing; the project session is where features are made.',
+        'Tell the human what is worth capturing; the orchestrator is where features are made.',
     )
   }
   if (!input.draft) {
     throw new GateError(
       `a ${session.kind} session may only PARK a feature here: call create_feature with ` +
         '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch belongs to ' +
-        'the project session; tell the human to open it.',
+        'the orchestrator; tell the human to open it.',
     )
   }
   return projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
 }
 
 /**
- * The point of the project session: intake and decomposition terminating in a
+ * The point of the orchestrator: intake and decomposition terminating in a
  * feature (decision 19).
  *
  * Two shapes, one call. The ordinary door is a feature whose `brief.md` is the
@@ -1961,7 +1959,7 @@ function createFeatureProject(
  * judges the work (decision 10).
  *
  * It launches nothing: the orchestrator sets a feature working with its acting
- * tools when it judges it ready. From a project session — the orchestrator — it
+ * tools when it judges it ready. From an orchestrator — the orchestrator — it
  * runs as the orchestrator, so every event it emits carries `actor:
  * 'orchestrator'`, and the calling thread holds what it created
  * (`threads-hold-features` decision 13).
@@ -2066,7 +2064,7 @@ function featureIdsBySlug(ctx: AppCtx, projectId: string, slugs: string[]): stri
 /**
  * Replace a draft's merge-order dependencies (decisions 4, 5) through the same
  * service the UI's `feature.setDependencies` uses. Re-ordering the portfolio is
- * project-level curation, so only the project session may call it; a feature
+ * project-level curation, so only the orchestrator may call it; a feature
  * session's only power over edges is `dependsOn` at create time.
  */
 export function toolSetFeatureDependencies(
@@ -2077,7 +2075,7 @@ export function toolSetFeatureDependencies(
   const project = requireProject(ctx, session)
   if (session.kind !== 'project') {
     throw new GateError(
-      `set_feature_dependencies belongs to a project session, and this is a ${session.kind} session.`,
+      `set_feature_dependencies belongs to the orchestrator, and this is a ${session.kind} session.`,
     )
   }
   const [dependentId] = featureIdsBySlug(ctx, project.id, [input.slug])
@@ -2171,7 +2169,7 @@ export const FEATURE_INDEX_SHIPPED_CAP = 50
  * feature would cut from.
  *
  * The docs are read from THIS SESSION's worktree, not the human's checkout —
- * the project session works on a runcastle-owned branch (decision 18), so its
+ * the orchestrator works on a runcastle-owned branch (decision 18), so its
  * own tree is the state it is editing and the state it should be told about.
  * The branches are the other way round: the base a feature should fork off is
  * the branch the HUMAN is on, which is the checkout's, never this session's.
@@ -2593,7 +2591,7 @@ async function resolveReader(
   return { ctx: rc.ctx, reader: resolveFeatureReader(rc.ctx, rc.caller) }
 }
 
-/** The caller of a feature READ from a project session: the feature `slug` names. */
+/** The caller of a feature READ from an orchestrator: the feature `slug` names. */
 async function resolveProjectReader(
   extra: HeaderCarrier,
   slug: string,
@@ -2603,15 +2601,15 @@ async function resolveProjectReader(
   return { ctx: rs.ctx, reader: projectFeatureReader(rs.ctx, rs.session, slug) }
 }
 
-/** The `slug` a project session names the feature it reads by. */
+/** The `slug` an orchestrator names the feature it reads by. */
 const ReadSlug = z
   .string()
   .min(1)
   .describe('The slug of the feature to read — any feature of this project.')
 
-/** Appended to a feature read's description when it is registered for a project session. */
+/** Appended to a feature read's description when it is registered for an orchestrator. */
 const PROJECT_READ_NOTE =
-  ' From the project session, name the feature with `slug`: any feature of this project.'
+  ' From the orchestrator, name the feature with `slug`: any feature of this project.'
 
 // --- who gets which tools ---------------------------------------------------
 
@@ -2711,7 +2709,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
-  // project session, refused at call time unless it is still live
+  // orchestrator, refused at call time unless it is still live
   // (`requireOrchestratorSession`). Registered in `orchestrator-tools.ts` and
   // `orchestrator-run-tools.ts`.
   start_feature: ['project'],
@@ -2772,7 +2770,7 @@ const EventType = z
 export function buildMcpServer(audience?: McpAudience): McpServer {
   const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
   const wants = (tool: string): boolean => registeredFor(tool, audience)
-  // The feature reads take a `slug` from a project session, which has no
+  // The feature reads take a `slug` from an orchestrator, which has no
   // feature of its own; every other audience reads exactly as before.
   const projectReads = audience === 'project'
 
@@ -3042,7 +3040,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
   // it is offered only that shape — the full-create arguments it would be
   // refused are neither described to it nor accepted from it. Same
   // guard at call time either way; this only stops charging a grill for the
-  // project session's door. (Item 9: with the audience known, policy prose that
+  // orchestrator's door. (Item 9: with the audience known, policy prose that
   // does not apply to the reader is simply not sent.)
   if (wants('create_feature') && audience !== undefined && DRAFTING_KINDS.includes(audience as SessionKindT)) {
     server.registerTool(
@@ -3052,7 +3050,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Park scope that surfaced here but belongs elsewhere: a row and its brief, no branch ' +
           'and no files, until the human clicks Start. This is the ONLY create shape a feature ' +
-          'session has — cutting a branch belongs to the project session; tell the human to open ' +
+          'session has — cutting a branch belongs to the orchestrator; tell the human to open ' +
           'it. When the parked scope builds on THIS feature, pass `dependsOn: [<this feature’s ' +
           'slug>]` so it cannot start before this one merges. Nothing is launched: the new card ' +
           'in the rail is the feedback.',
@@ -3084,7 +3082,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'judges the work. It opens NO terminal on what it creates; the new card in the rail is ' +
           'the feedback, and the human decides what to work on next. From a feature session ' +
           'only the draft shape is allowed — deflect scope creep here and leave full creation to ' +
-          'the project session.',
+          'the orchestrator.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
@@ -3312,7 +3310,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'What features actually DID — facts only: per feature its status, ship date, run ' +
           'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
-          '`featureSlug` each ticket also carries its `digest`: the burner’s own account, written ' +
+          '`featureSlug` each ticket also carries its `digest`: the worker’s own account, written ' +
           'after the work — what it did, what surprised it, what it left undone. If they would not ' +
           'all fit, the oldest tickets’ digests are moved out whole and those tickets say ' +
           '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
@@ -3378,7 +3376,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
         'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
         'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-        'the newest burn went; absent only on a feature that has never burned), `scenarios` ' +
+        'the newest round went; absent only on a feature that has never run a round), `scenarios` ' +
         '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
@@ -3390,7 +3388,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'quietly, so read approvals here), `reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
         'walkthrough — read them before planning more work; null until a review has run). Then ' +
         'every ticket as a row ' +
-        'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
+        'with its goal; a ticket’s context, acceptance criteria and the worker’s digest are in ' +
         '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
         '`goalNotInlined` and the settled tickets named in `ticketsNotInlined` were moved out ' +
         'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
@@ -3514,7 +3512,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       title: 'Get a ticket',
       description:
         'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
-        'blockedBy, status, error, and the burner’s `digest` of what the burn actually did. ' +
+        'blockedBy, status, error, and the worker’s `digest` of what the round actually did. ' +
         '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
         'rest here before editing, reviewing or planning around a ticket.',
     }
@@ -3560,7 +3558,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'and title — `seq` is the number the UI shows and the number later blockedBy edges ' +
           'speak in. Send the whole batch in one call: positions in `blockedBy` are positions ' +
           'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
-          'annotatedModels whose note gives a reason to deviate — omit it otherwise and the burn ' +
+          'annotatedModels whose note gives a reason to deviate — omit it otherwise and the round ' +
           'resolves the model the ordinary way. Storing the batch opens the human’s panel on Work, ' +
           'so they see the tickets you just wrote.',
         inputSchema: {
@@ -3589,7 +3587,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Rewrite a stored ticket’s content (any subset of the fields). Only pending or failed ' +
           'tickets can be edited: done/cancelled ones are history and burning ones are already ' +
           'running. Use during a revisit when a decision change makes a ticket stale. `model` ' +
-          'reassigns the ticket’s model; pass "" to clear it and let the burn resolve the model ' +
+          'reassigns the ticket’s model; pass "" to clear it and let the round resolve the model ' +
           'the ordinary way.',
         inputSchema: {
           id: z
@@ -3597,8 +3595,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .min(1)
             .describe('The ticket id, from `list_tickets` (cheapest) or `get_feature_context`.'),
           title: z.string().optional().describe('New title.'),
-          goal: z.string().optional().describe('New goal — what the burner must achieve.'),
-          context: z.string().optional().describe('New context — what the burner needs to know first.'),
+          goal: z.string().optional().describe('New goal — what the worker must achieve.'),
+          context: z.string().optional().describe('New context — what the worker needs to know first.'),
           acceptanceCriteria: z
             .array(z.string())
             .optional()
@@ -3630,8 +3628,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Cancel ticket',
         description:
           'Cancel a ticket that is no longer needed — terminal, and only for pending or failed ' +
-          'ones. The burner skips cancelled tickets, and tickets blocked by a cancelled one ' +
-          'still burn: cancellation counts as satisfied.',
+          'ones. Workers skip cancelled tickets, and tickets blocked by a cancelled one ' +
+          'still build: cancellation counts as satisfied.',
         inputSchema: {
           id: z.string().min(1).describe('The ticket id, from `list_tickets` or `get_feature_context`.'),
           reason: z
@@ -3659,7 +3657,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Close an open defect a review reported: `addressed` because work already answers it, ' +
           'or `dismissed` because it is not worth fixing — with a note saying what addressed it ' +
           'or why. To fix it through a ticket instead, emit that ticket with `originFindingId` ' +
-          'set — the burn then closes the finding itself when that ticket lands. A defect stays ' +
+          'set — the round then closes the finding itself when that ticket lands. A defect stays ' +
           'open until one of these happens.',
         inputSchema: ResolveFindingShape,
       },

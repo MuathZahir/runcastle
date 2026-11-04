@@ -174,13 +174,13 @@ export const AUTH_MISSING_EVENT = 'auth.missing'
 export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
 /** The burn's container runtime (docker/podman) is down — no image can start. */
 export const CONTAINER_RUNTIME_DOWN_EVENT = 'burn.container_runtime_down'
-/** A cache volume the burn user could not write to was replaced. */
+/** A cache volume the worker user could not write to was replaced. */
 export const BURN_CACHE_REPAIRED_EVENT = 'burn.cache_repaired'
-/** A burn was refused because runcastle is running as root. */
+/** A round was refused because runcastle is running as root. */
 export const BURN_ROOT_REFUSED_EVENT = 'burn.root_refused'
 /**
  * The image's agent CLI drifted from the host's — a warning for every image,
- * never fatal, and never a reason to build: a burn only builds an image it could
+ * never fatal, and never a reason to build: a round only builds an image it could
  * not otherwise run on. A managed image's message points at Rebuild, a custom
  * image's names who owns it. `data.warning` flags it for the run page.
  */
@@ -193,7 +193,7 @@ const RUNTIME_BINARY: Record<AgentRuntime, string> = {
 
 export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
   const binary = RUNTIME_BINARY[runtime]
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image)${orBuildImageCommand(image)}.`
+  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image)${orBuildImageCommand(image)}.`
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ const ASSIGNMENT_PREFIX = /^[A-Za-z_][A-Za-z0-9_]*=/
  * resolves itself, and wrappers whose real command is buried in their arguments.
  * A segment led by one of these is dropped WHOLE rather than walked past —
  * `env -u GIT_ASKPASS bun run test` would otherwise "find" `GIT_ASKPASS` and
- * abort a burn that works fine. Missing `bun` there is the cheap direction.
+ * abort a round that works fine. Missing `bun` there is the cheap direction.
  */
 const NON_COMMAND_WORDS = new Set([
   'cd',
@@ -241,7 +241,7 @@ const PLAIN_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
  * word of each segment, keep the plain names. Deliberately NOT a shell parser —
  * `$TOOL`, `./gradlew` and a builtin-led segment all read as "nothing to check
  * here", which is the right way to be wrong: a preflight that guesses a name
- * aborts a burn that would have worked, while a name it misses still fails at
+ * aborts a round that would have worked, while a name it misses still fails at
  * runtime, where the classifier names it.
  */
 export function extractCommandNames(command: string | undefined): string[] {
@@ -394,7 +394,7 @@ function agentCliDrift(
 }
 
 /**
- * The image's agent CLI differs from the host's — warned, and the burn goes on
+ * The image's agent CLI differs from the host's — warned, and the round goes on
  * with the older CLI, which almost always serves the model (the one case it
  * does not is run-fatal on the first ticket, {@link cliTooOldMessage}). The fix
  * is a Rebuild, which re-runs only the install layer the host version is
@@ -408,13 +408,13 @@ export function agentCliDriftMessage(
 ): string {
   const { label } = RUNTIME_SPECS[runtime]
   const burningOn = imageVersion ? `${label} ${imageVersion}` : `its ${label}`
-  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Workers${orBuildImageCommand(image)} to catch up.`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this round runs on ${burningOn}. Rebuild from Settings → Workers${orBuildImageCommand(image)} to catch up.`
 }
 
 /**
  * The same drift on an image runcastle did not build. There is no Rebuild to
  * offer — the button is `refused` for a custom tag — so this says who owns the
- * image instead, in the doctor's own custom-row words, and the burn goes on
+ * image instead, in the doctor's own custom-row words, and the round goes on
  * (decision 3: a custom image's CLI drift is a warning). Blocking here would
  * stop every burn on a hand-built image after any host `claude update`, with no
  * way out from inside the app.
@@ -427,7 +427,7 @@ export function customImageCliDriftMessage(
 ): string {
   return (
     `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — it is a custom image managed ` +
-    `outside runcastle, so rebuild it with the tool that built it; this burn runs on it as it is.`
+    `outside runcastle, so rebuild it with the tool that built it; this round runs on it as it is.`
   )
 }
 
@@ -504,7 +504,7 @@ export type TicketOutcome =
 /**
  * What the run knows at the moment a ticket starts, beyond the ticket itself.
  *
- * It exists for one reason: the burn already harvests every finished ticket's
+ * It exists for one reason: the round already harvests every finished ticket's
  * own account of its work into an in-process array, and until now that array
  * went ONLY to the run row. Two agents in the same process at the same instant
  * needed it — an implementer that was handed its blockers as bare integers, and
@@ -538,10 +538,10 @@ export interface BurnDeps {
   exec?: ExecFn
   /**
    * Build the image this run should use if it needs building, before the probe
-   * looks at it. Omitted, the burn takes the image as it finds it.
+   * looks at it. Omitted, the round takes the image as it finds it.
    */
   ensureImage?: () => Promise<BurnImageOutcome>
-  /** Who burns run as; resolved from the host when omitted. */
+  /** Who workers run as; resolved from the host when omitted. */
   burnUser?: BurnUser
   /** The host is running as root; read from the process when omitted. */
   runningAsRoot?: boolean
@@ -578,7 +578,7 @@ export interface BurnDeps {
 }
 
 /**
- * The one fork in the burn (improve-workflow spec, "Per-kind execution"): a
+ * The one fork in the round (improve-workflow spec, "Per-kind execution"): a
  * review ticket is executed host-side against the integrated feature branch —
  * no per-ticket branch, no container, no merge-queue entry — and everything
  * below that reads `kind` reads it through here.
@@ -853,7 +853,7 @@ export interface DocsDigestResult {
   /** Docs named but not inlined. */
   readonly withheld: readonly WithheldDoc[]
   /**
-   * Set when the digest carries NO spec at all. A burn can legitimately run this
+   * Set when the digest carries NO spec at all. A round can legitimately run this
    * way (the runner detaches the talk worktree for exactly these runs), which is
    * precisely why it must be visible rather than one italic line inside a
    * container's prompt.
@@ -964,7 +964,7 @@ export function buildDriveNotes(settings: DriveSettings): string {
     '',
     '**Standing instruction: if your ticket introduces infrastructure the dev environment needs, update that machinery in this same branch.** The triggers are a **service** the app now needs, a **required env var** it reads at boot and fails without, a **seed** that must exist before the app is usable, or a **process** the dev environment must run alongside the app. Anything short of those needs no edit — the steps are idempotent by design, so a branch that merely adds a package or a migration is already covered. This is part of your ticket, not adjacent work: a branch whose drive cannot boot is not done.',
     '',
-    '**Check it, never run it.** Your sandbox has no services and no app, so running `drive-setup`, `drive-stop`, or the app itself buys a confusing failure and burns your budget. What you *can* verify offline: that the script parses (`bash -n` for a shell script), that every path it names — compose file, seed file, env sample, sourced helper — exists in the repo, and that any env var your change made mandatory is actually written out. Say in your digest which of those you checked, and say plainly when one was not possible rather than implying it passed.',
+    '**Check it, never run it.** Your sandbox has no services and no app, so running `drive-setup`, `drive-stop`, or the app itself buys a confusing failure and spends your budget. What you *can* verify offline: that the script parses (`bash -n` for a shell script), that every path it names — compose file, seed file, env sample, sourced helper — exists in the repo, and that any env var your change made mandatory is actually written out. Say in your digest which of those you checked, and say plainly when one was not possible rather than implying it passed.',
   )
   return out.join('\n')
 }
@@ -983,7 +983,7 @@ export function buildDriveNotes(settings: DriveSettings): string {
 export function buildGuardNotes(guardInstalled: boolean): string {
   const introduction = guardInstalled
     ? 'The following commands are **denied before they run** by a tool hook. Each denial and its prescribed alternative comes verbatim from the guard that enforces it. A denial is policy, not a broken environment — follow the alternative and do not try to route around it.'
-    : 'The deny hook is not installed in this burn, so the following guard rules are not machine-enforced. Follow them on discipline alone; each denial and its prescribed alternative comes verbatim from the guard used in protected burns.'
+    : 'The deny hook is not installed in this round, so the following guard rules are not machine-enforced. Follow them on discipline alone; each denial and its prescribed alternative comes verbatim from the guard used in protected burns.'
 
   return [introduction, '', ...GUARD_RULES.map((rule) => `- ${rule.reason}`)].join('\n')
 }
@@ -1034,15 +1034,15 @@ export function buildFixNotes(ticket: Ticket): string {
   return [
     '### This ticket fixes a review finding',
     '',
-    "It was minted from a defect the review of this same lap reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the host's gates run on top of it. If the defect is a failed gate, re-run exactly the check that failed, narrowed to what failed (the failing test files, or the failing command), and say in your digest that you did; never the full suite.",
+    "It was minted from a defect the review of this same round reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the host's gates run on top of it. If the defect is a failed gate, re-run exactly the check that failed, narrowed to what failed (the failing test files, or the failing command), and say in your digest that you did; never the full suite.",
   ].join('\n')
 }
 
 /**
  * The `{{LAP_DIGESTS}}` block for the review prompt: what every implementer in
- * this burn says it did.
+ * this round says it did.
  *
- * The review template claimed the reviewer was "the only agent in the burn that
+ * The review template claimed the reviewer was "the only agent in the round that
  * can answer" what the lap delivered. It never was: a dozen implementers each
  * wrote an account first, and the two sections a reviewer cannot reconstruct
  * from a diff at any price — "Surprises" and "Left undone" — exist only in them.
@@ -1050,7 +1050,7 @@ export function buildFixNotes(ticket: Ticket): string {
  */
 export function buildLapDigestsBlock(digests: readonly HarvestedDigest[]): string {
   if (digests.length === 0) {
-    return '_No implementation ticket in this burn left a digest — the diff and the feature docs are all you have._'
+    return '_No implementation ticket in this round left a digest — the diff and the feature docs are all you have._'
   }
   return [...digests]
     .sort((a, b) => a.seq - b.seq)
@@ -1261,7 +1261,7 @@ export const PM_CACHE_SANDBOX_PATHS: Partial<Record<PackageManager, string>> = {
  * detects a Maven or a Cargo repo, a repo may be polyglot, and an unused cache
  * path costs nothing but an empty directory.
  *
- * **These ride the burn cache volume, never a bind mount.** ADR-0004
+ * **These ride the worker cache volume, never a bind mount.** ADR-0004
  * (`docs/adr/0004-burner-dependency-caching.md`) measured a bind-mounted store
  * at 751s against a 109s cold install — a bind mount is always a different
  * filesystem from the container's overlayfs, so anything that links out of its
@@ -1292,7 +1292,7 @@ export interface HostPathMount {
   readonly sandboxPath: string
   readonly readonly?: boolean
 }
-/** An engine-managed named volume mounted into the sandbox (the burn cache). */
+/** An engine-managed named volume mounted into the sandbox (the worker cache). */
 export interface VolumeMount {
   readonly volume: string
   readonly sandboxPath: string
@@ -1325,7 +1325,7 @@ export function cacheMountFor(pm: PackageManager, hostPath: string): HostPathMou
  * The cache mounts and environment one burn's container gets — the two designs
  * are alternatives, never a mixture:
  *
- * - **Cache volume on** (the burn holds a slot): the project's named volume,
+ * - **Cache volume on** (the round holds a slot): the project's named volume,
  *   and every package manager's store pointed onto it (decision 10). The same
  *   volume is attached again at each {@link TOOLCHAIN_CACHE_SANDBOX_PATHS}
  *   entry, so a JVM, Python or Rust repo's downloads survive the container
@@ -1364,7 +1364,7 @@ export function buildBurnCacheMounts(
 // Pure unit — borrowing the host's Codex login (decision 1)
 // ---------------------------------------------------------------------------
 
-/** Where a burn container sees the host's Codex home — read-only, never written. */
+/** Where a round container sees the host's Codex home — read-only, never written. */
 export const CODEX_HOST_MOUNT_PATH = '/mnt/host-codex'
 
 /**
@@ -1400,7 +1400,7 @@ export function buildCodexAuthCopyCommand(): string {
 
 /**
  * Chain the sandbox-ready steps in the only order that works: borrow the Codex
- * login first (nothing else authenticates the agent), arm the burn guard next
+ * login first (nothing else authenticates the agent), arm the round guard next
  * (before the agent's first tool call), install dependencies last. Absent steps
  * drop out; `undefined` means there is nothing to run at all, which is what
  * sandcastle wants rather than an empty hook.
@@ -1422,7 +1422,7 @@ export const ISOLATED_REPO_PATH = '/home/agent/repo'
 export type BurnWorkspaceMode = 'mounted' | 'isolated' | 'slot'
 
 /**
- * Resolve the effective workspace mode for a burn (ADR-0005). `noSandbox` is
+ * Resolve the effective workspace mode for a round (ADR-0005). `noSandbox` is
  * always `mounted` — there is no container, so there is nothing to isolate
  * from. `auto` keys on the HOST platform: Docker Desktop on win32/darwin serves
  * bind mounts through a filesystem translation layer that every small-file
@@ -1430,7 +1430,7 @@ export type BurnWorkspaceMode = 'mounted' | 'isolated' | 'slot'
  * mount vs 82ms on the container's native FS), while a Linux host bind mount is
  * a native kernel path where isolation would only add clone overhead.
  *
- * With the burn cache on (decision 8) that trade flips and the platform stops
+ * With the worker cache on (decision 8) that trade flips and the platform stops
  * mattering: the agent works in a PERSISTENT checkout on the cache volume, so
  * there is no clone to amortise — and that checkout is where every warm cache
  * (`node_modules`, `.tsbuildinfo`, the test runner's, turbo's) actually lives.
@@ -1651,7 +1651,7 @@ function buildRepoSetupSteps(
   const excludeFile = `${repoPath}/.git/info/exclude`
   const pre = [
     // The exclude line is appended only when it is not already there: a slot
-    // checkout outlives the burn that wrote it, and an unguarded `>>` would add
+    // checkout outlives the round that wrote it, and an unguarded `>>` would add
     // one line per attachment-carrying burn for the life of the slot.
     `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_PREFIX}' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_PREFIX}' >> "${excludeFile}"; }; fi`,
     // Push-only, and synchronous: the hook runs inside a container sandcastle
@@ -1886,7 +1886,7 @@ export function attachedNoteIds(context: string): string[] {
  * Absolute host paths of the screenshots a ticket should burn with: every note
  * its context names, minus the ones whose PNG is no longer on disk. A note's
  * screenshot can be deleted between promotion and burn (the note itself, a
- * manual cleanup), and that is not a burn failure — the agent's Read fails and
+ * manual cleanup), and that is not a round failure — the agent's Read fails and
  * it proceeds on the note text, exactly as an unannotated note would.
  */
 export function attachmentSources(context: string): string[] {
@@ -1896,7 +1896,7 @@ export function attachmentSources(context: string): string[] {
 }
 
 /**
- * Host `onWorktreeReady` commands that copy `sources` into the burn worktree's
+ * Host `onWorktreeReady` commands that copy `sources` into the round worktree's
  * `.runcastle-attachments/`. Sandcastle runs these through the platform shell
  * with cwd = the worktree, after `git worktree add` and before the sandbox
  * starts — the one window in which the workspace exists on the host and no
@@ -2787,7 +2787,7 @@ export function missingAgentBinaryMessage(
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const binary = AGENT_BINARY[runtime]
   if (!missingCommandRegex(binary).test(msg)) return undefined
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
 }
 
 /**
@@ -2977,7 +2977,7 @@ export function delayUnlessAborted(ms: number, signal: AbortSignal): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// Per-ticket stop — abort ONE burning ticket's agent without killing the run
+// Per-ticket stop — abort ONE building ticket's agent without killing the run
 // ---------------------------------------------------------------------------
 
 const activeTicketAborts = new Map<string, AbortController>()
@@ -2995,7 +2995,7 @@ export interface StopTicketResult {
 }
 
 /**
- * Stop a single burning ticket's agent (UI "Stop ticket"). The ticket lands as
+ * Stop a single building ticket's agent (UI "Stop ticket"). The ticket lands as
  * `failed` with its committed work preserved on its temp branch (retryable),
  * while every other lane in the run keeps burning. Reports `stopped: false`
  * when the ticket has no live agent in this process.
@@ -3301,7 +3301,7 @@ export function burnCacheDeniedMessage(
     .slice(1)
     .some((line) => line.includes(BURN_CACHE_MOUNT) && /permission denied/i.test(line))
   if (!denied) return undefined
-  return `Burn cache volume ${volume} is not writable by burn user ${burnUserSpec(burnUser)}. Clear the burn cache in Settings → Workers, then burn again.\n\n${message}`
+  return `Worker cache volume ${volume} is not writable by worker user ${burnUserSpec(burnUser)}. Clear the worker cache in Settings → Workers, then start the round again.\n\n${message}`
 }
 
 /**
@@ -3343,7 +3343,7 @@ const NOTHING_LANDED = 'nothing landed — every implementation ticket in the ru
  * It exercises the integrated branch, so starting it beside a still-burning
  * ticket would review a half-landed feature. Once they have settled it wants a
  * WHOLE feature (decision 2): a run holding a failed implementation ticket
- * leaves the review `pending` — deferred to the burn that follows the human's
+ * leaves the review `pending` — deferred to the round that follows the human's
  * retry, never cascaded to failed — and a run where every implementation ticket
  * was cancelled cancels the review too, because nothing landed to review
  * (decision 6).
@@ -3368,7 +3368,7 @@ export async function burnTickets(
   admitted: number
   digests: HarvestedDigest[]
   halted?: RunHalt
-  /** Tickets left `pending` for the next burn rather than run (decision 2). */
+  /** Tickets left `pending` for the next round rather than run (decision 2). */
   deferred: number[]
   /** Tickets this schedule cancelled because they had nothing left to do. */
   collapsed: number[]
@@ -3447,7 +3447,7 @@ export async function burnTickets(
    * review without edges still reviewed what those tickets did or did not land.
    *
    * A failure defers rather than cancels: the human retries or cancels it
-   * through the ADR-0006 per-ticket controls and the next burn finds the review
+   * through the ADR-0006 per-ticket controls and the next round finds the review
    * still `pending`, which is the whole recovery ceremony.
    */
   const reviewGate = (reviewSeq: number): ReadyState => {
@@ -3638,7 +3638,7 @@ export async function burnTickets(
     mirrorFinding(t, 'fixing')
     ctx.emitEvent({
       type: 'ticket.burning',
-      message: `burning ticket ${t.seq}: ${t.title}`,
+      message: `building ticket ${t.seq}: ${t.title}`,
       ticketId: t.id,
     })
 
@@ -3732,7 +3732,7 @@ export async function burnTickets(
           const failed = failedImplementations(t.seq)
           ctx.emitEvent({
             type: 'ticket.deferred',
-            message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed.join(', ')} failed — retry or cancel them, then burn again`,
+            message: `ticket ${t.seq} deferred to the next round: implementation ticket(s) ${failed.join(', ')} failed — retry or cancel them, then start the round again`,
             ticketId: t.id,
             data: { failed },
           })
@@ -3879,7 +3879,7 @@ export async function burnRun(
   // pointing at `claude setup-token` sends the human to the wrong provider.
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
-    return { status: 'failed', summary: 'burn aborted: auth token missing' }
+    return { status: 'failed', summary: 'round aborted: auth token missing' }
   }
 
   // Claude Code refuses to run unattended as root, on the host or in a container
@@ -3893,7 +3893,7 @@ export async function burnRun(
     return { status: 'failed', summary: ROOT_BURN_REFUSED }
   }
 
-  // Prove the selected image carries everything this burn will reach for — the
+  // Prove the selected image carries everything this round will reach for — the
   // agent CLI, the setup hook's commands and the verify commands the prompt
   // hands the agent — before sandcastle creates a ticket container. One `sh`
   // run answers for all of them. The host CLI is the right one for noSandbox,
@@ -3970,8 +3970,8 @@ export async function burnRun(
       }
     }
     // Strict equality detects drift, but drift is a warning for every image:
-    // the burn runs on the CLI the image has, which almost always serves the
-    // model. A burn builds only what it could not otherwise run on, so the fix
+    // the round runs on the CLI the image has, which almost always serves the
+    // model. A round builds only what it could not otherwise run on, so the fix
     // here is a human's Rebuild, which exists only for an image runcastle
     // builds. A custom tag's Rebuild is `refused`, so its message names who
     // owns the image instead.
@@ -4064,7 +4064,7 @@ export function resolverTemplatePath(): string {
 
 /**
  * Absolute path to one burner asset, resolving the skills root the same way for
- * every prompt template the burn renders — the implementer's, the conflict
+ * every prompt template the round renders — the implementer's, the conflict
  * resolver's, and the review agent's.
  */
 export function burnerAssetPath(file: string): string {
@@ -4181,7 +4181,7 @@ export function emitDocsDigestEvent(ctx: WorkflowCtx, docs: DocsDigestResult): v
           : 'the docs dir holds none of brief/decisions/spec'
     ctx.emitEvent({
       type: 'burn.docs.missing',
-      message: `burning with NO feature spec — ${why}; every ticket runs on its own text alone`,
+      message: `building with NO feature spec — ${why}; every ticket runs on its own text alone`,
       data,
     })
     return
@@ -4277,7 +4277,7 @@ export interface BurnAgentMcp {
 export interface BurnAgentOptions {
   /**
    * Force the host build regardless of `config.sandbox`. The review ticket runs
-   * on the host whatever the burn is configured to do with implementation
+   * on the host whatever the round is configured to do with implementation
    * tickets (it has to — the app and its database only exist there), so it needs
    * the host env and the host permission mode from a docker-configured burn too.
    */
@@ -4291,7 +4291,7 @@ export interface BurnAgentOptions {
    */
   mcp?: BurnAgentMcp
   /**
-   * We installed the burn guard into this sandbox's Codex home. Codex ignores a
+   * We installed the round guard into this sandbox's Codex home. Codex ignores a
    * `hooks.json` it has no persisted trust for — even one in `$CODEX_HOME` —
    * so without `--dangerously-bypass-hook-trust` the guard we just wrote is
    * silently inert (verified against codex-rs `engine/discovery.rs`, whose own
@@ -4397,7 +4397,7 @@ function buildAgentExtraArgs(runtime: AgentRuntime, options: BurnAgentOptions): 
 
 /**
  * Quote one path for the shell the print command runs in — double quotes,
- * because the only place a burn path contains a space is a Windows home
+ * because the only place a round path contains a space is a Windows home
  * directory and `cmd.exe` understands nothing else.
  */
 function quoteArg(value: string): string {
@@ -4495,7 +4495,7 @@ export function buildSandboxOptions(
   /** What to `--name` the container, so a stop has a handle to kill it by. */
   containerName?: string,
   /**
-   * Who the container runs as. Docker passes the burn user, so sandcastle's own
+   * Who the container runs as. Docker passes the worker user, so sandcastle's own
    * `process.getuid()`/`getgid()` default never decides it: `sg docker` would
    * otherwise move the group. Podman passes none and keeps its own default.
    */
@@ -4587,7 +4587,7 @@ async function realExecuteTicketRun(
       : undefined
   return withBurnCacheSlot(allocator, async (slot) => {
     // Before the ticket's first container, and memoized per run: the volume has
-    // to exist and be writable by the burn user or the mount lands root-owned.
+    // to exist and be writable by the worker user or the mount lands root-owned.
     if (slot !== undefined) await ensureCacheVolume()
     return burnTicket(
       ctx,
@@ -5133,7 +5133,7 @@ async function burnTicket(
 
   /**
    * Land `branch`, resolving conflicts in-loop, and map the result onto the
-   * ticket outcome + the state the next burn needs. Shared by the normal path
+   * ticket outcome + the state the next round needs. Shared by the normal path
    * and the conflict-resume path, so a re-landing behaves identically however
    * the ticket got here.
    */
@@ -5141,7 +5141,7 @@ async function burnTicket(
     const landing = await landWithResolve(branch, landDeps)
     if (landing.status === 'landed') {
       // Landed — nothing is pending on a branch any more, so both resume
-      // pointers must go or the next burn would resume an already-merged chain.
+      // pointers must go or the next round would resume an already-merged chain.
       ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
       return {
         status: 'done',
@@ -5153,7 +5153,7 @@ async function burnTicket(
     preserveChain(landing.branch)
     if (landing.status === 'conflict') {
       // The state that makes Retry resolve instead of re-implement, and the
-      // file list the run lane's conflict card renders.
+      // file list the round's conflict card renders.
       ctx.updateTicket(ticket.id, { conflictFiles: landing.files })
       const where =
         landing.files.length > 0
@@ -5169,7 +5169,7 @@ async function burnTicket(
         error: `ticket ${ticket.seq} is implemented on ${landing.branch} but conflicts with ${feature.branch}${where}. ${why}`,
         event: {
           type: 'merge.conflict.needs-human',
-          message: `ticket ${ticket.seq}: could not auto-resolve the conflict with ${feature.branch} — resolve it from the run lane`,
+          message: `ticket ${ticket.seq}: could not auto-resolve the conflict with ${feature.branch} — resolve it from the round`,
         },
       }
     }
@@ -5247,7 +5247,7 @@ async function burnTicket(
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
         // Temp branch off the chain tip (the feature branch, or the previous
         // attempt's branch when resuming) — its own sandcastle worktree,
-        // isolated from every concurrently-burning ticket. Landed below via
+        // isolated from every concurrently-building ticket. Landed below via
         // `land`; landing the final branch lands the whole chain.
         branchStrategy: { type: 'branch', branch: tempBranch, baseBranch },
         signal,
@@ -5359,7 +5359,7 @@ async function burnTicket(
           // Sandcastle itself hit a branch conflict setting the run up, so we
           // never reached our own landing loop and have no file list. Record
           // the conflict shape anyway (empty list) whenever commits survived:
-          // that is what routes the next burn through the resolver, which
+          // that is what routes the next round through the resolver, which
           // re-derives the conflicting paths from git.
           if (salvaged.length > 0) {
             preserveChain(tempBranch)
@@ -5370,7 +5370,7 @@ async function burnTicket(
             error: `merge conflict landing ticket ${ticket.seq} on ${feature.branch}: ${msg}`,
             event: {
               type: 'merge.conflict.needs-human',
-              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
+              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the round' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
         }
@@ -5489,7 +5489,7 @@ async function burnTicket(
     endTranscript(ticket.id)
     // Emitted on EVERY exit path — a ticket that failed or was stopped is
     // exactly the one whose time breakdown you want, and the wall clock is what
-    // the run lane reads its duration from either way.
+    // the round reads its duration from either way.
     emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
   }
 }
@@ -5508,7 +5508,7 @@ async function burnTicket(
  * `review` override simply inherits the default model exactly as before.
  *
  * Pure, and exported so the assignment is observable without a container: the
- * runtime it yields is what decides which CLI and which auth key the burn uses.
+ * runtime it yields is what decides which CLI and which auth key the round uses.
  */
 export function resolveTicketModel(
   config: ModelConfig,
@@ -5582,7 +5582,7 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
       onRepair: ({ owner, path }) =>
         ctx.emitEvent({
           type: BURN_CACHE_REPAIRED_EVENT,
-          message: `Replaced burn cache volume ${burnCacheVolumeName(ctx.project.id)}: burn user ${burnUserSpec(burnUser)} could not write to ${path}, owned by ${owner}. This burn starts cold.`,
+          message: `Replaced worker cache volume ${burnCacheVolumeName(ctx.project.id)}: worker user ${burnUserSpec(burnUser)} could not write to ${path}, owned by ${owner}. This burn starts cold.`,
           data: { warning: true, owner, path, burnUser: burnUserSpec(burnUser) },
         }),
     }))

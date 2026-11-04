@@ -90,7 +90,7 @@ describe('renderSettings', () => {
     for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint', 'complete_phase']) {
       expect(s.permissions.allow).not.toContain(`mcp__runcastle__${retired}`)
     }
-    // the project session's three (decision 19) — server-side kind gating makes
+    // the orchestrator's three (decision 19) — server-side kind gating makes
     // them inert for a feature session, so every session is launched with them
     expect(s.permissions.allow).toEqual(
       expect.arrayContaining([
@@ -351,7 +351,7 @@ describe('renderSettings', () => {
         timeout: 5,
       })
     }
-    // decision 18 gives the project session whole-repo write access — it is the
+    // decision 18 gives the orchestrator whole-repo write access — it is the
     // one kind whose commits are the point of the session
     expect(renderSettings('C:\\hooks\\hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
   })
@@ -1001,7 +1001,7 @@ describe('claudeRuntime.writeArtifacts', () => {
     const resumed = await launchSpec('chat', { resumeSessionId: 'cc-42' })
     expect(resumed.argv.slice(0, 2)).toEqual(['--resume', 'cc-42'])
 
-    // the project session's `default` posture (decision 18), chosen by its site
+    // the orchestrator's `default` posture (decision 18), chosen by its site
     const projected = await launchSpec('project', { permissionMode: 'default' })
     expect(projected.argv[projected.argv.indexOf('--permission-mode') + 1]).toBe('default')
 
@@ -1270,7 +1270,7 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(configToml('sess_codex_project')).toContain('[features]\nhooks = true')
   })
 
-  it('maps the project session\'s `default` posture to an approval policy that asks', async () => {
+  it('maps the orchestrator\'s `default` posture to an approval policy that asks', async () => {
     await launchSpec('project', {
       permissionMode: 'default',
       projectBrief: {
@@ -1282,7 +1282,7 @@ describe('codexRuntime.writeArtifacts', () => {
       },
     })
     const projected = configToml('sess_codex_project')
-    // decision 18: a project session runs against the whole repo checkout, which
+    // decision 18: an orchestrator runs against the whole repo checkout, which
     // is why the Claude path is downgraded to `default` — `on-request` is the
     // prompting policy config.toml still accepts, so the same session on a Codex
     // model asks too. Not `untrusted`: the CLI now rejects it on config load.

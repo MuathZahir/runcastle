@@ -164,14 +164,14 @@ export function ticketStatusCounts(ctx: AppCtx, projectId: string): Map<string, 
  * `done`, `failed` and `cancelled` are the terminal statuses; everything else —
  * `pending`, `burning`, and any lane a run leaves mid-flight — is work a burn
  * would still pick up. One definition, because three callers ask the same
- * question for three reasons: the burn itself, the planning-progress model
- * ("are there tickets to burn yet"), and the burn warnings.
+ * question for three reasons: the round itself, the planning-progress model
+ * ("are there tickets to burn yet"), and the round warnings.
  */
 export function isPendingTicket(ticket: Ticket): boolean {
   return ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled'
 }
 
-/** The tickets a burn of this feature would still run — see {@link isPendingTicket}. */
+/** The tickets a round of this feature would still run — see {@link isPendingTicket}. */
 export function pendingTickets(ctx: AppCtx, featureId: string): Ticket[] {
   return listByFeature(ctx, featureId).filter(isPendingTicket)
 }
@@ -259,7 +259,7 @@ export type TicketContentPatch = Partial<
   Pick<Ticket, 'title' | 'goal' | 'context' | 'acceptanceCriteria' | 'seams'>
 > & {
   /**
-   * Reassign the burn model, or clear it with `null`/`''` so the ticket falls
+   * Reassign the round model, or clear it with `null`/`''` so the ticket falls
    * back to the ordinary `resolveModel` chain (decisions.md #4).
    */
   model?: string | null

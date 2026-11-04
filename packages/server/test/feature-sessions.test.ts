@@ -203,12 +203,12 @@ describe('a side session’s name', () => {
     giveTranscript(id, [
       entry('user', SIDE_KICKOFF_TURN),
       entry('assistant', 'I am a side session. What do you need?'),
-      entry('user', 'why does the burn skip ticket 4?'),
+      entry('user', 'why does the round skip ticket 4?'),
     ])
 
     const [row] = await caller().feature.sessions({ featureId: f.id })
 
-    expect(row.title).toBe('why does the burn skip ticket 4?')
+    expect(row.title).toBe('why does the round skip ticket 4?')
   })
 
   it('is Untitled until the human types, and that is not cached', async () => {
@@ -245,7 +245,7 @@ describe('an ended side session’s transcript', () => {
     giveTranscript(id, [
       entry('user', SIDE_KICKOFF_TURN),
       entry('assistant', 'What do you need?'),
-      entry('user', 'why does the burn skip ticket 4?'),
+      entry('user', 'why does the round skip ticket 4?'),
     ])
     markSessionEnded(ctx, id)
 
@@ -253,7 +253,7 @@ describe('an ended side session’s transcript', () => {
 
     expect(transcript.turns).toEqual([
       { role: 'assistant', text: 'What do you need?' },
-      { role: 'user', text: 'why does the burn skip ticket 4?' },
+      { role: 'user', text: 'why does the round skip ticket 4?' },
     ])
   })
 })

@@ -468,7 +468,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
   it('promotes the doc when the talk worktree is sitting on a detached HEAD', async () => {
     const feature = await seedShippableFeature('detached')
     seedTickets(feature.id, [{ title: 'Burned work', status: 'done', digest: '## Work\n- Did it.' }])
-    // What a burn leaves behind: the runner detaches the talk worktree to free
+    // What a round leaves behind: the runner detaches the talk worktree to free
     // the branch, and its reattach on finalize is best-effort.
     const worktree = await ensureTalkWorktree(project, feature)
     expect(await detachWorktree(worktree)).toBe(true)

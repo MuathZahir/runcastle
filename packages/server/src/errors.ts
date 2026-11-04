@@ -8,20 +8,6 @@ import { BurnCacheBusyError } from './workflows/burn-cache'
  * `toTRPCError`.
  */
 
-/**
- * Thrown by wave-B typed stubs (git, launcher, mcp, ticket-burner) until the
- * owning wave replaces the body. The constructor takes the wave tag so the
- * message reads `not yet implemented (B2)` verbatim.
- */
-export class NotImplementedError extends Error {
-  readonly wave: string
-  constructor(wave: string) {
-    super(`not yet implemented (${wave})`)
-    this.name = 'NotImplementedError'
-    this.wave = wave
-  }
-}
-
 /** A gate check (or phase precondition) is not satisfied. */
 export class GateError extends Error {
   constructor(message: string) {
@@ -46,25 +32,17 @@ export class NotFoundError extends Error {
   }
 }
 
-export function isNotImplemented(e: unknown): e is NotImplementedError {
-  return e instanceof NotImplementedError
-}
-
 /**
- * Map any thrown value to a `TRPCError`. `NotImplementedError` maps to
- * `INTERNAL_SERVER_ERROR` (message preserved: `not yet implemented (B*)`) as
- * required by SPEC §4; domain errors map to their natural HTTP-ish codes.
- * Already-`TRPCError` values pass through unchanged.
+ * Map any thrown value to a `TRPCError`: domain errors map to their natural
+ * HTTP-ish codes. Already-`TRPCError` values pass through unchanged.
  */
 export function toTRPCError(e: unknown): TRPCError {
   if (e instanceof TRPCError) return e
-  if (e instanceof NotImplementedError)
-    return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: e.message, cause: e })
   if (e instanceof NotFoundError)
     return new TRPCError({ code: 'NOT_FOUND', message: e.message, cause: e })
   if (e instanceof GateError)
     return new TRPCError({ code: 'PRECONDITION_FAILED', message: e.message, cause: e })
-  // Clearing the burn cache while a burn is working out of it is a precondition
+  // Clearing the worker cache while a round is working out of it is a precondition
   // failure, not a server fault — the message already names the held slots, and
   // the AFK card renders it verbatim.
   if (e instanceof BurnCacheBusyError)

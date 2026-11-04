@@ -7,9 +7,8 @@ import { toTRPCError } from '../errors'
  * object services receive, so a resolver is a one-liner over a service call.
  *
  * `publicProcedure` carries an error-mapping middleware that runs every thrown
- * value through `toTRPCError`: `NotImplementedError` → INTERNAL_SERVER_ERROR
- * (`not yet implemented (B*)`), domain errors → their natural codes. Routers
- * and services therefore never construct `TRPCError` themselves.
+ * value through `toTRPCError`: domain errors → their natural codes.
+ * Routers and services therefore never construct `TRPCError` themselves.
  */
 
 export type Context = AppCtx

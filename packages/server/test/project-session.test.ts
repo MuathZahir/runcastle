@@ -46,7 +46,7 @@ import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 
 /**
- * The project session (feature-grouping decisions 17–20): a project-scoped
+ * The orchestrator (feature-grouping decisions 17–20): a project-scoped
  * terminal that writes the repo for real, but never the human's checkout. The
  * invariants worth pinning are the ones that would silently cost work or
  * silently widen access — where it commits, what lands, and what it may run
@@ -75,7 +75,7 @@ function commitOnBranch(repoPath: string, branch: string, file: string, body: st
   git(repoPath, 'worktree', 'add', wt, branch)
   writeFileSync(join(wt, file), body)
   git(wt, 'add', file)
-  git(wt, 'commit', '-m', `project session: ${file}`)
+  git(wt, 'commit', '-m', `orchestrator: ${file}`)
   const tip = git(repoPath, 'rev-parse', branch)
   git(repoPath, 'worktree', 'remove', wt, '--force')
   return tip
@@ -423,7 +423,7 @@ describe('ensureProjectWorktree', () => {
   })
 })
 
-describe('launching, resuming and landing a project session', () => {
+describe('launching, resuming and landing an orchestrator', () => {
   let ctx: AppCtx
   let project: Project
   let repoPath: string
@@ -442,7 +442,7 @@ describe('launching, resuming and landing a project session', () => {
     project = seedProject(ctx, repoPath)
   })
 
-  // Ending a project session kicks off a landing that is fire-and-forget in
+  // Ending an orchestrator kicks off a landing that is fire-and-forget in
   // production, so without this the case races the git children it just spawned:
   // they are still holding `repoPath` when `removeAll` deletes it, and Windows
   // answers an open handle with EPERM instead of waiting. Note that a landing
@@ -511,7 +511,7 @@ describe('launching, resuming and landing a project session', () => {
     expect(settings.permissions.allow).toContain('Bash(git status:*)')
   })
 
-  // The project chat is a list of threads (decision 5): New opens another beside an open one.
+  // The orchestrator chat is a list of threads (decision 5): New opens another beside an open one.
   it('opens a new thread for every New, whatever is open', async () => {
     const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
     const second = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
@@ -580,7 +580,7 @@ describe('launching, resuming and landing a project session', () => {
   /** The count the system prompt states is the one the store holds when the process starts. */
   it('states the open-note count in the system prompt it starts with', async () => {
     addProjectNote(ctx, project.id, 'crumbs overflow on a long title')
-    addProjectNote(ctx, project.id, 'the burn page flashes on resolve')
+    addProjectNote(ctx, project.id, 'the round page flashes on resolve')
 
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
@@ -672,13 +672,13 @@ describe('launching, resuming and landing a project session', () => {
 })
 
 /**
- * Where the project session's work lands (base-branch-control, decisions 5–6).
+ * Where the orchestrator's work lands (base-branch-control, decisions 5–6).
  * It used to be a stored project-level column, re-detected at every project
  * open, so a human's correction could not stick and nobody could see what it
  * controlled. It is now its own setting: null until somebody picks, resolved
  * stored-else-detected at each launch, and loud when a pick has gone missing.
  */
-describe("the project session's landing branch", () => {
+describe("the orchestrator's landing branch", () => {
   let ctx: AppCtx
   let project: Project
   let repoPath: string
@@ -752,7 +752,7 @@ describe("the project session's landing branch", () => {
     // and the session's work lands there, not on main
     writeFileSync(join(worktreePath, 'CONTEXT.md'), 'the charter\n')
     git(worktreePath, 'add', 'CONTEXT.md')
-    git(worktreePath, 'commit', '-m', 'project session: charter')
+    git(worktreePath, 'commit', '-m', 'orchestrator: charter')
 
     const landed = await landProjectBranch(requireProjectById(ctx, project.id), 'develop')
     expect(landed).toMatchObject({ base: 'develop', commits: 1, landed: true })

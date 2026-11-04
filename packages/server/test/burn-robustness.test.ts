@@ -45,7 +45,7 @@ describe('classifyTicketRunError', () => {
     // the same image, so there is nothing left for this run to try.
     expect(classifyTicketRunError(new Error(error), runtime)).toBe('run-fatal')
     expect(missingAgentBinaryMessage(new Error(error), runtime, image)).toBe(
-      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`,
+      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`,
     )
   })
 
@@ -251,7 +251,7 @@ describe('classifyTicketRunError', () => {
   })
 
   /**
-   * The codex CLI reports the same facts in OpenAI's words. A burn that retries
+   * The codex CLI reports the same facts in OpenAI's words. A round that retries
    * a bad API key three times wastes ~10 minutes per attempt rebuilding a
    * sandbox to fail identically; one that gives up on a plain rate limit throws
    * away a ticket that would have landed.
@@ -299,7 +299,7 @@ describe('classifyTicketRunError', () => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
     })
 
-    // A burn runs on the operator's borrowed `codex login`. When that login is
+    // A round runs on the operator's borrowed `codex login`. When that login is
     // revoked or lapses mid-run the CLI says so in login words, and no retry of
     // ours fixes it — the human has to run `codex login` on the host.
     it.each([
@@ -608,7 +608,7 @@ describe('retryTicket', () => {
     })
 
     // Plain retry: the implemented work and the conflict both survive, which is
-    // what routes the next burn through the resolver instead of the implementer.
+    // what routes the next round through the resolver instead of the implementer.
     const plain = await retryTicket(ctx, a.id)
     expect(plain.resolvingConflict).toBe(true)
     const resumed = getTicket(ctx, a.id)
@@ -617,7 +617,7 @@ describe('retryTicket', () => {
     expect(resumed.conflictFiles).toEqual(['src/a.ts', 'src/b.ts'])
 
     // Fresh: the conflicting branch is being discarded, so the conflict it
-    // described must go with it — the next burn re-implements from the tip.
+    // described must go with it — the next round re-implements from the tip.
     updateTicket(ctx, a.id, { status: 'failed', error: 'conflicts again' })
     const fresh = await retryTicket(ctx, a.id, { fresh: true })
     expect(fresh.resolvingConflict).toBe(false)

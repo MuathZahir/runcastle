@@ -3,7 +3,7 @@ import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
 import type { PackageManager } from './ticket-burner'
 
 /**
- * The persistent burn cache: one Docker/Podman named volume per project, and
+ * The persistent worker cache: one Docker/Podman named volume per project, and
  * the in-memory allocator that hands its slots out to concurrent burns.
  *
  * Every burn starts stone cold today — the container is rebuilt per iteration
@@ -36,7 +36,7 @@ export type BurnCacheEngine = 'docker' | 'podman'
 export const BURN_CACHE_MOUNT = '/home/agent/cache'
 
 /**
- * The named volume backing one project's burn cache. Project ids are
+ * The named volume backing one project's worker cache. Project ids are
  * `proj_<nanoid12>`, which is already a legal Docker/Podman volume name
  * (`[a-zA-Z0-9][a-zA-Z0-9_.-]*`), so no sanitising is needed — and none is
  * wanted, because two projects must never collide on one volume.
@@ -124,7 +124,7 @@ export class BurnCacheBusyError extends Error {
   /** The slot numbers held when the clear was attempted. */
   readonly slots: readonly number[]
   constructor(slots: readonly number[]) {
-    super(`burn cache is in use — slots ${slots.join(', ')} are held; stop those burns before clearing it`)
+    super(`worker cache is in use — slots ${slots.join(', ')} are held; stop those burns before clearing it`)
     this.name = 'BurnCacheBusyError'
     this.slots = slots
   }
@@ -141,7 +141,7 @@ export const BURN_CACHE_MARKER_FILE = '.runcastle-volume'
 
 /**
  * Run one engine command, throwing its stderr on failure. Volume setup has no
- * sensible degraded mode — a burn that silently proceeds without its cache
+ * sensible degraded mode — a round that silently proceeds without its cache
  * would look like nothing more than a slow burn.
  */
 async function execOrThrow(exec: ExecFn, engine: BurnCacheEngine, args: string[]): Promise<void> {
@@ -157,9 +157,9 @@ export interface EnsureBurnCacheVolumeOptions {
   imageName: string
   projectId: string
   exec: ExecFn
-  /** Who burns run as; resolved from the host when omitted. */
+  /** Who workers run as; resolved from the host when omitted. */
   burnUser?: BurnUser
-  /** Told when a volume the burn user cannot write to is about to be replaced. */
+  /** Told when a volume the worker user cannot write to is about to be replaced. */
   onRepair?: (found: Extract<BurnCacheAccess, { state: 'unwritable' }>) => void
 }
 
@@ -207,7 +207,7 @@ export async function inspectBurnCacheVolume(
 /** What {@link checkBurnCacheAccess} found. */
 export type BurnCacheAccess =
   | { state: 'writable' }
-  /** The burn user cannot write to `path`, which `owner` (`uid:gid`) holds. */
+  /** The worker user cannot write to `path`, which `owner` (`uid:gid`) holds. */
   | { state: 'unwritable'; path: string; owner: string }
   /** No clear answer. Never a reason to touch the volume. */
   | { state: 'unknown'; reason: string }
@@ -231,10 +231,10 @@ const ACCESS_SENTINEL = 'runcastle-access'
 const ACCESS_SCRIPT = `for p in "$1" "$1"/*; do [ -d "$p" ] || continue; [ -w "$p" ] || { echo "${ACCESS_SENTINEL} unwritable $(stat -c %u:%g "$p") $p"; exit 0; }; done; echo "${ACCESS_SENTINEL} writable"`
 
 /**
- * Ask the volume whether the burn user can write to it, from a one-shot
+ * Ask the volume whether the worker user can write to it, from a one-shot
  * container running AS that user (decision 3). Asking rather than comparing
  * owner numbers is what makes the answer true under any id mapping, and it is
- * the question a burn actually needs answered.
+ * the question a round actually needs answered.
  */
 export async function checkBurnCacheAccess(
   opts: CheckBurnCacheAccessOptions,
@@ -270,12 +270,12 @@ export async function checkBurnCacheAccess(
 }
 
 /**
- * The root one-shot that hands a new volume to the burn user. Docker also leaves
+ * The root one-shot that hands a new volume to the worker user. Docker also leaves
  * {@link BURN_CACHE_MARKER_FILE}, so the volume is never empty. Podman keeps its
  * bare chown (decision 10).
  *
  * The entrypoint is overridden either way: the sandbox image's ENTRYPOINT is
- * `sleep infinity` (that is how the burn container is kept alive), so a bare
+ * `sleep infinity` (that is how the round container is kept alive), so a bare
  * `<image> chown …` would have Docker run `sleep infinity chown -R …` and die
  * on `-R`.
  */
@@ -303,23 +303,23 @@ function claimVolumeArgs(
 }
 
 /**
- * Make the project's cache volume exist and be writable by the burn user.
+ * Make the project's cache volume exist and be writable by the worker user.
  *
- * A freshly created volume is owned by root and the burn container cannot fix
+ * A freshly created volume is owned by root and the round container cannot fix
  * that itself, hence the one-shot root `run` of {@link claimVolumeArgs}. That
  * runs only on creation: on an existing volume it would be a recursive chown of
  * every file in a multi-gigabyte cache, once per burn.
  *
  * An existing volume is checked instead, on Docker, once per run. A volume the
- * burn user cannot write to is dropped and recreated (decision 4). It cannot
+ * worker user cannot write to is dropped and recreated (decision 4). It cannot
  * hold much worth keeping, since this user could never have filled it, and a
  * chown in place can outrun the engine-command timeout. A check with no clear
  * answer leaves the volume alone: nothing is ever deleted on a guess. Podman
  * keeps create-and-chown-once, because its one-shot runs under a different user
- * mapping from the burn (decision 10).
+ * mapping from the round (decision 10).
  *
  * A failed chown removes the volume again before the error propagates, so the
- * next burn starts clean. An unlabelled volume is one a version that did not
+ * next round starts clean. An unlabelled volume is one a version that did not
  * roll back left behind, and is dropped the same way.
  */
 export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions): Promise<void> {
@@ -349,7 +349,7 @@ export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions):
       claimVolumeArgs(engine, { name, image: opts.imageName, owner: burnUserSpec(burnUser) }),
     )
   } catch (err) {
-    // Roll back so the next burn creates and chowns afresh. Best-effort: the
+    // Roll back so the next round creates and chowns afresh. Best-effort: the
     // chown error is the one worth surfacing, and the next run's access check
     // catches a leftover volume.
     await exec(engine, ['volume', 'rm', name])
@@ -487,7 +487,7 @@ function parseSize(value: unknown): number | null {
 /** No free slot: every one of `burnConcurrency` is already held by a burn. */
 export class BurnSlotsExhaustedError extends Error {
   constructor(capacity: number) {
-    super(`all ${capacity} burn cache slots are in use`)
+    super(`all ${capacity} worker cache slots are in use`)
     this.name = 'BurnSlotsExhaustedError'
   }
 }

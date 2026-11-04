@@ -341,7 +341,7 @@ describe('preparedAt', () => {
       kind: 'project',
       worktreePath: '/wt',
     })
-    // Emitted directly rather than through endSession: ending a project session
+    // Emitted directly rather than through endSession: ending an orchestrator
     // also lands its branch, which wants a real checkout this test has no use for.
     emitForSession(ctx, intake, {
       type: 'session.ended',

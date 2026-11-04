@@ -66,7 +66,7 @@ The session launcher spawns Claude Code with the pack's **root** directory (the 
 claude ... --plugin-dir "<abs path>/packages/skills/packs/runcastle" ...
 ```
 
-The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:feature` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:feature` for a feature's chat, `/runcastle:project` for the project session).
+The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:feature` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:feature` for a feature's chat, `/runcastle:project` for the orchestrator).
 
 ### Entry-skill isolation — settings deny rules, not `disable-model-invocation`
 
@@ -150,4 +150,4 @@ ticket instead.
 
 ## Not a pack: `../burner/`
 
-The sibling `packages/skills/burner/` holds **prompt templates**, not skills — e.g. `implement-ticket.md`, rendered per ticket by the AFK ticket-burner workflow (placeholders `{{TICKET_JSON}}`, `{{FEATURE_BRIEF}}`, `{{DOCS_DIGEST}}`, `{{COMMIT_CONVENTION}}`). It is never passed to `--plugin-dir`.
+The sibling `packages/skills/burner/` holds **prompt templates**, not skills — e.g. `implement-ticket.md`, rendered per ticket by the unattended ticket-burner workflow (placeholders `{{TICKET_JSON}}`, `{{FEATURE_BRIEF}}`, `{{DOCS_DIGEST}}`, `{{COMMIT_CONVENTION}}`). It is never passed to `--plugin-dir`.

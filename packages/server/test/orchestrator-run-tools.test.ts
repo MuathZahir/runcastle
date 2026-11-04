@@ -71,7 +71,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     rmTemp(repoPath)
   })
 
-  /** A live project session — the orchestrator. */
+  /** A live orchestrator — the orchestrator. */
   function orchestrator(): SessionRow {
     const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
@@ -145,7 +145,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
   })
 
   describe('refuses through the shared gate', () => {
-    it('from a session that is not a project session', async () => {
+    it('from a session that is not an orchestrator', async () => {
       const f = await feature('humans')
       const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
       const call = () => toolSendToFeature(ctx, chat, { slug: 'humans', message: 'x' })
@@ -153,7 +153,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
       await expect(call()).rejects.toThrow(/only the orchestrator/)
     })
 
-    it('from a project session that has ended', async () => {
+    it('from an orchestrator that has ended', async () => {
       await feature('stopped')
       const session = orchestrator()
       markSessionEnded(ctx, session.id)

@@ -331,7 +331,7 @@ describe('the notifier', () => {
     rmTemp(repoPath)
   })
 
-  /** A live project session — the orchestrator. */
+  /** A live orchestrator — the orchestrator. */
   function projectSession(): string {
     const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })

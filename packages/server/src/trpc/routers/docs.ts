@@ -13,7 +13,7 @@ export const docsRouter = router({
     }),
 
   /**
-   * What the next burn's docs digest costs EVERY ticket in it, in bytes.
+   * What the next round's docs digest costs EVERY ticket in it, in bytes.
    *
    * The burner's own `readDocsDigest`, not a second count over the same files:
    * the build phase's bar warns over this number and the run timeline's event

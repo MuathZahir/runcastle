@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review a feature branch's diff against its base along two axes — Standards (does the code follow this repo's documented standards?) and Spec (does the code do what docs/features/<slug>/spec.md asked for?). Runs both axes as parallel sub-agents and reports them side by side, never merged. Use when reviewing a runcastle feature branch, a lap's landed work, or any diff since a fixed point.
+description: Review a feature branch's diff against its base along two axes — Standards (does the code follow this repo's documented standards?) and Spec (does the code do what docs/features/<slug>/spec.md asked for?). Runs both axes as parallel sub-agents and reports them side by side, never merged. Use when reviewing a runcastle feature branch, a round's landed work, or any diff since a fixed point.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's code-review skill, via https://github.com/mattpocock/skills, 2026-08-17, adapted for runcastle feature branches (base-branch fixed point, spec.md as the spec source) -->
@@ -40,7 +40,7 @@ git log <base>...HEAD --oneline            # the commits under review
 git diff <base>...HEAD                     # the diff both axes read
 ```
 
-**Check before you spawn anything.** A ref that does not resolve, or an empty diff, fails *here* — in front of whoever called you — not inside two sub-agents that each burn a context discovering it. Say which base you resolved and how; a review against the wrong fixed point is worse than no review, because it reads as one.
+**Check before you spawn anything.** A ref that does not resolve, or an empty diff, fails *here* — in front of whoever called you — not inside two sub-agents that each spend a context discovering it. Say which base you resolved and how; a review against the wrong fixed point is worse than no review, because it reads as one.
 
 Three-dot excludes uncommitted work. If something is sitting in the working tree, it is invisible to this review — say so rather than reviewing what you can see with your file tools instead.
 
@@ -127,7 +127,7 @@ Sub-agent output is a hypothesis, not evidence. Say so in the report where a cla
 That is the caller's call, not yours. Reporting the two blocks IS this skill's deliverable.
 
 - Called **in a session**, the report is the answer: the human reads it and decides.
-- Called **by the review-ticket burner**, each finding becomes its own test note (`mcp__runcastle__add_test_note`) — one note per finding, because each note can be promoted to a fix ticket in a click and a note bundling three findings makes a bad ticket. The burner's prompt says this; follow it there.
+- Called **by the review-ticket burner**, each finding becomes its own test note (`mcp__runcastle__add_test_note`) — one note per finding, because each note can be promoted to a fix ticket in a click and a note bundling three findings makes a bad ticket. The worker's prompt says this; follow it there.
 
 Either way: **finding problems is a successful review.** The report is the deliverable, not a verdict, and not a pass/fail.
 
