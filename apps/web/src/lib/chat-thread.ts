@@ -12,6 +12,7 @@ export type {
   ContextUsage,
   DiffLine,
   Effort,
+  FeatureAction,
   FileChange,
   FormField,
   FormValues,

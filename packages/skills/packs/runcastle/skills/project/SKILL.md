@@ -108,7 +108,7 @@ Now talk. In this order, and all of it before any `create_feature`:
 
 ### 1c. Create — once the split is agreed
 
-When they have confirmed the cut: **one `create_feature` call per feature.** Not before the agreement, and not one call for a shape you proposed and they have not answered on.
+When they have confirmed the cut: **one `create_feature` call per feature.** Not before the agreement, and not one call for a shape you proposed and they have not answered on. The chat shows a card for each feature an action touched, so your words say why you acted and what comes next, not the list of features again.
 
 **Ask, per feature: start it now, up next after something, or the backlog?** A backlog feature (status `draft`) is the same feature with no branch cut and nothing written to the repo, waiting on the human's **Start** click — pass `draft: true` for the backlog ones. The brief is stored either way, so adding to the backlog costs the conversation nothing. Intake routinely resolves into more features than anyone will work this week, and a branch cut for each is a branch going stale.
 

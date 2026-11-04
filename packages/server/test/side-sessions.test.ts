@@ -151,7 +151,7 @@ describe('opening a side session', () => {
       expect(side).not.toBe(chat)
       expect(getSessionRow(ctx, side)?.ccSessionId).toBeUndefined()
       const kickoff = kickoffOf(side)
-      expect(promptsOf(side)[0]).toMatchObject({ source: 'runcastle' })
+      expect(promptsOf(side)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started this side chat' } })
       expect(kickoff).toContain(`[runcastle] ${SIDE_OPENING}: you are a side session of this feature`)
       expect(kickoff).toContain('Feature status: Talking with you;')
       expect(kickoff).toContain("Wait for the human's ask.")

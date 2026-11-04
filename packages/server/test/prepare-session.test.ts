@@ -687,6 +687,7 @@ describe('launching a preparation, fresh or resumed', () => {
 
     expect(sessionId).not.toBe(prior)
     expect(kickoffOf(sessionId)).toContain('Proceed with your task')
+    expect(promptsOf(sessionId)[0]).toMatchObject({ display: { summary: 'Started preparing the project' } })
     const types = ctx.db.select().from(events).all().map((e) => e.type)
     expect(types).not.toContain('session.resumed')
     // …and the choice is visible on the timeline, which otherwise reads exactly

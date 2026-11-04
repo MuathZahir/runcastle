@@ -21,6 +21,7 @@ import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
+import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
 import { ChangesCard, WorkBlock } from './Work'
 
@@ -246,7 +247,11 @@ function Item({
   switch (item.kind) {
     case 'user':
       return item.from === 'runcastle' ? (
-        <RuncastleLine text={item.text} />
+        item.display ? (
+          <RuncastleDisplay display={item.display} agentText={untagRuncastle(item.text)} {...(item.at !== undefined ? { at: item.at } : {})} />
+        ) : (
+          <RuncastleLine text={item.text} />
+        )
       ) : (
         <UserMessage item={item} actions={actions} locked={locked} />
       )
@@ -264,6 +269,8 @@ function Item({
       return <PlanCardItem {...(item.older ? { older: true } : {})} />
     case 'design_cards':
       return <DesignCardsItem designIds={item.designIds} older={item.older} />
+    case 'features_card':
+      return <FeaturesCardItem rows={item.rows} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">
@@ -490,6 +497,11 @@ function AgentMessage({
  */
 const RUNCASTLE_TAG = /^\s*\[runcastle\]\s*/gm
 
+/** A runcastle line as the agent read it, without the tags that say who spoke. */
+function untagRuncastle(text: string): string {
+  return text.replace(RUNCASTLE_TAG, '')
+}
+
 /** How long a runcastle line's head may run before it is cut at a word: about one line of the column. */
 const RUNCASTLE_HEAD_MAX = 140
 
@@ -515,7 +527,7 @@ function foldRuncastleText(text: string): { head: string; rest: boolean } {
  * sentence, the rest behind Show more.
  */
 function RuncastleLine({ text: tagged }: { text: string }) {
-  const text = tagged.replace(RUNCASTLE_TAG, '')
+  const text = untagRuncastle(tagged)
   const { head, rest } = foldRuncastleText(text)
   const [open, setOpen] = useState(false)
   return (

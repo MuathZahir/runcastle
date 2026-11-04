@@ -49,7 +49,6 @@ import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import { showFile, showableFile } from '../threads/shown'
 import { showReviewPackage } from '../threads/review-package'
-import { requireProjectFeature } from './orchestrator-tools'
 import { reviewShots, type ReviewShots } from '../services/review-package'
 import { appendSaw, readSaw } from '../services/review-saw'
 import { captureReviewShot } from '../workflows/review-capture'
@@ -136,7 +135,7 @@ import { updateSettings } from '../services/settings'
 import { withheldDriveFor } from '../workflows/review-ticket'
 import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
-import { registerOrchestratorTools } from './orchestrator-tools'
+import { recordFeatureAction, registerOrchestratorTools, requireProjectFeature } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
@@ -1969,12 +1968,16 @@ export async function toolCreateFeature(
   session: SessionRow,
   input: CreateFeatureInput,
 ): Promise<CreateFeatureResult> {
-  if (session.kind !== 'project') return createFeatureFor(ctx, session, input)
-  return runAsActor('orchestrator', async () => {
-    const created = await createFeatureFor(ctx, session, input)
-    claimHold(ctx, created.id, session.id)
-    return created
-  })
+  const created =
+    session.kind !== 'project'
+      ? await createFeatureFor(ctx, session, input)
+      : await runAsActor('orchestrator', async () => {
+          const made = await createFeatureFor(ctx, session, input)
+          claimHold(ctx, made.id, session.id)
+          return made
+        })
+  recordFeatureAction(ctx, session, created.id, input.draft ? 'parked' : 'created')
+  return created
 }
 
 interface CreateFeatureInput {

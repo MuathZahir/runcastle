@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { type Feature, type SessionRow, isStoppableHeadlessRun } from '@runcastle/core'
+import { type Feature, type FeatureAction, type SessionRow, isStoppableHeadlessRun } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -25,10 +25,13 @@ import type { TestDriveResult } from '../services/git'
 import { holderName, requireHold, takeHold } from '../services/holding'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
+  getFeatureRow,
   projectForFeature,
   requireProjectById,
   rowToFeature,
 } from '../services/repo'
+import { appendThreadEvent } from '../threads/log'
+import { seedFromTranscript } from '../threads/read'
 import type { HeaderCarrier } from './server'
 
 /**
@@ -88,6 +91,28 @@ export function orchestratorTool<A extends unknown[], R>(
   return (...args) => runAsActor('orchestrator', () => handler(...args))
 }
 
+/**
+ * Record in the calling chat's log that a tool changed a feature, so the chat
+ * shows it as a row of the turn's features card. Called once the change landed:
+ * a refused or failed call never reaches it. The title is the feature's now.
+ */
+export function recordFeatureAction(
+  ctx: AppCtx,
+  session: SessionRow,
+  featureId: string,
+  action: FeatureAction,
+  extra: { quote?: string; into?: string } = {},
+): void {
+  seedFromTranscript(ctx, session.id)
+  appendThreadEvent(session.id, {
+    type: 'feature_acted',
+    featureId,
+    title: getFeatureRow(ctx, featureId).title,
+    action,
+    ...extra,
+  })
+}
+
 /** Make this thread the holder of a feature, held or not, waking nothing on it. */
 export const toolTakeFeature = orchestratorTool(
   (
@@ -95,7 +120,9 @@ export const toolTakeFeature = orchestratorTool(
     session: SessionRow,
     input: { slug: string },
   ): { slug: string; heldBy: string; takenFrom: string | null } => {
-    const { from } = takeHold(ctx, session, requireProjectFeature(ctx, session, input.slug))
+    const feature = requireProjectFeature(ctx, session, input.slug)
+    const { from } = takeHold(ctx, session, feature)
+    recordFeatureAction(ctx, session, feature.id, 'taken')
     return { slug: input.slug, heldBy: holderName(session), takenFrom: from }
   },
 )
@@ -109,6 +136,7 @@ export const toolStartFeature = orchestratorTool(
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
     const feature = requireHeldFeature(ctx, session, input.slug)
     const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
+    recordFeatureAction(ctx, session, feature.id, 'started')
     return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }
   },
 )
@@ -127,6 +155,7 @@ export const toolPlanFeature = orchestratorTool(
       { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
       launch,
     )
+    recordFeatureAction(ctx, session, feature.id, 'planning')
     return { slug: feature.slug, sessionId }
   },
 )
@@ -139,7 +168,9 @@ export const toolStopFeatureRun = orchestratorTool(
     // lead never is — ending it would drop the conversation it is having.
     const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
     if (!run) throw new GateError(`\`${feature.slug}\` has no headless run going, so there is nothing to stop.`)
-    return endSession(ctx, run.id)
+    const ended = endSession(ctx, run.id)
+    recordFeatureAction(ctx, session, feature.id, 'planningStopped')
+    return ended
   },
 )
 
@@ -160,7 +191,11 @@ export const toolDrive = orchestratorTool(
     }
     const feature = requireHeldFeature(ctx, session, input.slug)
     requireNotDraft(feature)
-    return git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+    const result = await git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+    if (!result.deniedReason) {
+      recordFeatureAction(ctx, session, feature.id, input.action === 'start' ? 'driveStarted' : 'driveStopped')
+    }
+    return result
   },
 )
 
@@ -172,7 +207,9 @@ export const toolDrive = orchestratorTool(
 export const toolMergeFeature = orchestratorTool(
   async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<MergeFlowResult> => {
     const feature = requireHeldFeature(ctx, session, input.slug)
-    return mergeFeatureFlow(ctx, feature.id)
+    const merged = await mergeFeatureFlow(ctx, feature.id)
+    if (merged.ok && !merged.conflict) recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
+    return merged
   },
 )
 
@@ -210,6 +247,7 @@ export const toolAddToBrief = orchestratorTool(
         type: 'brief.added',
         message: `the orchestrator added to ${feature.slug}'s brief`,
       })
+      recordFeatureAction(ctx, session, feature.id, 'brief')
       return { slug: feature.slug, relPath: 'brief.md' }
     }
     const project = projectForFeature(ctx, feature)
@@ -230,6 +268,7 @@ export const toolAddToBrief = orchestratorTool(
       type: 'brief.added',
       message: `the orchestrator added to ${feature.slug}'s brief`,
     })
+    recordFeatureAction(ctx, session, feature.id, 'brief')
     return { slug: feature.slug, relPath: 'brief.md' }
   },
 )
