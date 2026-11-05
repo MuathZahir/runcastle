@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- page head: hand-written, kept by scripts/port-landing.mjs -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>runcastle - stop babysitting your coding agents</title>
+    <title>runcastle - the IDE for agents</title>
     <meta
       name="description"
-      content="Talk an idea through once and get back a branch to test drive. runcastle takes a feature through spec, tickets, build and review with Claude Code or Codex, unattended, on your own machine and your own repo."
+      content="An IDE built for agents. Plan, build, review and test with Claude Code or Codex, each agent in its own sandbox on your machine. runcastle runs the whole loop; you step in only for the decisions."
     />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/" />
@@ -15,10 +16,10 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://runcastle.dev/" />
-    <meta property="og:title" content="runcastle - stop babysitting your coding agents" />
+    <meta property="og:title" content="runcastle - the IDE for agents" />
     <meta
       property="og:description"
-      content="Each feature asks for you twice: to approve the plan, and to approve the merge. Everything between runs unattended on your machine, with Claude Code or Codex."
+      content="Plan, build, review and test with agents, each in its own sandbox on your machine. runcastle runs the whole loop. You make the calls."
     />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
@@ -26,13 +27,13 @@
     <meta property="og:image:height" content="1260" />
     <meta
       property="og:image:alt"
-      content="Stop babysitting your coding agents. Below the headline, six blocks for the phases of the pipeline (ideation, spec, tickets, build, review, shipped) stand on top of the runcastle workspace."
+      content="The IDE for agents. You make the calls. Beside the headline, an isometric scene: a request lands on the runcastle tower and three features are built in their own outlines."
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="runcastle - stop babysitting your coding agents" />
+    <meta name="twitter:title" content="runcastle - the IDE for agents" />
     <meta
       name="twitter:description"
-      content="Each feature asks for you twice: to approve the plan, and to approve the merge. Everything between runs unattended on your machine, with Claude Code or Codex."
+      content="Plan, build, review and test with agents, each in its own sandbox on your machine. runcastle runs the whole loop. You make the calls."
     />
 
     <!-- Structured data: free, source-available (FSL-1.1-ALv2), cross-platform, installed from npm.
@@ -47,7 +48,7 @@
         "url": "https://runcastle.dev/",
         "downloadUrl": "https://www.npmjs.com/package/runcastle",
         "license": "https://github.com/MuathZahir/runcastle/blob/main/LICENSE",
-        "description": "Talk an idea through once and get back a branch to test drive. runcastle takes a feature through spec, tickets, build and review with Claude Code or Codex, unattended, on your own machine and your own repo.",
+        "description": "An IDE built for agents. Plan, build, review and test with Claude Code or Codex, each agent in its own sandbox on your machine. runcastle runs the whole loop; you step in only for the decisions.",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -60,1392 +61,669 @@
       href="assets/fonts/geist-latin-wght-normal.woff2" />
     <link rel="preload" as="font" type="font/woff2" crossorigin
       href="assets/fonts/geist-mono-latin-wght-normal.woff2" />
-    <!-- The design system's component styles, for the product mockups. -->
-    <link rel="stylesheet" href="assets/rc-ui.css" />
-    <link rel="stylesheet" href="styles.css" />
-    <!-- Before first paint, so the pipeline's five resting panels never flash.
-         Without it they are all simply shown: see HOW IT WORKS in styles.css. -->
-    <script>
-      document.documentElement.classList.add('js')
-    </script>
+    <!-- end page head -->
+    <link rel="stylesheet" href="landing.css" />
+    <script src="landing.js" defer></script>
   </head>
-
   <body>
-    <a class="sr-only" href="#main">Skip to content</a>
+<div class="rc" data-b-class="[[rootClass]]">
 
-    <!-- Icon sprite. These are the design system's own glyphs (16px grid, 1.5px
-         round stroke), defined once and referenced with <use>. The i- set is
-         the icons, the p- set is the phase progress glyphs. -->
-    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
-      <symbol id="i-activity" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8h2.6l1.8-4.4 2.8 8.8L10.8 8h3.4" /></symbol>
-      <symbol id="i-arrow-right" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4l4 4-4 4" /></symbol>
-      <symbol id="i-branch" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="4.5" cy="3.8" r="1.7" /><circle cx="4.5" cy="12.2" r="1.7" />
-        <circle cx="11.5" cy="5" r="1.7" />
-        <path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6" />
-      </symbol>
-      <symbol id="i-chevron-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4" /></symbol>
-      <symbol id="i-claude" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.4v11.2M3.2 5.2l9.6 5.6M12.8 5.2l-9.6 5.6" /></symbol>
-      <symbol id="i-codex" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 4.8 2.4 8l3.2 3.2M10.4 4.8 13.6 8l-3.2 3.2" /></symbol>
-      <symbol id="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" />
-        <path d="M10.5 5.5v-2A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
-      </symbol>
-      <symbol id="i-cube" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 1.6l5.4 3v6.8L8 14.4l-5.4-3V4.6z" /><path d="M8 7.6l5.4-3M8 7.6L2.6 4.6M8 7.6v6.8" />
-      </symbol>
-      <symbol id="i-doc" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 1.8h5.2L13 5.6v8.6H4z" /><path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4" />
-      </symbol>
-      <symbol id="i-expand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9.5 6.5M2.5 13.5l4-4" /></symbol>
-      <symbol id="i-flame" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M8 14.4c2.7 0 4.7-2 4.7-4.7 0-2-1.3-3.4-2-4.7-.7 1.3-1.3 2-2 2 0-2-.7-4-2.7-5.4 0 2.7-2.7 4-2.7 8.1 0 2.7 2 4.7 4.7 4.7z" /></symbol>
-      <symbol id="i-folder" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.4 1.7h5.2c.8 0 1.4.6 1.4 1.4v6.5c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" /></symbol>
-      <symbol id="i-message" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.4a1.6 1.6 0 0 1 1.6-1.6h8.8A1.6 1.6 0 0 1 14 4.4v5.2a1.6 1.6 0 0 1-1.6 1.6H6.4L3.2 14v-2.8A1.6 1.6 0 0 1 2 9.6z" /></symbol>
-      <symbol id="i-more" viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="3.2" cy="8" r="1.1" /><circle cx="8" cy="8" r="1.1" /><circle cx="12.8" cy="8" r="1.1" />
-      </symbol>
-      <symbol id="i-pencil" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10.6 2.4a1.7 1.7 0 0 1 2.4 2.4L5.5 12.3 2.4 13.1l.8-3.1z" /><path d="M9.4 3.6l2.4 2.4" />
-      </symbol>
-      <symbol id="i-play" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.2v9.6L13 8z" /></symbol>
-      <symbol id="i-search" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 L14 14" /></symbol>
-      <symbol id="i-settings" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="8" r="2" />
-        <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" />
-      </symbol>
-      <symbol id="i-shield" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z" /></symbol>
-      <symbol id="i-stop" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.2" /></symbol>
-      <symbol id="i-terminal" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" /><path d="m4.5 6.2 2.3 2-2.3 2M8.5 10.4h3" />
-      </symbol>
-      <symbol id="i-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></symbol>
-      <symbol id="i-undo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h5a3 3 0 0 1 0 6H7" /><path d="M7 3.5 4.5 6 7 8.5" /></symbol>
-      <symbol id="i-redo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M11 6H6a3 3 0 0 0 0 6h3" /><path d="M9 3.5 11.5 6 9 8.5" /></symbol>
-      <symbol id="i-x" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="m4 4 8 8M12 4l-8 8" /></symbol>
-      <!-- the review player's drawing tools: pen, arrow, rectangle -->
-      <symbol id="i-pen" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5c2-1 3-3.5 5-3.5s2 2 4 1.5 2.5-3 2.5-3" /></symbol>
-      <symbol id="i-arrow-tool" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="M3 13 13 3M7 3h6v6" /></symbol>
-      <symbol id="i-rect" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="11" height="8" rx="1" /></symbol>
+  <header class="nav">
+    <div class="wrap nav-in">
+      <a class="brand" href="#top" aria-label="runcastle home">
+        <svg class="logo" viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg>
+        runcastle
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a class="nl" href="/docs/">Docs</a>
+        <a class="nl" href="/compare/">Compare</a>
+        <a class="nl" href="https://github.com/MuathZahir/runcastle">GitHub</a>
+        <a class="btn quiet sm" href="#install">Install</a>
+      </nav>
+    </div>
+  </header>
 
-      <symbol id="p-draft" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6" stroke-dasharray="2.2 2.2" /></symbol>
-      <symbol id="p-ideation" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6" /></symbol>
-      <symbol id="p-spec" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 0 1 4 4z" fill="currentColor" stroke="none" />
-      </symbol>
-      <symbol id="p-tickets" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 0 1 0 8z" fill="currentColor" stroke="none" />
-      </symbol>
-      <symbol id="p-implementation" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 1 1-4 4z" fill="currentColor" stroke="none" />
-      </symbol>
-      <symbol id="p-review" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none" />
-      </symbol>
-      <!-- The tick is cut in the colour of whatever the glyph sits on. -->
-      <symbol id="p-shipped" viewBox="0 0 16 16" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="8" r="7" fill="currentColor" />
-        <path d="M5.2 8.2 7 10l3.8-3.8" stroke-width="1.6" style="stroke: var(--tick, var(--surface))" />
-      </symbol>
-    </svg>
+  <!-- Hero -->
+  <section class="hero sec" id="top">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <h1 class="hl">The IDE for agents.<br>You make the calls.</h1>
+        <p class="lede">Plan, build, review and test with agents, each in its own sandbox on your machine. runcastle runs the whole loop. You step in only for the decisions.</p>
+        <div class="cta">
+          <div class="chip">
+            <span class="mono pr" aria-hidden="true"><span data-t="promptChar">$</span></span>
+            <code class="mono"><span data-t="cmd">curl -fsSL https://runcastle.dev/install.sh | bash</span></code>
+            <button class="cp" data-b-class="[[copyCls]]" data-on-click="copy" aria-label="Copy the install command"><svg class="ico i-copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ico i-ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></button>
+          </div>
+          <a class="more" href="/docs/">Read the docs<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4"></path></svg></a>
+        </div>
+      </div>
 
-    <!-- ===================== NAV ===================== -->
-    <header class="nav" id="nav">
-      <div class="nav-inner">
-        <a class="brand" href="#main" aria-label="runcastle home">
-          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
-              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
-          </svg>
-          <span>runcastle</span>
-        </a>
+      <div class="scene" role="img" aria-label="A request lands on the orchestrator, light runs out to three features, each is outlined first, workers build inside the outlines, the finished blocks stack onto the base, a review scan passes through them, and the stack ships.">
+        <div class="iso">
+          <div class="plane"></div>
+          <div class="wire" data-b-class="[[h.aW]]"><i class="seg h l2" style="left:88px;top:264px;width:176px;height:1px;transform-origin:right center"></i><i class="seg v l1" style="left:88px;top:264px;width:1px;height:88px;transform-origin:center top"></i></div>
+          <div class="wire" data-b-class="[[h.bW]]"><i class="seg v l2" style="left:264px;top:88px;width:1px;height:176px;transform-origin:center bottom"></i><i class="seg h l1" style="left:264px;top:88px;width:88px;height:1px;transform-origin:left center"></i></div>
+          <div class="wire" data-b-class="[[h.cW]]"><i class="seg h l2" style="left:264px;top:264px;width:88px;height:1px;transform-origin:left center"></i><i class="seg v l1" style="left:352px;top:264px;width:1px;height:88px;transform-origin:center top"></i></div>
+          <i class="pulse pa" data-b-class="[[h.aP]]"></i><i class="pulse pb" data-b-class="[[h.bP]]"></i><i class="pulse pc" data-b-class="[[h.cP]]"></i>
+          <i class="land" data-b-class="[[h.aR]]"></i><i class="land" data-b-class="[[h.bR]]"></i><i class="land" data-b-class="[[h.cR]]"></i>
+          <div class="cube tower up" data-b-class="[[h.tower]]" style="left:220px;top:220px">
+            <i class="f-t"><svg viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg></i>
+            <i class="f-s"></i><i class="f-e"></i>
+          </div>
+          <div class="cube w j0" data-b-class="[[h.a0]]" style="left:48px;top:312px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j1" data-b-class="[[h.a1]]" style="left:92px;top:312px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j2" data-b-class="[[h.a2]]" style="left:48px;top:356px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j3" data-b-class="[[h.a3]]" style="left:92px;top:356px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j0" data-b-class="[[h.b0]]" style="left:312px;top:48px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j1" data-b-class="[[h.b1]]" style="left:356px;top:48px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j2" data-b-class="[[h.b2]]" style="left:312px;top:92px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j3" data-b-class="[[h.b3]]" style="left:356px;top:92px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j0" data-b-class="[[h.c0]]" style="left:312px;top:312px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j1" data-b-class="[[h.c1]]" style="left:356px;top:312px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j2" data-b-class="[[h.c2]]" style="left:312px;top:356px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube w j3" data-b-class="[[h.c3]]" style="left:356px;top:356px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube blk ba" data-b-class="[[h.aB]]"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube blk bb" data-b-class="[[h.bB]]"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube blk bc" data-b-class="[[h.cB]]"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <i class="scan" data-b-class="[[h.scan]]"></i>
+          <i class="drop" data-b-class="[[h.drop]]"></i>
+        </div>
+      </div>
+    </div>
+  </section>
 
-        <nav class="nav-links" aria-label="Sections">
-          <a href="#pipeline">How it works</a>
-          <a href="/docs/">Docs</a>
-          <a href="/compare/">Compare</a>
-        </nav>
+  <section class="row  sec x-orc " data-b-class="row  sec x-orc [[lit.orc]]" id="pipeline" data-sec="orc">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Talk to one orchestrator. It cuts the work.</h2>
+        <p class="lede">Bring a raw idea. The orchestrator checks it against what's already built, cuts it into features, and gives each one its own agent.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="Requests drop onto the orchestrator one at a time: Audit payment system, Start authentication, Team billing. It reads each one, cuts it into three or four features, and sends each feature out along a line to its own spot, where its agent starts working.">
+          <div class="iso">
+            <div class="plane"></div>
+            <div class="orc-w" data-b-class="[[orc.w0]]"><span class="orc-seg orc-h orc-a0" style="left:84px;top:264px;width:180px"></span></div>
+            <div class="orc-w" data-b-class="[[orc.w1]]"><span class="orc-seg orc-v orc-a1" style="left:264px;top:84px;height:180px"></span></div>
+            <div class="orc-w" data-b-class="[[orc.w2]]"><span class="orc-seg orc-h orc-a2" style="left:264px;top:264px;width:180px"></span></div>
+            <div class="orc-w" data-b-class="[[orc.w3]]"><span class="orc-seg orc-v orc-a3" style="left:264px;top:264px;height:180px"></span></div>
 
-        <div class="nav-right">
-          <a class="nav-gh" href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z" />
+            <div class="cube orc-f orc-j0 orc-a0" data-b-class="[[orc.f00]]"><i class="f-t"><span class="ink-top orc-ink"><b>Ledger<br>checks</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j1 orc-a2" data-b-class="[[orc.f01]]"><i class="f-t"><span class="ink-top orc-ink"><b>Refund<br>flow</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j2 orc-a3" data-b-class="[[orc.f02]]"><i class="f-t"><span class="ink-top orc-ink"><b>Audit<br>log</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            <div class="cube orc-f orc-j0 orc-a0" data-b-class="[[orc.f10]]"><i class="f-t"><span class="ink-top orc-ink"><b>Auth<br>endpoints</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j1 orc-a1" data-b-class="[[orc.f11]]"><i class="f-t"><span class="ink-top orc-ink"><b>Session<br>tokens</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j2 orc-a2" data-b-class="[[orc.f12]]"><i class="f-t"><span class="ink-top orc-ink"><b>Login<br>screen</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j3 orc-a3" data-b-class="[[orc.f13]]"><i class="f-t"><span class="ink-top orc-ink"><b>Database<br>migrations</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            <div class="cube orc-f orc-j0 orc-a0 orc-in orc-out orc-landed orc-away" data-b-class="[[orc.f20]]"><i class="f-t"><span class="ink-top orc-ink"><b>Seat<br>pricing</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j1 orc-a1 orc-in orc-out orc-landed orc-away" data-b-class="[[orc.f21]]"><i class="f-t"><span class="ink-top orc-ink"><b>Invoices<br>per team</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-f orc-j2 orc-a2 orc-in orc-out orc-landed orc-away" data-b-class="[[orc.f22]]"><i class="f-t"><span class="ink-top orc-ink"><b>Billing<br>emails</b></span><span class="orc-bar"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            <div class="cube tower up" data-b-class="[[orc.tower]]" style="left:196px;top:196px">
+              <i class="f-t"><svg viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg></i>
+              <i class="f-s"></i><i class="f-e"></i>
+            </div>
+
+            <div class="cube orc-r" data-b-class="[[orc.r0]]"><i class="f-t"><span class="ink-top orc-ink orc-q"><em><span class="orc-e1">Request</span><span class="orc-e2">3 features</span></em><b>Audit payment<br>system</b></span><span class="orc-scan"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-r" data-b-class="[[orc.r1]]"><i class="f-t"><span class="ink-top orc-ink orc-q"><em><span class="orc-e1">Request</span><span class="orc-e2">4 features</span></em><b>Start<br>authentication</b></span><span class="orc-scan"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube orc-r up orc-cut orc-sink" data-b-class="[[orc.r2]]"><i class="f-t"><span class="ink-top orc-ink orc-q"><em><span class="orc-e1">Request</span><span class="orc-e2">3 features</span></em><b>Team<br>billing</b></span><span class="orc-scan"></span></i><i class="f-s"></i><i class="f-e"></i></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row flip sec x-sbx " data-b-class="row flip sec x-sbx [[lit.sbx]]" data-sec="sbx">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Every ticket runs in its own sandbox.</h2>
+        <p class="lede">Each feature agent works in rounds. Every ticket gets a fresh sandbox and its own worker. Only what failed goes into the next round.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="Nine glass sandboxes rise from a grid. Each lid shows its ticket number and title. A ticket drops into every box and runs as a blue worker. One by one, seven turn green and two turn red. The failed sandboxes are torn down, and in Round 2 only those two tickets get fresh sandboxes, run again, and land green. Then every sandbox lowers into the floor and the loop starts over.">
+          <div class="iso">
+            <div class="plane"></div>
+            <div class="sbx-rd" style="left:64px;top:498px"><span class="sbx-rn sbx-new" data-b-class="[[sbx.r1]]">Round 1</span><span class="sbx-rn sbx-new" data-b-class="[[sbx.r2]]">Round 2</span></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.0.fl]]" style="left:44px;top:44px" data-b-style="left:[[sbx.boxes.0.l]]px;top:[[sbx.boxes.0.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.0.tk]]" style="left:80px;top:102px" data-b-style="left:[[sbx.boxes.0.tl]]px;top:[[sbx.boxes.0.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.0.bx]]" style="left:44px;top:44px" data-b-style="left:[[sbx.boxes.0.l]]px;top:[[sbx.boxes.0.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.0.n">12</span></b><span class="sbx-tt"><span data-t="sbx.boxes.0.title">Fee math</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.1.fl]]" style="left:204px;top:44px" data-b-style="left:[[sbx.boxes.1.l]]px;top:[[sbx.boxes.1.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.1.tk]]" style="left:240px;top:102px" data-b-style="left:[[sbx.boxes.1.tl]]px;top:[[sbx.boxes.1.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.1.bx]]" style="left:204px;top:44px" data-b-style="left:[[sbx.boxes.1.l]]px;top:[[sbx.boxes.1.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.1.n">13</span></b><span class="sbx-tt"><span data-t="sbx.boxes.1.title">Due dates</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.2.fl]]" style="left:364px;top:44px" data-b-style="left:[[sbx.boxes.2.l]]px;top:[[sbx.boxes.2.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.2.tk]]" style="left:400px;top:102px" data-b-style="left:[[sbx.boxes.2.tl]]px;top:[[sbx.boxes.2.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.2.bx]]" style="left:364px;top:44px" data-b-style="left:[[sbx.boxes.2.l]]px;top:[[sbx.boxes.2.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.2.n">15</span></b><span class="sbx-tt"><span data-t="sbx.boxes.2.title">Late fees</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.3.fl]]" style="left:44px;top:204px" data-b-style="left:[[sbx.boxes.3.l]]px;top:[[sbx.boxes.3.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.3.tk]]" style="left:80px;top:262px" data-b-style="left:[[sbx.boxes.3.tl]]px;top:[[sbx.boxes.3.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.3.bx]]" style="left:44px;top:204px" data-b-style="left:[[sbx.boxes.3.l]]px;top:[[sbx.boxes.3.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.3.n">14</span></b><span class="sbx-tt"><span data-t="sbx.boxes.3.title">Reminders</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.4.fl]]" style="left:204px;top:204px" data-b-style="left:[[sbx.boxes.4.l]]px;top:[[sbx.boxes.4.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.4.tk]]" style="left:240px;top:262px" data-b-style="left:[[sbx.boxes.4.tl]]px;top:[[sbx.boxes.4.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.4.bx]]" style="left:204px;top:204px" data-b-style="left:[[sbx.boxes.4.l]]px;top:[[sbx.boxes.4.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.4.n">16</span></b><span class="sbx-tt"><span data-t="sbx.boxes.4.title">Tax lines</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.5.fl]]" style="left:364px;top:204px" data-b-style="left:[[sbx.boxes.5.l]]px;top:[[sbx.boxes.5.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.5.tk]]" style="left:400px;top:262px" data-b-style="left:[[sbx.boxes.5.tl]]px;top:[[sbx.boxes.5.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.5.bx]]" style="left:364px;top:204px" data-b-style="left:[[sbx.boxes.5.l]]px;top:[[sbx.boxes.5.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.5.n">18</span></b><span class="sbx-tt"><span data-t="sbx.boxes.5.title">Refunds</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.6.fl]]" style="left:44px;top:364px" data-b-style="left:[[sbx.boxes.6.l]]px;top:[[sbx.boxes.6.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.6.tk]]" style="left:80px;top:422px" data-b-style="left:[[sbx.boxes.6.tl]]px;top:[[sbx.boxes.6.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.6.bx]]" style="left:44px;top:364px" data-b-style="left:[[sbx.boxes.6.l]]px;top:[[sbx.boxes.6.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.6.n">17</span></b><span class="sbx-tt"><span data-t="sbx.boxes.6.title">PDF export</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.7.fl]]" style="left:204px;top:364px" data-b-style="left:[[sbx.boxes.7.l]]px;top:[[sbx.boxes.7.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.7.tk]]" style="left:240px;top:422px" data-b-style="left:[[sbx.boxes.7.tl]]px;top:[[sbx.boxes.7.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.7.bx]]" style="left:204px;top:364px" data-b-style="left:[[sbx.boxes.7.l]]px;top:[[sbx.boxes.7.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.7.n">19</span></b><span class="sbx-tt"><span data-t="sbx.boxes.7.title">Discounts</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="sbx-fl" data-b-class="[[sbx.boxes.8.fl]]" style="left:364px;top:364px" data-b-style="left:[[sbx.boxes.8.l]]px;top:[[sbx.boxes.8.t]]px"></div>
+              <div class="cube sbx-tk sbx-hide" data-b-class="[[sbx.boxes.8.tk]]" style="left:400px;top:422px" data-b-style="left:[[sbx.boxes.8.tl]]px;top:[[sbx.boxes.8.tt]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+              <div class="cube sbx-box" data-b-class="[[sbx.boxes.8.bx]]" style="left:364px;top:364px" data-b-style="left:[[sbx.boxes.8.l]]px;top:[[sbx.boxes.8.t]]px"><i class="f-t"><span class="ink-top"><span class="sbx-lb"><b class="sbx-n mono">#<span data-t="sbx.boxes.8.n">20</span></b><span class="sbx-tt"><span data-t="sbx.boxes.8.title">Audit log</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row  sec x-dsg " data-b-class="row  sec x-dsg [[lit.dsg]]" data-sec="dsg">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">See it in your app before it's built.</h2>
+        <p class="lede">The agent runs your real frontend and designs with your own components. Tell it what to change in the chat. When you like it, it commits the design and builds from there.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="Your app's invoice page lies on the grid next to the chat. Each chat line redesigns its Pay in installments card in place: a segmented control, then a slider, then a timeline. You type Looks good. Build it., and the agent commits design: installment timeline.">
+  <div class="iso">
+    <div class="plane"></div>
+    <div class="cube up dsg-page" style="left:166px;top:253px;width:400px;height:260px;--h:12px"><i class="f-t"><span class="ink-top"><span class="dsg-logo" style="left:18px;top:16px"></span><span class="dsg-tx b lg" style="left:40px;top:12px">Ledgerline</span><span class="dsg-tx " style="left:156px;top:13px">Invoices</span><span class="dsg-uline" style="left:156px;top:44px;width:60px"></span><span class="dsg-tx mut" style="left:238px;top:13px">Customers</span><span class="dsg-av" style="left:362px;top:13px"></span><span class="dsg-hr" style="left:0;right:0;top:46px"></span><span class="dsg-tx " style="left:18px;top:62px">Acme Studio</span><span class="dsg-tx mono mut sm" style="left:18px;top:84px">INV-2041</span><span class="dsg-tx xl" style="left:18px;top:106px">$2,400.00</span><span class="dsg-tx mut" style="left:18px;top:142px">Due Nov 30</span><span class="dsg-hr" style="left:18px;width:168px;top:176px"></span><span class="dsg-tx sm mut" style="left:18px;top:186px">Brand identity</span><span class="dsg-tx sm" style="right:214px;top:186px">$1,200.00</span><span class="dsg-tx sm mut" style="left:18px;top:209px">Web design</span><span class="dsg-tx sm" style="right:214px;top:209px">$800.00</span><span class="dsg-tx sm mut" style="left:18px;top:232px">Hosting, 1 year</span><span class="dsg-tx sm" style="right:214px;top:232px">$400.00</span><span class="dsg-card" style="left:204px;top:64px;width:180px;height:180px"><span class="dsg-draft" data-b-class="[[dsg.draft]]"></span><span class="dsg-hl" data-b-class="[[dsg.hl]]"></span><span class="dsg-lock" data-b-class="[[dsg.lock]]"></span><span class="dsg-title pre" data-b-class="[[dsg.title]]">Pay in installments</span><span class="dsg-v pre" data-b-class="[[dsg.va]]"><span class="dsg-seg"><span class="dsg-sk">2</span><span class="dsg-sk on">3</span><span class="dsg-sk">4</span></span><span class="dsg-tx sm mut" style="left:16px;top:98px">Nov 30</span><span class="dsg-tx sm" style="right:16px;top:98px">$800.00</span><span class="dsg-tx sm mut" style="left:16px;top:122px">Dec 30</span><span class="dsg-tx sm" style="right:16px;top:122px">$800.00</span><span class="dsg-tx sm mut" style="left:16px;top:146px">Jan 29</span><span class="dsg-tx sm" style="right:16px;top:146px">$800.00</span></span><span class="dsg-v pre" data-b-class="[[dsg.vb]]"><span class="dsg-amt a2"><b>$1,200 a month</b><em>for 2 months</em></span><span class="dsg-amt a3"><b>$800 a month</b><em>for 3 months</em></span><span class="dsg-rail"></span><span class="dsg-fill"></span><span class="dsg-knob"></span><span class="dsg-tick t2" style="left:14px">2</span><span class="dsg-tick t3" style="left:46px">3</span><span class="dsg-tick t4" style="left:78px">4</span><span class="dsg-tick t5" style="left:110px">5</span><span class="dsg-tick t6" style="left:142px">6</span></span><span class="dsg-v pre" data-b-class="[[dsg.vc]]"><span class="dsg-tx sm mut" style="left:16px;top:50px">3 payments of $800.00</span><span class="dsg-line"></span><span class="dsg-dot on" style="left:28px"></span><span class="dsg-date on" style="left:4px">Nov 30</span><span class="dsg-dot" style="left:84px"></span><span class="dsg-date" style="left:60px">Dec 30</span><span class="dsg-dot" style="left:140px"></span><span class="dsg-date" style="left:116px">Jan 29</span></span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+    <div class="cube dsg-msg me" data-b-class="[[dsg.m1]]" style="left:90px;top:-61px;width:196px;height:60px"><i class="f-t"><span class="ink-top"><span class="dsg-bt">Show me a few ways<br>to pay in installments.</span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+    <div class="cube dsg-msg me" data-b-class="[[dsg.m2]]" style="left:116px;top:9px;width:170px;height:42px"><i class="f-t"><span class="ink-top"><span class="dsg-bt">Try a slider instead.</span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+    <div class="cube dsg-msg me" data-b-class="[[dsg.m3]]" style="left:130px;top:61px;width:156px;height:42px"><i class="f-t"><span class="ink-top"><span class="dsg-bt">Now as a timeline.</span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+    <div class="cube dsg-msg me" data-b-class="[[dsg.m4]]" style="left:114px;top:113px;width:172px;height:42px"><i class="f-t"><span class="ink-top"><span class="dsg-bt">Looks good. Build it.</span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+    <div class="cube dsg-msg agent" data-b-class="[[dsg.m5]]" style="left:46px;top:165px;width:240px;height:58px"><i class="f-t"><span class="ink-top"><span class="dsg-bt"><span class="dsg-cm"><svg viewBox="0 0 16 16" class="dsg-ck"><path d="M3.5 8.5l3 3 6-7"/></svg>Committed</span><span class="dsg-sha">design: installment timeline</span></span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+  </div>
+</div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row flip sec x-rev " data-b-class="row flip sec x-rev [[lit.rev]]" data-sec="rev">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Watch the agent use what it built.</h2>
+        <p class="lede">Every round comes back with a review package: a video of the agent clicking through your app, a screenshot of each screen, and anything it found wrong.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="A finished feature block rises into a screen running the Ledgerline invoicing app. A cursor clicks through it while the screen records; after each screen a screenshot card lifts off the glass and lies down on a stack in front, and the agent marks one defect. The walkthrough video lands on top, the screen folds back into the block, and the stack is boxed up as a review package and sent off.">
+          <div class="iso">
+            <div class="plane"></div>
+            <i class="rev-pad" data-b-class="[[rev.pad]]"></i>
+            <div class="cube rev-scr up" data-b-class="[[rev.scr]]"><i class="f-t"></i><i class="f-s"><span class="ink-front">
+              <span class="rev-bezel"><span class="rev-rec" data-b-class="[[rev.rec]]"><b></b><span class="mono"><span data-t="rev.time">REC 0:00</span></span></span></span>
+              <span class="rev-app " data-b-class="rev-app [[rev.app]]">
+                <span class="la-side">
+                  <span class="la-brand"><b></b>Ledgerline</span>
+                  <span class="la-nav on">Invoices</span>
+                  <span class="la-nav">Customers</span>
+                  <span class="la-nav">Reports</span>
+                </span>
+                <span class="la-main">
+                  <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                  <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                  <span class="la-rows">
+                    <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                    <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                    <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                    <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                    <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                    <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                  </span>
+                </span>
+                <span class="la-drw">
+                  <span class="la-dh">New invoice</span>
+                  <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                  <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                  <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                  <span class="la-btn la-send">Send</span>
+                </span>
+                <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                <span class="rev-vf" data-b-class="[[rev.vf]]"></span>
+                <span class="rev-fl" data-b-class="[[rev.fl]]"></span>
+                <span class="rev-cur c0" data-b-class="[[rev.cur]]"><b class="rev-rip"></b><svg viewBox="0 0 12 17" aria-hidden="true"><path d="M1 1v13.2l3.3-3.1 2.3 5 2-.9-2.3-4.9h4.6z"/></svg></span>
+              </span>
+            </span></i><i class="f-e"></i></div>
+            
+              <div class="rev-fly k0" data-b-class="[[rev.tiles.0.fly]]"><div class="cube rev-tile" data-b-class="[[rev.tiles.0.cls]]"><i class="f-t"><span class="rev-thumb">
+                <span class="rev-app on s-drw" data-b-class="rev-app on [[rev.tiles.0.app]]">
+                  <span class="la-side">
+                    <span class="la-brand"><b></b>Ledgerline</span>
+                    <span class="la-nav on">Invoices</span>
+                    <span class="la-nav">Customers</span>
+                    <span class="la-nav">Reports</span>
+                  </span>
+                  <span class="la-main">
+                    <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                    <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                    <span class="la-rows">
+                      <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                    </span>
+                  </span>
+                  <span class="la-drw">
+                    <span class="la-dh">New invoice</span>
+                    <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                    <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                    <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                    <span class="la-btn la-send">Send</span>
+                  </span>
+                  <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                </span>
+                <span class="rev-play"></span>
+              </span></i><i class="f-s"></i><i class="f-e"></i></div></div>
+            
+              <div class="rev-fly k1" data-b-class="[[rev.tiles.1.fly]]"><div class="cube rev-tile" data-b-class="[[rev.tiles.1.cls]]"><i class="f-t"><span class="rev-thumb">
+                <span class="rev-app on s-drw s-tog" data-b-class="rev-app on [[rev.tiles.1.app]]">
+                  <span class="la-side">
+                    <span class="la-brand"><b></b>Ledgerline</span>
+                    <span class="la-nav on">Invoices</span>
+                    <span class="la-nav">Customers</span>
+                    <span class="la-nav">Reports</span>
+                  </span>
+                  <span class="la-main">
+                    <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                    <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                    <span class="la-rows">
+                      <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                    </span>
+                  </span>
+                  <span class="la-drw">
+                    <span class="la-dh">New invoice</span>
+                    <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                    <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                    <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                    <span class="la-btn la-send">Send</span>
+                  </span>
+                  <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                </span>
+                <span class="rev-play"></span>
+              </span></i><i class="f-s"></i><i class="f-e"></i></div></div>
+            
+              <div class="rev-fly k2" data-b-class="[[rev.tiles.2.fly]]"><div class="cube rev-tile" data-b-class="[[rev.tiles.2.cls]]"><i class="f-t"><span class="rev-thumb">
+                <span class="rev-app on s-tog s-new s-bug" data-b-class="rev-app on [[rev.tiles.2.app]]">
+                  <span class="la-side">
+                    <span class="la-brand"><b></b>Ledgerline</span>
+                    <span class="la-nav on">Invoices</span>
+                    <span class="la-nav">Customers</span>
+                    <span class="la-nav">Reports</span>
+                  </span>
+                  <span class="la-main">
+                    <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                    <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                    <span class="la-rows">
+                      <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                    </span>
+                  </span>
+                  <span class="la-drw">
+                    <span class="la-dh">New invoice</span>
+                    <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                    <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                    <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                    <span class="la-btn la-send">Send</span>
+                  </span>
+                  <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                </span>
+                <span class="rev-play"></span>
+              </span></i><i class="f-s"></i><i class="f-e"></i></div></div>
+            
+              <div class="rev-fly k3" data-b-class="[[rev.tiles.3.fly]]"><div class="cube rev-tile" data-b-class="[[rev.tiles.3.cls]]"><i class="f-t"><span class="rev-thumb">
+                <span class="rev-app on s-tog s-new s-ovd" data-b-class="rev-app on [[rev.tiles.3.app]]">
+                  <span class="la-side">
+                    <span class="la-brand"><b></b>Ledgerline</span>
+                    <span class="la-nav on">Invoices</span>
+                    <span class="la-nav">Customers</span>
+                    <span class="la-nav">Reports</span>
+                  </span>
+                  <span class="la-main">
+                    <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                    <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                    <span class="la-rows">
+                      <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                    </span>
+                  </span>
+                  <span class="la-drw">
+                    <span class="la-dh">New invoice</span>
+                    <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                    <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                    <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                    <span class="la-btn la-send">Send</span>
+                  </span>
+                  <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                </span>
+                <span class="rev-play"></span>
+              </span></i><i class="f-s"></i><i class="f-e"></i></div></div>
+            
+              <div class="rev-fly k4 vid" data-b-class="[[rev.tiles.4.fly]]"><div class="cube rev-tile" data-b-class="[[rev.tiles.4.cls]]"><i class="f-t"><span class="rev-thumb">
+                <span class="rev-app on s-tog s-new s-ovd" data-b-class="rev-app on [[rev.tiles.4.app]]">
+                  <span class="la-side">
+                    <span class="la-brand"><b></b>Ledgerline</span>
+                    <span class="la-nav on">Invoices</span>
+                    <span class="la-nav">Customers</span>
+                    <span class="la-nav">Reports</span>
+                  </span>
+                  <span class="la-main">
+                    <span class="la-head"><span class="la-title">Invoices</span><span class="la-btn la-new">New invoice</span></span>
+                    <span class="la-tabs"><span class="la-tab t-all">All</span><span class="la-tab t-ovd">Overdue</span><span class="la-tab">Paid</span><b class="la-ink"></b></span>
+                    <span class="la-rows">
+                      <span class="la-row r-new"><span class="mono la-no">INV-2041</span><span>Acme Studio</span><span class="mono la-amt">$2,400.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2040</span><span>Northwind Co.</span><span class="mono la-amt">$4,200.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2039</span><span>Halcyon Labs</span><span class="mono la-amt">$1,850.00</span><span class="la-pill due">Overdue</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2038</span><span>Pinecrest</span><span class="mono la-amt">$920.00</span><span class="la-pill draft">Draft</span></span>
+                      <span class="la-row"><span class="mono la-no">INV-2037</span><span>Orchard &amp; Vale</span><span class="mono la-amt">$3,100.00</span><span class="la-pill paid">Paid</span></span>
+                      <span class="la-row r-o"><span class="mono la-no">INV-2036</span><span>Marlow Supply</span><span class="mono la-amt">$640.00</span><span class="la-pill due">Overdue</span></span>
+                    </span>
+                  </span>
+                  <span class="la-drw">
+                    <span class="la-dh">New invoice</span>
+                    <span class="la-lb l1">Customer</span><span class="la-in i1">Acme Studio</span>
+                    <span class="la-lb l2">Amount</span><span class="la-in i2 mono">$2,400.00</span>
+                    <span class="la-tgrow"><span>Auto-remind</span><span class="la-tg"><b></b></span></span>
+                    <span class="la-btn la-send">Send</span>
+                  </span>
+                  <span class="rev-bug"><b></b><span class="rev-bugtag">Expected Sent</span></span>
+                </span>
+                <span class="rev-play"></span>
+              </span></i><i class="f-s"></i><i class="f-e"></i></div></div>
+            
+            <div class="cube rev-box" data-b-class="[[rev.box]]"><i class="f-s"><b class="rev-tape"></b></i><i class="f-e"></i><i class="rev-wn"></i><i class="rev-ww"></i><span class="rev-lidw"><i class="rev-lid"><span class="ink-top"><span class="rev-lab"><span class="rev-tag">Review package</span><span class="rev-sub mono">video · 4 shots</span><span class="rev-sub mono rev-def">1 defect</span></span></span></i></span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row  sec x-drv " data-b-class="row  sec x-drv [[lit.drv]]" data-sec="drv">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Test drive from any state.</h2>
+        <p class="lede">Pick a scenario and the feature's branch starts with that data already in place. A new account, a busy month, an overdue customer. No stashing, no migrations, no setup by hand.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="A list of test-drive scenarios lies on the grid in front of a standing Ledgerline screen: New account, Busy month, Overdue customer and Blank app. Each scenario row is pressed in turn; a line runs along the ground from the list to the foot of the screen, a small chip rides it, and the screen, labelled Test drive with the scenario name, wipes up to that state: an empty dashboard, a busy month with 300 invoices, then invoice INV-2041 for Acme Studio, 12 days overdue.">
+          <div class="iso">
+            <div class="plane"></div>
+
+            <div class="cube drv-panel up"><i class="f-t"><span class="ink-top"><span class="drv-ph">Scenarios</span></span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube drv-row r0 up" data-b-class="[[drv.r0]]"><i class="f-t"><span class="ink-top drv-rt"><em></em>New account</span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube drv-row r1 up" data-b-class="[[drv.r1]]"><i class="f-t"><span class="ink-top drv-rt"><em></em>Busy month</span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube drv-row r2 up sel" data-b-class="[[drv.r2]]"><i class="f-t"><span class="ink-top drv-rt"><em></em>Overdue customer</span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube drv-row r3 up"><i class="f-t"><span class="ink-top drv-rt"><em></em>Blank app</span></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            <svg class="drv-wires" width="528" height="528" viewBox="0 0 528 528" aria-hidden="true">
+              <path class="drv-ln l0" data-b-class="[[drv.l0]]" pathLength="100" d="M271 234 L352 234 L352 95"></path>
+              <path class="drv-ln l1" data-b-class="[[drv.l1]]" pathLength="100" d="M271 276 L352 276 L352 95"></path>
+              <path class="drv-ln l2" data-b-class="[[drv.l2]]" pathLength="100" d="M271 318 L352 318 L352 95"></path>
             </svg>
-            GitHub
-          </a>
-          <a class="lp-btn lp-btn-primary" href="#install">Get started</a>
+            <div class="cube drv-chip p0" data-b-class="[[drv.chip]]"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            <div class="cube drv-scr up"><i class="f-t"></i><i class="f-s"><div class="ink-front">
+
+              <div class="drv-lay" data-b-class="[[drv.s0]]"><div class="drv-tagline"><span class="d"></span>Test drive · <b>New account</b></div><div class="drv-ui">
+                <div class="drv-bar"><b><span class="drv-logo"></span>Ledgerline</b><span>Dashboard</span></div>
+                <div class="drv-body drv-new">
+                  <div class="drv-empty">
+                    <strong>No invoices yet</strong>
+                    <p>Send your first one in a minute.</p>
+                    <span class="drv-btn">Create invoice</span>
+                  </div>
+                  <div class="drv-check">
+                    <h4>Get set up</h4>
+                    <p class="ok"><span class="d"></span>Business details</p>
+                    <p><span class="d"></span>Connect bank</p>
+                    <p><span class="d"></span>First customer</p>
+                  </div>
+                </div>
+              </div></div>
+
+              <div class="drv-lay under" data-b-class="[[drv.s1]]"><div class="drv-tagline"><span class="d"></span>Test drive · <b>Busy month</b></div><div class="drv-ui">
+                <div class="drv-bar"><b><span class="drv-logo"></span>Ledgerline</b><span>Invoices</span></div>
+                <div class="drv-body">
+                  <div class="drv-kpi">
+                    <div><strong>300 invoices</strong><p>October · $184,250.00</p></div>
+                    <div class="drv-chart"><span style="height:38%"></span><span style="height:52%"></span><span style="height:45%"></span><span style="height:64%"></span><span style="height:58%"></span><span style="height:76%"></span><span style="height:70%"></span><span class="hi" style="height:100%"></span></div>
+                  </div>
+                  <div class="drv-tbl">
+                    <p><span>INV-2298</span><span>Acme Studio</span><span>Oct 31</span><span>$2,400.00</span><em class="pd">Paid</em></p>
+                    <p><span>INV-2297</span><span>Northwind</span><span>Oct 31</span><span>$860.00</span><em>Sent</em></p>
+                    <p><span>INV-2296</span><span>Bluefin Co.</span><span>Oct 30</span><span>$1,120.00</span><em class="pd">Paid</em></p>
+                    <p><span>INV-2295</span><span>Oak &amp; Pine</span><span>Oct 30</span><span>$3,075.00</span><em>Sent</em></p>
+                  </div>
+                </div>
+              </div></div>
+
+              <div class="drv-lay top" data-b-class="[[drv.s2]]"><div class="drv-tagline"><span class="d"></span>Test drive · <b>Overdue customer</b></div><div class="drv-ui">
+                <div class="drv-bar"><b><span class="drv-logo"></span>Ledgerline</b><span>INV-2041</span></div>
+                <div class="drv-body">
+                  <div class="drv-banner"><span class="d"></span>12 days overdue · $25.00 late fee</div>
+                  <div class="drv-inv">
+                    <div><p>Acme Studio · Due Oct 23</p><strong>$2,400.00</strong></div>
+                    <span class="drv-btn">Send reminder</span>
+                  </div>
+                  <div class="drv-tbl drv-lines">
+                    <p><span>Design retainer</span><span>$1,800.00</span></p>
+                    <p><span>Brand workshop</span><span>$600.00</span></p>
+                  </div>
+                </div>
+              </div></div>
+
+              <div class="drv-edge" data-b-class="[[drv.edge]]"></div>
+            </div></i><i class="f-e"></i></div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row flip sec x-nts " data-b-class="row flip sec x-nts [[lit.nts]]" data-sec="nts">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Ctrl+J. Noted for later.</h2>
+        <p class="lede">Jot down what you notice from anywhere in the app, without losing your place. When you're ready, the orchestrator groups your notes, asks about the unclear ones, and routes each to a feature.</p>
+      </div>
+      <div class="stage">
+<div class="scene" role="img" aria-label="An invoicing app lies flat on the grid like a page, with three small layout bugs. Each time one is spotted, Ctrl and J are pressed, a small note box opens in the corner of the page, and a plain note tile settles into the next of three slots. Then the three notes ride a line into the orchestrator block, which sends each one along its own line to the edge of the page, in line with its bug, and the bug is fixed.">
+          <div class="iso">
+            <div class="plane"></div>
+
+            <svg class="nts-ln" width="528" height="528" viewBox="0 0 528 528" aria-hidden="true">
+              <path class="lT" data-b-class="[[nts.lT]]" d="M440 396H280"></path>
+              <path class="lA" data-b-class="[[nts.lA]]" d="M264 396V308H88V232"></path>
+              <path class="lB" data-b-class="[[nts.lB]]" d="M264 396V232"></path>
+              <path class="lC" data-b-class="[[nts.lC]]" d="M264 396V308H424V232"></path>
+            </svg>
+
+            <div class="nts-slot" style="left:332px;top:376px"></div>
+            <div class="nts-slot" style="left:376px;top:376px"></div>
+            <div class="nts-slot" style="left:420px;top:376px"></div>
+
+            <div class="cube up nts-pg" style="left:44px;top:44px;width:440px;height:220px">
+              <i class="f-t"><div class="ink-top"><div class="nts-ui" data-b-class="[[nts.ui]]">
+                <div class="nts-bar">
+                  <span class="nts-logo"><b></b></span>
+                  <span class="nts-brand">Ledgerline</span>
+                  <span class="nts-nav"><em>Invoices</em><span>Clients</span></span>
+                </div>
+                <div class="nts-card">
+                  <div class="nts-ttl">Invoice #1042</div>
+                  <div class="nts-row r0"><span>Design retainer</span><span>$3,200</span></div>
+                  <div class="nts-row r1"><span>Hosting</span><span>$480</span></div>
+                  <div class="nts-row r2"><span>Support</span><span>$600</span></div>
+                  <div class="nts-send">Send invoice</div>
+                  <div class="nts-tot"><span>Total</span><b>$4,280</b></div>
+                </div>
+                <div class="nts-mk k0" data-b-class="[[nts.m0]]"></div>
+                <div class="nts-mk k1" data-b-class="[[nts.m1]]"></div>
+                <div class="nts-mk k2" data-b-class="[[nts.m2]]"></div>
+                <div class="nts-pal" data-b-class="[[nts.pal]]">
+                  <svg class="nts-pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"></path></svg>
+                  <span class="nts-fld ph" data-b-class="[[nts.field]]"><span data-t="nts.text">What did you just notice?</span></span><span class="nts-car"></span>
+                </div>
+              </div></div></i>
+              <i class="f-s"></i><i class="f-e"></i>
+            </div>
+
+            <div class="cube tower up" data-b-class="[[nts.tower]]" style="left:220px;top:352px">
+              <i class="f-t"><svg viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg></i>
+              <i class="f-s"></i><i class="f-e"></i>
+            </div>
+
+            <div class="cube key up" data-b-class="[[nts.k1]]" style="left:484px;top:374px;width:66px;height:44px"><i class="f-t"><span class="ink-top nts-cap">Ctrl</span></i><i class="f-s"></i><i class="f-e"></i></div>
+            <div class="cube key up" data-b-class="[[nts.k2]]" style="left:558px;top:374px;width:44px;height:44px"><i class="f-t"><span class="ink-top nts-cap">J</span></i><i class="f-s"></i><i class="f-e"></i></div>
+
+            
+              <div class="cube nts-tile" data-b-class="[[nts.notes.0.cls]]" style="--o:88px" data-b-style="--o:[[nts.notes.0.o]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="cube nts-tile" data-b-class="[[nts.notes.1.cls]]" style="--o:44px" data-b-style="--o:[[nts.notes.1.o]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+              <div class="cube nts-tile" data-b-class="[[nts.notes.2.cls]]" style="--o:0px" data-b-style="--o:[[nts.notes.2.o]]px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+            
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  <section class="row  sec x-phn " data-b-class="row  sec x-phn [[lit.phn]]" data-sec="phn">
+    <div class="wrap">
+      <div class="t">
+        <h2 class="h">Answer from anywhere.</h2>
+        <p class="lede">Turn on the private link and scan the code. Your phone gets every chat, design and walkthrough over Tailscale, and a notification when an agent needs you.</p>
+        <div class="pair">
+          <div class="qr" role="img" aria-label="QR code that opens runcastle on your phone">
+            <span class="k" data-b-class="[[qr.0.cls]]"></span><span class="k" data-b-class="[[qr.1.cls]]"></span><span class="k" data-b-class="[[qr.2.cls]]"></span><span class="k" data-b-class="[[qr.3.cls]]"></span><span class="k" data-b-class="[[qr.4.cls]]"></span><span class="k" data-b-class="[[qr.5.cls]]"></span><span class="k" data-b-class="[[qr.6.cls]]"></span><span class="" data-b-class="[[qr.7.cls]]"></span><span class="" data-b-class="[[qr.8.cls]]"></span><span class="" data-b-class="[[qr.9.cls]]"></span><span class="k" data-b-class="[[qr.10.cls]]"></span><span class="" data-b-class="[[qr.11.cls]]"></span><span class="k" data-b-class="[[qr.12.cls]]"></span><span class="" data-b-class="[[qr.13.cls]]"></span><span class="k" data-b-class="[[qr.14.cls]]"></span><span class="k" data-b-class="[[qr.15.cls]]"></span><span class="k" data-b-class="[[qr.16.cls]]"></span><span class="k" data-b-class="[[qr.17.cls]]"></span><span class="k" data-b-class="[[qr.18.cls]]"></span><span class="k" data-b-class="[[qr.19.cls]]"></span><span class="k" data-b-class="[[qr.20.cls]]"></span><span class="k" data-b-class="[[qr.21.cls]]"></span><span class="" data-b-class="[[qr.22.cls]]"></span><span class="" data-b-class="[[qr.23.cls]]"></span><span class="" data-b-class="[[qr.24.cls]]"></span><span class="" data-b-class="[[qr.25.cls]]"></span><span class="" data-b-class="[[qr.26.cls]]"></span><span class="k" data-b-class="[[qr.27.cls]]"></span><span class="" data-b-class="[[qr.28.cls]]"></span><span class="k" data-b-class="[[qr.29.cls]]"></span><span class="k" data-b-class="[[qr.30.cls]]"></span><span class="" data-b-class="[[qr.31.cls]]"></span><span class="" data-b-class="[[qr.32.cls]]"></span><span class="" data-b-class="[[qr.33.cls]]"></span><span class="" data-b-class="[[qr.34.cls]]"></span><span class="k" data-b-class="[[qr.35.cls]]"></span><span class="" data-b-class="[[qr.36.cls]]"></span><span class="" data-b-class="[[qr.37.cls]]"></span><span class="" data-b-class="[[qr.38.cls]]"></span><span class="" data-b-class="[[qr.39.cls]]"></span><span class="" data-b-class="[[qr.40.cls]]"></span><span class="k" data-b-class="[[qr.41.cls]]"></span><span class="k" data-b-class="[[qr.42.cls]]"></span><span class="" data-b-class="[[qr.43.cls]]"></span><span class="k" data-b-class="[[qr.44.cls]]"></span><span class="k" data-b-class="[[qr.45.cls]]"></span><span class="k" data-b-class="[[qr.46.cls]]"></span><span class="" data-b-class="[[qr.47.cls]]"></span><span class="k" data-b-class="[[qr.48.cls]]"></span><span class="" data-b-class="[[qr.49.cls]]"></span><span class="k" data-b-class="[[qr.50.cls]]"></span><span class="k" data-b-class="[[qr.51.cls]]"></span><span class="" data-b-class="[[qr.52.cls]]"></span><span class="" data-b-class="[[qr.53.cls]]"></span><span class="" data-b-class="[[qr.54.cls]]"></span><span class="" data-b-class="[[qr.55.cls]]"></span><span class="k" data-b-class="[[qr.56.cls]]"></span><span class="" data-b-class="[[qr.57.cls]]"></span><span class="k" data-b-class="[[qr.58.cls]]"></span><span class="k" data-b-class="[[qr.59.cls]]"></span><span class="k" data-b-class="[[qr.60.cls]]"></span><span class="" data-b-class="[[qr.61.cls]]"></span><span class="k" data-b-class="[[qr.62.cls]]"></span><span class="k" data-b-class="[[qr.63.cls]]"></span><span class="" data-b-class="[[qr.64.cls]]"></span><span class="k" data-b-class="[[qr.65.cls]]"></span><span class="k" data-b-class="[[qr.66.cls]]"></span><span class="k" data-b-class="[[qr.67.cls]]"></span><span class="" data-b-class="[[qr.68.cls]]"></span><span class="k" data-b-class="[[qr.69.cls]]"></span><span class="" data-b-class="[[qr.70.cls]]"></span><span class="" data-b-class="[[qr.71.cls]]"></span><span class="" data-b-class="[[qr.72.cls]]"></span><span class="k" data-b-class="[[qr.73.cls]]"></span><span class="" data-b-class="[[qr.74.cls]]"></span><span class="k" data-b-class="[[qr.75.cls]]"></span><span class="" data-b-class="[[qr.76.cls]]"></span><span class="k" data-b-class="[[qr.77.cls]]"></span><span class="" data-b-class="[[qr.78.cls]]"></span><span class="k" data-b-class="[[qr.79.cls]]"></span><span class="k" data-b-class="[[qr.80.cls]]"></span><span class="k" data-b-class="[[qr.81.cls]]"></span><span class="" data-b-class="[[qr.82.cls]]"></span><span class="k" data-b-class="[[qr.83.cls]]"></span><span class="k" data-b-class="[[qr.84.cls]]"></span><span class="" data-b-class="[[qr.85.cls]]"></span><span class="k" data-b-class="[[qr.86.cls]]"></span><span class="k" data-b-class="[[qr.87.cls]]"></span><span class="k" data-b-class="[[qr.88.cls]]"></span><span class="" data-b-class="[[qr.89.cls]]"></span><span class="k" data-b-class="[[qr.90.cls]]"></span><span class="" data-b-class="[[qr.91.cls]]"></span><span class="" data-b-class="[[qr.92.cls]]"></span><span class="" data-b-class="[[qr.93.cls]]"></span><span class="" data-b-class="[[qr.94.cls]]"></span><span class="" data-b-class="[[qr.95.cls]]"></span><span class="" data-b-class="[[qr.96.cls]]"></span><span class="" data-b-class="[[qr.97.cls]]"></span><span class="k" data-b-class="[[qr.98.cls]]"></span><span class="" data-b-class="[[qr.99.cls]]"></span><span class="k" data-b-class="[[qr.100.cls]]"></span><span class="k" data-b-class="[[qr.101.cls]]"></span><span class="k" data-b-class="[[qr.102.cls]]"></span><span class="" data-b-class="[[qr.103.cls]]"></span><span class="k" data-b-class="[[qr.104.cls]]"></span><span class="k" data-b-class="[[qr.105.cls]]"></span><span class="" data-b-class="[[qr.106.cls]]"></span><span class="" data-b-class="[[qr.107.cls]]"></span><span class="" data-b-class="[[qr.108.cls]]"></span><span class="" data-b-class="[[qr.109.cls]]"></span><span class="" data-b-class="[[qr.110.cls]]"></span><span class="k" data-b-class="[[qr.111.cls]]"></span><span class="" data-b-class="[[qr.112.cls]]"></span><span class="" data-b-class="[[qr.113.cls]]"></span><span class="" data-b-class="[[qr.114.cls]]"></span><span class="k" data-b-class="[[qr.115.cls]]"></span><span class="" data-b-class="[[qr.116.cls]]"></span><span class="k" data-b-class="[[qr.117.cls]]"></span><span class="" data-b-class="[[qr.118.cls]]"></span><span class="k" data-b-class="[[qr.119.cls]]"></span><span class="" data-b-class="[[qr.120.cls]]"></span><span class="" data-b-class="[[qr.121.cls]]"></span><span class="" data-b-class="[[qr.122.cls]]"></span><span class="" data-b-class="[[qr.123.cls]]"></span><span class="" data-b-class="[[qr.124.cls]]"></span><span class="k" data-b-class="[[qr.125.cls]]"></span><span class="k" data-b-class="[[qr.126.cls]]"></span><span class="k" data-b-class="[[qr.127.cls]]"></span><span class="k" data-b-class="[[qr.128.cls]]"></span><span class="k" data-b-class="[[qr.129.cls]]"></span><span class="k" data-b-class="[[qr.130.cls]]"></span><span class="k" data-b-class="[[qr.131.cls]]"></span><span class="k" data-b-class="[[qr.132.cls]]"></span><span class="" data-b-class="[[qr.133.cls]]"></span><span class="k" data-b-class="[[qr.134.cls]]"></span><span class="" data-b-class="[[qr.135.cls]]"></span><span class="k" data-b-class="[[qr.136.cls]]"></span><span class="" data-b-class="[[qr.137.cls]]"></span><span class="k" data-b-class="[[qr.138.cls]]"></span><span class="" data-b-class="[[qr.139.cls]]"></span><span class="k" data-b-class="[[qr.140.cls]]"></span><span class="k" data-b-class="[[qr.141.cls]]"></span><span class="k" data-b-class="[[qr.142.cls]]"></span><span class="k" data-b-class="[[qr.143.cls]]"></span><span class="k" data-b-class="[[qr.144.cls]]"></span><span class="k" data-b-class="[[qr.145.cls]]"></span><span class="k" data-b-class="[[qr.146.cls]]"></span><span class="" data-b-class="[[qr.147.cls]]"></span><span class="" data-b-class="[[qr.148.cls]]"></span><span class="" data-b-class="[[qr.149.cls]]"></span><span class="" data-b-class="[[qr.150.cls]]"></span><span class="" data-b-class="[[qr.151.cls]]"></span><span class="" data-b-class="[[qr.152.cls]]"></span><span class="" data-b-class="[[qr.153.cls]]"></span><span class="" data-b-class="[[qr.154.cls]]"></span><span class="k" data-b-class="[[qr.155.cls]]"></span><span class="k" data-b-class="[[qr.156.cls]]"></span><span class="" data-b-class="[[qr.157.cls]]"></span><span class="" data-b-class="[[qr.158.cls]]"></span><span class="" data-b-class="[[qr.159.cls]]"></span><span class="" data-b-class="[[qr.160.cls]]"></span><span class="" data-b-class="[[qr.161.cls]]"></span><span class="" data-b-class="[[qr.162.cls]]"></span><span class="" data-b-class="[[qr.163.cls]]"></span><span class="" data-b-class="[[qr.164.cls]]"></span><span class="" data-b-class="[[qr.165.cls]]"></span><span class="" data-b-class="[[qr.166.cls]]"></span><span class="" data-b-class="[[qr.167.cls]]"></span><span class="k" data-b-class="[[qr.168.cls]]"></span><span class="" data-b-class="[[qr.169.cls]]"></span><span class="k" data-b-class="[[qr.170.cls]]"></span><span class="" data-b-class="[[qr.171.cls]]"></span><span class="" data-b-class="[[qr.172.cls]]"></span><span class="k" data-b-class="[[qr.173.cls]]"></span><span class="k" data-b-class="[[qr.174.cls]]"></span><span class="k" data-b-class="[[qr.175.cls]]"></span><span class="" data-b-class="[[qr.176.cls]]"></span><span class="" data-b-class="[[qr.177.cls]]"></span><span class="k" data-b-class="[[qr.178.cls]]"></span><span class="" data-b-class="[[qr.179.cls]]"></span><span class="k" data-b-class="[[qr.180.cls]]"></span><span class="" data-b-class="[[qr.181.cls]]"></span><span class="" data-b-class="[[qr.182.cls]]"></span><span class="k" data-b-class="[[qr.183.cls]]"></span><span class="" data-b-class="[[qr.184.cls]]"></span><span class="k" data-b-class="[[qr.185.cls]]"></span><span class="" data-b-class="[[qr.186.cls]]"></span><span class="" data-b-class="[[qr.187.cls]]"></span><span class="k" data-b-class="[[qr.188.cls]]"></span><span class="" data-b-class="[[qr.189.cls]]"></span><span class="" data-b-class="[[qr.190.cls]]"></span><span class="" data-b-class="[[qr.191.cls]]"></span><span class="" data-b-class="[[qr.192.cls]]"></span><span class="" data-b-class="[[qr.193.cls]]"></span><span class="" data-b-class="[[qr.194.cls]]"></span><span class="" data-b-class="[[qr.195.cls]]"></span><span class="" data-b-class="[[qr.196.cls]]"></span><span class="" data-b-class="[[qr.197.cls]]"></span><span class="" data-b-class="[[qr.198.cls]]"></span><span class="" data-b-class="[[qr.199.cls]]"></span><span class="" data-b-class="[[qr.200.cls]]"></span><span class="" data-b-class="[[qr.201.cls]]"></span><span class="" data-b-class="[[qr.202.cls]]"></span><span class="" data-b-class="[[qr.203.cls]]"></span><span class="" data-b-class="[[qr.204.cls]]"></span><span class="" data-b-class="[[qr.205.cls]]"></span><span class="" data-b-class="[[qr.206.cls]]"></span><span class="" data-b-class="[[qr.207.cls]]"></span><span class="" data-b-class="[[qr.208.cls]]"></span><span class="" data-b-class="[[qr.209.cls]]"></span><span class="k" data-b-class="[[qr.210.cls]]"></span><span class="" data-b-class="[[qr.211.cls]]"></span><span class="k" data-b-class="[[qr.212.cls]]"></span><span class="" data-b-class="[[qr.213.cls]]"></span><span class="" data-b-class="[[qr.214.cls]]"></span><span class="k" data-b-class="[[qr.215.cls]]"></span><span class="k" data-b-class="[[qr.216.cls]]"></span><span class="k" data-b-class="[[qr.217.cls]]"></span><span class="" data-b-class="[[qr.218.cls]]"></span><span class="" data-b-class="[[qr.219.cls]]"></span><span class="k" data-b-class="[[qr.220.cls]]"></span><span class="" data-b-class="[[qr.221.cls]]"></span><span class="k" data-b-class="[[qr.222.cls]]"></span><span class="" data-b-class="[[qr.223.cls]]"></span><span class="" data-b-class="[[qr.224.cls]]"></span><span class="k" data-b-class="[[qr.225.cls]]"></span><span class="" data-b-class="[[qr.226.cls]]"></span><span class="k" data-b-class="[[qr.227.cls]]"></span><span class="" data-b-class="[[qr.228.cls]]"></span><span class="" data-b-class="[[qr.229.cls]]"></span><span class="k" data-b-class="[[qr.230.cls]]"></span><span class="" data-b-class="[[qr.231.cls]]"></span><span class="" data-b-class="[[qr.232.cls]]"></span><span class="" data-b-class="[[qr.233.cls]]"></span><span class="k" data-b-class="[[qr.234.cls]]"></span><span class="k" data-b-class="[[qr.235.cls]]"></span><span class="" data-b-class="[[qr.236.cls]]"></span><span class="" data-b-class="[[qr.237.cls]]"></span><span class="" data-b-class="[[qr.238.cls]]"></span><span class="k" data-b-class="[[qr.239.cls]]"></span><span class="k" data-b-class="[[qr.240.cls]]"></span><span class="" data-b-class="[[qr.241.cls]]"></span><span class="" data-b-class="[[qr.242.cls]]"></span><span class="" data-b-class="[[qr.243.cls]]"></span><span class="k" data-b-class="[[qr.244.cls]]"></span><span class="k" data-b-class="[[qr.245.cls]]"></span><span class="" data-b-class="[[qr.246.cls]]"></span><span class="" data-b-class="[[qr.247.cls]]"></span><span class="" data-b-class="[[qr.248.cls]]"></span><span class="k" data-b-class="[[qr.249.cls]]"></span><span class="k" data-b-class="[[qr.250.cls]]"></span><span class="" data-b-class="[[qr.251.cls]]"></span><span class="" data-b-class="[[qr.252.cls]]"></span><span class="" data-b-class="[[qr.253.cls]]"></span><span class="" data-b-class="[[qr.254.cls]]"></span><span class="k" data-b-class="[[qr.255.cls]]"></span><span class="k" data-b-class="[[qr.256.cls]]"></span><span class="" data-b-class="[[qr.257.cls]]"></span><span class="k" data-b-class="[[qr.258.cls]]"></span><span class="" data-b-class="[[qr.259.cls]]"></span><span class="k" data-b-class="[[qr.260.cls]]"></span><span class="k" data-b-class="[[qr.261.cls]]"></span><span class="" data-b-class="[[qr.262.cls]]"></span><span class="" data-b-class="[[qr.263.cls]]"></span><span class="" data-b-class="[[qr.264.cls]]"></span><span class="k" data-b-class="[[qr.265.cls]]"></span><span class="k" data-b-class="[[qr.266.cls]]"></span><span class="" data-b-class="[[qr.267.cls]]"></span><span class="" data-b-class="[[qr.268.cls]]"></span><span class="" data-b-class="[[qr.269.cls]]"></span><span class="k" data-b-class="[[qr.270.cls]]"></span><span class="k" data-b-class="[[qr.271.cls]]"></span><span class="" data-b-class="[[qr.272.cls]]"></span><span class="" data-b-class="[[qr.273.cls]]"></span><span class="" data-b-class="[[qr.274.cls]]"></span><span class="" data-b-class="[[qr.275.cls]]"></span><span class="" data-b-class="[[qr.276.cls]]"></span><span class="" data-b-class="[[qr.277.cls]]"></span><span class="" data-b-class="[[qr.278.cls]]"></span><span class="" data-b-class="[[qr.279.cls]]"></span><span class="" data-b-class="[[qr.280.cls]]"></span><span class="" data-b-class="[[qr.281.cls]]"></span><span class="" data-b-class="[[qr.282.cls]]"></span><span class="k" data-b-class="[[qr.283.cls]]"></span><span class="" data-b-class="[[qr.284.cls]]"></span><span class="k" data-b-class="[[qr.285.cls]]"></span><span class="" data-b-class="[[qr.286.cls]]"></span><span class="" data-b-class="[[qr.287.cls]]"></span><span class="k" data-b-class="[[qr.288.cls]]"></span><span class="" data-b-class="[[qr.289.cls]]"></span><span class="k" data-b-class="[[qr.290.cls]]"></span><span class="" data-b-class="[[qr.291.cls]]"></span><span class="" data-b-class="[[qr.292.cls]]"></span><span class="k" data-b-class="[[qr.293.cls]]"></span><span class="k" data-b-class="[[qr.294.cls]]"></span><span class="k" data-b-class="[[qr.295.cls]]"></span><span class="k" data-b-class="[[qr.296.cls]]"></span><span class="k" data-b-class="[[qr.297.cls]]"></span><span class="k" data-b-class="[[qr.298.cls]]"></span><span class="k" data-b-class="[[qr.299.cls]]"></span><span class="k" data-b-class="[[qr.300.cls]]"></span><span class="" data-b-class="[[qr.301.cls]]"></span><span class="" data-b-class="[[qr.302.cls]]"></span><span class="" data-b-class="[[qr.303.cls]]"></span><span class="" data-b-class="[[qr.304.cls]]"></span><span class="" data-b-class="[[qr.305.cls]]"></span><span class="" data-b-class="[[qr.306.cls]]"></span><span class="" data-b-class="[[qr.307.cls]]"></span><span class="" data-b-class="[[qr.308.cls]]"></span><span class="" data-b-class="[[qr.309.cls]]"></span><span class="" data-b-class="[[qr.310.cls]]"></span><span class="" data-b-class="[[qr.311.cls]]"></span><span class="" data-b-class="[[qr.312.cls]]"></span><span class="" data-b-class="[[qr.313.cls]]"></span><span class="" data-b-class="[[qr.314.cls]]"></span><span class="k" data-b-class="[[qr.315.cls]]"></span><span class="" data-b-class="[[qr.316.cls]]"></span><span class="" data-b-class="[[qr.317.cls]]"></span><span class="" data-b-class="[[qr.318.cls]]"></span><span class="" data-b-class="[[qr.319.cls]]"></span><span class="" data-b-class="[[qr.320.cls]]"></span><span class="k" data-b-class="[[qr.321.cls]]"></span><span class="" data-b-class="[[qr.322.cls]]"></span><span class="" data-b-class="[[qr.323.cls]]"></span><span class="" data-b-class="[[qr.324.cls]]"></span><span class="k" data-b-class="[[qr.325.cls]]"></span><span class="" data-b-class="[[qr.326.cls]]"></span><span class="k" data-b-class="[[qr.327.cls]]"></span><span class="" data-b-class="[[qr.328.cls]]"></span><span class="" data-b-class="[[qr.329.cls]]"></span><span class="k" data-b-class="[[qr.330.cls]]"></span><span class="" data-b-class="[[qr.331.cls]]"></span><span class="k" data-b-class="[[qr.332.cls]]"></span><span class="" data-b-class="[[qr.333.cls]]"></span><span class="" data-b-class="[[qr.334.cls]]"></span><span class="k" data-b-class="[[qr.335.cls]]"></span><span class="k" data-b-class="[[qr.336.cls]]"></span><span class="" data-b-class="[[qr.337.cls]]"></span><span class="k" data-b-class="[[qr.338.cls]]"></span><span class="k" data-b-class="[[qr.339.cls]]"></span><span class="k" data-b-class="[[qr.340.cls]]"></span><span class="" data-b-class="[[qr.341.cls]]"></span><span class="k" data-b-class="[[qr.342.cls]]"></span><span class="" data-b-class="[[qr.343.cls]]"></span><span class="k" data-b-class="[[qr.344.cls]]"></span><span class="k" data-b-class="[[qr.345.cls]]"></span><span class="" data-b-class="[[qr.346.cls]]"></span><span class="" data-b-class="[[qr.347.cls]]"></span><span class="" data-b-class="[[qr.348.cls]]"></span><span class="k" data-b-class="[[qr.349.cls]]"></span><span class="k" data-b-class="[[qr.350.cls]]"></span><span class="" data-b-class="[[qr.351.cls]]"></span><span class="" data-b-class="[[qr.352.cls]]"></span><span class="" data-b-class="[[qr.353.cls]]"></span><span class="k" data-b-class="[[qr.354.cls]]"></span><span class="k" data-b-class="[[qr.355.cls]]"></span><span class="" data-b-class="[[qr.356.cls]]"></span><span class="k" data-b-class="[[qr.357.cls]]"></span><span class="" data-b-class="[[qr.358.cls]]"></span><span class="k" data-b-class="[[qr.359.cls]]"></span><span class="k" data-b-class="[[qr.360.cls]]"></span><span class="k" data-b-class="[[qr.361.cls]]"></span><span class="" data-b-class="[[qr.362.cls]]"></span><span class="k" data-b-class="[[qr.363.cls]]"></span><span class="" data-b-class="[[qr.364.cls]]"></span><span class="k" data-b-class="[[qr.365.cls]]"></span><span class="k" data-b-class="[[qr.366.cls]]"></span><span class="" data-b-class="[[qr.367.cls]]"></span><span class="" data-b-class="[[qr.368.cls]]"></span><span class="" data-b-class="[[qr.369.cls]]"></span><span class="k" data-b-class="[[qr.370.cls]]"></span><span class="k" data-b-class="[[qr.371.cls]]"></span><span class="" data-b-class="[[qr.372.cls]]"></span><span class="" data-b-class="[[qr.373.cls]]"></span><span class="" data-b-class="[[qr.374.cls]]"></span><span class="k" data-b-class="[[qr.375.cls]]"></span><span class="k" data-b-class="[[qr.376.cls]]"></span><span class="" data-b-class="[[qr.377.cls]]"></span><span class="k" data-b-class="[[qr.378.cls]]"></span><span class="" data-b-class="[[qr.379.cls]]"></span><span class="k" data-b-class="[[qr.380.cls]]"></span><span class="k" data-b-class="[[qr.381.cls]]"></span><span class="k" data-b-class="[[qr.382.cls]]"></span><span class="" data-b-class="[[qr.383.cls]]"></span><span class="k" data-b-class="[[qr.384.cls]]"></span><span class="" data-b-class="[[qr.385.cls]]"></span><span class="" data-b-class="[[qr.386.cls]]"></span><span class="" data-b-class="[[qr.387.cls]]"></span><span class="k" data-b-class="[[qr.388.cls]]"></span><span class="" data-b-class="[[qr.389.cls]]"></span><span class="k" data-b-class="[[qr.390.cls]]"></span><span class="" data-b-class="[[qr.391.cls]]"></span><span class="" data-b-class="[[qr.392.cls]]"></span><span class="k" data-b-class="[[qr.393.cls]]"></span><span class="" data-b-class="[[qr.394.cls]]"></span><span class="k" data-b-class="[[qr.395.cls]]"></span><span class="" data-b-class="[[qr.396.cls]]"></span><span class="" data-b-class="[[qr.397.cls]]"></span><span class="k" data-b-class="[[qr.398.cls]]"></span><span class="k" data-b-class="[[qr.399.cls]]"></span><span class="" data-b-class="[[qr.400.cls]]"></span><span class="" data-b-class="[[qr.401.cls]]"></span><span class="" data-b-class="[[qr.402.cls]]"></span><span class="" data-b-class="[[qr.403.cls]]"></span><span class="" data-b-class="[[qr.404.cls]]"></span><span class="k" data-b-class="[[qr.405.cls]]"></span><span class="" data-b-class="[[qr.406.cls]]"></span><span class="" data-b-class="[[qr.407.cls]]"></span><span class="" data-b-class="[[qr.408.cls]]"></span><span class="" data-b-class="[[qr.409.cls]]"></span><span class="" data-b-class="[[qr.410.cls]]"></span><span class="" data-b-class="[[qr.411.cls]]"></span><span class="" data-b-class="[[qr.412.cls]]"></span><span class="" data-b-class="[[qr.413.cls]]"></span><span class="" data-b-class="[[qr.414.cls]]"></span><span class="" data-b-class="[[qr.415.cls]]"></span><span class="" data-b-class="[[qr.416.cls]]"></span><span class="" data-b-class="[[qr.417.cls]]"></span><span class="" data-b-class="[[qr.418.cls]]"></span><span class="" data-b-class="[[qr.419.cls]]"></span><span class="k" data-b-class="[[qr.420.cls]]"></span><span class="k" data-b-class="[[qr.421.cls]]"></span><span class="k" data-b-class="[[qr.422.cls]]"></span><span class="k" data-b-class="[[qr.423.cls]]"></span><span class="k" data-b-class="[[qr.424.cls]]"></span><span class="k" data-b-class="[[qr.425.cls]]"></span><span class="k" data-b-class="[[qr.426.cls]]"></span><span class="" data-b-class="[[qr.427.cls]]"></span><span class="" data-b-class="[[qr.428.cls]]"></span><span class="" data-b-class="[[qr.429.cls]]"></span><span class="k" data-b-class="[[qr.430.cls]]"></span><span class="" data-b-class="[[qr.431.cls]]"></span><span class="k" data-b-class="[[qr.432.cls]]"></span><span class="" data-b-class="[[qr.433.cls]]"></span><span class="" data-b-class="[[qr.434.cls]]"></span><span class="k" data-b-class="[[qr.435.cls]]"></span><span class="" data-b-class="[[qr.436.cls]]"></span><span class="k" data-b-class="[[qr.437.cls]]"></span><span class="" data-b-class="[[qr.438.cls]]"></span><span class="" data-b-class="[[qr.439.cls]]"></span><span class="k" data-b-class="[[qr.440.cls]]"></span>
+          </div>
+          <div><b>Private link</b><p>Only your own Tailscale devices can reach it.</p></div>
         </div>
       </div>
-    </header>
-
-    <main id="main">
-      <!-- ===================== HERO ===================== -->
-      <section class="hero">
-        <div class="wrap">
-          <h1 class="rise">Stop babysitting your coding agents.</h1>
-          <p class="lede rise" style="--i: 1">
-            Talk an idea through once, get back a branch to test drive. Claude Code or Codex builds
-            it unattended.
-          </p>
-          <div class="hero-cta rise" style="--i: 2">
-            <a class="lp-btn lp-btn-primary lp-btn-lg" href="#install">
-              Get started
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
-            </a>
-            <!-- The href is the film itself, which is what someone with no JS
-                 gets. main.js opens it in the dialog at the foot of the page. -->
-            <a class="lp-btn lp-btn-ghost lp-btn-lg" href="assets/video/runcastle-demo-1080.mp4"
-              data-film-open>
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-play" /></svg>
-              Watch the film
-              <span class="film-time">1:00</span>
-            </a>
-          </div>
-
-          <!-- The castle: six phase blocks as battlements, the app as the wall. -->
-          <div class="castle-top" aria-hidden="true">
-            <div class="merlon ph-ideation rise" style="--i: 3">
-              <svg><use href="#p-ideation" /></svg><span>Ideation</span>
+      <div class="stage">
+<div class="scene" role="img" aria-label="The orchestrator sends a pulse of light along a line on the grid to a phone standing beside it. The phone wakes with a notification: Installment plans, the design is ready for you to look at. The chat opens on the agent's design, the reply Looks good. Build it. is typed and sent, a pulse carries it back, and the feature starts working: Working, Round 1.">
+          <div class="iso">
+            <div class="plane"></div>
+            <div class="phn-shadow"></div>
+            <div class="phn-wire"><span class="phn-seg a"></span><span class="phn-seg b"></span></div>
+            <span class="phn-pulse" data-b-class="[[phn.pulse]]"></span>
+            <div class="cube tower up" data-b-class="[[phn.base]]" style="left:70px;top:330px">
+              <i class="f-t"><svg viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg></i>
+              <i class="f-s"></i><i class="f-e"></i>
             </div>
-            <div class="merlon ph-spec rise" style="--i: 4">
-              <svg><use href="#p-spec" /></svg><span>Spec</span>
-            </div>
-            <div class="merlon ph-tickets rise" style="--i: 5">
-              <svg><use href="#p-tickets" /></svg><span>Tickets</span>
-            </div>
-            <div class="merlon ph-implementation rise" style="--i: 6">
-              <svg><use href="#p-implementation" /></svg><span>Build</span>
-            </div>
-            <div class="merlon ph-review rise" style="--i: 7">
-              <svg><use href="#p-review" /></svg><span>Review</span>
-            </div>
-            <div class="merlon ph-shipped rise" style="--i: 8">
-              <svg><use href="#p-shipped" /></svg><span>Shipped</span>
-            </div>
-          </div>
-
-          <p class="sr-only">
-            The runcastle workspace. A sidebar groups six features by who is blocked: two need you,
-            one has an agent working, two are in progress and one has shipped. The open feature is
-            on its tickets phase, with ten dependency-ordered tickets and a next step offering to
-            burn them.
-          </p>
-          <div class="castle-wall rise" style="--i: 9" inert aria-hidden="true">
-            <div class="rc-shell__side">
-              <div class="mk-side-head">
-                <svg width="18" height="18" viewBox="0 0 32 32">
-                  <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
-                    d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
-                </svg>
-                <b>runcastle-demo</b>
-                <svg class="rc-icon is-14"><use href="#i-chevron-down" /></svg>
-                <span class="rc-spacer"></span>
-                <span class="rc-btn rc-btn--ghost rc-btn--sm rc-btn--icon">
-                  <svg class="rc-icon is-14"><use href="#i-pencil" /></svg>
-                </span>
-              </div>
-              <div class="mk-search">
-                <div class="rc-input">
-                  <svg class="rc-icon is-14"><use href="#i-search" /></svg>
-                  <span>Search</span>
-                  <kbd class="rc-kbd">Ctrl K</kbd>
-                </div>
-              </div>
-              <div class="rc-nav">
-                <svg class="rc-icon"><use href="#i-folder" /></svg>
-                <span class="rc-nav__label">Project</span>
-              </div>
-              <div class="rc-nav">
-                <svg class="rc-icon"><use href="#i-activity" /></svg>
-                <span class="rc-nav__label">Activity</span>
-              </div>
-              <div class="mk-gap-12"></div>
-              <div class="rc-label">Needs you<span class="rc-label__count">2</span></div>
-              <div class="rc-nav" aria-current="page">
-                <svg class="rc-phase ph-tickets"><use href="#p-tickets" /></svg>
-                <span class="rc-nav__label">Realtime team collaboration</span>
-                <span class="rc-dot rc-dot--warning"></span>
-              </div>
-              <div class="rc-nav">
-                <svg class="rc-phase ph-review"><use href="#p-review" /></svg>
-                <span class="rc-nav__label">Entry tags</span>
-                <span class="rc-dot rc-dot--warning"></span>
-              </div>
-              <div class="mk-gap-8"></div>
-              <div class="rc-label">Agent working<span class="rc-label__count">1</span></div>
-              <div class="rc-nav">
-                <svg class="rc-phase ph-implementation"><use href="#p-implementation" /></svg>
-                <span class="rc-nav__label">Offline draft sync</span>
-                <span class="rc-dot rc-dot--live"></span>
-                <span class="rc-nav__meta">4/10</span>
-              </div>
-              <div class="mk-gap-8"></div>
-              <div class="rc-label">In progress<span class="rc-label__count">2</span></div>
-              <div class="rc-nav">
-                <svg class="rc-phase ph-spec"><use href="#p-spec" /></svg>
-                <span class="rc-nav__label">Kickoff probe</span>
-              </div>
-              <div class="rc-nav">
-                <svg class="rc-phase ph-ideation"><use href="#p-ideation" /></svg>
-                <span class="rc-nav__label">Weekly digest email</span>
-              </div>
-              <div class="mk-gap-8"></div>
-              <div class="rc-label">Shipped<span class="rc-label__count">1</span></div>
-              <div class="rc-nav">
-                <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
-                <span class="rc-nav__label">Mood filter</span>
-              </div>
-              <span class="rc-spacer"></span>
-              <div class="rc-meta mk-side-foot">
-                <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Server</span>
-                <span class="rc-meta__item">
-                  <svg class="rc-icon is-14"><use href="#i-cube" /></svg>docker
-                </span>
-                <span class="rc-spacer"></span>
-                <span class="rc-btn rc-btn--ghost rc-btn--sm rc-btn--icon">
-                  <svg class="rc-icon is-14"><use href="#i-settings" /></svg>
-                </span>
-              </div>
-            </div>
-
-            <div class="rc-shell__main">
-              <div class="rc-topbar">
-                <div class="rc-crumbs">
-                  <svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>
-                  <b>Realtime team collaboration</b>
-                </div>
-                <span class="rc-spacer"></span>
-                <div class="mk-tools">
-                  <div class="rc-tabs" role="tablist">
-                    <span class="rc-tab" role="tab" aria-selected="true">Overview</span>
-                    <span class="rc-tab" role="tab" aria-selected="false">Tickets<span class="rc-tab__count">10</span></span>
-                    <span class="rc-tab" role="tab" aria-selected="false">Activity</span>
-                  </div>
-                  <span class="rc-btn rc-btn--secondary rc-btn--sm">
-                    <svg class="rc-icon is-14"><use href="#i-message" /></svg>Chat
-                  </span>
-                </div>
-                <span class="rc-btn rc-btn--ghost rc-btn--icon">
-                  <svg class="rc-icon"><use href="#i-more" /></svg>
-                </span>
-              </div>
-              <div class="rc-page">
-                <div class="rc-page__inner">
-                  <div class="rc-title-lg">Realtime team collaboration</div>
-                  <div class="mk-gap-12"></div>
-                  <div class="rc-meta">
-                    <span class="rc-meta__item">
-                      <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
+            <div class="phn-body">
+              <i class="phn-l back" style="top:0px"></i>
+              <i class="phn-l" style="top:1px"></i><i class="phn-l" style="top:2px"></i><i class="phn-l" style="top:3px"></i>
+              <i class="phn-l" style="top:4px"></i><i class="phn-l" style="top:5px"></i><i class="phn-l" style="top:6px"></i>
+              <i class="phn-l" style="top:7px"></i><i class="phn-l" style="top:8px"></i><i class="phn-l" style="top:9px"></i>
+              <i class="phn-l" style="top:10px"></i><i class="phn-l" style="top:11px"></i>
+              <i class="phn-l rim" style="top:12px"></i><i class="phn-l" style="top:13px"></i>
+              <i class="phn-l face" style="top:14px"><span class="ink-front"><span class="phn-scr">
+                <span class="phn-app-ui" data-b-class="[[phn.app]]">
+                  <span class="phn-head">
+                    <svg class="phn-back" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"></path></svg>
+                    <span class="phn-title">
+                      <b>Installment plans</b>
+                      <span class="phn-stat" data-b-class="[[phn.stat]]"><span class="phn-s1"><span class="phn-dot"></span>Waiting on you</span><span class="phn-s2"><span class="phn-dot"></span>Working · Round 1</span></span>
                     </span>
-                    <span class="rc-meta__item"><span class="rc-dot rc-dot--warning"></span>Waiting on you</span>
-                  </div>
-                  <div class="mk-gap-24"></div>
-                  <div class="rc-stepper">
-                    <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                    <span class="rc-stepper__sep"></span>
-                    <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
-                    <span class="rc-stepper__sep"></span>
-                    <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>Tickets</span>
-                    <span class="rc-stepper__sep"></span>
-                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
-                    <span class="rc-stepper__sep"></span>
-                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
-                    <span class="rc-stepper__sep"></span>
-                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                  </div>
-                  <hr class="rc-hr" />
-                  <div class="mk-next">
-                    <div class="mk-next-body">
-                      <div class="mk-next-label">Next step</div>
-                      <div class="mk-next-title">Review and burn the tickets</div>
-                      <div class="mk-next-desc">One task per ticket. Review them, then burn.</div>
-                    </div>
-                    <div class="mk-next-actions">
-                      <span class="rc-btn rc-btn--ghost rc-btn--lg">Revisit</span>
-                      <span class="rc-btn rc-btn--primary rc-btn--lg">
-                        <svg class="rc-icon"><use href="#i-flame" /></svg>Burn 10 tickets
-                      </span>
-                    </div>
-                  </div>
-                  <div class="mk-gap-32"></div>
-                  <div class="rc-title">Tickets</div>
-                  <div class="mk-gap-8"></div>
-                  <div class="rc-list rc-list--divided">
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#1 · Move entries into SQLite</span>
-                      <span class="rc-row__meta">Ready</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
-                      <span class="rc-row__meta">After #1</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#3 · Feed history read</span>
-                      <span class="rc-row__meta">After #2</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#5 · WebSocket transport</span>
-                      <span class="rc-row__meta">After #2</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#7 · Mentions and the typeahead</span>
-                      <span class="rc-row__meta">After #2, #5</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-icon"><use href="#i-cube" /></svg>
-                      <span class="rc-row__title">#9 · Activity tab with a live feed</span>
-                      <span class="rc-row__meta">After #3, #5</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== DRIVES / RUNS ON ===================== -->
-      <section class="runson" aria-label="What runcastle drives and runs on">
-        <div class="wrap runson-inner">
-          <div class="runson-group">
-            <span class="runson-label">Drives</span>
-            <span class="runson-agent">
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-claude" /></svg>Claude Code
-            </span>
-            <span class="runson-agent">
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-codex" /></svg>Codex
-            </span>
-          </div>
-          <div class="runson-group">
-            <span class="runson-label">Runs on</span>
-            <a class="runson-mark" href="https://bun.sh" rel="noopener" target="_blank">
-              <img src="assets/logos/bun.svg" alt="Bun" width="22" height="22" loading="lazy" /></a>
-            <a class="runson-mark" href="https://git-scm.com" rel="noopener" target="_blank">
-              <img src="assets/logos/git.svg" alt="Git" width="22" height="22" loading="lazy" /></a>
-            <a class="runson-mark" href="https://www.docker.com" rel="noopener" target="_blank">
-              <img src="assets/logos/docker.svg" alt="Docker" width="22" height="22" loading="lazy" /></a>
-            <a class="runson-mark" href="https://podman.io" rel="noopener" target="_blank">
-              <img src="assets/logos/podman.svg" alt="Podman" width="22" height="22" loading="lazy" /></a>
-            <a class="runson-mark" href="https://sqlite.org" rel="noopener" target="_blank">
-              <img src="assets/logos/sqlite.svg" alt="SQLite" width="22" height="22" loading="lazy" /></a>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== THE SHIFT ===================== -->
-      <section class="band" id="why">
-        <div class="wrap">
-          <h2>The agent was never the slow part.</h2>
-          <p class="sr-only">
-            A bar showing where the time on a feature goes. Two wide blocks are yours: deciding what
-            to build, and checking what came back. The thin block between them is the agent writing
-            the code.
-          </p>
-          <div class="timebar" aria-hidden="true">
-            <div class="timebar-you">
-              <span class="timebar-who">You</span>
-              <span class="timebar-what">Deciding what to build</span>
-            </div>
-            <div class="timebar-agent">
-              <span class="timebar-who">Agent</span>
-              <svg><use href="#p-implementation" /></svg>
-            </div>
-            <div class="timebar-you">
-              <span class="timebar-who">You</span>
-              <span class="timebar-what">Checking what came back</span>
-            </div>
-          </div>
-          <p class="shift-note">
-            The orange sliver is the agent writing the code. <b>runcastle takes on the rest.</b>
-          </p>
-        </div>
-      </section>
-
-      <!-- ===================== PROJECT MANAGER ===================== -->
-      <section class="band" id="project">
-        <div class="wrap">
-          <h2>A project manager that has read everything.</h2>
-          <p class="lede">
-            One standing chat sits above your features. Bring it what is bothering you and get back
-            features, in order.
-          </p>
-
-          <p class="sr-only">
-            An example. You bring one sentence with three complaints in it. The project session
-            checks the record, finds a shipped feature that left part of the work undone and a
-            feature in review that touches the same area, then cuts the work into one started
-            feature, two parked drafts, and one item sent to an existing feature.
-          </p>
-          <div class="flow" inert aria-hidden="true">
-            <div class="flow-col">
-              <div class="flow-label">
-                You say<svg class="rc-icon is-14"><use href="#i-arrow-right" /></svg>
-              </div>
-              <div class="flow-say">
-                Search is slow, people want to share entries, and the tag picker flickers.
-              </div>
-            </div>
-
-            <div class="flow-col">
-              <div class="flow-label">
-                It checks the record<svg class="rc-icon is-14"><use href="#i-arrow-right" /></svg>
-              </div>
-              <div class="flow-hits">
-                <div class="flow-hit">
-                  <span class="flow-hit-icon"><svg class="rc-icon"><use href="#i-doc" /></svg></span>
-                  <div>
-                    <div>Search index was left undone</div>
-                    <div class="flow-path rc-mono">docs/features/mood-filter/outcome.md</div>
-                  </div>
-                </div>
-                <div class="flow-hit">
-                  <span class="flow-hit-icon"><svg class="rc-icon"><use href="#i-branch" /></svg></span>
-                  <div>
-                    <div>Tag picker is already in review</div>
-                    <div class="flow-path rc-mono">feature/entry-tags</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="flow-col flow-col--list">
-              <div class="flow-label">It cuts the work</div>
-              <div class="rc-list">
-                <div class="rc-row">
-                  <svg class="rc-phase ph-ideation"><use href="#p-ideation" /></svg>
-                  <span class="rc-row__title">Search index for entries</span>
-                  <span class="rc-row__meta">Started</span>
-                </div>
-                <div class="rc-row">
-                  <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                  <span class="rc-row__title">Search results page</span>
-                  <span class="rc-row__meta">Waits on the index</span>
-                </div>
-                <div class="rc-row">
-                  <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                  <span class="rc-row__title">Share an entry by link</span>
-                  <span class="rc-row__meta">Parked</span>
-                </div>
-                <div class="rc-row">
-                  <svg class="rc-phase ph-review"><use href="#p-review" /></svg>
-                  <span class="rc-row__title">Tag picker flicker</span>
-                  <span class="rc-row__meta">Goes to Entry tags</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <ul class="points">
-            <li>
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
-              Knows what every agent did
-            </li>
-            <li>
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
-              Splits the work, sets the order
-            </li>
-            <li>
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-x" /></svg>
-              Says no to what is already built
-            </li>
-            <li>
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-shield" /></svg>
-              Flags collisions before they merge
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <!-- ===================== THE DRIVE ===================== -->
-      <section class="band" id="drive">
-        <div class="wrap">
-          <h2>The review is a drive, not a diff.</h2>
-          <p class="lede">
-            A diff cannot show whether the thing works. So the agents run the app, and then you do.
-          </p>
-
-          <div class="drive">
-            <div class="drive-col">
-              <p class="sr-only">
-                The review player, paused at 0:42 of the lap 1 walkthrough. The recorded app shows a
-                comment box with a mention typeahead open. A red rectangle is drawn around the
-                typeahead, the drawing tools float above the frame, and a note reading "Typeahead
-                closes when I press the down arrow" is ready to save.
-              </p>
-              <div class="player" inert aria-hidden="true">
-                <div class="player-head">
-                  <span>Lap 1 · Walkthrough · 4:18 · this build</span>
-                  <span class="rc-btn rc-btn--ghost rc-btn--icon">
-                    <svg class="rc-icon"><use href="#i-expand" /></svg>
                   </span>
-                </div>
-
-                <div class="player-frame">
-                  <div class="shot">
-                    <div class="shot-title">Offsite planning notes</div>
-                    <div class="shot-form">
-                      <div class="shot-input">Looping in @pri</div>
-                      <div class="shot-pick">
-                        <div class="shot-menu">
-                          <div class="shot-opt is-active"><span style="--who: #e06aa3"></span>Priya Raman</div>
-                          <div class="shot-opt"><span style="--who: #2bb3a9"></span>Priit Kask</div>
-                          <div class="shot-opt"><span style="--who: #e0853f"></span>Prisca Okafor</div>
-                        </div>
-                        <div class="shot-mark"></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="player-tools">
-                    <div class="toolbar">
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon is-on"><svg class="rc-icon"><use href="#i-pen" /></svg></span>
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-arrow-tool" /></svg></span>
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-rect" /></svg></span>
-                      <span class="toolbar-sep"></span>
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-undo" /></svg></span>
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon is-off"><svg class="rc-icon"><use href="#i-redo" /></svg></span>
-                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-trash" /></svg></span>
-                    </div>
-                    <span class="timecode">0:42</span>
-                  </div>
-
-                  <div class="notebar">
-                    <div class="notebar-field">Typeahead closes when I press the down arrow</div>
-                    <span class="rc-btn rc-btn--ghost">Cancel</span>
-                    <span class="rc-btn rc-btn--primary">Save note</span>
-                  </div>
-                </div>
-
-                <div class="transport">
-                  <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-play" /></svg></span>
-                  <span class="timecode">0:42</span>
-                  <div class="scrub"></div>
-                </div>
-              </div>
-            </div>
-
-            <ol class="drive-col drive-steps">
-              <li class="drive-step">
-                <span class="drive-icon">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-play" /></svg>
-                </span>
-                <div>
-                  <div class="drive-title">An agent drives it first</div>
-                  <div class="drive-meta">Walkthrough recorded, 4:18</div>
-                </div>
-              </li>
-              <li class="drive-step">
-                <span class="drive-icon">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-pencil" /></svg>
-                </span>
-                <div>
-                  <div class="drive-title">You point at what is wrong</div>
-                  <div class="drive-meta">Your note at 0:42</div>
-                </div>
-              </li>
-              <li class="drive-step">
-                <span class="drive-icon">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-cube" /></svg>
-                </span>
-                <div>
-                  <div class="drive-title">The note becomes the next lap</div>
-                  <div class="drive-meta">
-                    <span class="rc-dot rc-dot--live" aria-hidden="true"></span>Ticket #11, lap 2 burning
-                  </div>
-                </div>
-              </li>
-            </ol>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== HOW IT WORKS ===================== -->
-      <section class="band" id="pipeline">
-        <div class="wrap">
-          <h2>Six phases. You make two calls.</h2>
-          <p class="lede">
-            runcastle always knows what the feature needs next. It asks you for two things: approve
-            the plan, approve the merge.
-          </p>
-
-          <div class="phases" role="group" aria-label="Pipeline phases">
-            <button class="phase ph-ideation is-reached" type="button" data-stage="0"
-              aria-pressed="false" aria-controls="walk-0">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-ideation" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Ideation</span>
-                  <span class="phase-who is-you">You talk it through</span>
-                </span>
-              </span>
-            </button>
-            <button class="phase ph-spec is-reached" type="button" data-stage="1"
-              aria-pressed="false" aria-controls="walk-1">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-spec" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Spec</span>
-                  <span class="phase-who">Agent writes it</span>
-                </span>
-              </span>
-            </button>
-            <button class="phase ph-tickets is-reached" type="button" data-stage="2"
-              aria-pressed="false" aria-controls="walk-2">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-tickets" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Tickets</span>
-                  <span class="phase-who is-you">You approve the plan</span>
-                </span>
-              </span>
-            </button>
-            <button class="phase ph-implementation is-reached" type="button" data-stage="3"
-              aria-pressed="true" aria-controls="walk-3">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-implementation" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Build</span>
-                  <span class="phase-who">Agents build it</span>
-                </span>
-              </span>
-            </button>
-            <button class="phase ph-review" type="button" data-stage="4" aria-pressed="false"
-              aria-controls="walk-4">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-review" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Review</span>
-                  <span class="phase-who is-you">You merge it</span>
-                </span>
-              </span>
-            </button>
-            <button class="phase ph-shipped" type="button" data-stage="5" aria-pressed="false"
-              aria-controls="walk-5">
-              <span class="phase-bar" aria-hidden="true"></span>
-              <span class="phase-row">
-                <span class="phase-glyph">
-                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-shipped" /></svg>
-                </span>
-                <span class="phase-text">
-                  <span class="phase-name">Shipped</span>
-                  <span class="phase-who">It merges</span>
-                </span>
-              </span>
-            </button>
-          </div>
-
-          <!-- ---- Ideation ---- -->
-          <div class="walk-panel" id="walk-0" data-stage="0">
-            <div class="walk-copy">
-              <h3>Talk the idea into shape</h3>
-              <p>A real agent terminal opens with the feature already loaded. This part is yours.</p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-ideation"><use href="#p-ideation" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body">
-                <div class="session">
-                  <span class="rc-dot rc-dot--live"></span>
-                  <b>Ideation session</b>
-                  <span class="session-state">Live</span>
-                  <span class="rc-spacer"></span>
-                  <span class="mk-agent">
-                    <svg class="rc-icon is-14"><use href="#i-claude" /></svg>Claude Code
-                  </span>
-                  <span class="rc-btn rc-btn--ghost rc-btn--sm">
-                    <svg class="rc-icon is-14"><use href="#i-stop" /></svg>End session
-                  </span>
-                </div>
-                <div class="term">
-                  <div class="term-path">~/.runcastle/worktrees/proj_wf6xGoA7/realtime-team-collaboration</div>
-                  <div class="term-cmd">
-                    &gt; Proceed with your task: invoke the /runcastle:ideate skill and drive the
-                    ideation session.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---- Spec ---- -->
-          <div class="walk-panel" id="walk-1" data-stage="1">
-            <div class="walk-copy">
-              <h3>The decisions get written down</h3>
-              <p>The same session writes the spec and commits it to your repo.</p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-spec"><use href="#p-spec" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body">
-                <div class="doc-path">
-                  <svg class="rc-icon is-14"><use href="#i-doc" /></svg>
-                  <span class="rc-mono">docs/features/realtime-team-collaboration/spec.md</span>
-                </div>
-                <div class="doc">
-                  <div class="doc-title">Realtime team collaboration</div>
-                  <div class="doc-h">Decision</div>
-                  <div>Entries move into SQLite behind an injectable driver port.</div>
-                  <div class="doc-h">In scope</div>
-                  <ul>
-                    <li>Presence: who is in the entry.</li>
-                    <li>Mentions: @name notifies the person.</li>
-                    <li>Activity feed: an append-only log.</li>
-                  </ul>
-                  <div class="doc-h">Out of scope</div>
-                  <div>Live cursors and character-level merging.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---- Tickets ---- -->
-          <div class="walk-panel" id="walk-2" data-stage="2">
-            <div class="walk-copy">
-              <h3>Skim the task list, say go</h3>
-              <p>The spec becomes small tasks, in the order they have to happen. Click once.</p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body">
-                <div class="mk-head">
-                  <div>
-                    <div class="rc-title">Tickets</div>
-                    <div class="mk-head-sub">10 tickets, in the order they have to happen</div>
-                  </div>
-                  <span class="rc-btn rc-btn--primary rc-btn--lg">
-                    <svg class="rc-icon"><use href="#i-flame" /></svg>Burn 10 tickets
-                  </span>
-                </div>
-                <div class="rc-list rc-list--divided">
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#1 · Move entries into SQLite</span>
-                    <span class="rc-row__meta">Ready</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
-                    <span class="rc-row__meta">After #1</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#3 · Feed history read</span>
-                    <span class="rc-row__meta">After #2</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#4 · Retention pruning</span>
-                    <span class="rc-row__meta">After #2</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#5 · WebSocket transport</span>
-                    <span class="rc-row__meta">After #2</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#6 · Presence and the avatar stack</span>
-                    <span class="rc-row__meta">After #5</span>
-                  </div>
-                  <div class="rc-row">
-                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                    <span class="rc-row__title">#7 · Mentions and the typeahead</span>
-                    <span class="rc-row__meta">After #2, #5</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---- Build ---- -->
-          <div class="walk-panel is-shown" id="walk-3" data-stage="3">
-            <div class="walk-copy">
-              <h3>Close the tab</h3>
-              <p>
-                Agents take every unblocked task at once, inside containers. Go start the next
-                feature.
-              </p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-implementation"><use href="#p-implementation" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body">
-                <div class="mk-head mk-head--inline">
-                  <div class="rc-title">Run</div>
-                  <div class="rc-meta">
-                    <span class="rc-meta__item"><span class="rc-dot rc-dot--live"></span>Running</span>
-                    <span class="rc-meta__item">4 of 10 done</span>
-                    <span class="rc-meta__item">
-                      <svg class="rc-icon is-14"><use href="#i-codex" /></svg>Codex
+                  <span class="phn-thread">
+                    <span class="phn-p">The timeline design is ready on the invoice page.</span>
+                    <span class="phn-card">
+                      <span class="phn-c-amt"><span>Acme Studio</span><b>$2,400.00</b><span>3 payments of $800.00</span></span>
+                      <span class="phn-tl"><span class="phn-st done"><span class="phn-k"></span>Nov 30</span><span class="phn-st"><span class="phn-k"></span>Dec 30</span><span class="phn-st"><span class="phn-k"></span>Jan 29</span></span>
                     </span>
-                    <span class="rc-meta__item">
-                      <svg class="rc-icon is-14"><use href="#i-cube" /></svg>docker
-                    </span>
-                  </div>
-                </div>
-                <div class="run">
-                  <div class="rc-list">
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
-                      <span class="rc-row__title">#1 · Move entries into SQLite</span>
-                      <span class="rc-row__meta">3m 12s</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
-                      <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
-                      <span class="rc-row__meta">4m 01s</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
-                      <span class="rc-row__title">#3 · Feed history read</span>
-                      <span class="rc-row__meta">2m 48s</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
-                      <span class="rc-row__title">#4 · Retention pruning</span>
-                      <span class="rc-row__meta">1m 39s</span>
-                    </div>
-                    <div class="rc-row">
-                      <span class="rc-dotbox"><span class="rc-dot rc-dot--live"></span></span>
-                      <span class="rc-row__title">#5 · WebSocket transport</span>
-                      <span class="rc-row__meta">Burning</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                      <span class="rc-row__title">#6 · Presence and the avatar stack</span>
-                    </div>
-                    <div class="rc-row">
-                      <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
-                      <span class="rc-row__title">#7 · Mentions and the typeahead</span>
-                    </div>
-                  </div>
-                  <div class="log">
-                    <div><time>14:02</time><b>run.started</b><span>10 tickets queued</span></div>
-                    <div><time>14:02</time><b class="is-burn">ticket.burning</b><span>#1 Move entries into SQLite</span></div>
-                    <div><time>14:05</time><b class="is-done">ticket.done</b><span>#1 done, 2 commits</span></div>
-                    <div><time>14:05</time><b class="is-burn">ticket.burning</b><span>#2 EventBus</span></div>
-                    <div><time>14:09</time><b class="is-done">ticket.done</b><span>#2 done, 1 commit</span></div>
-                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#3 Feed history read</span></div>
-                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#4 Retention pruning</span></div>
-                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#5 WebSocket transport</span></div>
-                    <div><time>14:11</time><b class="is-done">ticket.done</b><span>#4 done, 1 commit</span></div>
-                    <div><time>14:12</time><b class="is-done">ticket.done</b><span>#3 done, 2 commits</span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---- Review ---- -->
-          <div class="walk-panel" id="walk-4" data-stage="4">
-            <div class="walk-copy">
-              <h3>Take it for a drive</h3>
-              <p>
-                The finished branch starts on its own port. Click through the real thing before it
-                lands.
-              </p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-review"><use href="#p-review" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body">
-                <div class="mk-next">
-                  <div class="mk-next-body">
-                    <div class="mk-next-label">Next step</div>
-                    <div class="mk-next-title">Take it for a test drive</div>
-                    <div class="mk-next-desc">
-                      Boots this branch on its own port so you can click through the feature
-                      yourself.
-                    </div>
-                  </div>
-                  <span class="rc-btn rc-btn--primary rc-btn--lg">
-                    <svg class="rc-icon"><use href="#i-play" /></svg>Start test drive
+                    <span class="phn-you" data-b-class="[[phn.you]]">Looks good. Build it.</span>
                   </span>
-                </div>
-                <hr class="rc-hr" />
-                <dl class="rc-props">
-                  <dt>Tickets</dt>
-                  <dd><span class="rc-dot rc-dot--success"></span><span>10 of 10 landed</span></dd>
-                  <dt>Run</dt>
-                  <dd>
-                    <span class="rc-dot rc-dot--success"></span><span>Succeeded</span>
-                    <span class="rc-sub">38m 12s</span>
-                  </dd>
-                  <dt>Changes</dt>
-                  <dd><svg class="rc-icon is-14"><use href="#i-branch" /></svg><span>11 commits</span></dd>
-                  <dt>Test drive</dt>
-                  <dd><span class="rc-dot"></span><span>Not run</span></dd>
-                </dl>
-                <div class="mk-gap-24"></div>
-                <div class="rc-meta">
-                  <span class="rc-meta__item">
-                    <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
+                  <span class="phn-comp" data-b-class="[[phn.comp]]"><span class="phn-type"><span class="phn-ph">Message the agent</span><span class="phn-tx"><span data-t="phn.typed"></span><span class="phn-caret"></span></span></span><span class="phn-send"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"></path></svg></span></span>
+                </span>
+                <span class="phn-lock" data-b-class="[[phn.lock]]">
+                  <span class="phn-time">9:41</span>
+                  <span class="phn-ban" data-b-class="[[phn.ban]]">
+                    <span class="phn-bh"><span class="phn-app"><svg viewBox="6 6 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg></span>runcastle<em>now</em></span>
+                    <b>Installment plans</b>
+                    <span class="phn-bb">The design is ready for you to look at.</span>
                   </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---- Shipped ---- -->
-          <div class="walk-panel" id="walk-5" data-stage="5">
-            <div class="walk-copy">
-              <h3>It merges, and it remembers</h3>
-              <p>
-                The branch lands on main. The spec, the decisions, and the run history stay in your
-                repo.
-              </p>
-            </div>
-            <div class="walk-app" inert aria-hidden="true">
-              <div class="rc-topbar">
-                <div class="rc-stepper">
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Build</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Review</span>
-                  <span class="rc-stepper__sep"></span>
-                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Shipped</span>
-                </div>
-              </div>
-              <div class="walk-body walk-body--page">
-                <div class="rc-title-lg">Realtime team collaboration</div>
-                <div class="mk-gap-12"></div>
-                <div class="rc-meta">
-                  <span class="rc-meta__item">
-                    <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
-                  </span>
-                  <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Merged 2m ago</span>
-                </div>
-                <hr class="rc-hr" />
-                <dl class="rc-props">
-                  <dt>Review</dt>
-                  <dd>
-                    <span class="rc-dot rc-dot--success"></span><span>Passed</span>
-                    <span class="rc-sub">this build</span>
-                  </dd>
-                  <dt>Checks</dt>
-                  <dd><span class="rc-dot rc-dot--success"></span><span>3 of 3 passed</span></dd>
-                  <dt>Test drive</dt>
-                  <dd>
-                    <span class="rc-dot rc-dot--success"></span><span>Driven</span>
-                    <span class="rc-sub">lap 1</span>
-                  </dd>
-                  <dt>Tickets</dt>
-                  <dd><svg class="rc-icon is-14"><use href="#i-cube" /></svg><span>10 of 10 landed</span></dd>
-                  <dt>Laps</dt>
-                  <dd><svg class="rc-icon is-14"><use href="#i-undo" /></svg><span>1</span></dd>
-                </dl>
-              </div>
+                </span>
+                <span class="phn-sleep" data-b-class="[[phn.sleep]]"></span>
+              </span></span></i>
             </div>
           </div>
         </div>
-      </section>
 
-      <!-- ===================== PARALLEL WORK ===================== -->
-      <section class="band" id="loop">
-        <div class="wrap">
-          <h2>Run more features than you could watch.</h2>
-          <p class="lede">
-            Each feature asks for you twice. Six of them is a short queue of decisions, not six
-            terminals to poll.
-          </p>
-
-          <p class="sr-only">
-            Six features, each on its own branch and each at a different phase. Realtime team
-            collaboration is on tickets and Entry tags is on review, both waiting on you. Offline
-            draft sync is building with an agent working. Kickoff probe is on spec, Weekly digest
-            email is on ideation, and Mood filter has shipped.
-          </p>
-          <div class="lanes" aria-hidden="true">
-            <div class="lane lane--head">
-              <span>Feature</span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-ideation"><use href="#p-ideation" /></svg><span>Ideation</span></span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-spec"><use href="#p-spec" /></svg><span>Spec</span></span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg><span>Tickets</span></span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-implementation"><use href="#p-implementation" /></svg><span>Build</span></span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-review"><use href="#p-review" /></svg><span>Review</span></span>
-              <span class="lane-col"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg><span>Shipped</span></span>
-              <span></span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Realtime team collaboration</span>
-              <span class="lane-done ph-ideation"></span>
-              <span class="lane-done ph-spec"></span>
-              <span><span class="lane-now ph-tickets"><svg class="rc-phase"><use href="#p-tickets" /></svg></span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span class="lane-state is-you">Waiting on you</span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Entry tags</span>
-              <span class="lane-done ph-ideation"></span>
-              <span class="lane-done ph-spec"></span>
-              <span class="lane-done ph-tickets"></span>
-              <span class="lane-done ph-implementation"></span>
-              <span><span class="lane-now ph-review"><svg class="rc-phase"><use href="#p-review" /></svg></span></span>
-              <span></span>
-              <span class="lane-state is-you">Waiting on you</span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Offline draft sync</span>
-              <span class="lane-done ph-ideation"></span>
-              <span class="lane-done ph-spec"></span>
-              <span class="lane-done ph-tickets"></span>
-              <span><span class="lane-now ph-implementation"><svg class="rc-phase"><use href="#p-implementation" /></svg></span></span>
-              <span></span>
-              <span></span>
-              <span class="lane-state is-agent"><span class="rc-dot rc-dot--live"></span>Agent working, 4/10</span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Kickoff probe</span>
-              <span class="lane-done ph-ideation"></span>
-              <span><span class="lane-now ph-spec"><svg class="rc-phase"><use href="#p-spec" /></svg></span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span class="lane-state">In progress</span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Weekly digest email</span>
-              <span><span class="lane-now ph-ideation"><svg class="rc-phase"><use href="#p-ideation" /></svg></span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span class="lane-state">In progress</span>
-            </div>
-
-            <div class="lane">
-              <span class="lane-name">Mood filter</span>
-              <span class="lane-done ph-ideation"></span>
-              <span class="lane-done ph-spec"></span>
-              <span class="lane-done ph-tickets"></span>
-              <span class="lane-done ph-implementation"></span>
-              <span class="lane-done ph-review"></span>
-              <span><span class="lane-now ph-shipped"><svg class="rc-phase"><use href="#p-shipped" /></svg></span></span>
-              <span class="lane-state">Merged 19h ago</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== LOCAL-FIRST ===================== -->
-      <section class="band" id="local">
-        <div class="wrap">
-          <h2>Your agents. Your machine. Your repo.</h2>
-          <p class="lede">
-            A small server and a browser tab on localhost. No runcastle account, and no server of
-            ours.
-          </p>
-
-          <div class="machine">
-            <div class="machine-head">
-              <svg class="rc-icon" aria-hidden="true"><use href="#i-terminal" /></svg>
-              <span>Your machine</span>
-              <span class="lp-mono">localhost:4512</span>
-            </div>
-            <div class="machine-grid">
-              <div class="zone">
-                <h3>Your agents</h3>
-                <div class="tiles">
-                  <div class="tile">
-                    <svg class="rc-icon is-18" aria-hidden="true"><use href="#i-claude" /></svg>Claude Code
-                  </div>
-                  <div class="tile">
-                    <svg class="rc-icon is-18" aria-hidden="true"><use href="#i-codex" /></svg>Codex
-                  </div>
-                </div>
-                <p>Your own login, on the plan you already pay for</p>
-                <div class="tiles">
-                  <div class="tile">
-                    <img src="assets/logos/docker.svg" alt="" width="20" height="20" loading="lazy" />Docker
-                  </div>
-                  <div class="tile">
-                    <img src="assets/logos/podman.svg" alt="" width="20" height="20" loading="lazy" />Podman
-                  </div>
-                </div>
-                <p>One container for each unattended build</p>
-              </div>
-
-              <div class="zone">
-                <h3>Your repo</h3>
-                <div class="ref">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
-                  <span class="lp-mono">main</span>
-                  <span>Unattended builds never touch it</span>
-                </div>
-                <div class="ref">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
-                  <span class="lp-mono is-branch">feature/entry-tags</span>
-                  <span>Agents commit here</span>
-                </div>
-                <div class="ref">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
-                  <span class="lp-mono">docs/features/</span>
-                  <span>Specs, decisions, outcomes</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== PROOF ===================== -->
-      <!-- Both numbers are counted from this repository's own history:
-             git log --format=%s | grep -c "^runcastle: outcome for"
-             git log --format=%s | grep -c "^ticket("
-           Recount them before a deploy rather than trusting what is here. -->
-      <section class="proof" aria-label="runcastle is built with runcastle">
-        <div class="wrap">
-          <div class="proof-inner">
-            <div>
-              <h2>runcastle is built with runcastle.</h2>
-              <p>Counted from its own git history since July 2026.</p>
-            </div>
-            <dl class="stats">
-              <div>
-                <dt>100</dt>
-                <dd>features shipped through this pipeline</dd>
-              </div>
-              <div>
-                <dt>1,342</dt>
-                <dd>ticket commits written by agents</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== INSTALL ===================== -->
-      <section class="install" id="install">
-        <div class="wrap">
-          <div class="install-top" aria-hidden="true">
-            <span class="ph-ideation"></span><span class="ph-spec"></span><span class="ph-tickets"></span>
-            <span class="ph-implementation"></span><span class="ph-review"></span><span class="ph-shipped"></span>
-          </div>
-          <div class="install-box">
-            <h2>Get started</h2>
-            <p class="lede">One command. It shows what is missing, asks once, and installs it.</p>
-
-            <div class="cmds">
-              <div class="cmd">
-                <span class="cmd-prompt" aria-hidden="true">$</span>
-                <code>curl -fsSL https://runcastle.dev/install.sh | bash</code>
-                <span class="cmd-note">macOS and Linux</span>
-                <button class="copy" type="button"
-                  data-copy="curl -fsSL https://runcastle.dev/install.sh | bash"
-                  aria-label="Copy the macOS and Linux install command">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
-                </button>
-              </div>
-              <div class="cmd">
-                <span class="cmd-prompt" aria-hidden="true">&gt;</span>
-                <code>irm https://runcastle.dev/install.ps1 | iex</code>
-                <span class="cmd-note">Windows</span>
-                <button class="copy" type="button" data-copy="irm https://runcastle.dev/install.ps1 | iex"
-                  aria-label="Copy the Windows install command">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
-                </button>
-              </div>
-              <div class="cmd">
-                <span class="cmd-prompt" aria-hidden="true">$</span>
-                <code>runcastle</code>
-                <span class="cmd-note">Boots on localhost:4512</span>
-                <button class="copy" type="button" data-copy="runcastle" aria-label="Copy run command">
-                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
-                </button>
-              </div>
-            </div>
-
-            <p class="install-after">
-              It installs only what is missing and leaves sign-ins to you.
-              <a href="https://github.com/MuathZahir/runcastle#install" rel="noopener"
-                target="_blank">What it installs</a>
-            </p>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- ===================== FOOTER ===================== -->
-    <footer class="footer">
-      <div class="wrap footer-inner">
-        <a class="brand" href="#main" aria-label="runcastle home">
-          <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
-            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
-              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
-          </svg>
-          <span>runcastle</span>
-        </a>
-        <nav class="footer-links" aria-label="Project links">
-          <a href="/docs/">Docs</a>
-          <a href="/compare/">Compare</a>
-          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
-          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">npm</a>
-          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">Issues</a>
-          <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
-            target="_blank">FSL-1.1</a>
-        </nav>
-        <span class="footer-meta">Built with runcastle</span>
       </div>
-    </footer>
+    </div>
+  </section>
 
-    <!-- ===================== THE FILM ===================== -->
-    <!-- Opened by the hero's second button. A plain <video> with its own
-         controls: nothing loads until the dialog is opened. -->
-    <dialog class="film" id="film" aria-label="The runcastle film">
-      <div class="film-bar">
-        <span>runcastle in sixty seconds</span>
-        <button class="film-close" type="button" aria-label="Close" data-film-close>
-          <svg class="rc-icon" aria-hidden="true"><use href="#i-x" /></svg>
-        </button>
+  <!-- Install -->
+  <section class="close sec" data-b-class="[[endCls]]" id="install" data-sec="end">
+    <div class="wrap">
+      <div class="cs" role="img" aria-label="The runcastle mark rises out of the grid as a castle wall: the wall lifts, three battlements settle on top, and the play-shaped window lights up.">
+        <div class="iso">
+          <div class="plane"></div>
+          <i class="cs-land"></i>
+          <div class="cube cs-wall" style="left:164px;top:240px;width:200px;height:48px"><i class="f-t"></i><i class="f-s"><span class="ink-front"><svg class="cs-win" viewBox="0 0 80 88" aria-hidden="true"><path d="M2 2 L78 44 L2 86 Z"></path></svg></span></i><i class="f-e"></i></div>
+          <div class="cube cs-m cs-m0" style="left:164px;top:240px;width:50px;height:48px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube cs-m cs-m1" style="left:239px;top:240px;width:50px;height:48px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+          <div class="cube cs-m cs-m2" style="left:314px;top:240px;width:50px;height:48px"><i class="f-t"></i><i class="f-s"></i><i class="f-e"></i></div>
+        </div>
       </div>
-      <p id="film-desc" class="sr-only">
-        A sixty-second film. An agent says a task is done, and two more prompts show it was not.
-        Then one feature goes through runcastle: a wrong total spotted in the app is saved as a note
-        with Ctrl+J; a project chat turns the notes and a new request into a feature with six
-        ordered tickets; one Burn click gives every ticket its own agent in its own container, all
-        committing to one feature branch; a review agent uses the finished app in a recorded browser
-        and finds a defect; the recording is played back and annotated; a merge conflict with main
-        is resolved by an agent in one click; the feature ships.
-      </p>
-      <video
-        width="1920"
-        height="1080"
-        poster="assets/video/runcastle-demo-poster.webp"
-        preload="none"
-        controls
-        playsinline
-        aria-describedby="film-desc"
-      >
-        <source src="assets/video/runcastle-demo-1080.mp4" type="video/mp4" />
-        <track kind="captions" src="assets/video/runcastle-demo.en.vtt" srclang="en" label="English" />
-      </video>
-    </dialog>
+      <h2 class="h">Start building.</h2>
+      <p class="lede" style="margin:18px auto 0">One command installs it. Then run <code class="mono">runcastle</code> in any repo.</p>
+      <div class="install">
+        <div class="os" role="group" aria-label="Your system">
+          <button class="os-btn on" data-b-class="[[unixCls]]" data-on-click="setUnix" aria-pressed="true" data-b-aria-pressed="[[unixPressed]]">macOS and Linux</button>
+          <button class="os-btn" data-b-class="[[winCls]]" data-on-click="setWin" aria-pressed="false" data-b-aria-pressed="[[winPressed]]">Windows</button>
+        </div>
+        <div class="cmd">
+          <span class="mono pr" aria-hidden="true"><span data-t="promptChar">$</span></span>
+          <code class="mono"><span data-t="cmd">curl -fsSL https://runcastle.dev/install.sh | bash</span></code>
+          <button class="cmd-cp" data-b-class="[[copyBtn]]" data-on-click="copy" aria-label="Copy the install command"><svg class="ico i-copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ico i-ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span><span data-t="copyLabel">Copy</span></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <script src="main.js" defer></script>
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <a class="brand" href="#top" style="font-size:14px">
+        <svg class="logo" viewBox="6 6 20 20" aria-hidden="true" style="width:16px;height:16px"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.4 25.2 V6.8 H11.2 V10.8 H13.6 V6.8 H18.4 V10.8 H20.8 V6.8 H25.6 V25.2 H6.4 Z M13.2 14 L20.4 18 L13.2 22 Z" fill="currentColor"></path></svg>
+        runcastle
+      </a>
+      <span class="sp"></span>
+      <a href="/docs/">Docs</a>
+      <a href="/compare/">Compare</a>
+      <a href="https://github.com/MuathZahir/runcastle">GitHub</a>
+    </div>
+  </footer>
+</div>
   </body>
 </html>
