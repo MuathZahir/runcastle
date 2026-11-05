@@ -401,12 +401,11 @@ export function SettingRow({
                 </div>
               )}
               {row.stale && (
-                // Says where the refresh lives, because for a long time it said
-                // "re-prepare to refresh it" while offering no way to and
-                // nothing on screen mentioning one.
+                // Says where the refresh lives: the Orchestrator re-measures a
+                // prepared setting whenever it is asked to.
                 <span
                   className="inline-flex items-center gap-1.5 text-xs text-warning-text"
-                  title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
+                  title="Measured a long time ago — ask the Orchestrator to check it again"
                 >
                   <StatusDot tone="warning" />
                   Stale

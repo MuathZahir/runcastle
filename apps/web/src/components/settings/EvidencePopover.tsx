@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { FindingSource } from '@runcastle/core'
 
 /**
- * What preparation observed to justify a value, behind the row's provenance chip
+ * What was observed to justify a prepared value, behind the row's provenance chip
  * (flow-redesign-settings, decision 5).
  *
  * The evidence runs to hundreds or thousands of words per field, and rendering
@@ -17,7 +17,8 @@ import type { FindingSource } from '@runcastle/core'
 
 /** How a finding's source reads in the popover's header. */
 const HOW_ESTABLISHED: Record<FindingSource, string> = {
-  prep: 'established by preparation',
+  // The retired headless preparation run's rows, named as `findingSource` names them.
+  prep: 'measured by an older automatic run',
   session: 'established in a chat on this machine',
   human: 'set by you',
   build: "built by runcastle from this repo's own Dockerfile",
