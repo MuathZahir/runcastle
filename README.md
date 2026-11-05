@@ -72,9 +72,9 @@ stay yours. Both scripts can be read at those addresses before you run them.
 Then run `runcastle` and open the address it prints (`http://localhost:4512`);
 it does not open a browser by itself.
 
-By default runcastle sends an anonymous usage ping at boot, and tells you in the
-first-run wizard before it sends anything. Turn it off in Settings → General or
-with `DO_NOT_TRACK=1`; [the Usage signal section](#usage-signal) has the details.
+By default runcastle sends an anonymous usage ping at boot. Turn it off in
+Settings → General or with `DO_NOT_TRACK=1`; [the Usage signal section](#usage-signal)
+has the details.
 
 On a VPS, [the VPS guide](https://runcastle.dev/docs/vps/) goes from a fresh
 login to a running, reachable runcastle.
@@ -120,8 +120,7 @@ over the borrowed login, if you would rather bill an OpenAI API key.)
 
 1. Run `runcastle` and open the address it prints, `http://localhost:4512`.
 2. On a fresh machine a short **first-run wizard** appears:
-   - **Welcome.** Says what runcastle is, and what the usage ping sends, with a
-     checkbox (ticked by default) before anything is sent.
+   - **Welcome.** Says what runcastle is.
    - **Git identity.** The one hard step. runcastle commits docs and merges for
      you, so it writes your name and email to `git config --global`. Skipped
      automatically if you already have one.
@@ -409,10 +408,8 @@ usage of any feature. The ID lives in plain text at `~/.runcastle/install-id`
 generates a new one. The response is the latest published version, which is what
 the update banner reads.
 
-The first-run wizard tells you this before anything is sent: a fresh install
-sends nothing until you have passed that step, and its checkbox is ticked by
-default. An install from before the switch is asked once, in the update banner's
-place. To opt out, turn off **Usage ping** in Settings → General, or set
+The ping is on by default, from the first boot, and nothing asks you about it.
+To opt out, turn off **Usage ping** in Settings → General, or set
 `DO_NOT_TRACK` to any non-empty value other than `0` (that wins over the
 switch):
 

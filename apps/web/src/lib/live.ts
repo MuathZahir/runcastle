@@ -410,9 +410,6 @@ export function useLiveSync(): LiveStatus {
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
       refetches.push(u.settings.get.invalidate())
-      // The one-time usage-ping notice ends with a `usageSignal` write, from
-      // this tab or another — or from Settings — so it goes on the same push.
-      refetches.push(u.system.usageNotice.invalidate())
       // The image a click would build. It moves on settings writes nobody types
       // — the machine-wide `sandboxImage` clear, and the doctor's decision-8
       // heal of an orphaned project column — and both emit `settings.updated`,

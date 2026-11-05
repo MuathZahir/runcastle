@@ -27,15 +27,6 @@ function readInstallId(file: string): string | null {
   }
 }
 
-/**
- * Whether this install has pinged before — an ID is only ever created by the
- * first ping, so its presence marks an install from before the usage switch
- * (see `usagePingAllowed`). Read-only: never creates the ID.
- */
-export function hasInstallId(): boolean {
-  return readInstallId(installIdPath()) !== null
-}
-
 export function getInstallId(): string {
   const file = installIdPath()
   try {

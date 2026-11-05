@@ -1,13 +1,9 @@
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { hasInstallId } from '../src/services/install-id'
-import {
-  checkForUpdate,
-  compareSemver,
-  usageNoticeNeeded,
-} from '../src/services/update-check'
+import { installIdPath } from '@runcastle/core/paths'
+import { checkForUpdate, compareSemver } from '../src/services/update-check'
 import { UNKNOWN_VERSION } from '../src/version'
 
 /**
@@ -233,36 +229,26 @@ describe('checkForUpdate', () => {
     expect(spy.calls).toEqual([])
   })
 
-  // Nothing is sent before the human has been told (decisions 4, 18): which
-  // rung each combination of DO_NOT_TRACK, the switch and install-ID presence
-  // lands on. The install ID is injected, so the data dir decides nothing here.
+  // On by default, never asked (the-orchestrator-prepares-the-project decision
+  // 16): which rung each combination of DO_NOT_TRACK and the switch lands on.
   it.each([
-    ['DO_NOT_TRACK beats "on"', { DO_NOT_TRACK: '1' }, 'on', true, [NPM]],
-    ['DO_NOT_TRACK beats an old install', { DO_NOT_TRACK: '1' }, undefined, true, [NPM]],
-    ['"off"', {}, 'off', true, [NPM]],
-    ['"off" on a fresh install', {}, 'off', false, [NPM]],
-    ['unset on a fresh install (wizard not passed)', {}, undefined, false, [NPM]],
-    ['"on" on a fresh install (wizard ticked)', {}, 'on', false, [PING]],
-    ['"on" on an old install', {}, 'on', true, [PING]],
-    ['unset on an install that pinged before the switch', {}, undefined, true, [PING]],
-  ] as const)('%s → asks %j', async (_label, env, usageSignal, installIdExists, urls) => {
+    ['DO_NOT_TRACK beats "on"', { DO_NOT_TRACK: '1' }, 'on', [NPM]],
+    ['DO_NOT_TRACK beats unset', { DO_NOT_TRACK: '1' }, undefined, [NPM]],
+    ['"off"', {}, 'off', [NPM]],
+    ['"on"', {}, 'on', [PING]],
+    ['unset, on a fresh install nobody asked', {}, undefined, [PING]],
+  ] as const)('%s → asks %j', async (_label, env, usageSignal, urls) => {
     const spy = spyFetch((url) => (url === NPM ? json({ version: '0.4.0' }) : json({ latest: '0.4.0' })))
-    const info = await checkForUpdate({
-      current: '0.1.0',
-      fetchImpl: spy.impl,
-      env,
-      usageSignal,
-      installIdExists,
-    })
+    const info = await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env, usageSignal })
     expect(spy.calls.map((c) => c.url)).toEqual(urls)
     expect(info.updateAvailable).toBe(true)
   })
 
   it('never creates the install ID on a check that does not ping', async () => {
     const spy = spyFetch(() => json({ version: '0.4.0' }))
-    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {}, usageSignal: 'off' })
     expect(spy.calls.map((c) => c.url)).toEqual([NPM])
-    expect(hasInstallId()).toBe(false)
+    expect(existsSync(installIdPath())).toBe(false)
   })
 
   it('swallows a non-200 from both rungs', async () => {
@@ -270,22 +256,5 @@ describe('checkForUpdate', () => {
     const info = await checkForUpdate({ current: '0.1.0', fetchImpl: notFound })
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
-  })
-})
-
-// The one-time notice is for installs that are pinging without having been told
-// in the app: an ID from before the switch, no answer yet, not opted out.
-describe('usageNoticeNeeded', () => {
-  it('shows for an install with an ID that has never answered', () => {
-    expect(usageNoticeNeeded({ env: {}, usageSignal: undefined, installIdExists: true })).toBe(true)
-  })
-
-  it.each([
-    ['a fresh install (the wizard tells it)', {}, undefined, false],
-    ['an answer of "on"', {}, 'on', true],
-    ['an answer of "off"', {}, 'off', true],
-    ['DO_NOT_TRACK', { DO_NOT_TRACK: '1' }, undefined, true],
-  ] as const)('stays hidden for %s', (_label, env, usageSignal, installIdExists) => {
-    expect(usageNoticeNeeded({ env, usageSignal, installIdExists })).toBe(false)
   })
 })

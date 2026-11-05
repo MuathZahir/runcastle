@@ -3,8 +3,7 @@ import * as z from 'zod'
 import { createSystemExec } from '../../doctor/system-exec'
 import { InvalidInputError } from '../../errors'
 import { emitProject } from '../../services/events'
-import { hasInstallId } from '../../services/install-id'
-import { getUpdateInfo, usageNoticeNeeded } from '../../services/update-check'
+import { getUpdateInfo } from '../../services/update-check'
 import {
   type BurnCacheEngine,
   burnCacheVolumeName,
@@ -43,20 +42,6 @@ export const systemRouter = router({
   checkUpdate: publicProcedure.query(({ ctx }) =>
     getUpdateInfo(runcastleVersion(), { usageSignal: ctx.config.usageSignal }),
   ),
-  /**
-   * Whether to show the one-time usage-ping notice (decision 18): an install
-   * from before the switch that has never answered. The answer is a write of
-   * `usageSignal` through `settings.update`, whose `settings.updated` event
-   * refreshes this query.
-   */
-  usageNotice: publicProcedure.query(({ ctx }) => ({
-    show: usageNoticeNeeded({
-      env: process.env,
-      usageSignal: ctx.config.usageSignal,
-      installIdExists: hasInstallId(),
-    }),
-  })),
-
   burnCache: router({
     /**
      * What the AFK card renders: whether the cache is on at all, which volume
