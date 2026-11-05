@@ -23,11 +23,13 @@ Check first: 1, 3, 6, 11, 13
 **Decision:** The page grammar is: a short heading, at most two sentences, then a real screenshot that shows the thing. Commands sit in one code block. No section is prose alone except where there is nothing to picture (install, the VPS steps). Each page stays under about 400 words of prose; the four together come to roughly 1,500 words, against 7,900 today.
 **Why:** The human said the whole site has "way too much text"; a picture does the work a paragraph used to.
 **Assumed.** Alternative: keep explanatory paragraphs and add screenshots beside them.
+**Changed by the orchestrator:** the 400-word cap per page is a firm rule, not a target, because the human's main complaint was too much text.
 
 ## 5. A short "what you need" list stays; reference detail lives in the README
 **Decision:** Get started keeps a list of a few lines of what you need: Claude Code or Codex signed in, git, Docker or Podman before the first round, and the supported systems (the installer brings Bun). Everything longer, Docker and Podman setup per platform, the Docker Desktop licence note, the usage ping, troubleshooting and the package map, stays in the repo README only, and the docs link to its sections.
 **Why:** A newcomer must learn what install needs without leaving the site at step one, but the long reference detail is what made the docs text-heavy, and one copy cannot drift from another.
 **Assumed.** Alternative: send even the prerequisites to the README, or copy all the reference detail into a fifth "Reference" docs page.
+**Changed by the orchestrator:** the list stays to a line or two on the page, inside decision 4's cap.
 
 ## 6. A fresh set of real captures, taken by hand, with the recipe written down
 **Decision:** The docs get their own screenshots in `site/assets/docs/`, about ten, captured from the real app in the current design, the way the README's were: a copy of the real database in a scratch data dir holding only the demo project, the server booted from the checkout, live states staged by database writes after boot. The recipe and the shot list go in the site README so the next retake follows it. No capture script is committed.
@@ -66,22 +68,26 @@ Check first: 1, 3, 6, 11, 13
 **Assumed.** Alternative: a small additive figure rule at the end of `content.css`.
 
 ## 13. I build it myself, then one review round
-**Decision:** No worker tickets for the build: the lead writes the pages, the redirects and the capture script, and takes the screenshots in this checkout. Then one review round reads the result: links, redirects, stale words, prose length and each picture against its caption.
+**Decision:** No worker tickets for the build: the lead writes the pages and the redirects, and takes the screenshots by hand in this checkout. Then one review round reads the result: links, redirects, stale words, prose length and each picture against its caption.
 **Why:** The screenshots need the human's real runcastle database and the demo project, which a sandboxed worker cannot reach. What remains is a few hundred lines of HTML, cheaper in one window than in containers.
 **Assumed.** Alternative: hand the page writing to a worker and keep only the captures.
+**Changed by the orchestrator:** wording fixed; the lead writes no capture script, as decision 6 says.
 
 ## 14. Written for newcomers; runcastle's own words get one line each
 **Decision:** The docs are written for someone who has not used runcastle. The words a reader meets on the app's screens (feature, round, ticket, worker, review package, test drive, orchestrator) each get a few plain words of definition where a page first uses them, and Get started points to the in-app Glossary (the **?** in the sidebar) for the rest.
 **Why:** Pages this short leave no room for a glossary page, and an undefined "round" stops a newcomer at the first screenshot.
 **Assumed.** Alternative: a separate glossary page on the site.
+**Changed by the orchestrator:** each definition stays a few words, inside decision 4's cap.
 
 ## 15. Get started ends on your first feature
 **Decision:** Get started closes with the first ten minutes on the reader's own repo: open it as a project, let runcastle prepare it, then open a chat and say what you want built. It links to How a feature goes for what happens next. No sample project is offered.
 **Why:** A reader who has installed it wants the next action, and their own repo is what they came to use; runcastle ships no sample project.
 **Assumed.** Alternative: a guided first feature on a sample repo.
+**Changed by the orchestrator:** the ending stays to a line or two, inside decision 4's cap.
 
 ## 16. One honest line on cost and limits
 **Decision:** Get started says in one line that runcastle uses your own Claude or ChatGPT subscription and nothing routes through runcastle, and in one more line that designing screens live and test driving inside runcastle need an app with a web UI.
 **Why:** A reader deciding whether to adopt it looks for both, and the old docs only said it in passing.
 **Assumed.** Alternative: leave limits and cost to the README.
+**Changed by the orchestrator:** the two lines stay two lines, inside decision 4's cap.
 
