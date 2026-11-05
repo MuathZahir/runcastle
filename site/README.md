@@ -9,17 +9,21 @@ landing.css         its styles, fonts included            GENERATED
 landing.js          its motion: one clock, eight scenes   GENERATED
 styles.css          tokens and chrome for docs/ and compare/
 content.css         the reading surface for docs/ and compare/, on top of styles.css
+docs.css            docs-only additions: the screenshot figure and the stage row
 install.sh          the one-line install for macOS and Linux; hands over to `runcastle setup`
 install.ps1         the same for Windows
 _headers            serves both install scripts as plain text
+_redirects          sends the retired docs URLs (pipeline, gates, project, preparation) on
 docs/, compare/     article pages; they load styles.css + content.css and no JS
-  docs/vps/         the VPS guide: install, service, and the SSH tunnel in
+  docs/             get started; features/ how a feature goes; orchestrator/; vps/ another
+                    machine or your phone
 assets/
   og.png            the social card: a capture of the top of the landing page
   favicon.svg       copy of apps/web/public/favicon.svg
   fonts/            Geist + Geist Mono variable subsets (latin), self-hosted
   logos/            Simple Icons brand marks (used by the compare pages)
   screens/          PNG captures for the root README only
+  docs/             PNG captures for the docs pages
   video/            the launch film; no page links to it since the isometric landing
 ```
 
@@ -131,6 +135,29 @@ the castle wall, at 1280px and 2x.
 To refresh them, repeat that: boot a dev server on a scratch data dir holding a
 demo project, then capture with headless Chrome. Recapture whenever the app's
 look moves; stale screenshots are what this folder exists to avoid.
+
+## `assets/docs/` and the docs pages
+
+The docs pages show the app, never a mockup. Each picture is a real capture, made
+the same way as `assets/screens/`, at 1440x900 CSS px and 2x, dark theme.
+
+| File | Page | Shows | Taken from |
+|---|---|---|---|
+| `wizard-agents.png` | Get started | the first-run wizard, Coding agents step (cropped) | a fresh data dir with `HOME` pointed at an empty folder, so the host owes an identity and an agent |
+| `models.png` | Get started | Settings → Models → Per step, a Claude model and a Codex model | the demo snapshot, a Codex model cache under a scratch `CODEX_HOME`, `stepModels` set in the scratch `config.json` |
+| `design.png` | How a feature goes | a design live beside a feature's chat, width Fit | the demo snapshot plus a feature row, a `designs` row and its worktree under the scratch data dir, on the demo repo's `design-mode-probe-review-test` branch |
+| `plan.png`, `round.png`, `review.png`, `drive.png`, `orchestrator.png`, `notes.png` | How a feature goes, The orchestrator | copies of `assets/screens/` `tickets`, `build`, `review`, `drive`, `project-chat`, `project` | the README's captures of 2026-11-05 |
+
+The recipe: `VACUUM INTO` a copy of `~/.runcastle/runcastle.db` in a scratch dir,
+delete every project but `runcastle-demo` and every row that points at the others
+(features, sessions, runs, tickets, events, notes, designs, and `push_*` so
+nothing reaches a phone), clone the demo repo to a scratch path and point the
+project at it. Build the SPA, then boot `packages/server` with
+`runcastle.ts serve`, `RUNCASTLE_DATA_DIR` at the scratch dir, `DO_NOT_TRACK=1`,
+and the asset paths `.runcastle/drive-setup.ts` emits. Stage live states with
+database writes after boot. Wait on `load` plus a settle time, never
+`networkidle`. Stop the scratch server by its port, never by a name pattern
+that could match the real one. Retake whenever the app's look moves.
 
 ## House rules
 

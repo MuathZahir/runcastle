@@ -19,14 +19,7 @@ Every page carries the same docs subnav (the four pages) and a Next link to the 
 
 **Styles** (decision 12). A new docs-only stylesheet, `site/docs.css`, loaded after `content.css` by the four docs pages, holds the screenshot figure (`.doc-shot`: wider than the text column, up to 960px, centred, bordered, a caption under it, the image a link to the full-size file) and the four-stage row (`.stages`). `content.css` and `styles.css` are not edited. Class names are prefixed `doc-` where `styles.css` already uses the plain name (`.shot` is a landing-page class). The pages stay JS-free.
 
-**Screenshots** (decision 6). About ten real captures in `site/assets/docs/`, 2x PNGs of a 1440×900 window (as the README's), dark theme, taken from the app on this branch's base:
-
-- Get started: the first-run wizard on its coding-agents step; Settings → models, showing a Claude model and a Codex model on different steps.
-- How a feature goes: a planning chat with its plan and tickets; a design shown beside the chat; a round in progress; the review package; a test drive with notes; a feature whose next step is Merge (optional, if the review shot does not already show it).
-- The orchestrator: an orchestrator chat cutting an idea; the notes inbox with Triage.
-- Another machine or your phone: Settings → On your phone with its QR code, if it can be shown without a real tailnet; otherwise none.
-
-They are taken from a scratch data dir holding a `VACUUM INTO` copy of the real database with only the `runcastle-demo` project left, its repo cloned to a short path, the server booted from the checkout with `RUNCASTLE_DATA_DIR` and `DO_NOT_TRACK=1`, live rounds and reviews staged by database writes after boot, Playwright waiting on `load` plus a settle time (never `networkidle`), any drive shot taken last. The human's real data dir is never written. The recipe and the shot list are written into the site README; no capture script is committed. Each image has alt text saying what it shows and a one-line caption.
+**Screenshots** (decisions 6, 17). Nine real captures in `site/assets/docs/`, 2x PNGs of a 1440×900 window, dark theme. Three are new: the first-run wizard on its coding-agents step (Get started), Settings → Models per step with a Claude and a Codex model (Get started), and a design live beside a feature's chat (How a feature goes). Six are copies of the README's captures retaken on 2026-11-05: the plan and tickets, a round in progress, the review package, a test drive with notes (How a feature goes), an orchestrator chat cutting an idea, and the notes inbox with Triage (The orchestrator). The phone section has no picture: the phone link's screen would show a real private network address. The new ones were taken from a scratch data dir (a `VACUUM INTO` copy of the real database with only the `runcastle-demo` project, push subscriptions removed, the server booted from the checkout); the human's real data dir was only read. The recipe and the shot list live in the site README; no capture script is committed. Each image has alt text saying what it shows and a one-line caption.
 
 **Who builds it** (decision 13). The lead, in this checkout, because the captures need the real database and demo project. Then one review round reads the result.
 
@@ -47,5 +40,4 @@ They are taken from a scratch data dir holding a `VACUUM INTO` copy of the real 
 
 ## Open questions
 
-- Whether the phone-link Settings screen can be captured without a real Tailscale network; if not, the phone section has no picture.
-- Whether designing screens and test driving truly need a web UI (decision 16): checked against the drive and design code while writing that line.
+- None open. The phone section has no picture (decision 17). Designing screens live needs a web frontend, and test drives cover web apps and HTTP APIs (the drive's API view), which is what Get started says.

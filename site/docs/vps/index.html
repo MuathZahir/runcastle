@@ -3,52 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Run it on a VPS — runcastle docs</title>
-    <meta
-      name="description"
-      content="From a fresh VPS login to a running runcastle you reach over an SSH tunnel: install, sign in, save the burn token, keep it running as a service."
-    />
+    <title>Another machine or your phone — runcastle docs</title>
+    <meta name="description" content="Run runcastle on a server so features keep building while your laptop sleeps, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
     <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/docs/vps/" />
     <meta name="theme-color" content="#0a0c11" />
-
     <meta property="og:type" content="article" />
     <meta property="og:url" content="https://runcastle.dev/docs/vps/" />
-    <meta property="og:title" content="Run it on a VPS — runcastle docs" />
-    <meta
-      property="og:description"
-      content="Seven steps from a fresh VPS login to a running runcastle, reached over an SSH tunnel because the server has no login."
-    />
+    <meta property="og:title" content="Another machine or your phone — runcastle docs" />
+    <meta property="og:description" content="Run runcastle on a server so features keep building while your laptop sleeps, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Run it on a VPS — runcastle docs" />
-    <meta
-      name="twitter:description"
-      content="Seven steps from a fresh VPS login to a running runcastle, reached over an SSH tunnel."
-    />
-
-    <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="/assets/fonts/geist-latin-wght-normal.woff2" />
-    <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/geist-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/content.css" />
-
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "TechArticle",
-        "name": "Run runcastle on a VPS",
-        "headline": "Run runcastle on a VPS",
-        "description": "Install runcastle on a VPS, keep it running as a service, and reach it over an SSH tunnel.",
-        "url": "https://runcastle.dev/docs/vps/",
-        "mainEntityOfPage": "https://runcastle.dev/docs/vps/",
-        "author": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
-        "publisher": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
-        "about": { "@type": "SoftwareApplication", "name": "runcastle" }
-      }
-    </script>
+    <link rel="stylesheet" href="/docs.css" />
   </head>
 
   <body>
@@ -90,70 +61,63 @@
           <span class="crumbs-sep" aria-hidden="true">/</span>
           <a href="/docs/">Docs</a>
           <span class="crumbs-sep" aria-hidden="true">/</span>
-          <span aria-current="page">VPS</span>
+          <span aria-current="page">Another machine or your phone</span>
         </nav>
 
-        <h1>Run it on a VPS</h1>
+        <h1>Another machine or your phone</h1>
         <p class="article-lede">
-          From a fresh login to a runcastle that keeps burning after you log out, reached from your
-          own browser over an SSH tunnel.
+          Put runcastle on a server so features keep building while your laptop sleeps, and check on them from your phone.
         </p>
 
         <nav class="subnav" aria-label="Docs">
-          <a href="/docs/">Getting started</a>
-          <a href="/docs/preparation/">Preparation</a>
-          <a href="/docs/project/">Project session</a>
-          <a href="/docs/pipeline/">The pipeline</a>
-          <a href="/docs/gates/">Gates</a>
-          <a href="/compare/">Compare</a>
+          <a href="/docs/">Get started</a>
+          <a href="/docs/features/">How a feature goes</a>
+          <a href="/docs/orchestrator/">The orchestrator</a>
+          <a href="/docs/vps/" aria-current="page">Another machine or your phone</a>
         </nav>
 
-        <h2>In order</h2>
+        <h2>On a server</h2>
         <ol>
-          <li>
-            <strong>Log in as a normal user with <code>sudo</code>.</strong> The install refuses to
-            run as root, and tells you how to make that user if you only have root.
-          </li>
-          <li>
-            <strong>Run the install.</strong> It shows the list and asks once.
-            <pre><code><span class="pre-prompt">$</span> curl -fsSL https://runcastle.dev/install.sh | bash</code></pre>
-            Unattended, answer for it:
-            <pre><code><span class="pre-prompt">$</span> curl -fsSL https://runcastle.dev/install.sh | bash -s -- --yes --agent claude</code></pre>
-          </li>
-          <li><strong>Log out and back in</strong>, so the <code>docker</code> group applies.</li>
-          <li><strong>Sign in to Claude Code:</strong> <code>claude auth login</code>.</li>
-          <li>
-            <strong>Save the burn token:</strong> <code>runcastle token</code>. It has you run
-            <code>claude setup-token</code> and checks what you paste.
-          </li>
-          <li>
-            <strong>Keep it running:</strong> <code>runcastle service install</code>. It starts at
-            boot, after Docker, and restarts if it stops.
-          </li>
-          <li>
-            <strong>Reach it</strong> from your own machine, then open
-            <code>http://localhost:4512</code>:
-            <pre><code><span class="pre-prompt">$</span> ssh -L 4512:localhost:4512 user@host</code></pre>
-          </li>
+          <li>Log in as a normal user with sudo; the install refuses root.</li>
+          <li>Run the install. On a server, let it answer for you:
+<pre><code>$ curl -fsSL https://runcastle.dev/install.sh | bash -s -- --yes --agent claude</code></pre>
+            Use <code>--agent codex</code> or <code>--agent both</code> for the others.</li>
+          <li>Log out and back in, so the docker group applies.</li>
+          <li>Sign in: <code>claude auth login</code> then <code>runcastle token</code>, or <code>codex login</code>.</li>
+          <li>Keep it running: <code>runcastle service install</code>. It starts at boot and restarts if it stops.</li>
         </ol>
 
-        <div class="note">
-          <p>
-            The server has no login. It listens on <code>127.0.0.1</code> only, so the tunnel is the
-            way in. Never expose it publicly.
-          </p>
-        </div>
+        <h2>Reach it</h2>
+        <p>
+          It has no login and listens on 127.0.0.1 only, so never expose it. Forward both ports
+          over SSH, then open <code>http://localhost:4512</code>:
+        </p>
+<pre><code>$ ssh -L 4512:localhost:4512 -L 4514:localhost:4514 user@host</code></pre>
+        <p>Port 4514 serves designs. Without it the Design view stays empty.</p>
 
-        <p>Firewall and SSH hardening are yours to do.</p>
+        <h2>Move an existing setup</h2>
+        <p>
+          <code>runcastle move user@host</code> carries your projects, every branch, uncommitted
+          work and runcastle's own data to a Linux or macOS machine. Add <code>--dry-run</code> to
+          look first.
+        </p>
+
+        <h2>On your phone</h2>
+        <p>
+          Install <a href="https://tailscale.com/download" rel="noopener" target="_blank">Tailscale</a>
+          on the machine and your phone. In runcastle, open Settings → General →
+          <strong>On your phone</strong>, turn the link on and scan the QR code. It stays on your own
+          Tailscale network, never the internet.
+        </p>
+        <p>
+          Add the page to your home screen and turn on notifications: a feature that needs you
+          then reaches your phone. On an iPhone they work only from the home screen.
+        </p>
 
         <div class="next">
           <a href="/docs/">
-            <span class="next-k">Start here</span>
-            <span class="next-t">Install runcastle</span>
-          </a>
-          <a href="/docs/preparation/">
             <span class="next-k">Next</span>
-            <span class="next-t">Preparation: teach runcastle your repo</span>
+            <span class="next-t">Get started</span>
           </a>
         </div>
       </article>
@@ -181,5 +145,6 @@
         <span class="footer-meta">Built with runcastle</span>
       </div>
     </footer>
+
   </body>
 </html>

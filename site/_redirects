@@ -1,0 +1,11 @@
+# Cloudflare Pages redirects. The docs were cut from six pages to four
+# (docs-for-runcastle-as-it-is-today); the old addresses are indexed and still
+# linked from older pages, so each goes to its nearest replacement.
+/docs/pipeline/     /docs/features/      301
+/docs/pipeline      /docs/features/      301
+/docs/gates/        /docs/features/      301
+/docs/gates         /docs/features/      301
+/docs/project/      /docs/orchestrator/  301
+/docs/project       /docs/orchestrator/  301
+/docs/preparation/  /docs/               301
+/docs/preparation   /docs/               301

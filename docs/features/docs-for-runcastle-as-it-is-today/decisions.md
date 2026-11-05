@@ -91,3 +91,8 @@ Check first: 1, 3, 6, 11, 13
 **Assumed.** Alternative: leave limits and cost to the README.
 **Changed by the orchestrator:** the two lines stay two lines, inside decision 4's cap.
 
+
+## 17. Today's README captures are reused where they show the state
+**Decision:** Where a README screenshot retaken on 2026-11-05 already shows the state a docs section needs (the plan and tickets, a round, the review package, a test drive, the orchestrator chat, notes and Triage), it is copied into `site/assets/docs/`. New captures are taken only for what none shows: the first-run wizard, the model settings, and a design beside the chat. The phone section gets no picture, since the phone link's screen would show a real private network address.
+**Why:** Those README shots are real captures in today's design, taken hours before this plan. The staged states behind them are no longer in the database, so retaking them would mean rebuilding that staging for identical pictures.
+**Assumed.** Alternative: retake every docs picture fresh, as decision 6 first said.
