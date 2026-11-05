@@ -74,6 +74,17 @@ describe('describeField', () => {
     expect(unset.placeholder).not.toBe('None')
   })
 
+  it('shows no Global chip on a none for a key with a global twin', () => {
+    const none = describeField(field({ key: 'knownFailures', scope: 'project', value: null, source: 'default' }), {
+      key: 'knownFailures',
+      source: 'session',
+      evidence: 'the suite is green on main',
+      establishedAt: Date.now(),
+    })
+    expect(none.placeholder).toBe('None')
+    expect(none.sourceChip).toBeUndefined()
+  })
+
   it('flags serverPort as restart-required and renders it as a number control', () => {
     const row = describeField(
       field({ key: 'serverPort', value: 4512, restartRequired: true }),

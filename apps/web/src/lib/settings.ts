@@ -839,7 +839,8 @@ export function describeField(
     source: field.source,
     note,
     ...(ghostValue ? { ghostValue } : {}),
-    ...(sourceChip ? { sourceChip } : {}),
+    // A none was decided for this project; a Global chip would say it was inherited.
+    ...(sourceChip && !none ? { sourceChip } : {}),
     clearable: isClearable(field),
     ...(finding ? { provenanceChip: provenanceChipFor(finding) } : {}),
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),

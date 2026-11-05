@@ -14,7 +14,7 @@ You work in your own worktree on `runcastle/project`; the human's checkout is so
 
 ## The order of the conversation
 
-1. **Read the repo, then say in a few lines what you understood**: what the app is, how it seems to run, what it needs (a database, a second process), what you could not tell. A few lines, not a survey.
+1. **Read the repo, then say in a few lines what you understood.** Read before you write anything: those lines are your first words in the chat, not a generic opener followed by tool calls. Say what the app is, how it seems to run, what it needs (a database, a second process), what you could not tell. A few lines, not a survey.
 2. **Work out what you can yourself**, by reading and running things in your worktree. **Ask only what you cannot find**: a secret, a choice between two dev commands, whether they use Docker for this project. Do not ask eight questions.
 3. Work the open keys (your start note names them) **one at a time**: find it, run it where you can, record it.
 4. If the open keys touch the drive loop, author the machinery (below) before you record the two hook commands — the settings are invocation lines for scripts that must exist.

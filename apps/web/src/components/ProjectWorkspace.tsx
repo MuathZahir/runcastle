@@ -196,6 +196,16 @@ export function ProjectWorkspace({
   const askOrchestrator = (): void => {
     if (!launch.isPending) launch.mutate({ projectId, fresh: true })
   }
+  // The header's Set up drives: an Orchestrator chat already at work (most
+  // likely the one preparing this project) is where that happens, so it opens
+  // that chat rather than starting a second one beside it.
+  const setUpDrives = (): void => {
+    const live = listed
+      .filter((t) => t.role === 'project' && t.state !== 'idle')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    if (live) open(live.id)
+    else askOrchestrator()
+  }
   const newChatRef = useRef(newChat)
   newChatRef.current = newChat
 
@@ -355,7 +365,7 @@ export function ProjectWorkspace({
               starting={projectDrive.starting}
               scenarios={startScenarios}
               onStart={startDrive}
-              onSetUp={askOrchestrator}
+              onSetUp={setUpDrives}
               onReturn={() => openView('drive')}
             />}
             <PanelToggle
