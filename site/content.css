@@ -297,6 +297,308 @@
 }
 
 /* ==========================================================================
+   BLOG POSTS  (compare/)
+   --------------------------------------------------------------------------
+   A post is an .article with .post: a byline, a short lede, the process
+   strip, wide figures, a small fact table and a closing install call.
+   Everything here is additive; docs pages never use these classes.
+   ========================================================================== */
+
+.post h1 {
+  font-size: clamp(32px, 6vw, 50px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  margin-bottom: 16px;
+  text-wrap: balance;
+}
+.post .article-lede {
+  font-size: 19px;
+  margin-bottom: 28px;
+  text-wrap: pretty;
+}
+.post h2 {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 56px;
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 0 22px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-tertiary);
+}
+.byline .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--text-disabled);
+}
+
+/* The one line every post opens its argument with. */
+.pull {
+  margin: 44px 0;
+  padding-left: 18px;
+  border-left: 2px solid var(--accent);
+  font-size: clamp(21px, 3.2vw, 26px);
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+/* ---- The process strip ------------------------------------------------- */
+
+.strip {
+  margin: 36px 0 40px;
+  display: grid;
+  gap: 10px;
+}
+.strip-row {
+  display: grid;
+  grid-template-columns: 112px repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  align-items: stretch;
+}
+.strip-who {
+  align-self: center;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.strip-step {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 58px;
+  padding: 8px 9px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.strip-step small {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+}
+/* Covered by the tool: a solid block. */
+.strip-step.is-on {
+  background: var(--surface-selected);
+  color: var(--text);
+}
+.strip-step.is-on small {
+  color: var(--text-tertiary);
+}
+/* Covered by runcastle: the same block, lit. */
+.strip-step.is-rc {
+  background: var(--accent-subtle);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+.strip-step.is-rc small {
+  color: var(--accent-text);
+}
+/* Left to you: an empty, dashed slot. */
+.strip-step.is-you {
+  border: 1px dashed var(--border-strong);
+  color: var(--text-tertiary);
+}
+.strip-step.is-you small {
+  color: var(--warning);
+}
+.strip-key {
+  margin: 2px 0 0 116px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* ---- Figures: wider than the text column -------------------------------- */
+
+.post-figure {
+  margin: 34px 0;
+}
+/* Wide screens: let the picture break out of the text column a little. */
+@media (min-width: 960px) {
+  .post-figure {
+    margin-inline: -96px;
+  }
+}
+.post-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.post-figure figcaption {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* ---- The fact table ---------------------------------------------------- */
+
+.facts {
+  margin: 48px 0 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.facts table {
+  font-size: 14px;
+}
+.facts th,
+.facts td {
+  padding: 10px 14px;
+}
+.facts thead th {
+  background: var(--surface);
+}
+.facts td:first-child {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.facts-src {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+}
+.article .facts-src a {
+  color: var(--text-tertiary);
+}
+
+/* ---- Closing call ------------------------------------------------------ */
+
+.post-cta {
+  margin-top: 48px;
+  padding: 22px 22px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.post-cta p {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.post-cta pre {
+  margin: 0 0 14px;
+}
+.article .post-cta .lp-btn {
+  color: var(--on-primary);
+  text-decoration: none;
+}
+
+/* ---- The index: one card per post -------------------------------------- */
+
+.article .post-list {
+  display: grid;
+  gap: 12px;
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.article .post-list li {
+  margin: 0;
+}
+.article .post-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 20px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.article .post-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+.post-card-vs {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.post-card-t {
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.post-card-arrow {
+  align-self: center;
+  color: var(--text-tertiary);
+}
+.post-card-hook {
+  grid-column: 1 / -1;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.post-card-meta {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* The one line under the cards naming tools without a post. */
+.also {
+  margin-top: 28px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+/* Seven steps and a label do not fit a narrow column: wrap each row onto two
+   lines of four, with the label above. */
+@media (max-width: 760px) {
+  .strip {
+    gap: 16px;
+  }
+  .strip-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .strip-who {
+    grid-column: 1 / -1;
+  }
+  .strip-step {
+    min-height: 0;
+  }
+  .strip-key {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .post-figure {
+    margin-inline: 0;
+  }
+}
+
+/* ==========================================================================
    NARROW SCREENS
    ========================================================================== */
 
