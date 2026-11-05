@@ -360,7 +360,7 @@ describe('createProbeScratchRepo', () => {
   }
 
   it.each(['pnpm-monorepo', 'jest-app'])(
-    'turns the %s fixture into a committed git repo the burn path can fork from',
+    'turns the %s fixture into a committed git repo the round path can fork from',
     async (name) => {
       const scratch = await scratchOf(fixture(name))
 

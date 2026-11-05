@@ -27,7 +27,7 @@ import { rmTemp, seedProject } from './helpers/fixtures'
 import { kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
- * The project chat as a conversation LIST (decision 5). What is worth pinning is
+ * The orchestrator chat as a conversation LIST (decision 5). What is worth pinning is
  * the reversal: opening the chat starts a new conversation, and picking up an
  * old one is a specific, named click — the opposite of the silent resume this
  * replaced. Plus the two reads that make a list usable at all: what each
@@ -253,7 +253,7 @@ describe('the project conversation list', () => {
     giveTranscript(first.sessionId, [entry('user', 'rework the review page')])
     endSession(ctx, first.sessionId)
     const reopened = await launch('cc-same')
-    giveTranscript(reopened.sessionId, [entry('user', 'now the burn view')])
+    giveTranscript(reopened.sessionId, [entry('user', 'now the round view')])
 
     const [conversation] = await caller().project.conversations({ projectId: project.id })
 

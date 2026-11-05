@@ -451,7 +451,7 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
   if (finding.status !== 'fixed') return null
   if (finding.resolvedBy === 'session') {
     return {
-      text: 'closed by a session as addressed — no fix ticket verified it',
+      text: 'closed in a chat as addressed — no fix ticket verified it',
       evidence: 'attested',
       ...(note ? { note } : {}),
     }

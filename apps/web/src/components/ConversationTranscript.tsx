@@ -42,9 +42,9 @@ export function ConversationTranscript({
   // never written" would be a lie, and the parse failure is ours to own rather
   // than the human's to debug.
   if (q.data?.status === 'unavailable')
-    return <DimLine>Transcript not available for this session.</DimLine>
+    return <DimLine>Transcript not available for this chat.</DimLine>
   const turns = q.data?.turns ?? []
-  if (turns.length === 0) return <DimLine>No transcript kept for this conversation.</DimLine>
+  if (turns.length === 0) return <DimLine>No transcript kept for this chat.</DimLine>
 
   return (
     <TranscriptBubbles

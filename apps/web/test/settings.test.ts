@@ -698,14 +698,14 @@ describe('describeField — the provenance chip', () => {
     expect(
       chip({ key: 'devCommand', source: 'session', verifiedAt: Date.now() - 10 * DAY }),
     ).toEqual({
-      text: 'Set in a session · 11d ago · verified by a dry run 10d ago',
+      text: 'Set in a chat · 11d ago · verified by a dry run 10d ago',
       tone: 'ok',
     })
   })
 
   it('dims a drive-loop key no dry run has ever reached', () => {
     expect(chip({ key: 'driveStopCommand', source: 'session' })).toEqual({
-      text: 'Set in a session · 11d ago · unverified',
+      text: 'Set in a chat · 11d ago · unverified',
       tone: 'muted',
     })
   })
@@ -1068,7 +1068,7 @@ describe('stepRows', () => {
     ])
     expect(rows.map((r) => r.label)).toEqual([
       'Chat',
-      'Project chat',
+      'Orchestrator chat',
       'Implement',
       'Review',
       'Prepare',

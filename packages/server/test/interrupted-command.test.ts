@@ -12,7 +12,7 @@ import {
 } from '../src/workflows/ticket-burner'
 
 /**
- * A burn iteration that died mid-command (OOM-killed full suite) must be named
+ * A round iteration that died mid-command (OOM-killed full suite) must be named
  * in the next iteration's prompt, so the successor does not re-run the same
  * command and die the same way.
  */

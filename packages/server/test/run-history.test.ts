@@ -13,7 +13,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * Run history and the burn-time expectation (decisions #15b, #16b) — both reads
- * over what a burn already wrote, so what has to be right here is the join.
+ * over what a round already wrote, so what has to be right here is the join.
  *
  * `run.listByFeature` and `run.get` reconstruct a past run's lanes from its own
  * events plus the ticket ledger, with no new persistence; `ticket.durationStats`

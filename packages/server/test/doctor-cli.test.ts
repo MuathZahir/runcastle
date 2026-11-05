@@ -16,7 +16,7 @@ describe('parseMode', () => {
 })
 
 describe('resolveDoctorEnv', () => {
-  it('names the burner Dockerfile the current install actually ships', () => {
+  it('names the worker Dockerfile the current install actually ships', () => {
     const { burnerDockerfile } = resolveDoctorEnv()
     expect(burnerDockerfile).toBe(burnerDockerfilePath())
     expect(existsSync(burnerDockerfile ?? '')).toBe(true)

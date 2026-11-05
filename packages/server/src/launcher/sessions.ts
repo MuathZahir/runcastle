@@ -286,7 +286,7 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
     const error = e instanceof Error ? e.message : String(e)
     emitProject(ctx, project.id, {
       type: 'project.land_failed',
-      message: `could not land the project session's work${
+      message: `could not land the orchestrator's work${
         base ? ` onto ${base}` : ''
       }: ${error} — ${LANDING_KEPT}`,
       data: { sessionId: session.id, branch: PROJECT_BRANCH, error },
@@ -338,19 +338,19 @@ export function reportProjectLanding(
   if (res.landed) {
     report(
       'project.landed',
-      `landed ${res.commits} commit(s) from the project session onto ${res.base}`,
+      `landed ${res.commits} commit(s) from the orchestrator onto ${res.base}`,
       { commits: res.commits },
     )
   } else if (res.conflict) {
     report(
       'project.land_conflict',
-      `the project session's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${LANDING_KEPT}`,
+      `the orchestrator's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${LANDING_KEPT}`,
       { commits: res.commits, files: res.files ?? [] },
     )
   } else {
     report(
       'project.land_failed',
-      `could not land the project session's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
+      `could not land the orchestrator's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
       { commits: res.commits, error: res.error ?? null },
     )
   }

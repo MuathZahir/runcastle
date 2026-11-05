@@ -13,10 +13,10 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * What the build phase's bar has to know before it can warn: how many bytes of
- * feature docs the next burn will hand EVERY ticket in it.
+ * feature docs the next round will hand EVERY ticket in it.
  *
  * The size was only ever reported after the fact, on a run-timeline event, so
- * the human deciding the burn had nothing to read. This is the burner's own
+ * the human deciding the round had nothing to read. This is the burner's own
  * `readDocsDigest` on the wire — the same number the event reports, not a second
  * count over the same files.
  */

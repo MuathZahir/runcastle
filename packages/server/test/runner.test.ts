@@ -184,7 +184,7 @@ describe('workflowClaimsFeatureBranch', () => {
   })
 })
 
-describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)', () => {
+describe('talk worktree at the round boundary (one-chat-per-feature decision 9)', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
@@ -390,7 +390,7 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
     })
   })
 
-  it('lands them on a FAILED run too — which way the burn went says nothing about the notes', async () => {
+  it('lands them on a FAILED run too — which way the round went says nothing about the notes', async () => {
     await withGatedBurner('throw', async (open, done) => {
       await chatCommits('failed-run-note.md')
 

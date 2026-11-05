@@ -55,7 +55,7 @@ export function claimHold(ctx: AppCtx, featureId: string, threadId: string): voi
   setHolder(ctx, featureId, threadId)
   emit(ctx, featureId, {
     type: 'feature.held',
-    message: `held by the thread "${nameOf(ctx, threadId)}"`,
+    message: `held by the orchestrator chat "${nameOf(ctx, threadId)}"`,
     data: { threadId },
   })
 }
@@ -70,7 +70,7 @@ export function requireHold(ctx: AppCtx, session: SessionRow, feature: Feature):
   if (feature.heldBy === session.id) return feature
   if (feature.heldBy) {
     throw new GateError(
-      `\`${feature.slug}\` is held by the thread "${nameOf(ctx, feature.heldBy)}", so nothing was done. ` +
+      `\`${feature.slug}\` is held by the orchestrator chat "${nameOf(ctx, feature.heldBy)}", so nothing was done. ` +
         'take_feature moves it to this thread: use it only when the human asked you to act on this feature here.',
     )
   }
@@ -129,7 +129,7 @@ export function inheritHolds(ctx: AppCtx, fromId: string, toId: string): void {
     setHolder(ctx, id, toId)
     emit(ctx, id, {
       type: 'feature.held',
-      message: `held by the thread "${nameOf(ctx, toId)}", which replaced a chat too long to reopen`,
+      message: `held by the orchestrator chat "${nameOf(ctx, toId)}", which replaced a chat too long to reopen`,
       data: { threadId: toId, inheritedFrom: fromId },
     })
   }
@@ -193,7 +193,7 @@ function sweepProject(ctx: AppCtx, projectId: string): void {
       setHolder(ctx, id, threadId)
       emit(ctx, id, {
         type: 'feature.held',
-        message: `held by the thread "${nameOf(ctx, threadId)}", the one that last acted on it`,
+        message: `held by the orchestrator chat "${nameOf(ctx, threadId)}", the one that last acted on it`,
         data: { threadId, swept: true },
       })
       placed += 1

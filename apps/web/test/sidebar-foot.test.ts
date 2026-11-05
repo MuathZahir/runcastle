@@ -84,6 +84,11 @@ describe('sidebar foot', () => {
     expect(html).not.toContain('aria-label="Settings"')
   })
 
+  it('shows the help menu’s question mark only when the Glossary can open', () => {
+    expect(foot({ onOpenGlossary: () => undefined })).toContain('aria-label="Help"')
+    expect(foot()).not.toContain('aria-label="Help"')
+  })
+
   it('carries the drive cards it is handed above the status line', () => {
     const html = foot({
       rows: createElement(DriveCard, {

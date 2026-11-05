@@ -16,7 +16,7 @@ You run **non-interactively** — your agent CLI in print/exec mode, no terminal
 - **An unfinished merge does not survive you.** Resolved-but-uncommitted files are discarded when your process ends, and the next iteration restarts the merge from scratch. Once the conflicts are resolved and the tree is sane, land the merge commit — then verify and fix forward on top of it.
 - **Signal completion.** When the merge commit is in, print exactly `<promise>COMPLETE</promise>` as the last line of your final message. Do the same after writing `BLOCKED.md` (see hard rules).
 - **Run the repo's test command as the repo defines it** — no `--maxWorkers`, `--pool`, `--shard`, or `--runInBand`. Serialising a suite has been measured at 10–20 minutes for work its configured concurrency does in under a minute.
-- **Use `Read`, `Grep`, and `Edit`** for files; keep `Bash` for git, typecheck, and tests. Reading with `cat`/`sed` and editing with `python3` heredocs is among the largest measured time sinks in real burns.
+- **Use `Read`, `Grep`, and `Edit`** for files; keep `Bash` for git, typecheck, and tests. Reading with `cat`/`sed` and editing with `python3` heredocs is among the largest measured time sinks in real rounds.
 
 ## Where to work
 

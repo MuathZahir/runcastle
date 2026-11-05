@@ -2,7 +2,12 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { checkForUpdate, compareSemver } from '../src/services/update-check'
+import { hasInstallId } from '../src/services/install-id'
+import {
+  checkForUpdate,
+  compareSemver,
+  usageNoticeNeeded,
+} from '../src/services/update-check'
 import { UNKNOWN_VERSION } from '../src/version'
 
 /**
@@ -43,6 +48,9 @@ describe('compareSemver', () => {
 // service — the URLs a stranger's machine talks to are part of the contract.
 const PING = 'https://ping.runcastle.dev/ping'
 const NPM = 'https://registry.npmjs.org/runcastle/latest'
+
+/** A check the human has said yes to: no DO_NOT_TRACK, `usageSignal: 'on'`. */
+const PINGING = { env: {}, usageSignal: 'on' } as const
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -114,7 +122,7 @@ describe('checkForUpdate', () => {
 
   it('asks runcastle first, POSTing the install ID, version and platform — nothing else', async () => {
     const spy = spyFetch(() => json({ latest: '9.9.9' }))
-    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, ...PINGING })
 
     expect(spy.calls).toHaveLength(1)
     const [call] = spy.calls
@@ -129,8 +137,8 @@ describe('checkForUpdate', () => {
 
   it('sends the same install ID on every check', async () => {
     const spy = spyFetch(() => json({ latest: '9.9.9' }))
-    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
-    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, ...PINGING })
+    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, ...PINGING })
     const ids = spy.calls.map((c) => (c.body as { installId: string }).installId)
     expect(ids[0]).toBe(ids[1])
   })
@@ -139,7 +147,7 @@ describe('checkForUpdate', () => {
     const info = await checkForUpdate({
       current: '0.1.0',
       fetchImpl: spyFetch(() => json({ latest: '0.4.0' })).impl,
-      env: {},
+      ...PINGING,
     })
     expect(info.latest).toBe('0.4.0')
     expect(info.updateAvailable).toBe(true)
@@ -155,7 +163,7 @@ describe('checkForUpdate', () => {
     ['a non-string latest', () => json({ latest: 42 })],
   ])('falls back to npm on %s from runcastle', async (_label, broken) => {
     const spy = spyFetch((url) => (url === PING ? broken() : json({ version: '0.4.0' })))
-    const info = await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    const info = await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, ...PINGING })
 
     expect(spy.calls.map((c) => c.url)).toEqual([PING, NPM])
     expect(spy.calls[1]?.method).toBe('GET')
@@ -165,7 +173,7 @@ describe('checkForUpdate', () => {
 
   it('degrades to a silent no-update when both rungs fail, without throwing', async () => {
     const spy = spyFetch(() => Promise.reject(new Error('offline')))
-    const info = await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    const info = await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, ...PINGING })
 
     expect(spy.calls.map((c) => c.url)).toEqual([PING, NPM])
     expect(info.updateAvailable).toBe(false)
@@ -201,7 +209,12 @@ describe('checkForUpdate', () => {
   it('treats an empty or 0 DO_NOT_TRACK as not opted out', async () => {
     for (const value of ['', '0']) {
       const spy = spyFetch(() => json({ latest: '0.4.0' }))
-      await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: { DO_NOT_TRACK: value } })
+      await checkForUpdate({
+        current: '0.1.0',
+        fetchImpl: spy.impl,
+        env: { DO_NOT_TRACK: value },
+        usageSignal: 'on',
+      })
       expect(spy.calls.map((c) => c.url)).toEqual([PING])
     }
   })
@@ -213,11 +226,43 @@ describe('checkForUpdate', () => {
   // about, so it must not ping either.
   it('claims no update when the running version is unknown, without any request', async () => {
     const spy = spyFetch(() => json({ latest: '1.1.1' }))
-    const info = await checkForUpdate({ current: UNKNOWN_VERSION, fetchImpl: spy.impl, env: {} })
+    const info = await checkForUpdate({ current: UNKNOWN_VERSION, fetchImpl: spy.impl, ...PINGING })
 
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
     expect(spy.calls).toEqual([])
+  })
+
+  // Nothing is sent before the human has been told (decisions 4, 18): which
+  // rung each combination of DO_NOT_TRACK, the switch and install-ID presence
+  // lands on. The install ID is injected, so the data dir decides nothing here.
+  it.each([
+    ['DO_NOT_TRACK beats "on"', { DO_NOT_TRACK: '1' }, 'on', true, [NPM]],
+    ['DO_NOT_TRACK beats an old install', { DO_NOT_TRACK: '1' }, undefined, true, [NPM]],
+    ['"off"', {}, 'off', true, [NPM]],
+    ['"off" on a fresh install', {}, 'off', false, [NPM]],
+    ['unset on a fresh install (wizard not passed)', {}, undefined, false, [NPM]],
+    ['"on" on a fresh install (wizard ticked)', {}, 'on', false, [PING]],
+    ['"on" on an old install', {}, 'on', true, [PING]],
+    ['unset on an install that pinged before the switch', {}, undefined, true, [PING]],
+  ] as const)('%s → asks %j', async (_label, env, usageSignal, installIdExists, urls) => {
+    const spy = spyFetch((url) => (url === NPM ? json({ version: '0.4.0' }) : json({ latest: '0.4.0' })))
+    const info = await checkForUpdate({
+      current: '0.1.0',
+      fetchImpl: spy.impl,
+      env,
+      usageSignal,
+      installIdExists,
+    })
+    expect(spy.calls.map((c) => c.url)).toEqual(urls)
+    expect(info.updateAvailable).toBe(true)
+  })
+
+  it('never creates the install ID on a check that does not ping', async () => {
+    const spy = spyFetch(() => json({ version: '0.4.0' }))
+    await checkForUpdate({ current: '0.1.0', fetchImpl: spy.impl, env: {} })
+    expect(spy.calls.map((c) => c.url)).toEqual([NPM])
+    expect(hasInstallId()).toBe(false)
   })
 
   it('swallows a non-200 from both rungs', async () => {
@@ -225,5 +270,22 @@ describe('checkForUpdate', () => {
     const info = await checkForUpdate({ current: '0.1.0', fetchImpl: notFound })
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
+  })
+})
+
+// The one-time notice is for installs that are pinging without having been told
+// in the app: an ID from before the switch, no answer yet, not opted out.
+describe('usageNoticeNeeded', () => {
+  it('shows for an install with an ID that has never answered', () => {
+    expect(usageNoticeNeeded({ env: {}, usageSignal: undefined, installIdExists: true })).toBe(true)
+  })
+
+  it.each([
+    ['a fresh install (the wizard tells it)', {}, undefined, false],
+    ['an answer of "on"', {}, 'on', true],
+    ['an answer of "off"', {}, 'off', true],
+    ['DO_NOT_TRACK', { DO_NOT_TRACK: '1' }, undefined, true],
+  ] as const)('stays hidden for %s', (_label, env, usageSignal, installIdExists) => {
+    expect(usageNoticeNeeded({ env, usageSignal, installIdExists })).toBe(false)
   })
 })

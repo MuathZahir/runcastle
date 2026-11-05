@@ -458,7 +458,7 @@ describe('buildLapDigestsBlock', () => {
     expect(out).toContain('Third')
   })
 
-  it('is explicit when the burn harvested nothing', () => {
+  it('is explicit when the round harvested nothing', () => {
     expect(buildLapDigestsBlock([])).toMatch(/No implementation ticket/i)
   })
 })
@@ -662,7 +662,7 @@ describe('emitDocsDigestEvent', () => {
     expect(events[0].data).not.toMatchObject({ oversized: true })
   })
 
-  it('says so when every ticket in the burn is about to pay for an oversized digest', () => {
+  it('says so when every ticket in the round is about to pay for an oversized digest', () => {
     const events = emitted(digest(97_000))
     expect(events[0].message).toContain('97000 bytes to every ticket')
     expect(events[0].message).toContain('over the 40000-byte budget')
@@ -673,7 +673,7 @@ describe('emitDocsDigestEvent', () => {
   it('still reports a spec-less burn as the absence it is, not as a size', () => {
     const events = emitted({ ...digest(97_000), missing: 'no-worktree' })
     expect(events[0].type).toBe('burn.docs.missing')
-    expect(events[0].message).toContain('burning with NO feature spec')
+    expect(events[0].message).toContain('building with NO feature spec')
   })
 })
 
@@ -1076,7 +1076,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       expect(env).toEqual({ CODEX_API_KEY: 'sk-openai' })
     })
 
-    // The normal case now: no key anywhere, and the burn proceeds regardless —
+    // The normal case now: no key anywhere, and the round proceeds regardless —
     // it authenticates on the `auth.json` copied out of the read-only mount.
     it('burns codex with an empty container env when there is no key to pass', () => {
       const env = buildBurnAgent(config('docker'), undefined, CODEX_MODEL).env
@@ -1173,7 +1173,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 
     // The container a ticket burns in is the project's own image when it has
     // one — this is the option object where that either happens or silently
-    // does not, and "silently does not" is a burn in an image with no toolchain.
+    // does not, and "silently does not" is a round in an image with no toolchain.
     it('hands the provider the project’s own image over the machine-wide one', () => {
       const global = { ...config('docker'), sandboxImage: 'sandcastle:runcastle' }
       expect(
@@ -1328,7 +1328,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   })
 })
 
-describe('classifyToolCall — where a burn spends its wall-clock', () => {
+describe('classifyToolCall — where a round spends its wall-clock', () => {
   const bash = (cmd: string) => classifyToolCall('claude-code', 'Bash', cmd)
 
   it('maps the non-Bash file tools by name', () => {
@@ -2022,13 +2022,13 @@ describe('composeRunDigest — the run-level aggregate (mechanical, no LLM)', ()
         {
           seq: 3,
           title: 'Review it',
-          digest: 'Lap 3 · drive mode · DRIVE FAILED · nothing verified',
+          digest: 'Lap 3 · test drive · DRIVE FAILED · nothing verified',
           reviewVerdict: 'unverified',
         },
       ]),
     ).toBe(
       '# succeeded-unverified\n\n' +
-      '## ticket 3 — Review it\n\nLap 3 · drive mode · DRIVE FAILED · nothing verified',
+      '## ticket 3 — Review it\n\nLap 3 · test drive · DRIVE FAILED · nothing verified',
     )
   })
 })

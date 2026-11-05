@@ -32,7 +32,7 @@ export interface ScaffoldOptions {
   /**
    * Body written into `brief.md` verbatim, instead of the generated
    * title + oneLiner + created-date stub. Used by every creation path that
-   * already HAS the brief — the project session's `create_feature` (the reasoning from the intake
+   * already HAS the brief — the orchestrator's `create_feature` (the reasoning from the intake
    * conversation, which would otherwise evaporate). Blank/whitespace-only falls
    * back to the stub.
    */
@@ -90,7 +90,7 @@ export const SUPERSEDED_RE = /superseded by ADR-\d+/i
  * The charter (`CONTEXT.md`) read out of one checkout, in full.
  *
  * Absent is a normal answer, not an error: the charter is born lazily, the first
- * time the project session has something to write (decision 28). A scaffolded
+ * time the orchestrator has something to write (decision 28). A scaffolded
  * stub would be a file that reads authoritative while saying nothing, so
  * "no file, nothing injected" is the designed degradation.
  */

@@ -7,6 +7,7 @@ import {
   LINUX_OPERATOR_HINT,
   phoneDesignPort,
   phoneLinkStatus,
+  TAILSCALE_HTTPS_PAGE,
   turnPhoneLinkOff,
   turnPhoneLinkOn,
 } from '../src/services/phone-link'
@@ -37,6 +38,11 @@ interface FakeTailscale {
   served: Set<number>
   /** A port whose serve fails, and with what the CLI says. */
   refuse?: { port: number; stderr: string }
+  /**
+   * The tailnet has not allowed HTTPS: serving prints Tailscale's notice (with
+   * `url`, when given) and then either waits for consent forever or exits 1.
+   */
+  noHttps?: { url?: string; blocks: boolean }
   /** Every command issued, as `[binary, ...args]`. */
   calls: string[][]
 }
@@ -65,11 +71,40 @@ function answer(args: string[]): { code: number; stdout: string; stderr: string 
   return ok()
 }
 
-const fakeExec: ExecFn = async (command, args) => {
+const SERVE_URL = 'https://login.tailscale.com/f/serve?node=nT8fKz2CNTRL'
+
+/** What Tailscale prints on a tailnet without HTTPS, before it waits or exits. */
+const httpsNotice = (url?: string) =>
+  `Serve is not enabled on your tailnet.\nTo enable, visit:\n\n         ${url ?? ''}\n\n`
+
+/** A serve-on command on a tailnet without HTTPS, or null for any other. */
+function noHttpsAnswer(args: string[]): { blocks: boolean; stdout: string } | null {
+  const turningOn = args[0] === 'serve' && args[1] === '--bg'
+  if (!turningOn || !tailscale.noHttps) return null
+  return { blocks: tailscale.noHttps.blocks, stdout: httpsNotice(tailscale.noHttps.url) }
+}
+
+const fakeExec: ExecFn = async (command, args, opts) => {
   tailscale.calls.push([command, ...args])
   const reachable = tailscale.installed && (!tailscale.onlyAt || command === tailscale.onlyAt)
   if (!reachable) return { ok: false, code: null, stdout: '', stderr: 'spawn ENOENT' }
+  const noHttps = noHttpsAnswer(args)
+  if (noHttps) {
+    const out = { ok: true, stdout: noHttps.stdout, stderr: '' }
+    if (!noHttps.blocks) return { ...out, code: 1 }
+    // Waiting for consent: only a caller that stops on what it read gets an answer.
+    if (opts?.stopWhen?.(noHttps.stdout)) return { ...out, code: null, stopped: true }
+    return new Promise(() => {})
+  }
   return { ok: true, ...answer(args) }
+}
+
+/** Fails the test when `work` has not answered within a second. */
+function withinASecond<T>(work: Promise<T>): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('still waiting after 1s')), 1000)),
+  ])
 }
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -81,6 +116,14 @@ vi.mock('node:child_process', async (importOriginal) => {
       stdout: new EventEmitter(),
       stderr: new EventEmitter(),
     })
+    const noHttps = noHttpsAnswer(args)
+    if (noHttps) {
+      queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from(noHttps.stdout))
+        if (!noHttps.blocks) child.emit('close', 1)
+      })
+      return child
+    }
     const reply = answer(args)
     queueMicrotask(() => {
       if (reply.stdout) child.stdout.emit('data', Buffer.from(reply.stdout))
@@ -201,6 +244,29 @@ describe('turning the phone link on and off', () => {
     expect(LINUX_OPERATOR_HINT).toContain('tailscale set --operator=')
   })
 
+  it('stops at once when the tailnet needs HTTPS and Tailscale waits for consent', async () => {
+    tailscale.noHttps = { url: SERVE_URL, blocks: true }
+    const status = await withinASecond(turnPhoneLinkOn(config, linux))
+    expect(status).toMatchObject({ tailscale: 'running', on: false, httpsNeeded: SERVE_URL })
+    expect(status.error).toBeUndefined()
+    expect(status.commands).not.toContain(LINUX_OPERATOR_HINT)
+  })
+
+  it('answers the same when Tailscale prints the HTTPS notice and exits', async () => {
+    tailscale.noHttps = { url: SERVE_URL, blocks: false }
+    const status = await withinASecond(turnPhoneLinkOn(config, linux))
+    expect(status).toMatchObject({ on: false, httpsNeeded: SERVE_URL })
+    expect(status.error).toBeUndefined()
+  })
+
+  it("points at Tailscale's DNS admin page when the notice carries no link", async () => {
+    tailscale.noHttps = { blocks: false }
+    const status = await turnPhoneLinkOn(config, linux)
+    expect(status.httpsNeeded).toBe(TAILSCALE_HTTPS_PAGE)
+    expect(TAILSCALE_HTTPS_PAGE).toBe('https://login.tailscale.com/admin/dns')
+    expect(status.error).toBeUndefined()
+  })
+
   it('gives no operator hint off Linux', async () => {
     tailscale.refuse = { port: APP, stderr: 'HTTPS is not enabled for your tailnet' }
     const status = await turnPhoneLinkOn(config, { exec: fakeExec, platform: 'win32' })
@@ -242,4 +308,11 @@ describe('phoneLink router', () => {
     expect(changes()).toHaveLength(0)
   })
 
+  it('stops the real command runner at the HTTPS notice instead of waiting for its timeout', async () => {
+    tailscale.noHttps = { url: SERVE_URL, blocks: true }
+    const status = await withinASecond(caller().phoneLink.turnOn({ projectId }))
+    expect(status).toMatchObject({ on: false, httpsNeeded: SERVE_URL })
+    expect(status.error).toBeUndefined()
+    expect(changes()).toHaveLength(0)
+  })
 })

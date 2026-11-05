@@ -14,7 +14,7 @@ import {
  * (review-as-a-lap-trail decision 8) — but that reason only reaches the trail
  * after a pass has already run Gates. This is the same probe and the same prose
  * ({@link missingDrivePieces}), offered to the review page as a standing notice
- * so the operator can fix the host before the next burn.
+ * so the operator can fix the host before the next round.
  *
  * The host half of the probe spawns `agent-browser --version`, so it is cached
  * for {@link HOST_PROBE_TTL_MS}: the page polls, and a probe per render would be

@@ -95,7 +95,7 @@ describe('threads hold features', () => {
       await toolAddToBrief(ctx, a, { slug: 'free', text: 'more' })
 
       expect(holderOfSlug(feature)).toBe(a.id)
-      expect(listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.held')?.message).toBe('held by the thread "A"')
+      expect(listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.held')?.message).toBe('held by the orchestrator chat "A"')
     })
 
     it('lets the holder act again without a second timeline line', async () => {
@@ -122,7 +122,7 @@ describe('threads hold features', () => {
         ['set_feature_dependencies', () => toolSetFeatureDependencies(ctx, b, { slug: 'held', dependsOn: [] })],
       ]
       for (const [name, call] of calls) {
-        await expect((async () => call())(), name).rejects.toThrow(/`held` is held by the thread "Burn cut"/)
+        await expect((async () => call())(), name).rejects.toThrow(/`held` is held by the orchestrator chat "Burn cut"/)
       }
       expect(holderOfSlug(held)).toBe(a.id)
     })

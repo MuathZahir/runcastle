@@ -145,7 +145,7 @@ describe('Settings — This project', () => {
   it('shows the twelve fields in three groups, with example placeholders and no retired text', () => {
     open()
 
-    for (const title of ['Model & sandbox', 'Commands', 'Project chat']) {
+    for (const title of ['Model & sandbox', 'Commands', 'Orchestrator']) {
       expect(screen.getByText(title)).toBeTruthy()
     }
     const labels = [
@@ -278,7 +278,7 @@ describe('Settings — This project', () => {
     open()
 
     expect(chip('Prepared · 11d ago · main +213')).toBeTruthy()
-    expect(chip('Set in a session · 11d ago · verified by a dry run 10d ago')).toBeTruthy()
+    expect(chip('Set in a chat · 11d ago · verified by a dry run 10d ago')).toBeTruthy()
     expect(chip('You · 17d ago')).toBeTruthy()
   })
 
@@ -325,8 +325,8 @@ describe('Settings — This project', () => {
   it('closes the evidence on a click outside it', () => {
     open()
 
-    fireEvent.click(chip('Set in a session · 11d ago · verified by a dry run 10d ago'))
-    expect(screen.getByText(/Evidence · established in a conversation/)).toBeTruthy()
+    fireEvent.click(chip('Set in a chat · 11d ago · verified by a dry run 10d ago'))
+    expect(screen.getByText(/Evidence · established in a chat/)).toBeTruthy()
 
     fireEvent.mouseDown(document.body)
 
@@ -363,7 +363,7 @@ describe('Settings — This project', () => {
 
     expect(screen.getByLabelText('Verify')).toBeTruthy()
     expect(screen.queryByLabelText('Setup')).toBeNull()
-    expect(screen.queryByText('Project chat')).toBeNull()
+    expect(screen.queryByText('Orchestrator')).toBeNull()
   })
 })
 

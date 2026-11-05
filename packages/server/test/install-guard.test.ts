@@ -166,8 +166,8 @@ describe('install guard', () => {
       talkWorktreePath: talk,
     })
     expect(denial?.reason).toMatch(/docs-only/)
-    expect(denial?.reason).toMatch(/burn sandbox/)
-    expect(denial?.reason).toMatch(/review lap/)
+    expect(denial?.reason).toMatch(/worker sandbox/)
+    expect(denial?.reason).toMatch(/review round/)
     expect(denial?.reason).toMatch(/test drive/)
   })
 

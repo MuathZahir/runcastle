@@ -116,7 +116,7 @@ describe('the orchestrator’s acting tools', () => {
     rmTemp(repoPath)
   })
 
-  /** A live project session — the orchestrator. */
+  /** A live orchestrator — the orchestrator. */
   function orchestrator(): SessionRow {
     const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
@@ -152,7 +152,7 @@ describe('the orchestrator’s acting tools', () => {
     }
 
     for (const [name, call] of Object.entries(calls)) {
-      it(`${name} refuses a session that is not a project session, and an ended one`, async () => {
+      it(`${name} refuses a session that is not an orchestrator, and an ended one`, async () => {
         const f = seedFeature(ctx, projectId, { slug: 'humans' })
         const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
         expect(await refusal(() => call(ctx, chat, 'humans'))).toMatch(/only the orchestrator/)
@@ -353,7 +353,7 @@ describe('the orchestrator’s acting tools', () => {
     )
   })
 
-  describe('feature reads from the project session', () => {
+  describe('feature reads from the orchestrator', () => {
     it('name any feature of the project by slug', async () => {
       const f = await started('readable')
       seedFeature(ctx, projectId, { slug: 'humans' })
@@ -390,7 +390,7 @@ describe('the orchestrator’s acting tools', () => {
       )
     }
 
-    it('take a required slug from a project session, and none from a feature session', async () => {
+    it('take a required slug from an orchestrator, and none from a feature session', async () => {
       const project = await readSchemas('project')
       const chat = await readSchemas('chat')
       for (const name of ['get_feature_context', 'read_feature_doc', 'list_tickets', 'get_ticket']) {

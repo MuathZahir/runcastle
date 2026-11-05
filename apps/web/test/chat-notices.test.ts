@@ -80,33 +80,33 @@ describe('noticeFor', () => {
       hue: 'danger',
       title: 'Ticket #4 failed',
       subtitle: 'typecheck failed',
-      actionLabel: 'View run',
+      actionLabel: 'View round',
       target: 'work',
     })
   })
 
-  it('maps a succeeded run.finished to "Run finished · x of y landed" on the building hue', () => {
+  it('maps a succeeded run.finished to "Round finished · x of y landed" on the building hue', () => {
     const e = ev('run.finished', 'run succeeded: 6/6 tickets done', {
       data: { status: 'succeeded', summary: '6/6 tickets done' },
     })
     expect(noticeFor(e)).toMatchObject({
       kind: 'run',
       hue: 'building',
-      title: 'Run finished',
+      title: 'Round finished',
       subtitle: '6 of 6 landed',
-      actionLabel: 'View run',
+      actionLabel: 'View round',
       target: 'work',
     })
   })
 
-  it('maps a failed run.finished to "Run finished with failures" on danger', () => {
+  it('maps a failed run.finished to "Round finished with failures" on danger', () => {
     const e = ev('run.finished', 'run failed: 4/6 tickets done', {
       data: { status: 'failed', summary: '4/6 tickets done' },
     })
     expect(noticeFor(e)).toMatchObject({
       kind: 'run',
       hue: 'danger',
-      title: 'Run finished with failures',
+      title: 'Round finished with failures',
       subtitle: '4 of 6 landed',
       target: 'work',
     })

@@ -858,7 +858,7 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
   ].join('\n')
 }
 
-/** What the project session needs to know about where it is working. */
+/** What the orchestrator needs to know about where it is working. */
 export interface ProjectBrief {
   project: Project
   /** The runcastle-owned branch it commits to (`runcastle/project`). */
@@ -932,9 +932,9 @@ export function renderProjectPrompt(
 ): string {
   const { project, branch, worktreePath, base, openNotes, held } = brief
   return [
-    `# runcastle — ${project.name} (project session)`,
+    `# runcastle — ${project.name} (orchestrator)`,
     '',
-    'This is the **project session**: a conversation that belongs to the project, not to',
+    'This is the **orchestrator**: a conversation that belongs to the project, not to',
     'any one feature. There is no feature state to move and no planning step to report here.',
     '',
     '## What this session is for',
@@ -1039,7 +1039,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__list_tickets',
   'mcp__runcastle__get_ticket',
   'mcp__runcastle__read_adr',
-  // The project session's three (decision 19). Every session is launched with
+  // The orchestrator's three (decision 19). Every session is launched with
   // the whole list: the MCP server gates each tool on the calling session's
   // kind, so a rule for a tool a feature session can only be refused is inert.
   'mcp__runcastle__create_feature',
@@ -1171,7 +1171,7 @@ function otherEntrySkillsRule(): string {
 }
 
 /**
- * The git rules a session of `kind` is launched with: the project session gets
+ * The git rules a session of `kind` is launched with: the orchestrator gets
  * the read-only half, every other kind the full set (the host-side kinds'
  * writes are bounded by the checkout guard, not by a rule).
  */

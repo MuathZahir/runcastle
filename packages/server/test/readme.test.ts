@@ -75,6 +75,43 @@ describe('README for strangers', () => {
     expect(README).toContain('DO_NOT_TRACK')
   })
 
+  it('tells the loop in the four stages the app shows', () => {
+    for (const stage of ['Planning', 'Build', 'Review', 'Shipped']) {
+      expect(README).toContain(`**${stage}**`)
+    }
+    expect(README).not.toMatch(/six phases|ideation/i)
+  })
+
+  it('lists prerequisites in two tiers: to run, and before the first round', () => {
+    expect(README).toMatch(/to run runcastle/i)
+    expect(README).toMatch(/before your first round/i)
+  })
+
+  it('says the server only prints its address', () => {
+    expect(README).toMatch(/does not open a browser/i)
+  })
+
+  it('documents running on another machine with both ports, and the phone link', () => {
+    expect(README).toMatch(/^##\s+On another machine/m)
+    expect(README).toContain('ssh -L 4512:localhost:4512 -L 4514:localhost:4514 user@host')
+    expect(README).toContain('https://runcastle.dev/docs/vps/')
+    expect(README).toMatch(/^##\s+On your phone/m)
+    expect(README).toMatch(/home[- ]screen/i)
+  })
+
+  it('names the usage ping beside install and the Settings switch', () => {
+    expect(README).toMatch(/Settings → General/)
+    expect(README).toMatch(/first-run wizard/i)
+  })
+
+  it('points bug reports at GitHub Issues', () => {
+    expect(README).toContain('https://github.com/MuathZahir/runcastle/issues')
+  })
+
+  it('uses one word per concept: no retired names', () => {
+    expect(README).not.toMatch(/burn|\bAFK\b|\blaps?\b|\blanes?\b|drive mode|project session|\bthreads?\b/i)
+  })
+
   it('has dropped the old status / dev-log content', () => {
     expect(README).not.toMatch(/smoke-passing/i)
     expect(README).not.toMatch(/109 tests/i)

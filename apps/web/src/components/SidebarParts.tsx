@@ -1,3 +1,4 @@
+import { HelpMenu } from './HelpMenu'
 import { Fragment, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, StatusDot, Tooltip } from '../ui'
@@ -119,7 +120,7 @@ function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
 const REVEAL_NAV = 'opacity-0 group-hover/nav:opacity-100 group-has-[:focus-visible]/nav:opacity-100'
 const CONCEAL_NAV = 'group-hover/nav:opacity-0 group-has-[:focus-visible]/nav:opacity-0'
 
-/** The chevron that folds and unfolds the open row's threads (threads-in-the-sidebar decision 10). */
+/** The chevron that folds and unfolds the open row's chats (threads-in-the-sidebar decision 10). */
 function FoldToggle({ folded, onToggle, what }: { folded: boolean; onToggle: () => void; what: string }) {
   return (
     <span data-fold-toggle="" className="inline-flex">
@@ -230,7 +231,7 @@ function TwoLineRow({
 function NewThreadButton({ onClick }: { onClick: () => void }) {
   return (
     <span data-new-thread="" className="inline-flex">
-      <IconButton size="sm" label="New thread" icon={<IconPlus />} onClick={onClick} />
+      <IconButton size="sm" label="New chat" icon={<IconPlus />} onClick={onClick} />
     </span>
   )
 }
@@ -299,7 +300,7 @@ export function SidebarFeatureRow({
       }
       toggle={
         threads !== undefined && onToggleThreads ? (
-          <FoldToggle folded={folded} onToggle={onToggleThreads} what="threads" />
+          <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
         ) : undefined
       }
     />
@@ -619,7 +620,7 @@ export function SidebarThreadRow({
       )}
       {actions.length > 0 && (
         <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-hover/thread:opacity-100 group-has-[:focus-visible]/thread:opacity-100">
-          <FeatureActionsMenu actions={actions} label="Thread actions" />
+          <FeatureActionsMenu actions={actions} label="Chat actions" />
         </span>
       )}
     </div>
@@ -655,7 +656,7 @@ export function SidebarThreadList({
   onOpen,
   actionsFor,
   more,
-  label = 'Threads',
+  label = 'Chats',
   keep,
   markFor,
   tipFor,
@@ -701,7 +702,7 @@ export function SidebarThreadList({
       {hidden > 0 && (
         <li>
           {more ? (
-            <ThreadListMore label={`All ${threads.length} conversations`} icon={<IconArrowRight size={12} />} onClick={more} />
+            <ThreadListMore label={`All ${threads.length} chats`} icon={<IconArrowRight size={12} />} onClick={more} />
           ) : (
             <ThreadListMore label={`Show ${hidden} more`} icon={<IconChevronDown size={12} />} onClick={() => setAll(true)} />
           )}
@@ -813,7 +814,7 @@ export function OrchestratorCard({
         )}
         {toggles && onToggleThreads && (
           <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
-            <FoldToggle folded={folded} onToggle={onToggleThreads} what="conversations" />
+            <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
           </span>
         )}
       </div>
@@ -896,6 +897,8 @@ export function SidebarStatusLine({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenGlossary,
+  onOpenPhoneSetup,
 }: {
   healthTone: StatusTone
   healthTip: string
@@ -905,6 +908,10 @@ export function SidebarStatusLine({
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   onOpenSettings?: () => void
+  /** The help menu's Glossary (ready-to-publish decision 16); no menu without it. */
+  onOpenGlossary?: () => void
+  /** The help menu's way onto a phone (decision 9); absent on a phone. */
+  onOpenPhoneSetup?: () => void
 }) {
   const next = theme === 'dark' ? 'light' : 'dark'
   return (
@@ -924,6 +931,9 @@ export function SidebarStatusLine({
           active={notify.state === 'on'}
           onClick={notify.onToggle}
         />
+      )}
+      {onOpenGlossary && (
+        <HelpMenu onOpenGlossary={onOpenGlossary} {...(onOpenPhoneSetup ? { onOpenPhoneSetup } : {})} />
       )}
       <span className="flex-1" />
       <Tooltip label={`${healthTip} · agents run sandboxed via ${sandbox}`}>

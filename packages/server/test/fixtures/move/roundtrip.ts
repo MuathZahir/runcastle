@@ -132,7 +132,7 @@ writeFileSync(join(nestedRepo, 'node_modules', 'dep.js'), 'ignored by the nested
 const burner = join(repo, '.sandcastle', 'worktrees', 'run-1')
 mkdirSync(burner, { recursive: true })
 sh(burner, 'init', '-q', '-b', 'main')
-writeFileSync(join(burner, 'burner.txt'), 'a burn left this\n')
+writeFileSync(join(burner, 'burner.txt'), 'a round left this\n')
 // An ignored folder next to tracked files, which stay.
 mkdirSync(join(repo, 'pkg', 'uploads'), { recursive: true })
 writeFileSync(join(repo, 'pkg', 'uploads', 'big.bin'), 'x')

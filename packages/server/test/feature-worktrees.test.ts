@@ -172,7 +172,7 @@ describe('boot sweep', () => {
     writeFileSync(join(archivedDirty.worktree, 'wip.md'), 'wip\n')
     const active = await featureWithWorktree({ slug: 'active', status: 'active' })
 
-    // The project session's worktree, and a leftover no feature row owns.
+    // The orchestrator's worktree, and a leftover no feature row owns.
     const projectSession = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
     mkdirSync(projectSession, { recursive: true })
     const stray = worktreeDir(project.id, 'stray')

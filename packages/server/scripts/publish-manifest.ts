@@ -41,7 +41,7 @@ export interface PackageJson {
 export const PUBLISHED_NAME = 'runcastle'
 
 /** One-line npm description (mirrors packages/server/README.md). */
-export const PUBLISHED_DESCRIPTION = 'Burn tickets into shipped features with Claude Code.'
+export const PUBLISHED_DESCRIPTION = 'Idea in, merged branch out. On your machine, in your repo.'
 
 /** SPDX license (matches the workspace root; the source server manifest omits it). */
 export const PUBLISHED_LICENSE = 'FSL-1.1-ALv2'

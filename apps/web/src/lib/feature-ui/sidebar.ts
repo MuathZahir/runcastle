@@ -95,7 +95,7 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   if (nm) return { kind: 'needsMe', text: 'Needs you', title: nm.label, needs: nm.kind }
   if (f.activeRun) return { kind: 'working', text: 'Working', title: 'agent working' }
   if (agentMidTurn(f)) {
-    return { kind: 'working', text: 'Working', title: 'the agent is working in the session' }
+    return { kind: 'working', text: 'Working', title: 'the agent is working in the chat' }
   }
   if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
   // A parked idea's age is noise, not news (decision 9) — say what it IS instead:

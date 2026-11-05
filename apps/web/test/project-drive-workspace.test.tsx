@@ -302,12 +302,12 @@ const SidebarFor = () => (
 const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
 /** The Orchestrator's chats as its card lists them: each row's title, in order. */
 const orchestratorChats = (): string[] => {
-  const list = within(sidebar()).queryByRole('list', { name: 'Conversations' })
+  const list = within(sidebar()).queryByRole('list', { name: 'Chats' })
   return list ? within(list).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
 }
 /** A chat's row in the Orchestrator's card. */
 const chatRow = (title: string): HTMLElement =>
-  within(within(sidebar()).getByRole('list', { name: 'Conversations' })).getByTitle(title).parentElement as HTMLElement
+  within(within(sidebar()).getByRole('list', { name: 'Chats' })).getByTitle(title).parentElement as HTMLElement
 /** The header's name for the chat in front: the breadcrumb's last item. */
 const chatName = (): string => document.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent ?? ''
 
@@ -468,7 +468,7 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
 })
 
 /** The chat in front of the column: its region, and which thread it shows. */
-const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Project chat' })
+const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Orchestrator chat' })
 
 /**
  * The Orchestrator is its chat (the-orchestrator-s-page decisions 10, 13, 14):
@@ -501,10 +501,10 @@ describe('opening the Orchestrator', () => {
     const idle = { ...entry('sess_a', 'An older idea'), lastHumanAt: undefined }
     threads = [idle]
     const { rerender } = mount()
-    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
     threads = [{ ...idle, state: 'working' }]
     rerender()
-    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
   })
 
   it('waits for the list, showing no chat until it knows the latest', () => {
@@ -537,9 +537,9 @@ describe('the Conversations page', () => {
     threads = [entry('sess_a', 'Plan the audit')]
     const onCloseConversations = vi.fn()
     mount(talk(), { conversations: true, onCloseConversations })
-    expect(screen.getByRole('heading', { name: 'Conversations' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
     expect(chatInFront()).toBeNull()
-    expect(chatName()).toBe('Conversations')
+    expect(chatName()).toBe('Chats')
     fireEvent.click(screen.getByRole('button', { name: 'Orchestrator' }))
     expect(onCloseConversations).toHaveBeenCalledTimes(1)
   })
@@ -572,7 +572,7 @@ describe('the Conversations page', () => {
         <ProjectWorkspace projectId="proj_1" talk={talk()} onOpenConversations={onOpenConversations} />
       </SidebarThreadsProvider>,
     )
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'All 7 conversations' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'All 7 chats' }))
     expect(onOpenConversations).toHaveBeenCalledTimes(1)
   })
 })
@@ -599,7 +599,7 @@ describe('New chat with a chat running', () => {
   it('opens an empty new thread from the Orchestrator’s "+" the same way, with no notice', () => {
     running()
     mountWithSidebar(talk({ session: liveChat }))
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New chat' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
     expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
@@ -663,7 +663,7 @@ describe('a live project chat', () => {
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
     expect(chatName()).toBe('An older idea')
 
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New thread' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New chat' }))
     expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
@@ -672,7 +672,7 @@ describe('a live project chat', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), { ...entry('sess_old', 'An older idea'), lastHumanAt: undefined }]
     mountWithSidebar(talk(), { onOpenConversations: () => {} })
     expect(orchestratorChats()).toEqual(['Audit the journal'])
-    expect(within(sidebar()).getByText('All 2 conversations')).toBeTruthy()
+    expect(within(sidebar()).getByText('All 2 chats')).toBeTruthy()
   })
 
   it('keeps the chat in front in the address, and a reload reopens it', async () => {
@@ -729,21 +729,21 @@ describe('a live project chat', () => {
   it('renames a chat from its row’s menu in the Orchestrator’s card: Enter saves through thread.rename, Escape cancels', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
     mountWithSidebar(talk({ session: liveChat }))
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
-    const field = screen.getByRole('textbox', { name: 'Thread name' }) as HTMLInputElement
+    const field = screen.getByRole('textbox', { name: 'Chat name' }) as HTMLInputElement
     expect(field.value).toBe('Audit the journal')
     fireEvent.keyDown(field, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Rename chat' })).toBeNull()
     expect(threadRename).not.toHaveBeenCalled()
 
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
-    const again = screen.getByRole('textbox', { name: 'Thread name' })
+    const again = screen.getByRole('textbox', { name: 'Chat name' })
     fireEvent.change(again, { target: { value: 'Journal audit' } })
     fireEvent.submit(again.closest('form')!)
     expect(threadRename).toHaveBeenCalledWith({ threadId: 'sess_1', title: 'Journal audit' })
-    expect(screen.queryByRole('dialog', { name: 'Rename thread' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Rename chat' })).toBeNull()
   })
 
   it('exports a chat from its row’s menu as a downloaded Markdown file named by its title', async () => {
@@ -752,7 +752,7 @@ describe('a live project chat', () => {
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     mountWithSidebar(talk({ session: liveChat }))
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Thread actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export as Markdown' }))
     await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
     expect(threadExport).toHaveBeenCalledWith({ threadId: 'sess_1' })

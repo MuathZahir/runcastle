@@ -25,7 +25,7 @@ import {
   sessions,
   tickets,
 } from '../db/schema'
-import { GateError, InvalidInputError, isNotImplemented } from '../errors'
+import { GateError, InvalidInputError } from '../errors'
 import {
   blocksOf,
   dependencyMaps,
@@ -67,9 +67,8 @@ import {
 import { cancelRun, startRun } from '../workflows/runner'
 
 /**
- * Feature service (SPEC §3/§4): create, aggregate read, rounds, burn. Git branch creation is B2's; `createFeature` tolerates the B2 stub via
- * `ensureFeatureBranch` so the feature row is created and the UI is usable
- * before wave B lands (task item 5).
+ * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
+ * creation goes through `ensureFeatureBranch`.
  */
 
 export interface TicketCounts {
@@ -158,7 +157,7 @@ export interface CreateFeatureInput {
   baseBranch?: string
   /**
    * Body for `brief.md`, verbatim instead of the generated title + one-liner
-   * stub. The project session passes the reasoning it just worked out with the
+   * stub. The orchestrator passes the reasoning it just worked out with the
    * human (decision 19) — without it that reasoning evaporates when the intake
    * terminal closes, and the burner reads a restated one-liner instead.
    */
@@ -350,33 +349,22 @@ async function requestedBase(
   )
 }
 
-/**
- * Create the feature's git branch if B2's git service is available, tolerating
- * its typed stub so the feature is created without a branch pre-B2. When B2
- * lands this transparently starts creating real branches — no caller change.
- */
+/** Create the feature's git branch off the resolved base. */
 async function ensureFeatureBranch(
   ctx: AppCtx,
   project: Project,
   slug: string,
   base: string,
 ): Promise<BranchCut> {
-  try {
-    const reportHeal = (): void => {
-      emitProject(ctx, project.id, {
-        type: 'repo.head_healed',
-        message: 'created runcastle: initial commit so branches can be cut',
-      })
-    }
-    const baseBranch = await git.resolveBaseBranch(project, base, reportHeal)
-    await git.createFeatureBranch(project, slug, baseBranch, reportHeal)
-    return { branchReady: true, baseBranch }
-  } catch (e) {
-    // Pre-B2 the git service is a stub — the feature is created branchless and
-    // the requested base is recorded as-is (resolution happens when B2 lands).
-    if (isNotImplemented(e)) return { branchReady: false, baseBranch: base }
-    throw e
+  const reportHeal = (): void => {
+    emitProject(ctx, project.id, {
+      type: 'repo.head_healed',
+      message: 'created runcastle: initial commit so branches can be cut',
+    })
   }
+  const baseBranch = await git.resolveBaseBranch(project, base, reportHeal)
+  await git.createFeatureBranch(project, slug, baseBranch, reportHeal)
+  return { branchReady: true, baseBranch }
 }
 
 /**
@@ -413,12 +401,6 @@ async function scaffoldDocsOnFeatureBranch(
       })
     })
   } catch (e) {
-    // Pre-B2 the git service is a stub: no branch was cut and no worktree can be,
-    // so the docs stay in the checkout, uncommitted, exactly as they did then.
-    if (isNotImplemented(e)) {
-      scaffoldDocs(ctx, feature, opts)
-      return
-    }
     emit(ctx, feature.id, {
       type: 'docs.scaffold_failed',
       message: `docs not scaffolded onto ${feature.branch}: ${e instanceof Error ? e.message : String(e)}`,
@@ -528,7 +510,7 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
 }
 
 /**
- * Restart the burn over the feature's pending tickets — the engine under the
+ * Restart the round over the feature's pending tickets — the engine under the
  * run lane's per-ticket retry ({@link retryTicket}), which has already reset
  * exactly the tickets it wants burned. Rounds start through
  * {@link dispatchRound}; this is never a door of its own.
@@ -541,13 +523,13 @@ export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: str
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   // One burn at a time on a feature branch (ADR-0002).
-  if (hasActiveRun(ctx, featureId)) throw new GateError('a run is already burning this feature')
+  if (hasActiveRun(ctx, featureId)) throw new GateError('a round is already running for this feature')
   const tickets = listByFeature(ctx, featureId)
   if (!tickets.some(isPendingTicket)) {
-    throw new GateError(tickets.length > 0 ? 'no pending tickets to burn' : 'no tickets to burn')
+    throw new GateError(tickets.length > 0 ? 'no pending tickets to build' : 'no tickets to build')
   }
-  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
-  emit(ctx, featureId, { type: 'burn.restarted', message: 'restarting burn' })
+  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was building')
+  emit(ctx, featureId, { type: 'burn.restarted', message: 'restarting the round' })
   // Only the id crosses the seam — `startRun` also hands back a `done` promise
   // the caller must not await (the run finishes long after the click returns).
   const { runId } = await startRun(ctx, featureId, 'ticket-burner')
@@ -590,7 +572,7 @@ export async function dispatchRound(
   if (seqs.length === 0) throw new InvalidInputError('name at least one ticket seq to dispatch')
 
   // No run is live (refused above), so a `burning` row is an orphan of a dead run.
-  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
+  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was building')
   const bySeq = new Map(listByFeature(ctx, featureId).map((t) => [t.seq, t]))
   const named = [...new Set(seqs)].map((seq) => {
     const ticket = bySeq.get(seq)
@@ -784,7 +766,7 @@ function readyWarnings(ctx: AppCtx, lastRound: Run | undefined): string[] {
 /**
  * Retry ONE failed ticket (UI lane action). Resets the ticket — and every
  * failed ticket in its transitive `blockedBy` closure, since a dependent can
- * only burn once its blockers are redone — to `pending`, then starts a burn if
+ * only burn once its blockers are redone — to `pending`, then starts a round if
  * none is live. Other failed tickets stay failed (unlike the whole-feature
  * re-burn, which retries everything).
  *

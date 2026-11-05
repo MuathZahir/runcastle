@@ -551,7 +551,7 @@ describe('legacyGlobalImage', () => {
     expect(legacyGlobalImage(projectImageTag('proj_02'), KNOWN)).toBeNull()
   })
 
-  it('reads the value the way a burn does, trimming it first', () => {
+  it('reads the value the way a round does, trimming it first', () => {
     expect(legacyGlobalImage('  sandcastle:runcastle-demo  ', KNOWN)).toBe(
       'sandcastle:runcastle-demo',
     )

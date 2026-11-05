@@ -22,6 +22,7 @@ const NONE: StandingInput = {
   denial: null,
   unverified: null,
   blockingDrive: null,
+  phone: false,
 }
 const CONFLICT = { base: 'main', files: ['index.html', 'src/App.tsx'], at: 1 }
 const DENIAL = { eventId: 7, at: 1, dirtyFiles: ['a.ts'], message: 'review drive denied — 1 uncommitted file(s)' }
@@ -55,7 +56,7 @@ describe('standingNotices', () => {
 
   it('offers to end a live session on the way in, and holds the button while the resolve launches', () => {
     const [row] = rows({ conflict: CONFLICT, liveSessionId: 'ses_1' }, acts({ resolving: true }))
-    expect(row.action).toMatchObject({ label: 'End session & resolve', disabled: true })
+    expect(row.action).toMatchObject({ label: 'End the chat & resolve', disabled: true })
     expect(row.tooltip).toContain('One terminal per feature')
   })
 
@@ -122,6 +123,50 @@ describe('standingNotices', () => {
       blockingDrive: { holderLabel: 'x', cutOff: false, stop: PROJECT_STOP },
     }).map((r) => r.key)
     expect(keys).toEqual(['conflict', 'denial-7', 'unverified', 'slot-drive'])
+  })
+})
+
+/** ready-to-publish decision 10: on a phone, a fix that needs the computer says so and offers no button. */
+describe('standingNotices on a phone', () => {
+  const onPhone = (over: Partial<StandingInput>) => rows({ ...over, phone: true })
+
+  it('sends a resolve that must close a live chat to the computer, with no button', () => {
+    const [row] = onPhone({ conflict: CONFLICT, liveSessionId: 'ses_1' })
+    expect(row.subtitle).toBe('2 files · main into feature/greetings — resolve it on your computer')
+    expect(row.action).toBeUndefined()
+    expect(row.tooltip).not.toContain('One terminal per feature')
+  })
+
+  it('keeps Resolve with agent when nothing is in its way, since that chat works from the phone', () => {
+    const [row] = onPhone({ conflict: CONFLICT })
+    expect(row.subtitle).toBe('2 files · main into feature/greetings')
+    expect(row.action?.label).toBe('Resolve with agent')
+  })
+
+  it('says uncommitted changes are committed on the computer, and still lets the row be dismissed', () => {
+    const [row] = onPhone({ denial: DENIAL })
+    expect(row.subtitle).toBe(
+      'uncommitted changes — commit or discard them on your computer, then ask the agent for another review',
+    )
+    expect(row.action).toBeUndefined()
+    expect(row.onDismiss).toBeDefined()
+  })
+
+  it('says driving it yourself happens on the computer', () => {
+    expect(onPhone({ unverified: UNVERIFIED })[0].subtitle).toBe(
+      'ask the agent for another review, or drive it yourself on your computer',
+    )
+  })
+
+  it('keeps Stop it on a drive in the way, since stopping works from the phone', () => {
+    const [row] = onPhone({ blockingDrive: { holderLabel: 'x', cutOff: false, stop: PROJECT_STOP } })
+    expect(row.action?.label).toBe('Stop it')
+  })
+
+  it('offers no drive, terminal or commit action in any row', () => {
+    const all = onPhone({ conflict: CONFLICT, liveSessionId: 'ses_1', denial: DENIAL, unverified: UNVERIFIED })
+    expect(all.map((r) => r.action?.label)).toEqual([undefined, undefined, undefined])
+    expect(all.every((r) => r.subtitle.includes('on your computer'))).toBe(true)
   })
 })
 

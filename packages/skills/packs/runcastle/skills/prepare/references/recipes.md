@@ -58,7 +58,7 @@ Ask the human which they have: it is their bill and their production neighbour.
 
 ## Deterministic ports
 
-Every lap of a feature should keep the same URL, and no drive should collide with the human's own running stack. Hash the SLUG — not the branch, so laps agree — into a high range, then probe upward for a free one.
+Every round of a feature should keep the same URL, and no drive should collide with the human's own running stack. Hash the SLUG — not the branch, so rounds agree — into a high range, then probe upward for a free one.
 
 The two helpers here are the part you must actually write:
 

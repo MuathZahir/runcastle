@@ -6,7 +6,7 @@ this file carries the procedure and the format.
 
 ## Who may write it
 
-The **project session is the only session in runcastle allowed to write
+The **orchestrator is the only session in runcastle allowed to write
 `CONTEXT.md`** and to author project-scope ADRs under `docs/adr/`. Feature
 sessions structurally cannot — they have no project-scoped write tool and their
 edit guard confines them to `docs/features/<slug>/`.
@@ -44,7 +44,7 @@ always describes the present, never the history.>
 ## Deferred / open threads
 
 - One line per parked idea, with just enough context to pick it up later.
-- Delete the line when the thread is done — this section is pruned, not appended to forever.
+- Delete the line when the chat is done — this section is pruned, not appended to forever.
 ```
 
 ## Rules that keep it from rotting
@@ -53,7 +53,7 @@ always describes the present, never the history.>
   not yet a feature** — once it has resolved into one, put it in the backlog
   (`create_feature({ draft: true })`, §1c) instead. There is no backlog table in the charter and
   no `docs/backlog.md`, and you must not create one.
-- Because the charter is **rewritten in place**, a thread that gets done is
+- Because the charter is **rewritten in place**, a chat that gets done is
   *deleted* — which is exactly what stops it decaying into a graveyard.
 - Only put a line here if the idea is **not regenerable**: if re-reading the code
   would surface it again, it does not need remembering.

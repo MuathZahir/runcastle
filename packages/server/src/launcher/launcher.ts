@@ -18,7 +18,7 @@ import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
 import { chatKickoffFor, prepareConfirmKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor, sideKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
-import { GateError, isNotImplemented } from '../errors'
+import { GateError } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
 import { inheritHolds } from '../services/holding'
 import { rosterConfig } from '../services/model-discovery'
@@ -172,7 +172,7 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 }
 
 /**
- * Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature).
+ * Ensure the talk worktree.
  *
  * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
  * temp branch instead, so a conversation that starts mid-run has somewhere of
@@ -184,28 +184,15 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 export async function ensureFeatureWorktree(ctx: AppCtx, project: Project, feature: Feature): Promise<string> {
   const running = activeRunFor(ctx, feature.id)
   const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
-  try {
-    if (besideRun) return await ensureTalkWorktreeDuringRun(ctx, project, feature)
-    return git.activeTestDriveFeatureId(project.id) === feature.id
-      ? await ensureTalkWorktreeDuringDrive(ctx, project, feature)
-      : await git.ensureTalkWorktree(project, feature, () =>
-          emit(ctx, feature.id, {
-            type: 'repo.head_healed',
-            message: 'created runcastle: initial commit so branches can be cut',
-          }),
-        )
-  } catch (e) {
-    if (isNotImplemented(e)) {
-      const fallback = worktreeDir(project.id, feature.slug)
-      emit(ctx, feature.id, {
-        type: 'session.worktree_pending',
-        message: 'talk worktree not created (git service pending) — using computed path',
-        data: { worktreePath: fallback },
-      })
-      return fallback
-    }
-    throw e
-  }
+  if (besideRun) return await ensureTalkWorktreeDuringRun(ctx, project, feature)
+  return git.activeTestDriveFeatureId(project.id) === feature.id
+    ? await ensureTalkWorktreeDuringDrive(ctx, project, feature)
+    : await git.ensureTalkWorktree(project, feature, () =>
+        emit(ctx, feature.id, {
+          type: 'repo.head_healed',
+          message: 'created runcastle: initial commit so branches can be cut',
+        }),
+      )
 }
 
 /**
@@ -551,7 +538,7 @@ export async function launchSideSession(
     message: 'launching a new side session',
     data: { sessionId: row.id, kind: 'side', worktreePath: row.worktreePath, ...modelStamp(row) },
   })
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side session with its briefing', opts, openingSummary(row))
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side chat with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
@@ -628,7 +615,7 @@ export async function launchPrepareSession(
     return { sessionId: row.id, resumed: true }
   }
 
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening preparation session with its briefing', opts, openingSummary(row))
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening preparation chat with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
@@ -707,7 +694,7 @@ export async function launchDriveFixSession(
     })
   }
 
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening drive-fix session with its briefing', opts, openingSummary(row))
+  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening drive-fix chat with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: !!reopen && underway(reopen) }
 }
 
@@ -798,7 +785,7 @@ export async function launchScenarioSession(
     ? mainChatContext(ctx, feature, row.id, chatKickoffHeader(ctx, feature, model.runtime, scenarioLine))
     : scenarioLine
   const line = ask ? `${opening}\n\n${ask}` : opening
-  await sayToThread(ctx, row, line, 'opening scenario session with its briefing', opts)
+  await sayToThread(ctx, row, line, 'opening scenario chat with its briefing', opts)
   return { sessionId: row.id }
 }
 
@@ -810,7 +797,7 @@ export interface ProjectLaunchInput {
 }
 
 /**
- * A new project chat's row, in its runcastle-owned worktree on
+ * A new orchestrator chat's row, in its runcastle-owned worktree on
  * `runcastle/project` (decision 18) — never the human's checkout. Ensuring the
  * worktree also retries a landing an earlier conversation left behind.
  */
@@ -828,7 +815,7 @@ export async function createProjectThread(ctx: AppCtx, project: Project): Promis
   const row = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath, model })
   emitProject(ctx, project.id, {
     type: 'session.project_opened',
-    message: 'project chat opened',
+    message: 'orchestrator chat opened',
     data: { sessionId: row.id },
   })
   return row
@@ -840,7 +827,7 @@ export async function createProjectThread(ctx: AppCtx, project: Project): Promis
  * into features (decisions 17–20). It writes the whole repo from its own
  * worktree, and its commits land on the base branch when its process stops.
  *
- * The project chat is a list of threads. `resumeSessionId` names one (a row id
+ * The orchestrator chat is a list of threads. `resumeSessionId` names one (a row id
  * from the list) to open as it is; anything else opens a new thread briefed
  * with its kickoff — `purpose: 'triage'` with the Notes card's briefing to work
  * the open notes. `fresh` is the explicit spelling of the default and wins over
@@ -871,13 +858,13 @@ export async function launchProjectSession(
   if (capped && prior) inheritHolds(ctx, prior.id, row.id)
   emitProject(ctx, project.id, {
     type: 'session.launching',
-    message: 'launching a new project chat',
+    message: 'launching a new orchestrator chat',
     data: { sessionId: row.id, kind: 'project', worktreePath: row.worktreePath, branch: git.PROJECT_BRANCH, ...modelStamp(row), fresh: true },
   })
   if (capped) {
     emitProject(ctx, project.id, {
       type: 'session.resume_capped',
-      message: `starting a new project chat — ${capped.detail}; the repo and the charter carry the state`,
+      message: `starting a new orchestrator chat — ${capped.detail}; the repo and the charter carry the state`,
       data: { sessionId: row.id, kind: 'project', ...capped },
     })
   } else if (input.resumeSessionId && !input.fresh && !input.purpose) {
@@ -890,7 +877,7 @@ export async function launchProjectSession(
 
   const runtime = row.runtime ?? DEFAULT_RUNTIME
   const line = input.purpose === 'triage' ? kickoffLineFor('project', projectTriageKickoffFor(runtime), runtime) : kickoffFor(ctx, row)
-  await sayToThread(ctx, row, line, 'opening project session with its briefing', opts, openingSummary(row))
+  await sayToThread(ctx, row, line, 'opening orchestrator with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 

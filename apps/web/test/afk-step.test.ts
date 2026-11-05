@@ -18,7 +18,8 @@ describe('AfkStep', () => {
   it('asks a question, explains it in one line, and offers two answers', () => {
     const html = render()
     expect(html).toContain('Run workers unattended?')
-    expect(html).toContain('Workers run a round’s tickets in containers')
+    // The step's word is a glossary hint, so the sentence is read as text.
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Workers run a round’s tickets in containers')
     expect(html).toContain('Set up now')
     expect(html).toContain('Skip for now')
   })

@@ -56,7 +56,7 @@ import {
  */
 
 /**
- * Each verify command's time limit: the burn install step's own 15 minutes, so
+ * Each verify command's time limit: the worker install step's own 15 minutes, so
  * one hung test cannot stall the review indefinitely (decision 3).
  */
 export const GATE_COMMAND_TIMEOUT_MS = SETUP_HOOK_TIMEOUT_MS
@@ -85,7 +85,7 @@ export type WithGateSandbox = <T>(
 ) => Promise<T>
 
 export interface ReviewGatesDeps {
-  /** The sandbox boundary; defaults to the burn execution path. */
+  /** The sandbox boundary; defaults to the round execution path. */
   withSandbox?: WithGateSandbox
   /** Per-command time limit; defaults to {@link GATE_COMMAND_TIMEOUT_MS}. */
   commandTimeoutMs?: number
@@ -161,7 +161,7 @@ export async function withThrowawayBranch<T>(
     // which would refuse the move below.
     await discardBranch()
     await pinBranchAt(repoPath, branch, sha)
-    // The sandbox is a burn worktree too, and may be the project's first.
+    // The sandbox is a round worktree too, and may be the project's first.
     await excludeBurnWorktrees(repoPath)
     return await use()
   } finally {
@@ -342,7 +342,7 @@ async function runGateCommand(
 export interface BurnGateSandboxDeps {
   /** sandcastle's `createSandbox`: the container (or host) boundary itself. */
   open?: (options: CreateSandboxOptions) => Promise<Pick<Sandbox, 'exec' | 'close'>>
-  /** The setup's time limit; defaults to the burn install's. */
+  /** The setup's time limit; defaults to the worker install's. */
   setupTimeoutMs?: number
 }
 

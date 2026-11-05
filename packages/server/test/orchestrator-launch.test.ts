@@ -22,7 +22,7 @@ import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 
 /**
  * The orchestrating launch (`one-orchestrator-no-mode` decision 1): every
- * project session — fresh, resumed or triage — opens as the orchestrator:
+ * orchestrator — fresh, resumed or triage — opens as the orchestrator:
  * prompts off, the orchestrating briefing and its catch-up.
  * No session row carries an `orchestrate` purpose any more.
  */
@@ -40,7 +40,7 @@ function initRepo(dir: string): void {
   git(dir, 'commit', '-m', 'initial commit')
 }
 
-describe('the project session launch is the orchestrator', () => {
+describe('the orchestrator launch is the orchestrator', () => {
   let ctx: AppCtx
   let project: Project
   const cleanup: string[] = []

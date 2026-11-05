@@ -115,7 +115,7 @@ describe('token telemetry', () => {
     })
   })
 
-  describe('the burner’s harvest after a ticket attempt', () => {
+  describe('the worker’s harvest after a ticket attempt', () => {
     /** The slice of the run's WorkflowCtx the harvest touches, wired to the real services. */
     const harvestCtx = (): WorkflowCtx =>
       ({

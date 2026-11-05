@@ -4,7 +4,7 @@ import { trpc } from '../trpc'
 import { bannerVisible, DISMISS_KEY } from '../lib/update'
 import { useToast } from '../lib/toast'
 import { Button, cx, IconButton } from '../ui'
-import { IconArrowRight, IconCopy, IconX } from '../icons'
+import { IconArrowRight, IconCopy, IconInfo, IconX } from '../icons'
 
 /**
  * One quiet line at the top of the content panel (DESIGN.md: a notice, not a
@@ -73,7 +73,8 @@ export function UpdateBanner() {
   })
 
   const info = q.data
-  if (!info || !info.latest || !bannerVisible(info, dismissed)) return null
+  // The update banner wins the slot; the usage notice waits for it to go.
+  if (!info || !info.latest || !bannerVisible(info, dismissed)) return <UsageNotice />
 
   const dismiss = () => {
     try {
@@ -104,6 +105,49 @@ export function UpdateBanner() {
       <span className="shrink-0 text-text">runcastle {info.latest} is available</span>
       <span className="shrink-0 text-text-tertiary">you're on {info.current}</span>
       <code className="min-w-0 truncate font-mono text-xs text-text-tertiary select-all">{info.command}</code>
+    </Notice>
+  )
+}
+
+/**
+ * The usage ping, told once to an install from before the switch existed
+ * (decision 18): it has been pinging without the app ever saying so. Either
+ * answer writes `usageSignal`, after which the server stops asking for this —
+ * so it never returns, on this tab or after a reload.
+ */
+function UsageNotice() {
+  const utils = trpc.useUtils()
+  const q = trpc.system.usageNotice.useQuery(undefined, { refetchOnWindowFocus: false })
+  // Hidden the moment either button is pressed, not when the refetch lands.
+  const [answered, setAnswered] = useState(false)
+  const update = trpc.settings.update.useMutation({
+    onSettled: () => void utils.system.usageNotice.invalidate(),
+  })
+  if (answered || !q.data?.show) return null
+
+  const answer = (value: 'on' | 'off') => {
+    setAnswered(true)
+    update.mutate({ key: 'usageSignal', value })
+  }
+
+  return (
+    <Notice
+      icon={<IconInfo />}
+      action={
+        <>
+          <Button size="sm" variant="ghost" onClick={() => answer('off')}>
+            Turn off
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => answer('on')}>
+            OK
+          </Button>
+        </>
+      }
+    >
+      <span className="min-w-0 truncate">
+        runcastle counts this install as active once per boot: a random ID, the version and the
+        platform. Nothing about your projects.
+      </span>
     </Notice>
   )
 }

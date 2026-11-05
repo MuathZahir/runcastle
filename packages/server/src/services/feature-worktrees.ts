@@ -119,7 +119,7 @@ export interface WorktreeSweep {
  * - A `<slug>/` dir goes when its feature is shipped (in any state — the branch
  *   is merged, so ship would have force-removed it too), or when its feature is
  *   archived or no feature row matches and it is clean or not a git checkout.
- * - `_`-prefixed slugs (the project session's `__project`) and features that
+ * - `_`-prefixed slugs (the orchestrator's `__project`) and features that
  *   are still active or parked are never touched. A leading `_` on a PROJECT id
  *   means nothing — `newId` can mint one.
  *

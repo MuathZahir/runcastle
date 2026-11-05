@@ -367,7 +367,7 @@ describe('Models page', () => {
 
     const steps = [
       'Chat',
-      'Project chat',
+      'Orchestrator chat',
       'Implement',
       'Review',
       'Prepare',

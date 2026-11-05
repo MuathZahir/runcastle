@@ -98,7 +98,7 @@ const PLACEHOLDERS = [
   'FEATURE_BRANCH',
   /** The ref the branch forked from — the feature's own base, not a shell guess. */
   'BASE_BRANCH',
-  /** Whether Drive mode is open at all, decided host-side (see {@link buildDriveAvailability}). */
+  /** Whether the test drive is open at all, decided host-side (see {@link buildDriveAvailability}). */
   'DRIVE_AVAILABILITY',
   /** How to drive THIS app, in the project's own words (see {@link buildDriveInstructions}). */
   'DRIVE_INSTRUCTIONS',
@@ -171,7 +171,7 @@ function probeExecutable(path: string, spawn: ProbeSpawn): ExecutableHealth {
 
 /**
  * `<path> --version`, retried once before it counts as a failure: a single slow
- * spawn on a loaded host should not cost a whole review its Drive mode. No
+ * spawn on a loaded host should not cost a whole review its the test drive. No
  * shell, and the same 3s timeout per attempt, so the probe stays cheap.
  */
 export function checkExecutableHealth(path: string, spawn: ProbeSpawn = spawnVersion): ExecutableHealth {
@@ -308,9 +308,9 @@ export function withheldDriveFor(runId: string): string | undefined {
 }
 
 /**
- * The `{{DRIVE_AVAILABILITY}}` block: whether Drive mode is open at all.
+ * The `{{DRIVE_AVAILABILITY}}` block: whether the test drive is open at all.
  *
- * The prompt's first step asks two questions — does this lap have a surface a
+ * The prompt's first step asks two questions — does this round have a surface a
  * human could operate, and is a drive available. The first is a judgement only
  * the agent can make from the ticket and the diff; the second is a host fact it
  * would otherwise pay a `review_drive` start to discover, on the human's real
@@ -328,7 +328,7 @@ export function buildDriveAvailability(
 ): string {
   const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
   if (inheritedMode === 'gates' && missing.length > 0) {
-    return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose Drive mode or call `review_drive`.'
+    return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose the test drive or call `review_drive`.'
   }
   if (inheritedMode === 'gates') {
     // A recorded Gates is only as good as the reason the pass chose it: one
@@ -338,23 +338,23 @@ export function buildDriveAvailability(
       'unless that pass took Gates only because its ticket told it to (its digest, under "Run digests" below, ' +
       'says why it ran Gates). A ticket\'s "use Gates" is evidence about whether there is a surface, nothing more: ' +
       'if the acceptance criteria name a screen, flow or state a human could operate, a drive **is** ' +
-      'available here, so run Drive mode instead, and say so and why in the first line of your digest.'
+      'available here, so run the test drive instead, and say so and why in the first line of your digest.'
     )
   }
   if (inheritedMode === 'drive' && missing.length === 0) {
-    return 'Inherited mode: **Drive**. The pass being verified recorded Drive mode, so run Drive mode and record the full tour; do not choose Gates mode.'
+    return 'Inherited mode: **Drive**. The pass being verified recorded the test drive, so run the test drive and record the full tour; do not choose Gates mode.'
   }
   if (missing.length === 0) {
     return (
       `A drive **is** available: \`${AGENT_BROWSER_BIN}\` is on this machine's PATH and the ` +
       'project has a dev command, so `review_drive` can boot the app and you can walk it. Drive ' +
-      'mode is open to you — take it if, and only if, this lap has a surface a human could operate.'
+      'mode is open to you — take it if, and only if, this round has a surface a human could operate.'
     )
   }
   return (
     `A drive is **not** available: ${joinReasons(missing)}. So the mode is already decided — ` +
-    'run Gates mode, whatever this lap touched, and do not call `review_drive`. This is not a ' +
-    'degraded review; it is the whole review this lap gets.'
+    'run Gates mode, whatever this round touched, and do not call `review_drive`. This is not a ' +
+    'degraded review; it is the whole review this round gets.'
   )
 }
 
@@ -408,7 +408,7 @@ export function resolveReviewDeclaration(
       reviewVerdict: 'unverified',
       reason: facts.driveWithheldReason
         ? `${facts.driveWithheldReason} The reviewer drove anyway, so nothing was recorded.`
-        : 'Drive was declared even though Drive mode was unavailable.',
+        : 'Drive was declared even though the test drive was unavailable.',
     }
   }
   if (reviewMode === 'drive' && !facts.webmExists) {
@@ -442,7 +442,7 @@ export function composeReviewDigest(
   if (resolution.reviewVerdict !== 'unverified') return agentDigest
   const mode = resolution.reviewMode
   const headline =
-    `${mode ? `${mode} mode` : 'mode unrecorded'} · ` +
+    `${mode ? (mode === 'drive' ? 'test drive' : `${mode} mode`) : 'mode unrecorded'} · ` +
     `${mode ? `${mode.toUpperCase()} FAILED` : 'NO DECLARATION'} · nothing verified` +
     (resolution.reason ? ` — ${resolution.reason}` : '')
   return agentDigest ? `${headline}\n\n${agentDigest}` : headline
@@ -533,7 +533,7 @@ function gateCommandNote(ticketId: string, result: GateCommandResult): string {
 /**
  * The `{{GATE_NOTES}}` block: what the server's own gate run found on the
  * feature branch (gates-mode-review decisions #1, #5, #7), and the failures the
- * project already produces without this lap's help.
+ * project already produces without this round's help.
  *
  * The reviewer used to be told to run the verify commands itself — in the
  * human's checkout, which is still on the base branch, so every "gates passed"
@@ -591,17 +591,17 @@ export function buildGateNotes(
 
   if (failures) {
     out.push(
-      "These already fail on this repo without this lap's help:",
+      "These already fail on this repo without this round's help:",
       '',
       '```',
       failures,
       '```',
       '',
-      "Subtract that baseline: a failure inside it is not this lap's and is not a finding. A failure outside it is one this lap introduced, and it is the finding worth the human's attention above every other.",
+      "Subtract that baseline: a failure inside it is not this round's and is not a finding. A failure outside it is one this round introduced, and it is the finding worth the human's attention above every other.",
     )
   } else {
     out.push(
-      "No pre-existing-failure baseline is configured, so a red gate may well predate this lap. Check whether the failure touches the diff before writing it up as this lap's.",
+      "No pre-existing-failure baseline is configured, so a red gate may well predate this round. Check whether the failure touches the diff before writing it up as this round's.",
     )
   }
 
@@ -785,8 +785,8 @@ export interface ReviewDeps {
    */
   docsDigest: string
   /**
-   * What every implementer in this burn said it did. The template used to tell
-   * the reviewer it was "the only agent in the burn that can answer" what
+   * What every implementer in this round said it did. The template used to tell
+   * the reviewer it was "the only agent in the round that can answer" what
    * landed; it never was, and the two things a diff cannot express — what
    * surprised each implementer, and what each left undone — live only here.
    */
@@ -929,7 +929,7 @@ async function reviewTicketOutcome(
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
     LANDED_FIXES: ticket.context,
-    VERIFIES_PASS: verifies ? `#${verifies.seq} · ${inheritedMode === 'drive' ? 'Drive' : 'Gates'} mode` : 'no earlier review in this run · Gates mode',
+    VERIFIES_PASS: verifies ? `#${verifies.seq} · ${inheritedMode === 'drive' ? 'Test drive' : 'Gates mode'}` : 'no earlier review in this run · Gates mode',
     AUTO_FIX_CAP: String(AUTO_FIX_CAP),
   })
 
@@ -1066,7 +1066,7 @@ async function reviewTicketOutcome(
 /**
  * The failure shape, and the only one this path has: the review could not run.
  * The reason goes in the digest as well as the error so it survives into the run
- * digest, where the human reads what the burn produced.
+ * digest, where the human reads what the round produced.
  */
 function couldNotReview(ticket: Ticket, reason: string, digest?: string): TicketOutcome {
   const headline = `Review could not run: ${reason}`

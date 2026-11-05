@@ -18,7 +18,7 @@ afterEach(cleanup)
 const selfPlanBar: NextStep = {
   kick: 'PLANNING ITSELF',
   title: 'Planning itself',
-  desc: 'Planning by itself — open the thread to watch; the plan appears below as it is written.',
+  desc: 'Planning by itself — open the chat to watch; the plan appears below as it is written.',
   primary: { label: 'Stop', kind: 'stopSelfPlan' },
   secondary: [],
   busy: true,

@@ -166,7 +166,7 @@ export async function startRun(
   // checked out, which git refuses to let the sandcastle burner check out again
   // ('already used by worktree'). It is parked on a chat temp branch for the
   // duration of the run — not detached, so the chat can keep committing docs
-  // and landing them beside the burn (`one-chat-per-feature` decision 9) — and
+  // and landing them beside the round (`one-chat-per-feature` decision 9) — and
   // handed back at finalize. A non-claiming workflow skips the dance entirely,
   // so the talk worktree — and any live HITL session inside it — is never
   // touched by its run.
@@ -409,7 +409,7 @@ async function executeRun(
   // Only branch-claiming workflows own tickets, so only they sweep; a no-op when
   // the run ended cleanly.
   if (workflowClaimsFeatureBranch(workflow)) {
-    sweepOrphanedBurning(ctx, featureId, `orphaned — the run ended (${status}) while it was burning`)
+    sweepOrphanedBurning(ctx, featureId, `orphaned — the run ended (${status}) while it was building`)
   }
   emit(ctx, featureId, {
     type: 'run.finished',

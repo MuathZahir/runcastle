@@ -333,7 +333,7 @@ export function ProjectWorkspace({
                 }
               : {}),
           },
-          ...(allChats ? [{ label: 'Conversations' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
+          ...(allChats ? [{ label: 'Chats' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
         trail
         actions={

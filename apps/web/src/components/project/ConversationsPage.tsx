@@ -128,12 +128,12 @@ export function ConversationsPage({
       <Page routeKey="conversations" className="relative isolate">
         <SidebarBackdrop />
         <PageHeader
-          title="Conversations"
+          title="Chats"
           meta={
             pending
               ? undefined
               : [
-                  { text: `${threads.length} ${threads.length === 1 ? 'conversation' : 'conversations'}` },
+                  { text: `${threads.length} ${threads.length === 1 ? 'chat' : 'chats'}` },
                   waiting > 0 ? { tone: 'warning', text: `${waiting} waiting for you` } : null,
                   working > 0 ? { tone: 'live', text: `${working} working` } : null,
                 ]
@@ -142,7 +142,7 @@ export function ConversationsPage({
             <TextField
               icon={<IconSearch />}
               placeholder="Filter"
-              aria-label="Filter conversations"
+              aria-label="Filter chats"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -153,7 +153,7 @@ export function ConversationsPage({
           }
         />
         {pending ? (
-          <Skeleton label="Loading conversations" className="mt-8">
+          <Skeleton label="Loading chats" className="mt-8">
             <div className="flex flex-col gap-4 px-2.5">
               {[0, 1, 2, 3, 4].map((i) => (
                 <SkeletonBar key={i} className="h-4 w-3/4 rounded-sm" />
@@ -161,9 +161,9 @@ export function ConversationsPage({
             </div>
           </Skeleton>
         ) : threads.length === 0 ? (
-          <EmptyState icon={<IconMessage />} title="No conversations yet" hint="A new chat starts from the Orchestrator." className="mt-12" />
+          <EmptyState icon={<IconMessage />} title="No chats yet" hint="A new chat starts from the Orchestrator." className="mt-12" />
         ) : groups.length === 0 ? (
-          <EmptyState compact icon={<IconSearch />} title="No conversation matches" hint={`Nothing titled “${q}”.`} className="mt-8" />
+          <EmptyState compact icon={<IconSearch />} title="No chat matches" hint={`Nothing titled “${q}”.`} className="mt-8" />
         ) : (
           <div className="mt-8 flex flex-col gap-7">
             {groups.map(({ group, rows }, i) => {

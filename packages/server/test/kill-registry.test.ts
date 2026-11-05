@@ -226,7 +226,7 @@ describe('killAllForRun — Cancel run', () => {
     expect(registry.keys()).toEqual(['ticket_c'])
   })
 
-  it('is unconfirmed when any one of the run lanes outlives the deadline', async () => {
+  it('is unconfirmed when any one of the rounds outlives the deadline', async () => {
     // Honest reporting is the whole point: one container that will not die means
     // the run is not confirmed stopped, however many of its siblings went.
     const { registry } = withDocker({ immortal: true })

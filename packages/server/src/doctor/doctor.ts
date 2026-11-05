@@ -76,10 +76,21 @@ export interface ExecOutcome {
   stderr: string
   /** The command never answered and was killed — `ok` stays true, `code` is null. */
   timedOut?: boolean
+  /** {@link ExecOptions.stopWhen} matched and the command was killed — `ok` stays true, `code` is null. */
+  stopped?: boolean
+}
+
+export interface ExecOptions {
+  /**
+   * Read the output so far (stdout then stderr) as it arrives; once this
+   * answers true the command is killed and resolves at once with what it said.
+   * For a command that may print a question and then wait for an answer.
+   */
+  stopWhen?: (output: string) => boolean
 }
 
 /** The single injected seam: run a command, never throw. */
-export type ExecFn = (command: string, args: string[]) => Promise<ExecOutcome>
+export type ExecFn = (command: string, args: string[], opts?: ExecOptions) => Promise<ExecOutcome>
 
 /**
  * A probe's precise verdict. `ok` is healthy; everything else is a distinct,
@@ -170,7 +181,7 @@ export interface DoctorEnv {
    * says nothing about legacy residue rather than guessing at it.
    */
   knownProjectIds?: readonly string[]
-  /** Who burns run as; resolved per engine when omitted. */
+  /** Who workers run as; resolved per engine when omitted. */
   burnUser?: BurnUser
   /** The host is running as root; read from the process when omitted. */
   runningAsRoot?: boolean
@@ -303,7 +314,7 @@ export interface RuntimeSpec {
   bin: string
   /**
    * Probe ids, pinned rather than derived so existing ids stay stable. `afkKey`
-   * is absent for a runtime whose unattended burns borrow the interactive login
+   * is absent for a runtime whose unattended workers borrow the interactive login
    * the human already made rather than a credential runcastle asks them for
    * (Codex — decision 4): no id, no AFK-key probe, nothing to paste on the card.
    */
@@ -315,7 +326,7 @@ export interface RuntimeSpec {
   /** Argv for that login command, as an embedded terminal runs it. */
   loginArgs: string[]
   /**
-   * Env var carrying an unattended credential AFK burns can authenticate with.
+   * Env var carrying an unattended credential unattended rounds can authenticate with.
    * For Claude Code that IS the AFK credential, minted and pasted in. For Codex
    * it is only the hand-set override an operator can still put in
    * `~/.runcastle/.env` to bill an API key instead of their ChatGPT login
@@ -332,7 +343,7 @@ export interface RuntimeSpec {
   binOverrideEnv: string
   /**
    * Where the CLI stores the credentials its interactive login writes — the file
-   * a session or a burn actually borrows, and therefore what decides whether
+   * a session or a round actually borrows, and therefore what decides whether
    * this runtime is logged in (Codex: `codexAuthFile`, the same path
    * `codexLoggedIn` tests). Absent when there is no file to check (Claude Code
    * keeps credentials in the macOS Keychain on darwin, so a missing file there
@@ -445,11 +456,11 @@ async function runtimeBinaryProbe(
 }
 
 /**
- * The runtime's interactive login — which, for a runtime whose burns borrow it,
+ * The runtime's interactive login — which, for a runtime whose workers borrow it,
  * is also what an unattended burn runs on.
  *
  * Where the runtime keeps that login in a file ({@link RuntimeSpec.authFile}),
- * the file decides: it is the artifact a session and a burn actually copy, so
+ * the file decides: it is the artifact a session and a round actually copy, so
  * testing for it is the only verdict that can never disagree with what a burn
  * does. `<bin> <status args>` still runs, but only to enrich the detail line —
  * a CLI that says "logged out" over a file that is there, or "logged in" over a
@@ -504,9 +515,9 @@ async function runtimeAuthProbe(
     } else if ((out.code === 0) === present) {
       coda = ` — \`${statusCommand}\` agrees`
     } else if (present) {
-      coda = `, but \`${statusCommand}\` reports logged out — burns borrow the file, so this host counts as signed in`
+      coda = `, but \`${statusCommand}\` reports logged out — workers borrow the file, so this host counts as signed in`
     } else {
-      coda = `, but \`${statusCommand}\` reports a login — a burn borrows the file, and it is not there`
+      coda = `, but \`${statusCommand}\` reports a login — a round borrows the file, and it is not there`
     }
     return present
       ? { ...base, status: 'ok', detail: `credentials found at ${authFile}${coda}` }
@@ -528,11 +539,11 @@ async function runtimeAuthProbe(
  * injected env; both callers — the CLI and the tRPC doctor query the AFK card
  * reads — merge `~/.runcastle/.env` in before calling.
  *
- * `undefined` for a runtime with no `ids.afkKey`: its burns borrow the human's
+ * `undefined` for a runtime with no `ids.afkKey`: its workers borrow the human's
  * own login, which the `auth` check already reports, so a second row asking for
  * a credential they need not have would be the setup step this feature removed.
  *
- * Several lines for the key stay `ok` with a note: burns use the last line, so
+ * Several lines for the key stay `ok` with a note: workers use the last line, so
  * the file may be fine, but only a human can tell which line they meant.
  */
 export function runtimeAfkKeyProbe(
@@ -555,13 +566,13 @@ export function runtimeAfkKeyProbe(
   if (value && value.trim().length > 0) {
     const count = lines[spec.afkKey] ?? 0
     const duplicates =
-      count > 1 ? ` — ~/.runcastle/.env has ${count} ${spec.afkKey} lines, and burns use the last` : ''
+      count > 1 ? ` — ~/.runcastle/.env has ${count} ${spec.afkKey} lines, and workers use the last` : ''
     return { ...base, status: 'ok', detail: `${spec.afkNoun} present${duplicates}` }
   }
   return {
     ...base,
     status: 'unset',
-    detail: `no ${spec.afkKey} — AFK burns on ${spec.label} cannot authenticate`,
+    detail: `no ${spec.afkKey} — unattended rounds on ${spec.label} cannot authenticate`,
     fix: spec.afkFix,
   }
 }
@@ -699,8 +710,8 @@ export async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<Prob
  * Tries docker first, then podman; classifies the exact failure so the fix line
  * is honest: not-installed vs. daemon-dead (docker) vs. machine-stopped (podman).
  *
- * `only` narrows it to one runtime — the burn preflight's, which must judge the
- * runtime the burn is configured for, not whichever one happens to be healthy.
+ * `only` narrows it to one runtime — the round preflight's, which must judge the
+ * runtime the round is configured for, not whichever one happens to be healthy.
  */
 export async function containerRuntimeProbe(
   exec: ExecFn,
@@ -771,7 +782,7 @@ export async function containerRuntimeProbe(
 export interface ImageProbeInput {
   exec: ExecFn
   /**
-   * The image a burn resolves to from the env var, the config file and the
+   * The image a round resolves to from the env var, the config file and the
    * stock default — i.e. every layer BELOW the project column, which
    * {@link ProjectImageEnv.stored} supplies and which wins over it. The probe
    * does not order those two itself: it hands both to `resolveSandboxImage`,
@@ -786,18 +797,18 @@ export interface ImageProbeInput {
   project?: ProjectImageEnv
   /** See {@link DoctorEnv.knownProjectIds}; absent means "do not classify". */
   knownProjectIds?: readonly string[]
-  /** Who burns run as; resolved for the runtime found when omitted. */
+  /** Who workers run as; resolved for the runtime found when omitted. */
   burnUser?: BurnUser
 }
 
 /**
- * Sandcastle image — the first AFK burn fails on a fresh machine by construction
+ * Sandcastle image — the first unattended round fails on a fresh machine by construction
  * until it's built. Runcastle builds it for the user, from the "Enable AFK
  * burns" card: the stock image `sandcastle:runcastle` from the template it
  * ships, and — when the repo carries `.runcastle/sandbox/Dockerfile` — the
  * project image `sandcastle:runcastle-<projectId>` chained on top of it, which
  * is how a repo whose toolchain is not JavaScript gets a JDK or a Go compiler
- * into its burns. AFK burns are opt-in, so a missing image is a warning, not a
+ * into its burns. unattended rounds are opt-in, so a missing image is a warning, not a
  * block. Reuses whichever runtime is present.
  *
  * Staleness is a *content* question and nothing else (decision 4): every image
@@ -827,7 +838,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       status: 'missing',
       severity: 'error',
       detail: 'no container runtime available to inspect the image',
-      fix: 'Install a container runtime (Docker or Podman) first, then build the image from the Enable AFK burns card in the app.',
+      fix: 'Install a container runtime (Docker or Podman) first, then build the image from the Workers page in Settings.',
     }
   }
 
@@ -835,7 +846,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
   const projectHash = project ? dockerfileHash(projectDockerfilePath(project.repoPath)) : null
 
   // Decision 5: a tag the human typed outranks the Dockerfile, because
-  // `adoptProjectImage` will not overwrite it — so a burn keeps resolving to the
+  // `adoptProjectImage` will not overwrite it — so a round keeps resolving to the
   // typed tag however current the project image is. Reporting on the project tag
   // below would describe an image no burn runs in; the custom row answers for
   // the image that is actually used, and leaves the Build button disarmed.
@@ -866,7 +877,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     const image = await inspectBuiltImage(exec, runtime, tag)
     // "Not built yet" covers both halves of the same gap: no image under the
     // tag, or an image runcastle has not adopted as this project's — which is
-    // what a burn would actually have to resolve to. One Build does both.
+    // what a round would actually have to resolve to. One Build does both.
     if (!image.present || (project.overwritable && stored !== tag)) {
       return {
         ...IMAGE_ROW,
@@ -889,8 +900,8 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       const layer = stockVerdict.reasons.find((r) => r.kind === 'hash' || r.kind === 'missing')
       return staleImage(
         layer === undefined
-          ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the burner Dockerfile')}`
-          : `${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${layer.kind === 'missing' ? 'is not built' : 'no longer matches the burner Dockerfile'}`,
+          ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the worker Dockerfile')}`
+          : `${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${layer.kind === 'missing' ? 'is not built' : 'no longer matches the worker Dockerfile'}`,
         unchecked,
       )
     }
@@ -912,7 +923,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // owns the image rather than offering a Rebuild that would build the stock
     // template under someone's custom tag — the clobber this feature exists to
     // remove. Staleness is unanswerable (there is no Dockerfile runcastle knows
-    // about), but presence is not, and an image a burn will not find is still
+    // about), but presence is not, and an image a round will not find is still
     // worth saying out loud: an operator's own image is `info` when it is there
     // and an `error` when it is not.
     const custom = await inspectBuiltImage(exec, runtime, imageName)
@@ -948,7 +959,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       ...IMAGE_ROW,
       status: 'custom',
       // Residue nobody chose is always worth acting on, however buildable the
-      // tag happens to be on this machine. So is an image a burn would refuse.
+      // tag happens to be on this machine. So is an image a round would refuse.
       severity: custom.present && legacy === null && wrongUid === undefined ? 'info' : 'error',
       detail: clauses.join(' — '),
       fix:
@@ -969,7 +980,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
   }
   if (!stockVerdict.fresh) {
     return staleImage(
-      describeStale(imageName, stockVerdict.reasons, 'the burner Dockerfile'),
+      describeStale(imageName, stockVerdict.reasons, 'the worker Dockerfile'),
       unchecked,
     )
   }
@@ -992,16 +1003,16 @@ function imageUserNote(image: BuiltImage, burnUser: BurnUser): string {
   const built =
     imageGid === undefined || imageGid === burnUser.gid
       ? ''
-      : ` (built with GID ${imageGid}, burns here use ${burnUser.gid}: harmless, and the next Rebuild corrects it)`
+      : ` (built with GID ${imageGid}, workers here use ${burnUser.gid}: harmless, and the next Rebuild corrects it)`
   const fallback =
     burnUser.gidSource === 'process'
-      ? ` (could not read this account's primary group, so burns use the process's GID ${burnUser.gid})`
+      ? ` (could not read this account's primary group, so workers use the process's GID ${burnUser.gid})`
       : ''
   return `${built}${fallback}`
 }
 
 /**
- * Who burns run as, and the one user they cannot run as: Claude Code refuses to
+ * Who workers run as, and the one user they cannot run as: Claude Code refuses to
  * run unattended as root (decision 9). Its severity follows the runtime it is
  * about, so a Codex-only setup is told without failing the report.
  */
@@ -1010,7 +1021,7 @@ export function burnUserProbe(
   root: boolean,
   severity: ProbeSeverity,
 ): ProbeResult {
-  const base = { id: 'burn-user', label: 'Burn user', tier: 2 as const, severity }
+  const base = { id: 'burn-user', label: 'Worker user', tier: 2 as const, severity }
   if (root) {
     return {
       ...base,
@@ -1019,7 +1030,7 @@ export function burnUserProbe(
       fix: 'Create a normal user, add it to the docker group, and run runcastle as that user.',
     }
   }
-  return { ...base, status: 'ok', detail: `burns run as ${burnUserSpec(burnUser)}` }
+  return { ...base, status: 'ok', detail: `workers run as ${burnUserSpec(burnUser)}` }
 }
 
 /**
@@ -1045,15 +1056,15 @@ export async function dockerUserMappingProbe(exec: ExecFn): Promise<ProbeResult 
     tier: 2,
     status: 'unhealthy',
     severity: 'error',
-    detail: `this engine runs ${mode}, which burns do not support: host user IDs mean something else inside its containers`,
+    detail: `this engine runs ${mode}, which workers do not support: host user IDs mean something else inside its containers`,
     fix: 'Use rootful Docker with no userns-remap, or Podman.',
   }
 }
 
 /**
- * Can the burn user write to its cache volume? The doctor used to pass while
+ * Can the worker user write to its cache volume? The doctor used to pass while
  * burns could not (decision 7). The check is the one every run makes, so the two
- * cannot disagree. A bad volume is `info`, not an error: the next burn replaces
+ * cannot disagree. A bad volume is `info`, not an error: the next round replaces
  * it, so there is nothing for a human to do. `undefined` — no row — when the
  * image is not there to test from, which the image row already reports.
  */
@@ -1064,7 +1075,7 @@ export async function burnCacheVolumeProbe(
 ): Promise<ProbeResult | undefined> {
   const base = {
     id: 'burn-cache-volume',
-    label: 'Burn cache volume',
+    label: 'Worker cache volume',
     tier: 2 as const,
     severity: 'info' as const,
   }
@@ -1072,7 +1083,7 @@ export async function burnCacheVolumeProbe(
   if (!(image.ok && image.code === 0)) return undefined
 
   const projectIds = await burnCacheProjectIds(exec, scope)
-  const none = { ...base, status: 'ok' as const, detail: 'no cache volume yet: the first burn creates it' }
+  const none = { ...base, status: 'ok' as const, detail: 'no cache volume yet: the first round creates it' }
   if (projectIds.length === 0) return none
 
   const bad: string[] = []
@@ -1096,13 +1107,13 @@ export async function burnCacheVolumeProbe(
     return {
       ...base,
       status: 'stale',
-      detail: `burn user ${user} cannot write to ${bad.join('; ')}. The next burn replaces it.`,
+      detail: `worker user ${user} cannot write to ${bad.join('; ')}. The next round replaces it.`,
     }
   }
   if (unknown.length > 0) {
     return { ...base, status: 'unhealthy', detail: `could not test ${unknown.join('; ')}` }
   }
-  return { ...base, status: 'ok', detail: `burn user ${user} can write to its cache` }
+  return { ...base, status: 'ok', detail: `worker user ${user} can write to its cache` }
 }
 
 /** The project ids behind the volumes a scope covers, existing volumes only. */
@@ -1161,7 +1172,7 @@ function uncheckedRuntimes(host: HostAgentVersions): string {
  * Ask an unmanaged image which agent CLIs it carries, in one container, and
  * name each that differs from the host's. A CLI missing from either side is
  * not drift: the host has nothing to match (decision 4), and an image without
- * a CLI is the burn preflight's to refuse. A probe that fails says nothing.
+ * a CLI is the round preflight's to refuse. A probe that fails says nothing.
  */
 async function customImageDrift(
   exec: ExecFn,

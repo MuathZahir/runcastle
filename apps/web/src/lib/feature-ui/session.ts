@@ -105,6 +105,6 @@ export function sessionKindName(
     case 'scenario':
       return 'Scenario'
     case 'side':
-      return 'Side session'
+      return 'Side chat'
   }
 }

@@ -76,12 +76,12 @@ describe('ThreadColumn', () => {
       },
     })
     render(<ThreadColumn threadId="th1" emptyHint="One chat per feature" />, { wrapper: api.Wrapper })
-    expect(await screen.findByText('Loading the thread…')).toBeTruthy()
-    expect(screen.queryByText('New thread')).toBeNull()
+    expect(await screen.findByText('Loading the chat…')).toBeTruthy()
+    expect(screen.queryByText('New chat')).toBeNull()
     await act(async () => release())
     expect(await screen.findByText('Lined up — it had its own margin.')).toBeTruthy()
-    expect(screen.queryByText('New thread')).toBeNull()
-    expect(screen.queryByText('Loading the thread…')).toBeNull()
+    expect(screen.queryByText('New chat')).toBeNull()
+    expect(screen.queryByText('Loading the chat…')).toBeNull()
   })
 
   it('keeps a thread never read before loading through a failed read, and opens it when a read answers', async () => {
@@ -96,13 +96,13 @@ describe('ThreadColumn', () => {
       })
       render(<ThreadColumn threadId="th1" emptyHint="One chat per feature" />, { wrapper: api.Wrapper })
       await act(() => vi.advanceTimersByTimeAsync(OPEN_RETRY_MS / 2))
-      expect(screen.getByText('Loading the thread…')).toBeTruthy()
-      expect(screen.queryByText('New thread')).toBeNull()
+      expect(screen.getByText('Loading the chat…')).toBeTruthy()
+      expect(screen.queryByText('New chat')).toBeNull()
 
       down = false
       await act(() => vi.advanceTimersByTimeAsync(OPEN_RETRY_MS))
       expect(screen.getByText('Lined up — it had its own margin.')).toBeTruthy()
-      expect(screen.queryByText('Loading the thread…')).toBeNull()
+      expect(screen.queryByText('Loading the chat…')).toBeNull()
     } finally {
       vi.useRealTimers()
     }
@@ -111,8 +111,8 @@ describe('ThreadColumn', () => {
   it('welcomes a thread that is really empty once its read says so', async () => {
     const api = server([])
     render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
-    expect(await screen.findByText('New thread')).toBeTruthy()
-    expect(screen.queryByText('Loading the thread…')).toBeNull()
+    expect(await screen.findByText('New chat')).toBeTruthy()
+    expect(screen.queryByText('Loading the chat…')).toBeNull()
   })
 
   it('reads only what follows its cursor when a live thread signal arrives', async () => {
@@ -193,7 +193,7 @@ describe('ThreadColumn', () => {
       logs.th1.push(...ANSWERED)
       holding = true
       view.rerender(<ThreadColumn threadId="th1" />)
-      expect(await screen.findByText('Loading the thread…')).toBeTruthy()
+      expect(await screen.findByText('Loading the chat…')).toBeTruthy()
       expect(screen.queryByText('Line up the export button')).toBeNull()
 
       await act(async () => release())
@@ -219,7 +219,7 @@ describe('ThreadColumn', () => {
       logs.th1.push(...ANSWERED)
       holding = true
       view.rerender(<ThreadColumn threadId="th1" />)
-      await screen.findByText('Loading the thread…')
+      await screen.findByText('Loading the chat…')
       api.queryClient.removeQueries({ queryKey: ['runcastle.thread.log', 'th1'] })
       await act(async () => release())
 
@@ -303,7 +303,7 @@ describe('ThreadColumn', () => {
     })
     const onStarted = vi.fn()
     render(<ThreadColumn threadId={null} start={start} onStarted={onStarted} draftKey="feature:f1:main" />, { wrapper: api.Wrapper })
-    expect(screen.getByText('New thread')).toBeTruthy()
+    expect(screen.getByText('New chat')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Let’s plan the export' } })
     fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' })
     expect(await screen.findByText('Let’s plan the export')).toBeTruthy()
@@ -605,7 +605,7 @@ describe('ThreadColumn', () => {
     const api = server(HISTORY)
     render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
     await screen.findByText('Lined up — it had its own margin.')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Branch into a new thread from here' })[1])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Branch into a new chat from here' })[1])
     fireEvent.click(screen.getByRole('button', { name: 'Edit and rewind to here' }))
     fireEvent.click(screen.getByRole('button', { name: 'Rewind and send' }))
     await waitFor(() => expect(api.inputs('thread.edit')).toEqual([{ threadId: 'th1', promptId: 'p1', text: 'Make the export button line up', undoFiles: true }]))
