@@ -86,7 +86,9 @@ const LIGHT_MARKS_BEFORE: Record<string, string> = {
   'phase-ideation': '#c13d7e',
   'phase-spec': '#0b7f78',
   'phase-implementation': '#b44f0c',
-  icon: '#6a7185',
+  // `icon` left this list when it became the muted text grey
+  // (docs/features/fewer-darker-greys, decision 1): one grey, darker than a
+  // mark needs, so icons and metadata read as one step.
 }
 
 describe('the light palette holds its contrast floors', () => {
@@ -145,5 +147,35 @@ describe('the dark palette is unchanged by the word peers', () => {
   it('in light, phase-review-text and accent-fill wear accent-text', () => {
     expect(resolveColour('light','phase-review-text')).toBe(resolveColour('light','accent-text'))
     expect(resolveColour('light','accent-fill')).toBe(resolveColour('light','accent-text'))
+  })
+})
+
+/**
+ * The quiet text ladder (docs/features/fewer-darker-greys): two greys clearly
+ * apart, both readable as words on every solid ground, in both themes; icons
+ * wear the muted one, and code and inputs sit on the canvas.
+ */
+describe('two quiet greys, clearly apart', () => {
+  const GROUNDS = ['canvas', 'surface', 'surface-raised', 'surface-inset']
+  it.each([
+    ['dark', 'text-secondary'],
+    ['dark', 'text-tertiary'],
+    ['light', 'text-secondary'],
+    ['light', 'text-tertiary'],
+  ] as const)('in %s, %s clears 4.5:1 on every solid ground', (theme, word) => {
+    for (const ground of GROUNDS) {
+      const ratio = contrast(resolveColour(theme, word), resolveColour(theme, ground))
+      expect(ratio, `${word} on ${ground} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it.each(['dark', 'light'] as const)('in %s, secondary and muted are at least 1.6:1 apart', (theme) => {
+    const gap = contrast(resolveColour(theme, 'text-secondary'), resolveColour(theme, 'text-tertiary'))
+    expect(gap, `secondary and muted are ${gap.toFixed(2)}:1 apart`).toBeGreaterThanOrEqual(1.6)
+  })
+
+  it.each(['dark', 'light'] as const)('in %s, icons are the muted grey and the inset is the canvas', (theme) => {
+    expect(resolveColour(theme, 'icon')).toBe(resolveColour(theme, 'text-tertiary'))
+    expect(resolveColour(theme, 'surface-inset')).toBe(resolveColour(theme, 'canvas'))
   })
 })

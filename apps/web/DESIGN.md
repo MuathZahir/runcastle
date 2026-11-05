@@ -298,19 +298,27 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 `text-success-text`, `text-warning-text`, `text-danger-text`,
 `text-phase-*-text` (every phase but `draft`).
 
-- Neutrals are a faint cool slate (hue ≈225°, low chroma), not pure zinc: the
+- Neutrals are a cool slate (OKLCH hue 264, low chroma), not pure zinc: the
   chrome reads as a material, never as flat grey. Keep new greys on that ramp.
+  **Few greys, clearly apart**: three solid grounds, two see-through strengths,
+  two quiet text greys. Do not add a shade between two that exist.
 - Grounds: `canvas` frame + sidebar; `surface` content; `surface-raised` for
-  anything floating (menus, popovers, dialogs, toasts, palette); `surface-inset`
-  for code, terminal, transcript and inputs.
+  anything floating (menus, popovers, dialogs, toasts, palette). Dark keeps them
+  deep (`#04060b`, `#080c13`, `#0e131e`), an equal step of perceived lightness
+  apart. `surface-inset` (code, terminal, transcript, inputs) is the canvas
+  colour in both themes, not a fourth shade.
 - **Hover and selection are see-through**, never a solid lighter block: hover
-  is `surface-hover` (3.5% of `text` in dark, 4% in light) over whatever ground
+  is `surface-hover` (3% of `text` in dark, 3.5% in light) over whatever ground
   is behind — canvas, surface or a raised menu alike. A selected row, list row
-  or tab is **the card** (`card`: a 2.5% `fill-card` with a hairline edge drawn
-  inside); a pressed ghost or an open trigger is `surface-selected` (6%). Hover
-  never changes a selected row: the edge and full-strength text tell it from
-  hover, in both themes. A small count or press well is `fill-well`.
-- Text: `text` primary, `text-secondary` descriptions, `text-tertiary` metadata.
+  or tab is **the card** (`card`: `fill-card`, the same faint strength as hover,
+  with a hairline edge drawn inside); a pressed ghost or an open trigger is
+  `surface-selected` (6% in dark, 7% in light). Hover never changes a selected
+  row: the edge and full-strength text tell it from hover, in both themes. A
+  small count or press well is `fill-well`, the strong strength.
+- Text: `text` primary, then two quiet greys clearly apart: `text-secondary`
+  for descriptions, quieter rows and labels; `text-tertiary` — the *muted* grey —
+  for metadata, status lines and tool-call lines. `icon` is the muted grey too.
+  Both hold 4.5:1 on every ground in both themes (`theme-contrast.test.ts`).
   `text-disabled` is decorative only.
 - Lines: `border` for the panel edge and section rules, `border-subtle` between
   rows and for dividers inside floating layers (it is translucent, so it reads

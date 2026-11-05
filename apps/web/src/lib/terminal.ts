@@ -280,11 +280,11 @@ type Resolved = 'dark' | 'light'
  */
 const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
   dark: {
-    '--color-surface-inset': '#0c0e14',
+    '--color-surface-inset': '#04060b',
     '--color-text': '#eceef4',
     '--color-accent': '#4f8ef7',
     '--color-accent-subtle': '#16213a',
-    '--color-border-strong': '#333a4d',
+    '--color-border-strong': '#293243',
     '--color-danger-text': '#f06363',
     '--color-success-text': '#46b67a',
     '--color-warning-text': '#e2a53b',
@@ -317,34 +317,35 @@ const BLUE_TOKEN: Record<Resolved, string> = {
  * The ANSI colours the tokens have no name for, tuned per theme so an agent's
  * dim text, diffs and prompts stay readable on the inset ground: on light, the
  * "white" slots are dark greys (a CLI that prints white-on-default would
- * otherwise vanish) and every hue is deep enough for 4.5:1.
+ * otherwise vanish) and every hue is deep enough for 4.5:1. The greys (black,
+ * white and their bright peers) are the app's cool slate, not neutral zinc.
  */
 const ANSI_EXTRA: Record<Resolved, Pick<TerminalTheme, 'black' | 'magenta' | 'cyan' | 'white' | 'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow' | 'brightMagenta' | 'brightCyan' | 'brightWhite'>> = {
   dark: {
-    black: '#2a2a2f',
+    black: '#272b33',
     magenta: '#c68af0',
     cyan: '#56c2d6',
-    white: '#d4d4d8',
-    brightBlack: '#6b6b74',
+    white: '#d0d5de',
+    brightBlack: '#676c77',
     brightRed: '#ff8a8a',
     brightGreen: '#72d49c',
     brightYellow: '#f2c46e',
     brightMagenta: '#d9a9f7',
     brightCyan: '#86dbe8',
-    brightWhite: '#fafafa',
+    brightWhite: '#f8fafe',
   },
   light: {
-    black: '#18181b',
+    black: '#131823',
     magenta: '#9337be',
     cyan: '#0e7488',
-    white: '#52525b',
-    brightBlack: '#71717a',
+    white: '#4d5360',
+    brightBlack: '#6b727f',
     brightRed: '#d63a3a',
     brightGreen: '#1f9a5a',
     brightYellow: '#b57308',
     brightMagenta: '#a64ccf',
     brightCyan: '#128399',
-    brightWhite: '#27272a',
+    brightWhite: '#222732',
   },
 }
 
