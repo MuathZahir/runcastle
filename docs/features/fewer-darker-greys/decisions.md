@@ -1,22 +1,19 @@
 # Fewer, darker greys — decisions
 
-Planned without the human on 2026-11-04 (a headless planning run). Every
-decision below is the planner's own and carries an **Assumed.** line until the
-human confirms it.
+Planned without the human on 2026-11-04 (a headless planning run). A decision
+the planner made alone carries an **Assumed.** line until the human confirms it.
+On 2026-11-05 the human picked the design page's Tweaks ("Darkest, a touch blue.
+Two greys"), which settles decisions 1 and 2.
 
-Check first: 1, 2, 4, 6
+Check first: 4, 6
 
 ## 1. Two quiet text greys, clearly apart, plus disabled
 **Decision:** Below the main text colour there are exactly two greys: *secondary* (descriptions, quieter rows, labels) and *muted* (metadata, status lines, the tool-call lines, and every icon). Today's third-step grey (`text-tertiary`) and the icon grey become the one muted grey. The two are pushed apart (secondary brighter, muted darker) so each reads as "less important" rather than "a slightly different grey". *Disabled* stays as the decorative fourth step. Both quiet greys keep at least 4.5:1 contrast on every ground, menus included.
 **Why:** Today secondary (`#a2a8b9`) and tertiary (`#8a91a5`) are one small step apart, and the icon grey (`#8990a4`) is a third near-twin. The sidebar's quieter rows wear secondary and the tool-call lines wear tertiary, which is exactly the mismatch the human saw. Two greys keep the hierarchy where three levels stack (a title, its description, its status line); the wider gap makes the difference look deliberate.
-**Assumed.** Alternative: one quiet grey for everything below the main text (secondary and tertiary merged), so the tool-call lines and the sidebar's rows become literally the same grey. The design page has a Tweak that shows it.
-**Challenged:** The human's own example was the tool-call lines and the sidebar's rows looking different; two greys keeps them different, only further apart, so one grey should be the default. My answer stands: those two sit at different levels of importance, and one grey would flatten every place where a description and a status line stack. It is the first thing to check, and the Tweak shows the other way live.
 
 ## 2. Dark grounds: darker, and a touch bluer
-**Decision:** In the dark theme, the sidebar ground, the content panel and the floating layers (menus, dialogs) each go about two steps darker and take a little more blue. The lines (panel edges, rules, input borders) move with them, keeping the same distance above the panel so edges are no louder than today. The spacing between grounds stays as it is today, measured in perceived lightness, so the sidebar still reads as the frame, the panel as the page and menus as floating. The main text colour and the primary button stay as they are. The recommended set is "darker, a touch blue": sidebar `#06080e`, content `#0b0f17`, menus and dialogs `#111621` (today `#0a0c11`, `#10131a`, `#161a24`). The design page offers three other strengths of depth and blue as a Tweak; the human picks.
-**Why:** The human asked for darker and "a touch more bluish" to feel more premium. The exact shades are their taste, so the page shows the choice live instead of guessing it.
-**Assumed.** Alternative: darker only, keeping today's hue.
-**Challenged:** Near black, equal steps look smaller, and a sidebar as dark as `#06080e` may crush to black on some screens, leaving the edge between sidebar and panel to the border alone; the panel should step further above the sidebar. My answer stands: the steps are already equal in perceived lightness (OKLCH), not in hex, and the panel keeps its border. The "Darkest" Tweaks are the ones where this risk is real.
+**Decision:** In the dark theme, the sidebar ground, the content panel and the floating layers (menus, dialogs) each go about two steps darker and take a little more blue. The lines (panel edges, rules, input borders) move with them, keeping the same distance above the panel so edges are no louder than today. The spacing between grounds stays as it is today, measured in perceived lightness, so the sidebar still reads as the frame, the panel as the page and menus as floating. The main text colour and the primary button stay as they are. The human picked "darkest, a touch blue" on the design page: sidebar `#04060b`, content `#080c13`, menus and dialogs `#0e131e`, lines `#181f2d` and `#293243` (today `#0a0c11`, `#10131a`, `#161a24`, `#222837`, `#333a4d`).
+**Why:** The human asked for darker and "a touch more bluish" to feel more premium, and chose the exact strength from four shown live.
 
 ## 3. Code and input wells take the sidebar's ground
 **Decision:** The sunken ground used by code blocks, the terminal, inputs and attached images (`surface-inset`) stops being its own shade and takes the sidebar's ground colour. The dark theme then has three solid grounds (sidebar, content, floating) instead of four.

@@ -24,19 +24,19 @@ light theme's grounds do not change. Nothing else changes: layout, spacing,
 type, the accent and status colours, and every component's design stay as they
 are.
 
-**The values.** The design page `apps/web/preview/greys.html` holds the
-proposal (its `GROUNDS`, `QUIET` and `fills` tables) and the human's chosen
-Tweaks. Once approved, those values move into `apps/web/src/theme.css` and the
-Tweaks menu goes. The recommended set, before any Tweak:
+**The values.** The human picked them on the design page
+`apps/web/preview/greys.html` ("Darkest, a touch blue", two greys). They live in
+`apps/web/src/theme.css`; the design page keeps today's old values as its
+"before" so the change can still be compared, and its Tweaks are gone:
 
 | Token | Dark today → proposed | Light today → proposed |
 |---|---|---|
-| `canvas` | `#0a0c11` → `#06080e` | unchanged `#f4f6f9` |
-| `surface` | `#10131a` → `#0b0f17` | unchanged |
-| `surface-raised` | `#161a24` → `#111621` | unchanged |
+| `canvas` | `#0a0c11` → `#04060b` | unchanged `#f4f6f9` |
+| `surface` | `#10131a` → `#080c13` | unchanged |
+| `surface-raised` | `#161a24` → `#0e131e` | unchanged |
 | `surface-inset` | `#0c0e14` → `var(--color-canvas)` | already the canvas value |
-| `border` | `#222837` → `#1c2331` | unchanged |
-| `border-strong` | `#333a4d` → `#2c3547` | unchanged |
+| `border` | `#222837` → `#181f2d` | unchanged |
+| `border-strong` | `#333a4d` → `#293243` | unchanged |
 | `text` | unchanged `#eceef4` | unchanged |
 | `text-secondary` | `#a2a8b9` → `#a9b1c1` | `#596075` → `#454f62` |
 | `text-tertiary` (the muted step) | `#8a91a5` → `#798294` | `#676e82` → `#677083` |
@@ -75,11 +75,12 @@ dark ground, menus included, and their gap from each other grows from 1.32:1 to
 - `apps/web/test/theme-contrast.test.ts`: gains a dark-theme floor, so both
   quiet greys stay at or above 4.5:1 on canvas, surface and raised. The light
   floors it already holds keep passing.
-- The README pictures and banner are retaken from
-  `apps/web/preview/readme-shots.html` (added by the "Ready to publish"
-  feature), as the last step. If that feature has not merged by then, merge
-  `main` in once it has; if it is still open when everything else is done, the
-  retake waits for it and the human is told.
+- The README pictures are retaken from `apps/web/preview/readme-shots.html`
+  (added by the "Ready to publish" feature) at 1440×900, 2×. The banner had no
+  source; it is rebuilt as `apps/web/preview/readme-banner.html` (the pitch,
+  the four stage cards, and the build screenshot under them, 1280×802 at 2×),
+  a faithful redraw of the approved banner in the new colours, so the next
+  recolour is a recapture.
 
 The favicon, the public website (`site/`) and the old plan pages under
 `docs/features/*/preview.html` keep their colours.
@@ -116,8 +117,6 @@ review round that drives the app in both themes.
 
 ## Open questions
 
-- Which of the four ground strengths, and two greys or one: the human picks on
-  the design page (decisions 1 and 2).
 - The public website shows app pictures of its own; if they come from the
   README pictures, they will still show the old colours until the site is
   updated. That would be its own small feature.
