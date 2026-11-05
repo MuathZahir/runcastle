@@ -27,7 +27,7 @@ const finding = (overrides: Partial<ProjectFinding> = {}): ProjectFinding =>
 function server(view: Partial<PrepView>) {
   return fakeTrpc({
     'project.list': () => [{ id: 'proj_1', name: 'Demo' }],
-    'project.prep': () => ({ prepared: false, preparedAt: null, pendingKeys: [], findings: [], ...view }),
+    'project.prep': () => ({ pendingKeys: [], findings: [], ...view }),
     'project.prepSession': () => null,
     'project.talkToPrep': () => ({ sessionId: 'th_prep' }),
     'thread.list': () => [],

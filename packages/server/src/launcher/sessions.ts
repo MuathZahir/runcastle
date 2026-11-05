@@ -491,31 +491,6 @@ export function clearSessionTitle(ctx: AppCtx, id: string): void {
   ctx.db.update(sessions).set({ title: null }).where(eq(sessions.id, id)).run()
 }
 
-/**
- * Whether this project has ever had a project-scoped conversation of this kind
- * run to an end. The signal behind "has the human done preparation" — a session
- * they opened and closed is one they sat through, whatever it managed to record.
- */
-export function hasCompletedProjectSession(
-  ctx: AppCtx,
-  projectId: string,
-  kind: SessionKind,
-): boolean {
-  return (
-    ctx.db
-      .select({ id: sessions.id })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.projectId, projectId),
-          eq(sessions.kind, kind),
-          eq(sessions.status, 'ended'),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  )
-}
 
 // --- re-entry cap -----------------------------------------------------------
 

@@ -111,6 +111,7 @@ export function PreparationWorkspace({
   const findings = view?.findings ?? []
   const pending = view?.pendingKeys ?? []
   const staleCount = findings.filter(isStale).length
+  const prepared = view !== undefined && pending.length === 0
   const [asideOpen, setAsideOpen] = useState(true)
   const hasAside = findings.length > 0 || pending.length > 0
   // Preparation drives the app on the computer: a phone says to go there.
@@ -162,7 +163,7 @@ export function PreparationWorkspace({
         aside={
           asideOpen &&
           hasAside && (
-            <Aside title={view?.prepared ? 'Established' : 'To establish'} onClose={() => setAsideOpen(false)} bodyClassName="px-4 py-3">
+            <Aside title={prepared ? 'Established' : 'To establish'} onClose={() => setAsideOpen(false)} bodyClassName="px-4 py-3">
               <PrepAside pending={pending} findings={findings} staleCount={staleCount} />
             </Aside>
           )
@@ -180,7 +181,7 @@ export function PreparationWorkspace({
             void utils.thread.list.invalidate({ projectId })
           }}
           draftKey={`prepare:${projectId}`}
-          emptyHint={prepHint(view?.prepared ?? false)}
+          emptyHint={prepHint(prepared)}
           {...(view ? { meta: prepMeta(view) } : {})}
         />
       </AsideLayout>
@@ -198,10 +199,9 @@ export function prepHint(prepared: boolean): string {
     : `${WHAT_IT_DOES} The agent works in your own checkout — it runs this repo's commands, records the answers, and asks you the ones only you know.`
 }
 
-/** The quiet line under the composer: when it was prepared, or how much is still open. */
+/** The quiet line under the composer: how much is still open. */
 function prepMeta(view: PrepView): string {
-  if (view.prepared) return view.preparedAt !== null ? `Prepared ${relativeAge(view.preparedAt)}` : 'Prepared'
-  return view.pendingKeys.length > 0 ? `${view.pendingKeys.length} to establish` : 'Preparing'
+  return view.pendingKeys.length > 0 ? `${view.pendingKeys.length} to establish` : 'Prepared'
 }
 
 /**

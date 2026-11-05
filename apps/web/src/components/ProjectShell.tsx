@@ -110,7 +110,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // Assumed prepared until it answers, so a fresh project's home never flashes
   // through the call-to-action on its way to the real one.
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
-  const prepared = prep.data?.prepared ?? true
+  const prepared = prep.data ? prep.data.pendingKeys.length === 0 : true
   const empty = prep.data?.empty ?? true
   // The one drive query every drive surface polls, read for the titlebar pill.
   const slot = trpc.feature.driveInfo.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data

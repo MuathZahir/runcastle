@@ -1444,6 +1444,14 @@ export async function toolRecordFinding(
 ): Promise<RecordFindingResult> {
   const project = requireProject(ctx, session)
   const source: FindingSourceT = input.userSupplied ? 'human' : 'session'
+  const none = input.value.trim() === ''
+  // A "none" is a decision that this key stays empty for good, and only its
+  // evidence says why — without it, it is indistinguishable from a slip.
+  if (none && !input.evidence?.trim()) {
+    throw new InvalidInputError(
+      `recording ${input.key} as none needs evidence: say why this project has no value for it`,
+    )
+  }
 
   if (!isOverwritable(ctx, project.id, input.key) && !input.userSupplied) {
     return {
@@ -1473,8 +1481,10 @@ export async function toolRecordFinding(
 
   emitProject(ctx, project.id, {
     type: 'prep.finding_recorded',
-    message: `preparation session established ${input.key} (${source})`,
-    data: { key: input.key, source, sessionId: session.id },
+    message: none
+      ? `${input.key} recorded as none (${source})`
+      : `established ${input.key} (${source})`,
+    data: { key: input.key, source, sessionId: session.id, none },
   })
   return { ok: true, key: input.key, source }
 }
@@ -2783,12 +2793,19 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Record a preparation finding',
         description:
-          'Store one established project setting from a preparation conversation. Refuses from a ' +
+          'Store one established project setting while preparing the project. Refuses from a ' +
           'feature session, and never overwrites a key a human already set (the refusal is ' +
-          'reported as `skipped`, not thrown).',
+          'reported as `skipped`, not thrown). To close a key that has no value for good ' +
+          '("this repo has no database"), record a deliberate none: an empty `value` WITH ' +
+          '`evidence` saying why. A none keeps the setting empty but stops it being open.',
         inputSchema: {
           key: PreparedKey.describe('Which project setting this value is for.'),
-          value: z.string().describe('The value to store, exactly as it should be used.'),
+          value: z
+            .string()
+            .describe(
+              'The value to store, exactly as it should be used — or an empty string to record ' +
+                'a deliberate none (requires `evidence`).',
+            ),
           evidence: z
             .string()
             .optional()

@@ -16,11 +16,8 @@ import {
   newestThread,
 } from '../src/launcher/sessions'
 import { launchPrepareSession } from '../src/launcher/launcher'
-import { reconcileStaleSessions } from '../src/launcher/reconcile'
-import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
 import { listFindings, preparedValue, recordFinding } from '../src/services/findings'
-import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
@@ -275,88 +272,6 @@ describe('record_finding provenance', () => {
     expect(
       (await listFindings(ctx, project())).find((finding) => finding.key === 'knownFailures'),
     ).not.toHaveProperty('establishedSha')
-  })
-})
-
-/**
- * The baseline's date. `prepared` is monotonic and undated, so on its own it
- * cannot be shown to anyone: a baseline established a year ago reads exactly
- * like one established this morning, and "re-prepare" becomes a guess. Sessions
- * carry no timestamp, so the date comes from the end event that closed one.
- */
-describe('preparedAt', () => {
-  /** Rewrite one session's end event to a known instant (tests share a ms). */
-  function stampEnd(sessionId: string, ts: number): void {
-    const row = ctx.db
-      .select()
-      .from(events)
-      .all()
-      .find(
-        (e) =>
-          e.type === 'session.ended' &&
-          (e.data as { sessionId?: string } | null)?.sessionId === sessionId,
-      )
-    if (!row) throw new Error(`no session.ended event for ${sessionId}`)
-    ctx.db.update(events).set({ ts }).where(eq(events.id, row.id)).run()
-  }
-
-  it('has no date to report until a preparation has actually ended', () => {
-    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
-    prepareSession() // open, so nothing has been established yet
-    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
-  })
-
-  it('dates the most recent preparation, not the first', () => {
-    const older = prepareSession()
-    endSession(ctx, older.id)
-    stampEnd(older.id, 1_000)
-    const newer = prepareSession()
-    endSession(ctx, newer.id)
-    stampEnd(newer.id, 2_000)
-
-    expect(preparedAt(ctx, PROJECT_ID)).toBe(2_000)
-  })
-
-  /**
-   * How a good many preparations really end: the terminal was still open when
-   * the server stopped, and the next boot closes the row. Counting only the
-   * human's own "end session" would leave those projects prepared, dated by
-   * nothing, and told no conversation was ever on record.
-   */
-  it('counts a session the server closed at boot', () => {
-    prepareSession()
-    expect(reconcileStaleSessions(ctx)).toHaveLength(1)
-
-    expect(preparedAt(ctx, PROJECT_ID)).not.toBeNull()
-  })
-
-  /**
-   * Why this reads sessions and events rather than events alone: a project's
-   * OTHER conversations end on the same project timeline with the same event
-   * type, and an intake session ending must never date the repo's baseline.
-   */
-  it('ignores another kind of project conversation ending', () => {
-    const intake = createSessionRow(ctx, {
-      projectId: PROJECT_ID,
-      kind: 'project',
-      worktreePath: '/wt',
-    })
-    // Emitted directly rather than through endSession: ending an orchestrator
-    // also lands its branch, which wants a real checkout this test has no use for.
-    emitForSession(ctx, intake, {
-      type: 'session.ended',
-      message: 'session ended by user',
-      data: { sessionId: intake.id },
-    })
-
-    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
-  })
-
-  it('is null for a project that never opened one, and per project', () => {
-    const s = prepareSession()
-    endSession(ctx, s.id)
-    expect(preparedAt(ctx, PROJECT_ID)).not.toBeNull()
-    expect(preparedAt(ctx, 'proj_other')).toBeNull()
   })
 })
 

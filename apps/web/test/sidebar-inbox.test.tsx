@@ -15,7 +15,7 @@ import { openMenu } from './floating'
  * show; the row-level words and dots are pinned in sidebar-row.test.ts.
  */
 
-const PREPARED: PrepView = { prepared: true, pendingKeys: [], findings: [] } as unknown as PrepView
+const PREPARED: PrepView = { pendingKeys: [], findings: [] } as unknown as PrepView
 
 const data = vi.hoisted(() => ({
   features: [] as FeatureListItem[],
@@ -192,7 +192,7 @@ describe('the Orchestrator card', () => {
 
 describe('what needs you', () => {
   it('lists preparation, then the waiting features, then the ones in progress — unheaded', () => {
-    data.prep = { prepared: false, pendingKeys: ['a', 'b'], findings: [] }
+    data.prep = { pendingKeys: ['a', 'b'], findings: [] }
     data.features = [
       titled('Order history', {
         ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },

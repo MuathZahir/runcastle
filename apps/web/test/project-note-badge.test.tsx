@@ -28,7 +28,7 @@ vi.mock('../src/trpc', () => ({
       delete: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
     project: {
-      prep: { useQuery: () => ({ data: { prepared: true, pendingKeys: [], findings: [] } }) },
+      prep: { useQuery: () => ({ data: { pendingKeys: [], findings: [] } }) },
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'runcastle' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: count.value }) } },

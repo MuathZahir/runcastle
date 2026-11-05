@@ -6,7 +6,8 @@ import type { Project } from '@runcastle/core'
 import { DRIVE_LOOP_KEYS, PREPARED_KEYS } from '@runcastle/core'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import { createSessionRow } from '../src/launcher/sessions'
+import { toolRecordFinding } from '../src/mcp/server'
 import {
   isOverwritable,
   isPreparedKey,
@@ -18,7 +19,7 @@ import {
   recordHuman,
   unsetPreparedKeys,
 } from '../src/services/findings'
-import { isPrepared, keysToPrepare, prepView } from '../src/services/prep'
+import { keysToPrepare, prepView } from '../src/services/prep'
 import { getSettings, updateSettings } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 
@@ -80,52 +81,6 @@ describe('isProvenanceKey', () => {
     for (const key of PREPARED_KEYS) expect(isProvenanceKey(key)).toBe(true)
     expect(isProvenanceKey('model')).toBe(false)
     expect(isProvenanceKey('burnConcurrency')).toBe(false)
-  })
-})
-
-/**
- * Whether a project still needs the preparation call-to-action. It used to be
- * "has a run row", back when preparation had a headless half; now there is only
- * the conversation, so the question is whether the human has been through one.
- */
-describe('isPrepared', () => {
-  const endedPrepareSession = (): void => {
-    const s = createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'prepare', worktreePath: '/r' })
-    markSessionEnded(ctx, s.id)
-  }
-
-  it('is false for a project nobody has prepared', () => {
-    expect(isPrepared(ctx, project())).toBe(false)
-  })
-
-  it('is true once nothing is left to establish', () => {
-    const answered = project(
-      Object.fromEntries(PREPARED_KEYS.map((k) => [k, 'set by hand'])) as Partial<Project>,
-    )
-    expect(isPrepared(ctx, answered)).toBe(true)
-  })
-
-  /**
-   * The clause that stops the nudge becoming wallpaper. Some keys are honestly
-   * empty forever ("this repo has no database"), so waiting for `pendingKeys` to
-   * drain would prompt those projects for good — and a permanent prompt is the
-   * noise this feature exists to remove.
-   */
-  it('is true once a conversation has run to an end, even with keys still open', () => {
-    endedPrepareSession()
-    expect(keysToPrepare(ctx, project()).length).toBeGreaterThan(0)
-    expect(isPrepared(ctx, project())).toBe(true)
-  })
-
-  it('is still false while the first conversation is only open', () => {
-    createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'prepare', worktreePath: '/r' })
-    expect(isPrepared(ctx, project())).toBe(false)
-  })
-
-  it('does not count another project’s conversation', () => {
-    const s = createSessionRow(ctx, { projectId: 'proj_2', kind: 'prepare', worktreePath: '/r' })
-    markSessionEnded(ctx, s.id)
-    expect(isPrepared(ctx, project())).toBe(false)
   })
 })
 
@@ -349,6 +304,37 @@ describe('keysToPrepare', () => {
   it('excludes a field a human set, so the conversation never re-asks it', () => {
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: 'mine' })
     expect(keysToPrepare(ctx, project({ verifyCommands: 'mine' }))).not.toContain('verifyCommands')
+  })
+
+  /**
+   * Decision 2: some keys are empty for good ("this repo has no database"). A
+   * deliberate none closes the key without a value; clearing it by hand reopens
+   * it, so the orchestrator asks again.
+   */
+  it('closes a key the orchestrator recorded as none, and reopens it when cleared by hand', async () => {
+    const session = createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'project', worktreePath: '/wt' })
+    const res = await toolRecordFinding(ctx, session, {
+      key: 'dbResetCommand',
+      value: '',
+      evidence: 'no database: no driver in package.json, no migrations, no compose file',
+    })
+
+    expect(res.skipped).toBeUndefined()
+    expect(preparedValue(ctx, PROJECT_ID, 'dbResetCommand')).toBeNull()
+    expect(keysToPrepare(ctx, project())).not.toContain('dbResetCommand')
+    const finding = (await listFindings(ctx, project())).find((f) => f.key === 'dbResetCommand')
+    expect(finding?.evidence).toContain('no database')
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'dbResetCommand', value: null })
+    expect(keysToPrepare(ctx, project())).toContain('dbResetCommand')
+  })
+
+  it('refuses a none that carries no evidence', async () => {
+    const session = createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'project', worktreePath: '/wt' })
+    await expect(toolRecordFinding(ctx, session, { key: 'dbResetCommand', value: ' ' })).rejects.toThrow(
+      /evidence/,
+    )
+    expect(keysToPrepare(ctx, project())).toContain('dbResetCommand')
   })
 
   // The reason `sandboxImage` stayed out of PREPARED_KEYS: an unset image is

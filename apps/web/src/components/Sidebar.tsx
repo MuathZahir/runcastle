@@ -191,7 +191,7 @@ export function Sidebar(props: SidebarProps) {
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
   const prepRow = prepRailRow(
     prep.data && {
-      prepared: prep.data.prepared,
+      prepared: prep.data.pendingKeys.length === 0,
       pendingCount: prep.data.pendingKeys.length,
       staleCount: prep.data.findings.filter(isStale).length,
     },

@@ -33,7 +33,7 @@ const MODELS: ThreadModels = {
 function server() {
   return fakeTrpc({
     'project.list': () => [{ id: 'proj_1', name: 'Demo' }],
-    'project.prep': () => ({ prepared: false, preparedAt: null, pendingKeys: [], findings: [] }),
+    'project.prep': () => ({ pendingKeys: [], findings: [] }),
     'project.prepSession': () => null,
     'project.talkToPrep': () => ({ sessionId: 'th_prep' }),
     'thread.list': () => [],
