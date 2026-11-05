@@ -3872,7 +3872,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Show one design page on the feature’s design server: it is recorded as one of the ' +
           'feature’s designs (one per page, so showing the same page again updates it), a design ' +
           'card is posted in this chat, and, when the human is watching, the Design view opens on ' +
-          'it. Call it for every design you want the human to look at, again after every change: ' +
+          'it. One design per screen (or per component): its states (empty, loading, error, a dialog ' +
+          'open) are buttons on a state switcher inside that one page, and an open choice of look is ' +
+          'a Tweak inside it, so never show a separate design for a state, a variant or a tweak. ' +
+          'Call it for every design you want the human to look at, again after every change: ' +
           'showing a design again sets it back to waiting for the human, even if they had approved ' +
           'it. The human approves a design with its Approve button; when they approve in words, ' +
           'mark it with set_design_state. Start the server with start_design_server first. Returns ' +
@@ -3881,8 +3884,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           path: z
             .string()
             .min(1)
-            .describe('The design page on the design server, e.g. `/preview/checkout-empty.html`.'),
-          title: z.string().min(1).max(120).describe('What the design is, in a few words, e.g. `Empty checkout`.'),
+            .describe('The design page on the design server at its bare address, with no `?state=`, e.g. `/preview/checkout.html`.'),
+          title: z.string().min(1).max(120).describe('The screen the design is, in a few words, e.g. `Checkout`; never one of its states.'),
           width: z
             .number()
             .int()

@@ -69,7 +69,8 @@ nothing.
 - **When.** Once the decisions are recorded and before the spec, so the spec,
   the tickets and the preview can name the designed components.
 - **How.** As `./design.md` says for an attended chat: the project's own
-  install, the project's own frontend dev server, one design page per state,
+  install, the project's own frontend dev server, one design page per screen
+  with its states on a switcher (never a design per state or variant),
   sample data, navigation off, real components, the project's design docs.
   Design against the components on the feature's base branch; never read
   another feature's worktree. If a screen needs a shared component changed, change
@@ -82,7 +83,8 @@ nothing.
   lives in the design page, never in the app's own files.
 - **Look at your own screens.** Call `start_design_server({ command })`, which
   also records the command so the human's Design tab can start it later. Then
-  check every design page. With `agent-browser` on the PATH: `agent-browser
+  check every state of every design page (each `?state=` address). With
+  `agent-browser` on the PATH: `agent-browser
   open <url>`, `agent-browser screenshot <path>` (a temporary path, never in the
   repo), read the image, critique it against the project's design docs, fix it,
   and look again; `agent-browser close` when done. Without it, check that each
@@ -90,7 +92,8 @@ nothing.
   them. The design server stops by itself when this run ends.
 - **Record every design.** Once a page is right, call `show_design({ path, title,
   width? , picture? })` for it with a human title and the width you laid it out
-  at, passing the final screenshot you took as `picture`. It posts a design card
+  at, passing the final screenshot you took of its most telling state as
+  `picture`, once per page, never once per state. It posts a design card
   and records the design for the Design tab; it opens nothing in this run.
 - **A screen you cannot serve** (no frontend dev server you can work out, a
   page the server builds, native mobile) is a hand mock in `preview.html`, as
@@ -120,7 +123,7 @@ nothing.
    yourself, and anything that stopped you doing the job (a refused or failed
    tool the plan needed, and what you decided without it). Leave out the state
    of tools and connectors the plan did not need. **If you designed**, also
-   name each designed screen, the open Tweaks choices, any shared component you
+   name each designed screen and the states its switcher holds, the open Tweaks choices, any shared component you
    changed, and whether you saw the screens in screenshots or only checked that
    they compile, and say that only designs the human approves are committed. Close the message by asking
    the human for their yes to start round 1 (or to start the work, if there are

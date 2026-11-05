@@ -154,12 +154,27 @@ describe('the feature skill, planning with no human present', () => {
     expect(alone).toContain('`agent-browser\n  open <url>`')
     expect(alone).toContain('**Leave the designs uncommitted.**')
     expect(alone).toContain("lives in the design page, never in the app's own files")
-    expect(alone).toContain('passing the final screenshot you took as `picture`')
+    expect(alone).toContain('passing the final screenshot you took of its most telling state as\n  `picture`, once per page, never once per state')
+    expect(alone).toContain('check every state of every design page')
+    expect(alone).not.toContain('one design page per state')
     expect(text()).toContain('Never call\n  `show_panel`')
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain('Call `show_plan()` once, before the closing message')
     expect(close).toContain('only designs the human approves are committed')
     expect(close).toContain('With no tickets, say "start the work?"')
+  })
+
+  it('makes one design per screen, its states on a switcher inside it (one-design-per-screen)', () => {
+    const design = read('references', 'design.md')
+    expect(design).toContain('## 2. One design page per screen, its states inside')
+    expect(design).not.toContain('One design page per state')
+    expect(design).toContain('**Never a second design for a state, a variant or a tweak.**')
+    expect(design).toContain('the current state in the page\'s address as `?state=<name>`')
+    expect(design).toContain('**Never show the choice as two designs**')
+    expect(design).toContain('**Keep the state switcher**')
+    expect(design).toContain('never once per state')
+    expect(read('references', 'tickets.md')).toContain("The states on the design page's switcher are the states the wiring must reach")
+    expect(read('references', 'preview.md')).toContain('the states its switcher holds')
   })
 
   it('lets only the human approve a waiting design (designs-wait-for-you)', () => {

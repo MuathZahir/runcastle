@@ -48,7 +48,8 @@ tool's description in the server:
   examples become a screen (`/preview/checkout.html`, "Checkout"), and the
   description gains one sentence: one design per screen, its states on a
   switcher inside the page, never a design per state or variant. No server
-  behaviour changes.
+  behaviour changes. The comment on the shared design type's page address (in the core
+  package) loses its per-state example for the same reason.
 
 The switcher's shape, as the guide pins it (decision 8):
 
@@ -74,8 +75,9 @@ running sessions read the globally installed skill pack, not this repo.
 
 ## Seams
 - **The feature skill pack's text** (existing): read by every feature agent.
-  Observed by reading the changed guides; the skill pack's own tests, if any
-  check its references, must stay green.
+  The server's feature-skill test pins the guides' key sentences; it gains
+  checks that the design guide teaches one page per screen with a switcher and
+  no longer teaches one page per state.
 - **The show-design tool's description** (existing): observed in the server's
   MCP tool registration; the server's typecheck and tests stay green.
 
