@@ -337,7 +337,7 @@ async function orchestratorPrepNote(ctx: AppCtx, project: Project): Promise<stri
       ? 'open as usual'
       : hadFeature
         ? 'open as usual, with one line offering to set up the open keys'
-        : 'prepare first — read references/preparation.md, then ask what we are building'
+        : 'prepare first — read references/preparation.md, talk to them about their app in plain words, then ask what they want to build'
   return [
     `Open prepared keys: ${open.length > 0 ? open.join(', ') : 'none'}.`,
     `Repo: ${empty ? 'empty' : 'has code'}.`,

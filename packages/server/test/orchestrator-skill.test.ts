@@ -206,6 +206,20 @@ describe('the project skill, preparing', () => {
     expect(text).toContain('**An empty repo, or nothing open** — open by asking')
   })
 
+  // The human's verdict on the onboarding drive (decision 17): a first chat that
+  // said "preparation", "all eight settings are closed" and "the whole gate"
+  // left a new user with no idea what was happening.
+  it('talks to a new user about their app, in plain words, and closes with what they can do', () => {
+    expect(opening()).toContain('**Talk about their app, never about runcastle**')
+    const text = reference()
+    expect(text).toContain('## Talking to someone new')
+    expect(text).toContain('**Lead with their app.**')
+    expect(text).toContain('**Plain words, always.**')
+    expect(text).toContain('**Close with what they can now do, not the list.**')
+    expect(text).toContain('Settings › This project')
+    expect(text).not.toContain('one line telling the human that ＋ New scenario')
+  })
+
   it('loads the preparation method on demand, beside the other procedures', () => {
     expect(read('project', 'SKILL.md')).toMatch(/\*\*Four procedures load on demand\*\*[^\n]*`\.\/references\/preparation\.md`/)
     expect(reference()).toContain('`./preparation-recipes.md`')
