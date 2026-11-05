@@ -21,7 +21,6 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'project', projectId: 'proj_a' },
   { kind: 'chat', projectId: 'proj_a' },
   { kind: 'conversations', projectId: 'proj_a' },
-  { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'chat' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'plan' },
@@ -34,7 +33,6 @@ describe('pathFor', () => {
       '/p/proj_a',
       '/p/proj_a/chat',
       '/p/proj_a/conversations',
-      '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
       '/p/proj_a/f/flow-redesign-shell/chat',
       '/p/proj_a/f/flow-redesign-shell/plan',
@@ -53,6 +51,13 @@ describe('parsePath', () => {
     for (const location of LOCATIONS) {
       expect(parsePath(pathFor(location))).toEqual(location)
     }
+  })
+
+  // The Preparation page is gone (the-orchestrator-prepares-the-project
+  // decision 13): a saved link to it opens the project home.
+  it('reads a saved link to the retired Preparation page as the project home', () => {
+    expect(parsePath('/p/proj_a/prepare')).toEqual({ kind: 'project', projectId: 'proj_a' })
+    expect(insideProject(parsePath('/p/proj_a/prepare'), 'proj_a')).toBeNull()
   })
 
   it("reads the retired Tickets tab's path, the retired body and a hand-typed work as the feature's Work", () => {
@@ -157,7 +162,6 @@ describe('insideProject', () => {
       kind: 'chat',
       projectId: 'p1',
     })
-    expect(insideProject({ kind: 'prepare', projectId: 'p1' }, 'p1')?.kind).toBe('prepare')
     expect(
       insideProject({ kind: 'feature', projectId: 'p1', featureSlug: 'a' }, 'p1')?.kind,
     ).toBe('feature')
@@ -175,13 +179,9 @@ describe('insideProject', () => {
 })
 
 describe('locationFor', () => {
-  const base = { projectId: 'proj_a', preparing: false, projectSelected: false, featureSlug: null }
+  const base = { projectId: 'proj_a', projectSelected: false, featureSlug: null }
 
   it('follows the same precedence as the workspace body', () => {
-    expect(locationFor({ ...base, preparing: true, projectSelected: true })).toEqual({
-      kind: 'prepare',
-      projectId: 'proj_a',
-    })
     expect(locationFor({ ...base, projectSelected: true, featureSlug: 'x' })).toEqual({
       kind: 'chat',
       projectId: 'proj_a',

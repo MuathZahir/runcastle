@@ -31,14 +31,11 @@ import { threadPhoneStatus } from './phone/phone-views'
  * The Orchestrator: what the sidebar's card opens, the one surface in the shell
  * bound to a project rather than a feature. Like a feature, it is its chat
  * (the-orchestrator-s-page): it opens on the active chat that moved last, on the
- * Conversations page when none is active, or on a new chat when the project has
- * none, with one resizable panel on the right holding the project drive or the
+ * Conversations page when none is active, or on Start the project when the
+ * project has none, with one resizable panel on the right holding the project drive or the
  * Notes inbox. The active chats list in the sidebar, and all of them on the
  * Conversations page. Any number of chats run at once (decision 14).
  */
-
-/** The column of a chat started here, kept as it gets its id: its first message is already in it. */
-const NEW_CHAT_KEY = 'new'
 
 export function ProjectWorkspace({
   projectId,
@@ -53,7 +50,6 @@ export function ProjectWorkspace({
   onConsumeThreadRequest,
   onOpenConversations,
   onCloseConversations,
-  onOpenPreparation,
   driveRequest = 0,
   onConsumeDriveRequest,
   onBackToList,
@@ -75,8 +71,6 @@ export function ProjectWorkspace({
   onOpenConversations?: () => void
   /** Back to the chats, from the Conversations page. */
   onCloseConversations?: () => void
-  /** Open the preparation workspace — where drive commands are established. */
-  onOpenPreparation?: () => void
   /** The titlebar's drive pill asked for the project drive. */
   driveRequest?: number
   onConsumeDriveRequest?: () => void
@@ -147,13 +141,11 @@ export function ProjectWorkspace({
   if (landingOnLatest && (latest !== null || closedErrand)) setFront(latest ?? undefined)
   if (landed?.kind === 'conversations') setListing(true)
   const inFront = opening || closedErrand ? null : (front ?? null)
-  // A project with no chats opens on a new one, which its first message starts.
+  // A project with no chats opens on Start the project.
   const unstarted = landed?.kind === 'none' && !latest
   const allChats = conversations || listing
   const inView = allChats ? null : inFront
   useThreadInUrl(opening ? undefined : inView)
-  // The chat started here keeps its column: the first message is already in it.
-  const [started, setStarted] = useState<string | null>(null)
   // The sidebar and the header always name what is in front, before the list has it.
   const threads = withStandIns(
     listed,
@@ -185,7 +177,22 @@ export function ProjectWorkspace({
     onError: (e) => toast.push(e.message),
   })
   const newChat = (): void => create.mutate({ projectId })
-  const startChat = trpc.thread.new.useMutation()
+  // The doors where the Orchestrator speaks first — Start the project, and the
+  // drive's "set it up" doors that used to open Preparation
+  // (the-orchestrator-prepares-the-project decisions 1, 6): a fresh chat
+  // launched with its kickoff and no message from the human.
+  const launch = trpc.project.talkToProject.useMutation({
+    onSuccess: ({ sessionId }) => {
+      open(sessionId)
+      // Asked from the drive's page: back to the chat, the drive still running.
+      if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
+      void utils.thread.list.invalidate({ projectId })
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  const askOrchestrator = (): void => {
+    if (!launch.isPending) launch.mutate({ projectId, fresh: true })
+  }
   const newChatRef = useRef(newChat)
   newChatRef.current = newChat
 
@@ -306,7 +313,7 @@ export function ProjectWorkspace({
             }
             // Stop waits for the start: a second mutate would drop the first's callbacks.
             stopping={projectDrive.stopping || projectDrive.starting}
-            onOpenPreparation={() => onOpenPreparation?.()}
+            onAskOrchestrator={askOrchestrator}
           />
         </ScenarioChatContext.Provider>
       )}
@@ -345,7 +352,7 @@ export function ProjectWorkspace({
               starting={projectDrive.starting}
               scenarios={startScenarios}
               onStart={startDrive}
-              onPrepare={() => onOpenPreparation?.()}
+              onSetUp={askOrchestrator}
               onReturn={() => openView('drive')}
             />}
             <PanelToggle
@@ -377,7 +384,7 @@ export function ProjectWorkspace({
                   />
                 ) : (
                   <ProjectChat
-                    key={inFront === started ? NEW_CHAT_KEY : inFront}
+                    key={inFront}
                     threadId={inFront}
                     {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
                     onOpenThread={open}
@@ -392,19 +399,8 @@ export function ProjectWorkspace({
                   name={project?.name ?? ''}
                   {...(project?.repoPath ? { repoPath: project.repoPath } : {})}
                   empty={empty}
-                  starting={startChat.isPending}
-                  onStart={() =>
-                    startChat.mutate(
-                      { projectId },
-                      {
-                        onSuccess: ({ threadId }) => {
-                          setStarted(threadId)
-                          open(threadId)
-                        },
-                        onError: (e) => toast.push(e.message),
-                      },
-                    )
-                  }
+                  starting={launch.isPending}
+                  onStart={askOrchestrator}
                 />
               )}
             </>

@@ -31,7 +31,6 @@ export type GlossaryId =
   | 'review-package'
   | 'test-drive'
   | 'scenario'
-  | 'preparation'
   | 'orchestrator'
   | 'held-by'
 
@@ -128,12 +127,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: 'Scenario',
     group: 'trying',
     definition: 'A script that puts the app in a given state, such as a signed-in user with some data, so a test drive starts where the feature is.',
-  },
-  {
-    id: 'preparation',
-    term: 'Preparation',
-    group: 'trying',
-    definition: 'A chat, once per project, that records how your repo installs, checks and runs, so no agent has to guess.',
   },
   {
     id: 'orchestrator',

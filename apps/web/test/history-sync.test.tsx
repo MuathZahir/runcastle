@@ -185,7 +185,6 @@ describe('useHistorySync', () => {
       const ws = useWorkspace('p1')
       const location = locationFor({
         projectId: 'p1',
-        preparing: false,
         projectSelected: false,
         featureSlug: ws.selectedFeatureId,
         featureView: ws.featureView,

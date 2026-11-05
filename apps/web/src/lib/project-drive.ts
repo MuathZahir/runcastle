@@ -11,6 +11,8 @@ import { holderSentence } from './feature-ui/drive'
 export interface SlotHolder {
   projectDrive?: true
   projectId?: string
+  /** The Orchestrator's dry run, which belongs to the project whose slot was asked. */
+  dryRun?: boolean
   /** Who holds the slot, in the server's words ("a project drive of main"). */
   holderLabel: string
 }
@@ -24,24 +26,30 @@ export const PROJECT_DRIVE_SLUG = 'project-drive'
 
 export type ProjectDriveCard =
   | { state: 'hidden' }
-  | { state: 'prepare' }
+  | { state: 'setUp' }
   | { state: 'ready' }
   | { state: 'blocked'; reason: string }
   | { state: 'running' }
 
-/** Is the drive in this project's slot its own project drive? */
+/**
+ * Is the drive in this project's slot its own project drive? The Orchestrator's
+ * dry run counts: it drives the project's checkout as a project drive does, and
+ * shows on the same panel with the same Stop (the-orchestrator-prepares-the-project
+ * decision 6). The slot is asked per project, so a dry run in it is this one's.
+ */
 export function isThisProjectDrive(
   drive: SlotHolder | null | undefined,
   projectId: string,
 ): boolean {
-  return Boolean(drive?.projectDrive && drive.projectId === projectId)
+  return Boolean(drive?.dryRun || (drive?.projectDrive && drive.projectId === projectId))
 }
 
 /**
  * What the card offers (decision 7). An empty project has nothing to drive, so
  * no card. A live drive of this project is the way back to it, whatever the
  * settings now say. With neither a setup nor a dev command a drive would do
- * literally nothing, so the button opens preparation instead of refusing. Any
+ * literally nothing, so the button asks the Orchestrator to set them up instead
+ * of refusing (the-orchestrator-prepares-the-project decision 6). Any
  * other holder of this project's slot blocks the start (decision 9).
  */
 export function projectDriveCard({
@@ -59,7 +67,7 @@ export function projectDriveCard({
 }): ProjectDriveCard {
   if (empty) return { state: 'hidden' }
   if (isThisProjectDrive(drive, projectId)) return { state: 'running' }
-  if (!setupCommand?.trim() && !devCommand?.trim()) return { state: 'prepare' }
+  if (!setupCommand?.trim() && !devCommand?.trim()) return { state: 'setUp' }
   if (drive) return { state: 'blocked', reason: `${holderSentence(drive.holderLabel)} is running` }
   return { state: 'ready' }
 }

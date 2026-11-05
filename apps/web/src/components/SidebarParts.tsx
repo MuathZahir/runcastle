@@ -30,7 +30,6 @@ import {
   IconPlay,
   IconPlus,
   IconSettings,
-  IconShield,
   IconStop,
   IconSun,
   ProgressIcon,
@@ -42,8 +41,8 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
  * §Frame, sidebar notes). The `Sidebar` owns the queries and composes them:
  *
  * - the {@link OrchestratorCard} under the head, over a {@link SidebarBackdrop};
- * - what needs you, unheaded: {@link PrepRow} while preparation is owed, then
- *   {@link SidebarFeatureRow}s waiting on you, then the stopped ones;
+ * - what needs you, unheaded: the {@link SidebarFeatureRow}s waiting on you,
+ *   then the stopped ones;
  * - the {@link WorkingShelf}, open, its rows in the bay;
  * - the folded {@link Shelf}s: Backlog, Shipped, Archived;
  * - the foot: {@link DriveCard}s, then the {@link SidebarStatusLine}.
@@ -311,34 +310,6 @@ export function SidebarFeatureRow({
       {row}
       {shown}
     </div>
-  )
-}
-
-/** Preparation while it is owed: first among what needs you, on the same row. */
-export function PrepRow({
-  label,
-  badge,
-  title,
-  active,
-  onClick,
-}: {
-  label: string
-  badge: string | null
-  title: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <TwoLineRow
-      title={label}
-      tooltip={title}
-      glyph={<IconShield size={12} className="shrink-0 text-icon" />}
-      words={badge ?? 'Not prepared yet'}
-      wordsClassName="text-text-secondary"
-      dot="warning"
-      active={active}
-      onClick={onClick}
-    />
   )
 }
 

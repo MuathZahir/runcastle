@@ -6,9 +6,9 @@ import { fakeTrpc } from './fake-trpc'
 
 /**
  * Every chat surface carries the same model controls (chat-as-web-components
- * decision 13): the project chat and the preparation chat show the effort and
- * fast mode a feature chat shows, before their first message as after it, and
- * their first message runs on what they show.
+ * decision 13): the project chat shows the effort and fast mode a feature chat
+ * shows, before its first message as after it, and its first message runs on
+ * what it shows.
  */
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -18,7 +18,6 @@ vi.mock('../src/lib/live', async (importOriginal) => ({
 }))
 
 const { ProjectChat } = await import('../src/components/project/ProjectChat')
-const { PreparationWorkspace } = await import('../src/components/PreparationWorkspace')
 
 /** The catalog as the server answers it: Opus as a session said, Sonnet with its runtime's levels. */
 const MODELS: ThreadModels = {
@@ -33,9 +32,6 @@ const MODELS: ThreadModels = {
 function server() {
   return fakeTrpc({
     'project.list': () => [{ id: 'proj_1', name: 'Demo' }],
-    'project.prep': () => ({ pendingKeys: [], findings: [] }),
-    'project.prepSession': () => null,
-    'project.talkToPrep': () => ({ sessionId: 'th_prep' }),
     'thread.list': () => [],
     'thread.models': () => MODELS,
     'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
@@ -69,14 +65,5 @@ describe('the model controls on every chat surface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fast mode' }))
     send('Plan the audit')
     await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_project', text: 'Plan the audit', fast: true }]))
-  })
-
-  it('the preparation chat shows effort and fast mode before it starts, and its untouched first message leaves them to the server', async () => {
-    const api = server()
-    render(<PreparationWorkspace projectId="proj_1" />, { wrapper: api.Wrapper })
-    await expectControls()
-    expect(api.inputs('thread.models')).toEqual([{ projectId: 'proj_1', kind: 'prepare' }])
-    send('The dev server is bun run dev')
-    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_prep', text: 'The dev server is bun run dev' }]))
   })
 })

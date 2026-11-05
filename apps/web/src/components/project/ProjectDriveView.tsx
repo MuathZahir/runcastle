@@ -23,7 +23,7 @@ export function ProjectDriveView({
   onBack,
   onStop,
   stopping,
-  onOpenPreparation,
+  onAskOrchestrator,
 }: {
   projectId: string
   repoPath: string | undefined
@@ -34,7 +34,8 @@ export function ProjectDriveView({
   onBack: () => void
   onStop: () => void
   stopping: boolean
-  onOpenPreparation: () => void
+  /** A failed setup or stop: a new Orchestrator chat repairs the drive commands. */
+  onAskOrchestrator: () => void
 }) {
   const notes = useProjectDriveNotes(projectId, drive.startedAt)
   // The checkout and identity, read once: the status line, whole on hover.
@@ -62,22 +63,23 @@ export function ProjectDriveView({
           failure={driveFailure(drive)}
           where={where}
           onToChat={onBack}
-          // Preparation, not Fix drive: that opens an agent scoped to a
-          // feature, and preparation is where a project's drive commands are
-          // repaired and proven (project-level-test-drive decision 7).
+          // The Orchestrator, not Fix drive: that opens an agent scoped to a
+          // feature, and the Orchestrator is where a project's drive commands
+          // are repaired and proven (the-orchestrator-prepares-the-project
+          // decision 6).
           failureExit={(failure) => (
             <DriveFailureReport
               failure={failure}
               explanation={
                 <>
                   Your checkout is as it was, but <code className="font-mono text-xs">{failure.command}</code>{' '}
-                  {failure.outcome} — so whatever it was meant to bring up is probably not running. Preparation is
-                  where this project’s drive commands are repaired and proven.
+                  {failure.outcome} — so whatever it was meant to bring up is probably not running. The Orchestrator
+                  repairs and proves this project’s drive commands.
                 </>
               }
             >
-              <Button className="self-start" icon={<IconShield />} onClick={onOpenPreparation}>
-                Open preparation
+              <Button className="self-start" icon={<IconShield />} onClick={onAskOrchestrator}>
+                Ask the Orchestrator
               </Button>
             </DriveFailureReport>
           )}

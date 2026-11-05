@@ -69,7 +69,6 @@ function rail() {
         onSelectProject={() => {}}
         onNewChat={() => {}}
         onDraft={() => {}}
-        onOpenPreparation={() => {}}
       />
     </ToastProvider>,
   )

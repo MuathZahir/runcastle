@@ -155,7 +155,7 @@ function DesignSidebar({ open, onOpen }: { open: Open; onOpen: (o: Open) => void
           state="working"
           active={orchestratorOpen}
           onOpen={() => onOpen({ kind: 'orchestrator', thread: null })}
-          actions={[{ key: 'reprepare', label: 'Re-prepare the project', onSelect: noop }]}
+          actions={[]}
           onNewThread={orchestratorOpen ? noop : undefined}
           folded={folded.has('orchestrator')}
           onToggleThreads={() => toggleFold('orchestrator')}

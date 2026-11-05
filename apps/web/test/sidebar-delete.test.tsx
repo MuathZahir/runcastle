@@ -73,7 +73,6 @@ describe('Sidebar delete navigation', () => {
           onSelectProject={onSelectProject}
           onNewChat={() => {}}
           onDraft={() => {}}
-          onOpenPreparation={() => {}}
         />
       </ToastProvider>,
     )

@@ -7,7 +7,8 @@ import { ScenarioPickerContent } from '../review/ScenarioPicker'
 /**
  * The Orchestrator's door to a project drive, in its header: Test drive with
  * the scenario picker on its caret, disabled with its reason while another
- * drive holds the slot; Prepare drive with no command set; Back to the drive
+ * drive holds the slot; Set up drives (a new Orchestrator chat) with no command
+ * set; Back to the drive
  * while this project's drive runs; nothing on a born-empty project.
  */
 export function ProjectDriveButton({
@@ -15,7 +16,7 @@ export function ProjectDriveButton({
   starting,
   scenarios,
   onStart,
-  onPrepare,
+  onSetUp,
   onReturn,
 }: {
   card: ProjectDriveCard
@@ -24,15 +25,15 @@ export function ProjectDriveButton({
   scenarios: ScenarioMenu
   /** Start the drive on a scenario file, or on the blank app with `null`. */
   onStart: (scenario: string | null) => void
-  /** Neither command is set: preparation is where they are established. */
-  onPrepare: () => void
+  /** Neither command is set: a new Orchestrator chat sets them up. */
+  onSetUp: () => void
   /** This project's drive is live: back to its page. */
   onReturn: () => void
 }) {
-  if (card.state === 'prepare') {
+  if (card.state === 'setUp') {
     return (
-      <Button size="sm" variant="ghost" icon={<IconShield />} className="mr-1" title="No setup or dev command yet" onClick={onPrepare}>
-        Prepare drive
+      <Button size="sm" variant="ghost" icon={<IconShield />} className="mr-1" title="No setup or dev command yet — ask the Orchestrator" onClick={onSetUp}>
+        Set up drives
       </Button>
     )
   }

@@ -68,8 +68,6 @@ export type AppLocation =
   | { kind: 'chat'; projectId: string }
   /** Every conversation the project has had. */
   | { kind: 'conversations'; projectId: string }
-  /** A project's preparation. */
-  | { kind: 'prepare'; projectId: string }
 
 /** The view a feature location names — its segment, or Work for none. */
 export function featureViewOf(location: { view?: FeatureSegment }): FeatureView {
@@ -106,8 +104,6 @@ export function pathFor(location: AppLocation): string {
       return `${project}/chat`
     case 'conversations':
       return `${project}/conversations`
-    case 'prepare':
-      return `${project}/prepare`
     case 'feature': {
       const feature = `${project}/f/${encodeURIComponent(location.featureSlug)}`
       return location.view ? `${feature}/${location.view}` : feature
@@ -140,10 +136,11 @@ export function parsePath(path: string): AppLocation | null {
 
   const projectId = parts[1]
   if (!projectId) return null
-  if (parts.length === 2) return { kind: 'project', projectId }
+  // A saved link to the retired Preparation page opens the project home
+  // (the-orchestrator-prepares-the-project decision 13).
+  if (parts.length === 2 || (parts.length === 3 && parts[2] === 'prepare')) return { kind: 'project', projectId }
   if (parts.length === 3 && parts[2] === 'chat') return { kind: 'chat', projectId }
   if (parts.length === 3 && parts[2] === 'conversations') return { kind: 'conversations', projectId }
-  if (parts.length === 3 && parts[2] === 'prepare') return { kind: 'prepare', projectId }
   if (parts.length === 4 && parts[2] === 'f' && parts[3]) {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
   }
@@ -167,7 +164,7 @@ export function parsePath(path: string): AppLocation | null {
  */
 export type InProjectLocation = Extract<
   AppLocation,
-  { kind: 'feature' | 'chat' | 'conversations' | 'prepare' }
+  { kind: 'feature' | 'chat' | 'conversations' }
 >
 
 /**
@@ -185,15 +182,11 @@ export function insideProject(
 
 /**
  * Where the shell currently *is*, from the in-project navigation flags — the
- * same precedence `workspaceView` applies, minus the two cases that have no
- * address: the Draft overlay (transient, decision 1) and the automatic
- * preparation a featureless unprepared project gets, which is that project's
- * home rather than somewhere you navigated to.
+ * same precedence `workspaceView` applies, minus the one case that has no
+ * address: the Draft overlay (transient, decision 1).
  */
 export function locationFor(state: {
   projectId: string
-  /** Preparation was opened deliberately — the persisted per-project flag. */
-  preparing: boolean
   projectSelected: boolean
   /** The Orchestrator's Conversations page, rather than its chat. */
   conversations?: boolean
@@ -203,7 +196,6 @@ export function locationFor(state: {
   featureView?: FeatureView
 }): AppLocation {
   const { projectId, featureView = 'work' } = state
-  if (state.preparing) return { kind: 'prepare', projectId }
   if (state.projectSelected) return { kind: state.conversations ? 'conversations' : 'chat', projectId }
   if (state.featureSlug) {
     const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const

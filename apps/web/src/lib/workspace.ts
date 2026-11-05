@@ -8,7 +8,7 @@ import type { SettingsLocation } from './settings'
  * The redesign replaces the old tab model with a single selected feature and
  * the panel view beside its chat.
  *
- * Only `selectedFeatureId`, an open preparation, the guidance toggle and each
+ * Only `selectedFeatureId`, the guidance toggle and each
  * feature's last view persist across reloads — the command palette and Draft
  * overlay are ephemeral session state.
  */
@@ -22,7 +22,6 @@ export interface DriveState {
 }
 
 const SELECTED_KEY = 'runcastle.selected.v1'
-const PREPARING_KEY = 'runcastle.preparing.v1'
 const GUIDANCE_KEY = 'runcastle.guidance'
 const FEATURE_VIEW_KEY = 'runcastle.feature.tab'
 
@@ -30,11 +29,6 @@ const FEATURE_VIEW_KEY = 'runcastle.feature.tab'
  *  feature from another project (multi-project, issue #45). */
 function selectedKeyFor(projectId: string): string {
   return `${SELECTED_KEY}:${projectId}`
-}
-
-/** Per-project too, and for the same reason: preparation is a project's job. */
-function preparingKeyFor(projectId: string): string {
-  return `${PREPARING_KEY}:${projectId}`
 }
 
 /** Per-feature, so each feature reopens on the view it was left on (decision 8). */
@@ -117,18 +111,6 @@ export interface WorkspaceApi {
   featureView: FeatureView
   /** Whether the Draft door's overlay owns the workspace (decisions.md #12). */
   creating: boolean
-  /**
-   * Preparation was opened deliberately — from the rail's row or ⌘K. Kept apart
-   * from the automatic call-to-action an unprepared, featureless project gets:
-   * that one is a condition, this one is a choice, and a choice has to survive
-   * both the project becoming prepared while you are looking at it and the
-   * reload that used to drop it (persisted, per project).
-   *
-   * Leaving is still deliberate — Back, or picking anything else in the rail —
-   * because the row at its foot is permanent now: what you left is one click
-   * away, and the conversation itself lives on the server either way.
-   */
-  preparing: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -154,12 +136,8 @@ export interface WorkspaceApi {
   openConversations: () => void
   /** Open the Draft door's overlay in the workspace. */
   startDraft: () => void
-  /** Give the workspace over to preparation. */
-  startPreparation: () => void
   /** Close the Draft overlay without creating anything. */
   cancelCreate: () => void
-  /** Leave a deliberately-opened preparation. */
-  closePreparation: () => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -169,7 +147,6 @@ export interface WorkspaceApi {
 
 export function useWorkspace(projectId: string): WorkspaceApi {
   const selectedKey = selectedKeyFor(projectId)
-  const preparingKey = preparingKeyFor(projectId)
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   // A first guess from storage; the shell's landing settles it once the feature
   // list says whether the feature is a draft.
@@ -178,10 +155,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     return (selected && parseFeatureView(readLS(featureViewKeyFor(selected)))) || 'chat'
   })
   const [creating, setCreating] = useState(false)
-  // Persisted, unlike the create form beside it: a preparation you opened is a
-  // conversation in progress, often a live terminal, and a reload used to drop
-  // it silently — landing you back on a feature with no sign of where you were.
-  const [preparing, setPreparing] = useState(() => readLS(preparingKey) === '1')
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
@@ -194,9 +167,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
     else removeLS(selectedKey)
   }, [selectedFeatureId, selectedKey])
-  useEffect(() => {
-    writeLS(preparingKey, preparing ? '1' : '0')
-  }, [preparing, preparingKey])
   useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
@@ -212,7 +182,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setFeatureView(view)
     if (featureId) writeLS(featureViewKeyFor(featureId), view)
     setCreating(false)
-    setPreparing(false)
     setProjectSelected(false)
     setConversations(false)
     setCmdk(false)
@@ -224,14 +193,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setProjectSelected(true)
     setConversations(false)
     setCreating(false)
-    setPreparing(false)
     setCmdk(false)
   }, [])
 
   const showProject = useCallback(() => {
     setProjectSelected(true)
     setCreating(false)
-    setPreparing(false)
     setCmdk(false)
   }, [])
 
@@ -239,7 +206,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setProjectSelected(true)
     setConversations(true)
     setCreating(false)
-    setPreparing(false)
     setCmdk(false)
   }, [])
 
@@ -253,14 +219,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
 
   const startDraft = useCallback(() => {
     setCreating(true)
-    setPreparing(false)
-    setProjectSelected(false)
-    setConversations(false)
-    setCmdk(false)
-  }, [])
-  const startPreparation = useCallback(() => {
-    setPreparing(true)
-    setCreating(false)
     setProjectSelected(false)
     setConversations(false)
     setCmdk(false)
@@ -272,7 +230,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   }, [])
   const closeSettings = useCallback(() => setSettings(null), [])
   const cancelCreate = useCallback(() => setCreating(false), [])
-  const closePreparation = useCallback(() => setPreparing(false), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -281,7 +238,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     conversations,
     featureView,
     creating,
-    preparing,
     cmdkOpen,
     settings,
     guidance,
@@ -291,9 +247,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     showProject,
     openConversations,
     startDraft,
-    startPreparation,
     cancelCreate,
-    closePreparation,
     setCmdk,
     openSettings,
     closeSettings,

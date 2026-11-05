@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
+import { matchesProjectChat } from '../lib/project-workspace'
 import { shortcut } from '../lib/platform'
 import { useTheme } from '../lib/theme'
 import { cx, EmptyState, Kbd } from '../ui'
@@ -19,7 +19,6 @@ import {
   IconPlus,
   IconSearch,
   IconSettings,
-  IconShield,
   IconSun,
 } from '../icons'
 import { useFeatureCommands, type FeatureCommand } from '../lib/feature-commands'
@@ -33,8 +32,8 @@ import { FeatureProgressIcon, featureStateWords } from './SidebarParts'
  * never disturbs background runs.
  *
  * The palette opens on its whole hand. Every action is listed on an empty query
- * — hiding Preparation and Settings until the right noun was typed is what made
- * preparation unfindable in the first place, and a palette whose job is
+ * — hiding an action until the right noun was typed is what once made one
+ * unfindable, and a palette whose job is
  * discovery cannot ask you to already know the word. The group labels are
  * always drawn for the same reason: they say what the palette can find.
  */
@@ -46,8 +45,6 @@ export interface CommandPaletteProps {
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
   onOpenSettings: () => void
-  /** Give the panel over to preparation (findings, evidence, the conversation). */
-  onOpenPreparation: () => void
   /** Give the panel over to the Orchestrator, on its latest chat. */
   onOpenProjectChat: () => void
   /** Open the note capture popover — the third door onto it (decisions #3). */
@@ -67,7 +64,6 @@ type ActionKind =
   | 'home'
   | 'openProject'
   | 'settings'
-  | 'preparation'
   | 'projectChat'
   | 'newNote'
   | 'theme'
@@ -106,7 +102,6 @@ export function CommandPalette(props: CommandPaletteProps) {
     selectedFeatureId,
     onSelect,
     onOpenSettings,
-    onOpenPreparation,
     onOpenProjectChat,
     onOpenNote,
     onToggleSidebar,
@@ -197,13 +192,6 @@ export function CommandPalette(props: CommandPaletteProps) {
         run: onOpenNote,
       },
       {
-        kind: 'preparation',
-        shows: matchesPreparation(q),
-        glyph: <IconShield />,
-        label: 'Preparation',
-        run: onOpenPreparation,
-      },
-      {
         kind: 'settings',
         shows: finds(q, 'settings preferences'),
         glyph: <IconSettings />,
@@ -285,7 +273,6 @@ export function CommandPalette(props: CommandPaletteProps) {
     onOpenProjectChat,
     onOpenNote,
     onOpenSettings,
-    onOpenPreparation,
     onToggleSidebar,
     onToggleDetails,
     onOpenGlossary,

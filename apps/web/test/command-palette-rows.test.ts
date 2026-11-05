@@ -62,7 +62,6 @@ function palette(features: FeatureListItem[] = [], selectedFeatureId: string | n
       selectedFeatureId,
       onSelect: () => undefined,
       onOpenSettings: () => undefined,
-      onOpenPreparation: () => undefined,
       onOpenProjectChat: () => undefined,
       onOpenNote: () => undefined,
       nav,
@@ -74,7 +73,6 @@ function palette(features: FeatureListItem[] = [], selectedFeatureId: string | n
 const ACTIONS = [
   'Orchestrator',
   'New note',
-  'Preparation',
   'Settings',
   'Switch to light theme',
   'All projects',
@@ -100,9 +98,8 @@ describe('command palette on an empty query', () => {
   })
 
   /**
-   * Hiding Preparation and Settings until the right noun was typed defeats the
-   * palette's discoverability role — the exact failure that made preparation
-   * unfindable before it had a row at all.
+   * Hiding an action until the right noun was typed defeats the palette's
+   * discoverability role.
    */
   it('shows its whole hand of actions', () => {
     const html = palette()
@@ -150,7 +147,6 @@ describe('command palette feature rows', () => {
         selectedFeatureId: null,
         onSelect: () => undefined,
         onOpenSettings: () => undefined,
-        onOpenPreparation: () => undefined,
         onOpenProjectChat: () => undefined,
         onOpenNote: () => undefined,
         onToggleSidebar: () => undefined,

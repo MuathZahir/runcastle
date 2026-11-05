@@ -30,8 +30,12 @@ export function FeatureDriveView({
 }) {
   const { feature } = full
   const drive = trpc.feature.driveInfo.useQuery({ projectId: feature.projectId }, { refetchInterval: useLivePoll() })
-  // The slot is shared with preparation's dry run, which belongs to no feature.
+  // The slot is shared with the Orchestrator's dry run, which belongs to no feature.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
+  const utils = trpc.useUtils()
+  const dryRunStop = trpc.project.dryRunStop.useMutation({
+    onSettled: () => void utils.feature.driveInfo.invalidate(),
+  })
   const notes = useFeatureDriveNotes(feature.id, onBack, ownDrive ? onStop : undefined)
   return (
     <DrivePage
@@ -48,7 +52,14 @@ export function FeatureDriveView({
           branch={feature.branch}
           driveState={ownDrive?.state ?? 'idle'}
           drive={ownDrive}
-          dryRun={drive.data?.dryRun ?? false}
+          dryRun={
+            drive.data?.dryRun
+              ? {
+                  onStop: () => dryRunStop.mutate({ projectId: feature.projectId }),
+                  stopping: dryRunStop.isPending,
+                }
+              : null
+          }
           failure={driveFailure(ownDrive, { sessionLive: !!liveSessionLine(full.sessions) })}
           onToChat={onBack}
           {...slots}

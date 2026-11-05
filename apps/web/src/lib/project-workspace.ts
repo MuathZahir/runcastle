@@ -71,50 +71,29 @@ export function sessionBranchState(
 }
 
 /** Which surface owns the workspace body. */
-export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature'
+export type WorkspaceView = 'create' | 'project' | 'feature'
 
 /**
  * The workspace body's one selector. The Draft overlay owns the body outright;
- * then an explicitly opened preparation; then the pinned project row over the
- * selected feature. (The other creation door, New, is not a view at all any
- * more — it opens a fresh conversation in the project workspace.)
- *
- * The last line is the interesting one. A project with no features and no
- * preparation gives preparation the whole body only when the repository has
- * code to prepare. A born-empty repository gets the ordinary project home;
- * preparation remains available from the rail. Once features exist the rail's
- * pinned nudge carries it and the home reads normally again.
+ * then the pinned project row over the selected feature. (The other creation
+ * door, New, is not a view at all any more — it opens a fresh conversation in
+ * the project workspace.) Nothing selected is the project home, which a new
+ * project opens on its Start the project card
+ * (the-orchestrator-prepares-the-project decision 1): whether to prepare is the
+ * Orchestrator's call, so no view here asks whether the project is prepared.
  */
 export function workspaceView(state: {
   creating: boolean
-  preparing: boolean
   projectSelected: boolean
   selectedFeatureId: string | null
-  featureCount: number
-  prepared: boolean
-  empty: boolean
 }): WorkspaceView {
   if (state.creating) return 'create'
-  if (state.preparing) return 'prepare'
   if (state.projectSelected) return 'project'
   if (state.selectedFeatureId) return 'feature'
   // Nothing selected is the project home itself — never a "pick a feature"
   // page with nothing on it (the bare `/p/<id>` address lands here).
-  return state.featureCount === 0 && !state.prepared && !state.empty ? 'prepare' : 'project'
+  return 'project'
 }
-
-/**
- * What the palette's Preparation row answers to. Every word someone might type
- * looking for preparation, including the ones they type looking for it a SECOND
- * time — "re-prepare", "redo", "re-run" all missed, which is how a finished
- * preparation became unreachable for anyone who had not memorised the noun.
- *
- * 'talk'/'ask' USED to be here, on the reasoning that the conversation was
- * reached through this row. They are gone: the chat has a palette row of its
- * own now, and typing "talk" landing on Preparation was the whole complaint.
- */
-const PREPARATION_TERMS =
-  'preparation prepare re-prepare reprepare redo re-run rerun again findings evidence stale project commands baseline secrets database'
 
 /**
  * What the palette's project-chat row answers to. The chat is the intake door —
@@ -125,88 +104,12 @@ const PROJECT_CHAT_TERMS =
   'orchestrator project chat talk ask conversation conversations idea intake discuss advice new chat'
 
 /**
- * Whether an action row's terms answer `q` (already trimmed+lowercased).
- * Substring-of-haystack — the query is the needle, so a partial word still
- * finds it — and an empty query shows the row unconditionally, because the
- * palette opens on its whole hand (decision 12). Hiding Preparation and
- * Settings until the right noun was typed is exactly what made preparation
- * unfindable, so the empty case is stated here rather than left to the fact
- * that every string contains ''.
+ * Whether the palette shows the project chat's row for `q` (already
+ * trimmed+lowercased). Substring-of-haystack — the query is the needle, so a
+ * partial word still finds it — and an empty query shows the row
+ * unconditionally, because the palette opens on its whole hand (decision 12).
  */
-function matchesTerms(terms: string, q: string): boolean {
-  return q === '' || terms.includes(q)
-}
-
-/** Whether the palette shows Preparation for `q`. */
-export function matchesPreparation(q: string): boolean {
-  return matchesTerms(PREPARATION_TERMS, q)
-}
-
-/** The same rule for the project chat's row — see {@link matchesPreparation}. */
 export function matchesProjectChat(q: string): boolean {
-  return matchesTerms(PROJECT_CHAT_TERMS, q)
+  return q === '' || PROJECT_CHAT_TERMS.includes(q)
 }
 
-/**
- * The rail foot's preparation row. `todo` before a preparation has run, `done`
- * after — never absent.
- *
- * The row used to be a boolean nudge that vanished the moment preparation
- * completed, and `prepared` is monotonic, so completing it once removed both
- * preparation surfaces at the same instant and nothing represented a *finished*
- * preparation. Findings went on rotting where only the settings overlay
- * mentioned them, under a tooltip that said "re-prepare to refresh it" while
- * offering no way to. A permanent resident costs one quiet row and answers both
- * questions the vanishing one could not: what was established, and how to do it
- * again.
- */
-export interface PrepRailRow {
-  /** Never prepared (`todo`), or a preparation has been through it (`done`). */
-  variant: 'todo' | 'done'
-  /** Prepared keys still unset. */
-  count: number
-  /** Established findings whose measurements have drifted out of date. */
-  stale: number
-  /** The row's one line of copy. */
-  label: string
-  /** The number beside it: what is unanswered before, what has drifted after. */
-  badge: string | null
-  /** Why the row is there, spelled out on hover. */
-  title: string
-}
-
-/**
- * The row, or `null` only while the prep view is still in flight — the two
- * variants read as opposites, so guessing one before the answer lands would
- * flash the wrong sentence on every first paint.
- */
-export function prepRailRow(
-  view: { prepared: boolean; pendingCount: number; staleCount: number } | null | undefined,
-): PrepRailRow | null {
-  if (!view) return null
-  const { prepared, pendingCount, staleCount } = view
-  // Unprepared, the number is the size of the job. Prepared, the job is done and
-  // the only number worth interrupting for is what has since gone out of date.
-  if (!prepared)
-    return {
-      variant: 'todo',
-      count: pendingCount,
-      stale: staleCount,
-      label: 'Prepare this project',
-      // A bare number said nothing — a rail badge reading "8" beside "Prepare
-      // this project" was read as a count of anything at all (findings F17.5).
-      badge: pendingCount > 0 ? `${pendingCount} to establish` : null,
-      title: `${pendingCount} repo fact${pendingCount === 1 ? '' : 's'} nobody has established yet — how to install, how to verify, what is already red`,
-    }
-  return {
-    variant: 'done',
-    count: pendingCount,
-    stale: staleCount,
-    label: 'Re-prepare the project',
-    badge: staleCount > 0 ? `${staleCount} stale` : null,
-    title:
-      staleCount > 0
-        ? `${staleCount} established fact${staleCount === 1 ? ' has' : 's have'} not been re-measured in a long time`
-        : "See what was established about this repo, or establish it again",
-  }
-}

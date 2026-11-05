@@ -28,6 +28,11 @@ const testDrive = vi.fn()
 const runScenario = vi.fn()
 const openScenarioChat = vi.fn()
 const threadNew = vi.fn()
+const threadSend = vi.fn()
+const talkToProject = vi.fn()
+const dryRunStop = vi.fn()
+/** Whether `project.talkToProject` is still launching, so its answer has not come back. */
+let launching = false
 const threadRename = vi.fn()
 const threadExport = vi.fn((_input: unknown) => ({ markdown: '# Audit the journal\n' }))
 /** What `thread.list` answers for the project. */
@@ -86,8 +91,28 @@ vi.mock('../src/trpc', () => {
             },
           }),
         },
+        send: { useMutation: () => ({ isPending: false, mutate: threadSend, mutateAsync: threadSend }) },
       },
       project: {
+        talkToProject: {
+          useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
+            isPending: launching,
+            mutate: (input: unknown) => {
+              talkToProject(input)
+              if (!launching) opts.onSuccess({ sessionId: 'sess_orch' })
+            },
+          }),
+        },
+        dryRunStop: {
+          useMutation: () => ({
+            isPending: false,
+            mutate: (input: unknown, opts?: { onSuccess?: (r: { ok: boolean }) => void }) => {
+              dryRunStop(input)
+              slot = null
+              opts?.onSuccess?.({ ok: true })
+            },
+          }),
+        },
         list: { useQuery: () => ({ data: [project] }) },
         prep: { useQuery: () => ({ data: undefined }) },
         branches: { useQuery: () => ({ data: { current: 'main', detected: 'main', branches: [] } }) },
@@ -205,6 +230,7 @@ const note = (id: string, createdAt: number, over: Partial<ProjectNote> = {}): P
 
 beforeEach(() => {
   slot = null
+  launching = false
   threadsAnswered = true
   testDriveResult = { ok: true }
   scenarios = { runnerConfigured: false, scenarios: [] }
@@ -241,7 +267,6 @@ const onDrive = (): boolean => {
 function mount(
   api: ProjectTalkApi = talk(),
   props: {
-    onOpenPreparation?: () => void
     driveRequest?: number
     conversations?: boolean
     onOpenConversations?: () => void
@@ -295,7 +320,6 @@ const SidebarFor = () => (
     onSelectProject={() => {}}
     onNewChat={() => {}}
     onDraft={() => {}}
-    onOpenPreparation={() => {}}
   />
 )
 
@@ -324,12 +348,22 @@ describe('the header drive door', () => {
     expect(button.closest('header')).not.toBeNull()
   })
 
-  it('opens preparation when neither a setup nor a dev command is set', () => {
+  it('asks a new Orchestrator chat to set drives up when neither a setup nor a dev command is set', () => {
     project = { ...project, driveSetupCommand: undefined, devCommand: undefined }
-    const onOpenPreparation = vi.fn()
-    mount(talk(), { onOpenPreparation })
-    fireEvent.click(screen.getByRole('button', { name: 'Prepare drive' }))
-    expect(onOpenPreparation).toHaveBeenCalledTimes(1)
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Set up drives' }))
+    expect(talkToProject).toHaveBeenCalledWith({ projectId: 'proj_1', fresh: true })
+    expect(chatInFront()?.dataset.thread).toBe('sess_orch')
+    expect(testDrive).not.toHaveBeenCalled()
+  })
+
+  it('shows the Orchestrator’s dry run as this project’s drive, stopped from its page', () => {
+    slot = { ...LIVE, projectDrive: undefined, projectId: undefined, dryRun: true, holderLabel: 'a preparation dry-run' }
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
+    expect(onDrive()).toBe(true)
+    fireEvent.click(within(drivePage()!).getByRole('button', { name: 'Stop drive' }))
+    expect(dryRunStop).toHaveBeenCalledWith({ projectId: 'proj_1' })
     expect(testDrive).not.toHaveBeenCalled()
   })
 
@@ -439,21 +473,22 @@ describe('driving from the project page', () => {
     expect(testDrive).toHaveBeenLastCalledWith({ projectId: 'proj_1', action: 'stop' })
   })
 
-  it('shows the setup failure with Open preparation, and the rail still works', () => {
+  it('shows the setup failure with Ask the Orchestrator, and the rail still works', () => {
     slot = {
       ...LIVE,
       state: 'setup-failed',
       hookFailure: { command: 'bun run drive:setup', exitCode: 3, timedOut: false, output: 'port in use' },
     }
-    const onOpenPreparation = vi.fn()
-    mount(talk(), { onOpenPreparation })
+    mount()
     fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
     expect(screen.getByText('Drive setup failed')).toBeTruthy()
     expect(screen.getByText('port in use')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Fix drive' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Open preparation' }))
-    expect(onOpenPreparation).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Ask the Orchestrator' }))
+    expect(talkToProject).toHaveBeenCalledWith({ projectId: 'proj_1', fresh: true })
+    expect(onDrive()).toBe(false)
+    expect(chatInFront()?.dataset.thread).toBe('sess_orch')
   })
 
   it('shows the bare state when setup ran and no dev command is set', () => {
@@ -532,6 +567,30 @@ describe('opening the Orchestrator', () => {
     expect(screen.getByRole('button', { name: 'Start the project' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
     expect(threadNew).not.toHaveBeenCalled()
+    expect(talkToProject).not.toHaveBeenCalled()
+  })
+
+  /**
+   * The Orchestrator speaks first (the-orchestrator-prepares-the-project
+   * decision 1): Start launches its first chat with its kickoff, never a row
+   * waiting on a first message, and sends nothing in the human's name.
+   */
+  it('starts the Orchestrator’s first chat on Start, with no message from the human', () => {
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Start the project' }))
+    expect(talkToProject).toHaveBeenCalledWith({ projectId: 'proj_1', fresh: true })
+    expect(threadNew).not.toHaveBeenCalled()
+    expect(threadSend).not.toHaveBeenCalled()
+    expect(chatInFront()?.dataset.thread).toBe('sess_orch')
+    expect(screen.queryByRole('button', { name: 'Start the project' })).toBeNull()
+  })
+
+  it('runs the card’s edge light while the chat starts', () => {
+    launching = true
+    mount()
+    const start = screen.getByRole('button', { name: 'Start the project' }) as HTMLButtonElement
+    expect(start.disabled).toBe(true)
+    expect(start.closest('.orbit-light')).not.toBeNull()
   })
 
   it('leaves the panel shut with open notes waiting', () => {

@@ -4,11 +4,10 @@ import { trpc } from '../trpc'
 import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
-import type { FeatureListItem, PrepView } from '../lib/api'
+import type { FeatureListItem } from '../lib/api'
 import { sidebarLanes } from '../lib/feature-ui'
-import { prepRailRow, type WorkspaceView } from '../lib/project-workspace'
+import type { WorkspaceView } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
-import { isStale } from '../lib/prep-findings'
 import { useLivePoll, useLiveStatus } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
 import { shortcut } from '../lib/platform'
@@ -55,7 +54,6 @@ import {
   HoldMark,
   HoldTip,
   OrchestratorCard,
-  PrepRow,
   Shelf,
   SidebarFeatureRow,
   SidebarBackdrop,
@@ -92,7 +90,6 @@ export interface SidebarProps {
   onNewChat: () => void
   /** Draft — open the overlay that parks an idea without cutting anything. */
   onDraft: () => void
-  onOpenPreparation: () => void
   /** Open note capture — the discoverable half of ⌘/Ctrl+J. */
   onOpenNote?: () => void
   onOpenCmdk?: () => void
@@ -149,8 +146,8 @@ export const ORCHESTRATOR_TITLE =
  * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New chat ·
  *   Add to backlog · Jot a note) and the collapse button, over the halftone;
  * - the Orchestrator card — the project's own door, its chat;
- * - what needs you, unheaded: preparation while it is owed, the features
- *   waiting on you, then the ones in progress (nothing running, nothing asked);
+ * - what needs you, unheaded: the features waiting on you, then the ones in
+ *   progress (nothing running, nothing asked);
  * - the Working shelf, its rows in the bay;
  * - the shelves: Up next (open), then folded Backlog, Shipped (five, then
  *   "Show N more"), Archived;
@@ -170,7 +167,6 @@ export function Sidebar(props: SidebarProps) {
     onSelectProject,
     onNewChat,
     onDraft,
-    onOpenPreparation,
     onOpenNote,
     onOpenCmdk,
   } = props
@@ -185,17 +181,6 @@ export function Sidebar(props: SidebarProps) {
   } | null>(null)
 
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  // Same query key the preparation workspace polls — one fetch, two readers.
-  // The row waits for the answer rather than guessing: its two variants say
-  // opposite things, so a guess is a sentence that flips on first paint.
-  const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
-  const prepRow = prepRailRow(
-    prep.data && {
-      prepared: prep.data.pendingKeys.length === 0,
-      pendingCount: prep.data.pendingKeys.length,
-      staleCount: prep.data.findings.filter(isStale).length,
-    },
-  )
   // No interval of its own: every write to the pile emits a project event, and
   // the stream invalidates this key with the rest (lib/live.ts).
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
@@ -362,21 +347,7 @@ export function Sidebar(props: SidebarProps) {
   const orchestratorFold = projectThreads ? foldKey(projectThreads.scope) : ''
 
   const notesWords = openNotes > 0 ? ` · ${openNotes} note${openNotes === 1 ? '' : 's'}` : ''
-  const orchestratorActions: FeatureAction[] =
-    prepRow?.variant === 'done'
-      ? [
-          {
-            key: 'reprepare',
-            label: prepRow.badge ? `Re-prepare the project (${prepRow.badge})` : 'Re-prepare the project',
-            hint: prepRow.title,
-            onSelect: onOpenPreparation,
-          },
-        ]
-      : []
-
-  // Preparation is the computer's: the phone's list leaves it out.
-  const owesPrep = prepRow?.variant === 'todo' && !phone
-  const nothingInMotion = features.length > 0 && !owesPrep && inbox.length + inProgress.length + working.length === 0
+  const nothingInMotion = features.length > 0 && inbox.length + inProgress.length + working.length === 0
 
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
@@ -413,7 +384,7 @@ export function Sidebar(props: SidebarProps) {
           state={chats}
           active={view === 'project' && !phone}
           onOpen={onSelectProject}
-          actions={phone ? [] : orchestratorActions}
+          actions={[]}
           title={ORCHESTRATOR_TITLE}
           {...(projectThreads && !phone
             ? {
@@ -451,25 +422,12 @@ export function Sidebar(props: SidebarProps) {
       <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
         {list.isLoading && <FeatureRowsSkeleton />}
         {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
-        {(owesPrep || inbox.length + inProgress.length > 0) && (
+        {inbox.length + inProgress.length > 0 && (
           <section aria-label="Needs you" className="flex flex-col gap-1">
-            {/* Preparation while it is owed is the first thing asked of you;
-                once done it moves into the Orchestrator's menu. */}
-            {owesPrep && (
-              <PrepRow
-                label={prepRow.label}
-                badge={prepRow.badge}
-                title={prepRow.title}
-                active={view === 'prepare'}
-                onClick={onOpenPreparation}
-              />
-            )}
             {inbox.map((f) => row(f))}
             {inProgress.map((f) => row(f))}
           </section>
         )}
-        {/* Below what is asked of you: on a new project "Prepare this project"
-            comes first, then this. */}
         {list.data && list.data.length === 0 && (
           <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
             No features yet. Start a chat to cut the first one.
