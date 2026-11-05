@@ -1,11 +1,10 @@
-import { existsSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename } from 'node:path'
 import type { Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { eq, isNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
-import { InvalidInputError, isNotImplemented } from '../errors'
+import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
 import { expandPath } from './fsbrowse'
 import * as git from './git'
@@ -24,9 +23,7 @@ import {
  * are in flight), `listProjects` returns the open projects, `renameProject` sets
  * the display name. Opening detects and stores nothing about branches (decision
  * 4): every surface that cuts one names its own base, so there is no
- * project-level default left to refresh. Repo validation is B2's git service;
- * until B2 lands we tolerate its stub and fall back to a lightweight `.git`
- * existence check.
+ * project-level default left to refresh. Repo validation is the git service's.
  *
  * Project-level events (open/close/rename) are emitted with `emitProject` — they
  * carry the project id and no feature id (issue #44), so a project stream shows
@@ -63,7 +60,7 @@ function warnIfTranslatedMount(ctx: AppCtx, projectId: string, repoPath: string)
   if (!isTranslatedWindowsMount(repoPath)) return
   emitProject(ctx, projectId, {
     type: 'project.slow-path',
-    message: `${repoPath} is a Windows drive mounted into Linux (/mnt) — git and burns pay a per-file translation tax here; clone the repo into the Linux filesystem (e.g. ~/projects) for native speed`,
+    message: `${repoPath} is a Windows drive mounted into Linux (/mnt) — git and rounds pay a per-file translation tax here; clone the repo into the Linux filesystem (e.g. ~/projects) for native speed`,
   })
 }
 
@@ -78,7 +75,7 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
   // the picker always submits the fully-resolved form. Upserting on the raw
   // string would file those as separate projects.
   const repoPath = expandPath(rawPath)
-  await assertRepoTolerant(ctx, repoPath)
+  await git.assertRepo(repoPath)
   const name = basename(repoPath) || repoPath
 
   const existing = getProjectByRepoPath(ctx, repoPath) ?? findProjectByCanonPath(ctx, repoPath)
@@ -180,17 +177,3 @@ function findProjectByCanonPath(ctx: AppCtx, repoPath: string): Project | null {
   return allProjects(ctx).find((p) => git.canon(p.repoPath) === key) ?? null
 }
 
-// --- B2 tolerance -----------------------------------------------------------
-
-async function assertRepoTolerant(ctx: AppCtx, repoPath: string): Promise<void> {
-  void ctx
-  try {
-    await git.assertRepo(repoPath)
-  } catch (e) {
-    if (!isNotImplemented(e)) throw e
-    // Fallback until B2: a git repo has a `.git` dir (or file, for worktrees).
-    if (!existsSync(join(repoPath, '.git'))) {
-      throw new InvalidInputError(`not a git repository: ${repoPath}`)
-    }
-  }
-}

@@ -31,7 +31,7 @@ Four describe the drive loop and can only be settled here:
 Three describe the **sandbox** a burn agent works in, and no amount of running things on this host settles them — they are judgement calls about the repo, so treat them as human-supplied unless the human asks you to work one out with them:
 
 - **`setupCommand`** — what a fresh sandbox runs before the agent starts (install, plus any codegen or build step every ticket needs). Setting it *replaces* install detection, so the install command must be included explicitly.
-- **`verifyCommands`** — the exact typecheck/test/lint lines, one per line. They are the host's full gates, run once per round on the feature branch tip; burn agents read them to learn the tools and filter names and run them narrowed. Unset, agents guess workspace filter names and burn whole suite runs discovering the right one.
+- **`verifyCommands`** — the exact typecheck/test/lint lines, one per line. They are the host's full gates, run once per round on the feature branch tip; workers read them to learn the tools and filter names and run them narrowed. Unset, agents guess workspace filter names and run whole suite runs discovering the right one.
 - **`knownFailures`** — what already fails on the main branch, so an agent can tell its own breakage from the repo's. Free text; a count plus the suite names is enough.
 
 The image those three run in is not a key: runcastle sets it itself. What can fall to you is authoring the Dockerfile it builds — see the sandbox image, below.
@@ -88,7 +88,7 @@ Grep the app's entry points and config for env loading and decide, for each, whi
 
 ## The sandbox image
 
-Burn agents do not work on this host; they work in a container. The image runcastle builds carries a JavaScript toolchain and the agent CLIs — Node, Bun, git, curl — and nothing beyond that, so a repo that builds with a JDK, a Python, a Go compiler or a Rust toolchain cannot run its own `setupCommand` there: the burn dies on `mvn: not found`. The fix is a Dockerfile committed at **`.runcastle/sandbox/Dockerfile`**. Runcastle detects it, builds it as this project's image, and every burn runs in that image from then on.
+Burn agents do not work on this host; they work in a container. The image runcastle builds carries a JavaScript toolchain and the agent CLIs — Node, Bun, git, curl — and nothing beyond that, so a repo that builds with a JDK, a Python, a Go compiler or a Rust toolchain cannot run its own `setupCommand` there: the round dies on `mvn: not found`. The fix is a Dockerfile committed at **`.runcastle/sandbox/Dockerfile`**. Runcastle detects it, builds it as this project's image, and every round runs in that image from then on.
 
 Deciding whether this project needs one is part of this session — you are in the real checkout, which is where the evidence is. Read the manifests at the root and in each workspace:
 
@@ -105,17 +105,17 @@ A mixed repo gets the union: a service in Go beside a Java client needs both. An
 
 When the project does need one, what you write:
 
-- **It starts `FROM sandcastle:runcastle`** and layers onto it. That base is what keeps the agent CLIs, git and Node present; a Dockerfile from any other base is not a runcastle sandbox, and burns in it fail on the agent binary before they ever reach the toolchain.
+- **It starts `FROM sandcastle:runcastle`** and layers onto it. That base is what keeps the agent CLIs, git and Node present; a Dockerfile from any other base is not a runcastle sandbox, and rounds in it fail on the agent binary before they ever reach the toolchain.
 - **Read the stock Dockerfile before you write a single install line**, rather than assuming its distro or package manager. It is the build context runcastle scaffolds at `~/.runcastle/sandbox-build/Dockerfile` once the image has been built on this machine, and it also ships inside the installed runcastle package as `sandcastle-template/Dockerfile`. Follow its idioms — the same package manager, the same flags, the same cleanup at the end of the layer. If you cannot find it, ask the human instead of guessing what you are layering onto.
-- **The toolchain only, never the project's dependencies.** Install the JDK and Maven; do not run `mvn install` or `go mod download` at build time. Dependencies are what `setupCommand` installs per burn, from the branch's own manifests — anything baked into the image is stale the first time a branch adds a package.
-- **No package caches in layers.** Do not prime `~/.m2`, `~/.gradle`, `~/.cache/pip` or the Go module cache in a `RUN` step. Download caches are mounted into the sandbox from the host, which is how they stay current across burns; a cache baked into a layer is weight the image carries and wrong the moment a lockfile moves.
+- **The toolchain only, never the project's dependencies.** Install the JDK and Maven; do not run `mvn install` or `go mod download` at build time. Dependencies are what `setupCommand` installs per round, from the branch's own manifests — anything baked into the image is stale the first time a branch adds a package.
+- **No package caches in layers.** Do not prime `~/.m2`, `~/.gradle`, `~/.cache/pip` or the Go module cache in a `RUN` step. Download caches are mounted into the sandbox from the host, which is how they stay current across rounds; a cache baked into a layer is weight the image carries and wrong the moment a lockfile moves.
 - **Keep it minimal** — one `RUN` block where the package manager allows it, versions pinned only where the project pins them, nothing added "while we're here". Every line is a line someone maintains.
 
-It is committed project machinery, exactly like the drive scripts, for the same reason: a branch that changes the toolchain amends its own Dockerfile, and burns on that branch get the amended image. Writing it falls under the same exception — `.runcastle/` and `.gitignore`, nothing else — and the same courtesy: show the human the file before you commit it.
+It is committed project machinery, exactly like the drive scripts, for the same reason: a branch that changes the toolchain amends its own Dockerfile, and rounds on that branch get the amended image. Writing it falls under the same exception — `.runcastle/` and `.gitignore`, nothing else — and the same courtesy: show the human the file before you commit it.
 
 If `.runcastle/sandbox/Dockerfile` is already there, read it and **edit conservatively**. Someone chose those lines, and a customization you do not recognize is still a decision. Say what you probed and what you think is missing — "I see `pyproject.toml` but no Python in the image" — and let the human decide. An existing Dockerfile that covers what you found needs no edit at all.
 
-**You never build the image.** That is a watched terminal action the human takes: the Enable AFK burns card offers **Build image**, and on a successful build runcastle points this project at the image itself — there is no image setting for you to work out or record. So end on it. Tell them the Dockerfile is written (or already right), that the card now offers Build image, and that burns use the project image after that click; until then they keep running in whatever image they run in today.
+**You never build the image.** That is a watched terminal action the human takes: the Workers page in Settings offers **Build image**, and on a successful build runcastle points this project at the image itself — there is no image setting for you to work out or record. So end on it. Tell them the Dockerfile is written (or already right), that the card now offers Build image, and that rounds use the project image after that click; until then they keep running in whatever image they run in today.
 
 ## Recording what you establish
 

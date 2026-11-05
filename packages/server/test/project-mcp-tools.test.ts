@@ -45,7 +45,7 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * The project session's MCP surface (decisions 15, 19, 21): exactly four tools,
+ * The orchestrator's MCP surface (decisions 15, 19, 21): exactly four tools,
  * and deliberately none of the pipeline's nine.
  *
  * The invariants worth pinning are the ones a session cannot recover from on
@@ -88,7 +88,7 @@ describe('project-session MCP tools', () => {
     ctx = await makeTestCtx()
     repoPath = await gitRepo()
     projectId = (await openProject(ctx, repoPath)).id
-    // The project session works in its OWN worktree, never the human's checkout;
+    // The orchestrator works in its OWN worktree, never the human's checkout;
     // the repo path stands in for it here (same shape, one less git worktree).
     session = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     setRuntimeCtx(ctx)
@@ -196,7 +196,7 @@ describe('project-session MCP tools', () => {
     )
   })
 
-  it('refuses project-note tools at call time outside a project session', () => {
+  it('refuses project-note tools at call time outside an orchestrator', () => {
     const prepare = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: repoPath })
     const feature = seedFeature(ctx, projectId, { slug: 'feature-session' })
     const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
@@ -356,7 +356,7 @@ describe('project-session MCP tools', () => {
     expect(row.brief).toContain('Deferred out of the dark-mode grill')
   })
 
-  it('refuses a feature session anything but a draft, pointing at the project session', async () => {
+  it('refuses a feature session anything but a draft, pointing at the orchestrator', async () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const grill = createSessionRow(ctx, {
       featureId: feature.id,
@@ -370,7 +370,7 @@ describe('project-session MCP tools', () => {
     }).catch((e: unknown) => e)
     expect(thrown).toBeInstanceOf(GateError)
     expect((thrown as GateError).message).toMatch(/draft/i)
-    expect((thrown as GateError).message).toMatch(/project session/)
+    expect((thrown as GateError).message).toMatch(/orchestrator/)
   })
 
   it('allows a chat session to park a draft', async () => {
@@ -724,7 +724,7 @@ describe('project-session MCP tools', () => {
         blockedBy: [],
       },
       {
-        title: 'never burned',
+        title: 'never run a round',
         goal: 'g',
         context: 'c',
         acceptanceCriteria: ['a'],

@@ -53,7 +53,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       .run()
     // The run's in-flight ticket lanes died with it. Their `burning` rows would
     // otherwise survive forever — non-terminal, unretryable, and invisible to
-    // the next burn's scheduler (see `sweepOrphanedBurning`).
+    // the next round's scheduler (see `sweepOrphanedBurning`).
     const swept = workflowClaimsFeatureBranch(run.workflow)
       ? sweepOrphanedBurning(ctx, run.featureId, 'orphaned by server restart — retry to resume its commits')
       : []
@@ -79,7 +79,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
     const pendingTickets = burnTickets.filter(
       (ticket) => ticket.status !== 'done' && ticket.status !== 'cancelled',
     ).length
-    const interruptionMessage = `A burn was interrupted by a server restart: ${landedTickets} ticket${landedTickets === 1 ? '' : 's'} landed, ${pendingTickets} pending`
+    const interruptionMessage = `A round was interrupted by a server restart: ${landedTickets} ticket${landedTickets === 1 ? '' : 's'} landed, ${pendingTickets} pending`
 
     emit(ctx, run.featureId, {
       type: 'run.reconciled',

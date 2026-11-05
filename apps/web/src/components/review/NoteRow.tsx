@@ -177,7 +177,7 @@ export function NoteRow({
                 className={LINK}
                 onClick={() => onViewLane(fixing.id)}
               >
-                being fixed in the running burn · lane #{fixing.seq}
+                being fixed in the running round · worker #{fixing.seq}
               </button>
             ))}
         </div>

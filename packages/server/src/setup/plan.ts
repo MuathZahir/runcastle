@@ -281,7 +281,7 @@ export function buildInstallPlan(
   }
   const token = RUNTIME_SPECS['claude-code'].ids.afkKey
   if (inUse.includes('claude-code') && token && !isOk(row(report, token))) {
-    afterwards.push('For burns: runcastle token')
+    afterwards.push('For unattended rounds: runcastle token')
   }
   if (platform === 'linux' && !facts.hasDesktop && !facts.serviceFileExists) {
     afterwards.push('To keep it running: runcastle service install')

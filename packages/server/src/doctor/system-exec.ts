@@ -46,7 +46,7 @@ export function createSystemExec(
 ): ExecFn {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS
   const containFn = opts.containFn ?? containHostProcess
-  return (command, args) =>
+  return (command, args, callOpts) =>
     new Promise<ExecOutcome>((resolve) => {
       // A `.cmd`/`.bat`/`.ps1` shim can't be exec'd directly on Windows — each
       // needs its interpreter, shared with the launcher so probe and launch can
@@ -71,9 +71,19 @@ export function createSystemExec(
       // Straight after spawn, no await between (decision 4). The job is closed
       // however the command ends, so nothing a probe started outlives it.
       const containment = child.pid === undefined ? null : containFn(child.pid)
-      const timer = setTimeout(() => {
+      const kill = (): void => {
         if (containment) void containment.kill()
         else if (child.pid !== undefined) void killProcessTree(child.pid)
+      }
+      // A command that printed what the caller was waiting for is done, even
+      // when it would go on to wait for an answer nobody can give.
+      const watch = (): void => {
+        if (!callOpts?.stopWhen?.(stdout + stderr)) return
+        kill()
+        settle({ ok: true, code: null, stdout, stderr, stopped: true })
+      }
+      const timer = setTimeout(() => {
+        kill()
         const note = `${command} ${args.join(' ')} timed out after ${Math.round(timeoutMs / 1000)}s`
         settle({
           ok: true,
@@ -85,9 +95,11 @@ export function createSystemExec(
       }, timeoutMs)
       child.stdout?.on('data', (d: Buffer) => {
         stdout += d.toString()
+        watch()
       })
       child.stderr?.on('data', (d: Buffer) => {
         stderr += d.toString()
+        watch()
       })
       child.on('error', (err) => {
         // ENOENT and friends: the binary is not runnable — treat as not present.

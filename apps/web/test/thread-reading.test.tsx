@@ -228,11 +228,11 @@ describe('the sidebar thread list', () => {
     expect(opened).toEqual(['5'])
   })
 
-  it('sends the Orchestrator’s rest to its page: "All N conversations"', () => {
+  it('sends the Orchestrator’s rest to its page: "All N chats"', () => {
     const threads = Array.from({ length: 80 }, (_, i) => entry(`${i}`, 'idle'))
     const more = vi.fn()
     render(<SidebarThreadList threads={threads} current={null} onOpen={() => {}} actionsFor={() => []} more={more} />)
-    fireEvent.click(screen.getByRole('button', { name: /All 80 conversations/ }))
+    fireEvent.click(screen.getByRole('button', { name: /All 80 chats/ }))
     expect(more).toHaveBeenCalledOnce()
   })
 

@@ -13,7 +13,7 @@ import { listByFeature, listByIds } from './tickets'
  * run row, the ticket rows, and the run's own events, which is where the join
  * between the two lives (every ticket event a run emits carries its `runId`).
  *
- * So this adds no persistence. It reads what the burn already wrote.
+ * So this adds no persistence. It reads what the round already wrote.
  */
 
 /** One run as the runs list renders it — enough to name it, not to draw it. */

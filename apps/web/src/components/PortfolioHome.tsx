@@ -11,6 +11,7 @@ import { ProjectCard } from './ProjectCard'
 import { CollapseSidebarButton, Frame } from './Frame'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { SidebarFootChrome } from './Sidebar'
+import { useOpenGlossary } from './GlossaryDialog'
 import { SidebarBackdrop } from './SidebarParts'
 
 /**
@@ -111,6 +112,7 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
 function PortfolioSidebar({ nav }: { nav: ProjectNavApi }) {
   const live = useLiveStatus()
   const theme = useTheme()
+  const openGlossary = useOpenGlossary()
   return (
     <nav aria-label="Projects" className="relative isolate flex h-full min-h-0 flex-col p-2">
       <SidebarBackdrop />
@@ -131,6 +133,9 @@ function PortfolioSidebar({ nav }: { nav: ProjectNavApi }) {
         notify={null}
         theme={theme.resolved}
         onToggleTheme={theme.toggle}
+        // The help menu's Glossary only: Settings, where the phone entry
+        // leads, opens inside a project and this level has none.
+        onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
       />
     </nav>
   )

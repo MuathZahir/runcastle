@@ -102,7 +102,7 @@ export interface BuiltImage {
   user: string | null
   /**
    * The inspect failed for some reason other than "no such image", so `present`
-   * is a guess. A burn must not build on it: a wedged engine reads the same way.
+   * is a guess. A round must not build on it: a wedged engine reads the same way.
    */
   undetermined?: boolean
 }
@@ -161,7 +161,7 @@ export function parseImageUser(user: string | null): { uid: number; gid?: number
   return { uid: Number(match[1]), ...(match[2] ? { gid: Number(match[2]) } : {}) }
 }
 
-/** The image's numeric UID when it is not the burn user's; undefined otherwise. */
+/** The image's numeric UID when it is not the worker user's; undefined otherwise. */
 export function imageUidMismatch(
   user: string | null,
   burnUser: Pick<BurnUser, 'uid'>,
@@ -181,7 +181,7 @@ export function imageUidMismatchMessage(
   burnUid: number,
   managed: boolean,
 ): string {
-  const found = `Image ${image} was built for UID ${imageUid}, but burns on this machine run as UID ${burnUid}.`
+  const found = `Image ${image} was built for UID ${imageUid}, but workers on this machine run as UID ${burnUid}.`
   return managed
     ? `${found} Rebuild it from Settings → Workers${orBuildImageCommand(image)}.`
     : `${found} It is a custom image, so rebuild it wherever it was made, for UID ${burnUid}.`
@@ -190,7 +190,7 @@ export function imageUidMismatchMessage(
 /**
  * The way to the same fix on a server with no browser, for the one image
  * `runcastle build-image` builds. Empty for a project image, which only a burn
- * or the button can build, and which a burn rebuilds when it has to.
+ * or the button can build, and which a round rebuilds when it has to.
  */
 export function orBuildImageCommand(image: string): string {
   return image === DEFAULT_SANDBOX_IMAGE ? ', or run `runcastle build-image`' : ''
@@ -210,7 +210,7 @@ export interface ImageFreshnessInput {
   /** The Dockerfile's hash, or null when it cannot be read. */
   expectedHash: string | null
   host: HostAgentVersions
-  /** Who burns run as. Omitted, the image's `USER` is not judged. */
+  /** Who workers run as. Omitted, the image's `USER` is not judged. */
   burnUser?: Pick<BurnUser, 'uid'>
 }
 
@@ -258,7 +258,7 @@ export function describeFreshnessReason(tag: string, reason: FreshnessReason): s
       return `${tag}: ${inImage}, ${reason.host} on host`
     }
     case 'user':
-      return `${tag} was built for UID ${reason.image}, but burns here run as UID ${reason.burn}`
+      return `${tag} was built for UID ${reason.image}, but workers here run as UID ${reason.burn}`
   }
 }
 
@@ -339,7 +339,7 @@ export function legacyGlobalImageReason(imageName: string): string {
   return (
     `${imageName} is left over from an older runcastle, which wrote a project's built image into ` +
     `the machine-wide config — every project without an image of its own inherits it, and its ` +
-    `burns fail in a container built for someone else's repo. Clear the machine-wide sandbox ` +
+    `rounds fail in a container built for someone else's repo. Clear the machine-wide sandbox ` +
     `image setting to go back to ${DEFAULT_SANDBOX_IMAGE}.`
   )
 }
@@ -381,14 +381,14 @@ export function unmanagedImage(project: StoredProjectImage): string | null {
 }
 
 /**
- * Whether the tag a burn actually resolves to is one runcastle builds — the
+ * Whether the tag a round actually resolves to is one runcastle builds — the
  * stock image or this project's own. Everything else is a custom image someone
  * else's tooling owns, whatever put the value there (a hand-typed project
  * column, a machine-wide setting, `RUNCASTLE_SANDBOX_IMAGE`).
  *
  * This is the question the Rebuild button answers with `refused`, asked of the
  * resolved NAME alone so callers with no provenance row to read can ask it too
- * — the burn preflight, which holds an image's agent CLIs to the host's, has to
+ * — the round preflight, which holds an image's agent CLIs to the host's, has to
  * know whether the Rebuild it would name is armed before it names it. A tag
  * runcastle cannot rebuild must never be sent to that button (decision 3: a
  * custom image's CLI drift warns, it does not block).
@@ -469,7 +469,7 @@ export function imageBuildTarget(input: ImageBuildTargetInput): ImageBuildTarget
 }
 
 /**
- * The `AGENT_UID`/`AGENT_GID` build args the stock image needs: the burn user,
+ * The `AGENT_UID`/`AGENT_GID` build args the stock image needs: the worker user,
  * so bind-mounted files share an owner with the in-container agent user
  * (research #32). Absent on Windows, which has no ids to pass and takes the
  * Dockerfile's defaults, and deliberately absent for podman, whose rootless
@@ -486,7 +486,7 @@ export function stockBuildArgs(
   }
 }
 
-/** The burn user's ids, or none on a host that has no ids of its own. */
+/** The worker user's ids, or none on a host that has no ids of its own. */
 function burnBuildIds(): { uid?: number; gid?: number } {
   const { uid, gid, gidSource } = resolveBurnUser('docker')
   return gidSource === 'default' ? {} : { uid, gid }

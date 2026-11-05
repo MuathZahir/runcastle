@@ -6,7 +6,7 @@ import { fileAfkTokenIo, saveAfkCredential, type AfkTokenIo, type TokenValidity 
 
 export const TOKEN_USAGE = [
   'usage: runcastle token [--stdin]',
-  '  Saves the Claude Code token burns use when nobody is watching.',
+  '  Saves the Claude Code token workers use when nobody is watching.',
   '  --stdin  read the whole token from stdin, no prompt: runcastle token --stdin < token.txt',
 ].join('\n')
 

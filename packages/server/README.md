@@ -1,6 +1,6 @@
 # runcastle
 
-Burn tickets into shipped features with Claude Code.
+Idea in, merged branch out. On your machine, in your repo.
 
 ```sh
 bun add -g runcastle      # install

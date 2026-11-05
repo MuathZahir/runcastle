@@ -70,7 +70,6 @@ export const featureRouter = router({
       return features.getFeatureFull(ctx, input.id)
     }),
 
-  // B1 behavior — the stub throws NotImplementedError('B1').
   // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the
   // review-phase Iterate action passes its review-iteration briefing here so the
   // revisit session opens on the right first move instead of the generic line.
@@ -167,7 +166,6 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => features.listReadyDeclarations(ctx, input.featureId)),
 
-  // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure
     .input(
       z.object({

@@ -192,6 +192,15 @@ export const RuncastleConfig = z.preprocess(
      */
     sessionMcp: z.enum(['inherit', 'runcastleOnly']).default('inherit'),
     /**
+     * The usage ping: the boot update check that also counts this install as
+     * active (a random install ID, the version, the platform). `on` pings, `off`
+     * asks npm for the update banner instead. Unset means nobody has answered
+     * yet: an install from before the switch existed (it has an install ID)
+     * keeps pinging and is told once; a fresh one sends nothing until the
+     * first-run wizard records an answer. `DO_NOT_TRACK` beats either value.
+     */
+    usageSignal: z.enum(['on', 'off']).optional(),
+    /**
      * Machine-wide Docker image name for the sandcastle burner sandbox (B3 /
      * SPEC §8) — the fallback under a project's own `sandboxImage`, which beats
      * it (see {@link resolveSandboxImage} for the full order). When neither is

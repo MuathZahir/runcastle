@@ -229,7 +229,7 @@ describe('runcastle on a phone', () => {
     expect(screen.queryByRole('region', { name: 'Details' })).toBeNull()
   })
 
-  it('switches the Orchestrator’s threads from its title, which also offers New thread', async () => {
+  it('switches the Orchestrator’s threads from its title, which also offers New chat', async () => {
     const thread = (id: string, title: string, createdAt: number): ThreadEntry => ({
       id,
       title,
@@ -240,11 +240,11 @@ describe('runcastle on a phone', () => {
       runtime: 'claude-code',
     })
     render(<Root path={`/p/${PROJECT_ID}/chat`} threads={[thread('th_new', 'Plan the export', 2), thread('th_old', 'Audit the journal', 1)]} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Orchestrator — switch thread' }))
-    const sheet = screen.getByRole('dialog', { name: 'Threads' })
-    expect(within(sheet).getByRole('button', { name: 'New thread' })).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Orchestrator — switch chat' }))
+    const sheet = screen.getByRole('dialog', { name: 'Chats' })
+    expect(within(sheet).getByRole('button', { name: 'New chat' })).toBeTruthy()
     fireEvent.click(within(sheet).getByRole('button', { name: 'Audit the journal' }))
-    expect(screen.queryByRole('dialog', { name: 'Threads' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Chats' })).toBeNull()
     await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
   })
 

@@ -21,11 +21,11 @@ import { readTranscript, type SessionTranscript, type TranscriptTurn } from './t
  * The project's conversations (decision 5) — the list behind the project
  * workspace, and the read-only transcript behind each ended row.
  *
- * The project chat used to be one endless conversation that reopening silently
+ * The orchestrator chat used to be one endless conversation that reopening silently
  * resumed. It is a list now: every conversation is a row, "New chat" is the
  * default, and resuming a particular past conversation is an explicit click.
  * Which makes one thing suddenly matter that never did before — a row has to be
- * *nameable*, because a list of nine "project session"s is not a list anyone can
+ * *nameable*, because a list of nine "orchestrator"s is not a list anyone can
  * use. A row is a CONVERSATION rather than a launch (decision 4): reopening one
  * inserts another session row of the same thread, and the list is unusable if
  * every reopen shows up as another entry.

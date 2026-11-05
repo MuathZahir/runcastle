@@ -29,7 +29,7 @@ import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 /**
  * The shared gate (`one-orchestrator-no-mode` decision 2): every live project
  * session is the orchestrator; the gate refuses a caller that is not a live
- * project session. What a project session creates carries `actor: 'orchestrator'`.
+ * orchestrator. What an orchestrator creates carries `actor: 'orchestrator'`.
  * Who may act on which feature is `threads-hold-features`: see holding.test.ts.
  */
 
@@ -81,7 +81,7 @@ describe('the orchestrator’s gate', () => {
     throw new Error('expected a refusal')
   }
 
-  it('create_feature from a project session stamps every event of every shape as the orchestrator’s', async () => {
+  it('create_feature from an orchestrator stamps every event of every shape as the orchestrator’s', async () => {
     const session = projectSession()
     const ordinary = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
     const draft = await toolCreateFeature(ctx, session, {
@@ -121,14 +121,14 @@ describe('the orchestrator’s gate', () => {
     expect(requireOrchestratorSession(session)).toBe(projectId)
   })
 
-  it('refuses a session that is not a project session', () => {
+  it('refuses a session that is not an orchestrator', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'humans' })
     const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
     expect(refusal(() => requireProjectFeature(ctx, chat, 'humans'))).toMatch(/only the orchestrator/)
     expect(refusal(() => requireOrchestratorSession(chat))).toMatch(/only the orchestrator/)
   })
 
-  it('refuses a project session that has ended', () => {
+  it('refuses an orchestrator that has ended', () => {
     seedFeature(ctx, projectId, { slug: 'humans' })
     const session = projectSession()
     markSessionEnded(ctx, session.id)
@@ -161,7 +161,7 @@ describe('the orchestrator’s gate', () => {
     expect(byType.get('test.outside')).toEqual({ n: 2 })
   })
 
-  it('offers every orchestrator tool to the project session and to no other kind', () => {
+  it('offers every orchestrator tool to the orchestrator and to no other kind', () => {
     const tools = [
       'start_feature',
       'plan_feature',
@@ -179,7 +179,7 @@ describe('the orchestrator’s gate', () => {
     }
   })
 
-  it('offers no take_over_feature or record_test_note to the project session', () => {
+  it('offers no take_over_feature or record_test_note to the orchestrator', () => {
     const offered = toolsForAudience('project')
     expect(offered).not.toContain('take_over_feature')
     expect(offered).not.toContain('record_test_note')

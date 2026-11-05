@@ -128,7 +128,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       hue: 'danger',
       title: match ? `Ticket #${match[1]} failed` : 'Ticket failed',
       subtitle: match?.[2]?.trim() || event.message,
-      actionLabel: 'View run',
+      actionLabel: 'View round',
       target: 'work',
     })
   }
@@ -141,9 +141,9 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
     return notice({
       kind: 'run',
       hue: failed ? 'danger' : 'building',
-      title: failed ? 'Run finished with failures' : 'Run finished',
+      title: failed ? 'Round finished with failures' : 'Round finished',
       subtitle: counts ? `${counts[1]} of ${counts[2]} landed` : summary,
-      actionLabel: 'View run',
+      actionLabel: 'View round',
       target: 'work',
     })
   }

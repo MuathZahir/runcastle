@@ -50,6 +50,7 @@ import { LaneTranscript } from '../../run/LaneTranscript'
 import { MessageWithSettingsLink } from '../../settings/MessageWithSettingsLink'
 import { ModelMenu } from './ModelMenu'
 import { TicketEditor, type TicketPatch } from './TicketEditor'
+import { Term } from '../../Term'
 
 /**
  * The panel's Tickets view (the-feature-s-right-panel decisions 17–19): one
@@ -117,7 +118,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
   const terminalBlocked = !!runningRun || full.data.sessions.some(sessionActive)
 
   const onStopped = (r: { stopped: boolean; swept: boolean; confirmed: boolean }) => {
-    if (r.swept) toast.push('no live agent — the lane was orphaned; marked failed', 'info')
+    if (r.swept) toast.push('no live agent — the worker was orphaned; marked failed', 'info')
     else if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
     // The kill ran out of time: the ticket still reads stopped, so this is the
     // only place the human hears that it may not be.
@@ -206,7 +207,8 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
 
       <div className="mb-2 flex min-h-7 items-center gap-2">
         <h2 className="m-0 text-sm font-medium text-text">
-          {current.round ? `Round ${current.round.round}` : current.number > 1 ? `Round ${current.number}` : 'Round 1'}
+          {/* Where a newcomer first meets the word (ready-to-publish decision 17). */}
+          <Term id="round">Round</Term> {current.round ? current.round.round : current.number > 1 ? current.number : 1}
         </h2>
         <span className={cx('min-w-0 truncate text-xs', current.running ? 'text-shimmer text-text-secondary' : 'text-text-tertiary')}>
           {building ?? roundWords(current)}
@@ -560,7 +562,7 @@ function TicketDetail({ ticket, state, controls }: { ticket: Ticket; state: Lane
               disabled={busy || controls.terminalBlocked}
               title={
                 controls.terminalBlocked
-                  ? 'available once this run finishes and no terminal is open'
+                  ? 'available once this round finishes and no terminal is open'
                   : 'open a terminal on the feature branch, briefed with this ticket and its conflicting files, and resolve it yourself'
               }
               onClick={() => controls.resolveInTerminal(ticket, conflict)}

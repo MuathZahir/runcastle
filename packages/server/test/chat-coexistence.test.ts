@@ -35,7 +35,7 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * The chat coexisting with a burn (`one-chat-per-feature` decisions 2 and 9):
+ * The chat coexisting with a round (`one-chat-per-feature` decisions 2 and 9):
  * a terminal spawns while the run holds `feature/<slug>`, it commits docs on a
  * chat temp branch of its own, and those commits land through the SAME serial
  * queue the burner's ticket landings run through.
@@ -132,7 +132,7 @@ describe('the chat beside a burn', () => {
     return merged.trim().length > 0
   }
 
-  it('spawns a chat while the burn is in flight, on a branch forked from the feature tip', async () => {
+  it('spawns a chat while the round is in flight, on a branch forked from the feature tip', async () => {
     const tip = (await simpleGit(project.repoPath).revparse([feature.branch])).trim()
     seedBurn()
 
@@ -205,7 +205,7 @@ describe('the chat beside a burn', () => {
     expect(rolledTo).not.toBe(landed?.branch)
   })
 
-  it('has nothing to land outside a burn — the chat commits to the feature branch directly', async () => {
+  it('has nothing to land outside a round — the chat commits to the feature branch directly', async () => {
     const note = await chatCommits('planning-note.md')
 
     expect(await landChatCommits(ctx, project, feature)).toBeNull()

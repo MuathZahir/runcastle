@@ -31,7 +31,14 @@ export interface StandingInput {
   unverified: UnverifiedReview | null
   /** Whatever holds the drive slot in this feature's way (`slotBlocker`). */
   blockingDrive: SlotBlocker | null
+  /**
+   * Shown on a phone (ready-to-publish decision 10): a row whose fix needs the
+   * computer says so and offers no button that cannot work there.
+   */
+  phone: boolean
 }
+
+const ON_YOUR_COMPUTER = 'on your computer'
 
 /** The mutation that ends a slot holder, by its kind. */
 export type SlotStop =
@@ -101,22 +108,30 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
   const { conflict } = input
   if (conflict) {
     const files = conflict.files.length > 0 ? `${plural(conflict.files.length, 'file')} · ` : ''
+    // Resolving past a live chat closes that chat's terminal first, which
+    // only the computer can do; a resolve with nothing in its way is a chat
+    // like any other, and works from the phone.
+    const computerOnly = input.phone && !!input.liveSessionId
     const tooltip = [
       ...conflict.files,
-      ...(input.resolveEnded ? ['The resolve session ended but the merge hasn’t landed — resolve by hand or retry.'] : []),
-      ...(input.liveSessionId ? [ONE_TERMINAL_WARNING] : []),
+      ...(input.resolveEnded ? ['The resolve chat ended but the merge hasn’t landed — resolve by hand or retry.'] : []),
+      ...(input.liveSessionId && !computerOnly ? [ONE_TERMINAL_WARNING] : []),
     ].join('\n')
     rows.push({
       key: 'conflict',
       hue: 'danger',
       title: 'Merge conflict',
-      subtitle: `${files}${conflict.base} into ${input.branch}`,
+      subtitle: `${files}${conflict.base} into ${input.branch}${computerOnly ? ` — resolve it ${ON_YOUR_COMPUTER}` : ''}`,
       ...(tooltip ? { tooltip } : {}),
-      action: {
-        label: input.liveSessionId ? 'End session & resolve' : 'Resolve with agent',
-        onClick: acts.resolve,
-        disabled: acts.resolving,
-      },
+      ...(computerOnly
+        ? {}
+        : {
+            action: {
+              label: input.liveSessionId ? 'End the chat & resolve' : 'Resolve with agent',
+              onClick: acts.resolve,
+              disabled: acts.resolving,
+            },
+          }),
     })
   } else if (input.conflictResolved) {
     rows.push({ key: 'conflict-resolved', hue: 'review', title: 'Conflict resolved', subtitle: 'ready to merge' })
@@ -127,7 +142,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       key: `denial-${denial.eventId}`,
       hue: 'review',
       title: 'Review couldn’t drive',
-      subtitle: 'uncommitted changes — commit or discard them, then ask the agent for another review',
+      subtitle: `uncommitted changes — commit or discard them${input.phone ? ` ${ON_YOUR_COMPUTER}` : ''}, then ask the agent for another review`,
       tooltip: [denial.message, ...denial.dirtyFiles].join('\n'),
       onDismiss: acts.dismissDenial,
     })
@@ -139,7 +154,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       key: 'unverified',
       hue: 'review',
       title: 'Nothing verified',
-      subtitle: 'ask the agent for another review, or drive it yourself',
+      subtitle: `ask the agent for another review, or drive it yourself${input.phone ? ` ${ON_YOUR_COMPUTER}` : ''}`,
       ...(tooltip ? { tooltip } : {}),
     })
   }

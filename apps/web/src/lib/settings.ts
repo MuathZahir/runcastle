@@ -39,6 +39,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
+  usageSignal: 'RUNCASTLE_USAGE_SIGNAL',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnMaxIterations: 'RUNCASTLE_BURN_MAX_ITERATIONS',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
@@ -198,8 +199,8 @@ const STEP_META: readonly {
   group: StepGroup
 }[] = [
   // Sessions — you are in the terminal.
-  { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature conversation' },
-  { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
+  { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature chat' },
+  { step: 'project', label: 'Orchestrator chat', group: 'sessions', description: 'The project-level chat' },
   // Unattended — burns and scripted runs.
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
@@ -246,7 +247,27 @@ interface FieldMeta {
   optionLabels?: Record<string, string>
   /** A word tagged beside the label: what the field *is* (`experimental`). */
   tag?: string
+  /**
+   * For a `switch` whose stored value is not a boolean: the two values it
+   * writes. Anything but `off` (unset included) reads as on.
+   */
+  switchValues?: SwitchValues
+  /** More words the filter box finds this row by, beyond its label and tooltip. */
+  searchTerms?: string[]
 }
+
+/** The two stored values a non-boolean switch writes. */
+export interface SwitchValues {
+  on: string
+  off: string
+}
+
+/**
+ * What the usage ping sends, in one line — the Settings row, the wizard and the
+ * one-time notice all say it, so they cannot drift apart.
+ */
+export const USAGE_PING_SENDS =
+  'It sends a random install ID, the version and the platform. Nothing about your projects or code.'
 
 /**
  * What drive instructions may and may not license, in one line (decision 7).
@@ -281,7 +302,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandbox: {
     label: 'Sandbox',
     tooltip:
-      'Where launched sessions and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
+      'Where chats and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
     control: 'select',
     page: 'general',
     group: 'sessions',
@@ -294,16 +315,16 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image sessions and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
+      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
     control: 'text',
     page: 'general',
     group: 'sessions',
     placeholder: 'sandcastle:runcastle',
   },
   sessionMcp: {
-    label: 'MCP servers in sessions',
+    label: 'MCP servers in chats',
     tooltip:
-      'Inherit mine — sessions see your own MCP servers (user, project and plugin) alongside runcastle’s. runcastle only — sessions see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.',
+      'Inherit mine — chats see your own MCP servers (user, project and plugin) alongside runcastle’s. runcastle only — chats see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.',
     control: 'select',
     page: 'general',
     group: 'sessions',
@@ -312,6 +333,15 @@ const FIELD_META: Record<string, FieldMeta> = {
       inherit: 'Inherit mine — my servers alongside runcastle’s',
       runcastleOnly: 'runcastle only — nothing else',
     },
+  },
+  usageSignal: {
+    label: 'Usage ping',
+    tooltip: `At each boot runcastle checks for a newer version and counts this install as active. ${USAGE_PING_SENDS} Off, the update check asks npm instead. DO_NOT_TRACK=1 turns it off whatever this says.`,
+    control: 'switch',
+    page: 'general',
+    group: 'server',
+    switchValues: { on: 'on', off: 'off' },
+    searchTerms: ['usage', 'ping', 'telemetry', 'tracking', 'analytics', 'privacy'],
   },
   burnConcurrency: {
     label: 'Concurrency',
@@ -335,7 +365,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   burnAttempts: {
     label: 'Attempts per ticket',
     tooltip:
-      'Fresh agent attempts per ticket per run (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
+      'Fresh agent attempts per ticket per round (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
     control: 'number',
     page: 'burns',
     group: 'width',
@@ -457,7 +487,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sessionBranch: {
     label: 'Commits land on',
     tooltip:
-      'The branch the project chat’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
+      'The branch the orchestrator’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
     control: 'text',
     page: 'project',
     group: 'chat',
@@ -483,7 +513,7 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
   sandbox: { page: 'project', group: 'model' },
   sandboxImage: {
     tooltip:
-      'The Docker image THIS project’s sessions and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
+      'The Docker image THIS project’s chats and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
     page: 'project',
     group: 'model',
   },
@@ -594,6 +624,25 @@ export interface SettingRow {
   evidence?: string
   /** The repo has moved far enough since this was measured to be worth a nudge. */
   stale: boolean
+  /** A non-boolean switch's two stored values (see {@link switchWrite}). */
+  switchValues?: SwitchValues
+  /** More words the filter box finds this row by. */
+  searchTerms?: string[]
+}
+
+/** What flipping a switch row writes: its mapped value, or the boolean itself. */
+export function switchWrite(row: Pick<SettingRow, 'switchValues'>, on: boolean): string | boolean {
+  if (!row.switchValues) return on
+  return on ? row.switchValues.on : row.switchValues.off
+}
+
+/**
+ * A switch row's value as the control reads it (`'true'`/`'false'`). A mapped
+ * switch is on unless its value is the `off` one, so an unset value reads as
+ * the default it stands for.
+ */
+function switchDisplay(value: unknown, values: SwitchValues): string {
+  return value === values.off ? 'false' : 'true'
 }
 
 function toDisplay(value: unknown): string {
@@ -708,7 +757,7 @@ function provenanceChipFor(f: FindingLike): ProvenanceChip {
     f.source === 'human'
       ? 'You'
       : f.source === 'session'
-        ? 'Set in a session'
+        ? 'Set in a chat'
         : f.source === 'build'
           ? 'Built by runcastle'
           : 'Prepared'
@@ -768,8 +817,10 @@ export function describeField(
     ...(unit ? { unit } : {}),
     page: meta.page,
     group: meta.group,
-    value: toDisplay(field.value),
+    value: meta.switchValues ? switchDisplay(field.value, meta.switchValues) : toDisplay(field.value),
     control: meta.control,
+    ...(meta.switchValues ? { switchValues: meta.switchValues } : {}),
+    ...(meta.searchTerms ? { searchTerms: meta.searchTerms } : {}),
     // A model row's choices are the roster (curated + the operator's own), so a
     // custom id they added is a pick rather than something to retype.
     options: isModel ? roster.map((m) => m.id) : (meta.options ?? []),
@@ -1163,7 +1214,7 @@ export interface SettingsFilter {
 
 /** What a settings row offers the filter box. */
 export function rowSearchTerms(row: SettingRow): string[] {
-  return [row.label, row.key, row.tooltip]
+  return [row.label, row.key, row.tooltip, ...(row.searchTerms ?? [])]
 }
 
 /**

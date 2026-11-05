@@ -107,7 +107,7 @@ describe('On your phone', () => {
   it('says to start Tailscale when it is stopped', () => {
     setStatus({ tailscale: 'stopped', on: false, commands: COMMANDS })
     show()
-    expect(screen.getByText('Tailscale is not running')).toBeTruthy()
+    expect(screen.getByText('Tailscale is not running on this computer')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull()
   })
 
@@ -125,7 +125,7 @@ describe('On your phone', () => {
     // A scannable code: a light ground under dark modules, and modules drawn.
     expect(qr.querySelector('rect')?.getAttribute('fill')).toBe('#fff')
     expect(qr.querySelector('path')?.getAttribute('d')).toMatch(/^M\d+,\d+h1v1h-1z/)
-    expect(screen.getByText(/scan this/)).toBeTruthy()
+    expect(screen.getByText('Scan the code')).toBeTruthy()
   })
 
   it('turns the link off and goes back to the Turn on button at once', () => {
@@ -153,5 +153,34 @@ describe('On your phone', () => {
     expect(screen.getByText('Access denied: serve config denied')).toBeTruthy()
     const block = screen.getByText(/--operator/)
     expect(block.textContent).toBe(['sudo tailscale set --operator=$USER', ...COMMANDS].join('\n'))
+  })
+
+  it('shows the phone steps greyed before the link is on, under the Turn on button', () => {
+    setStatus(running())
+    show()
+    expect(screen.getByText('Once the link is on, on your phone:')).toBeTruthy()
+    expect(screen.getByText('Install Tailscale on your phone')).toBeTruthy()
+    expect(screen.getByText('Add it to your home screen')).toBeTruthy()
+  })
+
+  it('asks for HTTPS on the tailnet once, links to Tailscale, and tries again from there', () => {
+    const page = 'https://login.tailscale.com/f/serve?node=nT8fKz2CNTRL'
+    setStatus(running())
+    show()
+
+    server.answer = running({ httpsNeeded: page })
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Turn on' })))
+
+    expect(screen.getByText('Turn on HTTPS for your tailnet, once')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open Tailscale' }).getAttribute('href')).toBe(page)
+    expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull()
+    expect(screen.queryByText(/Could not change the link/)).toBeNull()
+
+    server.answer = running({ on: true })
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Try again' })))
+
+    expect(server.calls.map((c) => c.procedure)).toEqual(['turnOn', 'turnOn'])
+    expect(screen.getByRole('img', { name: `QR code for ${URL}` })).toBeTruthy()
+    expect(screen.queryByText('Turn on HTTPS for your tailnet, once')).toBeNull()
   })
 })

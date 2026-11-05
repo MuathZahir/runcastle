@@ -432,7 +432,7 @@ describe('hooks route', () => {
       }
     })
 
-    it('leaves a project session alone — it writes code too', async () => {
+    it('leaves an orchestrator alone — it writes code too', async () => {
       const projectSession = createSessionRow(ctx, {
         projectId: seedProject(ctx).id,
         kind: 'project',
@@ -597,8 +597,8 @@ describe('hooks route', () => {
         })
         const reason = json.hookSpecificOutput.permissionDecisionReason
         expect(reason).toMatch(/docs-only/)
-        expect(reason).toMatch(/burn sandbox/)
-        expect(reason).toMatch(/review lap/)
+        expect(reason).toMatch(/worker sandbox/)
+        expect(reason).toMatch(/review round/)
         expect(reason).toMatch(/test drive/)
       }
     })
@@ -634,7 +634,7 @@ describe('hooks route', () => {
       expect(await install(fix)).toEqual({})
     })
 
-    it('allows the project session in the __project worktree', async () => {
+    it('allows the orchestrator in the __project worktree', async () => {
       const project = createSessionRow(ctx, {
         projectId,
         kind: 'project',
@@ -643,7 +643,7 @@ describe('hooks route', () => {
       expect(await install(project)).toEqual({})
     })
 
-    it('allows a non-project session whose cwd is the __project worktree', async () => {
+    it('allows a non-orchestrator whose cwd is the __project worktree', async () => {
       const chat = createSessionRow(ctx, {
         featureId: talkFeatureId,
         kind: 'scenario',
@@ -856,7 +856,7 @@ describe('hooks route, project-scoped sessions', () => {
     return createSessionRow(ctx, { projectId, kind, worktreePath: 'C:\\wt\\proj' }).id
   }
 
-  it('a project session is told its scope, not the preparation agenda', async () => {
+  it('an orchestrator is told its scope, not the preparation agenda', async () => {
     const sessionId = projectScopedSession('project')
     const { json } = await post(mount(), 'session-start', {
       sessionId,
@@ -865,13 +865,13 @@ describe('hooks route, project-scoped sessions', () => {
 
     const context: string = json.hookSpecificOutput.additionalContext
     expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
-    expect(context).toContain('[runcastle] project session for test')
+    expect(context).toContain('[runcastle] orchestrator for test')
     expect(context).not.toContain('preparation session')
     expect(context).not.toContain('Still unestablished')
     expect(context).not.toContain('record_finding')
   })
 
-  it('a project session still gets the whole lifecycle', async () => {
+  it('an orchestrator still gets the whole lifecycle', async () => {
     const sessionId = projectScopedSession('project')
     await post(mount(), 'session-start', {
       sessionId,
@@ -896,12 +896,12 @@ describe('hooks route, project-scoped sessions', () => {
     expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
   })
 
-  it('labels a project session as one on every turn', async () => {
+  it('labels an orchestrator as one on every turn', async () => {
     const { json } = await post(mount(), 'user-prompt', {
       sessionId: projectScopedSession('project'),
       payload: { hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
     })
-    expect(json.hookSpecificOutput.additionalContext).toBe('[runcastle] project session')
+    expect(json.hookSpecificOutput.additionalContext).toBe('[runcastle] orchestrator')
   })
 
   it('leaves the prepare session its agenda, unchanged', async () => {
@@ -927,7 +927,7 @@ describe('hooks route, project-scoped sessions', () => {
 
   it('announces each kind by its own name in its lifecycle events', async () => {
     for (const [kind, noun] of [
-      ['project', 'project session'],
+      ['project', 'orchestrator'],
       ['prepare', 'preparation session'],
     ] as const) {
       const sessionId = projectScopedSession(kind)

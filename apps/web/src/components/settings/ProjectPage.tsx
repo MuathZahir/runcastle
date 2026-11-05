@@ -27,7 +27,7 @@ import type { SettingsPageProps } from './types'
 const GROUPS: readonly { group: SettingsGroup; title: string }[] = [
   { group: 'model', title: 'Model & sandbox' },
   { group: 'commands', title: 'Commands' },
-  { group: 'chat', title: 'Project chat' },
+  { group: 'chat', title: 'Orchestrator' },
 ]
 
 /** Label widths for the placeholder rows of the three sections, in the same order. */

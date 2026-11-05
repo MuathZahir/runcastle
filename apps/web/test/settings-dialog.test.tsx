@@ -256,11 +256,11 @@ describe('SettingsDialog', () => {
     expect(screen.getByLabelText('Server port')).toBeTruthy()
     expect(screen.getByLabelText('Sandbox')).toBeTruthy()
     expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
-    expect(screen.getByLabelText('MCP servers in sessions')).toBeTruthy()
+    expect(screen.getByLabelText('MCP servers in chats')).toBeTruthy()
 
     // The explanation is the row's description: one quiet line under the
     // label, and the control's accessible description — no hover to find it.
-    const about = screen.getByText(/The Docker image sessions and workers are sandboxed in/)
+    const about = screen.getByText(/The Docker image chats and workers are sandboxed in/)
     expect(about.className).toContain('text-text-tertiary')
     expect(screen.getByLabelText('Sandbox image').getAttribute('aria-describedby')).toContain(
       about.id,
@@ -380,6 +380,36 @@ describe('SettingsDialog', () => {
     expect(screen.queryByText('On your phone')).toBeNull()
   })
 
+  // The usage ping's switch stores 'on'/'off', not a boolean, and an unset
+  // value is the default (on) — so the switch reads it and writes the word.
+  it('turns the usage ping off and on from General, writing the setting’s words', () => {
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: null, source: 'default' })])
+    open()
+
+    const ping = screen.getByRole('switch', { name: 'Usage ping' })
+    expect(ping.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(ping)
+    expect(server.updates).toEqual([{ key: 'usageSignal', value: 'off' }])
+
+    cleanup()
+    server.updates = []
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: 'off' })])
+    open()
+    const off = screen.getByRole('switch', { name: 'Usage ping' })
+    expect(off.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(off)
+    expect(server.updates).toEqual([{ key: 'usageSignal', value: 'on' }])
+  })
+
+  it.each(['telemetry', 'ping', 'privacy'])('finds the usage ping by “%s”', (query) => {
+    server.globals = view([...globalFields(), field({ key: 'usageSignal', value: 'on' })])
+    open()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: query } })
+    expect(screen.getByRole('switch', { name: 'Usage ping' })).toBeTruthy()
+    expect(screen.queryByLabelText('Sandbox image')).toBeNull()
+  })
+
   it('moves to the first page with hits when the open one has none', () => {
     open()
 
@@ -390,6 +420,15 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe(
       'page',
     )
+  })
+
+  it.each(['burn', 'AFK', 'lane'])('still finds the Workers page by its older name %s', (word) => {
+    open()
+
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: word } })
+
+    expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe('page')
+    // The checklist itself waits on the doctor, which this harness leaves loading.
   })
 
   it('says so when nothing matches, rather than showing an empty page', () => {

@@ -142,6 +142,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.enum(['inherit', 'runcastleOnly']),
     parseEnv: idEnv,
   },
+  // The usage ping's switch. Read by the update check on each check (not
+  // cached at boot), so no restart is needed.
+  {
+    key: 'usageSignal',
+    configKey: 'usageSignal',
+    envVar: 'RUNCASTLE_USAGE_SIGNAL',
+    restartRequired: false,
+    valueSchema: z.enum(['on', 'off']),
+    parseEnv: idEnv,
+  },
   {
     key: 'burnConcurrency',
     configKey: 'burnConcurrency',
@@ -222,7 +232,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   // Project-only, and deliberately without a global twin or an env var: where
-  // the project session's commits land is a fact about ONE repo, and a machine
+  // the orchestrator's commits land is a fact about ONE repo, and a machine
   // -wide default is exactly the silent state this field exists to replace.
   // Null means "not picked" — `git.resolveSessionBranch` detects at read time —
   // and only a write through here ever fills it.
@@ -271,7 +281,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   // Project-only (no global twin, no env var): how to EXERCISE this app once it
-  // is up. Free text, injected verbatim into the drive-mode review prompts — how
+  // is up. Free text, injected verbatim into the test-drive review prompts — how
   // to drive an app is a fact about one repo, so a machine-wide value could only
   // ever describe somebody else's.
   {

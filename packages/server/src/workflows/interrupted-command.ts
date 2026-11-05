@@ -1,5 +1,5 @@
 /**
- * Tell a burn iteration that the one before it died mid-command.
+ * Tell a round iteration that the one before it died mid-command.
  *
  * sandcastle runs a ticket's iterations as fresh agents with the same prompt,
  * so an agent that was OOM-killed inside `bun run test` leaves its successor no
@@ -80,7 +80,7 @@ export function buildInterruptedCommandNotes(
     '',
     block,
     '',
-    'It never came back. The process was most likely killed for memory (several burns share this machine, and a full test suite sizes its worker pool from every host CPU) or it timed out. Everything that agent had not committed is gone — run `git log --oneline -15` and `git status` before anything else.',
+    'It never came back. The process was most likely killed for memory (several rounds share this machine, and a full test suite sizes its worker pool from every host CPU) or it timed out. Everything that agent had not committed is gone — run `git log --oneline -15` and `git status` before anything else.',
     '',
     'Do NOT run that command again as it was: it will die the same way and cost this iteration too. Where it was running tests, run only the test files your change touches instead, and say in your final message that the full command was killed for memory in an earlier iteration.',
   ].join('\n')

@@ -464,6 +464,27 @@ export function IconInfo(p: IconProps) {
   )
 }
 
+/** The Glossary's door: a question mark in a circle. */
+export function IconHelp(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M6.3 6.3a1.75 1.75 0 0 1 3.4.55c0 1.15-1.7 1.45-1.7 2.45" />
+      <circle cx="8" cy="11.1" r=".85" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** The phone setup's door. */
+export function IconPhone(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="4.25" y="1.75" width="7.5" height="12.5" rx="1.75" />
+      <path d="M7 11.75h2" />
+    </svg>
+  )
+}
+
 export function IconFilter(p: IconProps) {
   return (
     <svg {...base(p)}>
@@ -689,10 +710,10 @@ export const PHASE_TEXT: Record<PhaseIconPhase, string> = {
 /** Sentence-case name of each phase — the glyph's accessible label. */
 export const PHASE_NAME: Record<PhaseIconPhase, string> = {
   draft: 'Backlog',
-  ideation: 'Ideation',
-  spec: 'Spec',
+  ideation: 'Planning',
+  spec: 'Planning',
   planning: 'Planning',
-  tickets: 'Tickets',
+  tickets: 'Planning',
   implementation: 'Build',
   building: 'Build',
   review: 'Review',

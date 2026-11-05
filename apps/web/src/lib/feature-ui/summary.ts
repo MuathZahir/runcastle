@@ -153,7 +153,7 @@ function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow {
   // Review tickets are the pass, not the delivery — counting one as landed work
   // is the same overcount the lap chip stopped making (decision 27a).
   const implementation = tickets.filter((ticket) => ticket.kind !== 'review')
-  if (implementation.length === 0) return { key, value: 'no tickets burned', tone: 'warn' }
+  if (implementation.length === 0) return { key, value: 'no tickets built', tone: 'warn' }
   const done = implementation.filter((ticket) => ticket.status === 'done').length
   const waived = implementation.filter((ticket) => ticket.status === 'cancelled').length
   const failed = implementation.filter((ticket) => ticket.status === 'failed').length

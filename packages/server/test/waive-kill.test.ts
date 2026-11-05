@@ -105,7 +105,7 @@ describe('waive kills a live agent before it flips the row', () => {
     expect(getTicket(ctx, ticketId).status).toBe('cancelled')
   })
 
-  it('kills the agent of an openly burning ticket, then waives it', async () => {
+  it('kills the agent of an openly building ticket, then waives it', async () => {
     // The most direct live-agent state there is: the row says `burning` and the
     // agent behind it really is running. Decision #5 asks for one click here —
     // kill, then flip — not "press Stop first, then Waive".
@@ -134,7 +134,7 @@ describe('waive kills a live agent before it flips the row', () => {
     expect(getTicket(ctx, ticketId).status).toBe('cancelled')
   })
 
-  it('still refuses a burning ticket with no agent behind it — that is Stop’s sweep', async () => {
+  it('still refuses a building ticket with no agent behind it — that is Stop’s sweep', async () => {
     updateTicket(ctx, ticketId, { status: 'burning' })
 
     await expect(caller.ticket.cancel({ ticketId })).rejects.toThrow(/burning/)

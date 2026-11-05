@@ -217,7 +217,7 @@ describe('tickets service', () => {
     ])
   })
 
-  it('editTicket rejects an unknown model and refuses a burning ticket', () => {
+  it('editTicket rejects an unknown model and refuses a building ticket', () => {
     const [t] = storeTickets(ctx, featureId, [ticket('a')])
     expect(() => editTicket(ctx, t.id, { model: 'gpt-9-imaginary' })).toThrow(InvalidInputError)
 
@@ -236,7 +236,7 @@ describe('tickets service', () => {
     expect(cancelTicket(ctx, b.id).status).toBe('cancelled')
   })
 
-  it('cancelTicket refuses done/burning tickets', () => {
+  it('cancelTicket refuses done/building tickets', () => {
     const [a, b] = storeTickets(ctx, featureId, [ticket('a'), ticket('b')])
     updateTicket(ctx, a.id, { status: 'done' })
     expect(() => cancelTicket(ctx, a.id)).toThrow(InvalidInputError)

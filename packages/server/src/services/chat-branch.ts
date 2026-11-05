@@ -23,7 +23,7 @@ import { featureLandingQueue } from './landing-queue'
 import { hasActiveRun, listRunsByFeature } from './repo'
 
 /**
- * How the feature chat keeps working while a burn holds the feature branch
+ * How the feature chat keeps working while a round holds the feature branch
  * (`one-chat-per-feature` decisions 2 and 9).
  *
  * The talk worktree used to be DETACHED for the duration of a branch-claiming
@@ -239,7 +239,7 @@ function emitLeadCodeLanded(
 
 /**
  * Land the chat's docs commits, if it is committing to a chat branch at all —
- * outside a burn it commits to the feature branch directly and there is nothing
+ * outside a round it commits to the feature branch directly and there is nothing
  * to do.
  *
  * The chat's NEXT branch is cut before the landing starts, because the merge

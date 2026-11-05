@@ -35,7 +35,44 @@ export interface PhoneLinkStatus {
   commands: string[]
   /** What the CLI said when turning the link on or off failed. */
   error?: string
+  /**
+   * The tailnet has not allowed HTTPS yet, so Serve cannot run (ready-to-publish
+   * decision 7): the page that allows it — the one Tailscale printed, else
+   * {@link TAILSCALE_HTTPS_PAGE}.
+   */
+  httpsNeeded?: string
 }
+
+/** Tailscale's own page for the tailnet's HTTPS switch, when the CLI printed none. */
+export const TAILSCALE_HTTPS_PAGE = 'https://login.tailscale.com/admin/dns'
+
+/**
+ * Tailscale's answer on a tailnet without HTTPS: "Serve is not enabled on your
+ * tailnet. To enable, visit:" and a `login.tailscale.com/f/serve?…` link, after
+ * which it may wait for that consent rather than exit.
+ */
+const SERVE_NOT_ENABLED = /Serve is not enabled on your tailnet/i
+const ADDRESS = /https:\/\/\S+/
+
+/** The output from Tailscale's "not enabled" notice on, or undefined without one. */
+function httpsNotice(output: string): string | undefined {
+  const notice = SERVE_NOT_ENABLED.exec(output)
+  return notice ? output.slice(notice.index) : undefined
+}
+
+/** Where to allow HTTPS, when the output is Tailscale's "not enabled" answer. */
+function httpsNeededIn(output: string): string | undefined {
+  const notice = httpsNotice(output)
+  if (notice === undefined) return undefined
+  return ADDRESS.exec(notice)?.[0] ?? TAILSCALE_HTTPS_PAGE
+}
+
+/**
+ * Stop the command once the notice and its whole link have arrived — the
+ * whitespace after the link proves it was not cut mid-chunk. A notice with no
+ * link is read when the command exits, or at its timeout.
+ */
+const stopAtHttpsNotice = (output: string): boolean => /https:\/\/\S+\s/.test(httpsNotice(output) ?? '')
 
 export interface PhoneLinkDeps {
   exec: ExecFn
@@ -165,7 +202,9 @@ export async function phoneLinkStatus(
 /**
  * Serve the app port, then the design port. A failure turns back off whatever
  * this call turned on, so the link is never left half on, and answers with the
- * CLI's message and the commands to run by hand.
+ * CLI's message and the commands to run by hand — except a tailnet that has not
+ * allowed HTTPS yet, which answers `httpsNeeded` instead of the raw output, as
+ * soon as Tailscale has said so.
  */
 export async function turnPhoneLinkOn(
   config: RuncastleConfig,
@@ -177,12 +216,14 @@ export async function turnPhoneLinkOn(
   const turnedOn: number[] = []
   for (const port of linkPorts(config)) {
     if (served.has(port)) continue
-    const out = await deps.exec(bin, serveOnArgs(port))
+    const out = await deps.exec(bin, serveOnArgs(port), { stopWhen: stopAtHttpsNotice })
     if (succeeded(out)) {
       turnedOn.push(port)
       continue
     }
     for (const done of turnedOn) await deps.exec(bin, serveOffArgs(done))
+    const httpsNeeded = httpsNeededIn(`${out.stdout}\n${out.stderr}`)
+    if (httpsNeeded) return { ...(await phoneLinkStatus(config, deps)), httpsNeeded }
     return withFailure(await phoneLinkStatus(config, deps), failureMessage(out), deps)
   }
   return phoneLinkStatus(config, deps)

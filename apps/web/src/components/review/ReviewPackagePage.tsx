@@ -5,6 +5,7 @@ import { Dialog, Disclosure, IconButton, cx } from '../../ui'
 import { findingsWords, firstStop, packageBuild, packageShots, packageStops, type PackageStop } from '../../lib/feature-ui/review-package'
 import { useIsPhone } from '../../lib/use-phone'
 import { Markdown } from '../Markdown'
+import { Term } from '../Term'
 import { PackageFrame, PackageVideoFrame } from './ReviewPackageCard'
 import { ReviewCallRow } from './ReviewCallRow'
 
@@ -245,7 +246,7 @@ export function ReviewPackagePage({ pack, walkthrough, onClose }: { pack: Review
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
         <IconEye size={16} className="shrink-0 text-accent" />
         <h2 id="package-title" className="m-0 min-w-0 truncate text-sm font-medium text-text">
-          {pack.passKind === 'verification' ? 'Verification package' : 'Review package'}
+          {pack.passKind === 'verification' ? 'Verification package' : <Term id="review-package">Review package</Term>}
         </h2>
         <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{where}</span>
         <IconButton label="Close" size={phone ? 'touch' : 'sm'} icon={<IconX />} onClick={onClose} />

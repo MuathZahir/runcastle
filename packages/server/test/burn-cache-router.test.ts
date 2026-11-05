@@ -9,7 +9,7 @@ import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 
 /**
- * The operator surface for the persistent burn cache (decision 6): the AFK card
+ * The operator surface for the persistent worker cache (decision 6): the AFK card
  * asks `system.burnCache.status` how big the project's volume is and
  * `system.burnCache.clear` to drop it.
  *
@@ -153,7 +153,7 @@ describe('system.burnCache.clear', () => {
 
   // The checkouts on the volume are the running burns' working trees: pulling
   // it out from under them leaves an agent writing into a deleted mount.
-  it('refuses while a burn holds a slot, names the slots, and issues no removal', async () => {
+  it('refuses while a round holds a slot, names the slots, and issues no removal', async () => {
     const allocator = getBurnSlotAllocator(ctx.config.burnConcurrency)
     allocator.claim()
     allocator.claim()

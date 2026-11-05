@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { PHASE_ORDER, PHASE_TIP } from '../../lib/feature-ui'
 import { IconArrowRight, LogoMark, PHASE_NAME, PhaseIcon } from '../../icons'
 import { AccentTile } from '../SidebarParts'
-import { Button } from '../../ui'
+import { USAGE_PING_SENDS } from '../../lib/settings'
+import { trpc } from '../../trpc'
+import { Button, Checkbox } from '../../ui'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
@@ -16,13 +19,18 @@ import { StepActions, StepHeading } from './StepLayout'
  * moment — and nothing else.
  */
 export function IntroStep({ onNext }: { onNext: () => void }) {
+  const usage = useUsagePingAnswer()
+  const next = () => {
+    usage.record()
+    onNext()
+  }
   return (
     <>
       <AccentTile large className="mb-6">
         <LogoMark size={26} />
       </AccentTile>
       <StepHeading title="Your coding agent, driven through a pipeline">
-        Describe a feature and runcastle runs the agent sessions that carry it from idea to merged.
+        Describe a feature and runcastle runs the agents that carry it from idea to merged.
         You test-drive the result and decide when it ships.
       </StepHeading>
       <ol className="m-0 mt-8 flex list-none flex-col p-0">
@@ -38,11 +46,48 @@ export function IntroStep({ onNext }: { onNext: () => void }) {
           </li>
         ))}
       </ol>
+      <div className="mt-8 flex flex-col gap-1">
+        <Checkbox
+          size="md"
+          label="Send the usage ping"
+          checked={usage.checked}
+          disabled={usage.locked}
+          onChange={usage.set}
+        />
+        <p className="m-0 pl-5.5 text-xs text-text-tertiary">
+          Once per boot, so we know runcastle is used. {USAGE_PING_SENDS} Turn it off here or in
+          Settings at any time.
+        </p>
+      </div>
       <StepActions>
-        <Button variant="primary" icon={<IconArrowRight />} onClick={onNext} autoFocus>
+        <Button variant="primary" icon={<IconArrowRight />} onClick={next} autoFocus>
           Set up runcastle
         </Button>
       </StepActions>
     </>
   )
+}
+
+/**
+ * The intro's usage-ping answer (decision 4). Ticked by default, or showing the
+ * current setting when the wizard is replayed; leaving the step forward writes
+ * `usageSignal`, which is what lets a fresh install ping at all. An env-locked
+ * setting is shown as it stands and never written.
+ */
+function useUsagePingAnswer() {
+  const globals = trpc.settings.get.useQuery()
+  const update = trpc.settings.update.useMutation()
+  const field = globals.data?.fields.find((f) => f.key === 'usageSignal')
+  // `null` until the box is touched, so a setting that loads late still shows.
+  const [touched, setTouched] = useState<boolean | null>(null)
+  const checked = touched ?? field?.value !== 'off'
+  const locked = field !== undefined && !field.editable
+  return {
+    checked,
+    locked,
+    set: setTouched,
+    record: () => {
+      if (!locked) update.mutate({ key: 'usageSignal', value: checked ? 'on' : 'off' })
+    },
+  }
 }

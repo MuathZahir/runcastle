@@ -16,13 +16,31 @@ import { installIdPath } from '@runcastle/core/paths'
 /** A v4 UUID exactly as `crypto.randomUUID()` writes it. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+/** The stored ID, or null when none has been created (or it is unreadable). */
+function readInstallId(file: string): string | null {
+  try {
+    if (!existsSync(file)) return null
+    const existing = readFileSync(file, 'utf8').trim()
+    return UUID_RE.test(existing) ? existing : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether this install has pinged before — an ID is only ever created by the
+ * first ping, so its presence marks an install from before the usage switch
+ * (see `usagePingAllowed`). Read-only: never creates the ID.
+ */
+export function hasInstallId(): boolean {
+  return readInstallId(installIdPath()) !== null
+}
+
 export function getInstallId(): string {
   const file = installIdPath()
   try {
-    if (existsSync(file)) {
-      const existing = readFileSync(file, 'utf8').trim()
-      if (UUID_RE.test(existing)) return existing
-    }
+    const existing = readInstallId(file)
+    if (existing) return existing
     // Missing, empty, or garbage (a truncated write, a hand-edited file): the
     // honest recovery is a new ID, not a value the endpoint would reject.
     const id = randomUUID()

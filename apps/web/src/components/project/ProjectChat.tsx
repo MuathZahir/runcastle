@@ -3,6 +3,7 @@ import type { SessionBranchApi } from '../../lib/use-session-branch'
 import { BranchMenu } from '../../ui'
 import { ThreadColumn } from '../chat/ThreadColumn'
 import { OrchestratorTile } from '../SidebarParts'
+import { Term } from '../Term'
 
 /**
  * A project conversation in the Orchestrator's chat column (design-mode
@@ -34,7 +35,7 @@ export function ProjectChat({
 }) {
   return (
     <ThreadColumn
-      label="Project chat"
+      label="Orchestrator chat"
       threadId={threadId}
       {...(runtime ? { runtime } : {})}
       {...(start ? { start } : {})}
@@ -70,7 +71,7 @@ function OrchestratorOpening() {
       <div className="flex flex-col gap-1.5">
         <h2 className="m-0 text-xl font-semibold tracking-tight text-text">What are we building?</h2>
         <p className="m-0 max-w-[44ch] text-sm text-pretty text-text-tertiary">
-          Bring a raw idea. The Orchestrator checks it against what’s built and cuts it into features.
+          Bring a raw idea. The <Term id="orchestrator">Orchestrator</Term> checks it against what’s built and cuts it into features.
         </p>
       </div>
     </div>

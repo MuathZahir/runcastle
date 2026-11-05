@@ -7,8 +7,8 @@ import { trpc } from '../src/trpc'
 
 /**
  * The app's real tRPC hooks over a fake server: a link that answers each call
- * from `handlers` by its dotted path, and refuses an unanswered one the way a
- * `NotImplementedError` socket does. The client, the query cache and every
+ * from `handlers` by its dotted path, and refuses an unanswered one with an
+ * error naming the path. The client, the query cache and every
  * hook run unchanged, so a test sees what the browser would — which reads a
  * live signal triggers, and with which cursor.
  */

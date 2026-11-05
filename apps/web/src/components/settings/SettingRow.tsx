@@ -8,6 +8,7 @@ import {
   type ProvenanceChip as ProvenanceChipData,
   type SettingRow as Row,
   type SourceChip as SourceChipKind,
+  switchWrite,
 } from '../../lib/settings'
 import {
   Button,
@@ -362,7 +363,7 @@ export function SettingRow({
           onCommit={save}
           onToggle={(on) => {
             edit(String(on))
-            write(on)
+            write(switchWrite(row, on))
           }}
           onRevert={() => setDraft(committed)}
         />
@@ -475,6 +476,20 @@ function RowControl({
     <span className="min-w-0 text-xs text-pretty text-text-tertiary">{row.unit}</span>
   ) : undefined
 
+  if (row.control === 'switch') {
+    // A locked switch stays a switch, greyed: "true"/"false" in a locked text
+    // field would read as an identifier, and the env note under it says why.
+    return (
+      <Switch
+        id={id}
+        checked={draft === 'true'}
+        disabled={disabled || row.readOnly}
+        onChange={onToggle}
+        className="flex min-h-(--control-h) items-center"
+      />
+    )
+  }
+
   if (row.readOnly) {
     // Locked, not read-only text: the old surface rendered the value as mono
     // prose with a sentence under it, which read as a value rather than as
@@ -489,18 +504,6 @@ function RowControl({
         className="w-full"
         inputClassName={row.control === 'number' ? 'tabular-nums' : undefined}
         value={row.optionLabels[row.value] ?? row.value}
-      />
-    )
-  }
-
-  if (row.control === 'switch') {
-    return (
-      <Switch
-        id={id}
-        checked={draft === 'true'}
-        disabled={disabled}
-        onChange={onToggle}
-        className="flex min-h-(--control-h) items-center"
       />
     )
   }

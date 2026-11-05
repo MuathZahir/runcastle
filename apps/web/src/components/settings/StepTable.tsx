@@ -14,11 +14,11 @@ import { showsSetting, type FilterState } from './types'
  * the whole per-step idea a two-step discovery — and each carries a line saying
  * what the step does, so the names need no help text.
  *
- * The two groups are different spending decisions: a session is one you are
+ * The two groups are different spending decisions: a chat is one you are
  * sitting in front of, an unattended run is one you are paying for while away.
  */
 const GROUPS: readonly { group: StepGroup; title: string; caption: string }[] = [
-  { group: 'sessions', title: 'Sessions', caption: 'Interactive — you are in the terminal' },
+  { group: 'sessions', title: 'Chats', caption: 'Interactive — you are in the terminal' },
   { group: 'unattended', title: 'Unattended', caption: 'Workers and scripted runs' },
 ]
 

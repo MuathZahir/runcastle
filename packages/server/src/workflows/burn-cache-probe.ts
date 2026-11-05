@@ -32,7 +32,7 @@ import {
 } from './ticket-burner'
 
 /**
- * `bun run burn-cache:probe <repoPath>` — proof that the burn cache volume is
+ * `bun run burn-cache:probe <repoPath>` — proof that the worker cache volume is
  * actually HIT, not merely mounted (decision 7).
  *
  * A cache that is mounted and never used is indistinguishable from no cache at
@@ -194,7 +194,7 @@ export function buildSnapshotCommand(repoPath: string, pm: PackageManager | unde
     count('tsbuildinfo', `find ${repoPath} -name '*.tsbuildinfo' -not -path '*/node_modules/*'`),
     count('vitest', `find ${repoPath}/node_modules/.vite/vitest -name results.json`),
     // jest derives its cache dir from `os.tmpdir()`, which follows TMPDIR — the
-    // burn cache env points that at the volume (decision 10). The exact leaf
+    // worker cache env points that at the volume (decision 10). The exact leaf
     // name is a base-36 uid (`jest_rs`), so it is globbed.
     count('jest', `find "\${TMPDIR:-/tmp}"/jest*`),
     count('turbo', `find ${repoPath}/.turbo/cache`),
@@ -569,7 +569,7 @@ function readProbeConfig(repoPath: string): string {
 }
 
 /**
- * A throwaway git repo holding a copy of the target, because the burn path
+ * A throwaway git repo holding a copy of the target, because the round path
  * needs a branch to fork a worktree from and the target may be a fixture
  * directory that is not a repo at all (or, as with runcastle's own fixtures,
  * a subdirectory of an unrelated one). Build output and installs are left

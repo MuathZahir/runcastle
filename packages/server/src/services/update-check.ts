@@ -6,20 +6,39 @@
  *
  * The same request is runcastle's usage signal: it goes to runcastle's own
  * endpoint carrying an anonymous install ID, so a boot counts as one active
- * install. That makes it a three-rung ladder, because the banner must survive
- * the ping failing:
+ * install. No install pings before it has been told what is sent, so the
+ * ladder starts with whether the ping is allowed at all ({@link usagePingAllowed}):
  *
- *   1. `DO_NOT_TRACK` set  → skip the ping, ask npm directly.
- *   2. otherwise           → POST the ping, which answers `{ latest }`.
- *   3. ping failed         → one attempt at npm; then a silent "no update".
+ *   1. `DO_NOT_TRACK` set                        → no ping, ask npm directly.
+ *   2. `usageSignal` is `off`                    → no ping, ask npm directly.
+ *   3. `usageSignal` unset, no install ID yet    → no ping, ask npm (a fresh
+ *      install that has not passed the wizard's intro step).
+ *   4. `usageSignal` is `on`, or unset on an install that already has an ID
+ *      (it pinged before the switch existed, and is told once in the app)
+ *                                                → POST the ping, `{ latest }`.
+ *   5. ping failed                               → one attempt at npm; then a
+ *      silent "no update".
  *
- * IO-thin on purpose: `fetch` and the environment are injected so every rung is
- * unit-tested offline, and every failure path (offline, 5xx, garbage JSON)
- * degrades to "no update" so a stranger with no network still boots cleanly.
+ * IO-thin on purpose: `fetch`, the environment, the setting and install-ID
+ * presence are injected so every rung is unit-tested offline, and every failure
+ * path (offline, 5xx, garbage JSON) degrades to "no update" so a stranger with
+ * no network still boots cleanly.
  */
 
+import type { RuncastleConfig } from '@runcastle/core'
 import { UNKNOWN_VERSION } from '../version'
-import { getInstallId } from './install-id'
+import { getInstallId, hasInstallId } from './install-id'
+
+/** The usage ping's switch: `on`, `off`, or unset (nobody has answered yet). */
+export type UsageSignal = RuncastleConfig['usageSignal']
+
+/** What decides whether the usage ping may go out. */
+export interface UsageGate {
+  env: Record<string, string | undefined>
+  usageSignal: UsageSignal
+  /** An install ID exists — this install pinged before the switch existed. */
+  installIdExists: boolean
+}
 
 /** Public package name + the command a user runs to update it. */
 export const PACKAGE_NAME = 'runcastle'
@@ -113,6 +132,27 @@ function doNotTrack(env: Record<string, string | undefined>): boolean {
   return raw !== undefined && raw !== '' && raw !== '0'
 }
 
+/**
+ * Whether the usage ping may be sent: never under `DO_NOT_TRACK`; otherwise
+ * when the human said `on`, or said nothing on an install that already pinged
+ * before the switch existed. A fresh install with no answer sends nothing.
+ */
+export function usagePingAllowed(gate: UsageGate): boolean {
+  if (doNotTrack(gate.env)) return false
+  if (gate.usageSignal !== undefined) return gate.usageSignal === 'on'
+  return gate.installIdExists
+}
+
+/**
+ * Whether to show the one-time usage notice: an install from before the switch
+ * (it has an install ID) that has never answered, and is not opted out by
+ * `DO_NOT_TRACK` — such an install is pinging without having been told in the
+ * app. Answering either way records `usageSignal`, which ends it for good.
+ */
+export function usageNoticeNeeded(gate: UsageGate): boolean {
+  return !doNotTrack(gate.env) && gate.usageSignal === undefined && gate.installIdExists
+}
+
 /** npm's `latest` dist-tag, or null on any failure. */
 async function latestFromNpm(fetchImpl: typeof fetch): Promise<string | null> {
   try {
@@ -159,6 +199,10 @@ export async function checkForUpdate(opts: {
   fetchImpl?: typeof fetch
   /** Environment to read `DO_NOT_TRACK` from (default `process.env`). */
   env?: Record<string, string | undefined>
+  /** The `usageSignal` setting (default unset). */
+  usageSignal?: UsageSignal
+  /** Whether an install ID already exists (default: read the data dir, never creating it). */
+  installIdExists?: boolean
 }): Promise<UpdateInfo> {
   const { current } = opts
   const fetchImpl = opts.fetchImpl ?? fetch
@@ -169,9 +213,14 @@ export async function checkForUpdate(opts: {
   // is made at all — there is nothing to ask about.
   if (current === UNKNOWN_VERSION) return NO_UPDATE(current)
 
-  const latest = doNotTrack(env)
-    ? await latestFromNpm(fetchImpl)
-    : ((await latestFromPing(fetchImpl, current)) ?? (await latestFromNpm(fetchImpl)))
+  const ping = usagePingAllowed({
+    env,
+    usageSignal: opts.usageSignal,
+    installIdExists: opts.installIdExists ?? hasInstallId(),
+  })
+  const latest = ping
+    ? ((await latestFromPing(fetchImpl, current)) ?? (await latestFromNpm(fetchImpl)))
+    : await latestFromNpm(fetchImpl)
   if (!latest) return NO_UPDATE(current)
 
   return {
@@ -187,10 +236,19 @@ export async function checkForUpdate(opts: {
 // A failed check isn't cached, so a transient outage re-checks on the next load.
 let cache: UpdateInfo | undefined
 
-/** Memoized {@link checkForUpdate} for the boot/router path. */
-export async function getUpdateInfo(current: string, fetchImpl?: typeof fetch): Promise<UpdateInfo> {
+/**
+ * Memoized {@link checkForUpdate} for the boot/router path. The setting is read
+ * by the caller on each call, but a cached answer is never re-asked: turning the
+ * ping on after boot takes effect at the next check that actually runs (the
+ * next boot, or the next load after a failed check), never as an immediate
+ * second ping.
+ */
+export async function getUpdateInfo(
+  current: string,
+  opts: { usageSignal?: UsageSignal; fetchImpl?: typeof fetch } = {},
+): Promise<UpdateInfo> {
   if (cache) return cache
-  const info = await checkForUpdate({ current, fetchImpl })
+  const info = await checkForUpdate({ current, fetchImpl: opts.fetchImpl, usageSignal: opts.usageSignal })
   if (info.latest !== null) cache = info
   return info
 }

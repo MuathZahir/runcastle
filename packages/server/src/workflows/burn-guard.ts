@@ -1,5 +1,5 @@
 /**
- * The burn guard — a `PreToolUse` hook installed inside each burn sandbox, which
+ * The burn guard — a `PreToolUse` hook installed inside each worker sandbox, which
  * DENIES a small set of tool calls the burner prompt already forbids.
  *
  * Why a hook and not more prompt text: the prompt has told agents to "run any
@@ -269,7 +269,7 @@ export function renderGuardSettings(runtime: AgentRuntime = 'claude-code'): Guar
  * `onSandboxReady` hook. Both files are delivered base64-encoded so no amount
  * of quoting in a rule's pattern or reason can break the setup command.
  *
- * Installed for the runtime the burn is about to launch, into that runtime's
+ * Installed for the runtime the round is about to launch, into that runtime's
  * home. Container sandboxes ONLY — see the caller. On `noSandbox` this would
  * write over the human's real `~/.claude/settings.json` or `~/.codex/hooks.json`.
  *

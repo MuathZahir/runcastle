@@ -288,7 +288,7 @@ function projectScopedNoun(kind: SessionKind): string {
     case 'prepare':
       return 'preparation session'
     case 'project':
-      return 'project session'
+      return 'orchestrator'
     // Project-scoped only on a project drive; on a feature drive it takes the
     // feature path above.
     case 'scenario':

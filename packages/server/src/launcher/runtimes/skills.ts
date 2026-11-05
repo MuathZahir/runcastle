@@ -165,7 +165,7 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
       'unestablished preparation fields with the human. Start by telling them which fields are ' +
       'still open and what you need from them for each; ask before running anything that touches ' +
       'their database or services.',
-    project: `Proceed with your task: invoke the ${skill('project')} skill and drive the project session.`,
+    project: `Proceed with your task: invoke the ${skill('project')} skill and drive the orchestrator.`,
     // No skill either: the failure, the drive's own environment and the branch
     // delta all arrive as the appended system prompt (renderDriveFixPrompt), so
     // the line only has to point at the first move — read the failure, do not
@@ -188,7 +188,7 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
 }
 
 /**
- * The kickoff for a project session opened from the Notes card's Triage button.
+ * The kickoff for an orchestrator opened from the Notes card's Triage button.
  *
  * An EXPLICIT briefing, which per ADR-0009 #4 is why such a launch is always
  * fresh: it is this session's opening move, not a nudge to carry on. It names

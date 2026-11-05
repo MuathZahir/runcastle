@@ -25,7 +25,7 @@ import {
 import { useDataDir } from './helpers/data-dir'
 
 /**
- * An annotated note's screenshot riding into the burn that fixes it (spec.md
+ * An annotated note's screenshot riding into the round that fixes it (spec.md
  * "Riding into the burn"), tested at the burner's workspace-preparation seam.
  *
  * The seam is host-side by construction: sandcastle runs these commands after
@@ -243,7 +243,7 @@ describe('burn attachments — preparing the workspace', () => {
     const untouched = 'build/\n'
     writeFileSync(excludeFile, untouched)
 
-    // A burn with no attachments never wrote the line; cleanup must still be a
+    // A round with no attachments never wrote the line; cleanup must still be a
     // no-op on the file rather than a failure or a rewrite.
     await clearAttachments(workspace, repo)
     await clearAttachments(workspace, repo)
@@ -254,7 +254,7 @@ describe('burn attachments — preparing the workspace', () => {
   // The burn worktree itself — `.sandcastle/worktrees/<branch>`, with its own
   // `.git` file — must not show up in the human's `git status`. Unlike the
   // attachments line, this one is permanent.
-  it('hides the burn worktrees from the human`s checkout, and only them', async () => {
+  it('hides the round worktrees from the human`s checkout, and only them', async () => {
     await excludeBurnWorktrees(repo)
 
     expect(readFileSync(excludeFile, 'utf8').split('\n')).toContain('.sandcastle/worktrees/')
@@ -335,7 +335,7 @@ describe('burn attachments — riding the clone into isolated mode', () => {
     expect(cmd.indexOf(src)).toBeGreaterThan(cmd.indexOf(`git clone ${SANDBOX_WORKSPACE_PATH}`))
   })
 
-  // The script runs inside the burn container by construction, so it is `sh` —
+  // The script runs inside the round container by construction, so it is `sh` —
   // driven here for real rather than matched as a string. A Windows host has no
   // sh to drive it with; the shape assertion above covers that host.
   describe.skipIf(process.platform === 'win32')('driven for real', () => {
@@ -411,7 +411,7 @@ describe('burn attachments — riding the clone into isolated mode', () => {
       expect(await simpleGit(clone).raw(['status', '--porcelain'])).toBe('')
     })
 
-    it('sets up a burn with no attachments at all, without failing', async () => {
+    it('sets up a round with no attachments at all, without failing', async () => {
       await runSetup()
 
       expect(existsSync(join(clone, ATTACHMENTS_DIR))).toBe(false)

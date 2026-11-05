@@ -10,6 +10,7 @@ import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ApiView } from './ApiView'
 import { DrivePanel } from './DrivePanel'
 import { ScenarioControl } from './ScenarioPicker'
+import { Term } from '../Term'
 
 /** The live drive as the scenario controls read it — `driveInfo`'s slice. */
 export interface ScenarioDriveInfo {
@@ -153,9 +154,11 @@ export function ScenarioDrive({
         <p className="m-0 flex shrink-0 items-center gap-2 border-b border-border-subtle py-1 pr-1.5 pl-4 text-xs text-text-tertiary">
           <span className="min-w-0 flex-1">
             Setting this up by hand every time?{' '}
+            {/* The word stays outside the link: a hint cannot sit inside a button (ready-to-publish decision 17). */}
             <button type="button" className={cx(LINK, 'font-medium')} onClick={newScenario}>
-              Make it a scenario.
-            </button>
+              Make it a
+            </button>{' '}
+            <Term id="scenario">scenario</Term>.
           </span>
           <IconButton size="sm" label="Hide this hint" icon={<IconX />} onClick={() => setNudgeHiddenFor(driveKey)} />
         </p>
