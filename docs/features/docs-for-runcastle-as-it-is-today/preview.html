@@ -179,7 +179,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="bar" style="width:100%"></div>
     </div>
     <div class="arrow">→</div>
-    <div class="col"><h3>After: 4 pages, ~1,050 words, 9 mockups</h3>
+    <div class="col"><h3>After: 4 pages, ~1,050 words, 9 pictures of the app's own components</h3>
       <div class="row"><span>Get started</span><span>≤400</span></div>
       <div class="row"><span>How a feature goes</span><span>≤400</span></div>
       <div class="row"><span>The orchestrator</span><span>≤400</span></div>
@@ -220,7 +220,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="cam"></i>Your phone over Tailscale, with notifications (if capturable)</li>
     </ul></div>
   </div>
-  <div class="legend"><span><i class="cam" style="display:inline-block;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px"></i>a mockup <a class="pin" data-d="20">20</a></span><span><i style="display:inline-block;width:14px;height:2px;background:var(--color-text-tertiary)"></i>a line or a command, no picture</span></div>
+  <div class="legend"><span><i class="cam" style="display:inline-block;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px"></i>the app's own components <a class="pin" data-d="21">21</a></span><span><i style="display:inline-block;width:14px;height:2px;background:var(--color-text-tertiary)"></i>a line or a command, no picture</span></div>
 
   <h3>Where you take part, as the features page says it <a class="pin" data-d="9">9</a></h3>
   <div class="you"><span><b>●</b> Say yes to the plan</span><span><b>●</b> Approve designed screens</span><span>Workers build</span><span>Review round test drives it</span><span><b>●</b> You test drive</span><span><b>●</b> Merge</span></div>
@@ -229,7 +229,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:docs-features-page -->
 <div class="designed">
   <h3>Docs pages: How a feature goes, Get started, The orchestrator</h3>
-  <p>The real pages with their real text and layout. Every picture is a hand-built mockup of one moment in the app, in its look, on one running example (tags on the demo journal app).</p>
+  <p>The real pages with their real text and layout. Every picture is the app's own React components rendered to static HTML with sample data, on one running example (tags on the demo journal app).</p>
   <p class="mono">site/docs/{features/,orchestrator/,}index.html + site/docs.css · design pages /docs/features/, /docs/, /docs/orchestrator/</p>
 </div>
 <!-- /screen:docs-features-page -->
@@ -385,6 +385,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
  [
   "The pictures are hand-built mockups, not screenshots",
   "You found the crops unreadable and unclear. A mockup shows the exact moment each section describes, reads sharp at any size, and is redone by editing HTML when the app's look moves."
+ ],
+ [
+  "The pictures are the app's own components, rendered to static HTML",
+  "You asked for the app's own components. They look exactly like the app, read as live text, and a rerun of one script after a web build keeps them in step."
  ]
 ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
