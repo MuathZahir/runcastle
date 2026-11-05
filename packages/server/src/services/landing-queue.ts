@@ -3,7 +3,7 @@
  * goes through one serial order (ADR-0002 §2, widened).
  *
  * The burner used to create this queue per RUN, which was enough while the run
- * was the only writer — but the feature chat commits its docs while a burn is in
+ * was the only writer — but the feature chat commits its docs while a round is in
  * flight (`one-chat-per-feature` decision 2), so chat landings and ticket
  * landings now share one target ref. The queue guards a per-FEATURE resource,
  * so it is keyed by feature id and lives for the process, not for the run.

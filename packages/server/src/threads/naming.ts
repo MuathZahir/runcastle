@@ -34,7 +34,7 @@ export function runtimeMayName(row: Pick<SessionRow, 'kind'>, events: readonly T
 }
 
 /** What a generated title says when it names an Orchestrator chat's session, not its subject. */
-const NAMES_THE_SESSION = /project session|project skill|resume conversation/i
+const NAMES_THE_SESSION = /project session|orchestrator session|project skill|resume conversation/i
 
 /** Whether a generated title says what the thread is about; this runs on Orchestrator chats only. */
 export function namesItsSubject(row: Pick<SessionRow, 'kind'>, title: string): boolean {

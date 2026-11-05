@@ -41,7 +41,7 @@ export function adoptProjectImage(ctx: AppCtx, projectId: string, tag: string): 
 /**
  * The mirror of {@link adoptProjectImage}: drop a project image runcastle wrote
  * once its `.runcastle/sandbox/Dockerfile` is gone (decision 8), so resolution
- * falls back to the global image or the stock default on the next burn.
+ * falls back to the global image or the stock default on the next round.
  * Runcastle wrote the value on build, so removing it when its justification
  * disappears is symmetric — and a doctor warning asking the human to clear it
  * by hand would nag about something with exactly one sensible resolution. A tag

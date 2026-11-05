@@ -1254,7 +1254,7 @@ describe('mergeTempBranch', () => {
     expect(res.ok).toBe(false)
     expect(res.conflict).toBe(true)
     // captured before the abort cleared the unmerged index — this list is what
-    // briefs the resolver agent and what the run lane renders
+    // briefs the resolver agent and what the round renders
     expect(res.files).toEqual(['same.md'])
 
     // feature branch untouched, temp branch preserved, no worktree leaked

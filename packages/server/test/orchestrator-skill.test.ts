@@ -56,7 +56,7 @@ describe('the project skill, orchestrating', () => {
     expect(text).not.toMatch(/setting|experimental|turns? the mode/i)
   })
 
-  it('names every tool the project session has, and none it lost', () => {
+  it('names every tool the orchestrator has, and none it lost', () => {
     const text = skill()
     const tools = text.slice(text.indexOf('## Your tools'), text.indexOf('## 0.'))
     for (const tool of PROJECT_TOOLS) expect(tools).toContain(`\`mcp__runcastle__${tool}(`)
@@ -76,11 +76,11 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain("**No limits beyond the human's buttons and holding**")
   })
 
-  it('stops when told, saying what is still in flight, and when the project chat ends', () => {
+  it('stops when told, saying what is still in flight, and when the orchestrator chat ends', () => {
     const text = section()
     expect(text).toContain('**When the human tells you to stop, start nothing new**')
     expect(text).toContain('tell them what is still in flight')
-    expect(text).toContain('Ending the project chat does not stop you for good')
+    expect(text).toContain('Ending the orchestrator chat does not stop you for good')
   })
 
   it('agrees how the cut is run before creating anything, merging included, and works within it', () => {

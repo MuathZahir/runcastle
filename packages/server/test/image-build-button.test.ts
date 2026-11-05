@@ -6,7 +6,7 @@ import { appRouter } from '../src/trpc/router'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 
-describe('the Build button while a burn is building', () => {
+describe('the Build button while a round is building', () => {
   let ctx: AppCtx
   let restoreDataDir: () => void
 
@@ -21,7 +21,7 @@ describe('the Build button while a burn is building', () => {
     try {
       await expect(
         createCallerFactory(appRouter)(ctx).setup.startTerminal({ kind: 'build-image' }),
-      ).rejects.toThrow('A burn is building the sandbox image right now')
+      ).rejects.toThrow('A round is building the sandbox image right now')
     } finally {
       release?.()
     }

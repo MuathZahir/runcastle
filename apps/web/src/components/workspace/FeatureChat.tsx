@@ -12,7 +12,7 @@ import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it.'
-const SIDE_HINT = 'A fresh conversation on this feature, beside the feature chat. It knows the feature, its docs and its tickets.'
+const SIDE_HINT = 'A fresh chat on this feature, beside the feature chat. It knows the feature, its docs and its tickets.'
 
 /**
  * The feature page's chat column (chat-as-web-components decisions 3, 7): the
@@ -99,14 +99,14 @@ export function FeatureChat({
     )
   }, [opens])
   if (hidden) return null
-  if (column.pending) return <ThreadOpening label="Thread" />
+  if (column.pending) return <ThreadOpening label="Chat" />
   return (
     <ThreadColumn
       // A fresh column per thread: its draft, attachments and scroll are its
       // own. The main chat keeps one through its start, so the first message
       // stays on screen while the chat it started takes its id.
       key={isMain ? 'main' : inFront}
-      label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : 'Thread'}
+      label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : 'Chat'}
       threadId={inFront}
       {...(entry ? { runtime: entry.runtime } : {})}
       {...(isMain ? { start: startForSend, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}

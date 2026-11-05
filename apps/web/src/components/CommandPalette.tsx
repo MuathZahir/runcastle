@@ -9,11 +9,13 @@ import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL } from '../ui/floa
 import {
   IconFolder,
   IconHome,
+  IconList,
   IconMoon,
   IconOrchestrator,
   IconPanelLeft,
   IconPanelRight,
   IconPencil,
+  IconPhone,
   IconPlus,
   IconSearch,
   IconSettings,
@@ -54,6 +56,10 @@ export interface CommandPaletteProps {
   onToggleSidebar?: () => void
   /** Show or hide the feature's details panel — offered only on a feature. */
   onToggleDetails?: () => void
+  /** Open the Glossary (ready-to-publish decision 16). */
+  onOpenGlossary?: () => void
+  /** Open Settings → General at "On your phone" (decision 9). */
+  onOpenPhoneSetup?: () => void
   nav: ProjectNavApi
 }
 
@@ -67,6 +73,8 @@ type ActionKind =
   | 'theme'
   | 'sidebar'
   | 'details'
+  | 'glossary'
+  | 'phoneSetup'
 
 type Row =
   | { kind: 'command'; command: FeatureCommand }
@@ -81,6 +89,11 @@ interface Action {
   kbd?: string
   run: () => void
 }
+
+/** The Glossary row's words, old ones too: someone who learned "burn" is looking for its new name. */
+const GLOSSARY_TERMS = 'glossary help words terms meaning burn afk lane thread session'
+/** The phone row's words. */
+const PHONE_SETUP_TERMS = 'use runcastle on your phone mobile tailscale qr code help'
 
 /** Does a typed query find this row's words? An empty query finds everything. */
 const finds = (q: string, terms: string) => q === '' || terms.includes(q)
@@ -98,6 +111,8 @@ export function CommandPalette(props: CommandPaletteProps) {
     onOpenNote,
     onToggleSidebar,
     onToggleDetails,
+    onOpenGlossary,
+    onOpenPhoneSetup,
     nav,
   } = props
   const theme = useTheme()
@@ -225,6 +240,28 @@ export function CommandPalette(props: CommandPaletteProps) {
             },
           ]
         : []),
+      ...(onOpenGlossary
+        ? [
+            {
+              kind: 'glossary' as const,
+              shows: finds(q, GLOSSARY_TERMS),
+              glyph: <IconList />,
+              label: 'Glossary',
+              run: onOpenGlossary,
+            },
+          ]
+        : []),
+      ...(onOpenPhoneSetup
+        ? [
+            {
+              kind: 'phoneSetup' as const,
+              shows: finds(q, PHONE_SETUP_TERMS),
+              glyph: <IconPhone />,
+              label: 'Use runcastle on your phone',
+              run: onOpenPhoneSetup,
+            },
+          ]
+        : []),
       {
         kind: 'home',
         shows: finds(q, 'all projects home'),
@@ -251,6 +288,8 @@ export function CommandPalette(props: CommandPaletteProps) {
     onOpenPreparation,
     onToggleSidebar,
     onToggleDetails,
+    onOpenGlossary,
+    onOpenPhoneSetup,
     nav,
   ])
 

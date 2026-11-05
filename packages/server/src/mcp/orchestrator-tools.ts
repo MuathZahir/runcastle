@@ -35,7 +35,7 @@ import { seedFromTranscript } from '../threads/read'
 import type { HeaderCarrier } from './server'
 
 /**
- * The orchestrator's tools (`one-orchestrator-no-mode`): every project session
+ * The orchestrator's tools (`one-orchestrator-no-mode`): every orchestrator
  * is the orchestrator. What it may act on is drawn by its instructions (decision
  * 2), and by one server rule (`threads-hold-features`): every acting tool goes
  * through {@link requireHeldFeature}, so a thread cannot act on a feature another
@@ -48,10 +48,10 @@ export type ResolveSession = (
   extra: HeaderCarrier,
 ) => Promise<{ ctx: AppCtx; session: SessionRow } | null>
 
-/** Refuse unless `session` is a still-open project session; its project's id. */
+/** Refuse unless `session` is a still-open orchestrator chat; its project's id. */
 export function requireOrchestratorSession(session: SessionRow): string {
   if (session.kind !== 'project' || !session.projectId) {
-    throw new GateError('only the orchestrator may do this: the project session.')
+    throw new GateError('only the orchestrator may do this: the orchestrator.')
   }
   if (session.status === 'ended') {
     throw new GateError('this orchestrator session has ended; a new one must be opened to act.')

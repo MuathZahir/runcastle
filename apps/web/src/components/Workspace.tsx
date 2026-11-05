@@ -1082,7 +1082,7 @@ export function Workspace({
   }
   const paletteActions = [
     headerRow.action,
-    { label: 'New thread', kind: 'newThread' as const },
+    { label: 'New chat', kind: 'newThread' as const },
     headerRow.merge,
     driveCommand,
   ].filter((a, i, all): a is NextAction => !!a && all.findIndex((b) => b?.kind === a.kind) === i)
@@ -1153,7 +1153,7 @@ export function Workspace({
             ? [
                 {
                   label: (
-                    <span className="block max-w-44 truncate" title={`Held by the thread "${holder.title}"`}>
+                    <span className="block max-w-44 truncate" title={`Held by the orchestrator chat "${holder.title}"`}>
                       {holder.title}
                     </span>
                   ),
@@ -1210,7 +1210,7 @@ export function Workspace({
               </span>
             )}
             {threadable && (
-              <IconButton label="New thread" kbd={newThreadShortcut()} icon={<IconPlus />} onClick={() => runAction('newThread')} />
+              <IconButton label="New chat" kbd={newThreadShortcut()} icon={<IconPlus />} onClick={() => runAction('newThread')} />
             )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
             <PanelToggle

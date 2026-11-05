@@ -73,7 +73,7 @@ describe('buildInstallPlan', () => {
     expect(plan.afterwards).toEqual([
       'Log out and back in, so the docker group applies',
       'Sign in: claude auth login',
-      'For burns: runcastle token',
+      'For unattended rounds: runcastle token',
       'To keep it running: runcastle service install',
     ])
     expect(plan.needsAgentChoice).toBe(false)
@@ -146,7 +146,7 @@ describe('buildInstallPlan', () => {
       'Open a new terminal',
       'Install Docker: https://docs.docker.com/get-docker/',
       'Sign in: claude auth login',
-      'For burns: runcastle token',
+      'For unattended rounds: runcastle token',
     ])
   })
 

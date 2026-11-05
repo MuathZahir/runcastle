@@ -190,7 +190,7 @@ function ticketInput(title: string, seams: string[]): TicketInput {
  * Seed every kind of feature a long-lived project carries, 120+ in all, each
  * with a multi-thousand-char one-liner; every shipped one gets its
  * `feature.shipped` event. The shipped `briefSlug` gets a real-max `brief.md`
- * under `worktreePath`, the project session's own tree, which also gets a
+ * under `worktreePath`, the orchestrator's own tree, which also gets a
  * past-real-max charter and ADR set.
  */
 export function seedOversizedPortfolio(

@@ -2,6 +2,7 @@ import { Button, Dialog, DialogFooter, DialogHeader, StatusDot } from '../../ui'
 import type { StatusTone } from '../../ui'
 import { IconStop } from '../../icons'
 import type { FeatureStatus, FeatureStatusKind } from '../../lib/feature-ui/status-line'
+import { Term } from '../Term'
 
 /** Shape first, hue confirms (DESIGN.md principle 3) — one tone per status. */
 const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
@@ -29,7 +30,10 @@ export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
       {/* A need its orchestrator handles is not the human's yet: a quiet dot. */}
       <StatusDot tone={status.held ? 'neutral' : STATUS_TONE[status.kind]} />
       {/* Squeezed, the reason gives way first, then the label truncates: the line never draws past its box. */}
-      <span className="min-w-0 truncate text-text-secondary">{status.label}</span>
+      {/* Held, the label ("With the orchestrator") explains the crumb beside it, whose title only a tooltip holds. */}
+      <span className="min-w-0 truncate text-text-secondary">
+        {status.held ? <Term id="held-by">{status.label}</Term> : status.label}
+      </span>
       {status.why && <span className="min-w-0 shrink-[100] truncate">· {status.why}</span>}
     </p>
   )

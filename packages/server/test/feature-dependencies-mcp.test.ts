@@ -25,7 +25,7 @@ import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 /**
  * The agents' half of merge-order dependencies (ADR-0013, decisions 5 and 8):
  * `dependsOn` at create time for any drafting session, `set_feature_dependencies`
- * for the project session only, and the edges on both context reads.
+ * for the orchestrator only, and the edges on both context reads.
  */
 
 async function gitRepo(): Promise<string> {
@@ -177,7 +177,7 @@ describe('feature dependencies over MCP', () => {
     ).toThrow(InvalidInputError)
   })
 
-  it('offers and allows set_feature_dependencies to the project session only', async () => {
+  it('offers and allows set_feature_dependencies to the orchestrator only', async () => {
     expect(toolsForAudience('project')).toContain('set_feature_dependencies')
     for (const kind of ['prepare', 'chat', 'drive-fix', 'run'] as const) {
       expect(toolsForAudience(kind), kind).not.toContain('set_feature_dependencies')
@@ -201,7 +201,7 @@ describe('feature dependencies over MCP', () => {
 
   // --- up next --------------------------------------------------------------
 
-  it('a project session creates a draft up next and the reads show the mark', async () => {
+  it('an orchestrator creates a draft up next and the reads show the mark', async () => {
     const auth = seedFeature(ctx, projectId, { slug: 'auth-rework', phase: 'building' })
 
     const out = await toolCreateFeature(ctx, session, {

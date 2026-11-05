@@ -39,7 +39,7 @@ function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
  *               attempt commits; `fresh: true` discards them first. Also the
  *               "Retry review" door: a `done` review ticket whose drive was
  *               refused over a dirty tree, once the human has cleaned up.
- * - `stop`    — kill ONE burning ticket's agent, leaving the rest of the run
+ * - `stop`    — kill ONE building ticket's agent, leaving the rest of the run
  *               alive, and resolve only once it is confirmed dead (`confirmed`
  *               says whether that was observed or the deadline ran out). The
  *               ticket fails with its committed work preserved, so `retry` picks
@@ -60,7 +60,7 @@ function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
  *               opening a terminal to do it.
  *
  * Plus one read: `durationStats`, the project's own ticket history, which is
- * what lets the pre-burn bar say how long a burn has been taking here instead
+ * what lets the pre-burn bar say how long a round has been taking here instead
  * of quoting a number someone hardcoded (decisions.md #16b).
  */
 export const ticketRouter = router({
@@ -88,7 +88,7 @@ export const ticketRouter = router({
       // affordance on a ticket nothing can move (`sweepOrphanedBurning`).
       const ticket = getTicket(ctx, input.ticketId)
       if (ticket.status === 'burning' && !hasActiveRun(ctx, ticket.featureId)) {
-        sweepOrphanedBurning(ctx, ticket.featureId, 'orphaned — the run that was burning it is gone')
+        sweepOrphanedBurning(ctx, ticket.featureId, 'orphaned — the round that was building it is gone')
         return { stopped: false, swept: true, confirmed }
       }
       return { stopped: false, swept: false, confirmed }

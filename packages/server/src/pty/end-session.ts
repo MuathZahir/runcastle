@@ -29,7 +29,7 @@ export function endSession(
 
   const session = markSessionEnded(ctx, sessionId)
   if (!session) return { sessionId, ok: !!getSessionRow(ctx, sessionId), killed }
-  // A project session's commits live on `runcastle/project` until someone
+  // An orchestrator's commits live on `runcastle/project` until someone
   // moves them; ending it is that moment (decision 18). No-op for other kinds.
   landProjectSession(ctx, session)
   stopDesignServerForSession(ctx, session)

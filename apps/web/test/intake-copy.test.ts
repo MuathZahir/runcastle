@@ -27,9 +27,9 @@ function createRows(): string[] {
 describe('the two intake doors', () => {
   afterEach(cleanup)
 
-  it('sends every feature through a conversation with its agent', () => {
+  it('sends a new chat to the orchestrator, where an idea is talked through', () => {
     const [newChat] = createRows()
-    expect(newChat).toMatch(/^New chat.*agent.+runs rounds when you say yes/)
+    expect(newChat).toMatch(/^New chat.*orchestrator.+talk an idea through/)
     expect(newChat).not.toMatch(/quick change/i)
   })
 

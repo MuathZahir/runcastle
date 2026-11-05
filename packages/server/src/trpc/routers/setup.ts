@@ -260,7 +260,7 @@ async function buildImageTerminal(
   const release = tryImageBuildSlot()
   if (!release) {
     throw new InvalidInputError(
-      'A burn is building the sandbox image right now. It will be ready when that build finishes.',
+      'A round is building the sandbox image right now. It will be ready when that build finishes.',
     )
   }
   try {

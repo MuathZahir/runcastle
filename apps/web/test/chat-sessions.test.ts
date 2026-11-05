@@ -26,10 +26,10 @@ describe('the threads a page lists', () => {
 
   it('names a thread the list does not hold yet, and never lists one twice', () => {
     const threads = [entry('th_main', 'main', 1)]
-    const listed = withStandIns(threads, [standIn('th_main', 'Feature chat', 'main', 2), standIn('th_new', 'New thread', 'side', 2)])
+    const listed = withStandIns(threads, [standIn('th_main', 'Feature chat', 'main', 2), standIn('th_new', 'New chat', 'side', 2)])
     expect(listed.map((t) => [t.id, t.title])).toEqual([
       ['th_main', 'th_main'],
-      ['th_new', 'New thread'],
+      ['th_new', 'New chat'],
     ])
   })
 

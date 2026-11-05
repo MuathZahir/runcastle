@@ -63,7 +63,7 @@ function config(
   return { sandbox, burnWorkspace: 'auto', burnCache }
 }
 
-describe('what the burn container is handed, by cache mode', () => {
+describe('what the round container is handed, by cache mode', () => {
   /** The burner's own composition: assemble the cache mounts, then the options. */
   const optionsFor = (slot: number | undefined, sandbox: RuncastleConfig['sandbox'] = 'docker') => {
     const cache = buildBurnCacheMounts(slot, PROJECT_ID, sandbox, 'pnpm')
@@ -275,7 +275,7 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
       `${guard}; then rm -rf ${repo}/node_modules && git -C ${repo} clean -fdX && RC_COLD=1 && printf '%s\\n' "$RC_STAMP" > ${slotStampPath(2)}; fi`,
     )
     // The stamp is written AFTER the wipe: a wipe killed halfway must be retried
-    // on the next burn, not recorded as done.
+    // on the next round, not recorded as done.
     expect(cmd.indexOf(`> ${slotStampPath(2)}`)).toBeGreaterThan(
       cmd.indexOf(`rm -rf ${repo}/node_modules`),
     )
@@ -301,7 +301,7 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
 })
 
 /**
- * The script runs inside the burn container by construction, so it is `sh` —
+ * The script runs inside the round container by construction, so it is `sh` —
  * driven here for real rather than matched as a string, because the acceptance
  * question ("does a second run start warm?") is not one a string can answer. A
  * Windows host has no sh to drive it with, and macOS's BSD `date` has no `%N`
@@ -326,7 +326,7 @@ describe.skipIf(!hostDateHasNanos)('buildSlotSetupCommand — driven for real', 
    * The script with its two container paths pointed at real directories.
    *
    * One pass, not two chained `replaceAll`s: the temp dirs come from
-   * `os.tmpdir()`, and inside a burn container that is `/home/agent/cache/tmp`
+   * `os.tmpdir()`, and inside a round container that is `/home/agent/cache/tmp`
    * (`burnCacheEnv` sets `TMPDIR`) — so a second pass rewrites the
    * `BURN_CACHE_MOUNT` prefix of the workspace path the first pass just
    * inserted, and the script clones from a directory that never existed. Both
@@ -543,7 +543,7 @@ describe('withBurnCacheSlot — one slot per ticket run, back on every exit path
   })
 
   // The burn path this protects: an attempt that dies mid-run must not leave a
-  // slot held for the life of the server, or the next burn narrows by one.
+  // slot held for the life of the server, or the next round narrows by one.
   it('releases the slot when the body throws, and rethrows', async () => {
     const allocator = createSlotAllocator(2)
     await expect(

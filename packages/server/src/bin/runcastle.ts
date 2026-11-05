@@ -60,7 +60,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
   return { command: 'help', args: argv }
 }
 
-const USAGE = `runcastle — burn tickets into shipped features with Claude Code
+const USAGE = `runcastle — Idea in, merged branch out. On your machine, in your repo.
 
 Usage:
   runcastle            Boot the server and serve the app (http://localhost:4512)
@@ -77,7 +77,7 @@ Usage:
   runcastle service install
                        Keep runcastle running on this Linux machine (service remove undoes it)
   runcastle build-image
-                       Build the sandbox image without the app (a burn builds it if it is missing)
+                       Build the sandbox image without the app (the first round builds it if it is missing)
   runcastle --version  Print the installed version
   runcastle --help     Show this help
 `

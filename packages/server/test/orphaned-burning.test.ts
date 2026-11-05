@@ -27,7 +27,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * never reads as finished, because `burning` is not terminal.
  *
  * The three places that know no agent is live — the run finalizer, boot
- * reconciliation, and a burn restart — now fail those lanes (keeping their
+ * reconciliation, and a round restart — now fail those lanes (keeping their
  * commits for a retry), and `ticket.stop` sweeps as a last-resort rescue.
  */
 
@@ -35,7 +35,7 @@ function ticketInput(title: string) {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
 }
 
-/** Marks every pending ticket done — a burn that actually runs its lanes. */
+/** Marks every pending ticket done — a round that actually runs its lanes. */
 const completingBurner: WorkflowDef = {
   id: 'ticket-burner',
   async run(wctx: WorkflowCtx) {
@@ -50,7 +50,7 @@ const completingBurner: WorkflowDef = {
   },
 }
 
-describe('orphaned burning tickets', () => {
+describe('orphaned building tickets', () => {
   let ctx: AppCtx
   let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
   let original: WorkflowDef | undefined
@@ -102,7 +102,7 @@ describe('orphaned burning tickets', () => {
 
     const failed = listAfter(ctx, featureId, 0).filter((e) => e.type === 'ticket.failed')
     expect(failed).toHaveLength(1)
-    expect(failed[0].message).toContain('the previous run died while it was burning')
+    expect(failed[0].message).toContain('the previous run died while it was building')
   })
 
   it('the run finalizer fails a lane the workflow left burning', async () => {
@@ -123,7 +123,7 @@ describe('orphaned burning tickets', () => {
 
     const swept = getTicket(ctx, t.id)
     expect(swept.status).toBe('failed')
-    expect(swept.error).toContain('the run ended (failed) while it was burning')
+    expect(swept.error).toContain('the run ended (failed) while it was building')
   })
 
   it('ticket.stop sweeps an orphaned lane when no agent and no run are live', async () => {
@@ -137,7 +137,7 @@ describe('orphaned burning tickets', () => {
 
     const swept = getTicket(ctx, stuckId)
     expect(swept.status).toBe('failed')
-    expect(swept.error).toContain('the run that was burning it is gone')
+    expect(swept.error).toContain('the round that was building it is gone')
     // Back on the paths that refuse a `burning` ticket.
     expect(cancelTicket(ctx, stuckId, 'not needed').status).toBe('cancelled')
     expect(allTerminal(featureId)).toBe(true)

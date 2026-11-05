@@ -73,7 +73,7 @@ const asChromium = (): void => {
 describe('before the server has answered', () => {
   it('says the drive is starting, in the same head', () => {
     const html = render({ driveState: 'idle', drive: undefined })
-    expect(html).toContain('Starting the test drive')
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Starting the test drive')
     expect(html).toContain('the way back')
     expect(html).toContain('stop and toggle')
   })

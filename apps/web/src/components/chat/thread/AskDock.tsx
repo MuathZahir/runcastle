@@ -369,7 +369,7 @@ export function ApprovalDock({
             on={false}
             label={
               call.kind === 'edit' ? (
-                'Yes, and allow edits for the rest of this thread'
+                'Yes, and allow edits for the rest of this chat'
               ) : (
                 <>
                   Yes, and don’t ask again for <span className="font-mono text-xs">{first}</span> in this project

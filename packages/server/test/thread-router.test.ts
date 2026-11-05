@@ -178,7 +178,7 @@ describe('thread router', () => {
       for (const body of log) appendThreadEvent(row.id, body)
       return row.id
     }
-    const briefing: ThreadEventBody = { type: 'prompt', id: 'k', text: 'You are the project session…', source: 'runcastle' }
+    const briefing: ThreadEventBody = { type: 'prompt', id: 'k', text: 'You are the orchestrator…', source: 'runcastle' }
     const empty = thread([])
     const firstMessage = thread([
       briefing,
@@ -238,7 +238,7 @@ describe('thread router', () => {
     fake.script.turn = async (t) => {
       await t.update({ sessionUpdate: 'session_info_update', title: 'Runcastle project skill session' })
     }
-    await host.prompt(row.id, { text: 'You are the project session…' }, { source: 'runcastle', hold: true })
+    await host.prompt(row.id, { text: 'You are the orchestrator…' }, { source: 'runcastle', hold: true })
     await caller.thread.send({ threadId: row.id, text: 'Tidy the release notes' })
     await logUntil(row.id, (e) => e.some((x) => x.type === 'title'))
     await logUntil(row.id, turnEnded)

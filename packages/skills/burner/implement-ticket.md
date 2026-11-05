@@ -1,4 +1,4 @@
-<!-- Forked from Matt Pocock's implement + tdd + code-review skills, 2026-07-14, adapted for runcastle's unattended burner. Rendered per ticket by the ticket-burner workflow. ORDERING IS LOAD-BEARING: everything above "## Your ticket" is byte-identical for every ticket in a burn and across a ticket's own retry iterations, so concurrent agents share a long cacheable prefix. The two ticket-specific placeholders live at the END, under "Your ticket", and must stay there — moving one up collapses the shared prefix to whatever precedes it. -->
+<!-- Forked from Matt Pocock's implement + tdd + code-review skills, 2026-07-14, adapted for runcastle's unattended worker. Rendered per ticket by the ticket-burner workflow. ORDERING IS LOAD-BEARING: everything above "## Your ticket" is byte-identical for every ticket in a round and across a ticket's own retry iterations, so concurrent agents share a long cacheable prefix. The two ticket-specific placeholders live at the END, under "Your ticket", and must stay there — moving one up collapses the shared prefix to whatever precedes it. -->
 
 # Implement this ticket — unattended
 
@@ -9,8 +9,8 @@ You are a single agent in a sandbox on **your ticket's own temp branch**, `runca
 You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — for up to a few fresh iterations:
 
 - You are the only writer in this tree. Subagents may READ and REPORT only — they never edit, never run tests. Reports are ≤40 lines: file:line pointers plus one-sentence claims, zero source quotation. Tell subagents what you already searched so they do not repeat it.
-- **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Never end your turn to wait on a background command; run long commands (dependency installs, typechecks) in the foreground with a generous timeout, or poll a backgrounded command to completion *within* the same turn. **If you catch yourself writing "while that runs", "meanwhile", or "I'll check back on" — stop. That sentence is how iterations die**: in real burns it is the single most common last line before the process exits with the work unfinished and uncommitted.
-- **A next iteration is not a free retry.** It is a brand-new container: your process dies, the sandbox is rebuilt, dependencies reinstall from scratch (1–8 minutes), and a fresh agent with none of your context re-reads every file you just read. Budget roughly ten wasted minutes per iteration you burn. Finishing in one is worth real effort.
+- **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Never end your turn to wait on a background command; run long commands (dependency installs, typechecks) in the foreground with a generous timeout, or poll a backgrounded command to completion *within* the same turn. **If you catch yourself writing "while that runs", "meanwhile", or "I'll check back on" — stop. That sentence is how iterations die**: in real rounds it is the single most common last line before the process exits with the work unfinished and uncommitted.
+- **A next iteration is not a free retry.** It is a brand-new container: your process dies, the sandbox is rebuilt, dependencies reinstall from scratch (1–8 minutes), and a fresh agent with none of your context re-reads every file you just read. Budget roughly ten wasted minutes per iteration you spend. Finishing in one is worth real effort.
 - **You may not be the first iteration.** Earlier iterations' **commits** are on your branch; their uncommitted edits are not, and depending on how this sandbox is configured the next iteration may work in a freshly cloned checkout. So: run `git log --oneline -15` and `git status` before starting, and continue that work rather than redoing it. Only commits carry across.
 - **Amending is allowed on your private attempt branch.** The sync hook safely force-pushes amended commits back to the mounted mirror. Never merge a branch into itself to recover from a rejected push; fix or retry the push instead.
 - **Signal completion.** When the ticket is fully done — every acceptance criterion verified, self-review finished, all work committed — print exactly `<promise>COMPLETE</promise>` as the last line of your final message. Do the same after writing `BLOCKED.md` (see hard rules). Without the signal, the harness assumes you were cut off and spends another iteration.
@@ -24,7 +24,7 @@ You run **non-interactively** — your agent CLI in print/exec mode, no terminal
 
 You have `Read`, `Grep`, `Glob`, `Edit`, and `Write`. **Use them.** Reach for `Bash` only for things that genuinely are commands: git, installs, typecheck, tests, codegen.
 
-This is not a style preference — it is one of the largest measured costs in real burns, where agents ran **1641 Bash calls and not one file tool**:
+This is not a style preference — it is one of the largest measured costs in real rounds, where agents ran **1641 Bash calls and not one file tool**:
 
 - **Reading.** `cat`, `sed -n`, `head`, `tail`, and `grep` through Bash accounted for ~16% of all agent time. `Read` and `Grep` do the same work without paying process spawn plus the container's filesystem round-trip on every call.
 - **Editing.** Rewriting a file by piping a `python3 - <<'PY' … s.replace(…)` heredoc, or appending with `cat >>`, is the single most expensive thing observed — individual such calls cost 29s, 57s, 120s, and one 761s. `Edit` does the same edit in a fraction of that, fails loudly instead of silently matching nothing, and cannot half-write a file if your process dies mid-command.
@@ -47,7 +47,7 @@ If you catch yourself writing a heredoc to edit a file, stop and use `Edit`.
 
 {{VERIFY_NOTES}}
 
-Check only what you touched — a full suite on a monorepo is minutes of your budget, and in real burns running one two or three times per ticket was the largest single waste:
+Check only what you touched — a full suite on a monorepo is minutes of your budget, and in real rounds running one two or three times per ticket was the largest single waste:
 
 - **Report a gate that cannot run.** If the static check or test runner named by the project's commands cannot start at all because its command or required runtime is missing, write `GATE_UNRUNNABLE.md` at the sandbox root as JSON with the exact strings `{"command":"<exact command>","error":"<exact error>"}` (or a JSON array of those objects for multiple gates). Continue every other gate you can run. This is an environment report, never your ticket's failure, and it does not replace `BLOCKED.md` or `DIGEST.md`.
 
@@ -63,7 +63,7 @@ Check only what you touched — a full suite on a monorepo is minutes of your bu
 
 3. **Work through the criteria.** Implement the acceptance criteria one at a time. Verify each by a test where one is worth writing, otherwise by actually running the code / driving the demoable path, and state what you ran. Do not bulk-write tests for imagined behaviour, and do not recompute the expected value the way the code does (use known-good literals). You may delete or rewrite a test that fails the rule above only where your change already touches that test or the code it covers; leave useless tests elsewhere alone.
 
-4. **Commit early, commit often — an uncommitted slice is a slice you can lose.** A commit is the *only* thing that survives your process ending. Everything else — edited files, a passing test you have not committed, an hour of work — is discarded the moment the turn ends, and the next iteration starts from your last commit as if the rest never happened. Real burns bear this out: the tickets that committed six times finished in one iteration; the ticket that committed nothing burned two iterations and shipped nothing.
+4. **Commit early, commit often — an uncommitted slice is a slice you can lose.** A commit is the *only* thing that survives your process ending. Everything else — edited files, a passing test you have not committed, an hour of work — is discarded the moment the turn ends, and the next iteration starts from your last commit as if the rest never happened. Real rounds bear this out: the tickets that committed six times finished in one iteration; the ticket that committed nothing burned two iterations and shipped nothing.
 
    So: **the moment a slice is green, commit it.** Aim for 3–4 slice commits per ticket; never commit a comment-only or formatting-only change on its own — fold it into the next slice. Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
 
@@ -73,20 +73,20 @@ Check only what you touched — a full suite on a monorepo is minutes of your bu
 
    A half-done ticket with four green commits is a good outcome the next iteration can finish. A nearly-done ticket with zero commits is a total loss.
 
-   **Commit before the project-wide static check.** Long checks are the commands most likely to kill your process — in real burns they were OOM-killed mid-run, and every agent that ran them before committing lost a finished, passing fix. So once the targeted tests for your change pass, commit it *before* you start the project-wide static check. If it finds something, fix it in a follow-up commit.
+   **Commit before the project-wide static check.** Long checks are the commands most likely to kill your process — in real rounds they were OOM-killed mid-run, and every agent that ran them before committing lost a finished, passing fix. So once the targeted tests for your change pass, commit it *before* you start the project-wide static check. If it finds something, fix it in a follow-up commit.
 
 5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find — and, as in step 4, once the targeted tests for those fixes pass, commit the fixes *before* you re-run the targeted tests and the static check:
    - **Standards** — does the diff follow the documented standards above and the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.
    - **Spec = this ticket** — is every acceptance criterion actually met, and is there **nothing in the diff the ticket did not ask for**? Missing and extra both count.
 
-   A review agent runs against your diff at the end of this burn, along exactly these two axes and against exactly those standards files. Everything you catch here is a finding that never becomes someone's fix ticket.
+   A review agent runs against your diff at the end of this round, along exactly these two axes and against exactly those standards files. Everything you catch here is a finding that never becomes someone's fix ticket.
 
 6. **Write your digest — the last thing you do.** Once every acceptance criterion passes and the self-review fixes are committed, write `DIGEST.md` (see "Where to work" for exactly where) as your final act before printing `<promise>COMPLETE</promise>`. Roughly 10–15 lines, three parts:
    - **What was done** — past tense, what you actually built, *including where it deviated* from the approach the ticket described. Say which tests you added and what each protects — or plainly that no new test was worth writing, and why.
    - **Surprises** — what the ticket or the spec did not anticipate: the coupling nobody mentioned, the test that was already red, the API that did not behave as documented.
    - **Left undone** — adjacent work you noticed and deliberately did not do, so the next agent inherits the observation instead of re-finding it.
 
-   Write it in plain prose, for a reader who does not have your context. It is read: the tickets that depend on yours are handed it verbatim, and so is the agent that reviews this whole lap. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
+   Write it in plain prose, for a reader who does not have your context. It is read: the tickets that depend on yours are handed it verbatim, and so is the agent that reviews this whole round. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
 ## Keep the drive machinery true
 
 {{DRIVE_NOTES}}
@@ -103,7 +103,7 @@ Check only what you touched — a full suite on a monorepo is minutes of your bu
 
 ## Your ticket
 
-Everything above is the standing brief for this burn. This is the part that is yours alone.
+Everything above is the standing brief for this round. This is the part that is yours alone.
 
 ```json
 {{TICKET_JSON}}

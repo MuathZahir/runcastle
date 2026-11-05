@@ -14,7 +14,7 @@ import type { Db } from '../src/db/types'
  * The orchestrator mode leaves the schema (one-orchestrator-no-mode decisions 1
  * and 2): 0054 drops the project's Orchestrator setting and the feature's
  * ownership column, and an old `orchestrate` session purpose reads as none,
- * since every project session is the orchestrator now.
+ * since every orchestrator is the orchestrator now.
  */
 
 const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')

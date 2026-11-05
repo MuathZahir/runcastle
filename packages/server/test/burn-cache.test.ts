@@ -22,7 +22,7 @@ import {
 } from '../src/workflows/burn-cache'
 
 /**
- * The host side of the persistent burn cache: volume lifecycle and slot
+ * The host side of the persistent worker cache: volume lifecycle and slot
  * ownership. Every engine command goes through an injected `ExecFn`, so these
  * pin the exact argv issued — which is the whole contract, since the commands
  * are the only thing that reaches Docker/Podman.
@@ -142,8 +142,8 @@ describe('checkBurnCacheAccess', () => {
     }
   }
 
-  // Running as the burn user is the point: the answer is what a burn would get.
-  it('asks from a container running as the burn user', async () => {
+  // Running as the worker user is the point: the answer is what a round would get.
+  it('asks from a container running as the worker user', async () => {
     const { calls, run } = check({ stdout: 'runcastle-access writable\n' })
     expect(await run).toEqual({ state: 'writable' })
     expect(calls[0]?.slice(0, 9)).toEqual([
@@ -159,7 +159,7 @@ describe('checkBurnCacheAccess', () => {
     ])
   })
 
-  it('names the path and its owner when the burn user cannot write', async () => {
+  it('names the path and its owner when the worker user cannot write', async () => {
     const { run } = check({
       stdout: `noise\nruncastle-access unwritable 0:0 ${BURN_CACHE_MOUNT}/slots\n`,
     })
@@ -178,7 +178,7 @@ describe('checkBurnCacheAccess', () => {
 })
 
 describe('ensureBurnCacheVolume', () => {
-  it('creates a labelled volume and chowns it to the burn user on first creation', async () => {
+  it('creates a labelled volume and chowns it to the worker user on first creation', async () => {
     const { exec, calls } = fakeExec(volumeMissing)
 
     await ensureBurnCacheVolume({
@@ -194,7 +194,7 @@ describe('ensureBurnCacheVolume', () => {
 
   // The bug: the owner was hardcoded to 1000 while the image baked in the host's
   // UID, so a host at 1001 got a volume its own burns could not write to.
-  it('hands a new volume to the real burn user, not to 1000', async () => {
+  it('hands a new volume to the real worker user, not to 1000', async () => {
     const { exec, calls } = fakeExec(volumeMissing)
 
     await ensureBurnCacheVolume({
@@ -218,7 +218,7 @@ describe('ensureBurnCacheVolume', () => {
 
   // A recursive chown of a multi-gigabyte cache, once per burn, is the cost this
   // cache exists to remove, and a writable volume holds warm state worth keeping.
-  it('leaves a current volume the burn user can write to alone', async () => {
+  it('leaves a current volume the worker user can write to alone', async () => {
     const { exec, calls } = fakeExec(accessReply('runcastle-access writable\n'))
     let repaired = false
 
@@ -242,7 +242,7 @@ describe('ensureBurnCacheVolume', () => {
 
   // Every route to a bad volume ends here: a label stamped before a chown that
   // never ran, a UID that changed, a volume left over from another host.
-  it('replaces a labelled volume the burn user cannot write to, and says what it found', async () => {
+  it('replaces a labelled volume the worker user cannot write to, and says what it found', async () => {
     const { exec, calls } = fakeExec(
       accessReply(`runcastle-access unwritable 0:0 ${BURN_CACHE_MOUNT}\n`),
     )
@@ -305,7 +305,7 @@ describe('ensureBurnCacheVolume', () => {
     expect(calls.map((c) => c.slice(0, 3))).toEqual([['podman', 'volume', 'inspect']])
   })
 
-  it('rolls the volume back when the chown fails, so the next burn retries from scratch', async () => {
+  it('rolls the volume back when the chown fails, so the next round retries from scratch', async () => {
     const { exec, calls } = fakeExec((c, args) =>
       args[0] === 'run' ? { code: 1, stderr: "sleep: invalid option -- 'R'" } : volumeMissing(c, args),
     )

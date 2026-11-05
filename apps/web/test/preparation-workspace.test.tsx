@@ -101,7 +101,7 @@ describe('EstablishedFrame', () => {
     const row = screen.getByText('Verify').closest('details')
     expect(row?.open).toBe(false)
     expect(row?.querySelector('summary')?.textContent).toContain('Verified')
-    expect(screen.getByText(/Established in a conversation/)).toBeTruthy()
+    expect(screen.getByText(/Established in a chat/)).toBeTruthy()
     const evidence = screen.getByText(/First line/)
     expect(evidence.className).toContain('line-clamp-3')
     // the inset ground is the wrapper's, not the clamped text's

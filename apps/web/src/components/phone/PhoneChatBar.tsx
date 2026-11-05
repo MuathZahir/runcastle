@@ -76,7 +76,7 @@ export function PhoneChatBar({
       {switches ? (
         <button
           type="button"
-          aria-label={`${title} — switch thread`}
+          aria-label={`${title} — switch chat`}
           onClick={() => setSheet('threads')}
           className="flex min-w-0 flex-1 cursor-pointer flex-col px-1 text-left"
         >
@@ -87,7 +87,7 @@ export function PhoneChatBar({
       )}
       {views.length > 0 && <IconButton label="More" size="lg" icon={<IconMore />} onClick={() => setSheet('views')} />}
       {published && (
-        <Sheet open={sheet === 'threads'} onClose={close} title="Threads">
+        <Sheet open={sheet === 'threads'} onClose={close} title="Chats">
           {threads.map((t) => (
             <SheetRow
               key={t.id}
@@ -97,7 +97,7 @@ export function PhoneChatBar({
               onClick={after(() => published.pick(t.id))}
             />
           ))}
-          <SheetRow icon={<IconPlus />} label="New thread" onClick={after(published.newThread)} />
+          <SheetRow icon={<IconPlus />} label="New chat" onClick={after(published.newThread)} />
         </Sheet>
       )}
       <Sheet open={sheet === 'views'} onClose={close} label="Views">

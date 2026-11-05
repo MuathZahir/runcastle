@@ -74,12 +74,12 @@ describe('resolveBurnUser', () => {
 })
 
 describe('buildSandboxOptions', () => {
-  it('passes the burn user to the container, so sandcastle does not read the process', () => {
+  it('passes the worker user to the container, so sandcastle does not read the process', () => {
     const options = buildSandboxOptions({}, null, [], {}, undefined, VPS_USER)
     expect(options).toMatchObject({ containerUid: 1001, containerGid: 1001 })
   })
 
-  it('passes none when no burn user is given, which is how podman keeps its default', () => {
+  it('passes none when no worker user is given, which is how podman keeps its default', () => {
     expect(buildSandboxOptions({}, null)).not.toHaveProperty('containerUid')
   })
 })
@@ -120,7 +120,7 @@ describe('a failed setup step leads with its cause', () => {
   it('says a cache refusal in plain words, naming the volume and the user', () => {
     const message = burnCacheDeniedMessage(SETUP_FAILURE, 'runcastle-proj_x', VPS_USER)
     expect(errorHeadline(message ?? '')).toBe(
-      'Burn cache volume runcastle-proj_x is not writable by burn user 1001:1001. Clear the burn cache in Settings → Workers, then burn again.',
+      'Worker cache volume runcastle-proj_x is not writable by worker user 1001:1001. Clear the worker cache in Settings → Workers, then start the round again.',
     )
     expect(message).toContain(SETUP_FAILURE)
   })
@@ -139,7 +139,7 @@ describe('a failed setup step leads with its cause', () => {
     const refusal =
       "UID mismatch: image 'sandcastle:runcastle' was built with UID 1000, but the expected UID is 1001. Rebuild the image with 'sandcastle docker build-image'"
     expect(imageUidRefusalMessage(refusal, null)).toBe(
-      'Image sandcastle:runcastle was built for UID 1000, but burns on this machine run as UID 1001. Rebuild it from Settings → Workers, or run `runcastle build-image`.',
+      'Image sandcastle:runcastle was built for UID 1000, but workers on this machine run as UID 1001. Rebuild it from Settings → Workers, or run `runcastle build-image`.',
     )
     expect(imageUidRefusalMessage('some other error', null)).toBeUndefined()
   })
@@ -171,7 +171,7 @@ describe('the image’s user', () => {
     })
     expect(verdict).toEqual({ fresh: false, reasons: [{ kind: 'user', image: 1000, burn: 1001 }] })
     expect(describeFreshnessReason('img', { kind: 'user', image: 1000, burn: 1001 })).toBe(
-      'img was built for UID 1000, but burns here run as UID 1001',
+      'img was built for UID 1000, but workers here run as UID 1001',
     )
   })
 
@@ -211,10 +211,10 @@ const isVolumeInspect = (args: string[]) => args[0] === 'volume' && args[1] === 
 const isVolumeList = (args: string[]) => args[0] === 'volume' && args[1] === 'ls'
 const isRun = (args: string[]) => args[0] === 'run'
 
-describe('the doctor’s burn cache row', () => {
+describe('the doctor’s worker cache row', () => {
   const scope = { imageName: 'sandcastle:runcastle', projectId: 'proj_a' }
 
-  it('reports a volume the burn user cannot write to, without failing the report', async () => {
+  it('reports a volume the worker user cannot write to, without failing the report', async () => {
     const { exec } = engine((args) => {
       if (isVolumeInspect(args)) return { stdout: '1\n' }
       if (isRun(args)) return { stdout: 'runcastle-access unwritable 0:0 /home/agent/cache\n' }
@@ -222,9 +222,9 @@ describe('the doctor’s burn cache row', () => {
     })
     const row = await burnCacheVolumeProbe(exec, scope, VPS_USER)
     expect(row).toMatchObject({ id: 'burn-cache-volume', status: 'stale', severity: 'info' })
-    expect(row?.detail).toContain('burn user 1001:1001 cannot write to')
+    expect(row?.detail).toContain('worker user 1001:1001 cannot write to')
     expect(row?.detail).toContain('owned by 0:0')
-    expect(row?.detail).toContain('next burn replaces it')
+    expect(row?.detail).toContain('next round replaces it')
   })
 
   it('is ok when the volume is writable, and when there is no volume yet', async () => {
@@ -262,11 +262,11 @@ describe('the doctor’s burn cache row', () => {
   })
 })
 
-describe('the burn user row', () => {
-  it('names who burns run as', () => {
+describe('the worker user row', () => {
+  it('names who workers run as', () => {
     expect(burnUserProbe(VPS_USER, false, 'error')).toMatchObject({
       status: 'ok',
-      detail: 'burns run as 1001:1001',
+      detail: 'workers run as 1001:1001',
     })
   })
 
@@ -304,9 +304,9 @@ describe('the token row', () => {
     expect(countEnvKeyLines(content, 'MISSING')).toBe(0)
   })
 
-  it('reports duplicate lines, saying which one burns use', () => {
+  it('reports duplicate lines, saying which one workers use', () => {
     const row = runtimeAfkKeyProbe(spec, { [KEY]: 'tok' }, 'error', { [KEY]: 3 })
-    expect(row?.detail).toContain(`has 3 ${KEY} lines, and burns use the last`)
+    expect(row?.detail).toContain(`has 3 ${KEY} lines, and workers use the last`)
     expect(row?.status).toBe('ok')
   })
 

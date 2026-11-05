@@ -230,7 +230,7 @@ describe('runDoctor — canned environments', () => {
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('missing')
-    // The first burn builds it, so nothing is in the way and the report stays healthy.
+    // The first round builds it, so nothing is in the way and the report stays healthy.
     expect(image.severity).toBe('info')
     expect(image.detail).toContain('the first round builds it')
     expect(image.fix).toContain('runcastle build-image')
@@ -246,7 +246,7 @@ describe('runDoctor — canned environments', () => {
     expect(image.status).toBe('stale')
     expect(image.severity).toBe('error')
     expect(image.detail).toBe(
-      `sandcastle:runcastle no longer matches the burner Dockerfile — rebuild${CODEX_UNCHECKED}`,
+      `sandcastle:runcastle no longer matches the worker Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
     // Names the settings page the web deep-links from (decision 9).
     expect(image.fix).toBe('Open Settings → Workers (Rebuild image).')
@@ -307,7 +307,7 @@ describe('runDoctor — canned environments', () => {
     }
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').detail).toBe(
-      'sandcastle:runcastle no longer matches the burner Dockerfile; ' +
+      'sandcastle:runcastle no longer matches the worker Dockerfile; ' +
         `sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
   })
@@ -445,7 +445,7 @@ describe('runDoctor — canned environments', () => {
     expect(image.fix).not.toContain('older runcastle')
   })
 
-  // Runcastle cannot build it, but it can still say a burn will not find it.
+  // Runcastle cannot build it, but it can still say a round will not find it.
   it('still calls a custom image out when it is not built at all', async () => {
     const asked: string[] = []
     const table = cannedExec(ALL_HEALTHY)
@@ -522,7 +522,7 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     fileExists: () => false,
   }
 
-  // Codex burns borrow the login `codex login` wrote (decision 4), so the login
+  // Codex workers borrow the login `codex login` wrote (decision 4), so the login
   // IS the AFK credential — a third row asking for an API key would sell the
   // operator the setup step this feature exists to remove.
   it('reports codex as two checks and claude as three, tagged with runtime and question', async () => {
@@ -612,10 +612,10 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
 
 /**
  * Decision 4: `auth.json` at the Codex home is the artifact every surface
- * borrows — the launcher copies it into a session's home, a burn copies it out
+ * borrows — the launcher copies it into a session's home, a round copies it out
  * of a read-only mount — so its presence, not what `codex login status` says, is
  * what "Codex ready" means. Anything else lets the doctor call a host ready that
- * a burn then refuses to run on.
+ * a round then refuses to run on.
  */
 describe('runDoctor — codex login is decided by the credentials file', () => {
   const base = {
@@ -637,7 +637,7 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
     const auth = byId(report.results, 'codex-auth')
     expect(auth.status).toBe('ok')
     // The disagreement is reported, not hidden — it is the only clue an operator
-    // gets that the CLI and the burn see different things.
+    // gets that the CLI and the round see different things.
     expect(auth.detail).toContain('auth.json')
     expect(auth.detail).toContain('codex login status')
     expect(report.ok).toBe(true)
@@ -782,7 +782,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     })
     expect(row.status).toBe('stale')
     expect(row.detail).toBe(
-      `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild${CODEX_UNCHECKED}`,
+      `${TAG} is built on sandcastle:runcastle, which no longer matches the worker Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
   })
 
@@ -831,12 +831,12 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       '.runcastle/sandbox/Dockerfile is not built yet — the first round builds it, which takes a few minutes',
     )
     expect(row.fix).toContain('Build image')
-    // Nothing is in the way: the first burn builds it.
+    // Nothing is in the way: the first round builds it.
     expect(row.severity).toBe('info')
   })
 
   // An image nothing resolves to is not this project's image, however current
-  // it is: a burn would still run in the stock one. The same Build fixes it.
+  // it is: a round would still run in the stock one. The same Build fixes it.
   it('reports not-built-yet when the image exists but the project never adopted it', async () => {
     const row = await imageRow({
       ...base,
@@ -884,7 +884,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
   })
 
-  // Both at once: the human's tag is never overwritten, so a burn keeps
+  // Both at once: the human's tag is never overwritten, so a round keeps
   // resolving to it however current the project image is. A row about the
   // project image would describe a container no burn runs in — and would arm a
   // Build button for it.
@@ -915,8 +915,8 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
   })
 
   // Decision 9: a whitespace column is no image at all — `resolveSandboxImage`
-  // trims it, so a burn runs in the project image while a row calling it custom
-  // would disarm the Build button over a value the burn cannot see.
+  // trims it, so a round runs in the project image while a row calling it custom
+  // would disarm the Build button over a value the round cannot see.
   it('reads a blank stored image as unset, not as a tag the human typed', async () => {
     const row = await imageRow({
       ...base,
@@ -959,7 +959,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
   })
 })
 
-describe('runDoctor — the burner Dockerfile it hashes', () => {
+describe('runDoctor — the worker Dockerfile it hashes', () => {
   const base = {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,

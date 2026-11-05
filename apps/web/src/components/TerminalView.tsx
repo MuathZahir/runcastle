@@ -157,7 +157,7 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
       : status === 'reconnecting'
         ? { text: 'Disconnected — reconnecting… keystrokes are dropped until the stream is back', tone: 'down' }
         : status === 'ended'
-          ? { text: 'Session stream ended — relaunch or end the session above', tone: 'dim' }
+          ? { text: 'Chat stream ended — relaunch or end the chat above', tone: 'dim' }
           : null
 
   return (

@@ -186,7 +186,7 @@ describe('settings service (#46)', () => {
     })
   })
 
-  it('has no orchestrator setting: every project session is the orchestrator', () => {
+  it('has no orchestrator setting: every orchestrator is the orchestrator', () => {
     const project = seedProject(ctx)
     expect(getSettings(ctx, project.id, io()).fields.find((f) => f.key === 'orchestrator')).toBeUndefined()
     expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'orchestrator')).toBeUndefined()

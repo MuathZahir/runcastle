@@ -439,7 +439,7 @@ async function healUnbornHead(repoPath: string, onHealed?: HeadHealedReporter): 
   onHealed?.()
 }
 
-/** The project session's landing branch, as the picker needs to render it. */
+/** The orchestrator's landing branch, as the picker needs to render it. */
 export interface SessionBranchView {
   /** What a human explicitly picked, or `null` while nobody has. */
   stored: string | null
@@ -450,7 +450,7 @@ export interface SessionBranchView {
 }
 
 /**
- * Where the project session's work lands: the stored pick if a human made one,
+ * Where the orchestrator's work lands: the stored pick if a human made one,
  * otherwise the detected main line (decisions 5–6). Detection NEVER writes the
  * column — a zero-config project resolves fresh on every read, which is what
  * lets the field stay null until somebody deliberately chooses.
@@ -1150,7 +1150,7 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
 /**
  * Start `branch` at the worktree's CURRENT commit and check it out there
  * (`git checkout -b`), freeing whatever branch the worktree held — the chat's
- * alternative to {@link detachWorktree} while a burn claims the feature branch
+ * alternative to {@link detachWorktree} while a round claims the feature branch
  * (`one-chat-per-feature` decision 9).
  *
  * No start point is passed on purpose: the worktree stays exactly where it is,
@@ -1206,7 +1206,7 @@ export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
  */
 export const CHAT_BRANCH_PREFIX = 'runcastle/chat/'
 /**
- * The branch the project session works on (decision 18 of feature-grouping).
+ * The branch the orchestrator works on (decision 18 of feature-grouping).
  * One per project — the session is a singleton — cut fresh from the base tip at
  * each launch and landed back onto the base branch by {@link mergeTempBranch}
  * when the session ends. Same `runcastle/*` namespace as every other AFK
@@ -1248,7 +1248,7 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
 }
 
 /**
- * Branch the feature chat commits to while a burn holds the feature branch:
+ * Branch the feature chat commits to while a round holds the feature branch:
  * `runcastle/chat/<slug-segment>/<unique>`. There is no seq — the chat is one
  * conversation, not one of N lanes; the unique suffix is what keeps a new place
  * to commit available after each landing consumes the previous branch.
@@ -1349,7 +1349,7 @@ export async function unexcludePath(repoPath: string, pattern: string): Promise<
 }
 
 /**
- * Best-effort removal of a burn worktree sandcastle could not delete at
+ * Best-effort removal of a round worktree sandcastle could not delete at
  * teardown. On Windows `git worktree remove` hits `Directory not empty` when a
  * handle inside the dir is still open — typically the just-`rm -f`'d
  * container's bind mount, which Docker Desktop releases a moment later (also
@@ -1419,7 +1419,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Commit shas reachable from `branch` but not from `base`, oldest first — the
- * work a burn attempt chain has accumulated over the feature branch. `[]` when
+ * work a round attempt chain has accumulated over the feature branch. `[]` when
  * either ref is missing (a crashed attempt may die before its branch is ever
  * created) or the ranges cannot be compared; callers treat that as "nothing to
  * salvage", never as an error.
@@ -1663,7 +1663,7 @@ export async function commitSummaries(
 }
 
 /**
- * Best-effort delete of a burn temp branch (the "retry fresh" path: the user
+ * Best-effort delete of a round temp branch (the "retry fresh" path: the user
  * discards a preserved attempt chain). Detaches any sandcastle worktree still
  * pinning the branch first; returns whether the branch is actually gone.
  */
@@ -1751,7 +1751,7 @@ export async function findPreservedTicketBranch(
 }
 
 /**
- * Allow the isolated burn sandboxes (ADR-0005) to push into their tickets'
+ * Allow the isolated worker sandboxes (ADR-0005) to push into their tickets'
  * checked-out temp branches: `receive.denyCurrentBranch=ignore` updates the
  * REF only; the sandbox-side post-commit hook follows up with a `reset --hard`
  * that syncs the mounted working tree itself.
@@ -1779,7 +1779,7 @@ export interface TempBranchMergeResult {
   /**
    * Repo-relative paths that conflicted (only on `conflict`). Captured while the
    * merge is still in progress — `merge --abort` clears the unmerged index — so
-   * the resolver agent and the run lane get a real file list instead of having
+   * the resolver agent and the round get a real file list instead of having
    * to parse git's error prose. Empty when git could not report them.
    */
   files?: string[]
@@ -1951,7 +1951,7 @@ export interface ProjectLandResult {
 }
 
 /**
- * Land the project session's commits onto the base branch (decision 18) —
+ * Land the orchestrator's commits onto the base branch (decision 18) —
  * `null` when the session wrote nothing, so a quiet conversation costs no
  * timeline noise. Landing is {@link mergeTempBranch} unchanged: it merges in
  * whichever checkout holds the base branch (the human's, fast-forwarded like a

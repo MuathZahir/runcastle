@@ -7,6 +7,7 @@ import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { DrivePanel } from './DrivePanel'
 import { ScenarioDrive } from './ScenarioDrive'
 import { DriveFooter, DriveSetupFailed, DriveStateWindow } from './drive-parts'
+import { Term } from '../Term'
 
 /** The active drive as the stage reads it; whose it is comes from the server's `driveState`. */
 export interface StageDrive {
@@ -89,7 +90,7 @@ export function DriveStage({
           <StatusLabel spinning>Starting</StatusLabel>,
           <EmptyState
             icon={<Spinner />}
-            title="Starting the test drive"
+            title={<>Starting the <Term id="test-drive">test drive</Term></>}
             hint={<>Checking the branch out.</>}
           />,
           false,

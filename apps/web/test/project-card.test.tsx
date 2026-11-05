@@ -178,7 +178,7 @@ describe('ProjectCard', () => {
 
     const remove = screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement
     expect(remove.disabled).toBe(true)
-    expect(document.body.textContent).toContain('A run is in flight')
+    expect(document.body.textContent).toContain('A round is in flight')
 
     fireEvent.click(remove)
     expect(stub.closed).toEqual([])

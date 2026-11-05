@@ -86,6 +86,7 @@ export function loadConfig(
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
   if (env.RUNCASTLE_SESSION_MCP) overrides.sessionMcp = env.RUNCASTLE_SESSION_MCP
+  if (env.RUNCASTLE_USAGE_SIGNAL) overrides.usageSignal = env.RUNCASTLE_USAGE_SIGNAL
   if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
   num('burnConcurrency', env.RUNCASTLE_BURN_CONCURRENCY)
   num('burnMaxIterations', env.RUNCASTLE_BURN_MAX_ITERATIONS)

@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ready to publish preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.words{display:grid;grid-template-columns:minmax(150px,1.1fr) 1.2fr 1.6fr;gap:0;margin-top:12px;border-top:1px solid var(--color-border-subtle)}
+.words>div{padding:8px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.words .h{color:var(--color-text-tertiary);font-size:12px}
+.new{font-weight:600}
+.old{color:var(--color-text-tertiary)}
+.old s{text-decoration-color:var(--color-danger)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.node{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.node.end{border-color:var(--color-accent);color:var(--color-accent-text)}
+.arrow{color:var(--color-text-tertiary)}
+.rounds{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.rounds .r{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.rounds .r b{font-weight:500}
+.rounds ol{margin:0;padding-left:18px;color:var(--color-text-secondary)}
+.rm{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.rm ul{margin:6px 0 0;padding-left:18px;color:var(--color-text-secondary)}
+.rm h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+/* hand mocks below use apps/web's own look: settings rows and the wizard */
+.mock{padding:16px 20px;font:13px/20px var(--font-sans)}
+.mock .row{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start;padding:12px 0;border-bottom:1px solid var(--color-border-subtle)}
+.mock .row:last-child{border-bottom:0}
+.mock .lbl{font-weight:500}
+.mock .desc{font-size:12px;line-height:16px;color:var(--color-text-tertiary);margin-top:2px;max-width:420px}
+.sw{width:28px;height:16px;border-radius:999px;background:var(--color-accent);position:relative;margin-top:2px}
+.sw::after{content:"";position:absolute;right:2px;top:2px;width:12px;height:12px;border-radius:999px;background:#fff}
+.cb{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.cb i{width:14px;height:14px;border-radius:3px;background:var(--color-accent);flex:none;margin-top:3px}
+.ban{display:flex;gap:12px;align-items:center;padding:8px 14px;font-size:12px;border-bottom:1px solid var(--color-border)}
+.ban span:first-child{flex:1;color:var(--color-text-secondary)}
+.btn{height:24px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);font-size:12px;display:inline-flex;align-items:center}
+.btn.p{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
+@media (max-width:760px){.grid2,.rm{grid-template-columns:1fr}.words{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Ready to publish</h1>
+  <p class="lede">The README matches the app, every concept has one name with a short glossary, the usage ping is told before it is sent, the phone setup is findable and finishes, and build-era leftovers are gone. Planned without you: every decision is assumed until you say yes.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/ready-to-publish/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">What a stranger reads and the words they see, made true and plain. Six tickets build it, the lead recaptures the README's pictures, and a review round checks the lot.</p>
+
+  <div class="sub">
+    <h3>One word per concept <a class="pin" data-d="15">15</a> <a class="pin" data-d="3">3</a></h3>
+    <p class="hint">Only words people read change; code names stay. Old words stay findable in Settings search and the Glossary.</p>
+    <div class="words">
+      <div class="h">Concept</div><div class="h">The word</div><div class="h">Retired</div>
+      <div>Tickets built unattended, after your yes</div><div class="new">round</div><div class="old"><s>burn</s> · <s>AFK burn</s> · <s>run</s> · <s>lane</s> · <s>lap</s></div>
+      <div>The agent that builds one ticket</div><div class="new">worker</div><div class="old"><s>burner</s> · <s>lane</s> · <s>AFK agent</s></div>
+      <div>Building with nobody watching</div><div class="new">unattended</div><div class="old"><s>AFK</s></div>
+      <div>A conversation with an agent</div><div class="new">chat</div><div class="old"><s>thread</s> · <s>session</s> · <s>conversation</s></div>
+      <div>The project-level agent</div><div class="new">orchestrator</div><div class="old"><s>project session</s> · <s>project chat</s></div>
+      <div>Running the app to try it</div><div class="new">test drive <span class="hint">· this feature / · main</span></div><div class="old"><s>drive mode</s> · <s>project drive</s></div>
+      <div>A feature's stages</div><div class="new">Planning · Build · Review · Shipped</div><div class="old"><s>ideation</s> · <s>spec</s> · <s>tickets</s> as stages</div>
+    </div>
+    <p class="hint" style="margin-top:8px">Also: the CLI help, package description and README tagline become "Idea in, merged branch out. On your machine, in your repo." <a class="pin" data-d="19">19</a></p>
+  </div>
+
+  <div class="sub">
+    <h3>The Glossary, and where words are explained <a class="pin" data-d="16">16</a> <a class="pin" data-d="17">17</a> <a class="pin" data-d="20">20</a> <a class="pin" data-d="9">9</a></h3>
+    <p class="hint">Designed with the real components. Sixteen words in four groups, one sentence each; a dotted underline explains a word where a newcomer first meets it.</p>
+    <div class="grid2">
+<!-- screen:glossary -->
+<div class="designed">
+  <h3>Glossary dialog</h3>
+  <p>Real component and real entries; nothing else is sample. Type "burn" in the filter to see an old word find its new one.</p>
+  <p class="mono">apps/web/src/components/GlossaryDialog.tsx · apps/web/src/lib/glossary.ts · preview /preview/glossary.html</p>
+  <button data-open-design="/preview/glossary.html?state=dialog">Open in design</button>
+  <button data-open-design="/preview/glossary.html?state=at-term">Opened at one word</button>
+</div>
+<!-- /screen:glossary -->
+<!-- screen:term-hints -->
+<div class="designed">
+  <h3>Dotted-underline hints</h3>
+  <p>Real component on sample feature-page lines. Hover, focus, click or tap a word; the link opens the Glossary at it.</p>
+  <p class="mono">apps/web/src/components/Term.tsx · preview /preview/glossary.html?state=hints</p>
+  <button data-open-design="/preview/glossary.html?state=hints">Open in design</button>
+</div>
+<!-- /screen:term-hints -->
+<!-- screen:help-menu -->
+<div class="designed">
+  <h3>Help menu in the sidebar's bottom row</h3>
+  <p>The real bottom row with one new question-mark icon: Glossary, and Use runcastle on your phone. The sidebar around it is cut away.</p>
+  <p class="mono">apps/web/src/components/HelpMenu.tsx · SidebarParts.tsx (SidebarStatusLine) · preview /preview/glossary.html?state=menu</p>
+  <button data-open-design="/preview/glossary.html?state=menu">Open in design</button>
+</div>
+<!-- /screen:help-menu -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>On your phone: the HTTPS step and the walkthrough <a class="pin" data-d="7">7</a> <a class="pin" data-d="8">8</a></h3>
+    <p class="hint">Designed. A fresh tailnet's one-time HTTPS step is named with a link instead of a timeout, and the phone side is four steps beside the QR code.</p>
+    <div class="grid2">
+<!-- screen:phone-setup -->
+<div class="designed">
+  <h3>Settings → General → On your phone</h3>
+  <p>Real section, fed sample statuses for all six states: no Tailscale, stopped, ready, tailnet needs HTTPS, on, failed.</p>
+  <p class="mono">apps/web/src/components/settings/PhoneLinkSection.tsx (PhoneLinkBody) · preview /preview/phone-setup.html</p>
+  <button data-open-design="/preview/phone-setup.html?state=https">Open in design</button>
+  <button data-open-design="/preview/phone-setup.html?state=on">The link on</button>
+</div>
+<!-- /screen:phone-setup -->
+      <div>
+        <p class="hint">Also on the phone <a class="pin" data-d="10">10</a></p>
+        <p style="margin-top:4px;color:var(--color-text-secondary)">In a phone chat, a notice whose fix needs the computer says "on your computer" and drops the button that cannot work there.</p>
+        <p class="hint" style="margin-top:12px">Left to you <a class="pin" data-d="11">11</a></p>
+        <p style="margin-top:4px;color:var(--color-text-secondary)">Scanning on a real phone over your tailnet, and the macOS and Windows installers on clean machines. The outcome lists the steps.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The usage ping, told before it is sent <a class="pin" data-d="4">4</a> <a class="pin" data-d="18">18</a></h3>
+    <div class="flow">
+      <span class="node">Fresh install</span><span class="arrow">→</span><span class="node">Wizard intro: what it sends, a ticked checkbox</span><span class="arrow">→</span><span class="node end">on or off, your choice</span>
+    </div>
+    <div class="flow">
+      <span class="node">Existing install</span><span class="arrow">→</span><span class="node">One-time notice: Turn off / OK</span><span class="arrow">→</span><span class="node end">recorded, never asked again</span>
+    </div>
+    <div class="flow">
+      <span class="node">Off, or DO_NOT_TRACK</span><span class="arrow">→</span><span class="node end">no ping; the update banner asks npm</span>
+    </div>
+    <div class="grid2">
+<!-- screen:usage-settings-row -->
+      <div class="screen"><div class="mock">
+        <div class="row"><div><div class="lbl">Usage ping</div><div class="desc">At each boot runcastle checks for a newer version and counts this install as active. It sends a random install ID, the version and the platform. Nothing about your projects or code.</div></div><div class="sw" aria-label="on"></div></div>
+      </div></div>
+<!-- /screen:usage-settings-row -->
+<!-- screen:usage-wizard-line -->
+      <div class="screen"><div class="mock">
+        <div class="lbl" style="font-size:15px">Welcome to runcastle</div>
+        <div class="desc">… the intro step as it is today …</div>
+        <div class="cb"><i></i><div><div>Send the usage ping</div><div class="desc">Once per boot: a random install ID, the version and the platform, so we know runcastle is used. Turn it off here or in Settings at any time.</div></div></div>
+      </div></div>
+<!-- /screen:usage-wizard-line -->
+    </div>
+<!-- screen:usage-notice -->
+    <div class="screen" style="margin-top:12px"><div class="ban"><span>runcastle counts this install as active once per boot: a random ID, the version and the platform. Nothing about your projects.</span><span class="btn">Turn off</span><span class="btn p">OK</span></div></div>
+<!-- /screen:usage-notice -->
+    <p class="hint" style="margin-top:6px">Hand mocks: a settings row, a line on the wizard's intro step, and the one-time notice in the update banner's place. Small enough to describe rather than design.</p>
+  </div>
+
+  <div class="sub">
+    <h3>The README, before and after <a class="pin" data-d="1">1</a> <a class="pin" data-d="2">2</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="12">12</a> <a class="pin" data-d="21">21</a></h3>
+    <div class="rm">
+      <div><h3>Today</h3><ul>
+        <li>"Boot the server and open http://localhost:4512"</li>
+        <li>Six phases, gates with overrides, "two clicks"</li>
+        <li>"Only for AFK burns": Docker and token as an afterthought</li>
+        <li>A "New feature" button that does not exist</li>
+        <li>Usage ping disclosed near the bottom</li>
+        <li>No phone, no remote machine, no bug link</li>
+      </ul></div>
+      <div><h3>After</h3><ul>
+        <li>Run <code>runcastle</code>, open the address it prints</li>
+        <li>Planning · Build · Review · Shipped, as the app shows them</li>
+        <li>Two tiers up front: to run, and before your first round</li>
+        <li>New chat, Add to backlog, Jot a note; the orchestrator</li>
+        <li>One line on the ping beside install, full account below <a class="pin" data-d="4">4</a></li>
+        <li>On another machine (4512 + 4514 over SSH), On your phone, Feedback</li>
+      </ul></div>
+    </div>
+    <p class="hint" style="margin-top:8px">Pictures recaptured after the words change; the banner's six blocks become four, shown to you before the review round <a class="pin" data-d="13">13</a>. <code>E2E-FINDINGS.md</code> and the stub error class go <a class="pin" data-d="5">5</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <div class="rounds">
+      <div class="r"><b>Round 1</b><ol>
+        <li>Words: one name per concept across the web app</li>
+        <li>Words: server messages, the CLI, the agents' skill text, and the leftovers</li>
+        <li>Glossary: wire the dialog, help menu and hints</li>
+        <li>Phone: the tailnet HTTPS step, the walkthrough, phone notices</li>
+        <li>Usage ping: told first, a switch, a one-time notice</li>
+        <li>README: matches the app</li>
+      </ol></div>
+      <div class="r"><b>Lead</b><span style="color:var(--color-text-secondary)">Recapture the README screenshots, redraw the banner, and show you the banner.</span></div>
+      <div class="r"><b>Round 2</b><span style="color:var(--color-text-secondary)">Review round: drive the app and read the README against it.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>runcastle.dev: the human is building a new landing page <a class="pin" data-d="14">14</a> <a class="pin" data-d="23">23</a></li>
+      <li><i class="dot"></i>The live phone check and clean-machine installers: yours <a class="pin" data-d="11">11</a></li>
+      <li><i class="dot"></i>The GitHub description and any beta label: yours <a class="pin" data-d="19">19</a> <a class="pin" data-d="21">21</a></li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Renaming code, tables, tRPC or MCP names <a class="pin" data-d="3">3</a></li>
+      <li><i class="dot"></i>Opening a browser on boot <a class="pin" data-d="1">1</a></li>
+      <li><i class="dot"></i>Enabling tailnet HTTPS through Tailscale's API <a class="pin" data-d="7">7</a></li>
+      <li><i class="dot"></i>Waiting states, designs, drives, merges: the sibling features'</li>
+      <li><i class="dot"></i>The parallel "Orchestrator actions show as cards" text: whichever merges second fixes it <a class="pin" data-d="22">22</a></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <h3>Seams</h3>
+      <ul style="color:var(--color-text-secondary);padding-left:18px">
+        <li>README content test (existing), rewritten to the new contract.</li>
+        <li>Update check, with the new <span class="mono">usageSignal</span> setting ('on' | 'off' | unset) and install-ID presence injected.</li>
+        <li>Phone-link service with the Tailscale CLI faked: a status gains <span class="mono">httpsNeeded</span>, the address Tailscale printed; turn-on stops on "Serve is not enabled".</li>
+        <li><span class="mono">PhoneLinkBody</span>, <span class="mono">GlossaryDialog</span>, <span class="mono">Term</span>, <span class="mono">HelpMenu</span>: component tests; <span class="mono">lib/glossary.ts</span> holds the one list.</li>
+        <li>A vocabulary guard test: retired words in user-visible web strings fail, with an allowlist.</li>
+        <li>Standing notices on a phone: "on your computer", no desktop-only buttons.</li>
+      </ul>
+      <h3 style="margin-top:16px">Order</h3>
+      <p class="hint">This project runs one worker at a time, so the six build tickets run in sequence. True edges: the Glossary waits for the web words (its hints sit on rewritten strings), the README waits for everything it describes.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [["The README is fixed to the app; the server does not open a browser", "runcastle often runs where no browser can open (a VPS, SSH, WSL, a container), and the owner runs it that way. Detecting a desktop reliably on three platforms is new machinery for a one-click saving; most terminals already make the printed address clickable.", "assumed"], ["The README shows the four stages the app shows", "The brief asks for the README to match the UI, and the UI has four stages and no gate overrides.", "assumed"], ["Code names stay; only words a person reads change", "Renaming identifiers is a wide refactor with migrations and no reader. Keeping old words as search aliases helps anyone who learned them.", "assumed"], ["The usage ping stays on by default, is told before it is sent, and turns off in Settings", "The ping is anonymous and small, and an opt-in count would be near zero, which makes it useless for knowing whether anyone uses runcastle. What the brief objects to is that it is hidden, so it is told up front, before the first send, with a one-click way out.", "assumed"], ["E2E-FINDINGS.md and the unused stub error class are deleted", "Nothing reads the findings log but old feature docs, and the stub class has no caller. Deleting beats moving: a moved file still carries the private path.", "assumed"], ["The README says up front that building needs a container runtime and agent credentials", "Talking a feature through works without a container, so the wizard should not block on it; but a stranger should not learn at their first round that nothing can build.", "assumed"], ["Turning on the phone link names the tailnet's one-time HTTPS step", "Tailscale's own docs say Serve needs HTTPS certificates enabled once per tailnet, and a non-interactive run cannot click through that consent; today the human waits for the timeout and then reads CLI text.", "assumed"], ["The phone half is a short numbered walkthrough beside the QR code", "The brief asks for a real walkthrough; four steps are the whole job, and the iPhone limit is the one surprise that costs people notifications.", "assumed"], ["The phone setup is findable from a help menu and the command menu", "Nothing in the app points at the section today. One icon with a menu adds a single control to a row that already holds three, where a phone icon and a help icon would add two.", "assumed"], ["On a phone, a notice whose fix needs the computer says so", "Hiding them would hide real problems; offering a button that cannot work on a phone is the bug.", "assumed"], ["The live phone check and the clean-machine installer tests are left to the human", "No agent here has a phone or a clean VM, and the brief says not to fake it.", "assumed"], ["The README documents running runcastle on another machine", "The owner runs runcastle this way, and a design view that loads nothing because 4514 was not forwarded is the trap. The design pass-through on the app port plus two shipped with the designs feature.", "assumed"], ["The README's screenshots and banner are recaptured after the sweep", "A README whose pictures say \"Burn 10 tickets\" and show six phases contradicts its own text. Capturing needs the running app with sample data, which a sandboxed worker cannot set up."], ["runcastle.dev is not part of this feature", "Two branches rewriting the same pages would conflict; the human is building a new landing page separately."], ["One word per concept", "The brief asks for one name per concept. Choosing the words the app and agents already lean on keeps the sweep smallest and the result most familiar.", "assumed"], ["A short glossary, opened from the help menu and the command menu", "The brief asks for a glossary reachable from the app. The bottom row already holds the machine-level controls, and one shared list keeps the definitions from drifting.", "assumed"], ["A term is explained where a newcomer first meets it, by a dotted underline", "The brief asks for a one-line explanation where a term first appears. An underline adds no words to the screen, which suits a quiet workbench; underlining every mention would turn the app into a document.", "assumed"], ["Existing installs are told about the usage ping once", "The wizard disclosure (decision 4) only reaches new installs; people who installed earlier would otherwise keep sending it without ever being told in the app.", "assumed"], ["The one-line pitch stops saying \"burn\"", "The CLI help still says \"burn tickets into shipped features\", which decision 15 retires, and the README's tagline already reads well without insider words. Changing the GitHub description is an outward-facing act on the human's account.", "assumed"], ["Glossary entries name the words they replaced", "Old chats, plans and feature docs keep the old words, and so does every early user's memory; one line lets them map old to new without hunting.", "assumed"], ["The README says where to report bugs", "A stranger who hits a problem needs one obvious place to say so; how to label the product's maturity is a launch decision, not a wording one.", "assumed"], ["The sibling feature's new card text follows these words", "The brief's addition says whichever merges second fixes the words; the guard test makes that a failing test rather than a reading job.", "assumed"], ["The landing page is left alone entirely", "The human is building a new landing page separately."]]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[15, "Keep \"burn\" as the verb for starting a round (\"Burn 3 tickets\"), as the README and early UI did.", "The brief left the words to the agent and orchestrator, but they are the most visible change in the feature and touch every screen. Cheapest to change now, before the sweep runs."], [4, "Make the ping opt-in: off until you tick it.", "A product call about how much you want to know about usage versus how cautious strangers are. Opt-in would leave the count near zero."], [16, "A Glossary page inside Settings instead of its own dialog.", "A new screen and a new icon in the sidebar; the designs are waiting for your look."], [1, "Open the browser on the first boot of a desktop install.", "The brief offered it as the possibly better product; it was turned down for remote and headless installs, which is how you run it."]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

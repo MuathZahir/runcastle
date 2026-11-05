@@ -71,7 +71,7 @@ describe('evaluateEditGuard — the resolve-conflict session', () => {
   })
 
   describe('every other session behaves exactly as before', () => {
-    it('leaves a project session alone and keeps failing open on what it cannot read', () => {
+    it('leaves an orchestrator alone and keeps failing open on what it cannot read', () => {
       expect(
         evaluateEditGuard({ ...GUARD_BASE, kind: 'project', filePath: '/wt/project/src/index.ts' }),
       ).toBeNull()

@@ -339,7 +339,7 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
 
 /**
  * How long lines are gathered, from the first one, before they go: a burn's
- * review ticket and the burn itself end ~20 ms apart, and two prompts would be
+ * review ticket and the round itself end ~20 ms apart, and two prompts would be
  * two turns for what ended together.
  */
 export const ORCHESTRATOR_GATHER_MS = 300

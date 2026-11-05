@@ -6,7 +6,7 @@ import { resolveTool } from '../util/resolve-executable'
  * The agent CLI versions the host runs (feature
  * `sandbox-agent-clis-track-the-host-version`, decisions 2 and 4). The sandbox
  * runs whatever the host runs: Rebuild pins the image's installs to these, the
- * image carries them as labels, and the doctor and the burn preflight compare
+ * image carries them as labels, and the doctor and the round preflight compare
  * against them. One resolver so those three never disagree about the target.
  *
  * `null` for a runtime means "not on host, or not readable" — never drift, since

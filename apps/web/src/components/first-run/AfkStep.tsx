@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { AFK_BURN_EXPLAINER } from '../../lib/vocabulary'
 import { IconArrowRight, IconFlame } from '../../icons'
 import { Button } from '../../ui'
 import { EnableAfkCard } from '../EnableAfkCard'
+import { Term } from '../Term'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
@@ -25,7 +25,11 @@ export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
   return (
     <>
-      <StepHeading title="Run workers unattended?">{AFK_BURN_EXPLAINER}</StepHeading>
+      <StepHeading title="Run workers unattended?">
+        {/* The step's word carries its glossary hint (ready-to-publish decision 17). */}
+        <Term id="worker">Workers</Term> run a round’s tickets in containers, unattended, and you read the result
+        when you are back. You can skip it for now, but you need it before your first round can build anything.
+      </StepHeading>
 
       {settingUp && (
         <div className="mt-8 animate-rise-in">

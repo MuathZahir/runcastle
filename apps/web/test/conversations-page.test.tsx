@@ -77,7 +77,7 @@ describe('ConversationsPage', () => {
     const rows = groups()
     expect(rows).toHaveLength(2)
     const text = document.body.textContent ?? ''
-    expect(text).toContain('3 conversations')
+    expect(text).toContain('3 chats')
     expect(text).toContain('1 waiting for you')
     expect(text).toContain('1 working')
     expect(screen.getByTitle('Waiting for you')).toBeTruthy()
@@ -87,27 +87,27 @@ describe('ConversationsPage', () => {
   it('leaves the counts of nothing out', () => {
     mount([chat()])
     const text = document.body.textContent ?? ''
-    expect(text).toContain('1 conversation')
+    expect(text).toContain('1 chat')
     expect(text).not.toContain('working')
     expect(text).not.toContain('waiting')
   })
 
   it('narrows every group to the filter and marks the match, keeping the counts of the whole', () => {
     mount([chat({ id: 'a', title: 'Plan the audit' }), chat({ id: 'b', title: 'Audit journal', updatedAt: NOW - 40 * DAY }), chat({ id: 'c', title: 'Other' })])
-    fireEvent.change(screen.getByLabelText('Filter conversations'), { target: { value: 'audit' } })
+    fireEvent.change(screen.getByLabelText('Filter chats'), { target: { value: 'audit' } })
     expect(groups()).toEqual([
       ['Today', ['Plan the audit']],
       ['Earlier', ['Audit journal']],
     ])
     expect([...document.querySelectorAll('mark')].map((m) => m.textContent)).toEqual(['audit', 'Audit'])
-    expect(document.body.textContent).toContain('3 conversations')
+    expect(document.body.textContent).toContain('3 chats')
   })
 
   it('says when nothing matches, and Escape clears the filter', () => {
     mount([chat()])
-    const field = screen.getByLabelText('Filter conversations') as HTMLInputElement
+    const field = screen.getByLabelText('Filter chats') as HTMLInputElement
     fireEvent.change(field, { target: { value: 'zzz' } })
-    expect(screen.getByText('No conversation matches')).toBeTruthy()
+    expect(screen.getByText('No chat matches')).toBeTruthy()
     fireEvent.keyDown(field, { key: 'Escape' })
     expect(field.value).toBe('')
     expect(screen.getByTitle('Read the audit handoff')).toBeTruthy()
@@ -121,14 +121,14 @@ describe('ConversationsPage', () => {
 
   it('says nothing about the count until the list answers', () => {
     render(<ConversationsPage threads={[]} pending onOpen={() => {}} now={NOW} />)
-    expect(screen.getByRole('status').textContent).toContain('Loading conversations')
-    expect(screen.queryByText('No conversations yet')).toBeNull()
-    expect(document.body.textContent).not.toContain('0 conversations')
+    expect(screen.getByRole('status').textContent).toContain('Loading chats')
+    expect(screen.queryByText('No chats yet')).toBeNull()
+    expect(document.body.textContent).not.toContain('0 chats')
   })
 
   it('says a project with no chats has none', () => {
     mount([])
-    expect(screen.getByText('No conversations yet')).toBeTruthy()
+    expect(screen.getByText('No chats yet')).toBeTruthy()
     expect(screen.queryAllByRole('region')).toEqual([])
   })
 })

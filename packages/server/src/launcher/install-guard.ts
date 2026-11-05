@@ -39,7 +39,7 @@ export const PRE_TOOL_MATCHER = [...EDIT_TOOLS, ...SHELL_TOOLS].join('|')
 
 /**
  * Command position — start, a newline, or just after a shell/PowerShell
- * separator (`;`, `&`, `&&`, `|`, `(`) — the burn guard's anchoring, so a verb
+ * separator (`;`, `&`, `&&`, `|`, `(`) — the round guard's anchoring, so a verb
  * that is only an argument (`grep -rn bun install docs/` after quote blanking)
  * is never read as a command.
  */
@@ -103,7 +103,7 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
   if (!input.command || !input.talkWorktreePath) return null
   if (!samePath(input.worktreePath, input.talkWorktreePath)) return null
 
-  // Blank heredoc bodies and quoted spans, as the burn guard does: a commit
+  // Blank heredoc bodies and quoted spans, as the round guard does: a commit
   // message that mentions the string, or searching for it, is not running it.
   // One left-to-right pass over both quote kinds, so the quote that opens first
   // wins — an apostrophe inside `"it's"` never opens a single-quoted span.
@@ -115,7 +115,7 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
       'Package installs are blocked in this worktree: a talk worktree is docs-only, with no ' +
       'dependency install (charter decision 6), and every install here costs a full ' +
       '`node_modules` per feature. Verification that needs dependencies happens elsewhere — ' +
-      'in the burn sandbox, in the review lap, or in a test drive of the branch, which runs in ' +
+      'in the worker sandbox, in the review round, or in a test drive of the branch, which runs in ' +
       'the main checkout with dependencies installed. Check what you can without them ' +
       '(`git diff --check`, grep, re-reading the code).',
   }

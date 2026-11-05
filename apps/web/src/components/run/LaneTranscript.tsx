@@ -89,8 +89,8 @@ export function LaneTranscript({
       {trimmed && <div className="pb-2 text-center text-xs text-text-tertiary">Earlier output trimmed</div>}
       {!speaking && (
         <DimLine>
-          No agent output captured — transcripts are held in server memory for the current burn;
-          older runs keep only the event timeline.
+          No agent output captured — transcripts are held in server memory for the current round;
+          older rounds keep only the event timeline.
         </DimLine>
       )}
       {speaking && (

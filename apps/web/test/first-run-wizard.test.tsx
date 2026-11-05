@@ -19,6 +19,10 @@ const stub = vi.hoisted(() => ({
   probes: [] as Probe[],
   /** Every `setup.seedModelDefaults` call, in order. */
   seeded: [] as { runtimes: string[] }[],
+  /** The machine-wide `usageSignal` field `settings.get` answers with, if any. */
+  usageField: undefined as { key: string; value: unknown; editable: boolean } | undefined,
+  /** Every `settings.update` call, in order. */
+  settingsWrites: [] as { key: string; value: unknown }[],
 }))
 
 vi.mock('../src/trpc', () => {
@@ -59,6 +63,10 @@ vi.mock('../src/trpc', () => {
         afkToken: mutation(),
         seedModelDefaults: mutation((input) => stub.seeded.push(input)),
       },
+      settings: {
+        get: query(() => ({ fields: stub.usageField ? [stub.usageField] : [] })),
+        update: mutation((input) => stub.settingsWrites.push(input)),
+      },
       project: {
         open: mutation(),
         initRepo: mutation(),
@@ -97,6 +105,8 @@ const rail = () => screen.queryByRole('list', { name: 'Setup progress' })
 describe('FirstRunWizard', () => {
   beforeEach(() => {
     stub.seeded = []
+    stub.usageField = undefined
+    stub.settingsWrites = []
     onOpened.mockClear()
     onCancel.mockClear()
   })
@@ -112,6 +122,40 @@ describe('FirstRunWizard', () => {
     expect(screen.getByRole('heading', { name: /driven through a pipeline/ })).toBeTruthy()
     expect(rail()).toBeNull()
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+
+  // Nothing is pinged before this step is passed (decision 4): leaving it
+  // forward is what records the answer, ticked or not.
+  it('records the usage ping as on when the intro is left with the box ticked', () => {
+    open([identity('unset')])
+    const box = screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    expect(stub.settingsWrites).toEqual([])
+
+    click('Set up runcastle')
+    expect(stub.settingsWrites).toEqual([{ key: 'usageSignal', value: 'on' }])
+  })
+
+  it('records the usage ping as off when the box is unticked', () => {
+    open([identity('unset')])
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Send the usage ping' }))
+    click('Set up runcastle')
+    expect(stub.settingsWrites).toEqual([{ key: 'usageSignal', value: 'off' }])
+  })
+
+  it('shows the current answer when the wizard is replayed', () => {
+    stub.usageField = { key: 'usageSignal', value: 'off', editable: true }
+    open([identity('unset')])
+    const box = screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement
+    expect(box.checked).toBe(false)
+  })
+
+  it('writes nothing when the environment owns the setting', () => {
+    stub.usageField = { key: 'usageSignal', value: 'on', editable: false }
+    open([identity('unset')])
+    expect((screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement).disabled).toBe(true)
+    click('Set up runcastle')
+    expect(stub.settingsWrites).toEqual([])
   })
 
   it('shows the rail from the first setup step on', () => {
@@ -155,7 +199,7 @@ describe('FirstRunWizard', () => {
     click('Set up runcastle')
     click('Continue')
 
-    expect(screen.getByText(/Workers run a round’s tickets in containers/)).toBeTruthy()
+    expect(screen.getByText(/run a round’s tickets in containers/)).toBeTruthy()
     expect(screen.queryByText('Ready for unattended workers')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to your first project' })).toBeNull()
   })

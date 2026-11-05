@@ -50,7 +50,7 @@ export const projectRouter = router({
     ),
 
   /**
-   * Where the project session's work lands, as the picker needs it: what a human
+   * Where the orchestrator's work lands, as the picker needs it: what a human
    * picked (`stored`, null until one does), what the next launch will actually
    * use (`effective`), and the detected main line behind the unpicked default
    * (`detected`). Reading never writes — the pick is made through
@@ -173,7 +173,7 @@ export const projectRouter = router({
   /**
    * What this host is missing to offer a review a drive — agent-browser,
    * ffmpeg, the project's dev command — so the review page can say so before
-   * the next burn rather than on the trail after it. The host probe is cached.
+   * the next round rather than on the trail after it. The host probe is cached.
    */
   drivePrerequisites: publicProcedure
     .input(z.object({ projectId: z.string() }))

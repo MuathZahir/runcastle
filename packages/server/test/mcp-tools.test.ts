@@ -77,7 +77,7 @@ describe('mcp tools', () => {
   afterEach(() => clearRuntimeCtx())
 
   /**
-   * A burn as the runner records one: the `runs` row plus the `run.started`
+   * A round as the runner records one: the `runs` row plus the `run.started`
    * event naming the lanes it opened with. That event is what makes a ticket
    * claimed before the run has said anything else about it.
    */
@@ -391,11 +391,11 @@ describe('mcp tools', () => {
 
   /**
    * The state a chat used to have no channel to (decisions.md #7): how the last
-   * burn went lives on the `runs` table, and what this lap's review found lives
+   * burn went lives on the `runs` table, and what this round's review found lives
    * in `review_findings` and in host scratch space outside the repo. One call
    * states all of it.
    */
-  it('get_feature_context states the last burn, this lap’s review and the notes that still stand', () => {
+  it('get_feature_context states the last burn, this round’s review and the notes that still stand', () => {
     const [landed, broke, review] = storeTickets(ctx, featureId, [
       ticket('landed'),
       ticket('broke'),
@@ -441,7 +441,7 @@ describe('mcp tools', () => {
     expect(out).not.toHaveProperty('testNotes')
   })
 
-  it('get_feature_context omits latestRun entirely on a feature that has never burned', () => {
+  it('get_feature_context omits latestRun entirely on a feature that has never run a round', () => {
     const out = toolGetFeatureContext(ctx, session)
     expect('latestRun' in out).toBe(false)
     expect(out.reviewEvidence).toBeNull()
@@ -451,7 +451,7 @@ describe('mcp tools', () => {
   it('ticket surgery refuses a ticket the live burn holds and allows one it does not', () => {
     const [claimed, unclaimed] = storeTickets(ctx, featureId, [
       ticket('claimed'),
-      ticket('next burn'),
+      ticket('next round'),
     ])
     startBurn('run_active', [claimed], { status: 'running' })
 
@@ -744,7 +744,7 @@ describe('mcp tool registration by audience', () => {
       expect(chat, write).toContain(write)
     }
 
-    // A project session has no feature, so none of the feature surface beyond
+    // An orchestrator has no feature, so none of the feature surface beyond
     // the four reads it names a feature to by slug.
     const project = toolsForAudience('project')
     expect(project).toEqual(

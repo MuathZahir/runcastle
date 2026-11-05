@@ -61,7 +61,7 @@ describe('sandcastle exec failure messages (patched)', () => {
 
   // The payload is one unbroken token; everything around it is what a human
   // reads to know WHICH file the setup command was writing when it failed.
-  it('elides the base64 payloads of the burn guard install command', () => {
+  it('elides the base64 payloads of the round guard install command', () => {
     const command = buildGuardInstallCommand()
     const payload = /printf %s '([A-Za-z0-9+/=]{120,})'/.exec(command)?.[1]
     expect(payload).toBeDefined()

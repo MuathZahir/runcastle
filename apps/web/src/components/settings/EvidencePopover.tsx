@@ -18,7 +18,7 @@ import type { FindingSource } from '@runcastle/core'
 /** How a finding's source reads in the popover's header. */
 const HOW_ESTABLISHED: Record<FindingSource, string> = {
   prep: 'established by preparation',
-  session: 'established in a conversation on this machine',
+  session: 'established in a chat on this machine',
   human: 'set by you',
   build: "built by runcastle from this repo's own Dockerfile",
 }

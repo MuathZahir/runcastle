@@ -39,7 +39,7 @@ describe('sandcastleTemplateDir', () => {
     expect(containerfile).toMatch(/usermod[^\n]*agent/)
   })
 
-  // One image serves both runtimes — a burn picks its CLI from the resolved
+  // One image serves both runtimes — a round picks its CLI from the resolved
   // model's runtime, so a codex-runtime ticket must find `codex` in the same
   // image a claude one finds `claude`.
   it.each(['Containerfile', 'Dockerfile'])('installs both agent CLIs in the %s', (file) => {
