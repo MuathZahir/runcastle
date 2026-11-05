@@ -6,7 +6,7 @@ A new project with code lands on a separate Preparation page, with its own kind 
 
 ## Approach
 
-**What the human sees.** A new project (no orchestrator chat yet) opens on "Start the project": the project's name, one line on what happens next, and one primary button (designed: `apps/web/src/components/project/StartTheProject.tsx`, design page `/preview/start-the-project.html`, samples `code` and `empty`). Clicking it starts the orchestrator's first chat with no message from the human; the orchestrator speaks first. On a repo with code it reads the repo, says in a few lines what it understood, works through the open settings (asking only what it cannot find, and asking before it starts services or creates a database), runs the dry-run drive, sums up, and then asks what we are building. On an empty repo it asks straight away. There is no Preparation page, no "Prepare this project" row and no preparation chat any more. Buttons that used to open Preparation open a new orchestrator chat.
+**What the human sees.** A new project (no orchestrator chat yet) opens on "Start the project": the project's name, one line on what happens next, and one primary button, in one card made from the Orchestrator's own material (designed and approved: `apps/web/src/components/project/StartTheProject.tsx`, design page `/preview/start-the-project.html`, samples `code` and `empty`). Clicking it starts the orchestrator's first chat with no message from the human; the orchestrator speaks first. On a repo with code it reads the repo, says in a few lines what it understood, works through the open settings (asking only what it cannot find, and asking before it starts services or creates a database), runs the dry-run drive, sums up, and then asks what we are building. On an empty repo it asks straight away. There is no Preparation page, no "Prepare this project" row and no preparation chat any more. Buttons that used to open Preparation open a new orchestrator chat.
 
 **When the orchestrator prepares.** A prepared key is *open* when it has no value and no finding (the provenance row `record_finding` writes). `record_finding` accepts a deliberate "none": an empty value with evidence, which closes the key with no value. At the start of every orchestrator chat, the server's start-of-session note (the `SessionStart` hook digest, today given to `prepare` sessions only) carries the open keys, whether the repo is empty, and whether the project has ever had a feature. The `runcastle:project` skill reads it:
 
@@ -50,5 +50,5 @@ The human can say "later" and the orchestrator drops preparation for that chat. 
 
 ## Open questions
 
-- Runcastle's own project has no scenario runner recorded today (`bun {file}` would do). The onboarding drive needs one before its scenario can run; the human sets it in project settings, or the first ＋ New scenario chat does.
-- The two "Start the project" designs and their one open Tweak (the three numbered steps shown or not) wait for the human's approval.
+- A review drive cannot start on a scenario, so no review agent can see the onboarding drive's setup wizard; only the human's own Test drive › Brand new install reaches it. Left as is for this feature.
+- The terminal's kill-tree test (`pty-bun.test.ts`) fails intermittently in the round checks of many features, this one included; it is not this feature's and wants its own fix.
