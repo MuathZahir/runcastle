@@ -18,6 +18,7 @@ import { NotesCard } from './project/NotesCard'
 import { ProjectChat } from './project/ProjectChat'
 import { ProjectDriveButton } from './project/ProjectDriveButton'
 import { ProjectDriveView } from './project/ProjectDriveView'
+import { StartTheProject } from './project/StartTheProject'
 import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
@@ -265,7 +266,8 @@ export function ProjectWorkspace({
       : {}),
     ...(onOpenConversations ? { allConversations: onOpenConversations } : {}),
   })
-  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : unstarted ? NEW_CHAT_NAME : undefined
+  // An unstarted project's one action is its Start button: the header names nothing more.
+  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : undefined
 
   const panelView = (view: PanelView) => {
     switch (view) {
@@ -338,14 +340,14 @@ export function ProjectWorkspace({
         trail
         actions={
           <>
-            <ProjectDriveButton
+            {!unstarted && <ProjectDriveButton
               card={driveCard}
               starting={projectDrive.starting}
               scenarios={startScenarios}
               onStart={startDrive}
               onPrepare={() => onOpenPreparation?.()}
               onReturn={() => openView('drive')}
-            />
+            />}
             <PanelToggle
               open={!!shown}
               views={tabs}
@@ -382,18 +384,27 @@ export function ProjectWorkspace({
                     landing={landing}
                   />
                 ))}
+              {/* A project with no chats yet opens on its one button
+                  (the-orchestrator-prepares-the-project decision 1): the
+                  Orchestrator's first chat starts on the click and speaks first. */}
               {!allChats && unstarted && !chatHidden && (
-                <ProjectChat
-                  key={NEW_CHAT_KEY}
-                  threadId={null}
-                  start={async () => (await startChat.mutateAsync({ projectId })).threadId}
-                  startsAs={{ projectId, kind: 'project' }}
-                  onStarted={(id) => {
-                    setStarted(id)
-                    open(id)
-                  }}
-                  onOpenThread={open}
-                  landing={landing}
+                <StartTheProject
+                  name={project?.name ?? ''}
+                  {...(project?.repoPath ? { repoPath: project.repoPath } : {})}
+                  empty={empty}
+                  starting={startChat.isPending}
+                  onStart={() =>
+                    startChat.mutate(
+                      { projectId },
+                      {
+                        onSuccess: ({ threadId }) => {
+                          setStarted(threadId)
+                          open(threadId)
+                        },
+                        onError: (e) => toast.push(e.message),
+                      },
+                    )
+                  }
                 />
               )}
             </>

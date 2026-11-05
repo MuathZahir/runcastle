@@ -312,6 +312,11 @@ const chatRow = (title: string): HTMLElement =>
 const chatName = (): string => document.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent ?? ''
 
 describe('the header drive door', () => {
+  // A project that has started: one with no chat opens on Start the project, with no drive door.
+  beforeEach(() => {
+    threads = [entry('sess_started', 'Started', Date.now())]
+  })
+
   it('is a quiet Test drive in the header, around every chat', () => {
     mount()
     const button = screen.getByRole('button', { name: 'Test drive' })
@@ -343,6 +348,11 @@ describe('the header drive door', () => {
 })
 
 describe('driving from the project page', () => {
+  // A project that has started: one with no chat opens on Start the project, with no drive door.
+  beforeEach(() => {
+    threads = [entry('sess_started', 'Started', Date.now())]
+  })
+
   it('starts a drive as the page, then stops back to the Notes inbox', () => {
     const { rerender } = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
@@ -517,10 +527,10 @@ describe('opening the Orchestrator', () => {
     expect(chatInFront()?.dataset.thread).toBe('sess_a')
   })
 
-  it('opens a new, empty chat on a project with none, writing nothing', () => {
+  it('opens on Start the project on a project with none, writing nothing', () => {
     mount()
-    expect(chatInFront()?.dataset.thread).toBe('new')
-    expect(chatName()).toBe('New chat')
+    expect(screen.getByRole('button', { name: 'Start the project' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
     expect(threadNew).not.toHaveBeenCalled()
   })
 
@@ -804,6 +814,11 @@ describe('a live project chat', () => {
 // drive-scenarios decision 7: a project drive lists every scenario with no
 // "This feature" section, and its main click is the blank app.
 describe('scenarios on a project drive', () => {
+  // A project that has started: one with no chat opens on Start the project, with no drive door.
+  beforeEach(() => {
+    threads = [entry('sess_started', 'Started', Date.now())]
+  })
+
   const SCENARIOS: ScenarioEntry[] = [
     { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false, hasCall: false },
     { file: '.runcastle/scenarios/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true, hasCall: false },
