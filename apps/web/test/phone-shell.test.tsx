@@ -417,10 +417,12 @@ describe('a design on a phone', () => {
     await waitFor(() => expect(seen).toEqual([{ designId: 'newer' }]))
   })
 
-  it('opens the oldest waiting design from the need’s button', async () => {
+  it('opens the oldest waiting design from the “…” sheet’s Design, the chat having no waiting line', async () => {
     const { fakes, over, seen, threads } = withDesigns()
     render(<Root path={CHAT} threads={threads} extra={fakes} over={over} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open design' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+    expect(screen.queryByRole('button', { name: 'Open design' })).toBeNull()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Design/ }))
     await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
     expect(await screen.findByRole('region', { name: 'Cart' })).toBeTruthy()
     await waitFor(() => expect(seen).toEqual([{ designId: 'older' }]))

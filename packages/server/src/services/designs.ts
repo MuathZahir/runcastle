@@ -10,6 +10,7 @@ import { SHOWN_TYPES, storedExt } from '../threads/shown'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { deliverToLead } from './lead-delivery'
+import { setWaiting } from './lead-status'
 import { getFeatureRow, projectForFeature } from './repo'
 import { listByFeature } from './tickets'
 
@@ -181,8 +182,9 @@ export function allApprovedLine(approved: readonly Pick<DesignRow, 'title' | 'pa
 /**
  * The human's Approve click (decisions 8, 24, 25). Quiet while other designs
  * still wait; the click that leaves none waiting tells the lead once, naming
- * every approved design. A design not waiting (already approved, dropped) is
- * left alone and tells nobody, so a double click never sends twice.
+ * every approved design, and clears a lead's design wait. A design not waiting
+ * (already approved, dropped) is left alone and tells nobody, so a double click
+ * never sends twice.
  */
 export async function approveDesign(ctx: AppCtx, designId: string): Promise<{ approved: boolean }> {
   const row = designRow(ctx, designId)
@@ -196,6 +198,10 @@ export async function approveDesign(ctx: AppCtx, designId: string): Promise<{ ap
   const rows = designRows(ctx, row.featureId)
   if (!rows.some((r) => r.state === 'waiting')) {
     const approved = rows.filter((r) => r.state === 'approved')
+    // The lead's design wait is answered by this click; the runcastle line below
+    // is no human message, so it would not clear it (small-fixes decision 4).
+    const feature = getFeatureRow(ctx, row.featureId)
+    if (feature.waitingKind === 'design') setWaiting(ctx, row.featureId, null)
     await deliverToLead(ctx, getFeatureRow(ctx, row.featureId), { text: allApprovedLine(approved), source: 'runcastle' })
   }
   return { approved: true }

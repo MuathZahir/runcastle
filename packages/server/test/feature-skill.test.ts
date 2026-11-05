@@ -170,6 +170,11 @@ describe('the feature skill, planning with no human present', () => {
     expect(design).not.toContain('also approves every design')
     expect(read('SKILL.md')).toContain('It never approves a design')
   })
+
+  it('keeps the "design" wait for designs recorded with show_design (small-fixes decision 5)', () => {
+    expect(skill()).toContain('`"design"` only for designs recorded with `show_design`')
+    expect(read('references', 'design.md')).toContain('anything else you show for a yes\n(a file, a picture) is an answer')
+  })
 })
 
 describe('the feature skill, grilling', () => {

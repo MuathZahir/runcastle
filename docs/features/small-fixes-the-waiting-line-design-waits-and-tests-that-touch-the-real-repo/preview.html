@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Small fixes preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.fig{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.fig .cap{font-size:12px;color:var(--color-text-tertiary);margin-bottom:6px;display:flex;gap:8px;align-items:center}
+.chat{padding:14px;display:grid;gap:10px;font-size:13px}
+.bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-border-subtle);font-size:12px;color:var(--color-text-secondary)}
+.bar .btn,.wl .btn{margin-left:auto;height:22px;padding:0 8px;border-radius:var(--radius-sm);background:var(--color-primary);color:var(--color-on-primary);font-size:12px;display:inline-flex;align-items:center}
+.msg{color:var(--color-text);max-width:90%}
+.wl{display:flex;align-items:center;gap:8px;color:var(--color-text-secondary);font-size:13px;outline:1px dashed var(--color-danger);outline-offset:4px;border-radius:var(--radius-sm)}
+.wl.gone{opacity:.0;height:0;overflow:hidden;outline:0}
+.dot.warn{background:var(--color-warning)}
+.compose{height:30px;border:1px solid var(--color-border);border-radius:var(--radius-md);color:var(--color-text-disabled);font-size:12px;display:flex;align-items:center;padding:0 10px}
+table.tt{border-collapse:collapse;width:100%;margin-top:12px;font-size:13px}
+table.tt th{font-weight:400;color:var(--color-text-tertiary);font-size:12px;text-align:left;padding:6px 10px;border-bottom:1px solid var(--color-border)}
+table.tt td{padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);vertical-align:top}
+.was{color:var(--color-text-tertiary);text-decoration:line-through}
+.now{color:var(--color-text)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;font-size:13px}
+.box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:8px 10px;background:var(--color-surface-raised)}
+.box.bad{border-color:var(--color-danger);background:var(--color-danger-subtle)}
+.box.good{border-left:2px solid var(--color-success)}
+.arr{color:var(--color-text-tertiary)}
+.phone{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;font-size:12px}
+.phone div{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:8px 10px;color:var(--color-text-secondary)}
+.phone b{display:block;color:var(--color-text);font-weight:500;margin-bottom:2px}
+@media (max-width:760px){.fig,.phone{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Small fixes: the waiting line, design waits, and tests that touch the real repo</h1>
+  <p class="lede">Three small fixes: the chat stops ending on a repeat of the header, "Design to approve" shows only when a design really waits, and no test run can write into your real repo again. Planned without you; the lead builds it, then a review round.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/small-fixes-the-waiting-line-design-waits-and-tests-that-touch-the-real-repo/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="sub">
+    <h3>1 · The chat ends on the agent's words <a class="pin" data-d="1">1</a></h3>
+    <p class="hint">The red dashed line goes. The header already says the same thing and carries the button.</p>
+<!-- screen:chat-end -->
+    <div class="fig">
+      <div><div class="cap">Before</div>
+        <div class="screen">
+          <div class="bar"><i class="dot warn"></i>Plan to approve<span class="btn">Open plan</span></div>
+          <div class="chat">
+            <div class="msg">The plan is ready: three fixes, built by me, then a review round. Shall I start?</div>
+            <div class="wl"><i class="dot warn"></i>Plan to approve<span class="btn">Open plan</span></div>
+            <div class="compose">Message the agent…</div>
+          </div>
+        </div>
+      </div>
+      <div><div class="cap">After</div>
+        <div class="screen">
+          <div class="bar"><i class="dot warn"></i>Plan to approve<span class="btn">Open plan</span></div>
+          <div class="chat">
+            <div class="msg">The plan is ready: three fixes, built by me, then a review round. Shall I start?</div>
+            <div class="compose">Message the agent…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+<!-- /screen:chat-end -->
+    <p class="hint" style="margin-top:14px">On the phone, every need keeps a way in without the line <a class="pin" data-d="2">2</a></p>
+    <div class="phone">
+      <div><b>Plan · Design</b>their cards in the chat, and the "…" sheet</div>
+      <div><b>Merge conflict</b>its row on the chat's notice strip</div>
+      <div><b>Permission · Answer · Stopped</b>the ask in the thread, the message box</div>
+    </div>
+    <p class="hint" style="margin-top:6px">Merge and test drives were never phone actions, so nothing is lost.</p>
+  </div>
+
+  <div class="sub">
+    <h3>2 · "Design to approve" only when a design waits <a class="pin" data-d="3">3</a></h3>
+    <p class="hint">What the feature reads when the lead waits with the "design" kind.</p>
+    <table class="tt">
+      <tr><th>Recorded designs waiting</th><th>Before</th><th>After</th></tr>
+      <tr><td>One or more</td><td>Design to approve · Open design</td><td class="now">Design to approve · Open design</td></tr>
+      <tr><td>None (a picture shown as a file)</td><td class="was">Design to approve · Open design</td><td class="now">Needs your answer · banner to approve · Reply <a class="pin" data-d="12">12</a></td></tr>
+      <tr><td>You approve the last one</td><td class="was">still Design to approve</td><td class="now">the wait clears; the lead hears about it <a class="pin" data-d="4">4</a></td></tr>
+    </table>
+    <p class="hint" style="margin-top:8px">The skill and the tool now say: "design" is only for designs recorded with <span class="mono">show_design</span>; a file or picture is an answer <a class="pin" data-d="5">5</a></p>
+  </div>
+
+  <div class="sub">
+    <h3>3 · Tests can't touch your real repo</h3>
+    <p class="hint">What happened on 2026-11-02, reproduced in scratch repos <a class="pin" data-d="7">7</a></p>
+    <div class="flow">
+      <span class="box">a git step in a worktree exports <span class="mono">GIT_DIR</span></span><span class="arr">→</span>
+      <span class="box">a test run inherits it</span><span class="arr">→</span>
+      <span class="box">the move fixture's git commands land in your repo</span><span class="arr">→</span>
+      <span class="box bad">a <span class="mono">git init</span> sets <span class="mono">core.bare = true</span>; a stash, a commit, two branches and a tag are left behind</span>
+    </div>
+    <p class="hint" style="margin-top:16px">After</p>
+    <div class="flow">
+      <span class="box good">test setup strips git's repo-location variables, once <a class="pin" data-d="6">6</a></span><span class="arr">→</span>
+      <span class="box">every git child works only in its scratch dir</span><span class="arr">→</span>
+      <span class="box good">the run compares your repo's [core] config and stash before and after, and fails loudly if they changed <a class="pin" data-d="8">8</a></span>
+    </div>
+    <p class="hint" style="margin-top:12px">The two failing move tests are traced to a cause and fixed where it is <a class="pin" data-d="9">9</a>. What that run left in your repo stays for you to delete <a class="pin" data-d="10">10</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built <a class="pin" data-d="11">11</a></h3>
+    <div class="flow"><span class="box">your yes</span><span class="arr">→</span><span class="box">the lead builds all three, typecheck and tests green</span><span class="arr">→</span><span class="box">one review round</span><span class="arr">→</span><span class="box">ready for you</span></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A larger rework of <span class="mono">runcastle move</span>, if the move tests reveal one</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The grey palette ("Fewer, darker greys")</li>
+      <li><i class="dot"></i>The rest of "You always know what's waiting"</li>
+      <li><i class="dot"></i>Stripping git variables in the product's own git calls <a class="pin" data-d="13">13</a></li>
+      <li><i class="dot"></i>Deleting the fixture's leftovers from your repo</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <ul style="margin:0;padding-left:18px;color:var(--color-text-secondary);display:grid;gap:6px">
+        <li><b>Waiting line</b>: delete the waiting-line component in the feature chat and its test file; drop the props the page passed only for it.</li>
+        <li><b>Design need</b>: in core's <span class="mono">featureNeed</span>, a "design" wait with no recorded design waiting is treated as an "answer" wait. On the server, the Approve button's path clears a "design" wait when it empties the waiting designs.</li>
+        <li><b>Words</b>: the feature skill's wait-kinds bullet, its design reference, and the <span class="mono">wait_for_you</span> tool description.</li>
+        <li><b>Strip</b>: the worker setup file that already deletes <span class="mono">RUNCASTLE_*</span> also deletes git's <span class="mono">--local-env-vars</span> list.</li>
+        <li><b>Guard</b>: a vitest global setup strips the same list in the main process, snapshots the real repo's <span class="mono">[core]</span> config and stash list, and throws at teardown if either changed.</li>
+        <li><b>Move tests</b>: reproduce alone, in the full suite, and with an injected <span class="mono">GIT_DIR</span>/<span class="mono">GIT_INDEX_FILE</span>; fix the cause.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['The end-of-chat waiting line goes, everywhere', 'You asked for it; the header status line, its button and the sidebar row already say the same thing.'],
+    ['The phone loses no action without the line', 'Each need has another way in on the phone (cards, the "…" sheet, the notice strip, the message box); Merge and drives are off the phone by design.', 'assumed'],
+    ['"Design to approve" comes only from the design record', 'A design wait for a picture shown as a file led to a Design list with nothing to approve. With no recorded design waiting, it reads "Needs your answer · <reason>".'],
+    ["Approving the last waiting design clears the lead's design wait", 'Approving already tells the lead, but that message does not clear the wait; without this you would click Approve and then see "Needs your answer".', 'assumed'],
+    ['The skill and the tool say what the "design" kind is for', 'The kind was misused because nothing said it is only for designs recorded with show_design.'],
+    ["Git's repo-location variables are stripped once, in the shared test setup", 'One place, so a new test cannot forget; the guard strips them in the main process too.', 'assumed'],
+    ['The mechanism is confirmed: an inherited worktree GIT_DIR plus git init', 'Reproduced in scratch repos and through vitest itself. Your repo shows the move fixture ran inside it on 2026-11-02; what exported GIT_DIR was not found.'],
+    ["A guard fails the test run if the real repo's config or stash changed", 'Loud and never self-repairing. It can rarely fire because another session changed the repo; its message says so.', 'assumed'],
+    ['The two failing move tests get a root cause, and the fix goes where the cause is', 'The cause was in the move: a copied index with a fresh time hid same-size edits from git diff, losing uncommitted work. Fixed (main fixed it too; the merge kept main\'s version).', 'assumed'],
+    ['The fixture\'s leftovers stay in the human\'s repo', 'The stash, a commit "first", branches feature/idle and feature/login and tag v1, all from the same run. Your repo; the outcome names them.'],
+    ['The lead builds it; a review round closes it', 'A few files per fix, nothing to run in parallel; a ticket would cost more than the change.', 'assumed'],
+    ['A design wait with no recorded design is an answer the orchestrator may hold', 'One rule: only the design record makes a design need. Anything that needs your own eyes gets recorded with show_design, which is never held.', 'assumed'],
+    ["Only tests are cleaned; the product's own git calls stay as they are", 'The damage came from a test; the server and the move are not started from inside a git hook.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [2, 'Give the phone\'s chat bar the need\'s button.', 'The line was the phone\'s only button for some needs; I judged each has another way in, which you may not find good enough.'],
+    [4, 'Leave the design wait standing, so it reads "Needs your answer" until you reply.', 'Clearing it on approval is a new rule beyond the brief; the challenger argued for it and I agreed.'],
+    [8, 'Compare the whole config file.', 'The orchestrator narrowed it to [core], so burns writing receive.denyCurrentBranch don\'t fail healthy runs. A test that damaged branch config would now go unseen.', 'orchestrator'],
+    [9, 'Fix only the test side; park any move bug as its own feature.', 'It did turn into a product change: a small fix to runcastle move, which you might have wanted separate.'],
+    [12, 'Keep a design-kind wait never-held, so only you can answer it.', 'Under it the orchestrator could say yes to a picture like the README banner on your behalf for its first hour.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

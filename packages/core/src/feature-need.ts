@@ -143,6 +143,17 @@ function isStopReason(reason: string, kind: WaitingKind | null): boolean {
   return kind === 'stuck' || reason === STOPPED || reason === PROVIDER_LIMIT || reason === PLANNING_STOPPED
 }
 
+/**
+ * What a lead's wait asks for. Only the design record makes a design need
+ * (small-fixes decision 3): a "design" wait while no recorded design waits —
+ * a picture shown as a file, say — is an answer.
+ */
+function ownKind(kind: WaitingKind | null, designsWaiting: number): 'answer' | 'plan' | 'design' {
+  if (kind === 'plan') return 'plan'
+  if (kind === 'design' && designsWaiting > 0) return 'design'
+  return 'answer'
+}
+
 /** The ready declaration, when it is newer than the newest round. */
 function freshDeclaration(facts: NeedFacts): NeedFacts['declaration'] {
   const d = facts.declaration
@@ -155,7 +166,7 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
   const waiting = facts.waiting
   const ready = freshDeclaration(facts)
   const waitingKind = waiting && waiting.reason !== READY_TO_TEST
-    ? isStopReason(waiting.reason, waiting.kind) ? 'stopped' : (waiting.kind ?? 'answer')
+    ? isStopReason(waiting.reason, waiting.kind) ? 'stopped' : ownKind(waiting.kind, facts.designsWaiting)
     : null
   return [
     () => facts.openAsk?.kind === 'approval'
@@ -175,7 +186,7 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
     },
     () => idle && waitingKind === 'plan' ? { kind: 'plan', since: waiting!.since } : null,
     () => {
-      // From the design record, so it needs no `wait_for_you`; the lead's design wait still counts.
+      // From the design record, so it needs no `wait_for_you`; a lead's design wait counts only while one waits.
       if (!idle) return null
       if (waitingKind === 'design') return { kind: 'design', since: waiting!.since }
       if (facts.designsWaiting > 0) return { kind: 'design', since: facts.oldestDesignWaitingSince ?? 0 }

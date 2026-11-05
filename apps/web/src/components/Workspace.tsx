@@ -90,7 +90,6 @@ import {
   headerActions,
   leadWakeOf,
   mainChatWorking,
-  needButton,
   type HeaderActions,
 } from '../lib/feature-ui/status-line'
 import { ScenarioPickerContent } from './review/ScenarioPicker'
@@ -1256,9 +1255,6 @@ export function Workspace({
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
-                  needAction={full.need ? needButton(full.need, headerRow, column.main) : undefined}
-                  actionsBusy={actionsBusy}
-                  onAction={runAction}
                 />
               }
               panel={
