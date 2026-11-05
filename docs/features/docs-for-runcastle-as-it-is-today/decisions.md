@@ -2,7 +2,7 @@
 
 Planned without the human (a headless planning run, 2026-11-05). Every decision is the planner's own pick until the human confirms it.
 
-Check first: 1, 3, 11, 13, 18
+Check first: 1, 3, 11, 13
 
 ## 1. Four short pages, not six
 **Decision:** The docs become four pages: **Get started** (`/docs/`), **How a feature goes** (`/docs/features/`), **The orchestrator** (`/docs/orchestrator/`) and **Another machine or your phone** (`/docs/vps/`). The Gates and Preparation pages are deleted; the Pipeline page is rewritten as How a feature goes; the Project session page becomes The orchestrator.
@@ -106,3 +106,8 @@ Check first: 1, 3, 11, 13, 18
 ## 19. Scenarios get a line on the features page
 **Decision:** Under "Then you test drive it", one short paragraph: a scenario, picked at the top of the drive, starts the drive where the feature is, with the data it needs; the agent writes one when that state is a chore to reach by hand, and **+ New scenario** adds your own. The drive picture shows the scenario picker.
 **Why:** The human asked for scenarios to be mentioned. They are what makes a test drive land on the feature instead of a blank app.
+
+## 20. The pictures are hand-built mockups, not screenshots
+**Decision:** Every docs picture is a mockup: a small piece of the app (a chat exchange, a ticket list, a review package, a design beside the chat, a drive with notes, the wizard's agents step, the per-step models, an orchestrator answer, the notes panel) built as live HTML in the app's own look from the site's tokens, styled in the docs stylesheet. Each shows the exact moment its section describes, on one running example (tags on the demo journal app). No PNGs ship with the docs, and there is no capture recipe to follow.
+**Why:** The human, on the crops: "They look TRASH", after suggesting mockups of individual components. A crop can only show whatever state the database held, so the design picture showed an empty form; a mockup shows the moment that teaches, reads sharp at any size and on a phone, and weighs a few KB. Screenshots and mockups both go stale when the app's look changes; a mockup is redone by editing HTML.
+**Supersedes:** 6, 17 and 18 (real captures and crops).

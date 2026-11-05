@@ -179,7 +179,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="bar" style="width:100%"></div>
     </div>
     <div class="arrow">→</div>
-    <div class="col"><h3>After: 4 pages, ~1,050 words, 9 real component crops</h3>
+    <div class="col"><h3>After: 4 pages, ~1,050 words, 9 mockups</h3>
       <div class="row"><span>Get started</span><span>≤400</span></div>
       <div class="row"><span>How a feature goes</span><span>≤400</span></div>
       <div class="row"><span>The orchestrator</span><span>≤400</span></div>
@@ -220,7 +220,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="cam"></i>Your phone over Tailscale, with notifications (if capturable)</li>
     </ul></div>
   </div>
-  <div class="legend"><span><i class="cam" style="display:inline-block;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px"></i>a real capture <a class="pin" data-d="6">6</a></span><span><i style="display:inline-block;width:14px;height:2px;background:var(--color-text-tertiary)"></i>a line or a command, no picture</span></div>
+  <div class="legend"><span><i class="cam" style="display:inline-block;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px"></i>a mockup <a class="pin" data-d="20">20</a></span><span><i style="display:inline-block;width:14px;height:2px;background:var(--color-text-tertiary)"></i>a line or a command, no picture</span></div>
 
   <h3>Where you take part, as the features page says it <a class="pin" data-d="9">9</a></h3>
   <div class="you"><span><b>●</b> Say yes to the plan</span><span><b>●</b> Approve designed screens</span><span>Workers build</span><span>Review round test drives it</span><span><b>●</b> You test drive</span><span><b>●</b> Merge</span></div>
@@ -228,9 +228,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h3>Designed: the features page</h3>
 <!-- screen:docs-features-page -->
 <div class="designed">
-  <h3>Docs page: How a feature goes</h3>
-  <p>The real page with its real text, layout and pictures: real captures cropped to one component each, shown at the app's own size. A Tweaks menu compares them with the old whole-window pictures and leaves the picture frame open (plain border, or an app window bar).</p>
-  <p class="mono">site/docs/features/index.html + site/docs.css · design page /docs/features/</p>
+  <h3>Docs pages: How a feature goes, Get started, The orchestrator</h3>
+  <p>The real pages with their real text and layout. Every picture is a hand-built mockup of one moment in the app, in its look, on one running example (tags on the demo journal app).</p>
+  <p class="mono">site/docs/{features/,orchestrator/,}index.html + site/docs.css · design pages /docs/features/, /docs/, /docs/orchestrator/</p>
 </div>
 <!-- /screen:docs-features-page -->
   <p class="hint" style="margin-top:8px">The other three pages follow its grammar: heading, one or two sentences, a capture with a caption.</p>
@@ -381,11 +381,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
  [
   "Scenarios get a line on the features page",
   "The human asked for it: a scenario is what makes a test drive land on the feature instead of a blank app."
+ ],
+ [
+  "The pictures are hand-built mockups, not screenshots",
+  "You found the crops unreadable and unclear. A mockup shows the exact moment each section describes, reads sharp at any size, and is redone by editing HTML when the app's look moves."
  ]
 ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [[1, "Keep six pages, one per old topic, each just shortened.", "A guess at how far you want to cut; it fixes every URL the compare feature links to."], [3, "Wait for \"the orchestrator prepares the project\" to merge, then picture its \"Start the project\" moment.", "Depends on which of the two features merges first."], [11, "Keep the VPS guide to the VPS and give the phone its own page.", "Folds three topics into one page; a guess at how you group them."], [13, "Hand the page writing to a worker and keep only the captures.", "No build tickets at all is unusual; workers cannot reach your database for the captures."], [18, "Hand-built HTML mockups of each component, as you suggested.", "You suggested mockups; crops of the real app read as well and never drift, but you may prefer the sharper mockup look."]]
+  var C = [[1, "Keep six pages, one per old topic, each just shortened.", "A guess at how far you want to cut; it fixes every URL the compare feature links to."], [3, "Wait for \"the orchestrator prepares the project\" to merge, then picture its \"Start the project\" moment.", "Depends on which of the two features merges first."], [11, "Keep the VPS guide to the VPS and give the phone its own page.", "Folds three topics into one page; a guess at how you group them."], [13, "Hand the page writing to a worker and keep only the captures.", "No build tickets at all is unusual; workers cannot reach your database for the captures."]]
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
