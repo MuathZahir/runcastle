@@ -217,9 +217,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>The onboarding drive you judge it by</h3>
-    <p class="hint">A test drive of runcastle that starts as a brand-new install. <a class="pin" data-d="9">9</a> <a class="pin" data-d="10">10</a> <a class="pin" data-d="11">11</a></p>
+    <p class="hint">A test drive of runcastle that starts as a brand-new install. <a class="pin" data-d="9">9</a> <a class="pin" data-d="11">11</a> <a class="pin" data-d="16">16</a></p>
     <div class="flow">
-      <div class="step"><b>Setup wizard</b><span>No git identity, no saved settings; your real Claude login</span></div>
+      <div class="step"><b>A fresh runcastle</b><span>No saved settings; your own git and Claude login, so the wizard only asks what is missing <a class="pin" data-d="15">15</a></span></div>
       <div class="arrow">&rarr;</div>
       <div class="step"><b>Open the sample repo</b><span>A tiny notes app, made fresh for the drive</span></div>
       <div class="arrow">&rarr;</div>
@@ -302,17 +302,18 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The model step "Prepare" stays, renamed for what still uses it', 'Scenario and drive-fix chats already run on it; removing it would silently move them to another model.', 'assumed'],
     ['The human can put preparation off, and preparation that can\'t finish moves on', 'Smooth onboarding is the point; preparation must never hold you hostage or ask eight questions.', 'assumed'],
     ['A drive learns which scenario it was started for', '"Start from a brand-new install" has to be decided before the app boots; one variable is the smallest door.', 'assumed'],
-    ['"Brand-new install" means new to runcastle, with the owner\'s real coding-agent login', 'The wizard shows from missing git identity; keeping the Claude login lets the Orchestrator actually run after the click.', 'assumed'],
+    ['"Brand-new install" means new to runcastle, with the owner\'s real coding-agent login', 'Superseded by 15: the drive now keeps your git identity too.'],
     ['The sample repo is a small app committed with the scenario', 'Real code with a dev server, a test and a database gives preparation every kind of setting; no dependencies keeps it fast.', 'assumed'],
     ['The orchestrator can start a drive on a scenario', 'So it can start the onboarding drive itself at your checkpoint.'],
     ['Old preparation chats are deleted; old links land on the project home', 'What they established lives on in the settings; keeping the chats would keep a whole session kind alive.', 'assumed'],
-    ['Preparation\'s progress is told in the chat, with no new card', 'New UI in a feature about deleting UI; the dry run\'s Stop moves to the drive panel.', 'assumed']
+    ['Preparation\'s progress is told in the chat, with no new card', 'New UI in a feature about deleting UI; the dry run\'s Stop moves to the drive panel.', 'assumed'],
+    ['The onboarding drive keeps the owner\'s git identity', 'Your call from the drive: hiding it forced a git step most new users never see. Replaces decision 10.'],
+    ['The usage ping is on by default and nobody is asked at the start', 'Your call from the drive: no checkbox in the wizard, no banner later; the off switch stays in Settings.']
   ]
   var C = [
     [1, 'Show the button only on repos with code; keep "What are we building?" for empty repos.', 'A guess about your taste: an empty repo gets one extra click for consistency.'],
     [3, 'Take over any chat while a setting is open, even on projects already in use.', 'It narrows "prepare first" to new projects; the challenger pushed for this, and it removes a risky migration.'],
     [4, 'Run the dry run inside the Orchestrator\'s own worktree; land only when its chat closes.', 'Landing mid-chat also lands its other commits early (charter edits, briefs). The challenger thought the worktree option deserved a real look.'],
-    [10, 'A fully separate home folder, so the coding agent shows logged out too.', 'Your "brand-new install" may have meant a machine with no agent login at all.'],
     [13, 'Keep old preparation chats as read-only history.', 'Deleting them cannot be undone.']
   ]
   var list = $('#dlist')

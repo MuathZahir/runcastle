@@ -6,7 +6,7 @@ independent challenger read the brief and these decisions; where it changed a
 decision the decision says so, and where it disagreed and lost, a
 **Challenged:** line carries its reason.
 
-Check first: 1, 3, 4, 10, 13
+Check first: 1, 3, 4, 13
 
 ## 1. "Start the project" is the opening of every new project
 **Decision:** A project whose orchestrator has never had a chat opens on a "Start the project" moment in place of today's empty orchestrator chat ("What are we building?"). It shows for every new project, empty repo or not. Clicking it starts the orchestrator's first chat at once, and the orchestrator speaks first. Once any orchestrator chat exists, the project home is the orchestrator chat, as today.
@@ -56,7 +56,7 @@ Check first: 1, 3, 4, 10, 13
 ## 10. "Brand-new install" means new to runcastle, with the owner's real coding-agent login
 **Decision:** The onboarding drive shows the setup wizard because its server sees no git identity (the private, empty git config of decision 9) and no saved settings. It keeps the machine's real Claude Code (and Codex) login, so the wizard's coding-agent step finds it ready and the orchestrator can actually run after "Start the project". The name and email typed into the wizard go to the drive's private git config, never the owner's.
 **Why:** The wizard decides "set up" from checks on the machine, not from the data folder, so an empty data folder alone shows nothing. Hiding the agent login too would make the wizard look newer but leave the orchestrator unable to start, which is the half of the drive the human is judging.
-**Assumed.** Alternative: a fully separate home folder, so the agent shows logged out as well, at the cost of logging an agent in by hand inside the drive.
+**Superseded by 15:** the human kept the coding-agent login and the git identity both.
 
 ## 11. The sample repo is a small app committed with the scenario
 **Decision:** A small, dependency-free Bun app (a notes web app with a SQLite file, a dev server and a test) lives as a scenario fixture in runcastle's repo. The onboarding scenario copies it into the drive's data folder as a fresh git repo with one commit and lands the human on the setup wizard. The wizard's own "open a project" step is where they open it, at a path the scenario prints.
@@ -77,3 +77,12 @@ Check first: 1, 3, 4, 10, 13
 **Why:** The brief says delete machinery, and the one thing the old page held that has no other home, a Stop for a dry run left running, now lives on the drive panel (decision 6).
 **Assumed.** Alternative: move the old page's list into the orchestrator's side panel as a Preparation card.
 **Changed after the challenge:** the lead first planned that card; the challenger pointed out it is new UI in a feature about deleting UI, and that the Stop fits the existing drive panel.
+
+## 15. The onboarding drive keeps the owner's git identity
+**Decision:** The brand-new-install drive still starts with no database, `config.json` or `.env` of the owner's, but no longer hides git identity: the drive's server uses the machine's own git config. With git and a coding agent ready, the setup wizard is skipped, exactly as for a typical new user. The wizard's git identity step stays as it is for people who genuinely have none (git cannot commit without one).
+**Why:** The human's call from the onboarding drive: hiding the identity forced a "Set your git identity" step most new users never see, which misrepresents their first minutes and read as a step that would push people away.
+Supersedes: 10.
+
+## 16. The usage ping is on by default and nobody is asked at the start
+**Decision:** The wizard's intro step loses its "Send the usage ping" checkbox. An install that has never set the switch counts as on, so it pings from its first boot, and no notice or banner asks about it later. The off switch stays in Settings › General, and `DO_NOT_TRACK` still wins over everything. The README says so.
+**Why:** The human's call from the onboarding drive: the user is never asked at the start, and anyone who minds can turn it off in Settings. Removing only the checkbox would have left a fresh install silent until it passed a step most users now skip (decision 15), and the old once-only "counts this install" banner would have asked every new user on their second visit.
