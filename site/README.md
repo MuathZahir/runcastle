@@ -12,6 +12,7 @@ content.css         the reading surface for docs/ and compare/, on top of styles
 install.sh          the one-line install for macOS and Linux; hands over to `runcastle setup`
 install.ps1         the same for Windows
 _headers            serves both install scripts as plain text
+_redirects          old addresses; the compare block sends /compare/claude-code/ on
 docs/, compare/     article pages; they load styles.css + content.css and no JS
   docs/vps/         the VPS guide: install, service, and the SSH tunnel in
 assets/
@@ -19,7 +20,8 @@ assets/
   favicon.svg       copy of apps/web/public/favicon.svg
   fonts/            Geist + Geist Mono variable subsets (latin), self-hosted
   logos/            Simple Icons brand marks (used by the compare pages)
-  screens/          PNG captures for the root README only
+  screens/          PNG captures of the app, for the root README
+  posts/            the same captures as 1840px WebP, for the compare posts
   video/            the launch film; no page links to it since the isometric landing
 ```
 
