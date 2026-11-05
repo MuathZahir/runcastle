@@ -153,5 +153,5 @@ minute for a small feature, a few minutes for a large one.**
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
 - Every screen designed in design mode is a designed-screen entry that names its
-  committed component and design page, not a redrawn mock.
+  states, its committed component and design page, not a redrawn mock.
 - The file is still fully inline.

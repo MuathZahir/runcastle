@@ -103,8 +103,8 @@ nothing.
   approval commits them. Commit your docs by path, so nothing designed rides
   along.
 - **In the Plan**, each designed screen is a designed-screen entry
-  (`./preview.md`, Designed screens) naming its title, component file and design
-  page, with no button.
+  (`./preview.md`, Designed screens) naming its title, the states its switcher
+  holds, its component file and design page, with no button.
   A ticket that wires one follows `./tickets.md` on designed screens.
 
 ## Straight through, then ask

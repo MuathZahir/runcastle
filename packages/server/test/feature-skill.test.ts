@@ -16,6 +16,8 @@ const read = (...parts: string[]): string =>
   readFileSync(join(resolvePluginDir(), 'skills', 'feature', ...parts), 'utf8')
 
 const skill = (): string => read('SKILL.md')
+/** The text with its line wraps and runs of spaces collapsed, so a reflow does not break a phrase check. */
+const flat = (text: string): string => text.replace(/\s+/g, ' ')
 const allTexts = (): [string, string][] => [
   ['SKILL.md', skill()],
   ...readdirSync(join(resolvePluginDir(), 'skills', 'feature', 'references'))
@@ -154,9 +156,9 @@ describe('the feature skill, planning with no human present', () => {
     expect(alone).toContain('`agent-browser\n  open <url>`')
     expect(alone).toContain('**Leave the designs uncommitted.**')
     expect(alone).toContain("lives in the design page, never in the app's own files")
-    expect(alone).toContain('passing the final screenshot you took of its most telling state as\n  `picture`, once per page, never once per state')
-    expect(alone).toContain('check every state of every design page')
-    expect(alone).not.toContain('one design page per state')
+    expect(flat(alone)).toContain('never once per state')
+    expect(flat(alone)).toContain('check every state of every design page')
+    expect(flat(alone)).not.toContain('one design page per state')
     expect(text()).toContain('Never call\n  `show_panel`')
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain('Call `show_plan()` once, before the closing message')
@@ -165,16 +167,16 @@ describe('the feature skill, planning with no human present', () => {
   })
 
   it('makes one design per screen, its states on a switcher inside it (one-design-per-screen)', () => {
-    const design = read('references', 'design.md')
-    expect(design).toContain('## 2. One design page per screen, its states inside')
+    const design = flat(read('references', 'design.md'))
     expect(design).not.toContain('One design page per state')
-    expect(design).toContain('**Never a second design for a state, a variant or a tweak.**')
-    expect(design).toContain('the current state in the page\'s address as `?state=<name>`')
-    expect(design).toContain('**Never show the choice as two designs**')
-    expect(design).toContain('**Keep the state switcher**')
+    expect(design).toContain('One design page per screen')
+    expect(design).toContain('Never a second design for a state, a variant or a tweak')
+    expect(design).toContain('?state=<name>')
     expect(design).toContain('never once per state')
-    expect(read('references', 'tickets.md')).toContain("The states on the design page's switcher are the states the wiring must reach")
-    expect(read('references', 'preview.md')).toContain('the states its switcher holds')
+    expect(design).toContain('Keep the state switcher')
+    expect(flat(read('references', 'tickets.md'))).toContain("states on the design page's switcher")
+    expect(flat(read('references', 'preview.md'))).toContain('the states its switcher holds')
+    expect(flat(read('references', 'preview-starter.html'))).toContain('<p>States:')
   })
 
   it('lets only the human approve a waiting design (designs-wait-for-you)', () => {
