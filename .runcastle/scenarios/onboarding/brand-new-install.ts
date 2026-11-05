@@ -3,11 +3,13 @@
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle that `.runcastle/drive-setup.ts` started empty for this scenario —
- * no database, config or git identity of the owner's. So the drive shows the
- * setup wizard; this file only prepares what the human opens in its last step:
- * a fresh copy of the tiny-notes fixture, one commit on `main`, in the drive's
- * data dir. It touches no database. Prints `SAMPLE_REPO=<path>` and
- * `ENTRY_URL=/` (the wizard).
+ * no database, config or .env of the owner's runcastle; the machine's own git
+ * identity and coding-agent login stay, as on a typical new user's machine. So
+ * the drive opens on runcastle's first screen for that machine (the setup
+ * wizard only when something is missing), and this file only prepares what the
+ * human opens: a fresh copy of the tiny-notes fixture, one commit on `main`, in
+ * the drive's data dir. It touches no database. Prints `SAMPLE_REPO=<path>` and
+ * `ENTRY_URL=/`.
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, rmSync } from 'node:fs'

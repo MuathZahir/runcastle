@@ -151,9 +151,11 @@ mkdirSync(dataDir, { recursive: true })
 const prodDir = join(homedir(), '.runcastle')
 
 /**
- * The onboarding scenario is a brand-new install: nothing of the owner's is
- * copied in, and the drive's server gets an empty git config so it sees no git
- * identity. HOME stays put, so the real Claude Code / Codex login is still found.
+ * The onboarding scenario is a brand-new install: nothing of the owner's runcastle
+ * is copied in (no database, config.json or .env). The machine stays as it is,
+ * git identity and Claude Code / Codex login included, so the drive meets what a
+ * typical new user's machine has (the-orchestrator-prepares-the-project
+ * decision 15).
  * Decided here, before boot, because the scenario itself only runs afterwards.
  */
 const brandNewInstall = process.env.RUNCASTLE_SCENARIO === ONBOARDING_SCENARIO
@@ -227,15 +229,6 @@ emit({
   RUNCASTLE_HOOK_CLIENT: pkg('packages', 'server', 'src', 'launcher', 'hook-client.ts'),
   RUNCASTLE_SANDCASTLE_TEMPLATE: pkg('packages', 'server', 'src', 'assets', 'sandcastle'),
 })
-
-if (brandNewInstall) {
-  // An empty file: git reads it as "no identity". The wizard's identity step
-  // runs `git config --global`, which honours GIT_CONFIG_GLOBAL, so what the
-  // human types lands here and never in the owner's ~/.gitconfig.
-  const gitConfig = join(dataDir, 'gitconfig')
-  writeFileSync(gitConfig, '')
-  emit({ GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' })
-}
 
 console.log(`[drive-setup] data dir ${dataDir}`)
 console.log(`[drive-setup] port ${port}`)
