@@ -61,7 +61,7 @@ body{margin:0;background:#0a0c11}
 .nav-links .btn{margin-left:10px}
 
 /* type: one headline per section, nothing else */
-.hl{font-size:clamp(42px,4.6vw,64px);line-height:1.04;letter-spacing:-0.042em;font-weight:500;text-wrap:balance;max-width:11em;background:linear-gradient(180deg,var(--text) 45%,var(--hl-fade));-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
+.hl{font-size:clamp(42px,4.6vw,58px);line-height:1.04;letter-spacing:-0.042em;font-weight:500;text-wrap:balance;max-width:11em;background:linear-gradient(180deg,var(--text) 45%,var(--hl-fade));-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
 .lede{font-size:17px;line-height:27px;color:var(--text-2);max-width:31em;text-wrap:pretty}
 .h{font-size:clamp(32px,3.6vw,48px);line-height:1.08;letter-spacing:-0.035em;font-weight:600;text-wrap:balance;max-width:11em}
 
@@ -395,7 +395,7 @@ body{margin:0;background:#0a0c11}
 .rc .foot a{color:var(--text-3);font-size:13px}
 .rc .foot a:hover{color:var(--text)}
 /* the castle: the mark rises out of the grid as a wall, battlements settle, the window lights */
-.cs{position:relative;height:330px;max-width:640px;margin:0 auto;isolation:isolate}
+.cs{position:relative;height:330px;max-width:640px;margin:0 auto;isolation:isolate;pointer-events:none}
 .cs::before{content:"";position:absolute;left:12%;right:12%;top:6%;bottom:-6%;background:radial-gradient(closest-side,rgba(79,142,247,.09),transparent 78%);z-index:-1;opacity:0;transform:scale(.45);transition:opacity 2.4s cubic-bezier(.25,.6,.2,1),transform 3s cubic-bezier(.25,.6,.2,1)}
 .close.lit .cs::before{opacity:1;transform:none}
 .cs .iso{left:50%;top:60%;transform:rotateX(50deg) rotateZ(45deg);scale:.92}

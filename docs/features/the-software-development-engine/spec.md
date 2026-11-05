@@ -27,10 +27,11 @@ buttons were already clickable.
 Once a visitor picks Windows, the hero's install chip shows the PowerShell command too; they
 already read one shared state (decision 3: no OS guessing, no remembering, no hero switch).
 
-**The hero.** The headline becomes exactly "The software development engine." and the
-subtitle paragraph under it is removed. The install chip, "Read the docs" link and scene stay
-as they are, with no style change (decision 2): three lines on desktop, one on tablet width,
-three at phone size.
+**The hero.** The headline becomes "The software development engine." with a fixed break
+after "The software", and the subtitle paragraph under it is removed. The headline's largest
+size drops from 64px to 58px so "development engine." fits the left column on desktop
+(decision 2): two lines on desktop and tablet, three at phone size. The install chip, "Read the
+docs" link and scene stay as they are.
 
 **The page head** (hand-written, kept by the port):
 - `<title>`, `og:title`, `twitter:title`: "runcastle - the software development engine".
@@ -47,7 +48,7 @@ image size stays 2400x1260, so its width and height tags do not change.
 
 **Where the edits land** (decision 1). The canvas is out of reach from here, so the lead
 edits the generated `site/index.html` and `site/landing.css` to read exactly as a port of the
-edited canvas would, and `decisions.md` lists the three canvas edits the human must make. The
+edited canvas would, and `decisions.md` lists the four canvas edits the human must make. The
 docs, compare pages, `styles.css` and `content.css` belong to sibling features and are not
 touched.
 
@@ -64,14 +65,14 @@ touched.
   and structured data carry the new copy, and none of the old pitch ("IDE for agents", "IDE
   built for agents", "You make the calls") remains anywhere in the file.
 - **The social card** (existing). `site/assets/og.png` is 2400x1260 and shows the new headline.
-- **The port round trip** (existing, the human's). After the three canvas edits,
+- **The port round trip** (existing, the human's). After the four canvas edits,
   `node scripts/port-landing.mjs <Main.dc.html>` leaves the three generated files unchanged.
 
 ## Out of scope
 
 - The docs (`site/docs/`) and compare (`site/compare/`) pages, `styles.css`, `content.css`:
   sibling features own them.
-- Any other landing copy, the hero's layout and type size, an OS switch in the hero, OS
+- Any other landing copy, the hero's layout beyond the headline size, an OS switch in the hero, OS
   detection, remembering the choice.
 - Deploying runcastle.dev: the orchestrator deploys after the three website features merge.
 - Editing the design canvas: the human does it from the list in `decisions.md`.
