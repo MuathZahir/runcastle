@@ -445,7 +445,7 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     'If the fault turns out to be a WRONG SETTING rather than a broken script, you cannot',
     'correct it from here: `record_finding` is project-scoped and this session is feature-',
     'scoped, so it will refuse you. Say which key is wrong and what it should be, and let the',
-    'human change it or open a preparation session — do not spend retries working around it.',
+    'human change it or ask the Orchestrator to — do not spend retries working around it.',
     '',
     '## The feature',
     `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
