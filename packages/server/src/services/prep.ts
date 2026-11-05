@@ -1,6 +1,8 @@
 import type { PreparedKey, Project, ProjectFinding } from '@runcastle/core'
+import { eq } from 'drizzle-orm'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { hasFinding, listFindings, unsetPreparedKeys } from './findings'
 import { activeDriveInfo, type DriveInfo } from './git'
@@ -66,6 +68,17 @@ export async function isEmptyRepo(repoPath: string): Promise<boolean> {
 
   const docsEntries = await readdir(join(repoPath, 'docs'))
   return docsEntries.every((entry) => SCAFFOLDED_DOCS_DIRS.includes(entry))
+}
+
+/**
+ * Whether the project has ever had a feature, in any state. A project in use
+ * is not taken over by preparation; a new one is (decision 3).
+ */
+export function hasEverHadFeature(ctx: AppCtx, projectId: string): boolean {
+  return (
+    ctx.db.select({ id: features.id }).from(features).where(eq(features.projectId, projectId)).limit(1).get() !==
+    undefined
+  )
 }
 
 export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {

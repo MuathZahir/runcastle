@@ -14,6 +14,9 @@ import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launch
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
+import { recordFinding } from '../src/services/findings'
+import { keysToPrepare } from '../src/services/prep'
+import { getProjectById } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -856,19 +859,61 @@ describe('hooks route, project-scoped sessions', () => {
     return createSessionRow(ctx, { projectId, kind, worktreePath: 'C:\\wt\\proj' }).id
   }
 
-  it('an orchestrator is told its scope, not the preparation agenda', async () => {
-    const sessionId = projectScopedSession('project')
-    const { json } = await post(mount(), 'session-start', {
-      sessionId,
-      payload: { session_id: 'cc-p1', hook_event_name: 'SessionStart', source: 'startup' },
+  /**
+   * Decision 3: the orchestrator's start note carries the three facts its
+   * opening turns on — open keys, an empty repo, a feature ever — and only a new
+   * project with code and open keys is prepared first.
+   */
+  describe("an orchestrator's start note", () => {
+    async function startNote(): Promise<string> {
+      const { json } = await post(mount(), 'session-start', {
+        sessionId: projectScopedSession('project'),
+        payload: { session_id: 'cc-p1', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
+      return json.hookSpecificOutput.additionalContext
+    }
+
+    function giveTheRepoCode(): void {
+      const project = getProjectById(ctx, projectId)!
+      writeFileSync(join(project.repoPath, 'index.ts'), 'export {}\n')
+    }
+
+    it('on a new project with code and open keys, says to prepare first', async () => {
+      giveTheRepoCode()
+      const note = await startNote()
+      expect(note).toContain('[runcastle] orchestrator for test')
+      expect(note).toMatch(/Open prepared keys: .*devCommand/)
+      expect(note).toContain('Repo: has code.')
+      expect(note).toContain('Features: none ever.')
+      expect(note).toContain('prepare first')
     })
 
-    const context: string = json.hookSpecificOutput.additionalContext
-    expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
-    expect(context).toContain('[runcastle] orchestrator for test')
-    expect(context).not.toContain('preparation session')
-    expect(context).not.toContain('Still unestablished')
-    expect(context).not.toContain('record_finding')
+    it('on a project that has had features, offers in one line instead of taking over', async () => {
+      giveTheRepoCode()
+      seedFeature(ctx, projectId, { slug: 'shipped' })
+      const note = await startNote()
+      expect(note).toContain('Features: this project has had features.')
+      expect(note).toContain('one line offering to set up the open keys')
+      expect(note).not.toContain('prepare first')
+    })
+
+    it('on an empty repo, opens as usual', async () => {
+      const note = await startNote()
+      expect(note).toContain('Repo: empty.')
+      expect(note).toContain('Opening (your skill\'s §0): open as usual.')
+    })
+
+    it('with every key closed, has nothing open and opens as usual', async () => {
+      giveTheRepoCode()
+      const project = getProjectById(ctx, projectId)!
+      for (const key of keysToPrepare(ctx, project)) {
+        recordFinding(ctx, projectId, { key, value: '', source: 'session', evidence: 'not used here' })
+      }
+      const note = await startNote()
+      expect(note).toContain('Open prepared keys: none.')
+      expect(note).toContain('open as usual.')
+    })
   })
 
   it('an orchestrator still gets the whole lifecycle', async () => {
