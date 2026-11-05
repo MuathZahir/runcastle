@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[Feature title] preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 24px 1fr;gap:10px;align-items:stretch;margin-top:12px}
+.ba .col{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 14px;background:var(--color-surface)}
+.ba h3{font-size:12px;font-weight:400;color:var(--color-text-tertiary);margin:0 0 8px}
+.ba .arrow{align-self:center;text-align:center;color:var(--color-text-tertiary)}
+.bars{display:grid;gap:6px}
+.bar{display:grid;grid-template-columns:120px 1fr 52px;gap:8px;align-items:center;font-size:12px;color:var(--color-text-secondary)}
+.bar i{display:block;height:8px;border-radius:999px;background:var(--color-text-disabled)}
+.bar.new i{background:var(--color-accent)}
+.bar b{font-weight:500;color:var(--color-text-tertiary);text-align:right}
+.strip{display:grid;gap:6px;margin-top:12px}
+.srow{display:grid;grid-template-columns:96px repeat(7,minmax(0,1fr));gap:4px}
+.srow .who{align-self:center;font-size:12px;font-weight:500}
+.st{padding:6px 7px;border-radius:var(--radius-md);font-size:11.5px;line-height:15px}
+.st small{display:block;font-size:10.5px}
+.st.on{background:var(--color-surface-selected)}.st.on small{color:var(--color-text-tertiary)}
+.st.you{border:1px dashed var(--color-border-strong);color:var(--color-text-tertiary)}.st.you small{color:var(--color-warning)}
+.st.rc{background:var(--color-accent-subtle);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--color-accent) 40%,transparent)}.st.rc small{color:var(--color-accent-text,var(--color-accent))}
+.anat{display:grid;gap:6px;margin-top:12px;max-width:560px}
+.anat div{display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);font-size:12.5px;color:var(--color-text-secondary)}
+.anat div b{color:var(--color-text);font-weight:500}
+.anat div .pin{margin-left:auto}
+.anat .big{padding:14px 10px}
+.posts{width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px}
+.posts th,.posts td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--color-border-subtle)}
+.posts th{font-weight:400;color:var(--color-text-tertiary);font-size:11.5px}
+.posts td:first-child{white-space:nowrap;font-weight:500}
+.posts td.h{color:var(--color-text)}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;font-size:12.5px}
+.flow span{padding:6px 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface)}
+.flow span.me{border-color:color-mix(in srgb,var(--color-accent) 50%,transparent)}
+.flow em{font-style:normal;color:var(--color-text-tertiary)}
+.designs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.ba .arrow{transform:rotate(90deg)}.designs{grid-template-columns:1fr}.srow{grid-template-columns:repeat(4,minmax(0,1fr))}.srow .who{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Compare posts that sell runcastle</h1>
+  <p class="lede">The four long, even-handed compare pages become a blog: an index and four short posts that argue for runcastle, each against one rival, with facts checked on Nov 5, 2026.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/compare-posts-that-sell-runcastle/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <h3>Before and after</h3>
+  <div class="ba">
+    <div class="col"><h3>Now: four essays, about 10,000 words</h3>
+      <div class="bars">
+        <div class="bar"><span>Overview roundup</span><i style="width:100%"></i><b>2.9k</b></div>
+        <div class="bar"><span>vs Claude Code</span><i style="width:84%"></i><b>2.5k</b></div>
+        <div class="bar"><span>vs T3 Code</span><i style="width:82%"></i><b>2.4k</b></div>
+        <div class="bar"><span>vs Conductor</span><i style="width:76%"></i><b>2.2k</b></div>
+      </div>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="col"><h3>After: an index and four posts, about 2,300 words <a class="pin" data-d="2">2</a></h3>
+      <div class="bars">
+        <div class="bar new"><span>Index <a class="pin" data-d="1">1</a></span><i style="width:6%"></i><b>~150</b></div>
+        <div class="bar new"><span>vs Conductor</span><i style="width:18%"></i><b>~500</b></div>
+        <div class="bar new"><span>CC or Codex alone</span><i style="width:18%"></i><b>~500</b></div>
+        <div class="bar new"><span>vs T3 Code</span><i style="width:18%"></i><b>~500</b></div>
+        <div class="bar new"><span>vs Kiro (new)</span><i style="width:18%"></i><b>~500</b></div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:28px">The one picture every post makes <a class="pin" data-d="4">4</a></h3>
+  <p class="hint">Dashed: left to you. Lit: runcastle does it. The top row changes per rival.</p>
+  <div class="strip">
+    <div class="srow"><span class="who">Conductor</span>
+      <span class="st you">Idea<small>you</small></span><span class="st you">Plan<small>you</small></span><span class="st you">Design<small>you</small></span><span class="st on">Build<small>agents</small></span><span class="st you">Review<small>you</small></span><span class="st you">Test drive<small>you</small></span><span class="st on">Merge<small>PR button</small></span></div>
+    <div class="srow"><span class="who">Kiro</span>
+      <span class="st on">Idea<small>spec</small></span><span class="st on">Plan<small>tasks</small></span><span class="st you">Design<small>you</small></span><span class="st on">Build<small>agents</small></span><span class="st you">Review<small>you</small></span><span class="st you">Test drive<small>you</small></span><span class="st you">Merge<small>you</small></span></div>
+    <div class="srow"><span class="who">runcastle</span>
+      <span class="st rc">Idea<small>orchestrator</small></span><span class="st rc">Plan<small>you say yes</small></span><span class="st rc">Design<small>in your app</small></span><span class="st rc">Build<small>rounds</small></span><span class="st rc">Review<small>walkthrough</small></span><span class="st rc">Test drive<small>one click</small></span><span class="st rc">Merge<small>you click</small></span></div>
+  </div>
+
+  <h3 style="margin-top:28px">The four posts <a class="pin" data-d="7">7</a></h3>
+  <table class="posts">
+    <thead><tr><th>Post</th><th>Headline (draft)</th><th>The argument</th></tr></thead>
+    <tbody>
+      <tr><td>vs Conductor <a class="pin" data-d="8">8</a></td><td class="h">After Conductor, don't settle for another agent runner.</td><td>Conductor announced it is joining Meta (Nov 4). It solved the easy half; you still prompted, watched, read diffs. Move to a process, not more agents.</td></tr>
+      <tr><td>Claude Code or Codex on their own</td><td class="h">Claude Code and Codex can run ten agents now. Who runs the project?</td><td>Yes, both run parallel agents now. Neither plans with you, designs in your app, drives the app to review it, or hands you a test drive. runcastle drives either, and mixes them.</td></tr>
+      <tr><td>vs T3 Code</td><td class="h">T3 Code puts every agent in one window. The work is still yours to run.</td><td>The best open-source remote for your agents. A better remote is still not a process.</td></tr>
+      <tr><td>vs Kiro (new)</td><td class="h">Kiro writes the spec. runcastle ships the feature.</td><td>The closest rival: it plans before it builds. It doesn't design in your real app, review by driving it, or give you a test drive.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:28px">Inside one post</h3>
+  <div class="anat">
+    <div class="big"><span><b>Opinionated headline</b>, byline with date and read time</span></div>
+    <div><b>Two-sentence lede</b></div>
+    <div><b>"Agents don't need more prompts. They need a process."</b></div>
+    <div class="big"><b>The process strip</b><a class="pin" data-d="4">4</a></div>
+    <div>3–4 short sections, each with a runcastle screenshot</div>
+    <div><span><b>Fact table</b>, "Checked Nov 5, 2026", source links</span><a class="pin" data-d="5">5</a></div>
+    <div><span><b>One line:</b> "Stay on Conductor for now if…"</span><a class="pin" data-d="3">3</a></div>
+    <div><span><b>Install command</b> and Read the docs</span></div>
+  </div>
+
+  <h3 style="margin-top:28px">Designed screens</h3>
+  <div class="designs">
+<!-- screen:compare-post -->
+    <div class="designed"><h3>Compare post (draft vs Conductor)</h3>
+      <p>The real page frame and blog styles, with draft copy for the Conductor post.</p>
+      <p class="mono">site/content.css · design page /_design/compare-post.html</p></div>
+<!-- /screen:compare-post -->
+<!-- screen:compare-index -->
+    <div class="designed"><h3>Compare index (blog cards)</h3>
+      <p>Real styles; the four cards carry the draft headlines.</p>
+      <p class="mono">site/content.css · design page /_design/compare-index.html</p></div>
+<!-- /screen:compare-index -->
+  </div>
+
+  <h3 style="margin-top:28px">How it gets built <a class="pin" data-d="6">6</a></h3>
+  <div class="flow">
+    <span>Your yes</span><em>&rarr;</em><span class="me">I write the 4 posts, index, redirect, sitemap</span><em>&rarr;</em><span>1 review round: pages in a browser + every rival claim against its source</span><em>&rarr;</em><span>Your test drive</span><em>&rarr;</em><span>Merge</span>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Posts for Cursor, Paradev, Vibe Kanban and the rest (named in one line on the index) <a class="pin" data-d="10">10</a></li>
+      <li><i class="dot"></i>Deeper docs links, once the docs feature fixes its URLs</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The docs pages and the landing page (sibling features)</li>
+      <li><i class="dot"></i>Recapturing runcastle's screenshots</li>
+      <li><i class="dot"></i>Deploying runcastle.dev (after all three merge)</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow">
+        <span>site/compare/index.html</span><span>conductor/</span><span>t3-code/</span><span>kiro/ (new)</span><span>claude-code-or-codex/ (new)</span>
+      </div>
+      <p class="hint" style="margin-top:10px">Blog look: new opt-in classes in <span class="mono">site/content.css</span> (byline, pull line, strip, figure, facts, CTA, cards); docs pages untouched. <span class="mono">site/_redirects</span> (new): <span class="mono">/compare/claude-code/</span> &rarr; the new post, 301 <a class="pin" data-d="9">9</a>. Resized WebP screenshots in <span class="mono">site/assets/posts/</span>. <span class="mono">sitemap.xml</span> lists the compare pages that exist. Each page keeps canonical, Open Graph and Article tags; titles keep "runcastle vs X" for search.</p>
+      <p class="hint">The design server for this run is a static server over <span class="mono">site/</span>, written to <span class="mono">.runcastle/design.json</span>; that file is shared with the app and goes back to the app's command before any commit.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['/compare/ becomes a blog index of the posts', 'A roundup repeats every post in a worse form; an index sends readers to the one post they came for.', 'assumed'],
+    ['A post is short: about 400–600 words, built around visuals', 'The complaints were "way too much text" and "it should feel like a blog". The old pages ran 2.2k–2.9k words.', 'assumed'],
+    ['Each post concedes one thing, in one line, at the end', 'The posts sell throughout; one plain concession is what keeps a persuasive post credible to developers.', 'assumed'],
+    ['The process strip is every post\'s central visual', 'It shows "other tools hand you agents and leave the process to you" in one glance, the same way in every post.', 'assumed'],
+    ['Facts about competitors are checked, dated and linked', 'No false claims, and a date tells readers how fresh the facts are and us when to recheck. No competitor screenshots.', 'assumed'],
+    ['The lead builds the posts itself; one review round at the end', 'Copy plus one stylesheet needs one voice and the research already done; tickets would buy no speed here. The review checks each rival claim against its source.', 'assumed'],
+    ['Four posts: Conductor, T3 Code, Claude Code or Codex on their own, and Kiro', 'Kiro is the only rival that claims runcastle\'s own job (a process, not just agents). The rest are agent runners the "on their own" post already answers.', 'assumed'],
+    ['The Conductor post becomes a "where to go next" post', 'Conductor announced on Nov 4 that it is joining Meta, so its users need a new home. The headline is about runcastle; the news sits in the lede.', 'assumed'],
+    ['The section stays "Compare" at /compare/', 'The old addresses keep their search ranking, and the nav label is shared with sibling features\' pages.', 'assumed'],
+    ['The index names the tools without a post, in one line', 'Readers looking for Cursor, Devin and the rest learn we know them and where the argument lives, for about 40 words.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [7, 'A Cursor post instead of Kiro, or no new post at all.', 'You asked to make this pick yourself. Cursor has more readers; Kiro is the closer rival.'],
+    [8, 'Drop the Conductor post and redirect its address to the index.', 'It leans on news one day old; the post states only what Conductor has published.'],
+    [3, 'No concession at all: pure pitch.', 'You called the old pages too "politically correct"; one line may still be one too many for you.'],
+    [2, 'Shorter still: 300–500 words, mostly pictures.', 'The challenger thought even 500–700 would read text-heavy; I cut to 400–600.', 'challenged']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
