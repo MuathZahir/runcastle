@@ -83,6 +83,12 @@ untouched:
 - `.post-list` / `.post-card`: the index cards; `.also`: the one line under
   them naming the tools without a post.
 
+**Stale styles.** Every compare page links its stylesheets with a version
+query (`/styles.css?v=…`, `/content.css?v=…`). Without it, a browser holding
+the old `content.css` draws the posts unstyled: the process strip collapses
+into run-together words and the screenshots stretch to their full pixel
+height. This happened in the design view on 2026-11-05.
+
 Two design pages show the look with draft copy: `site/_design/compare-post.html`
 (the Conductor post) and `site/_design/compare-index.html`. The build turns
 them into the real pages and then deletes `site/_design/`, so nothing
