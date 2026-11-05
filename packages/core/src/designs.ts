@@ -19,7 +19,7 @@ export type DesignApprover = z.infer<typeof DesignApprover>
 export interface DesignEntry {
   id: string
   title: string
-  /** The page on the design server, e.g. `/preview/designs.html?state=list`. */
+  /** The page on the design server, e.g. `/preview/designs.html` (bare: its states live on a switcher inside it). */
   path: string
   /** The screen width it is laid out at; unset, the human's own choice (Desktop). */
   width?: number

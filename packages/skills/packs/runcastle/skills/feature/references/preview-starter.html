@@ -84,7 +84,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* the framed panel a mocked screen sits in; inside it, use the project's own styling */
 .screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
 
-/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
 .designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
 .designed p{color:var(--color-text-secondary)}
 
@@ -154,6 +154,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
        panel; delete it if the show has no screen). A screen designed in design
        mode gets a designed-screen entry instead of a mock, with no button; see preview.md:
        <div class="designed"><h3>Title</h3><p>What is real, what is sample.</p>
+       <p>States: empty · loading · full · error.</p>
        <p class="mono">src/components/File.tsx · design page /preview/path</p></div>
   -->
 <!-- screen:example-name -->

@@ -101,7 +101,8 @@ A screen designed in design mode (`./design.md`) is **not mocked
 again**. Its place in the show is a **designed-screen entry**:
 
 - its name, the same title you gave `show_design`;
-- one line saying what is real and what is sample data.
+- one line saying what is real and what is sample data;
+- the states its switcher holds, so the plan says what the human will find.
 
 The entry has **no button**: the human reaches a design from its card in the chat
 and from the Design tab, which lists every design you showed with `show_design`.
@@ -116,6 +117,7 @@ entry:
 <div class="designed">
   <h3>Invoice list</h3>
   <p>Layout and states are real components; the rows are sample data.</p>
+  <p>States: empty · loading · full · error.</p>
   <p class="mono">src/components/InvoiceList.tsx · design page /preview/invoice-list</p>
 </div>
 <!-- /screen:invoice-list -->
@@ -151,5 +153,5 @@ minute for a small feature, a few minutes for a large one.**
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
 - Every screen designed in design mode is a designed-screen entry that names its
-  committed component and design page, not a redrawn mock.
+  states, its committed component and design page, not a redrawn mock.
 - The file is still fully inline.
