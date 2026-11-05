@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One design per screen, with its states inside — preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px}
+.ba h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:8px}
+.card{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);margin-top:6px}
+.card .th{width:44px;height:30px;border-radius:var(--radius-sm);background:var(--color-surface-inset);border:1px solid var(--color-border-subtle);flex:none}
+.card .wait{margin-left:auto;font-size:11px;color:var(--color-warning)}
+.card.bad{opacity:.75}
+.count{margin-top:8px;font-size:12px;color:var(--color-text-tertiary)}
+.stage{margin-top:12px;height:300px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-inset);position:relative;overflow:hidden}
+.mock{position:absolute;inset:16px 276px 16px 16px;border-radius:var(--radius-md);background:var(--mk-bg,#fff);color:var(--mk-fg,#1b1f29);padding:18px 20px;font-size:13px}
+.mock.dark{--mk-bg:#1b1f29;--mk-fg:#e9ecf2}
+.mock h4{margin:0 0 12px;font-size:15px}
+.mock .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(127,127,127,.2)}
+.mock .empty{margin-top:40px;text-align:center;opacity:.6}
+.mock .err{margin-top:30px;padding:10px;border-radius:6px;background:rgba(223,80,80,.12);color:#df5050}
+.mock .btn{display:inline-block;margin-top:14px;padding:6px 12px;border-radius:6px;background:var(--mk-acc,#3a7ef0);color:#fff;font-size:12px}
+.mock.dense .row{padding:4px 0}
+.sw{position:absolute;right:28px;bottom:28px;width:236px;padding:6px;border-radius:var(--radius-lg);background:var(--color-surface-raised);border:1px dashed var(--color-border-strong);box-shadow:0 6px 24px rgb(0 0 0 / .35);font-size:12px;color:var(--color-text-tertiary)}
+.sw .lab{padding:2px 4px 6px;font-size:11px;letter-spacing:.02em}
+.sw .btns{display:flex;flex-wrap:wrap;gap:2px}
+.sw button{height:22px;padding:0 8px;border-radius:var(--radius-sm)}
+.sw button:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.sw button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.sw .tw{margin-top:6px;padding-top:6px;border-top:1px solid var(--color-border-subtle)}
+.sw .read{margin-top:4px;padding:0 4px;font-family:var(--font-mono);font-size:11px}
+.addr{position:absolute;left:28px;bottom:28px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-tertiary);background:var(--color-surface-raised);padding:2px 6px;border-radius:var(--radius-sm)}
+.steps{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.step{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.arrow{color:var(--color-text-tertiary)}
+.files li{display:flex;gap:10px;min-height:26px;align-items:center;color:var(--color-text-secondary)}
+.files{list-style:none;margin:8px 0 0;padding:0}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.mock{right:16px}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>One design per screen, with its states inside</h1>
+  <p class="lede">Each screen a feature designs arrives as one design to approve. Its states, its theme and any open tweaks are buttons on that one page, never extra designs.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/one-design-per-screen-with-its-states-inside/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>The design cards the human gets for one screen</h3>
+    <div class="ba">
+      <div>
+        <h3>Today</h3>
+        <div class="card bad"><span class="th"></span>Checkout, empty<span class="wait">to approve</span></div>
+        <div class="card bad"><span class="th"></span>Checkout, full<span class="wait">to approve</span></div>
+        <div class="card bad"><span class="th"></span>Checkout, error<span class="wait">to approve</span></div>
+        <div class="card bad"><span class="th"></span>Checkout, compact tweak<span class="wait">to approve</span></div>
+        <p class="count">Four approvals for one screen.</p>
+      </div>
+      <div>
+        <h3>After <a class="pin" data-d="1">1</a></h3>
+        <div class="card"><span class="th"></span>Checkout<span class="wait">to approve</span></div>
+        <p class="count">One approval. The states and the tweak are inside it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What the human sees when they open it</h3>
+    <p class="hint">A sketch, clickable. The dashed panel is the switcher the agent writes into the design page <a class="pin" data-d="2">2</a> <a class="pin" data-d="8">8</a>.</p>
+    <div class="stage" id="stage">
+      <div class="mock" id="mock"></div>
+      <div class="addr" id="addr">/preview/checkout.html?state=full</div>
+      <div class="sw" role="group" aria-label="Design controls (sketch)">
+        <div class="lab">DESIGN · STATES</div>
+        <div class="btns" id="states"></div>
+        <div class="btns" style="margin-top:4px"><button type="button" id="theme" aria-pressed="false">Dark theme</button> <a class="pin" data-d="3">3</a></div>
+        <div class="tw">
+          <div class="btns"><span style="padding:3px 4px">Tweaks</span><button type="button" data-den="comfy" aria-pressed="true">Comfy</button><button type="button" data-den="compact" aria-pressed="false">Compact</button></div>
+          <div class="read" id="read"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>When the human approves <a class="pin" data-d="5">5</a></h3>
+    <div class="steps">
+      <span class="step">Approve "Checkout"</span><span class="arrow">→</span>
+      <span class="step">Tweak values go into the real code, the Tweaks are deleted</span><span class="arrow">→</span>
+      <span class="step">Page committed with its state buttons kept</span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <p class="hint">No new screen in the app, so nothing was designed for this plan. The change is text: I make it myself, then one review round checks it.</p>
+    <ul class="files">
+      <li><i class="dot live"></i>The design guide: one page per screen, the switcher's shape, Tweaks inside, the switcher kept on commit</li>
+      <li><i class="dot live"></i>The planning-alone guide: check every state of every design</li>
+      <li><i class="dot live"></i>The plan and ticket guides: a designed screen lists its states</li>
+      <li><i class="dot live"></i>The show-design tool's description: a screen example, plus one sentence stating the rule <a class="pin" data-d="6">6</a></li>
+      <li><i class="dot"></i>Review round: one review ticket reads the diff against the spec</li>
+    </ul>
+  </div>
+
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Publishing runcastle so live sessions get the rule</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Any change to the Design pane or its Approve button</li>
+      <li><i class="dot"></i>A shared switcher component <a class="pin" data-d="4">4</a></li>
+      <li><i class="dot"></i>The server merging design addresses <a class="pin" data-d="6">6</a></li>
+      <li><i class="dot"></i>Migrating design pages already committed <a class="pin" data-d="7">7</a></li>
+      <li><i class="dot"></i>The website work running in parallel</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">Text only, plus one tool description. Live sessions read the globally installed skill pack, so the rule reaches them after the next publish and reinstall.</p>
+      <ul class="files">
+        <li><span class="mono">packages/skills/packs/runcastle/skills/feature/references/design.md</span></li>
+        <li><span class="mono">packages/skills/packs/runcastle/skills/feature/references/planning-alone.md</span></li>
+        <li><span class="mono">packages/skills/packs/runcastle/skills/feature/references/preview.md</span></li>
+        <li><span class="mono">packages/skills/packs/runcastle/skills/feature/references/tickets.md</span></li>
+        <li><span class="mono">packages/server/src/mcp/server.ts</span> (show_design's description only)</li>
+      </ul>
+      <p class="hint" style="margin-top:10px">The switcher's state lives in the address as <span class="mono">?state=&lt;name&gt;</span>; show_design is always called with the bare page address.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['One design per screen, its states and variants inside it', 'Agreed in triage: fewer approvals, and every state is still visible before approving.'],
+    ['The switcher lives in the design page, not in the Design pane', 'Works in every project, needs no app change, and runcastle\'s own design pages already do it.', 'assumed'],
+    ['Widths and themes are not separate designs', 'They are variants; the Design pane already changes width, and a theme toggle sits on the switcher as its own control.', 'assumed'],
+    ['No shared switcher helper ships', 'A React helper would serve runcastle\'s repo only; the switcher is a few dozen lines an agent writes in the project\'s own framework.', 'assumed'],
+    ['The switcher stays in the committed design page; Tweaks still go', 'States are what the page is for; tweaks are a choice settled at approval.', 'assumed'],
+    ['The rule is taught, not enforced by the server', 'Some projects tell design pages apart by query, so merging addresses would collapse different screens. The tool description gains the rule in one sentence.', 'assumed'],
+    ['Existing committed design pages are left as they are', 'Approved history; a page is brought into line when next worked on.', 'assumed'],
+    ['Every switcher has the same shape', 'From the challenger: corner panel marked as a design control, a visible button per state, state in the address, page still live, Tweaks folded in.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [2, 'Runcastle\'s Design pane draws the switcher from a list of states the page declares.', 'You may want one control drawn by runcastle rather than one written per page.'],
+    [4, 'A StateBar component in runcastle\'s own preview folder, shared by its design pages.', 'The open question in the brief; a helper gives runcastle\'s own pages one look.'],
+    [5, 'Strip the switcher too, and commit the page at one default state.', 'You might want committed design pages to be as clean as the Tweaks rule makes them.'],
+    [6, 'The server treats page.html?state=a and ?state=b as one design.', 'The bug you hit was an agent ignoring a written rule; text alone may not stop it.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+
+  // the sketch: a design page with its switcher
+  var STATES = ['empty', 'loading', 'full', 'error']
+  var st = 'full', dark = false, den = 'comfy'
+  var mock = $('#mock'), box = $('#states')
+  STATES.forEach(function (k) {
+    var b = document.createElement('button'); b.type = 'button'; b.dataset.st = k
+    b.textContent = k.charAt(0).toUpperCase() + k.slice(1); box.appendChild(b)
+  })
+  function draw() {
+    var body = '<h4>Checkout</h4>'
+    if (st === 'empty') body += '<div class="empty">Your basket is empty.</div>'
+    if (st === 'loading') body += '<div class="empty">Loading…</div>'
+    if (st === 'full' || st === 'error') body += '<div class="row"><span>Desk lamp</span><span>€39</span></div><div class="row"><span>Notebook ×3</span><span>€12</span></div><div class="row"><b>Total</b><b>€51</b></div>'
+    if (st === 'error') body += '<div class="err">The payment did not go through. Try again.</div>'
+    if (st === 'full') body += '<span class="btn">Pay €51</span>'
+    mock.innerHTML = body
+    mock.className = 'mock' + (dark ? ' dark' : '') + (den === 'compact' ? ' dense' : '')
+    $$('button[data-st]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.st === st)) })
+    $$('button[data-den]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.den === den)) })
+    $('#theme').setAttribute('aria-pressed', String(dark))
+    $('#addr').textContent = '/preview/checkout.html?state=' + st
+    $('#read').textContent = 'state ' + st + ' · theme ' + (dark ? 'dark' : 'light') + ' · density ' + den
+  }
+  $('#stage').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return
+    if (b.dataset.st) st = b.dataset.st
+    else if (b.dataset.den) den = b.dataset.den
+    else if (b.id === 'theme') dark = !dark
+    draw()
+  })
+  draw()
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
