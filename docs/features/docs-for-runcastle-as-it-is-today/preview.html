@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs for runcastle as it is today — plan</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+
+.ba{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center;margin:12px 0 28px}
+.ba .col{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 14px;background:var(--color-surface-raised)}
+.ba .col h3{margin:0 0 8px;font-size:12px;font-weight:400;color:var(--color-text-tertiary)}
+.ba .row{display:flex;justify-content:space-between;gap:10px;font-size:13px;min-height:24px;align-items:center}
+.ba .row s{color:var(--color-text-tertiary)}
+.ba .bar{height:6px;border-radius:3px;background:var(--color-border-strong);margin-top:10px}
+.ba .bar.new{background:var(--color-accent)}
+.ba .arrow{color:var(--color-text-tertiary);font-size:20px}
+.pages{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:12px 0 28px}
+.pg{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 14px;background:var(--color-surface-raised)}
+.pg h3{margin:0;font-size:14px;display:flex;gap:8px;align-items:center}
+.pg .url{font-family:var(--font-mono);font-size:11.5px;color:var(--color-text-tertiary);margin:2px 0 8px}
+.pg ul{margin:0;padding:0;list-style:none}
+.pg li{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--color-text-secondary);min-height:24px}
+.pg li .cam{flex:none;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px}
+.pg li .txt{flex:none;width:14px;height:2px;background:var(--color-text-tertiary);border-radius:1px}
+.legend{font-size:12px;color:var(--color-text-tertiary);display:flex;gap:16px;margin-top:-18px;margin-bottom:24px}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.redir{display:grid;grid-template-columns:auto auto 1fr;gap:6px 12px;font-family:var(--font-mono);font-size:12.5px;margin:12px 0 28px;align-items:center}
+.redir .old{color:var(--color-text-tertiary)}.redir .ar{color:var(--color-text-tertiary)}
+.redir .gone{color:var(--color-text-tertiary)}
+.you{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 28px}
+.you span{border:1px solid var(--color-border);border-radius:999px;padding:3px 10px;font-size:13px;color:var(--color-text-secondary)}
+.you b{color:var(--color-warning);font-weight:500}
+@media (max-width:760px){.pages{grid-template-columns:1fr}.ba{grid-template-columns:1fr}.ba .arrow{display:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+<div class="page">
+
+<header id="what">
+  <h1>Docs for runcastle as it is today</h1>
+  <p class="lede">The site docs, rewritten around today's flow, for Claude Code or Codex: four short pages where real screenshots of the app do the work paragraphs used to.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/docs-for-runcastle-as-it-is-today/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<section id="show">
+  <h2>The show</h2>
+
+  <h3>Before and after <a class="pin" data-d="1">1</a> <a class="pin" data-d="4">4</a></h3>
+  <div class="ba">
+    <div class="col"><h3>Today: 6 pages, ~7,900 words, no screenshots</h3>
+      <div class="row"><span>Getting started</span><span>1.4k</span></div>
+      <div class="row"><s>The pipeline (six phases)</s><span>1.5k</span></div>
+      <div class="row"><s>Gates</s><span>1.2k</span></div>
+      <div class="row"><s>Preparation</s><span>1.6k</span></div>
+      <div class="row"><s>Project session</s><span>1.3k</span></div>
+      <div class="row"><span>VPS</span><span>0.8k</span></div>
+      <div class="bar" style="width:100%"></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="col"><h3>After: 4 pages, ~1,500 words, ~10 real captures</h3>
+      <div class="row"><span>Get started</span><span>≤400</span></div>
+      <div class="row"><span>How a feature goes</span><span>≤400</span></div>
+      <div class="row"><span>The orchestrator</span><span>≤400</span></div>
+      <div class="row"><span>Another machine or your phone</span><span>≤400</span></div>
+      <div class="row"><span>&nbsp;</span><span></span></div>
+      <div class="row"><span>&nbsp;</span><span></span></div>
+      <div class="bar new" style="width:19%"></div>
+    </div>
+  </div>
+
+  <h3>The four pages</h3>
+  <div class="pages">
+    <div class="pg"><h3>Get started <a class="pin" data-d="8">8</a></h3><div class="url">/docs/</div><ul>
+      <li><i class="txt"></i>The pitch: the software development engine, on Claude Code or Codex</li>
+      <li><i class="txt"></i>Install: two one-line commands</li>
+      <li><i class="txt"></i>What you need, in a few lines; cost and limits in one</li>
+      <li><i class="cam"></i>First-run wizard: pick your coding agent</li>
+      <li><i class="cam"></i>Claude Code or Codex: a model per step</li>
+      <li><i class="txt"></i>Your first feature: open your repo, it gets prepared, start a chat</li>
+    </ul></div>
+    <div class="pg"><h3>How a feature goes <a class="pin" data-d="9">9</a></h3><div class="url">/docs/features/ · designed</div><ul>
+      <li><i class="cam"></i>Planning: the plan and its tickets, waiting for your yes</li>
+      <li><i class="cam"></i>Design screens in your real app</li>
+      <li><i class="cam"></i>Build: a round of workers in sandboxes</li>
+      <li><i class="cam"></i>Review: the review package</li>
+      <li><i class="cam"></i>Then you test drive it</li>
+      <li><i class="txt"></i>Shipped: you merge</li>
+    </ul></div>
+    <div class="pg"><h3>The orchestrator <a class="pin" data-d="10">10</a></h3><div class="url">/docs/orchestrator/</div><ul>
+      <li><i class="cam"></i>Bring it an idea; it cuts the work into features</li>
+      <li><i class="txt"></i>The backlog</li>
+      <li><i class="cam"></i>Notes and Triage</li>
+    </ul></div>
+    <div class="pg"><h3>Another machine or your phone <a class="pin" data-d="11">11</a></h3><div class="url">/docs/vps/</div><ul>
+      <li><i class="txt"></i>Install on a server, keep it running</li>
+      <li><i class="txt"></i>Reach it: SSH with ports 4512 and 4514</li>
+      <li><i class="txt"></i>Move an existing setup: runcastle move</li>
+      <li><i class="cam"></i>Your phone over Tailscale, with notifications (if capturable)</li>
+    </ul></div>
+  </div>
+  <div class="legend"><span><i class="cam" style="display:inline-block;width:14px;height:10px;border:1.5px solid var(--color-accent);border-radius:2px"></i>a real capture <a class="pin" data-d="6">6</a></span><span><i style="display:inline-block;width:14px;height:2px;background:var(--color-text-tertiary)"></i>a line or a command, no picture</span></div>
+
+  <h3>Where you take part, as the features page says it <a class="pin" data-d="9">9</a></h3>
+  <div class="you"><span><b>●</b> Say yes to the plan</span><span><b>●</b> Approve designed screens</span><span>Workers build</span><span>Review round test drives it</span><span><b>●</b> You test drive</span><span><b>●</b> Merge</span></div>
+
+  <h3>Designed: the features page</h3>
+<!-- screen:docs-features-page -->
+<div class="designed">
+  <h3>Docs page: How a feature goes</h3>
+  <p>The real page with its real text and layout. The pictures are the README's current captures standing in for the docs set, and the design screenshot is a striped placeholder. A Tweaks menu leaves two looks open: picture width (wide past the text, or text width) and picture frame (plain border, or an app window bar).</p>
+  <p class="mono">site/docs/features/index.html + site/docs.css · design page /docs/features/</p>
+</div>
+<!-- /screen:docs-features-page -->
+  <p class="hint" style="margin-top:8px">The other three pages follow its grammar: heading, one or two sentences, a capture with a caption.</p>
+
+  <h3 style="margin-top:28px">Old addresses keep working <a class="pin" data-d="2">2</a></h3>
+  <div class="redir">
+    <span class="old">/docs/pipeline/</span><span class="ar">→</span><span>/docs/features/</span>
+    <span class="old">/docs/gates/</span><span class="ar">→</span><span>/docs/features/</span>
+    <span class="old">/docs/project/</span><span class="ar">→</span><span>/docs/orchestrator/</span>
+    <span class="old">/docs/preparation/</span><span class="ar">→</span><span>/docs/</span>
+  </div>
+</section>
+
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Made without you. Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The "Start the project" moment, once the orchestrator takes over preparing</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The landing page and the compare pages (their old docs links ride the redirects)</li>
+      <li><i class="dot"></i>content.css and styles.css</li>
+      <li><i class="dot"></i>Docker, Podman, troubleshooting and usage-ping detail: stays in the README</li>
+      <li><i class="dot"></i>Deploying runcastle.dev: the orchestrator does it after all three site features merge</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <ul>
+        <li>Static HTML, no JS, no build step. Each page loads <span class="mono">styles.css</span>, <span class="mono">content.css</span> and a new docs-only <span class="mono">docs.css</span> (the <span class="mono">.doc-shot</span> figure, up to 960px wide, and the stage row).</li>
+        <li>New <span class="mono">site/_redirects</span> (Cloudflare Pages, 301s); <span class="mono">site/sitemap.xml</span> lists the four docs URLs; the site README's file map is updated.</li>
+        <li>Captures: 2x PNGs of a 1440×900 window in <span class="mono">site/assets/docs/</span>, from a scratch data dir (a copy of the real database with only the demo project), the server booted from the checkout, live states staged after boot. Recipe and shot list go in the site README; no script.</li>
+        <li>Built by the lead in this checkout (workers cannot reach the real database). Then one review ticket: links, redirects, stale words, prose length, each picture against its caption.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+ [
+  "Four short pages, not six",
+  "Gates and the preparation session describe removed or vanishing machinery, and the human asked for far less text. Four pages follow what a newcomer does: install, run a feature, bring ideas, run it elsewhere.",
+  "assumed"
+ ],
+ [
+  "The final URL list, and redirects for the old ones",
+  "The old URLs are indexed and linked from the compare and landing pages, which this feature does not own. `/docs/vps/` keeps its address because the README links it twice.",
+  "assumed"
+ ],
+ [
+  "Preparing a project is one line, worded to survive the orchestrator taking it over",
+  "The feature \"the orchestrator prepares the project\" is in flight and deletes the separate Preparation screen. One neutral sentence stays true whichever merges first; a page or a picture would not.",
+  "assumed"
+ ],
+ [
+  "Each section is a heading, one or two sentences and a screenshot",
+  "The human said the whole site has \"way too much text\"; a picture does the work a paragraph used to.",
+  "assumed"
+ ],
+ [
+  "A short \"what you need\" list stays; reference detail lives in the README",
+  "A newcomer must learn what install needs without leaving the site at step one, but the long reference detail is what made the docs text-heavy, and one copy cannot drift from another.",
+  "assumed"
+ ],
+ [
+  "A fresh set of real captures, taken by hand, with the recipe written down",
+  "A committed script would only ever run on the owner's machine (it needs their database and demo project) and its database writes break whenever the schema changes, which makes it machinery to carry rather than a cure for stale pictures.",
+  "assumed"
+ ],
+ [
+  "Claude Code or Codex, stated once up front and shown once",
+  "Codex is equally supported, and the old docs called runcastle a Claude Code UI.",
+  "assumed"
+ ],
+ [
+  "The docs open on the shared pitch",
+  "It is the pitch the human settled in the project session for the landing page; the docs should say the same thing.",
+  "assumed"
+ ],
+ [
+  "How a feature goes tells the four stages as a story",
+  "That is the flow in the code today (the feature agent leads from first message to merge, rounds of workers, a review round by default, the human drives and merges). The old six phases and gates are gone.",
+  "assumed"
+ ],
+ [
+  "Notes and triage live on the orchestrator page",
+  "Notes collect in the project's inbox and the orchestrator is what triages them; that is where a reader looking for \"what do I do with what I noticed\" lands.",
+  "assumed"
+ ],
+ [
+  "The VPS page also covers moving and the phone",
+  "The current guide forwards only 4512, so the Design view stays empty, assumes Claude Code, and predates `runcastle move`. All three are \"use runcastle somewhere other than this laptop\", which is one reader. The phone link and its push notifications are shipped features no page mentions.",
+  "assumed"
+ ],
+ [
+  "Docs-only styles go in their own stylesheet",
+  "The compare feature is restyling `content.css` right now; a separate file cannot conflict with it.",
+  "assumed"
+ ],
+ [
+  "I build it myself, then one review round",
+  "The screenshots need the human's real runcastle database and the demo project, which a sandboxed worker cannot reach. What remains is a few hundred lines of HTML, cheaper in one window than in containers.",
+  "assumed"
+ ],
+ [
+  "Written for newcomers; runcastle's own words get one line each",
+  "Pages this short leave no room for a glossary page, and an undefined \"round\" stops a newcomer at the first screenshot.",
+  "assumed"
+ ],
+ [
+  "Get started ends on your first feature",
+  "A reader who has installed it wants the next action, and their own repo is what they came to use; runcastle ships no sample project.",
+  "assumed"
+ ],
+ [
+  "One honest line on cost and limits",
+  "A reader deciding whether to adopt it looks for both, and the old docs only said it in passing.",
+  "assumed"
+ ]
+]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[1, "Keep six pages, one per old topic, each just shortened.", "A guess at how far you want to cut; it fixes every URL the compare feature links to."], [3, "Wait for \"the orchestrator prepares the project\" to merge, then picture its \"Start the project\" moment.", "Depends on which of the two features merges first."], [6, "Commit a capture script so a retake is one command.", "The planner first chose the script; the challenger argued it only runs on your machine and breaks with the schema.", "challenged"], [11, "Keep the VPS guide to the VPS and give the phone its own page.", "Folds three topics into one page; a guess at how you group them."], [13, "Hand the page writing to a worker and keep only the captures.", "No build tickets at all is unusual; workers cannot reach your database for the captures."]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

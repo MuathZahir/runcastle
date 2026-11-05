@@ -45,7 +45,7 @@ Check first: 1, 3, 6, 11, 13
 **Why:** It is the pitch the human settled in the project session for the landing page; the docs should say the same thing.
 **Assumed.** Alternative: open straight on the install command with no pitch.
 
-## 9. How a feature goes follows the four stages the app shows
+## 9. How a feature goes tells the four stages as a story
 **Decision:** The features page walks Planning, Build, Review and Shipped, the four stages the README and the brief use, as a story of what happens rather than a status the app stores (it stores none; the sidebar sorts features by who they wait on, "Needs you" and "Agent working"). Under Planning: talking it through, the plan you say yes to, and designing screens live in your real app. Under Build: rounds of sandboxed workers. Under Review: the review package, then your own test drive with notes. Shipped: Merge. It names each point where you take part: you say yes to the plan and approve any designed screens, then you test drive and press Merge. It does not count them.
 **Why:** That is the flow in the code today (the feature agent leads from first message to merge, rounds of workers, a review round by default, the human drives and merges). The old six phases and gates are gone.
 **Assumed.** Alternative: describe the flow as one continuous loop with no named stages.
