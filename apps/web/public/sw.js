@@ -17,21 +17,21 @@ const OFFLINE_PAGE = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0c11">
+<meta name="theme-color" content="#04060b">
 <title>Runcastle</title>
 <style>
   :root { color-scheme: dark; }
   body {
     margin: 0; min-height: 100dvh; display: grid; place-content: center; gap: 16px;
     padding: 24px; box-sizing: border-box; text-align: center;
-    background: #0a0c11; color: #eceef4;
+    background: #04060b; color: #eceef4;
     font: 15px/22px system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   h1 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; }
-  p { margin: 0; color: #a2a8b9; }
+  p { margin: 0; color: #a9b1c1; }
   button {
     justify-self: center; height: 44px; padding: 0 20px; border: 0; border-radius: 10px;
-    background: #eceef4; color: #0a0c11; font: inherit; font-weight: 500;
+    background: #eceef4; color: #04060b; font: inherit; font-weight: 500;
   }
 </style>
 </head>

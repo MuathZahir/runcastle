@@ -19,9 +19,9 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 
 | Namespace | Tokens | Utilities |
 |---|---|---|
-| `--color-*` grounds | `canvas`, `surface`, `surface-raised`, `surface-inset`, `scrim`; see-through (a `color-mix` of `text`): `surface-hover`, `surface-selected`, `fill-card`, `fill-well` | `bg-surface`, `bg-surface-hover`, `bg-fill-well`, `bg-scrim` |
+| `--color-*` grounds | `canvas`, `surface`, `surface-raised`, `surface-inset` (= `canvas`), `scrim`; see-through (a `color-mix` of `text`), two strengths: faint `surface-hover` = `fill-card`, strong `surface-selected` = `fill-well` | `bg-surface`, `bg-surface-hover`, `bg-fill-well`, `bg-scrim` |
 | `--color-*` lines | `border`, `border-subtle` (translucent, so it reads on every ground — `surface-raised` included), `border-strong` | `border-border-subtle` |
-| `--color-*` text | `text`, `text-secondary`, `text-tertiary`, `text-disabled`, `icon` | `text-text-secondary`, `text-icon` |
+| `--color-*` text | `text`, then two quiet greys: `text-secondary` and `text-tertiary` (the muted grey; `icon` is the same value); `text-disabled` | `text-text-secondary`, `text-icon` |
 | `--color-*` action | `primary`, `primary-hover`, `on-primary`, `accent`, `accent-text`, `accent-subtle`, `focus-ring` | `bg-primary`, `text-accent-text` |
 | `--color-*` status | `success`, `warning`, `danger`, `danger-subtle`; word peers `success-text`, `warning-text`, `danger-text` | `text-success`, `text-danger-text`, `bg-danger-subtle` |
 | `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped`; a `-text` word peer for each but `draft` | `text-phase-review`, `text-phase-review-text` |
