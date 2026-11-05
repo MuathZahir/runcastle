@@ -20,7 +20,7 @@ describe('GlossaryDialog', () => {
   it('lists every word under its group, with the words it replaced', () => {
     render(<GlossaryDialog open onClose={vi.fn()} />)
     expect(terms()).toEqual(expect.arrayContaining(GLOSSARY.map((e) => e.term)))
-    expect(terms()).toHaveLength(16)
+    expect(terms()).toHaveLength(15)
     for (const label of Object.values(GLOSSARY_GROUP_LABEL)) expect(screen.getByRole('heading', { name: label })).toBeTruthy()
     expect(screen.getByText('Once called: burn, AFK burn, run, lap')).toBeTruthy()
   })
