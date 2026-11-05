@@ -14,12 +14,12 @@ pages that are going away, and carry competitor facts that have since changed.
 
 **What the reader gets.** /compare/ is a short blog index: a headline, the
 series' one-line thesis ("Agents don't need more prompts. They need a
-process."), and a card per post. Each post is a three-minute read that argues
+process."), and a card per post. Each post is a two-minute read (400–500 words) that argues
 for runcastle against one alternative. It opens with an opinionated headline
 and a two-sentence lede, puts the shared process strip near the top, makes its
 case in three or four short sections anchored by runcastle's own screenshots,
-closes with a small dated fact table and one honest line on who should still
-pick the other tool, and ends on the install command.
+closes with a small dated fact table, and ends on the install command. There
+is no closing concession.
 
 **The argument every post makes.** runcastle is the software development
 engine: it runs the software process for you — cut the idea, plan, design in
@@ -40,12 +40,18 @@ index in this order:
 | vs Kiro | `/compare/kiro/` | Kiro writes the spec. runcastle ships the feature. | Kiro is the closest: requirements, design doc and ordered tasks, then parallel agents. Say so. The argument is the steps it lacks: designing in your real running app, a review that drives the app and records a walkthrough, and a test drive before merge. Strip: Kiro covers Idea, Plan and Build; Design, Review and Test drive are left to you. |
 
 The old `/compare/claude-code/` address returns a permanent (301) redirect to
-the new one from a new `site/_redirects` file (Cloudflare Pages reads it on
-deploy). The draft headlines are the lead's; the build may sharpen them.
+the new one from `site/_redirects` (Cloudflare Pages reads it on deploy). The
+docs feature creates that file too, for its own redirects, so this feature's
+lines sit in their own commented block at the end of the file
+(`# compare posts`), and the second merge is a trivial conflict. The draft headlines are the lead's; the build may sharpen them.
 
 **Facts at build time.** The research date is 2026-11-05. Before writing each
 post, the build re-reads the competitor's own pages that the post will link
-and states only what they say. In particular, Conductor's cloud shutdown dates
+and states only what they say. A claim it cannot back is softened or dropped.
+That includes the strip: a step drawn as "left to you" needs a source showing
+the tool does not do it, or the step is drawn neutral. Two claims need sources
+by name: Kiro leaving Design, Review and Test drive to you, and Conductor
+being Mac-only (its installation docs). In particular, Conductor's cloud shutdown dates
 and its Mac app's support window were reported by research but not confirmed
 on Conductor's pages; they go in only if the build confirms them. Each fact
 table has these rows: Runs on, Agents, Isolation, Plans and reviews, and
@@ -71,7 +77,6 @@ untouched:
   column on wide screens, with a caption.
 - `.facts`: a two- or three-column fact table with a "Checked <date>" source
   line linking each source.
-- `.concede`: the single "pick the other tool if…" line.
 - `.post-cta`: one short line, the one-line install for macOS and Linux
   (Windows users get the PowerShell line beneath it), and a "Read the docs"
   button.
@@ -93,10 +98,13 @@ The posts serve resized WebP copies (about 1840 px wide) from
 `site/assets/posts/`, with real alt text and `loading="lazy"`. No competitor
 screenshots and no competitor logos.
 
-**Links.** Posts link only `/docs/` among the docs until the orchestrator
-passes the docs feature's final URL list; then the lead swaps in deeper links
-where they help. Each post links the other posts once, in a "More
-comparisons" pair at the end.
+**Links.** Posts link only the four docs pages that will exist: `/docs/`
+(Get started), `/docs/features/` (How a feature goes), `/docs/orchestrator/`
+(The orchestrator) and `/docs/vps/` (Another machine or your phone). The
+"Read the docs" button goes to `/docs/`; a post links `/docs/features/` where
+it describes the feature flow, `/docs/orchestrator/` where it describes cutting
+an idea, and `/docs/vps/` where it mentions your phone. Each post links two
+other posts once, in a "Next" pair at the end.
 
 **SEO.** The `<title>` keeps the search phrase ("runcastle vs Conductor") even
 though the h1 is the opinionated headline. Each page keeps its canonical,
@@ -119,9 +127,9 @@ files are listed.
   or `npx serve` over `site/`. Every post, the index and the redirect target
   are observable at their URLs; the review round reads them in a browser at
   desktop (1440) and phone (390) widths.
-- **`site/_redirects`** (new): one line, `/compare/claude-code/` →
-  the new address, 301. Observable only on Cloudflare Pages; locally the
-  review checks the file's content.
+- **`site/_redirects`** (shared with the docs feature): one commented block
+  at the end, `/compare/claude-code/` → the new address, 301. Observable only
+  on Cloudflare Pages; locally the review checks the file's content.
 - **`content.css` blog classes** (new, additive): observable on any docs page
   as "no change" and on compare pages as the blog look.
 
@@ -138,6 +146,5 @@ files are listed.
 
 ## Open questions
 
-- Deeper docs links wait on the docs feature's final URL list.
 - Whether the byline should carry a person's name in place of "runcastle
   team".

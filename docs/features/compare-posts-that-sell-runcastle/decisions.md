@@ -11,16 +11,18 @@ Check first: 7, 8, 3, 2
 **Why:** The human wants it to feel like a blog. A roundup article repeats every post in a worse form; an index sends readers to the one post they came for.
 **Assumed.** Alternative: keep the overview as a short roundup post with one table across all tools.
 
-## 2. A post is short: about 400–600 words, built around visuals
-**Decision:** Each post has an opinionated headline, a dated byline with read time, a two-sentence lede, three or four short sections each anchored by a visual, a small "the facts" table, and a closing install call. Hard ceiling 700 words. The old per-page sub-navigation, the long verdict box and the long side-by-side table go.
-**Why:** The human's two complaints were "way too much text" and "it should feel like a blog". 400–600 words is a 2–3 minute read; the old pages were 2.2k–2.9k. The draft Conductor post in the design page is about 500.
+## 2. A post is short: about 400–500 words, built around visuals
+**Decision:** Each post has an opinionated headline, a dated byline with read time, a two-sentence lede, three or four short sections each anchored by a visual, a small "the facts" table, and a closing install call. Aim for 400–500 words; 700 is not a target. The old per-page sub-navigation, the long verdict box and the long side-by-side table go.
+**Why:** The human's two complaints were "way too much text" and "it should feel like a blog". 400–500 words is a two-minute read; the old pages were 2.2k–2.9k.
 **Assumed.** Alternative: even shorter (300 words, mostly pictures), which risks reading as an ad rather than a post.
 **Challenged:** With a strip, a fact table and three or four visuals, even 500–700 words reads text-heavy against "way too much text"; it would aim for 400–500.
+**Changed by the orchestrator:** the target moved from 400–600 (ceiling 700) to 400–500, siding with the challenger.
 
-## 3. Each post concedes one thing, in one line, at the end
-**Decision:** The post argues for runcastle throughout and ends with a single honest line on who should still pick the other tool ("Pick Conductor if you're on a Mac and just want more agents running"). No "both are great" framing anywhere else.
-**Why:** The human called the current pages "politically correct" and wants them to sell. One plain concession is what keeps a persuasive post credible to developers, who distrust a comparison that admits nothing.
-**Assumed.** Alternative: no concession at all, pure pitch.
+## 3. No concession: each post ends on the install call
+**Decision:** The post argues for runcastle throughout and ends on the install call to action. There is no "who should still pick the other tool" line and no "both are great" framing. Credibility comes from accuracy instead: no claim about another tool without a dated, linked source (see 5).
+**Why:** The human's complaint was that the pages are "politically correct". A closing concession is the same habit in one line.
+**Assumed.** Alternative: one honest closing line on who should still pick the other tool (the lead's first plan).
+**Changed by the orchestrator:** the closing concession is dropped; posts end on the install call.
 
 ## 4. The process strip is every post's central visual
 **Decision:** Every post carries the same drawn strip of runcastle's process — Idea → Plan → Design → Build → Review → Test drive → Merge — with the steps the other tool leaves to you shown as "you do this" and the steps it covers shown as covered. It is HTML and CSS on the page, not an image, so it stays sharp and cheap to change.
@@ -28,7 +30,7 @@ Check first: 7, 8, 3, 2
 **Assumed.** Alternative: a per-post feature table with ticks and crosses, which reads as the neutral comparison the human rejected.
 
 ## 5. Facts about competitors are checked, dated and linked
-**Decision:** Every claim about another tool comes from its own site, docs or changelog as of the research date, and each post's fact table says "Checked <date>" with links to those sources. Posts show no screenshots of other products; they show runcastle's own captures.
+**Decision:** Every claim about another tool comes from its own site, docs or changelog as of the research date, and each post's fact table says "Checked <date>" with links to those sources. A claim the build cannot source is softened or dropped, the process strip's "left to you" steps included. Posts show no screenshots of other products; they show runcastle's own captures.
 **Why:** The brief forbids false claims, and the old pages went stale within weeks. A date tells the reader how fresh the facts are and tells us when to recheck. Using our own captures only avoids putting someone else's UI on our marketing page.
 **Assumed.** Alternative: no sources on the page (cleaner, but nothing to stand on when a competitor disputes a claim).
 
