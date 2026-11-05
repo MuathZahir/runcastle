@@ -6,7 +6,7 @@
    only adds the long-form reading surface on top and defines no colours of
    its own — every value below resolves to a :root custom property.
 
-   Loaded WITHOUT main.js, so nothing here may depend on a runtime class
+   Loaded with no JS at all, so nothing here may depend on a runtime class
    (no .reveal, no .is-stuck).
    ========================================================================== */
 
