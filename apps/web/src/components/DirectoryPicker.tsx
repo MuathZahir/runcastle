@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { trpc } from '../trpc'
-import { pathPlaceholder } from '../lib/platform'
+import { repoPathPlaceholder } from '../lib/platform'
+import { useServerPlatform } from '../lib/server-platform'
 import { browseFailure, pickerStartDir, type RepoOpenFailure } from '../lib/projects'
 import { IconBranch, IconChevronUp, IconFolder, IconHome } from '../icons'
 import {
@@ -47,6 +48,7 @@ export function DirectoryPicker({
   onPick: (path: string) => void
   onCancel: () => void
 }) {
+  const serverPlatform = useServerPlatform()
   const handed = initialPath?.trim() || undefined
   // `undefined` asks the server for its default (the user's home directory), so
   // the client never has to know what home is.
@@ -161,7 +163,7 @@ export function DirectoryPicker({
           value={typed ?? current ?? ''}
           onNavigate={navigate}
           onEnterPath={enterPath}
-          placeholder={pathPlaceholder()}
+          placeholder={repoPathPlaceholder(serverPlatform)}
         />
         <Checkbox label="Hidden" checked={showHidden} onChange={setShowHidden} className="shrink-0 px-2" />
       </div>

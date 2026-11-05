@@ -73,6 +73,7 @@ vi.mock('../src/trpc', () => {
         roots: query(() => []),
         browse: query(() => undefined),
       },
+      system: { version: query(() => ({ version: 'test', platform: 'linux' })) },
     },
   }
 })

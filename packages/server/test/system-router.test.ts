@@ -35,7 +35,7 @@ describe('runcastleVersion', () => {
 
 describe('system router', () => {
   it('reports the running version', async () => {
-    expect(await caller.system.version()).toEqual({ version: pkgVersion })
+    expect(await caller.system.version()).toEqual({ version: pkgVersion, platform: process.platform })
   })
 
   // Wiring only: the route reports the version it is actually running and the
