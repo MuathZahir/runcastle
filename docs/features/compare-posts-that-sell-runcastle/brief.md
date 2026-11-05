@@ -31,3 +31,8 @@ No dependencies; runs in parallel with "The software development engine" and "Do
 
 ## Working agreement (cut of 2026-11-05)
 Autonomous: the orchestrator carries this to merged, merging when the feature's own review is clean, and the human comes back at the end. The single stop is the competitor pick after research. The human chose this.
+
+## Added by the orchestrator, 2026-11-05
+
+## Docs URLs (from the docs feature's plan, 2026-11-05)
+The docs end up as four pages: `/docs/` (Get started), `/docs/features/` (How a feature goes), `/docs/orchestrator/` (The orchestrator), `/docs/vps/` (Another machine or your phone). `/docs/pipeline/` and `/docs/gates/` redirect to `/docs/features/`, `/docs/project/` to `/docs/orchestrator/`, `/docs/preparation/` to `/docs/`. The docs feature owns `site/_redirects` for those; if you also add redirects (e.g. for a renamed compare URL), append to the same file. Link only these four.
