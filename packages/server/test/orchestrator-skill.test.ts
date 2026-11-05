@@ -282,8 +282,8 @@ describe('the deleted skills', () => {
   const skillsDir = join(resolvePluginDir(), 'skills')
   const DELETED = '(ideate|lead|spec|tickets|revisit|design)'
 
-  it('leave the pack with feature, qa, project, prepare and code-review', () => {
-    expect(readdirSync(skillsDir).sort()).toEqual(['code-review', 'feature', 'prepare', 'project', 'qa'])
+  it('leave the pack with feature, qa, project and code-review', () => {
+    expect(readdirSync(skillsDir).sort()).toEqual(['code-review', 'feature', 'project', 'qa'])
   })
 
   it('are named by no remaining skill text', () => {

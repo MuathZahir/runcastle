@@ -80,20 +80,6 @@ describe('evaluateEditGuard — the resolve-conflict session', () => {
       ).toBeNull()
       expect(evaluateEditGuard({ ...GUARD_BASE, kind: 'scenario' })).toBeNull()
     })
-
-    it('sends a session with no feature to `record_finding`, purpose or not', () => {
-      for (const purpose of [undefined, 'resolve-conflict'] as const) {
-        const denial = evaluateEditGuard({
-          kind: 'prepare',
-          purpose,
-          mergeInProgress: false,
-          worktreePath: '/repo',
-          toolName: 'Write',
-          filePath: '/repo/.env',
-        })
-        expect(denial?.reason).toContain('record_finding')
-      }
-    })
   })
 })
 

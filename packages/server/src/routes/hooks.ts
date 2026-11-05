@@ -82,7 +82,7 @@ hooks.post('/:event', async (c) => {
       return c.json({})
     }
 
-    // Project-scoped sessions (`prepare` and `project` — see
+    // Project-scoped sessions (`project` — see
     // PROJECT_SESSION_KINDS — and a `scenario` chat on a project drive) have no
     // feature. They still need the full
     // lifecycle — `markSessionLive` is what flips the row live and records the
@@ -212,7 +212,7 @@ function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<strin
   })
 }
 
-// --- project-scoped (`prepare` / `project`) session hooks --------------------
+// --- project-scoped (`project`) session hooks --------------------------------
 
 /**
  * `SessionStart` for a project-scoped conversation, either kind. Same lifecycle
@@ -279,14 +279,12 @@ function handleProjectScopedSessionEnd(
 
 /**
  * The human noun for a project-scoped session, used in its lifecycle events and
- * injected labels. It matches what `launchPrepareSession`/`launchProjectSession`
+ * injected labels. It matches what `launchProjectSession`
  * already emit at launch; an unrecognised featureless kind gets the neutral word
  * rather than being announced as somebody else's session.
  */
 function projectScopedNoun(kind: SessionKind): string {
   switch (kind) {
-    case 'prepare':
-      return 'preparation session'
     case 'project':
       return 'orchestrator'
     // Project-scoped only on a project drive; on a feature drive it takes the
@@ -300,17 +298,11 @@ function projectScopedNoun(kind: SessionKind): string {
 
 /** The per-turn `UserPromptSubmit` label for a project-scoped session, per kind. */
 function projectScopedPromptLabel(kind: SessionKind): string {
-  return kind === 'prepare'
-    ? '[runcastle] preparation session (project-scoped, no feature)'
-    : `[runcastle] ${projectScopedNoun(kind)}`
+  return `[runcastle] ${projectScopedNoun(kind)}`
 }
 
 /**
  * The `SessionStart` digest for a project-scoped session, per kind.
- *
- * `prepare` gets the preparation agenda: its whole job is closing the
- * unestablished keys, and the digest re-grounds it on which are still open —
- * exactly the state a compaction is most likely to have dropped.
  *
  * A `project` session gets the facts its opening turns on (decision 3): which
  * keys are open, whether the repo is empty, whether the project has ever had a
@@ -326,17 +318,7 @@ async function projectScopedStartContext(ctx: AppCtx, session: SessionRow): Prom
 
   const scope = `[runcastle] ${noun} for ${project.name} (${project.repoPath})`
   if (session.kind === 'project') return `${scope}.\n${await orchestratorPrepNote(ctx, project)}`
-  if (session.kind !== 'prepare') return scope
-
-  const remaining = keysToPrepare(ctx, project)
-  return [
-    `${scope}.`,
-    remaining.length > 0
-      ? `Still unestablished: ${remaining.join(', ')}.`
-      : 'Every prepared field currently has a value.',
-    'Record what you establish with the `record_finding` MCP tool — a value the user',
-    'gives you or confirms verbatim is theirs (userSupplied: true), anything you measured is not.',
-  ].join(' ')
+  return scope
 }
 
 /**

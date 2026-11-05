@@ -40,7 +40,7 @@ describe('what an Orchestrator thread is called', () => {
 })
 
 describe('other threads keep their naming', () => {
-  it.each(['chat', 'side', 'prepare'] as const)('a briefed %s thread ignores the runtime title', (kind) => {
+  it.each(['chat', 'side'] as const)('a briefed %s thread ignores the runtime title', (kind) => {
     const events = [briefed(), human('fix the bay'), generated('Runcastle lead session')]
     expect(runtimeMayName(row({ kind }), events)).toBe(false)
     expect(threadName(row({ kind }), events)).toBe('fix the bay')

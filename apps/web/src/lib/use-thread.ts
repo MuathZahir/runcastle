@@ -81,8 +81,8 @@ export async function blobBase64(blob: Blob): Promise<string> {
   return btoa(binary)
 }
 
-/** Where a chat nobody has started would start: a feature's main chat, or a project's new chat or preparation chat. */
-export type ThreadStart = { featureId: string } | { projectId: string; kind: 'project' | 'prepare' }
+/** Where a chat nobody has started would start: a feature's main chat, or a project's new orchestrator chat. */
+export type ThreadStart = { featureId: string } | { projectId: string; kind: 'project' }
 
 let localSeq = 0
 

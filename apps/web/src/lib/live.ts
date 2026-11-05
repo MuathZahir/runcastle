@@ -431,7 +431,6 @@ export function useLiveSync(): LiveStatus {
       // The merge confirmation's "what lands" row is the same git read one step
       // further on (commits AND files), so it moves when the count does.
       refetches.push(u.feature.mergeDelta.invalidate())
-      refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
       // Its conversation list marks which one is live, so an end moves it too.
       refetches.push(u.project.conversations.invalidate())

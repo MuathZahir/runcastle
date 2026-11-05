@@ -179,7 +179,7 @@ describe('feature dependencies over MCP', () => {
 
   it('offers and allows set_feature_dependencies to the orchestrator only', async () => {
     expect(toolsForAudience('project')).toContain('set_feature_dependencies')
-    for (const kind of ['prepare', 'chat', 'drive-fix', 'run'] as const) {
+    for (const kind of ['scenario', 'chat', 'drive-fix', 'run'] as const) {
       expect(toolsForAudience(kind), kind).not.toContain('set_feature_dependencies')
     }
 
@@ -187,10 +187,10 @@ describe('feature dependencies over MCP', () => {
     draft('auth-rework')
     const own = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const chat = createSessionRow(ctx, { featureId: own.id, kind: 'chat', worktreePath: repoPath })
-    const prepare = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: repoPath })
+    const scenario = createSessionRow(ctx, { projectId, kind: 'scenario', worktreePath: repoPath })
     for (const [name, caller] of [
       ['chat', chat],
-      ['prepare', prepare],
+      ['scenario', scenario],
     ] as const) {
       expect(
         () => toolSetFeatureDependencies(ctx, caller, { slug: 'billing', dependsOn: ['auth-rework'] }),

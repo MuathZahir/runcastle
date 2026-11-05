@@ -444,17 +444,6 @@ describe('hooks route', () => {
       expect(await preTool(projectSession, 'Edit', '/wt/project/src/index.ts')).toEqual({})
     })
 
-    it('denies a preparation session, which runs in the human`s own checkout', async () => {
-      const prep = createSessionRow(ctx, {
-        projectId: seedProject(ctx).id,
-        kind: 'prepare',
-        worktreePath: '/repo',
-      }).id
-      const json = await preTool(prep, 'Write', '/repo/.env')
-      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
-      expect(json.hookSpecificOutput.permissionDecisionReason).toContain('record_finding')
-    })
-
     it('keeps binding every other feature-scoped kind', async () => {
       const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: '/repo' }).id
       const json = await preTool(fix, 'Edit', '/repo/src/theme.ts')
@@ -542,7 +531,7 @@ describe('hooks route', () => {
     }
 
     it('denies a refused command with the reason', async () => {
-      const json = await shell('prepare', 'git push origin main')
+      const json = await shell('drive-fix', 'git push origin main')
       expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
       expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/Leave it to them/)
     })
@@ -621,11 +610,6 @@ describe('hooks route', () => {
         },
       })
       expect(json).toEqual({})
-    })
-
-    it('allows a prepare session in the main checkout', async () => {
-      const prep = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: '/repo' }).id
-      expect(await install(prep)).toEqual({})
     })
 
     it('allows a drive-fix session in the main checkout', async () => {
@@ -837,11 +821,11 @@ describe('hooks route', () => {
 })
 
 /**
- * The two featureless kinds share this branch of the route, and they must not
- * share its briefing. Observed live: a `project` session opened by measuring
- * setup/verify commands instead of engaging the human, because the branch handed
- * it the preparation agenda — the prep digest plus "record what you establish
- * with `record_finding`" — that only the `prepare` kind's job asks for.
+ * The featureless sessions (the orchestrator, and a scenario chat on a project
+ * drive) share this branch of the route, and each is briefed as itself.
+ * Observed live: a `project` session opened by measuring setup/verify commands
+ * instead of engaging the human, because the branch once handed it a bare
+ * preparation agenda rather than the facts its opening turns on.
  */
 describe('hooks route, project-scoped sessions', () => {
   let ctx: AppCtx
@@ -949,31 +933,10 @@ describe('hooks route, project-scoped sessions', () => {
     expect(json.hookSpecificOutput.additionalContext).toBe('[runcastle] orchestrator')
   })
 
-  it('leaves the prepare session its agenda, unchanged', async () => {
-    const sessionId = projectScopedSession('prepare')
-    const { json } = await post(mount(), 'session-start', {
-      sessionId,
-      payload: { session_id: 'cc-prep', hook_event_name: 'SessionStart', source: 'startup' },
-    })
-
-    const context: string = json.hookSpecificOutput.additionalContext
-    expect(context).toContain('[runcastle] preparation session for test')
-    expect(context).toContain('Still unestablished')
-    expect(context).toContain('record_finding')
-
-    const turn = await post(mount(), 'user-prompt', {
-      sessionId,
-      payload: { hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
-    })
-    expect(turn.json.hookSpecificOutput.additionalContext).toBe(
-      '[runcastle] preparation session (project-scoped, no feature)',
-    )
-  })
-
   it('announces each kind by its own name in its lifecycle events', async () => {
     for (const [kind, noun] of [
       ['project', 'orchestrator'],
-      ['prepare', 'preparation session'],
+      ['scenario', 'scenario chat'],
     ] as const) {
       const sessionId = projectScopedSession(kind)
       const before = listByProject(ctx, projectId, 0).at(-1)?.id ?? 0

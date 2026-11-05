@@ -1318,7 +1318,7 @@ function checkpointDocsAfterReply(ctx: AppCtx, session: SessionRow, summary: str
   })
 }
 
-// --- project-scoped tools (`prepare` + `project` sessions) ------------------
+// --- project-scoped tools (`project` sessions) ------------------------------
 
 /**
  * The project a project-scoped tool call belongs to, or a refusal that says why.
@@ -1491,12 +1491,12 @@ export async function toolRecordFinding(
 
 /**
  * Drive what preparation recorded (decisions 1, 8): the server runs its real
- * test-drive machinery under a synthetic identity, and the prep session watches.
+ * test-drive machinery under a synthetic identity, and the orchestrator watches.
  *
- * Gated to `prepare` for two reasons that point the same way. It starts
- * services and creates a database on the host, which is exactly the authority a
- * preparation conversation has and no other session does; and the values it
- * proves are the ones this session just established, so anywhere else it would
+ * Gated to `project` for two reasons that point the same way. It starts
+ * services and creates a database on the host, which is exactly the authority
+ * the orchestrator has as the one that prepares the project; and the values it
+ * proves are the ones the orchestrator established, so anywhere else it would
  * be proving somebody else's homework.
  *
  * Everything it returns is what the machinery SAW — hook output tails, the
@@ -1512,7 +1512,7 @@ export async function toolDryRunDrive(
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.DryRunResult> {
   const project = requireProject(ctx, session)
-  if (session.kind !== 'project' && session.kind !== 'prepare') {
+  if (session.kind !== 'project') {
     throw new GateError(
       `the dry-run drive belongs to the orchestrator, and this is a ${session.kind} session. It ` +
         "starts services and creates a database on the human's machine — only the session that " +
@@ -1521,8 +1521,11 @@ export async function toolDryRunDrive(
   }
   // The orchestrator writes `.runcastle/` in its own worktree, and the drive runs
   // in the human's checkout: its commits have to be there before they can be
-  // proven. A refused landing refuses the start, with the reason to relay.
-  if (session.kind === 'project' && input.action === 'start') {
+  // proven. A refused landing refuses the start, with the reason to relay. A
+  // start the held slot would refuse anyway is refused first, so it lands nothing.
+  if (input.action === 'start') {
+    const held = git.driveSlotHeldReason(project.id)
+    if (held) return { ok: false, action: 'start', deniedReason: held }
     const landing = await landProjectBranchNow(ctx, project, session.id)
     if (!landing.ok) {
       return {
@@ -2645,10 +2648,10 @@ const PROJECT_READ_NOTE =
  */
 export type McpAudience = SessionKindT | 'run'
 
-/** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
+/** Every kind whose session belongs to a FEATURE (the complement of the project kinds). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
 
-const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
+const PROJECT_KINDS: readonly SessionKindT[] = ['project']
 
 /**
  * `scenario` is in neither list: its scope follows its drive (feature or
@@ -2660,7 +2663,7 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
- * `requireProject`, `requireRunIdentity`, the `kind !== 'prepare'` and
+ * `requireProject`, `requireRunIdentity`, the `kind !== 'project'` and
  * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
@@ -2721,8 +2724,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
   // Single-kind tools, each gated on that kind at call time.
-  // The orchestrator's from now on; `prepare` keeps it until that kind is deleted.
-  dry_run_drive: PROJECT_KINDS,
+  dry_run_drive: ['project'],
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],

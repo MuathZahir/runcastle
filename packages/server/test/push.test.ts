@@ -94,7 +94,7 @@ describe('phone notifications', () => {
     it('offers the tool to a feature’s main chat and an orchestrator thread, and to nobody else', () => {
       expect(toolsForAudience('chat')).toContain('notify_human')
       expect(toolsForAudience('project')).toContain('notify_human')
-      for (const other of ['side', 'run', 'drive-fix', 'prepare', 'scenario'] as const) {
+      for (const other of ['side', 'run', 'drive-fix', 'scenario'] as const) {
         expect(toolsForAudience(other), other).not.toContain('notify_human')
       }
     })

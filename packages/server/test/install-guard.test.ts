@@ -140,7 +140,6 @@ describe('install guard', () => {
   })
 
   it('only guards the talk worktree itself — not the main checkout or __project', () => {
-    expect(denied('bun install', { kind: 'prepare', worktreePath: '/repo' })).toBe(false)
     expect(denied('bun install', { kind: 'drive-fix', worktreePath: '/repo' })).toBe(false)
     expect(
       denied('bun install', { worktreePath: '/home/u/.runcastle/worktrees/p1/__project' }),

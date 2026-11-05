@@ -2,7 +2,7 @@ import { DEFAULT_RUNTIME, resolveModelEntry, type ModelEntry, type ModelStep, ty
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { serverUrlFor } from '../launcher/artifacts'
-import { buildPrepareBrief, ensureFeatureWorktree } from '../launcher/launcher'
+import { ensureFeatureWorktree } from '../launcher/launcher'
 import { runtimeAdapterFor } from '../launcher/runtimes'
 import type { AcpLaunchSpec, RuntimeLaunchInput } from '../launcher/runtimes/types'
 import * as git from '../services/git'
@@ -31,11 +31,10 @@ const STEP: Record<SessionRow['kind'], ModelStep> = {
   chat: 'chat',
   // A side thread is the main chat's sibling, on its step.
   side: 'chat',
-  // Host-side environment work, on preparation's step.
+  // Host-side drive work, on the drive chats' step (`prepare`).
   scenario: 'prepare',
   'drive-fix': 'prepare',
   project: 'project',
-  prepare: 'prepare',
 }
 
 function rowProject(ctx: AppCtx, row: SessionRow): Project {
@@ -48,7 +47,7 @@ export function resolvedThreadModel(ctx: AppCtx, row: SessionRow): ModelEntry {
 }
 
 /**
- * The posture of the host-side kinds (`prepare`, `drive-fix`, `scenario`), which
+ * The posture of the host-side kinds (`drive-fix`, `scenario`), which
  * work in the human's own checkout. Claude runs them without prompts and the
  * checkout guard (a pre-tool hook, which holds under bypass) refuses what the
  * prompts used to catch. Codex never asks, and passes no mode so it keeps its
@@ -92,8 +91,6 @@ export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<Runt
         permissionMode: 'bypassPermissions',
       }
     }
-    case 'prepare':
-      return { ...base, ...hostSidePosture(runtime), prepare: await buildPrepareBrief(ctx, project) }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)
       return {

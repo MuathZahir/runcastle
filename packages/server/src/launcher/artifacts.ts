@@ -43,13 +43,11 @@ export interface SessionArtifacts {
 
 export interface WriteArtifactsInput {
   session: SessionRow
-  /** Absent for a project-scoped `prepare` session, which has `prepare` instead. */
+  /** Absent for a project-scoped `project` session, which has `projectBrief` instead. */
   feature?: Feature
   project: Project
   config: RuncastleConfig
-  /** The brief for a `prepare` session; required when `feature` is absent. */
-  prepare?: PrepareBrief
-  /** The brief for a `project` session; the other way `feature` may be absent. */
+  /** The brief for a `project` session; required when `feature` is absent. */
   projectBrief?: ProjectBrief
   /**
    * The brief for a `drive-fix` session. Feature-scoped but host-side, so it
@@ -325,200 +323,6 @@ export function renderSidePrompt(feature: Feature): string {
     '',
     '## Your task',
     "Wait for the human's ask, then do it. Do not act before they say what they want.",
-    '',
-  ].join('\n')
-}
-
-/** One already-established prepared key, with how much to trust it now. */
-export interface PrepareFinding {
-  key: string
-  source: string
-  evidence?: string
-  /**
-   * When a dry-run drive last PROVED this value (ms epoch); absent means never.
-   * Carried through from `listFindings`, which has always returned it — the
-   * brief used to drop it, so a value measured this morning and a value
-   * measured a year ago read identically to the agent that had to decide
-   * whether to re-derive either.
-   */
-  verifiedAt?: number
-  /** Commits landed on the main branch since it was established (same reason). */
-  staleCommits?: number
-}
-
-/**
- * What the SERVER already knows about the host, because it is running on it.
- * Every field here is a probe the prompt used to send the agent off to make —
- * `existsSync` for a compose file, `existsSync` for `.runcastle/`, a lockfile
- * scan, `process.platform` — which is an expensive way to learn something the
- * process writing the prompt could answer for free.
- */
-export interface PrepareHost {
-  /** `process.platform` — decides what language the drive scripts are written in. */
-  platform: string
-  /** A `docker-compose.y*ml` / `compose.y*ml` exists at the repo root. */
-  hasCompose: boolean
-  /** `.runcastle/` already exists — this project has been prepared before. */
-  hasDriveMachinery: boolean
-  /** The package manager its lockfile names, when there is one. */
-  packageManager?: string
-}
-
-/** What a preparation conversation needs to know before it opens its mouth. */
-export interface PrepareBrief {
-  project: Project
-  /** Prepared keys still empty (and not human-owned) — the agenda. */
-  remainingKeys: readonly string[]
-  /** Keys already established, with who established them and how fresh it is. */
-  established: readonly PrepareFinding[]
-  /** What the server probed about this machine (optional: older callers/tests). */
-  host?: PrepareHost
-}
-
-/** `staleCommits` / `verifiedAt` rendered as the one clause that matters. */
-function findingAge(f: PrepareFinding): string {
-  const parts: string[] = []
-  if (f.verifiedAt === undefined) parts.push('never verified by a drive')
-  else parts.push(`verified ${daysAgo(f.verifiedAt)}`)
-  if (f.staleCommits !== undefined && f.staleCommits > 0) {
-    parts.push(`${f.staleCommits} commit(s) behind`)
-  }
-  return parts.join(', ')
-}
-
-/** "today" / "3 days ago" — precision beyond a day is noise in a briefing. */
-function daysAgo(at: number): string {
-  const days = Math.floor((Date.now() - at) / 86_400_000)
-  if (days <= 0) return 'today'
-  if (days === 1) return 'yesterday'
-  return `${days} days ago`
-}
-
-/**
- * The injected brief for a `prepare` session — the only way a project is
- * prepared.
- *
- * PER-SESSION FACTS ONLY. This used to be the largest artifact in the system —
- * 13,494 chars, ~3,374 tokens — and 90% of it was procedure: the drive
- * contract, the discovery method, five stack recipes and a dry-run walkthrough,
- * all rendered unconditionally on every launch. It branched on `remainingKeys`
- * in exactly one place, 34 characters long, so a session opened to settle one
- * key carried ~11,000 characters that could not apply to it — and it GREW as
- * work completed, because `established` appends evidence faster than
- * `remainingKeys` shrinks.
- *
- * All of that now lives in `/runcastle:prepare` (and its `references/recipes.md`,
- * which loads only when a recipe is reached for), so it arrives when it is
- * needed rather than before it is known to be. What stays here is what the skill
- * cannot know: which repo, what the server already probed about this machine,
- * which keys are open, what is established and how stale, and the standing
- * rules that must be true before the agent's first move rather than after it
- * loads a skill.
- *
- * The framing that carries it is still that this session is on the HOST. Every
- * key here can be RUN rather than guessed at — that is the capability the
- * conversation exists to use, and the reason it must also ask before touching
- * anything stateful.
- */
-export function renderPreparePrompt(brief: PrepareBrief): string {
-  const { project, remainingKeys, established, host } = brief
-  const open = remainingKeys.length > 0
-  // The drive prose is gated on the agenda actually reaching the drive loop.
-  // `dbResetCommand` is deliberately NOT in this set: the prompt's own text says
-  // it is not part of the drive loop, so a session opened to settle it alone was
-  // reading a drive contract that disclaimed itself.
-  const drives = remainingKeys.some((k) => (DRIVE_LOOP_KEYS as readonly string[]).includes(k))
-
-  return [
-    `# runcastle — preparing ${project.name}`,
-    '',
-    'This is a **preparation session**: a project-scoped conversation whose job is to',
-    'establish the settings every later agent depends on, and to record them with evidence.',
-    'There is no feature here and no pipeline to advance.',
-    '',
-    '## Where this runs — and why that matters',
-    `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox.`,
-    'That is the point of this session. A throwaway container can never verify anything about',
-    '*this* machine: the dev server, the local database, docker, credentials. Run what you',
-    'propose; do not guess it from config.',
-    '',
-    'The same access is why you must **ask before you act**. Anything that starts or stops a',
-    'service, creates or migrates a database, installs software, or writes outside the repo',
-    'needs the human to agree first — say what you are about to run and why, then wait.',
-    '',
-    'You may write `.runcastle/` and `.gitignore` in this checkout and nothing else; a hook',
-    'enforces it. Any other change to the repo is theirs to make.',
-    '',
-    ...(host
-      ? [
-          '## What the server already checked',
-          'Take these as read — they were probed on this machine, not inferred:',
-          `- Platform: \`${host.platform}\` — write the drive scripts in a language this host runs.`,
-          `- Compose file at the repo root: ${host.hasCompose ? '**yes**' : 'no'}.`,
-          `- \`.runcastle/\` drive machinery: ${
-            host.hasDriveMachinery ? '**already present** — read it before you author anything' : 'not there yet'
-          }.`,
-          `- Package manager: ${host.packageManager ? `\`${host.packageManager}\` (from its lockfile)` : 'no lockfile found at the repo root'}.`,
-          '',
-        ]
-      : []),
-    ...(established.length > 0
-      ? [
-          '## Already established — do not re-derive',
-          'Recorded findings. Treat them as true unless the human says otherwise; replacing a',
-          'measured value with a fresh guess makes preparation worse, not better. The age is',
-          'there so you can tell a value measured today from one measured a year and 400',
-          'commits ago — say so when it looks stale, rather than silently re-running it.',
-          '',
-          ...established.map(
-            (f) =>
-              `- \`${f.key}\` (${f.source}; ${findingAge(f)})${f.evidence ? ` — ${f.evidence}` : ''}`,
-          ),
-          '',
-        ]
-      : []),
-    '## Still open',
-    open
-      ? remainingKeys.map((k) => `- \`${k}\``).join('\n')
-      : 'Nothing. Every prepared key already has a value, so this session is a **confirmation,\n' +
-        'not a preparation**: report what is recorded and how stale it is, ask the human whether\n' +
-        'it still holds, and stop. Do not re-derive a settled value and do not propose a dry-run\n' +
-        'drive unasked.',
-    '',
-    ...(drives
-      ? [
-          '## These keys are the drive loop',
-          'The open keys include the host drive hooks, so this session authors machinery, not',
-          'just settings. Two things to have in hand before you propose anything, both of which',
-          'the `/runcastle:prepare` skill spells out in full: the **drive contract** (scripts',
-          'live in `.runcastle/` and are committed; identity comes in as `RUNCASTLE_*`; computed',
-          'values go back out through `.runcastle/drive.env`; every step is idempotent; exit 0',
-          'means the services are actually up), and the **closing dry-run drive** that proves',
-          'them. A recorded drive command that has never been driven is not evidence.',
-          'Every value the app needs to reach its data (above all the database URL) must go out',
-          'through `drive.env`: scenarios reach the drive database only through that overlay, so a',
-          'setup that hands it to the dev server some other way leaves them seeding the wrong one.',
-          '',
-        ]
-      : []),
-    '## Recording what you establish',
-    'One `record_finding` call per key, and `evidence` is not optional in spirit: record what',
-    'you ran and what it printed, or what the human told you. Set `userSupplied: true` ONLY',
-    'when the human gave you the value or confirmed it verbatim — it permanently stops',
-    'automatic runs from improving that key, and the only way back is them clearing it.',
-    '',
-    '## Secrets',
-    'This is a development environment and the human has agreed to supply real connection',
-    'strings and credentials here. Store them as given. Do not paste a secret into a timeline',
-    'note or a commit message — `record_finding` is the only place a value belongs.',
-    '',
-    '## Your task',
-    'Invoke the `/runcastle:prepare` skill; it carries the method. It is your only entry',
-    "skill here — the pack's others belong to other session kinds and are denied by settings.",
-    open
-      ? 'Then open by telling the human which fields are still open and what you need from them ' +
-        'for each, and work them one at a time.'
-      : 'Then confirm the recorded values with the human and stop — there is nothing open to work.',
     '',
   ].join('\n')
 }
@@ -1089,7 +893,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
  *
  * Every session kind now runs in `bypassPermissions`, so these allow rules are
  * moot for the mode; they stay as the documented floor. The line the host-side
- * kinds' prompts used to hold (`prepare`, `drive-fix` and `scenario` work in the
+ * kinds' prompts used to hold (`drive-fix` and `scenario` work in the
  * developer's own checkout, where `git add -A` or a commit would take their
  * uncommitted work) is held by the checkout guard, a pre-tool hook that still
  * runs under bypass (`evaluateCheckoutGuard`).
@@ -1367,7 +1171,6 @@ function renderBrief(input: WriteArtifactsInput): string {
   const {
     session,
     feature,
-    prepare,
     projectBrief,
     driveFix,
     scenario,
@@ -1379,7 +1182,6 @@ function renderBrief(input: WriteArtifactsInput): string {
   if (feature) {
     return renderSystemPrompt(feature, session.kind, purpose, runtime, session.headless)
   }
-  if (prepare) return renderPreparePrompt(prepare)
   if (projectBrief) return renderProjectPrompt(projectBrief, runtime)
   throw new Error(`session ${session.id} has no feature and no project-session brief`)
 }

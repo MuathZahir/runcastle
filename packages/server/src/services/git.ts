@@ -2555,6 +2555,16 @@ function slotHeldReason(state: DriveState): string {
 }
 
 /**
+ * Why a drive cannot start on `projectId` right now, or `undefined` when its
+ * slot is free. For a caller with work to do before the start (the
+ * orchestrator's landing) that must not happen when the start is refused.
+ */
+export function driveSlotHeldReason(projectId: string): string | undefined {
+  const held = driveOf(projectId)
+  return held ? slotHeldReason(held) : undefined
+}
+
+/**
  * The branch and commit a project note taken right now was seen on, or
  * `undefined` unless a project drive of THIS project holds the slot
  * (project-level-test-drive decision 5). The notes service stamps it onto every

@@ -16,7 +16,7 @@ import { DEFAULT_RUNTIME, newId, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
-import { chatKickoffFor, prepareConfirmKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor, sideKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor, sideKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
@@ -28,15 +28,12 @@ import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import { workflowClaimsFeatureBranch } from '../workflows/runner'
 import { ensureTalkWorktreeDuringDrive, ensureTalkWorktreeDuringRun } from '../services/chat-branch'
-import { listFindings } from '../services/findings'
-import { keysToPrepare } from '../services/prep'
-import { renderScenarioFollowUp, type PrepareBrief, type PrepareHost } from './artifacts'
+import { renderScenarioFollowUp } from './artifacts'
 import { mainChatContext } from '../services/main-chat-excerpt'
 import { featureStateLine } from '../services/feature-state'
 import { tagRuncastlePrompt } from '../services/lead-prompt'
 import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent } from '../threads/types'
-import { LOCKFILES } from './lockfiles'
 import {
   createSessionRow,
   getSessionRow,
@@ -273,8 +270,6 @@ export function openingSummary(row: SessionRow, selfPlan = false): string | unde
       return 'Started this side chat'
     case 'project':
       return 'Started this orchestrator chat'
-    case 'prepare':
-      return 'Started preparing the project'
     case 'drive-fix':
       return "The test drive's setup failed; started this chat to fix it"
     default:
@@ -289,11 +284,6 @@ function openingLine(ctx: AppCtx, row: SessionRow, held: boolean): string {
       return tagRuncastlePrompt(chatKickoffHeader(ctx, getFeatureRow(ctx, row.featureId as string), runtime))
     case 'side':
       return tagRuncastlePrompt(sideKickoff(ctx, getFeatureRow(ctx, row.featureId as string), row.id, runtime, held))
-    case 'prepare': {
-      const project = requireProjectById(ctx, row.projectId as string)
-      const nothingLeft = keysToPrepare(ctx, project).length === 0
-      return kickoffLineFor('prepare', nothingLeft ? prepareConfirmKickoffFor(runtime) : undefined, runtime)
-    }
     default:
       return kickoffLineFor(row.kind, undefined, runtime)
   }
@@ -539,83 +529,6 @@ export async function launchSideSession(
     data: { sessionId: row.id, kind: 'side', worktreePath: row.worktreePath, ...modelStamp(row) },
   })
   await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side chat with its briefing', opts, openingSummary(row))
-  return { sessionId: row.id, resumed: false }
-}
-
-/**
- * Open a project-scoped preparation conversation (backs `project.talkToPrep`).
- *
- * It runs in the project's REAL checkout, which is the whole point — the
- * host-only keys a container can only propose (`devCommand`,
- * `driveSetupCommand`, `driveStopCommand`, `dbResetCommand`) can be executed
- * and verified here, and the human is present to answer for the ones no amount
- * of reading the repo can settle. That is also the one hazard no other kind
- * has: this conversation can dirty the working tree. The brief tells the agent
- * to ask before anything stateful.
- *
- * Reopens the project's preparation thread when there is one, so the human
- * never re-explains their database — unless `fresh` is set, which is how
- * "re-prepare from scratch" is asked for: a baseline that has gone stale wants
- * re-measuring, not a conversation that believes it already measured. Past the
- * re-entry cap a new thread is opened too.
- */
-export async function launchPrepareSession(
-  ctx: AppCtx,
-  input: { projectId: string; fresh?: boolean },
-  opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
-  const project = requireProjectById(ctx, input.projectId)
-
-  const prior = input.fresh ? null : newestThread(ctx, { projectId: project.id }, 'prepare')
-  // Preparation is the kind most likely to be re-entered and the one measured
-  // reaching 1.42 MB across four rows, so the cap matters most here.
-  const capped = applyResumeCap(ctx, prior, { projectId: project.id, kind: 'prepare' })
-  const reopen = prior && !capped ? prior : null
-
-  const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
-  assertRuntimeReady(reopen ? (reopen.runtime ?? DEFAULT_RUNTIME) : model.runtime, opts)
-  const row =
-    reopen ??
-    createSessionRow(ctx, {
-      projectId: project.id,
-      kind: 'prepare',
-      // No worktree: preparation is about THIS machine's checkout, and a docs-only
-      // talk worktree could neither run the dev server nor see the real .env.
-      worktreePath: project.repoPath,
-      model,
-    })
-
-  emitProject(ctx, project.id, {
-    // A deliberate fresh start reads exactly like a first-ever preparation on
-    // the timeline unless it says so — and it is the one the human chose over
-    // the cheaper resume, which is worth being able to see later.
-    type: 'session.launching',
-    message: input.fresh ? 'launching preparation session from scratch' : 'launching preparation session',
-    data: {
-      sessionId: row.id,
-      kind: 'prepare',
-      worktreePath: project.repoPath,
-      ...modelStamp(row),
-      ...(input.fresh ? { fresh: true } : {}),
-    },
-  })
-  if (capped) {
-    emitProject(ctx, project.id, {
-      type: 'session.resume_capped',
-      message: `starting the preparation session fresh — ${capped.detail}; the recorded findings carry the state`,
-      data: { sessionId: row.id, kind: 'prepare', ...capped },
-    })
-  }
-  if (reopen && underway(reopen)) {
-    emitProject(ctx, project.id, {
-      type: 'session.resumed',
-      message: 'resuming the previous preparation conversation',
-      data: { sessionId: row.id, resumeSessionId: reopen.ccSessionId ?? null },
-    })
-    return { sessionId: row.id, resumed: true }
-  }
-
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening preparation chat with its briefing', opts, openingSummary(row))
   return { sessionId: row.id, resumed: false }
 }
 
@@ -881,53 +794,3 @@ export async function launchProjectSession(
   return { sessionId: row.id, resumed: false }
 }
 
-/**
- * Seed the conversation with what is established already, what is not, and what
- * the server can see about the host without being asked.
- *
- * `verifiedAt` and `staleCommits` are passed through rather than dropped:
- * `listFindings` has always computed both, and without them the brief could not
- * distinguish a value measured today from one measured a year and 400 commits
- * ago — which is exactly the judgement the session has to make about every
- * established key before it decides whether to re-derive it.
- */
-export async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
-  const findings = await listFindings(ctx, project)
-  return {
-    project,
-    remainingKeys: keysToPrepare(ctx, project),
-    established: findings.map((f) => ({
-      key: f.key,
-      source: f.source,
-      ...(f.evidence ? { evidence: f.evidence } : {}),
-      ...(f.verifiedAt !== undefined ? { verifiedAt: f.verifiedAt } : {}),
-      ...(f.staleCommits !== undefined ? { staleCommits: f.staleCommits } : {}),
-    })),
-    host: probePrepareHost(project.repoPath),
-  }
-}
-
-const COMPOSE_FILES = [
-  'docker-compose.yml',
-  'docker-compose.yaml',
-  'compose.yml',
-  'compose.yaml',
-] as const
-
-/**
- * What the host is, answered by the process that IS the host. The prepare prompt
- * used to send the agent off to discover every one of these — the platform, the
- * package manager, whether there is a compose file, whether `.runcastle/`
- * already exists — which is several tool calls and a paragraph of prose to learn
- * four things a `statSync` away from the code writing the prompt.
- */
-export function probePrepareHost(repoPath: string): PrepareHost {
-  const has = (rel: string): boolean => existsSync(join(repoPath, rel))
-  const lock = LOCKFILES.find(([file]) => has(file))
-  return {
-    platform: process.platform,
-    hasCompose: COMPOSE_FILES.some(has),
-    hasDriveMachinery: has('.runcastle'),
-    ...(lock ? { packageManager: lock[1] } : {}),
-  }
-}

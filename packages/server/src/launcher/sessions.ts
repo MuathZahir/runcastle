@@ -27,7 +27,6 @@ import {
 import { getProjectById, rowToSession } from '../services/repo'
 import { hasThreadLog } from '../threads/log'
 import { runtimeAdapterFor } from './runtimes'
-import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -39,7 +38,7 @@ import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Exactly one of `featureId` / `projectId` is set: feature sessions carry their
- * feature and derive the project through it; a project-scoped `prepare` session
+ * feature and derive the project through it; a project-scoped `project` session
  * carries the project directly because it has no feature to derive one from.
  */
 export type CreateSessionInput = {
@@ -196,13 +195,6 @@ export function kickoffLineFor(
   return override ?? runtimeAdapterFor(runtime).kickoffLine(kind)
 }
 
-/**
- * The prepare kickoff for a project with NOTHING left to establish, spelled for
- * the default runtime (see {@link prepareConfirmKickoffFor} for the per-runtime
- * form the launcher uses).
- */
-export const PREPARE_CONFIRM_KICKOFF = prepareConfirmKickoffFor(DEFAULT_RUNTIME)
-
 /** What a launch is going to say to its thread, and what that implies. */
 export interface KickoffPlan {
   /** The briefing to send; absent means the per-kind default line. */
@@ -247,6 +239,11 @@ const inFlightLandings = new Set<Promise<void>>()
 
 /** What becomes of work a landing could not place — the same in every report. */
 const LANDING_KEPT = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+
+/** The same, for a landing made mid-chat ({@link landProjectBranchNow}), which its next caller retries. */
+const LANDING_KEPT_MID_CHAT =
+  `the orchestrator's work stays on ${PROJECT_BRANCH} and the landing is retried at its next ` +
+  'dry run or feature start'
 
 /**
  * Resolve once every landing kicked off so far has finished — including any
@@ -401,6 +398,7 @@ export function reportProjectLanding(
       data: { branch: PROJECT_BRANCH, ...data, ...extra },
     })
   }
+  const kept = data.midChat === true ? LANDING_KEPT_MID_CHAT : LANDING_KEPT
   if (res.landed) {
     report(
       'project.landed',
@@ -410,13 +408,13 @@ export function reportProjectLanding(
   } else if (res.conflict) {
     report(
       'project.land_conflict',
-      `the orchestrator's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${LANDING_KEPT}`,
+      `the orchestrator's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${kept}`,
       { commits: res.commits, files: res.files ?? [] },
     )
   } else {
     report(
       'project.land_failed',
-      `could not land the orchestrator's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
+      `could not land the orchestrator's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${kept}`,
       { commits: res.commits, error: res.error ?? null },
     )
   }

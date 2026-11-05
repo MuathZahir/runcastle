@@ -428,7 +428,7 @@ describe('design MCP tools', () => {
   it('offers both tools to the feature chat only', () => {
     for (const tool of ['start_design_server', 'show_panel']) {
       expect(toolsForAudience('chat')).toContain(tool)
-      for (const other of ['drive-fix', 'project', 'prepare', 'scenario', 'run'] as const) {
+      for (const other of ['drive-fix', 'project', 'scenario', 'run'] as const) {
         expect(toolsForAudience(other), `${tool} for ${other}`).not.toContain(tool)
       }
     }

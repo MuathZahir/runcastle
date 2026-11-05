@@ -422,12 +422,12 @@ describe('the model the composer shows is the one the agent runs on', () => {
     const modelsLogged = (id: string) => readThreadEvents(id).flatMap((e) => (e.type === 'model' ? [[e.model, e.picked ?? false]] : []))
 
     /**
-     * A preparation thread as round 13 left it: its row on a model Settings has
+     * An orchestrator thread as round 13 left it: its row on a model Settings has
      * since moved off, and its start logged that model `picked`, though nobody
      * touched the picker.
      */
-    function stalePrepare(): string {
-      const id = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: '/wt', model: { id: 'claude-opus-5[1m]', runtime: 'claude-code' } }).id
+    function staleOrchestrator(): string {
+      const id = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt', model: { id: 'claude-opus-5[1m]', runtime: 'claude-code' } }).id
       markSessionLive(ctx, id, { ccSessionId: 'acp-session-1' })
       for (const body of [
         { type: 'prompt', id: 'prompt_1', text: 'Hello', source: 'human' },
@@ -442,10 +442,10 @@ describe('the model the composer shows is the one the agent runs on', () => {
       return id
     }
 
-    it('reopens a stale preparation chat with a send on the model Settings resolve now, launch and session alike, logged unpicked', async () => {
+    it('reopens a stale orchestrator chat with a send on the model Settings resolve now, launch and session alike, logged unpicked', async () => {
       setup(ANNOUNCING)
-      ctx.config.stepModels = { ...ctx.config.stepModels, prepare: 'claude-sonnet-5' }
-      const id = stalePrepare()
+      ctx.config.stepModels = { ...ctx.config.stepModels, project: 'claude-sonnet-5' }
+      const id = staleOrchestrator()
       expect((await caller.thread.models({ threadId: id })).current).toBe('claude-sonnet-5')
 
       await caller.thread.send({ threadId: id, text: 'Again' })

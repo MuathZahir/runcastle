@@ -82,7 +82,7 @@ function chat(kind: 'chat' | 'side' | 'scenario' | 'drive-fix' = 'chat'): string
 function terminalEra(
   ccSessionId: string,
   turns: [string, string | null][],
-  opts: { kind?: 'chat' | 'side' | 'project' | 'prepare'; newestUnrecorded?: boolean } = {},
+  opts: { kind?: 'chat' | 'side' | 'project'; newestUnrecorded?: boolean } = {},
 ): string[] {
   const dir = mkdtempSync(join(tmpdir(), 'runcastle-transcript-'))
   tempDirs.push(dir)
@@ -97,7 +97,7 @@ function terminalEra(
       .join('\n'),
   )
   const kind = opts.kind ?? 'chat'
-  const scope = kind === 'project' || kind === 'prepare' ? { projectId } : { featureId }
+  const scope = kind === 'project' ? { projectId } : { featureId }
   return [0, 1].map((n) => {
     const row = createSessionRow(ctx, { ...scope, kind, worktreePath: '/wt' })
     markSessionLive(ctx, row.id, { ccSessionId, ...(n === 1 && opts.newestUnrecorded ? {} : { transcriptPath: path }) })
@@ -317,7 +317,7 @@ describe('thread router', () => {
     ])
   })
 
-  it.each(['project', 'prepare', 'side'] as const)('reads a terminal-era %s conversation back, by its first words, even where its newest row never recorded the transcript', async (kind) => {
+  it.each(['project', 'side'] as const)('reads a terminal-era %s conversation back, by its first words, even where its newest row never recorded the transcript', async (kind) => {
     const [, newer] = terminalEra(`cc-${kind}`, [['Set up the env file', 'Done, .env is in place.']], { kind, newestUnrecorded: true })
     const list = await caller.thread.list(kind === 'side' ? { featureId } : { projectId })
     expect(list).toEqual([expect.objectContaining({ id: newer, title: 'Set up the env file', readOnlyTranscript: true })])

@@ -23,7 +23,7 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * on a runcastle-owned branch, and its commits are the point of the session.
  * A feature's `chat` and `side` sessions are exempt too (see {@link isUnguardedLead}).
  *
- * A `prepare` session gets a narrow path exception instead of a kind exemption —
+ * A `drive-fix` session gets a narrow path exception instead of a kind exemption —
  * see {@link DRIVE_MACHINERY_WRITABLE}. A `scenario` session gets `.runcastle/`,
  * or its whole checkout while its purpose is `scenario-setup`.
  *
@@ -91,10 +91,8 @@ export interface EditGuardInput {
  * that keeps `.runcastle/drive.env` — a scratch file that can hold connection
  * strings — out of the repo.
  *
- * Both kinds that hold the real checkout get exactly this and nothing more. A
- * `prepare` session is otherwise the strictest of all: it establishes settings
- * and never touches code. A `drive-fix` session is opened on one failing drive,
- * and the machinery it repairs is these same files — on the feature branch,
+ * A `drive-fix` session gets exactly this and nothing more: it is opened on one
+ * failing drive, and the machinery it repairs is these same files — on the feature branch,
  * where the branch that broke the drive can carry its own fix.
  */
 export const DRIVE_MACHINERY_WRITABLE = ['.runcastle/', '.gitignore'] as const
@@ -163,13 +161,10 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   }
 
   if (!input.featureSlug) {
-    if (input.kind === 'prepare' && isDriveMachinery(input.worktreePath, target)) return null
     return {
       reason:
-        `This ${input.kind} session does not edit files — it runs in the developer's own ` +
-        `checkout. Its one exception is the drive machinery it authors: ${writablePaths()}. ` +
-        'Record what you establish with the `record_finding` MCP tool, and ask the human to make ' +
-        'any other change to the repo itself.',
+        `This ${input.kind} session has no feature, so it has no docs to write and does not ` +
+        'edit files. Ask the human to make the change to the repo itself.',
     }
   }
 

@@ -98,8 +98,6 @@ export function sessionKindName(
       return 'Agent'
     case 'drive-fix':
       return 'Drive fix'
-    case 'prepare':
-      return 'Preparation'
     case 'project':
       return 'Project'
     case 'scenario':

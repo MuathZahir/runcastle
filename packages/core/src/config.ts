@@ -10,7 +10,7 @@ import * as z from 'zod'
 
 /**
  * The pipeline steps a model can be chosen for (issue #48). Each interactive
- * session kind (`chat`, `prepare`, `project`) and each AFK agent
+ * session kind (`chat`, `project`) and each AFK agent
  * (`implement`, `review`) plus the scripted `smoke` maps to one step.
  *
  * `review` is the burn's review pass — the agent that runs host-side once every

@@ -29,7 +29,7 @@ import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
 
 /**
- * The preparation dry-run drive, tested where a prep session actually meets it:
+ * The preparation dry-run drive, tested where the orchestrator actually meets it:
  * the `dry_run_drive` MCP tool.
  *
  * The machinery underneath is the real one — real git, real hooks in a real
@@ -94,7 +94,7 @@ describe('the preparation dry-run drive', () => {
     repo = mkTmp('rc-dryrun-')
     await initRepo(repo)
     project = await openProject(ctx, repo)
-    session = createSessionRow(ctx, { projectId: project.id, kind: 'prepare', worktreePath: repo })
+    session = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath: repo })
   })
 
   afterEach(() => {
@@ -520,6 +520,29 @@ describe("the orchestrator's dry-run drive lands its commits first", () => {
     expect(await mainSha()).toBe(before)
     expect(readFileSync(join(repo, 'README.md'), 'utf8')).toBe('the human\n')
     expect(activeDriveInfo(project.id)).toBeNull()
+    // A mid-chat landing is retried by the orchestrator's next dry run or
+    // feature start, not by a launch it is already past.
+    const conflict = listByProject(ctx, project.id, 0).find((e) => e.type === 'project.land_conflict')
+    expect(conflict?.message).toMatch(/retried at its next dry run or feature start/)
+    expect(conflict?.message).not.toMatch(/next launch/)
+  })
+
+  it('refuses a start while the drive slot is held, landing nothing', async () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'held' })
+    await createFeatureBranch(project, feature.slug, 'main')
+    expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+    await simpleGit(repo).checkout('main')
+    await orchestratorCommits('.runcastle/drive-setup.sh', 'echo set up\n')
+    const before = await mainSha()
+
+    const start = await toolDryRunDrive(ctx, session, { action: 'start' })
+
+    expect(start.ok).toBe(false)
+    expect(start.deniedReason).toMatch(/stop it first/)
+    expect(await mainSha()).toBe(before)
+    expect(listByProject(ctx, project.id, 0).map((e) => e.type)).not.toContain('project.landed')
+
+    await testDrive(ctx, project, feature, 'stop')
   })
 
   it("refuses when the human's uncommitted edits touch the same files, and keeps them", async () => {

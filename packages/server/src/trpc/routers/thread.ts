@@ -124,12 +124,12 @@ export const threadRouter = router({
   /**
    * The composer's model controls: the runtime's one catalog, the same list
    * before, while and after its agent runs, and the model the thread is on. A
-   * chat nobody has started yet (a feature's main chat, a new project or
-   * preparation chat) is asked for by where it would start, and is on the
+   * chat nobody has started yet (a feature's main chat, a new orchestrator
+   * chat) is asked for by where it would start, and is on the
    * model runcastle would start it on.
    */
   models: publicProcedure
-    .input(z.union([threadId, z.object({ featureId: z.string() }), z.object({ projectId: z.string(), kind: z.enum(['project', 'prepare']) })]))
+    .input(z.union([threadId, z.object({ featureId: z.string() }), z.object({ projectId: z.string(), kind: z.enum(['project']) })]))
     .query(({ ctx, input }): ThreadModels => {
       if ('threadId' in input) {
         threadRow(ctx, input.threadId)

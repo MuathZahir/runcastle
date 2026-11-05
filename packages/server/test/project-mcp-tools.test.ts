@@ -197,11 +197,11 @@ describe('project-session MCP tools', () => {
   })
 
   it('refuses project-note tools at call time outside an orchestrator', () => {
-    const prepare = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: repoPath })
+    const scenario = createSessionRow(ctx, { projectId, kind: 'scenario', worktreePath: repoPath })
     const feature = seedFeature(ctx, projectId, { slug: 'feature-session' })
     const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
 
-    for (const caller of [prepare, chat]) {
+    for (const caller of [scenario, chat]) {
       expect(() => toolListProjectNotes(ctx, caller)).toThrow(GateError)
       expect(() =>
         toolTriageProjectNote(ctx, caller, { noteIds: ['pnote_x'], outcome: 'dismissed' }),
@@ -690,8 +690,8 @@ describe('project-session MCP tools', () => {
         blockedBy: [],
       },
     ])
-    const prep = seedFeature(ctx, projectId, { slug: 'prepare', title: 'Preparation' })
-    storeTickets(ctx, prep.id, [
+    const onboarding = seedFeature(ctx, projectId, { slug: 'onboarding', title: 'Onboarding' })
+    storeTickets(ctx, onboarding.id, [
       {
         title: 'also the router',
         goal: 'g',
@@ -703,10 +703,10 @@ describe('project-session MCP tools', () => {
     ])
 
     const out = toolGetWorkRecord(ctx, session, { seam: 'TRPC router' })
-    expect(out.features.map((f) => f.slug)).toEqual(['prepare'])
+    expect(out.features.map((f) => f.slug)).toEqual(['onboarding'])
 
     const wider = toolGetWorkRecord(ctx, session, { seam: 'router' })
-    expect(wider.features.map((f) => f.slug).sort()).toEqual(['laps', 'prepare'])
+    expect(wider.features.map((f) => f.slug).sort()).toEqual(['laps', 'onboarding'])
     const lapsRecord = wider.features.find((f) => f.slug === 'laps')
     // only the tickets that matched — the web-shell one is not part of the answer
     expect(lapsRecord?.tickets.map((t) => t.title)).toEqual(['touches the router'])

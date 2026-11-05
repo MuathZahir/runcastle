@@ -162,7 +162,7 @@ describe('renderSettings', () => {
    * guard (a hook), and no narrowed host-side rule remains.
    */
   it('leaves host-side git writes to the checkout guard, not to allow rules', () => {
-    for (const kind of ['prepare', 'drive-fix', 'scenario', 'chat'] as const) {
+    for (const kind of ['drive-fix', 'scenario', 'chat'] as const) {
       expect(sessionBashAllowRules(kind)).toEqual(
         expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]),
       )
@@ -224,7 +224,6 @@ describe('renderSettings', () => {
     // each kind's own entry skill(s) never appear in its deny list
     const own: Record<string, string[]> = {
       chat: ['feature'],
-      prepare: ['prepare'],
       project: ['project'],
       'drive-fix': [],
     }
@@ -246,9 +245,9 @@ describe('renderSettings', () => {
       const bare = deny.filter((r) => !r.includes(' *'))
       expect(deny).toHaveLength(bare.length * 2)
     }
-    // a prepare session cannot open another kind's procedure…
-    expect(entrySkillDenyRules('prepare')).toEqual(
-      expect.arrayContaining(['Skill(runcastle:feature)', 'Skill(runcastle:project *)']),
+    // an orchestrator cannot open another kind's procedure…
+    expect(entrySkillDenyRules('project')).toEqual(
+      expect.arrayContaining(['Skill(runcastle:feature)', 'Skill(runcastle:qa *)']),
     )
     // …an unknown kind gets no entry skill at all (the edit guard's stance)…
     expect(entrySkillDenyRules(undefined)).toContain('Skill(runcastle:feature)')
@@ -259,8 +258,6 @@ describe('renderSettings', () => {
       'Skill(runcastle:qa *)',
       'Skill(runcastle:project)',
       'Skill(runcastle:project *)',
-      'Skill(runcastle:prepare)',
-      'Skill(runcastle:prepare *)',
     ])
     // …and the rendered settings carry the list
     const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
@@ -341,7 +338,7 @@ describe('renderSettings', () => {
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
    */
   it('registers the PreToolUse edit and install guards for every kind but `project`', () => {
-    for (const kind of ['chat', 'prepare', 'drive-fix'] as const) {
+    for (const kind of ['chat', 'drive-fix'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
       expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
@@ -797,13 +794,6 @@ describe('renderSessionPrompt', () => {
     ['qa', { session: session({ kind: 'qa' }), feature: feature({}) }],
     ['self-plan', { feature: feature(), purpose: 'self-plan' }],
     [
-      'prepare',
-      {
-        session: session({ kind: 'prepare' }),
-        prepare: { project, remainingKeys: ['devCommand'], established: [] },
-      },
-    ],
-    [
       'project',
       {
         session: session({ kind: 'project' }),
@@ -905,9 +895,6 @@ describe('claudeRuntime.writeArtifacts', () => {
 
   /** The brief each kind is launched with — exactly the one its launch site passes. */
   function briefFor(kind: SessionKind): Partial<WriteArtifactsInput> {
-    if (kind === 'prepare') {
-      return { prepare: { project, remainingKeys: ['devCommand'], established: [] } }
-    }
     if (kind === 'project') {
       return {
         projectBrief: {
