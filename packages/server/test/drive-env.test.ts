@@ -59,6 +59,13 @@ describe('driveIdentityEnv', () => {
       RUNCASTLE_ID: 'add_billing',
     })
   })
+
+  it('adds RUNCASTLE_SCENARIO only when given a scenario', () => {
+    expect(driveIdentityEnv(identity)).not.toHaveProperty('RUNCASTLE_SCENARIO')
+    expect(driveIdentityEnv(identity, '.runcastle/scenarios/a/b.ts')).toMatchObject({
+      RUNCASTLE_SCENARIO: '.runcastle/scenarios/a/b.ts',
+    })
+  })
 })
 
 describe('parseEnvFile', () => {

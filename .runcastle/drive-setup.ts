@@ -43,6 +43,9 @@ function required(name: string): string {
   return value
 }
 
+/** The scenario file (repo-relative) that starts runcastle as a brand-new install. */
+const ONBOARDING_SCENARIO = '.runcastle/scenarios/onboarding/brand-new-install.ts'
+
 const id = required('RUNCASTLE_ID')
 const slug = required('RUNCASTLE_SLUG')
 
@@ -146,7 +149,22 @@ mkdirSync(dataDir, { recursive: true })
  * same file, in the same role, one directory over.
  */
 const prodDir = join(homedir(), '.runcastle')
-for (const file of ['.env', 'config.json']) {
+
+/**
+ * The onboarding scenario is a brand-new install: nothing of the owner's is
+ * copied in, and the drive's server gets an empty git config so it sees no git
+ * identity. HOME stays put, so the real Claude Code / Codex login is still found.
+ * Decided here, before boot, because the scenario itself only runs afterwards.
+ */
+const brandNewInstall = process.env.RUNCASTLE_SCENARIO === ONBOARDING_SCENARIO
+const driveDb = join(dataDir, 'runcastle.db')
+for (const suffix of ['', '-wal', '-shm']) rmSync(driveDb + suffix, { force: true })
+if (brandNewInstall) {
+  for (const file of ['.env', 'config.json']) rmSync(join(dataDir, file), { force: true })
+  console.log('[drive-setup] brand-new install — no .env, config.json or database copied')
+}
+
+for (const file of brandNewInstall ? [] : ['.env', 'config.json']) {
   const from = join(prodDir, file)
   if (existsSync(from)) {
     copyFileSync(from, join(dataDir, file))
@@ -171,9 +189,9 @@ for (const file of ['.env', 'config.json']) {
  * which exercises a branch's migrations against real data.
  */
 const prodDb = join(prodDir, 'runcastle.db')
-const driveDb = join(dataDir, 'runcastle.db')
-for (const suffix of ['', '-wal', '-shm']) rmSync(driveDb + suffix, { force: true })
-if (existsSync(prodDb)) {
+if (brandNewInstall) {
+  // Skip the snapshot; the empty database is created by the server at boot.
+} else if (existsSync(prodDb)) {
   const source = new Database(prodDb, { readonly: true })
   try {
     source.run('VACUUM INTO ?', [driveDb])
@@ -209,6 +227,15 @@ emit({
   RUNCASTLE_HOOK_CLIENT: pkg('packages', 'server', 'src', 'launcher', 'hook-client.ts'),
   RUNCASTLE_SANDCASTLE_TEMPLATE: pkg('packages', 'server', 'src', 'assets', 'sandcastle'),
 })
+
+if (brandNewInstall) {
+  // An empty file: git reads it as "no identity". The wizard's identity step
+  // runs `git config --global`, which honours GIT_CONFIG_GLOBAL, so what the
+  // human types lands here and never in the owner's ~/.gitconfig.
+  const gitConfig = join(dataDir, 'gitconfig')
+  writeFileSync(gitConfig, '')
+  emit({ GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' })
+}
 
 console.log(`[drive-setup] data dir ${dataDir}`)
 console.log(`[drive-setup] port ${port}`)

@@ -194,15 +194,23 @@ export const toolDrive = orchestratorTool(
   async (
     ctx: AppCtx,
     session: SessionRow,
-    input: { slug?: string; action: 'start' | 'stop' },
+    input: { slug?: string; action: 'start' | 'stop'; scenario?: string },
   ): Promise<TestDriveResult> => {
+    const opts = input.scenario ? { scenario: input.scenario } : {}
     if (input.slug === undefined) {
       const project = requireProjectById(ctx, requireOrchestratorSession(session))
-      return git.projectDrive(ctx, project, input.action)
+      return git.projectDrive(ctx, project, input.action, opts)
     }
     const feature = requireHeldFeature(ctx, session, input.slug)
     requireNotDraft(feature)
-    const result = await git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+    const result = await git.testDrive(
+      ctx,
+      projectForFeature(ctx, feature),
+      feature,
+      input.action,
+      'human',
+      opts,
+    )
     if (!result.deniedReason) {
       recordFeatureAction(ctx, session, feature.id, input.action === 'start' ? 'driveStarted' : 'driveStopped')
     }
@@ -380,9 +388,16 @@ export function registerOrchestratorTools(
       title: 'Start or stop a test drive',
       description:
         'Start or stop a test drive: of a feature’s branch with `slug`, of the project’s base ' +
-        'checkout without one. One drive runs on the machine at a time — a refusal comes back as ' +
-        '`deniedReason`.',
+        'checkout without one. With `scenario` (a scenario file path as the drive menu lists it, ' +
+        'e.g. `.runcastle/scenarios/onboarding/brand-new-install.ts`) a start lands on that ' +
+        'scenario once the app answers. One drive runs on the machine at a time — a refusal ' +
+        'comes back as `deniedReason`.',
       inputSchema: {
+        scenario: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('A scenario file to start the drive on. Ignored on stop.'),
         slug: SlugInput.optional().describe(
           'The feature whose branch to drive. Omit to drive the base branch.',
         ),

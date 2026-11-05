@@ -2837,7 +2837,7 @@ export async function testDrive(
     project.repoPath,
     'setup',
     project.driveSetupCommand,
-    driveProcessEnv(driveIdentityEnv(identity)),
+    driveProcessEnv(driveIdentityEnv(identity, driving.pendingScenario)),
   )
   holdSetupJob(driving, setup)
 
@@ -3346,7 +3346,7 @@ export async function projectDrive(
     project.repoPath,
     'setup',
     project.driveSetupCommand,
-    driveProcessEnv(driveIdentityEnv(identity)),
+    driveProcessEnv(driveIdentityEnv(identity, state.pendingScenario)),
   )
   holdSetupJob(state, setup)
 

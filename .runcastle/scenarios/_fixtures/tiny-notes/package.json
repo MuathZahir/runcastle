@@ -1,0 +1,10 @@
+{
+  "name": "tiny-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/server.ts",
+    "test": "bun test"
+  }
+}
