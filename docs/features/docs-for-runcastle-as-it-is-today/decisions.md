@@ -2,7 +2,7 @@
 
 Planned without the human (a headless planning run, 2026-11-05). Every decision is the planner's own pick until the human confirms it.
 
-Check first: 1, 3, 6, 11, 13
+Check first: 1, 3, 11, 13, 18
 
 ## 1. Four short pages, not six
 **Decision:** The docs become four pages: **Get started** (`/docs/`), **How a feature goes** (`/docs/features/`), **The orchestrator** (`/docs/orchestrator/`) and **Another machine or your phone** (`/docs/vps/`). The Gates and Preparation pages are deleted; the Pipeline page is rewritten as How a feature goes; the Project session page becomes The orchestrator.
@@ -96,3 +96,13 @@ Check first: 1, 3, 6, 11, 13
 **Decision:** Where a README screenshot retaken on 2026-11-05 already shows the state a docs section needs (the plan and tickets, a round, the review package, a test drive, the orchestrator chat, notes and Triage), it is copied into `site/assets/docs/`. New captures are taken only for what none shows: the first-run wizard, the model settings, and a design beside the chat. The phone section gets no picture, since the phone link's screen would show a real private network address.
 **Why:** Those README shots are real captures in today's design, taken hours before this plan. The staged states behind them are no longer in the database, so retaking them would mean rebuilding that staging for identical pictures.
 **Assumed.** Alternative: retake every docs picture fresh, as decision 6 first said.
+
+## 18. Each picture is one component of the real app, shown at its real size
+**Decision:** Every docs picture is a crop of a real capture down to the one component the section talks about (the agent's plan message, the round's ticket list, the review package, the design panel, the drive with its notes, the orchestrator's answer, the notes panel, the wizard's agents step, the per-step models). Each shows at its natural size, half the 2x PNG's width, capped at the page's 960px wide column, so the app's text reads at the app's own size. A tap opens the full image.
+**Why:** The human, on the first design: "The images are barely readable. The text is so small." Whole-window captures shrunk to 960px put 13px app text at about 9px. A crop of the real app keeps the brief's "real captures, not mockups" and cannot drift from the app the way a hand-built copy would.
+**Supersedes:** 17's whole-window copies (the crops are cut from the same captures).
+**Assumed.** Alternative: hand-built HTML mockups of each component, the human's own suggestion, which read sharp at any size but must be kept in step with the app by hand.
+
+## 19. Scenarios get a line on the features page
+**Decision:** Under "Then you test drive it", one short paragraph: a scenario, picked at the top of the drive, starts the drive where the feature is, with the data it needs; the agent writes one when that state is a chore to reach by hand, and **+ New scenario** adds your own. The drive picture shows the scenario picker.
+**Why:** The human asked for scenarios to be mentioned. They are what makes a test drive land on the feature instead of a blank app.

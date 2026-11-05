@@ -179,7 +179,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="bar" style="width:100%"></div>
     </div>
     <div class="arrow">→</div>
-    <div class="col"><h3>After: 4 pages, ~900 words, 9 real captures</h3>
+    <div class="col"><h3>After: 4 pages, ~1,050 words, 9 real component crops</h3>
       <div class="row"><span>Get started</span><span>≤400</span></div>
       <div class="row"><span>How a feature goes</span><span>≤400</span></div>
       <div class="row"><span>The orchestrator</span><span>≤400</span></div>
@@ -229,7 +229,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:docs-features-page -->
 <div class="designed">
   <h3>Docs page: How a feature goes</h3>
-  <p>The real page with its real text and layout. The pictures are the README's current captures standing in for the docs set, and the design screenshot is a striped placeholder. A Tweaks menu leaves two looks open: picture width (wide past the text, or text width) and picture frame (plain border, or an app window bar).</p>
+  <p>The real page with its real text, layout and pictures: real captures cropped to one component each, shown at the app's own size. A Tweaks menu compares them with the old whole-window pictures and leaves the picture frame open (plain border, or an app window bar).</p>
   <p class="mono">site/docs/features/index.html + site/docs.css · design page /docs/features/</p>
 </div>
 <!-- /screen:docs-features-page -->
@@ -372,11 +372,20 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   "Today's README captures are reused where they show the state",
   "Those README shots are real captures in today's design; the staged states behind them are no longer in the database, so retaking them would rebuild that staging for identical pictures.",
   "assumed"
+ ],
+ [
+  "Each picture is one component of the real app, shown at its real size",
+  "The human found the whole-window shots barely readable. A crop of the real app reads at the app's own size and cannot drift the way a hand-built copy would.",
+  "assumed"
+ ],
+ [
+  "Scenarios get a line on the features page",
+  "The human asked for it: a scenario is what makes a test drive land on the feature instead of a blank app."
  ]
 ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [[1, "Keep six pages, one per old topic, each just shortened.", "A guess at how far you want to cut; it fixes every URL the compare feature links to."], [3, "Wait for \"the orchestrator prepares the project\" to merge, then picture its \"Start the project\" moment.", "Depends on which of the two features merges first."], [6, "Commit a capture script so a retake is one command.", "The planner first chose the script; the challenger argued it only runs on your machine and breaks with the schema.", "challenged"], [11, "Keep the VPS guide to the VPS and give the phone its own page.", "Folds three topics into one page; a guess at how you group them."], [13, "Hand the page writing to a worker and keep only the captures.", "No build tickets at all is unusual; workers cannot reach your database for the captures."]]
+  var C = [[1, "Keep six pages, one per old topic, each just shortened.", "A guess at how far you want to cut; it fixes every URL the compare feature links to."], [3, "Wait for \"the orchestrator prepares the project\" to merge, then picture its \"Start the project\" moment.", "Depends on which of the two features merges first."], [11, "Keep the VPS guide to the VPS and give the phone its own page.", "Folds three topics into one page; a guess at how you group them."], [13, "Hand the page writing to a worker and keep only the captures.", "No build tickets at all is unusual; workers cannot reach your database for the captures."], [18, "Hand-built HTML mockups of each component, as you suggested.", "You suggested mockups; crops of the real app read as well and never drift, but you may prefer the sharper mockup look."]]
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
