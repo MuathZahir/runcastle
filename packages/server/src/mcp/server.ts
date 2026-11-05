@@ -53,7 +53,7 @@ import { reviewShots, type ReviewShots } from '../services/review-package'
 import { appendSaw, readSaw } from '../services/review-saw'
 import { captureReviewShot } from '../workflows/review-capture'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
+import { getSessionRow, landProjectBranchNow, mostRecentLiveSession } from '../launcher/sessions'
 import {
   createFeature,
   declareReady,
@@ -1512,12 +1512,25 @@ export async function toolDryRunDrive(
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.DryRunResult> {
   const project = requireProject(ctx, session)
-  if (session.kind !== 'prepare') {
+  if (session.kind !== 'project' && session.kind !== 'prepare') {
     throw new GateError(
-      `the dry-run drive belongs to a preparation conversation, and this is a ${session.kind} ` +
-        'session. It starts services and creates a database on the human\'s machine — only the ' +
-        'session that established those values may run them.',
+      `the dry-run drive belongs to the orchestrator, and this is a ${session.kind} session. It ` +
+        "starts services and creates a database on the human's machine — only the session that " +
+        'prepares the project may run them.',
     )
+  }
+  // The orchestrator writes `.runcastle/` in its own worktree, and the drive runs
+  // in the human's checkout: its commits have to be there before they can be
+  // proven. A refused landing refuses the start, with the reason to relay.
+  if (session.kind === 'project' && input.action === 'start') {
+    const landing = await landProjectBranchNow(ctx, project, session.id)
+    if (!landing.ok) {
+      return {
+        ok: false,
+        action: 'start',
+        deniedReason: `the orchestrator's commits could not land first, so nothing was started: ${landing.reason}`,
+      }
+    }
   }
   return git.dryRunDrive(ctx, project, input.action)
 }
@@ -2708,7 +2721,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
   // Single-kind tools, each gated on that kind at call time.
-  dry_run_drive: ['prepare'],
+  // The orchestrator's from now on; `prepare` keeps it until that kind is deleted.
+  dry_run_drive: PROJECT_KINDS,
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],
@@ -2839,11 +2853,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Prove the drive keys you recorded by running the REAL test-drive machinery — same ' +
           'identity variables, same hooks, same dev pane — under a synthetic identity (slug ' +
-          '`prep-dry-run`) on the current branch. Nothing is checked out. Ask the human before ' +
-          'starting: it starts services and creates a database on their machine. A clean full ' +
-          'pass stamps the participating keys verified, computed from what the machinery ' +
-          'observed — your own checks decide whether to fix and re-run, never the stamp. ' +
-          'Preparation sessions only.',
+          "`prep-dry-run`) in the human's checkout, on its current branch. Nothing is checked " +
+          'out. `start` first lands your committed work on the base branch, the way a closing ' +
+          'chat does, so commit your `.runcastle/` scripts before starting; the landing is ' +
+          'refused (and nothing starts) when their checkout is on another branch, on a conflict, ' +
+          'or when their uncommitted edits touch the same files — relay the reason and ask them ' +
+          'to switch or commit. Ask the human before starting: it starts services and creates a ' +
+          'database on their machine. A clean full pass stamps the participating keys verified, ' +
+          'computed from what the machinery observed — your own checks decide whether to fix ' +
+          'and re-run, never the stamp.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])

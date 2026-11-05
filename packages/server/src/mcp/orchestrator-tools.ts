@@ -15,7 +15,7 @@ import {
   endSession,
   launchSession,
 } from '../launcher/launcher'
-import { activeSessionsForFeature } from '../launcher/sessions'
+import { activeSessionsForFeature, landProjectBranchNow } from '../launcher/sessions'
 import { landChatCommits } from '../services/chat-branch'
 import { emit, runAsActor } from '../services/events'
 import { featureDocPath } from '../services/feature-docs'
@@ -127,7 +127,12 @@ export const toolTakeFeature = orchestratorTool(
   },
 )
 
-/** Start a draft, as Start does: refused where Start is. */
+/**
+ * Start a draft, as Start does: refused where Start is. The orchestrator's own
+ * commits (prepared `.runcastle/` scripts, charter edits, the draft's brief)
+ * land on the base branch first, so the feature is cut from a base that has
+ * them (decision 4); a refused landing refuses the start, with its reason.
+ */
 export const toolStartFeature = orchestratorTool(
   async (
     ctx: AppCtx,
@@ -135,6 +140,12 @@ export const toolStartFeature = orchestratorTool(
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
     const feature = requireHeldFeature(ctx, session, input.slug)
+    const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
+    if (!landing.ok) {
+      throw new GateError(
+        `the orchestrator's commits could not land first, so \`${input.slug}\` was not started: ${landing.reason}`,
+      )
+    }
     const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
     recordFeatureAction(ctx, session, feature.id, 'started')
     return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }

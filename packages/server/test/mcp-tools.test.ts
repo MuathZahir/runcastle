@@ -774,6 +774,7 @@ describe('mcp tool registration by audience', () => {
     }
 
     // Single-kind tools stay single-kind.
+    expect(toolsForAudience('project')).toContain('dry_run_drive')
     expect(toolsForAudience('prepare')).toContain('dry_run_drive')
     expect(toolsForAudience('chat')).not.toContain('dry_run_drive')
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')

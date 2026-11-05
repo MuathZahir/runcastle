@@ -417,16 +417,16 @@ describe('the preparation dry-run drive', () => {
 
   // --- who may run it --------------------------------------------------------
 
-  it('refuses a session that is not a preparation conversation', async () => {
+  it('refuses a session that does not prepare the project', async () => {
     const other = createSessionRow(ctx, {
       projectId: project.id,
-      kind: 'project',
+      kind: 'scenario',
       worktreePath: repo,
     })
 
     await expect(toolDryRunDrive(ctx, other, { action: 'start' })).rejects.toThrow(GateError)
     await expect(toolDryRunDrive(ctx, other, { action: 'start' })).rejects.toThrow(
-      /preparation conversation/,
+      /belongs to the orchestrator/,
     )
     expect(activeDriveInfo(project.id)).toBeNull()
   })
@@ -435,6 +435,104 @@ describe('the preparation dry-run drive', () => {
     await drive('start')
     await drive('stop')
     expect(existsSync(join(repo, '.git'))).toBe(true)
+    expect(activeDriveInfo(project.id)).toBeNull()
+  })
+})
+
+/**
+ * Decision 4: the orchestrator writes `.runcastle/` in its own worktree on
+ * `runcastle/project`, and a drive runs in the human's checkout — so its start
+ * lands those commits on the base branch first, like a `git pull`, and refuses
+ * (moving nothing) wherever a pull would hurt the human.
+ */
+describe("the orchestrator's dry-run drive lands its commits first", () => {
+  let ctx: AppCtx
+  let repo: string
+  let worktree: string
+  let project: Project
+  let session: SessionRow
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repo = mkTmp('rc-dryrun-land-')
+    await initRepo(repo)
+    project = await openProject(ctx, repo)
+    worktree = join(mkTmp('rc-dryrun-wt-'), 'wt')
+    await simpleGit(repo).raw(['worktree', 'add', '-b', 'runcastle/project', worktree, 'main'])
+    session = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath: worktree })
+  })
+
+  afterEach(() => {
+    __resetTestDriveState()
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** Commit `content` to `file` in the orchestrator's worktree. */
+  async function orchestratorCommits(file: string, content: string): Promise<void> {
+    mkdirSync(join(worktree, file, '..'), { recursive: true })
+    writeFileSync(join(worktree, file), content)
+    await simpleGit(worktree).add([file]).commit(`orchestrator: ${file}`)
+  }
+
+  async function mainSha(): Promise<string> {
+    return (await simpleGit(repo).revparse(['main'])).trim()
+  }
+
+  it("lands the orchestrator's scripts in the human's checkout, then drives them", async () => {
+    await orchestratorCommits('.runcastle/drive-setup.sh', 'echo set up\n')
+    recordFinding(ctx, project.id, { key: 'driveSetupCommand', value: 'sh .runcastle/drive-setup.sh', source: 'session' })
+
+    const start = await toolDryRunDrive(ctx, session, { action: 'start' })
+
+    expect(start.ok).toBe(true)
+    expect(start.setup).toMatchObject({ ok: true, exitCode: 0 })
+    expect(readFileSync(join(repo, '.runcastle', 'drive-setup.sh'), 'utf8')).toBe('echo set up\n')
+    // The orchestrator is still working on its branch: the landing keeps it.
+    expect((await simpleGit(repo).branchLocal()).all).toContain('runcastle/project')
+    expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('project.landed')
+
+    await toolDryRunDrive(ctx, session, { action: 'stop' })
+  })
+
+  it('refuses, moving nothing, when the checkout is on another branch', async () => {
+    await orchestratorCommits('.runcastle/drive-setup.sh', 'echo set up\n')
+    await simpleGit(repo).checkoutLocalBranch('elsewhere')
+    const before = await mainSha()
+
+    const start = await toolDryRunDrive(ctx, session, { action: 'start' })
+
+    expect(start.ok).toBe(false)
+    expect(start.deniedReason).toMatch(/is on elsewhere.*switch it to main/)
+    expect(await mainSha()).toBe(before)
+    expect(activeDriveInfo(project.id)).toBeNull()
+  })
+
+  it('refuses on a conflict, leaving the base and the work as they were', async () => {
+    await orchestratorCommits('README.md', 'the orchestrator\n')
+    writeFileSync(join(repo, 'README.md'), 'the human\n')
+    await simpleGit(repo).add(['README.md']).commit('human edit')
+    const before = await mainSha()
+
+    const start = await toolDryRunDrive(ctx, session, { action: 'start' })
+
+    expect(start.ok).toBe(false)
+    expect(start.deniedReason).toMatch(/conflict with main \(README\.md\)/)
+    expect(await mainSha()).toBe(before)
+    expect(readFileSync(join(repo, 'README.md'), 'utf8')).toBe('the human\n')
+    expect(activeDriveInfo(project.id)).toBeNull()
+  })
+
+  it("refuses when the human's uncommitted edits touch the same files, and keeps them", async () => {
+    await orchestratorCommits('README.md', 'the orchestrator\n')
+    writeFileSync(join(repo, 'README.md'), 'half-typed by the human\n')
+    const before = await mainSha()
+
+    const start = await toolDryRunDrive(ctx, session, { action: 'start' })
+
+    expect(start.ok).toBe(false)
+    expect(start.deniedReason).toMatch(/uncommitted edits/)
+    expect(await mainSha()).toBe(before)
+    expect(readFileSync(join(repo, 'README.md'), 'utf8')).toBe('half-typed by the human\n')
     expect(activeDriveInfo(project.id)).toBeNull()
   })
 })

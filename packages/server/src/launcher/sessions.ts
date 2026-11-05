@@ -17,6 +17,8 @@ import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitProject } from '../services/events'
 import {
+  branchCommitsAhead,
+  currentCheckoutBranch,
   landProjectBranch,
   PROJECT_BRANCH,
   resolveSessionBranch,
@@ -309,6 +311,70 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
     inFlightLandings.delete(landing)
     landingProjectSessions.delete(session.id)
   })
+}
+
+/** Whether a mid-chat landing went through; `reason` is said to the human as is. */
+export type ProjectLandingNow = { ok: true } | { ok: false; reason: string }
+
+/**
+ * Land the orchestrator's commits on the base branch NOW, mid-chat (decision 4)
+ * — before a dry-run drive proves its `.runcastle/` scripts in the human's
+ * checkout, and before a feature branch is cut from the base. The same landing
+ * a closing chat does ({@link landProjectSession}), awaited and with its
+ * outcome handed back, and with `runcastle/project` kept so the orchestrator
+ * carries on working on it.
+ *
+ * It behaves like a `git pull` into the human's checkout, so it refuses where a
+ * pull would hurt them, and never stashes, resets or forces: when the checkout
+ * is on another branch (the commits would land somewhere they are not
+ * looking), when the merge conflicts, and when their uncommitted edits touch
+ * the files it brings (git itself refuses that merge). The refusal names the
+ * reason so the orchestrator can ask the human to switch branch or commit.
+ * Nothing to land is not a refusal.
+ */
+export async function landProjectBranchNow(
+  ctx: AppCtx,
+  project: Project,
+  sessionId: string,
+): Promise<ProjectLandingNow> {
+  let base: string
+  try {
+    base = await resolveSessionBranch(project)
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+  if ((await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)).length === 0) return { ok: true }
+
+  const checkedOut = await currentCheckoutBranch(project).catch(() => null)
+  if (checkedOut !== base) {
+    return {
+      ok: false,
+      reason:
+        `your checkout at ${project.repoPath} is on ${checkedOut ?? 'no branch (detached HEAD)'}, and the ` +
+        `orchestrator's commits land on ${base} — switch it to ${base} and try again. Nothing was moved.`,
+    }
+  }
+
+  const res = await landProjectBranch(project, base, { keepBranch: true })
+  if (!res) return { ok: true }
+  reportProjectLanding(ctx, project, res, { sessionId, midChat: true })
+  if (res.landed) return { ok: true }
+  if (res.conflict) {
+    const files = res.files?.length ? ` (${res.files.join(', ')})` : ''
+    return {
+      ok: false,
+      reason:
+        `the orchestrator's ${res.commits} commit(s) conflict with ${base}${files} — nothing was ` +
+        `merged; they stay on ${PROJECT_BRANCH}.`,
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `could not land the orchestrator's ${res.commits} commit(s) onto ${base}: ` +
+      `${res.error ?? 'unknown error'} — if your uncommitted edits touch the same files, commit ` +
+      'or put them aside and try again. Nothing was merged.',
+  }
 }
 
 /**

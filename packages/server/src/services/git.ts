@@ -1813,6 +1813,8 @@ export async function mergeTempBranch(
   repoPath: string,
   featureBranchName: string,
   tempBranch: string,
+  /** Keep the temp branch after a successful merge — for a writer still working on it. */
+  opts: { keepTemp?: boolean } = {},
 ): Promise<TempBranchMergeResult> {
   const g = git(repoPath)
   let branches: Awaited<ReturnType<SimpleGit['branchLocal']>>
@@ -1857,7 +1859,7 @@ export async function mergeTempBranch(
     }
   }
 
-  await deleteBranchDetachingWorktrees(g, repoPath, tempBranch)
+  if (!opts.keepTemp) await deleteBranchDetachingWorktrees(g, repoPath, tempBranch)
   return { ok: true }
 }
 
@@ -1963,14 +1965,21 @@ export interface ProjectLandResult {
  * `base` is the already-resolved session branch ({@link resolveSessionBranch}) —
  * passed in rather than resolved here so one launch resolves once and every
  * message about it names the same branch.
+ *
+ * `keepBranch` lands mid-chat: the orchestrator is still working on
+ * `runcastle/project` in its worktree, so the branch survives the merge and its
+ * next commits simply sit ahead of the base again.
  */
 export async function landProjectBranch(
   project: Project,
   base: string,
+  opts: { keepBranch?: boolean } = {},
 ): Promise<ProjectLandResult | null> {
   const ahead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
   if (ahead.length === 0) return null
-  const res = await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH)
+  const res = await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH, {
+    keepTemp: opts.keepBranch ?? false,
+  })
   return {
     base,
     commits: ahead.length,
