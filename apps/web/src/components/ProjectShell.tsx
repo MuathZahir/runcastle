@@ -321,6 +321,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         inboxRequest={inboxRequest}
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
+        repoKnown={prep.data !== undefined}
         conversations={ws.conversations}
         threadRequest={threadRequest}
         onConsumeThreadRequest={consumeThreadRequest}

@@ -45,6 +45,7 @@ export function ProjectWorkspace({
   inboxRequest = 0,
   onConsumeInboxRequest,
   empty = false,
+  repoKnown = true,
   conversations = false,
   threadRequest = null,
   onConsumeThreadRequest,
@@ -63,6 +64,8 @@ export function ProjectWorkspace({
   onConsumeInboxRequest?: () => void
   /** Born-empty: nothing to drive, so no Test drive (drive decision 7). */
   empty?: boolean
+  /** Whether `empty` has been answered yet: the Start card waits for it rather than guess. */
+  repoKnown?: boolean
   /** The Conversations page is open instead of a chat. */
   conversations?: boolean
   /** A chat to open on arrival: a feature's page asked for its holder. */
@@ -394,7 +397,7 @@ export function ProjectWorkspace({
               {/* A project with no chats yet opens on its one button
                   (the-orchestrator-prepares-the-project decision 1): the
                   Orchestrator's first chat starts on the click and speaks first. */}
-              {!allChats && unstarted && !chatHidden && (
+              {!allChats && unstarted && !chatHidden && repoKnown && !!project && (
                 <StartTheProject
                   name={project?.name ?? ''}
                   {...(project?.repoPath ? { repoPath: project.repoPath } : {})}
