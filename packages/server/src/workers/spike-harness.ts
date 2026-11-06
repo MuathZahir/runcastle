@@ -1,24 +1,24 @@
 /**
  * The workers spike's measuring harness (decisions 16, 25, 27). Drives the
  * same sandbox code and ACP adapter the server does, with no server and no
- * database, against a scratch clone of a repo; and the same steps as a host
- * chat in a host git worktree, for the baseline.
+ * database, against a scratch clone of a repo. (The host stand-in that
+ * checkpoint 1 compared against was removed once the human chose the sandbox
+ * route; its numbers stay in the feature's measurements/.)
  *
  *   RUNCASTLE_DATA_DIR=/tmp/wspike/data bun packages/server/src/workers/spike-harness.ts \
- *     --repo /path/to/repo --runs 5 [--model claude-sonnet-5-5] [--side sandbox|host|both]
+ *     --repo /path/to/repo --runs 5 [--model claude-sonnet-5-5]
  *
  * Writes every run's numbers to <out>/results-<time>.json and prints medians.
  * Never point RUNCASTLE_DATA_DIR at the live data folder.
  */
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk/unstable'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
-import { IN, adapterEntry, engineRun, installScript, pickFreePort } from './sandbox'
+import { IN, engineRun } from './sandbox'
 import { claudeToken } from './service'
 import { createWorkerSandbox, removeSandbox, stopSandbox, takeHandback, workerOrigin, workerProcess } from './worker'
 
@@ -131,32 +131,14 @@ p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', para
   return { ms: Math.round(performance.now() - t0), said: `${res.isError ? 'ERROR ' : ''}${res.content[0]!.text.split('\n')[0]}` }
 }
 
-function hostAdapter(cwd: string): AgentProcess {
-  const child = spawn(process.execPath, [adapterEntry()], {
-    cwd,
-    env: { ...process.env, CLAUDE_CODE_EXECUTABLE: hostClaude, CLAUDE_CODE_DISABLE_AGENT_VIEW: '1' },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
-  child.stderr.resume()
-  return {
-    target: acp.ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
-    exited: new Promise((r) => child.once('exit', () => r({ stderr: '' }))),
-    kill: async () => {
-      child.kill('SIGTERM')
-    },
-  }
-}
-
-let hostClaude = 'claude'
-
-function args(): { repo: string; runs: number; model: string; side: string; dev: string; devBound: string } {
+function args(): { repo: string; runs: number; model: string; dev: string; devBound: string } {
   const a = process.argv.slice(2)
   const get = (k: string, d: string): string => {
     const i = a.indexOf(`--${k}`)
     return i >= 0 ? a[i + 1]! : d
   }
   const dev = get('dev', 'bun run --cwd apps/web dev --port $RUNCASTLE_DESIGN_PORT --strictPort')
-  return { repo: get('repo', ''), runs: Number(get('runs', '5')), model: get('model', 'claude-sonnet-5-5'), side: get('side', 'both'), dev, devBound: get('dev-bound', `${dev} --host 0.0.0.0`) }
+  return { repo: get('repo', ''), runs: Number(get('runs', '5')), model: get('model', 'claude-sonnet-5-5'), dev, devBound: get('dev-bound', `${dev} --host 0.0.0.0`) }
 }
 
 async function sandboxRun(i: number, scratch: string, model: string, dev: string, devBound: string, image: string): Promise<Row> {
@@ -247,54 +229,6 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
   return row
 }
 
-async function hostRun(i: number, scratch: string, model: string, devBound: string): Promise<Row> {
-  const row: Row = { side: 'host', run: i }
-  const wt = join(scratch, '..', `host-wt-${i}-${Date.now().toString(36)}`)
-  const branch = `spike/host-${i}-${Date.now().toString(36)}`
-  try {
-    let t0 = performance.now()
-    await sh(`git worktree add -q -b ${branch} '${wt}' main`, scratch)
-    row.worktreeMs = Math.round(performance.now() - t0)
-    t0 = performance.now()
-    await sh(installScript().replace(`cd ${IN.repo}`, `cd '${wt}'`))
-    row.installMs = Math.round(performance.now() - t0)
-    const meta = { claudeCode: { options: { model, permissionMode: 'bypassPermissions', perTaskStopAffordance: false } } }
-    t0 = performance.now()
-    const proc = hostAdapter(wt)
-    const o = await open(proc, { cwd: wt, mcpServers: [], meta, mode: 'bypassPermissions' })
-    row.adapterInitMs = o.initMs
-    row.sessionNewMs = o.openMs
-    row.adapterStartMs = Math.round(performance.now() - t0)
-    row.coldStartMs = (row.worktreeMs as number) + (row.installMs as number) + (row.adapterStartMs as number)
-    const t1 = await turn(o, TRIVIAL)
-    row.trivialFirstMs = t1.firstMs
-    row.trivialTotalMs = t1.totalMs
-    const t2 = await turn(o, EDIT)
-    row.editTotalMs = t2.totalMs
-    const port = await pickFreePort(43000)
-    t0 = performance.now()
-    const dev = spawn('sh', ['-c', devBound.replaceAll('$RUNCASTLE_DESIGN_PORT', String(port))], { cwd: wt, detached: true, stdio: 'ignore' })
-    row.devStartMs = await untilAnswers(`http://localhost:${port}/`, 120_000)
-    try {
-      process.kill(-dev.pid!, 'SIGTERM')
-    } catch {}
-    await proc.kill()
-    t0 = performance.now()
-    const proc2 = hostAdapter(wt)
-    const o2 = await open(proc2, { cwd: wt, mcpServers: [], meta, mode: 'bypassPermissions' }, o.sessionId)
-    row.wakeLoadMs = o2.openMs
-    const t4 = await turn(o2, TRIVIAL)
-    row.wakeFirstMs = t4.firstMs
-    row.wakeToFirstReplyMs = Math.round(performance.now() - t0 - (t4.totalMs - (t4.firstMs ?? t4.totalMs)))
-    await proc2.kill()
-  } catch (err) {
-    row.error = err instanceof Error ? err.message.slice(0, 400) : String(err)
-  } finally {
-    await sh(`git worktree remove --force '${wt}'; git branch -D ${branch}`, scratch).catch(() => {})
-  }
-  return row
-}
-
 function medians(rows: Row[]): Record<string, number> {
   const keys = new Set(rows.flatMap((r) => Object.keys(r)))
   const out: Record<string, number> = {}
@@ -309,7 +243,6 @@ async function main(): Promise<void> {
   const a = args()
   if (!a.repo) throw new Error('--repo <path> is required')
   if (dataDir().endsWith('.runcastle') && !process.env.RUNCASTLE_DATA_DIR) throw new Error('set RUNCASTLE_DATA_DIR to a scratch folder')
-  hostClaude = (await sh('command -v claude')).trim()
   const out = join(dataDir(), 'spike')
   mkdirSync(out, { recursive: true })
   const scratch = join(out, `repo-${Date.now().toString(36)}`)
@@ -318,20 +251,12 @@ async function main(): Promise<void> {
   const rows: Row[] = []
   const save = (): void => writeFileSync(join(out, `results-${process.pid}.json`), JSON.stringify(rows, null, 2))
   for (let i = 1; i <= a.runs; i++) {
-    if (a.side !== 'host') {
-      rows.push(await sandboxRun(i, scratch, a.model, a.dev, a.devBound, image))
-      save()
-      console.error(JSON.stringify(rows.at(-1)))
-    }
-    if (a.side !== 'sandbox') {
-      rows.push(await hostRun(i, scratch, a.model, a.devBound))
-      save()
-      console.error(JSON.stringify(rows.at(-1)))
-    }
+    rows.push(await sandboxRun(i, scratch, a.model, a.dev, a.devBound, image))
+    save()
+    console.error(JSON.stringify(rows.at(-1)))
   }
   const summary = {
-    sandbox: medians(rows.filter((r) => r.side === 'sandbox' && !r.error)),
-    host: medians(rows.filter((r) => r.side === 'host' && !r.error)),
+    sandbox: medians(rows.filter((r) => !r.error)),
     errors: rows.filter((r) => r.error).map((r) => `${r.side} ${r.run}: ${r.error}`),
     devDefault: rows.find((r) => r.devDefault)?.devDefault ?? null,
     results: join(out, `results-${process.pid}.json`),
