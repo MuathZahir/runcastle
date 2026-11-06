@@ -207,8 +207,12 @@ function writePendingFork(threadId: string, fork: PendingFork): void {
   writeFileSync(path, JSON.stringify(fork))
 }
 
-/** Decision 7: an idle agent process is stopped quietly after half an hour. */
-export const IDLE_STOP_MS = 30 * 60_000
+/**
+ * Decision 7: an idle agent process is stopped quietly after half an hour.
+ * `RUNCASTLE_IDLE_STOP_MS` shortens it for a scratch install that has to watch
+ * an idle compaction happen (lead-chats-stay-small).
+ */
+export const IDLE_STOP_MS = envInt('RUNCASTLE_IDLE_STOP_MS', 30 * 60_000) || 30 * 60_000
 
 /**
  * Lead chats stay small (lead-chats-stay-small decisions 6, 9): a feature lead
