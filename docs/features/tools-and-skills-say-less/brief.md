@@ -26,3 +26,9 @@ Quick-win cut from the token analysis (2026-11-06). Every byte a tool returns st
 ## Working agreement (cut 2, agreed 2026-11-06): autonomous
 
 The orchestrator carries this to merged on its own judgement, after the lead's review round.
+
+## Added by the orchestrator, 2026-11-06
+
+## Shared files (orchestrator, 2026-11-06)
+
+`references/tickets.md` belongs to `cheaper-burns` (it rewrites the ticket-sizing and check rules there) — do not trim it here. `feature/SKILL.md` is also edited by `lead-chats-stay-small` (delegation guidance); keep your edits to it small and local so whichever lands second rebases cleanly.
