@@ -30,3 +30,13 @@ worker needs the human. The look gets a live design pass before it is built.
 **Why:** The sidebar is already the one place threads are switched (`threads-in-the-sidebar`); a
 second list on the feature page would be a second place to look. The human: "It might need better
 UI."
+
+## 4. The lead lands a handback with one tool, or sends it back, or drops it
+**Decision:** A worker hands back with a short summary, which must include any direction the human
+gave it directly. Runcastle adds the worker branch's commits and changed files and wakes the lead
+once with that, never the transcript. The lead then either lands the worker's branch on the feature
+branch with one tool, through the feature's landing queue like its own commits (the worker shows
+"landed" and folds into Done; the lead resolves any conflict), or sends the work back with a
+message (the worker returns to working), or drops the worker.
+**Why:** The human's picture: "the worker hands the design back; the lead integrates". Nothing
+lands unseen, and two workers' changes always have someone fitting them together.
