@@ -159,18 +159,11 @@ describe('the agent resolves a review’s open defects', () => {
       ).toEqual({ ok: true, findingId: fixedId, status: 'fixed', alreadyClosed: true })
       expect(findingById(fixedId)?.resolutionNote).not.toBe('n')
 
-      // Asked to close it one way, it had closed the other: still a success, but said.
       const dismissedId = openDefect('Dismissed by the human')
       dismiss(ctx, dismissedId)
       expect(
         toolResolveFinding(ctx, session, { findingId: dismissedId, disposition: 'addressed', note: 'n' }),
-      ).toEqual({
-        ok: true,
-        findingId: dismissedId,
-        status: 'dismissed',
-        alreadyClosed: true,
-        note: 'it was already dismissed, not fixed',
-      })
+      ).toEqual({ ok: true, findingId: dismissedId, status: 'dismissed', alreadyClosed: true })
       expect(findingById(dismissedId)?.status).toBe('dismissed')
     })
 

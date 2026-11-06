@@ -652,12 +652,7 @@ export function featureContext(
   const canonical: { doc: { relPath: string; content: string }; ref: NotInlinedDoc }[] = []
   const moreDocs: FeatureDocRef[] = []
   for (const summary of listDocs(ctx, feature)) {
-    let content: string
-    try {
-      content = readDoc(ctx, feature, summary.relPath).content
-    } catch {
-      content = ''
-    }
+    const content = docContentOrEmpty(ctx, feature, summary.relPath)
     if (isAgentDigestDoc(summary.relPath)) {
       canonical.push({
         doc: { relPath: summary.relPath, content },
@@ -835,15 +830,19 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
     designs: leadDesigns(ctx, feature.id).map(({ title, state }) => ({ title, state })),
     baseBranch: feature.baseBranch ?? null,
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
-    docs: listDocs(ctx, feature).map((summary) => {
-      let bytes = 0
-      try {
-        bytes = Buffer.byteLength(readDoc(ctx, feature, summary.relPath).content, 'utf8')
-      } catch {
-        // An unreadable doc is indexed at zero, as featureContext treats it.
-      }
-      return { relPath: summary.relPath, bytes }
-    }),
+    docs: listDocs(ctx, feature).map((summary) => ({
+      relPath: summary.relPath,
+      bytes: Buffer.byteLength(docContentOrEmpty(ctx, feature, summary.relPath), 'utf8'),
+    })),
+  }
+}
+
+/** A feature doc's text, or empty when it cannot be read — indexed, never fatal. */
+function docContentOrEmpty(ctx: AppCtx, feature: ReturnType<typeof getFeatureRow>, relPath: string): string {
+  try {
+    return readDoc(ctx, feature, relPath).content
+  } catch {
+    return ''
   }
 }
 
@@ -1372,14 +1371,7 @@ export function toolResolveFinding(
   // unknown finding falls through to the service, which still refuses it.
   const current = listReviewFindings(ctx, featureId).find((finding) => finding.id === findingId)
   if (current && (current.status === 'fixed' || current.status === 'dismissed')) {
-    const asked = disposition === 'addressed' ? 'fixed' : 'dismissed'
-    return {
-      ok: true,
-      findingId,
-      status: current.status,
-      alreadyClosed: true,
-      ...(current.status !== asked ? { note: `it was already ${current.status}, not ${asked}` } : {}),
-    }
+    return { ok: true, findingId, status: current.status, alreadyClosed: true }
   }
   const finding =
     disposition === 'addressed'
@@ -1395,8 +1387,6 @@ export interface FindingReceipt {
   status: ReviewFinding['status']
   /** It had already closed before this call, which changed nothing. */
   alreadyClosed?: true
-  /** Present when it closed differently from how this call asked to close it. */
-  note?: string
 }
 
 /**
