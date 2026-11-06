@@ -40,6 +40,7 @@ Check first: 1, 2, 7, 9
 **Decision:** The orchestrator's news line for a merge conflict says who merged. When the human merged, it says the human has the Resolve button on the feature and the orchestrator should not relay the conflict unless the human asks. The orchestrator also hears when a conflict is resolved. A conflict on the orchestrator's own merge is unchanged: the merge tool already returns it.
 **Why:** Today the news line itself says "Resolve it in the feature's worktree, then merge_feature again", so the orchestrator relayed a conflict the human had already sent the lead to resolve, four minutes later, after the lead had finished (12M tokens including a two-subagent review).
 **Assumed.** Alternative: block or annotate any orchestrator message to a lead while a resolve is under way, which needs runcastle to guess what a free-text message is about.
+**Changed by the orchestrator:** it asked that "you have it in hand" apply only when the human merged by hand; when the orchestrator's own merge conflicts, it must still hear that resolving it is its job. That is how the plan already reads (the merge tool returns the conflict and says to resolve and merge again); recorded so the wording stays scoped.
 
 ## 8. A lead checks a conflict still stands before resolving it
 **Decision:** Before resolving a merge conflict, from any source, the lead checks git: if the base is already in the branch, it says so in one line and stops, with no re-verification or review.
