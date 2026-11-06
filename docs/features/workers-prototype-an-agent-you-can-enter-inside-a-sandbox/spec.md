@@ -60,10 +60,10 @@ and how to merge them. Nothing else in the app changes (decision 26).
   and adapter with a bare ACP client against a scratch clone of this repo, five runs per side,
   medians: cold start (container, clone, install, adapter, session), a trivial turn and a small
   commit turn, the dev server answering from the host, a handback turn and its size, stop,
-  wake to first reply, the dev server after wake, and an attach-by-handoff resume (headless
-  `claude -p` in the sandbox, then its session loaded through the adapter). The host side does
-  the same in a host git worktree with the host's own Claude Code. It needs a scratch
-  `RUNCASTLE_DATA_DIR`.
+  wake to first reply, the dev server after wake, a live reattach, and an attach-by-handoff
+  resume (headless `claude -p` in the sandbox, then its session loaded through the adapter). It
+  needs a scratch `RUNCASTLE_DATA_DIR`. The host stand-in it compared against at checkpoint 1
+  was removed once the human chose the sandbox route (decision 28).
 - **The report.** `report.md` in this folder: numbers, what worked and what did not, whether a
   host worker could get its own port and preview, the security and portability notes, and how
   to try a worker by hand on a scratch server (decision 18).

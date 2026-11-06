@@ -167,7 +167,7 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
 <!-- 1 · what this is -->
 <header id="what">
   <h1>Workers: prototype an agent you can enter inside a sandbox</h1>
-  <p class="lede">A spike. One worker runs as a normal runcastle chat inside a burn sandbox: you open it, type to it, see its dev server, and it hands back to its lead. It ends with numbers so you can pick sandbox or host at checkpoint 1. The orchestrator agreed it with changes: no host networking, a scratch data folder, a timed handoff, and no product UI.</p>
+  <p class="lede">A spike. One worker runs as a normal runcastle chat inside a burn sandbox: you open it, type to it, see its dev server, and it hands back to its lead. It ends with numbers so you can pick sandbox or host at checkpoint 1. The orchestrator agreed it with changes: no host networking, a scratch data folder, a timed handoff, and no product UI. At checkpoint 1 the human chose the sandbox route, as a trial.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/workers-prototype-an-agent-you-can-enter-inside-a-sandbox/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -319,14 +319,14 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
     ['The spike never touches the live data folder; worker state is a file per worker', 'A spike must not be able to break the live install; no table or migration for code that may be thrown away.', 'assumed'],
     ['The report times one attach-by-handoff resume too', 'Two measured routes are evidence; one number and an argument are not.', 'assumed'],
     ['The spike builds only what the measurements and the hands-on try need', 'The worker is a side chat named "Worker: …"; its preview is the localhost address it gives. Product decisions went to interactive-workers.', 'assumed'],
-    ['Measurements run in a standalone harness, the app proof on the scratch server', 'Timing through a running server adds noise; the server path needs proving once.', 'assumed']
+    ['Measurements run in a standalone harness, the app proof on the scratch server', 'Timing through a running server adds noise; the server path needs proving once.', 'assumed'],
+    ['Interactive workers run in the sandbox, as a trial', 'The human\'s choice at checkpoint 1: "Let\'s try the sandbox. We can test it for now." The host stand-in measuring code is removed; the rest stays behind experimentalWorkers.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [1, 'Attach by handoff: the worker runs headless, Open resumes its session later.', 'The live route is the pick; the report now times handoff too, so check the two numbers.'],
     [11, 'A handback lands the branch through the landing queue.', 'You may want to see a real landing before judging workers.'],
-    [16, 'Build the host-worktree worker too, for a true side by side.', 'The checkpoint choice rests on this comparison; a host chat stands in for the host worker.'],
     [23, 'Host networking, or a relay letting the sandbox reach only /mcp.', 'Set by the orchestrator, not you: the safest route, but the handback becomes a file read at turn end, not a call runcastle sees at once.', 'orchestrator'],
     [25, 'Argue for the live route without timing handoff.', 'Set by the orchestrator, not you; it decides how question 1 is answered.', 'orchestrator']
   ]

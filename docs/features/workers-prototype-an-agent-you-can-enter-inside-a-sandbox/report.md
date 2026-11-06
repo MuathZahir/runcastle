@@ -1,5 +1,9 @@
 # Workers spike: findings for checkpoint 1
 
+**Outcome:** at checkpoint 1 the human chose the sandbox route as a trial ("Let's try the
+sandbox. We can test it for now."); decision 28. The host stand-in measuring code was then
+removed from the harness; its numbers stay below and in `measurements/run-1-both-sides.json`.
+
 Measured on 2026-11-06 on this Linux machine, in two harness runs: run 1 timed both sides under the
 same conditions; run 2 re-timed the sandbox after the review round's fixes (raw results for both
 are in `measurements/`). The machine was quieter during run 2, so compare sandbox to host within
@@ -217,4 +221,5 @@ All of it sits behind `experimentalWorkers`, off by default:
 - One widened seam in the thread host: a transport may say how its session opens.
 - One lead tool, `start_worker`.
 
-Per decision 5, the code the human's checkpoint choice won't reuse is removed before merge.
+Per decision 5, the code the sandbox route won't reuse (the harness's host stand-in) was
+removed after checkpoint 1.

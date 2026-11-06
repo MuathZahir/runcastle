@@ -5,7 +5,7 @@ assumed until the human confirms it. The project's orchestrator, which carries t
 human until checkpoint 1, agreed the plan the same day with changes: those are marked
 **Changed by the orchestrator**, and decisions 23 to 27 are its.
 
-Check first: 1, 11, 16, 23, 25
+Check first: 1, 11, 23, 25
 
 ## 1. The worker runs live in the sandbox as a normal thread, not by handoff
 **Decision:** The worker's agent runs inside its sandbox as an ACP thread from its first
@@ -292,6 +292,16 @@ scratch data folder.
 **Why:** Timing through a running server adds noise and needs a live lead; the server path
 needs proving once, not five times.
 **Assumed.** Alternative: take every measurement through the running server.
+
+## 28. Interactive workers run in the sandbox, as a trial
+**Decision:** At checkpoint 1 the human chose the sandbox route: "Let's try the sandbox. We can
+test it for now." Interactive workers run inside a burn-image sandbox, to be revisited after
+use. The spike's host stand-in measuring paths are removed (decision 5); everything else stays
+behind `experimentalWorkers` for `interactive-workers` to build on.
+**Why:** The numbers showed no speed reason to prefer either route; the sandbox lets a worker
+run with no permission prompts without reaching runcastle or the host repo. The open costs (the
+human's own skills not in the sandbox, previews needing runcastle's proxy) are the trial's to
+judge.
 
 ## Recommendations for `interactive-workers`
 Withdrawn from this feature by the orchestrator; the spike's experience will refine them.
