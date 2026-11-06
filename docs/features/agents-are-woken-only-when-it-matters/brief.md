@@ -54,3 +54,15 @@ Both are the opposite of over-waking: the orchestrator was never told.
 2. **A server restart leaves mid-turn leads stopped.** A restart at 12:42 UTC ended every live chat; leads with a running round were told and re-dispatched, but three leads that were mid-turn without a round (running their suite, resolving findings) got no notice and just stopped until the orchestrator woke them by hand.
 
 Whether these belong in this feature or a follow-up is the lead's call; either way, say which in the report.
+
+## Added by the orchestrator, 2026-11-06
+
+## Re-scoped by the human (2026-11-06): agents talk by tool call, not mechanical pings
+
+The human, after watching the orchestrator get pinged ~15 times during their own grill in another feature: "I feel like we shouldn't make pinging mechanical. I feel like these things should be tool calls to communicate between each other." They agreed to re-scope this feature:
+
+- **Drop the news-line wake/hold table.** runcastle no longer decides which of its news lines reach the orchestrator.
+- **A lead tells the orchestrator by calling a tool** when it judges the orchestrator needs to know ("ready to merge", "I need a decision I can't get from the human"), the way a worker hands back to its lead. It is the same tool and rules as the worker handback being designed in `interactive-workers`' grill, one level up; build it on that design once it settles.
+- **Machine events with no agent behind them** (server restart, usage limit, a container dying, a merge conflict, a round failing) still come from runcastle, but only to the one agent that owns that work, never up the tree. That agent decides whether to tell its parent. The parts already built that fit this survive: the "a restart cut off your turn, carry on" notice to the cut-off chat, re-sending what the usage limit stopped, Stop reaching a busy lead.
+
+**Planning mode: grill with you.** The human settles this re-scoped design in this feature's chat, after `interactive-workers` has settled its handback. The questions put to the human earlier (compacting the orchestrator chat, the two new wake rules, the five built rules) are folded into that grill; nothing built so far counts as the human's decision until then. Don't build anything new or merge until that grill.
