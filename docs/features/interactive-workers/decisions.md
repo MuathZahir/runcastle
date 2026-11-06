@@ -100,3 +100,22 @@ human, following their own "always allow" rules, and a worker waiting on such a 
 **Why:** The human: "In claude code, subagents have the exact same setup as the agents. What's the
 difference here." The only difference was that workers never asked; making MCP calls ask closes it,
 and a page of per-kind switches would read as managing every chat's servers.
+
+## 11. Workers run in their provider's automatic permission mode
+**Decision:** Supersedes the permission part of 10. A Claude Code worker runs in Claude Code's auto
+mode (a checker model blocks anything irreversible, destructive or aimed outside its environment;
+the human's own allow, ask and deny rules still apply first). A Codex worker runs with Codex's
+auto-review (a reviewer model checks every action that would need approval, MCP calls included).
+When the checker blocks something, the worker explains in its chat what it wanted to do, which
+shows "needs you" and pings. If the automatic mode is not available on the human's plan, the
+worker falls back to 10: free inside its sandbox, asking before any MCP call.
+**Why:** The human asked for the providers' own auto modes. They match the human's own agent more
+closely than a fixed rule, and they cover MCP calls too.
+
+## 12. This feature builds Codex workers too
+**Decision:** Workers run on Codex as well as Claude Code. A Codex worker matches a Claude Code one:
+Codex's chat connection inside the sandbox, the human's Codex setup brought in (its instructions
+file, skills, config and MCP servers, as 8 does for Claude Code), resume after an idle stop, and
+auto-review (11). The prototype's Claude-Code-only limit is removed.
+**Why:** Side chats become workers (7), so Claude-Code-only workers would take side chats away from
+Codex users. Burns and chats already run Codex, the burns inside the same sandbox image.
