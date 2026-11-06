@@ -84,3 +84,8 @@ The edit is a one-line swap in the grilling reference, the only skill edit outsi
 **Why:** A summary is the model's own judgement and nothing checks it; one cheap read of the record does.
 **Assumed.** Alternative: trust the summary.
 **Changed by the orchestrator:** added on its go-ahead, 2026-11-06.
+
+## 16. Runcastle turns compaction on for its feature leads, whatever the human's own settings say
+**Decision:** A runcastle-launched feature lead's per-session Claude Code settings carry `autoCompactEnabled: true`. Those settings reach Claude Code as `--settings`, which outranks the human's own `~/.claude/settings.json`, so an `autoCompactEnabled: false` there no longer switches off the 200k ceiling. Only feature leads get it: the human's own Claude Code and the orchestrator's chat keep the human's setting. With the ceiling turned off for the install, the override goes too.
+**Why:** The human's settings on this machine say `autoCompactEnabled: false`, which made the ceiling from 8 inert; the burner already overrides it the same way for workers.
+**Changed by the orchestrator:** settled on the human's behalf, 2026-11-06; the orchestrator tells the human.

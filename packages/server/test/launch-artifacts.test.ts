@@ -1054,6 +1054,9 @@ describe('claudeRuntime.acpLaunch', () => {
 
   it("sets the 200k auto-compact window for a feature's lead only (lead-chats-stay-small decision 8)", async () => {
     expect((await acpSpec()).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+    // Decision 16: the human's own `autoCompactEnabled: false` cannot switch it off.
+    const settingsOf = (id: string) => JSON.parse(readFileSync(join(sessionDir(id), 'settings.json'), 'utf8'))
+    expect(settingsOf('sess_acp_chat').autoCompactEnabled).toBe(true)
     for (const kind of ['side', 'qa'] as const) {
       const sess = session({ id: `sess_acp_${kind}`, kind })
       created.push(sess.id)
@@ -1067,6 +1070,7 @@ describe('claudeRuntime.acpLaunch', () => {
         model: 'claude-sonnet-5',
       })
       expect(spec.env).not.toHaveProperty('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+      expect(settingsOf(sess.id)).not.toHaveProperty('autoCompactEnabled')
     }
   })
 
