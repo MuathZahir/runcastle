@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readCodexRateLimits } from '../src/threads/side-channels'
-import { claudeUsageReport, codexUsageReport, formatResets } from '../src/threads/usage'
+import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from '../src/threads/usage'
 
 /** Local-time epoch seconds / ISO, so the expected clock text does not depend on the machine's zone. */
 const local = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m, d, h, min)
@@ -132,5 +132,23 @@ describe('claudeUsageReport', () => {
     for (const bad of [undefined, null, 'x', 4, [], {}, { rate_limits: null }, { usage: { rate_limits: 'x' } }]) {
       expect(claudeUsageReport(bad)).toEqual({ limits: [] })
     }
+  })
+})
+
+describe('limitLiftsAt (agents-are-woken-only-when-it-matters decision 9)', () => {
+  const now = 1_000_000
+  const lim = (percent: number, resetsAt?: number) => ({ label: 'x', percent, resets: '', ...(resetsAt !== undefined ? { resetsAt } : {}) })
+
+  it('waits for the last of the limits used up', () => {
+    expect(limitLiftsAt([lim(100, now + 5_000), lim(100, now + 90_000), lim(40, now + 1_000)], now)).toBe(now + 90_000)
+  })
+
+  it('takes the soonest reset ahead when no limit reads as used up', () => {
+    expect(limitLiftsAt([lim(97, now + 9_000), lim(12, now + 3_000)], now)).toBe(now + 3_000)
+  })
+
+  it('ignores resets already past, and says nothing without a reset time', () => {
+    expect(limitLiftsAt([lim(100, now - 1), lim(100)], now)).toBeUndefined()
+    expect(limitLiftsAt([], now)).toBeUndefined()
   })
 })

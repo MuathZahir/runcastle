@@ -43,6 +43,7 @@ export interface LeadMessage {
 interface HeldLine {
   text: string
   orchestrator?: { text: string; relayed: boolean }
+  reason: WakeReason
 }
 
 /**
@@ -61,14 +62,15 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
   const lines: HeldLine[] = [
     ...(held.get(feature.id) ?? []),
-    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator },
+    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator, reason: msg.reason ?? 'question' },
   ]
   // The human reads the orchestrator's words only when every line going out is one.
   const said = lines.flatMap((l) => (l.orchestrator ? [l.orchestrator] : []))
   const display = said.length === lines.length ? { orchestrator: said } : undefined
   try {
     const threadId = await leadThread(ctx, feature)
-    const hold = !wakes(msg.reason ?? 'question')
+    // Held only when every line going out is news: a kept handback still wakes the lead.
+    const hold = !lines.some((l) => wakes(l.reason))
     await agentHost(ctx).prompt(
       threadId,
       { text: lines.map((l) => l.text).join('\n\n') },

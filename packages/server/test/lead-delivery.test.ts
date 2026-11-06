@@ -231,6 +231,20 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     expect(sentToAgent()[0].startsWith('[runcastle] something happened\n\n[runcastle] notes')).toBe(true)
   })
 
+  it('still wakes the lead when news follows a handback it could not deliver', async () => {
+    // A feature with no chat thread and no checkout to open one in: the round's return is kept.
+    const f = feature()
+    await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle', reason: 'handback' })
+    expect(types(f.id)).toContain('lead.wake_failed')
+
+    const id = chat(f.id)
+    await deliverToLead(ctx, f, { text: 'The human pressed Stop', source: 'runcastle', reason: 'news' })
+
+    expect(promptsOf(id)[0]).not.toHaveProperty('held')
+    await logUntil(id, turnsEnded(1))
+    expect(sentToAgent()[0]).toContain('[runcastle] Round 1 returned\n\n[runcastle] The human pressed Stop')
+  })
+
   it('holds Stop for an idle lead', async () => {
     const f = feature()
     const id = chat(f.id)

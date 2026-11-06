@@ -1081,6 +1081,55 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([false, true, false])
   })
 
+  /** A script whose first turn waits for `release`. */
+  function blocking(): { script: FakeScript; release: () => void } {
+    let release!: () => void
+    const released = new Promise<void>((r) => {
+      release = r
+    })
+    let n = 0
+    return {
+      release: () => release(),
+      script: {
+        turn: async (t) => {
+          if (n++ === 0) await released
+          await t.say('Done.')
+        },
+      },
+    }
+  }
+
+  it('keeps held news on disk until the prompt carrying it is sent, so a stop that drops the queue loses none', async () => {
+    const b = blocking()
+    setup(b.script)
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'Wake' }, { source: 'runcastle' })
+    await host.stop(id, 'idle')
+    b.release()
+
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, (e) => e.filter((x) => x.type === 'turn_ended').length >= 2)
+    expect(texts().at(-1)).toBe('News\n\nHi')
+  })
+
+  it('says held news with one prompt only, even when two are queued', async () => {
+    const b = blocking()
+    setup(b.script)
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'A' }, { source: 'runcastle' })
+    await host.prompt(id, { text: 'B' }, { source: 'runcastle' })
+    b.release()
+
+    await logUntil(id, turnsEnded(3))
+    expect(texts()).toEqual(['Start', 'News\n\nA', 'B'])
+  })
+
   it('leaves a human’s own message to them, but keeps what rode ahead of it', async () => {
     setup(limited(), { readUsage: spentUntil(Date.now() + 60_000), usageResetGraceMs: 0 })
     const id = thread()

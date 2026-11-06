@@ -121,6 +121,12 @@ function isHeadless(session: NotifyState['session']): boolean {
   return !!session && (session.headless === true || session.purpose === 'self-plan')
 }
 
+/** The hold key the human's talking and went-quiet lines share, so the newer replaces the older (decision 13). */
+const talkingKey = (slug: string, kind: string): string => `talking:${slug}:${kind}`
+
+/** The hold key a drive's started and stopped lines share. */
+const driveKey = (slug: string): string => `drive:${slug}`
+
 /** What happened and what to read next, without the prefix or the slug; null for no line. */
 function describe(event: EventRow, state: NotifyState, slug: string): Described | null {
   const { session, ticket } = state
@@ -216,7 +222,7 @@ function describe(event: EventRow, state: NotifyState, slug: string): Described 
         kind: 'act',
         text: `the human is talking to its ${session.kind} thread; it is busy until that conversation goes quiet.`,
         reason: 'news',
-        key: `talking:${slug}:${session.kind}`,
+        key: talkingKey(slug, session.kind),
       }
     case 'session.process_stopped':
       if (!session || data.startedBy !== 'human' || session.kind === 'side' || isHeadless(session)) return null
@@ -224,14 +230,14 @@ function describe(event: EventRow, state: NotifyState, slug: string): Described 
         kind: 'act',
         text: `the human's ${session.kind} conversation on it went quiet; it is free again. ${context}`,
         reason: 'news',
-        key: `talking:${slug}:${session.kind}`,
+        key: talkingKey(slug, session.kind),
       }
     case 'testdrive.started':
       if (data.purpose === 'review') return null
-      return { kind: 'act', text: `the human started a test drive of it.`, reason: 'news', key: `drive:${slug}` }
+      return { kind: 'act', text: `the human started a test drive of it.`, reason: 'news', key: driveKey(slug) }
     case 'testdrive.stopped':
       if (data.purpose === 'review') return null
-      return { kind: 'act', text: `the human stopped the test drive of it. ${context}`, reason: 'news', key: `drive:${slug}` }
+      return { kind: 'act', text: `the human stopped the test drive of it. ${context}`, reason: 'news', key: driveKey(slug) }
     default:
       return null
   }
