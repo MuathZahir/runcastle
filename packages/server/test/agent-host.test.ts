@@ -531,7 +531,10 @@ describe('automatic compaction', () => {
       turn: async (t) => {
         const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
         if (said.startsWith('/compact') || said.startsWith('Long')) {
-          await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp', status: 'completed' } as never)
+          // Each compaction under its own id, and reported completed twice, as claude-agent-acp does.
+          const compactionId = `cmp-${said.slice(0, 4)}`
+          await t.update({ sessionUpdate: 'compaction_update', compactionId, status: 'completed' } as never)
+          await t.update({ sessionUpdate: 'compaction_update', compactionId, status: 'completed' } as never)
         }
         await t.update({ sessionUpdate: 'usage_update', used: said.startsWith('/compact') ? AFTER : BIG, size: 1_000_000 })
         if (!said.startsWith('/compact')) await t.say('Done')
