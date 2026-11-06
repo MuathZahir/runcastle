@@ -279,27 +279,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Writing code yourself stays allowed', 'You said so on 2026-11-06. A self-contained chunk goes to a subagent; the lead reads its real diff and runs the checks itself. A few edits it makes itself.', 'assumed'],
     ['Read-only subagents name a cheaper model', '58 of 113 subagents ran on Opus only because no model was set. Sonnet for surveys and critique; Haiku rejected because a missed fact costs more.', 'assumed'],
     ['Edits go through the Edit tool, files are read with Read', '157 patch scripts in /tmp and 43 failed heredocs, likely because reading with sed skips the Edit tool’s read-first rule.', 'assumed'],
-    ['Compaction keeps the same conversation', 'The "Compact now" path already works on both runtimes and the chat already shows it. A fresh thread would lose what is not yet in the docs.', 'assumed'],
-    ['Runcastle compacts a lead at three moments, only above 150k', 'After planning and while idle run with a warm cache, so they are cheap; before resuming is the safety net after a restart. Below 150k a summary saves too little.', 'assumed'],
-    ['A round coming back and a ready declaration get no trigger of their own', 'Rounds and drives outlast the 30-minute idle stop, so the lead is already compacted when results arrive. One rule instead of three hooks.', 'assumed'],
-    ['A 200k ceiling inside long turns, for Claude Code leads', 'Leads run on 1M-context models (270 of ~350 chats). The replay says 200k saves ~600M tokens per two weeks against ~400M at 300k.', 'assumed'],
-    ['Only feature leads; after merge, only before a resume', 'Other chat kinds belong to sibling features. A shipped lead is rarely resumed, but when it is, a 490k rebuild is the cost this removes.', 'assumed'],
-    ['The compaction is told what to keep', 'What the lead waits on, your latest words, unwritten agreements and uncommitted work; the docs hold the rest.', 'assumed'],
-    ['The human sees each automatic compaction', 'The existing divider says it was automatic, why, and the size before and after, so a forgetful lead has a visible cause.', 'assumed'],
+    ['Compaction keeps the same conversation', 'The "Compact now" path already works on both runtimes and the chat already shows it. A fresh thread would lose what is not yet in the docs.'],
+    ['Runcastle compacts a lead at three moments, only above 150k', 'After planning and while idle run with a warm cache, so they are cheap; before resuming is the safety net after a restart. Below 150k a summary saves too little.'],
+    ['A round coming back and a ready declaration get no trigger of their own', 'Rounds and drives outlast the 30-minute idle stop, so the lead is already compacted when results arrive. One rule instead of three hooks.'],
+    ['A 200k ceiling inside long turns, for Claude Code leads', 'Leads run on 1M-context models (270 of ~350 chats). The replay says 200k saves ~600M tokens per two weeks against ~400M at 300k.'],
+    ['Only feature leads; after merge, only before a resume', 'Other chat kinds belong to sibling features. A shipped lead is rarely resumed, but when it is, a 490k rebuild is the cost this removes.'],
+    ['The compaction is told what to keep', 'What the lead waits on, your latest words, unwritten agreements and uncommitted work; the docs hold the rest.'],
+    ['The human sees each automatic compaction', 'The existing divider says it was automatic, why, and the size before and after, so a forgetful lead has a visible cause.'],
     ['The skill stops saying "never compact"', 'It contradicts this feature. The reason behind it survives as "write each decision down the moment it settles".', 'assumed'],
-    ['A message sent during a compaction waits for it', 'Most likely right after planning. A few seconds’ wait beats wasting a half-done compaction.', 'assumed'],
-    ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.', 'assumed'],
-    ['After any compaction, the lead re-reads its feature state first', 'Added by the orchestrator: a summary is the model’s own judgement and nothing checks it; one call to get_feature_context does.', 'assumed'],
-    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Added on the orchestrator’s call, not yours: your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. Only feature leads get the override.', 'assumed']
+    ['A message sent during a compaction waits for it', 'Most likely right after planning. A few seconds’ wait beats wasting a half-done compaction.'],
+    ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.'],
+    ['After any compaction, the lead re-reads its feature state first', 'Added by the orchestrator: a summary is the model’s own judgement and nothing checks it; one call to get_feature_context does.'],
+    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Added on the orchestrator’s call, not yours: your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. Only feature leads get the override.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [5, 'Start a fresh lead thread seeded from the docs at each break.', 'The brief offered both. Compaction keeps the chat in one piece but keeps a summary you never see; a fresh thread starts cleaner but loses what is not yet written down.'],
-    [6, 'Compact only before a cold turn, never while idle.', 'Compacting at the idle stop means a reply after 31 minutes meets a summarised lead. The 150k floor and 30-minute timing are guesses from the token analysis.'],
-    [8, '300k, which keeps more working detail in a long turn.', 'You chose 1M-context models for leads; a 200k ceiling takes most of that headroom away in long build turns.'],
-    [16, 'Respect your own autoCompactEnabled: false and leave the ceiling off.', 'It overrides a setting you chose yourself, and you never agreed to it.']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
