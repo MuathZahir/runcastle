@@ -9,12 +9,14 @@ landing.css         its styles, fonts included            GENERATED
 landing.js          its motion: one clock, eight scenes   GENERATED
 styles.css          tokens and chrome for docs/ and compare/
 content.css         the reading surface for docs/ and compare/, on top of styles.css
+docs.css            docs-only additions: the stage row and where the app pictures sit
 install.sh          the one-line install for macOS and Linux; hands over to `runcastle setup`
 install.ps1         the same for Windows
 _headers            serves both install scripts as plain text
-_redirects          old addresses; the compare block sends /compare/claude-code/ on
-docs/, compare/     article pages; they load styles.css + content.css and no JS
-  docs/vps/         the VPS guide: install, service, and the SSH tunnel in
+_redirects          old addresses: the retired docs pages and the old /compare/claude-code/ post
+docs/, compare/     article pages; they load styles.css + content.css (docs also docs.css, docs.js)
+  docs/             get started; features/ how a feature goes; orchestrator/; vps/ another
+                    machine or your phone
 assets/
   og.png            the social card: a capture of the top of the landing page
   favicon.svg       copy of apps/web/public/favicon.svg
@@ -22,6 +24,7 @@ assets/
   logos/            Simple Icons brand marks (used by the compare pages)
   screens/          PNG captures of the app, for the root README
   posts/            the same captures as 1840px WebP, for the compare posts
+  docs/app.css      the app's own CSS, for the docs pictures (generated, see below)
   video/            the launch film; no page links to it since the isometric landing
 ```
 
@@ -133,6 +136,26 @@ the castle wall, at 1280px and 2x.
 To refresh them, repeat that: boot a dev server on a scratch data dir holding a
 demo project, then capture with headless Chrome. Recapture whenever the app's
 look moves; stale screenshots are what this folder exists to avoid.
+
+## The docs pictures are the app's own components
+
+Every picture on the docs pages is the app's real React components, rendered to
+static HTML with sample data by `apps/web/preview/docs-pages.tsx`. The script
+writes each one between `<!-- app:<name> -->` and `<!-- /app:<name> -->` in the
+page, inside a declarative shadow root that loads `assets/docs/app.css`, the
+app's compiled CSS. The app's styles and the site's never touch, the text stays
+live and sharp, and the pages still load no JS.
+
+Re-render them whenever the app's look moves:
+
+```sh
+bun run --filter @runcastle/web build    # compiles the app's CSS into apps/web/dist
+bun apps/web/preview/docs-pages.tsx      # re-renders every picture and app.css
+```
+
+To add a picture, add an entry to `PICTURES` in the script and a marker pair
+where it goes in a page. The sample data is one running example: tags on
+shiplog, the README's demo app.
 
 ## House rules
 

@@ -565,3 +565,6 @@ export function ThreadError({ children, action }: { children: ReactNode; action?
     </div>
   )
 }
+
+/** One thread item as the thread draws it, for the docs pictures (apps/web/preview/docs-pages.tsx). */
+export { Item as ThreadItemView, opensTurn }

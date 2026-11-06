@@ -1,4 +1,17 @@
+# Cloudflare Pages redirects: old addresses that are indexed and still linked
+# from older pages, each to its nearest replacement.
+
 # compare posts
 # The "vs Claude Code" post became "Claude Code or Codex on their own".
 /compare/claude-code/ /compare/claude-code-or-codex/ 301
 /compare/claude-code /compare/claude-code-or-codex/ 301
+
+# docs (docs-for-runcastle-as-it-is-today): six pages became four.
+/docs/pipeline/     /docs/features/      301
+/docs/pipeline      /docs/features/      301
+/docs/gates/        /docs/features/      301
+/docs/gates         /docs/features/      301
+/docs/project/      /docs/orchestrator/  301
+/docs/project       /docs/orchestrator/  301
+/docs/preparation/  /docs/               301
+/docs/preparation   /docs/               301

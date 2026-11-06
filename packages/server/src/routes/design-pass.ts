@@ -177,6 +177,11 @@ export async function designPassFetch(req: Request, lookup: DesignLookup): Promi
     out.delete('content-encoding')
     out.delete('content-length')
   }
+  // A design changes under the human's eyes. A server that says nothing about
+  // caching (a plain static server) leaves the browser to guess, and a phone
+  // then keeps showing a page it saved before the agent changed it. Ask it to
+  // check every time; a server's own rule (Vite's hashed, immutable deps) stands.
+  if (!out.has('cache-control')) out.set('cache-control', 'no-cache')
   // A redirect to the design server's own address stays on this one.
   const location = out.get('location')
   if (location?.startsWith(target.origin)) out.set('location', location.slice(target.origin.length) || '/')
