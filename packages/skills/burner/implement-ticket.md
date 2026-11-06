@@ -47,12 +47,12 @@ If you catch yourself writing a heredoc to edit a file, stop and use `Edit`.
 
 {{VERIFY_NOTES}}
 
-Check only what you touched — a full suite on a monorepo is minutes of your budget, and in real rounds running one two or three times per ticket was the largest single waste:
+**The check rule — the only one; it wins over anything your ticket's context says.** Before each commit, run the tests that cover that slice. Run the project-wide static check (the typecheck, or whatever plays that part) **once**, at the end, after every criterion and every self-review fix is committed, and once more only if that run found something you then fixed. Never run the full test suite or the verify commands whole — not even when your ticket's context asks you to "verify with typecheck and test from the repo root": the host runs them once at the end of the round.
 
 - **Report a gate that cannot run.** If the static check or test runner named by the project's commands cannot start at all because its command or required runtime is missing, write `GATE_UNRUNNABLE.md` at the sandbox root as JSON with the exact strings `{"command":"<exact command>","error":"<exact error>"}` (or a JSON array of those objects for multiple gates). Continue every other gate you can run. This is an environment report, never your ticket's failure, and it does not replace `BLOCKED.md` or `DIGEST.md`.
 
 - **Capture, then read.** Redirect a run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
-- **Never run the full test suite or the verify commands whole.** The host runs them once at the end of the round; a break elsewhere comes back to the lead as a fix round. You run the static check (the typecheck, or whatever plays that part in the project's commands: a compile, `go vet`, a linter) once across the project, *after* your work is committed (see "How to work", step 4) — narrowing it to one package only where the project's commands make that plain; a project with no static check gets only narrowed tests. For tests, run only the files or patterns that cover your change, as often as you need while you work.
+- **Why it is one run.** A break elsewhere comes back to the lead as a fix round, so a whole-suite run buys you nothing the host does not already do. The static check (a typecheck, a compile, `go vet`, a linter) runs across the project — narrowed to one package only where the project's commands make that plain; a project with no static check gets only narrowed tests. Narrowed tests you may run as often as you need while you work.
 - **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, read the file at `HEAD` with `git show`, or — only if you genuinely need the old tree on disk — `git worktree add --detach <path> <sha>` a **detached** scratch checkout and `git worktree remove` it when done. Never `git worktree add <path> <branch>`: that checks the branch out, and a worktree left holding a branch is one nobody else can check it out in.
 
 ## How to work
@@ -65,7 +65,7 @@ Check only what you touched — a full suite on a monorepo is minutes of your bu
 
 4. **Commit early, commit often — an uncommitted slice is a slice you can lose.** A commit is the *only* thing that survives your process ending. Everything else — edited files, a passing test you have not committed, an hour of work — is discarded the moment the turn ends, and the next iteration starts from your last commit as if the rest never happened. Real rounds bear this out: the tickets that committed six times finished in one iteration; the ticket that committed nothing burned two iterations and shipped nothing.
 
-   So: **the moment a slice is green, commit it.** Aim for 3–4 slice commits per ticket; never commit a comment-only or formatting-only change on its own — fold it into the next slice. Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
+   So: **the moment a slice is green, commit it.** Aim for 3–4 slice commits per ticket; never commit a comment-only or formatting-only change on its own — fold it into the next slice. Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run the tests that cover the slice — **never commit red** — then commit with a subject line of the form:
 
    `ticket(<seq>): <summary>`
 
@@ -73,9 +73,9 @@ Check only what you touched — a full suite on a monorepo is minutes of your bu
 
    A half-done ticket with four green commits is a good outcome the next iteration can finish. A nearly-done ticket with zero commits is a total loss.
 
-   **Commit before the project-wide static check.** Long checks are the commands most likely to kill your process — in real rounds they were OOM-killed mid-run, and every agent that ran them before committing lost a finished, passing fix. So once the targeted tests for your change pass, commit it *before* you start the project-wide static check. If it finds something, fix it in a follow-up commit.
+   **The static check comes after the commits.** Long checks are the commands most likely to kill your process, and an agent that runs one before committing can lose a finished, passing fix. So the one project-wide static check runs at the end, after the self-review in step 5 and its fixes are committed; if it finds something, fix it in a follow-up commit and run it once more.
 
-5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find — and, as in step 4, once the targeted tests for those fixes pass, commit the fixes *before* you re-run the targeted tests and the static check:
+5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find — commit each fix once its targeted tests pass. Do the self-review before the one static-check run, so that run covers your fixes too:
    - **Standards** — does the diff follow the documented standards above and the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.
    - **Spec = this ticket** — is every acceptance criterion actually met, and is there **nothing in the diff the ticket did not ask for**? Missing and extra both count.
 

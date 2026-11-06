@@ -130,6 +130,13 @@ describe('mcp tools', () => {
     ])
   })
 
+  it('emit_tickets stores an oversized ticket and warns about it by seq', () => {
+    const big = { ...ticket('big'), acceptanceCriteria: Array.from({ length: 9 }, (_, i) => `c${i}`) }
+    const out = toolEmitTickets(ctx, session, { tickets: [big] })
+    expect(out.stored).toBe(1)
+    expect(out.warnings.some((w) => w.includes('#1') && w.includes('9 acceptance criteria'))).toBe(true)
+  })
+
   it('emit_tickets carries each ticket kind through, defaulting to implementation', () => {
     // The registered tool hands its handler the PARSED batch, so parse here the
     // same way — that is what applies the `implementation` default for the

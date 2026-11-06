@@ -961,6 +961,7 @@ async function reviewTicketOutcome(
     // tickets: the app, its database and its browser only exist out here.
     agent: buildBurnAgent(deps.config, deps.token, deps.model, {
       onHost: true,
+      role: 'review',
       mcp: artifacts.mcp,
       hostEnv: {
         AGENT_BROWSER_SESSION: `review-${ticket.id}`,

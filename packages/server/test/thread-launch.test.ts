@@ -4,6 +4,8 @@ import type { AgentRuntime, Feature, Project } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { launchProjectSession, launchSession, type LaunchSessionOptions } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
@@ -17,7 +19,7 @@ import { openProject } from '../src/services/projects'
 import { updateSettings } from '../src/services/settings'
 import { listSessionsByFeature } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { acpLaunchInput } from '../src/threads/launch'
+import { acpLaunchFor, acpLaunchInput } from '../src/threads/launch'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -180,6 +182,23 @@ describe('each conversation kind’s ACP launch', () => {
     expect(getSessionRow(ctx, id)?.worktreePath).toBe(worktreeDir(project.id, PROJECT_WORKTREE_SLUG))
     const brief = await briefOf(ctx, id)
     expect(brief).toContain(PROJECT_BRANCH)
+  })
+
+  it('starts a thread with no conversation yet in its kind’s worktree now, not the folder its row names', async () => {
+    // A test drive's copied rows name the live install's worktree
+    // (drives-never-touch-real-conversations): a fresh start must not run there.
+    vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
+    const fresh = (await caller().thread.new({ projectId: project.id })).threadId
+    const resumed = (await caller().thread.new({ projectId: project.id })).threadId
+    ctx.db.update(sessions).set({ worktreePath: '/live/install/worktree' }).where(eq(sessions.id, fresh)).run()
+    ctx.db.update(sessions).set({ worktreePath: '/live/install/worktree', ccSessionId: 'cc-1' }).where(eq(sessions.id, resumed)).run()
+
+    await acpLaunchFor(ctx, getSessionRow(ctx, fresh)!)
+    await acpLaunchFor(ctx, getSessionRow(ctx, resumed)!)
+
+    expect(getSessionRow(ctx, fresh)?.worktreePath).toBe(worktreeDir(project.id, PROJECT_WORKTREE_SLUG))
+    // A conversation resumes from where it was recorded.
+    expect(getSessionRow(ctx, resumed)?.worktreePath).toBe('/live/install/worktree')
   })
 
   it('gives a Codex feature chat its own home, approvals never, and has its hooks trusted', async () => {

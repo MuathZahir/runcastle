@@ -33,6 +33,7 @@ import {
   WaitingKind,
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
+  ticketShapeWarnings,
   isAgentDigestDoc,
   isProjectSessionKind,
   unstartedState,
@@ -1021,7 +1022,7 @@ export function toolEmitTickets(
   ctx: AppCtx,
   session: SessionRow,
   input: { tickets: TicketInputT[] },
-): { stored: number; tickets: StoredTicketRef[] } {
+): { stored: number; tickets: StoredTicketRef[]; warnings: string[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseMisKindedReview(input.tickets)
   // A session may only assign what `get_feature_context` offered it; the store
@@ -1051,6 +1052,9 @@ export function toolEmitTickets(
   return {
     stored: stored.length,
     tickets: stored.map((t) => ({ id: t.id, seq: t.seq, title: t.title })),
+    // Advisory only (cheaper-burns decision 2): the batch is already stored, and
+    // the lead reads these to split or enrich a ticket before it dispatches.
+    warnings: ticketShapeWarnings(stored).map((w) => w.message),
   }
 }
 
@@ -3587,7 +3591,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Emit tickets',
         description:
           'Store the whole ticket batch in one call; `blockedBy` positions are positions in this ' +
-          'call. Returns each ticket’s id and assigned `seq`.',
+          'call. Returns each ticket’s id and `seq`, plus `warnings` for any ticket shaped to overrun: fix those with update_ticket before you dispatch.',
         inputSchema: {
           tickets: z
             .array(TicketInput)
