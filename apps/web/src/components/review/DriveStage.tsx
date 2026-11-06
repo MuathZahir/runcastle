@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { DriveScenario, DriveState } from '@runcastle/core'
-import { EmptyState, Spinner, StatusLabel } from '../../ui'
+import { Button, EmptyState, Spinner, StatusLabel } from '../../ui'
 import { IconClock, IconShield, IconTerminal } from '../../icons'
 import { driveView, type DriveFailure } from '../../lib/feature-ui'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
@@ -39,7 +39,7 @@ export function DriveStage({
   branch,
   driveState,
   drive,
-  dryRun = false,
+  dryRun = null,
   failure,
   failureExit,
   where,
@@ -54,8 +54,8 @@ export function DriveStage({
   branch: string
   driveState: DriveState
   drive?: StageDrive
-  /** A preparation dry run is holding the one drive slot. */
-  dryRun?: boolean
+  /** The Orchestrator's dry run is holding the one drive slot, and how to stop it. */
+  dryRun?: { onStop: () => void; stopping: boolean } | null
   failure: DriveFailure | null
   /** A project drive's way out of a failed setup; a feature drive offers Fix drive itself. */
   failureExit?: (failure: DriveFailure) => ReactNode
@@ -81,8 +81,13 @@ export function DriveStage({
           <StatusLabel tone="neutral">Drive held</StatusLabel>,
           <EmptyState
             icon={<IconShield />}
-            title="A preparation dry run is holding the drive"
-            hint={<>It is proving this project’s drive commands on your machine. Stop it from Preparation, and this branch can take the wheel.</>}
+            title="The Orchestrator’s dry run is holding the drive"
+            hint={<>It is proving this project’s drive commands on your machine. Stop it, and this branch can take the wheel.</>}
+            action={
+              <Button size="sm" loading={dryRun.stopping} disabled={dryRun.stopping} onClick={dryRun.onStop}>
+                Stop the dry run
+              </Button>
+            }
           />,
           false,
         )

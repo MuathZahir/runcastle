@@ -73,6 +73,7 @@ vi.mock('../src/trpc', () => {
         roots: query(() => []),
         browse: query(() => undefined),
       },
+      system: { version: query(() => ({ version: 'test', platform: 'linux' })) },
     },
   }
 })
@@ -124,36 +125,11 @@ describe('FirstRunWizard', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
   })
 
-  // Nothing is pinged before this step is passed (decision 4): leaving it
-  // forward is what records the answer, ticked or not.
-  it('records the usage ping as on when the intro is left with the box ticked', () => {
+  // It asks nothing (the-orchestrator-prepares-the-project decision 16): the
+  // usage ping is on by default, its switch is in Settings.
+  it('asks nothing about the usage ping, and writes nothing on the way past', () => {
     open([identity('unset')])
-    const box = screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement
-    expect(box.checked).toBe(true)
-    expect(stub.settingsWrites).toEqual([])
-
-    click('Set up runcastle')
-    expect(stub.settingsWrites).toEqual([{ key: 'usageSignal', value: 'on' }])
-  })
-
-  it('records the usage ping as off when the box is unticked', () => {
-    open([identity('unset')])
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Send the usage ping' }))
-    click('Set up runcastle')
-    expect(stub.settingsWrites).toEqual([{ key: 'usageSignal', value: 'off' }])
-  })
-
-  it('shows the current answer when the wizard is replayed', () => {
-    stub.usageField = { key: 'usageSignal', value: 'off', editable: true }
-    open([identity('unset')])
-    const box = screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement
-    expect(box.checked).toBe(false)
-  })
-
-  it('writes nothing when the environment owns the setting', () => {
-    stub.usageField = { key: 'usageSignal', value: 'on', editable: false }
-    open([identity('unset')])
-    expect((screen.getByRole('checkbox', { name: 'Send the usage ping' }) as HTMLInputElement).disabled).toBe(true)
+    expect(screen.queryByRole('checkbox')).toBeNull()
     click('Set up runcastle')
     expect(stub.settingsWrites).toEqual([])
   })

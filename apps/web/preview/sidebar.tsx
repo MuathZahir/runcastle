@@ -14,7 +14,6 @@ import { CollapseSidebarButton } from '../src/components/Frame'
 import {
   DriveCard,
   OrchestratorCard,
-  PrepRow,
   Shelf,
   SidebarFeatureRow,
   SidebarBackdrop,
@@ -66,7 +65,7 @@ const nav = {
 const noop = () => {}
 const rowActions: FeatureAction[] = [{ key: 'copy-link', label: 'Copy link', onSelect: noop }]
 
-type Sample = 'busy' | 'quiet' | 'unprepared'
+type Sample = 'busy' | 'quiet'
 
 function Design({ features, sample }: { features: FeatureListItem[]; sample: Sample }) {
   const theme = useTheme()
@@ -104,22 +103,13 @@ function Design({ features, sample }: { features: FeatureListItem[]; sample: Sam
           state={busy ? 'waiting' : 'idle'}
           active={false}
           onOpen={noop}
-          actions={[{ key: 'reprepare', label: 'Re-prepare the project', onSelect: noop }]}
+          actions={[]}
         />
       </div>
       <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
-        {nothing && sample !== 'unprepared' && <NavItem tone="quiet" label="Nothing in motion" />}
-        {(sample === 'unprepared' || inbox.length + stopped.length > 0) && (
+        {nothing && <NavItem tone="quiet" label="Nothing in motion" />}
+        {inbox.length + stopped.length > 0 && (
           <section aria-label="Needs you" className="flex flex-col gap-1">
-            {sample === 'unprepared' && (
-              <PrepRow
-                label="Prepare this project"
-                badge="8 to establish"
-                title="8 repo facts nobody has established yet"
-                active={false}
-                onClick={noop}
-              />
-            )}
             {inbox.map((f) => row(f))}
             {stopped.map((f) => row(f))}
           </section>
@@ -167,7 +157,6 @@ function Column({ title, children }: { title: string; children: ReactNode }) {
 const SAMPLES: { key: Sample; label: string; features: FeatureListItem[] }[] = [
   { key: 'busy', label: 'Busy project', features: busyFeatures },
   { key: 'quiet', label: 'Quiet day', features: quietFeatures },
-  { key: 'unprepared', label: 'Not prepared', features: busyFeatures },
 ]
 
 function Page() {

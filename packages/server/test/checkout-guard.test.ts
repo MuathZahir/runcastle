@@ -10,11 +10,11 @@ describe('checkout guard', () => {
   const wt = '/home/u/code/app'
   const verdict = (
     command: string,
-    kind: SessionKind = 'prepare',
+    kind: SessionKind = 'drive-fix',
     extra: { purpose?: SessionPurpose; stagedPaths?: string[]; toolName?: string } = {},
   ) => evaluateCheckoutGuard({ kind, toolName: 'Bash', command, worktreePath: wt, ...extra })
 
-  const HOST_KINDS = ['prepare', 'drive-fix', 'scenario'] as const
+  const HOST_KINDS = ['drive-fix', 'scenario'] as const
 
   it('refuses sweeping or out-of-bounds staging', () => {
     for (const kind of HOST_KINDS) {
@@ -29,7 +29,7 @@ describe('checkout guard', () => {
       expect(verdict('git add .runcastle/drive-setup.sh', kind)).toBeNull()
       expect(verdict('cd .runcastle && git add .', kind)).toBeNull()
     }
-    expect(verdict('git add .gitignore', 'prepare')).toBeNull()
+    expect(verdict('git add .gitignore', 'drive-fix')).toBeNull()
     expect(verdict('git add .gitignore', 'scenario')).not.toBeNull()
   })
 
@@ -103,8 +103,8 @@ describe('checkout guard', () => {
     for (const kind of ['chat', 'side', 'project'] as const) {
       expect(verdict('git add -A && git push', kind)).toBeNull()
     }
-    expect(verdict('git push', 'prepare', { toolName: 'Edit' })).toBeNull()
-    expect(evaluateCheckoutGuard({ kind: 'prepare', toolName: 'Bash', worktreePath: wt })).toBeNull()
+    expect(verdict('git push', 'drive-fix', { toolName: 'Edit' })).toBeNull()
+    expect(evaluateCheckoutGuard({ kind: 'drive-fix', toolName: 'Bash', worktreePath: wt })).toBeNull()
   })
 
   it('spots a commit in a command line', () => {

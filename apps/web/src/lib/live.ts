@@ -410,9 +410,6 @@ export function useLiveSync(): LiveStatus {
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
       refetches.push(u.settings.get.invalidate())
-      // The one-time usage-ping notice ends with a `usageSignal` write, from
-      // this tab or another — or from Settings — so it goes on the same push.
-      refetches.push(u.system.usageNotice.invalidate())
       // The image a click would build. It moves on settings writes nobody types
       // — the machine-wide `sandboxImage` clear, and the doctor's decision-8
       // heal of an orphaned project column — and both emit `settings.updated`,
@@ -431,7 +428,6 @@ export function useLiveSync(): LiveStatus {
       // The merge confirmation's "what lands" row is the same git read one step
       // further on (commits AND files), so it moves when the count does.
       refetches.push(u.feature.mergeDelta.invalidate())
-      refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
       // Its conversation list marks which one is live, so an end moves it too.
       refetches.push(u.project.conversations.invalidate())

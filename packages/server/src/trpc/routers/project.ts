@@ -4,7 +4,7 @@ import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
-import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
+import { launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { conversationTranscript, listProjectConversations } from '../../services/conversations'
 import {
@@ -85,34 +85,6 @@ export const projectRouter = router({
   // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
   // read/write through the `settings` router as per-project overrides.
 
-  // --- preparation ----------------------------------------------------------
-  // Repo facts an agent establishes once (commands, test baseline, db reset) so
-  // no burn agent re-derives them per ticket. See services/prep.ts.
-
-  /**
-   * Open the preparation CONVERSATION — a project-scoped terminal on the host,
-   * seeded with what is already established and what is not.
-   *
-   * The only way to prepare a project. The questions that block preparation are
-   * not ones a better prompt answers — how this machine's dev server starts,
-   * which database a drive should point at — so preparation asks them, and can
-   * actually RUN the answers here, which a sandbox never could.
-   *
-   * `fresh` opens it without picking the last conversation back up: re-preparing
-   * a project whose baseline has drifted means re-asking questions the resumed
-   * transcript already believes it answered.
-   */
-  talkToPrep: publicProcedure
-    .input(z.object({ projectId: z.string(), fresh: z.boolean().optional(), holdOpening: z.boolean().optional() }))
-    .mutation(({ ctx, input }) =>
-      launchPrepareSession(ctx, { projectId: input.projectId, fresh: input.fresh }, { holdOpening: input.holdOpening }),
-    ),
-
-  /** The live preparation conversation for this project, if one is open. */
-  prepSession: publicProcedure
-    .input(z.object({ projectId: z.string() }))
-    .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'prepare')),
-
   /**
    * Open a project intake CONVERSATION (decisions 17–20) — the session that
    * takes a lump of raw intent, grills it until it resolves into N features, and
@@ -161,6 +133,10 @@ export const projectRouter = router({
     .input(z.object({ sessionId: z.string() }))
     .query(({ ctx, input }) => conversationTranscript(ctx, input.sessionId)),
 
+  // --- preparation ----------------------------------------------------------
+  // Repo facts the orchestrator establishes once (commands, test baseline, db
+  // reset) so no burn agent re-derives them per ticket. See services/prep.ts.
+
   /**
    * The preparation surface the UI polls: what is still open, every established
    * finding with its provenance and staleness, and whether this project still
@@ -180,7 +156,7 @@ export const projectRouter = router({
     .query(({ ctx, input }) => drivePrerequisites(requireProjectById(ctx, input.projectId))),
 
   /**
-   * Tear down a preparation dry-run drive by hand (decision 9). The prep session
+   * Tear down a preparation dry-run drive by hand (decision 9). The orchestrator
    * normally runs both halves itself, but it can die mid-run — and what it
    * leaves up is a dev server and a temp database on the human's machine, so the
    * stop half has to be reachable without it.

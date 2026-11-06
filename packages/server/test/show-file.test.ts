@@ -62,7 +62,7 @@ describe('show_file', () => {
     readThreadEvents(session.id).flatMap((e) => (e.type === 'file_shown' ? [e.file] : []))
 
   it('is offered to every session with a thread, and not to a sandboxed worker', () => {
-    for (const kind of ['chat', 'side', 'scenario', 'drive-fix', 'project', 'prepare'] as const) {
+    for (const kind of ['chat', 'side', 'scenario', 'drive-fix', 'project'] as const) {
       expect(toolsForAudience(kind), kind).toContain('show_file')
     }
     expect(toolsForAudience('run')).not.toContain('show_file')

@@ -6,7 +6,7 @@ Each of these is one shape that has worked. Take the idea and fit it to the proj
 
 Every fragment below is written in POSIX shell because it is the most compact way to show the *idea*. **They are pseudocode.** They have not been run, they omit error handling, and two of them (`pick_port`, `port_in_use`) call helpers that do not exist anywhere — you have to write them.
 
-Write the real thing in **whatever language this host actually runs**, which the system prompt reports as `process.platform`:
+Write the real thing in **whatever language this host actually runs** — check its platform (`process.platform`) before you write a line:
 
 - **`win32`** — PowerShell (`.ps1`), or a cross-platform `node`/`bun` script. Do not hand a Windows developer a bash script and a `cksum` pipeline; `.runcastle/` in runcastle's own repo is TypeScript for exactly this reason.
 - **`darwin` / `linux`** — bash is fine, but a `node`/`bun` script is still the better default in a JS project: the runtime is already installed and it is the only version of the script that survives the project gaining a Windows contributor.

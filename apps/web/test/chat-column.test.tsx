@@ -115,7 +115,6 @@ function Page(props: PageProps) {
           onSelectProject={() => {}}
           onNewChat={() => {}}
           onDraft={() => {}}
-          onOpenPreparation={() => {}}
         />
       </div>
       <FeaturePage {...props} />

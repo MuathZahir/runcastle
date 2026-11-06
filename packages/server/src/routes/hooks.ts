@@ -1,4 +1,4 @@
-import { type Feature, type SessionKind, type SessionRow } from '@runcastle/core'
+import { type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
@@ -20,7 +20,7 @@ import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
 import { isRuncastlePrompt } from '../services/lead-prompt'
 import { markHumanMessage } from '../services/lead-status'
-import { keysToPrepare } from '../services/prep'
+import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
 import { getProjectById, listRunsByFeature, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
@@ -82,7 +82,7 @@ hooks.post('/:event', async (c) => {
       return c.json({})
     }
 
-    // Project-scoped sessions (`prepare` and `project` — see
+    // Project-scoped sessions (`project` — see
     // PROJECT_SESSION_KINDS — and a `scenario` chat on a project drive) have no
     // feature. They still need the full
     // lifecycle — `markSessionLive` is what flips the row live and records the
@@ -92,7 +92,7 @@ hooks.post('/:event', async (c) => {
     if (!session.featureId) {
       switch (event) {
         case 'session-start':
-          return c.json(handleProjectScopedSessionStart(ctx, session, body.payload))
+          return c.json(await handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
           return c.json(handleProjectScopedUserPrompt(session))
         case 'session-end':
@@ -212,7 +212,7 @@ function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<strin
   })
 }
 
-// --- project-scoped (`prepare` / `project`) session hooks --------------------
+// --- project-scoped (`project`) session hooks --------------------------------
 
 /**
  * `SessionStart` for a project-scoped conversation, either kind. Same lifecycle
@@ -221,11 +221,11 @@ function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<strin
  * kind-appropriate brief instead of a feature one. The bookkeeping is
  * kind-agnostic; only the injected context and the event wording are not.
  */
-function handleProjectScopedSessionStart(
+async function handleProjectScopedSessionStart(
   ctx: AppCtx,
   session: SessionRow,
   payload: Record<string, unknown> | undefined,
-): unknown {
+): Promise<unknown> {
   const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
   const transcriptPath =
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
@@ -245,7 +245,7 @@ function handleProjectScopedSessionStart(
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: projectScopedStartContext(ctx, session),
+      additionalContext: await projectScopedStartContext(ctx, session),
     },
   }
 }
@@ -279,14 +279,12 @@ function handleProjectScopedSessionEnd(
 
 /**
  * The human noun for a project-scoped session, used in its lifecycle events and
- * injected labels. It matches what `launchPrepareSession`/`launchProjectSession`
+ * injected labels. It matches what `launchProjectSession`
  * already emit at launch; an unrecognised featureless kind gets the neutral word
  * rather than being announced as somebody else's session.
  */
 function projectScopedNoun(kind: SessionKind): string {
   switch (kind) {
-    case 'prepare':
-      return 'preparation session'
     case 'project':
       return 'orchestrator'
     // Project-scoped only on a project drive; on a feature drive it takes the
@@ -300,38 +298,52 @@ function projectScopedNoun(kind: SessionKind): string {
 
 /** The per-turn `UserPromptSubmit` label for a project-scoped session, per kind. */
 function projectScopedPromptLabel(kind: SessionKind): string {
-  return kind === 'prepare'
-    ? '[runcastle] preparation session (project-scoped, no feature)'
-    : `[runcastle] ${projectScopedNoun(kind)}`
+  return `[runcastle] ${projectScopedNoun(kind)}`
 }
 
 /**
  * The `SessionStart` digest for a project-scoped session, per kind.
  *
- * Only `prepare` gets the preparation agenda: its whole job is closing the
- * unestablished keys, and the digest re-grounds it on which are still open —
- * exactly the state a compaction is most likely to have dropped. A `project`
- * session gets its scope and nothing else; its real briefing is the injected
- * system prompt (`renderProjectPrompt`), and handing it the prep agenda made it
- * open by measuring setup commands instead of talking to the human.
+ * A `project` session gets the facts its opening turns on (decision 3): which
+ * keys are open, whether the repo is empty, whether the project has ever had a
+ * feature. Facts, not an agenda — handing it a bare "still unestablished" list
+ * once made it open by measuring setup commands on a project already in use.
+ * What it does with them is its skill's §0 rule: only a new project with code
+ * and open keys is prepared first; one in use gets a one-line offer.
  */
-function projectScopedStartContext(ctx: AppCtx, session: SessionRow): string {
+async function projectScopedStartContext(ctx: AppCtx, session: SessionRow): Promise<string> {
   const noun = projectScopedNoun(session.kind)
   const project = session.projectId ? getProjectById(ctx, session.projectId) : null
   if (!project) return `[runcastle] ${noun} — project not found`
 
   const scope = `[runcastle] ${noun} for ${project.name} (${project.repoPath})`
-  if (session.kind !== 'prepare') return scope
+  if (session.kind === 'project') return `${scope}.\n${await orchestratorPrepNote(ctx, project)}`
+  return scope
+}
 
-  const remaining = keysToPrepare(ctx, project)
+/**
+ * The orchestrator's preparation facts, one per line, closed by the opening
+ * they add up to under the `runcastle:project` skill's §0 rule. A repo that
+ * cannot be read is reported as having code: the orchestrator finds out the
+ * rest by looking, which is what preparing starts with anyway.
+ */
+async function orchestratorPrepNote(ctx: AppCtx, project: Project): Promise<string> {
+  const open = keysToPrepare(ctx, project)
+  const empty = await isEmptyRepo(project.repoPath).catch(() => false)
+  const hadFeature = hasEverHadFeature(ctx, project.id)
+
+  const opening =
+    empty || open.length === 0
+      ? 'open as usual'
+      : hadFeature
+        ? 'open as usual, with one line offering to set up the open keys'
+        : 'prepare first — read references/preparation.md, talk to them about their app in plain words, then ask what they want to build'
   return [
-    `${scope}.`,
-    remaining.length > 0
-      ? `Still unestablished: ${remaining.join(', ')}.`
-      : 'Every prepared field currently has a value.',
-    'Record what you establish with the `record_finding` MCP tool — a value the user',
-    'gives you or confirms verbatim is theirs (userSupplied: true), anything you measured is not.',
-  ].join(' ')
+    `Open prepared keys: ${open.length > 0 ? open.join(', ') : 'none'}.`,
+    `Repo: ${empty ? 'empty' : 'has code'}.`,
+    `Features: ${hadFeature ? 'this project has had features' : 'none ever'}.`,
+    `Opening (your skill's §0): ${opening}.`,
+  ].join('\n')
 }
 
 /**

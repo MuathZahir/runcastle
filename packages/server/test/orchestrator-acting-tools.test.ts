@@ -189,6 +189,59 @@ describe('the orchestrator’s acting tools', () => {
     )
   })
 
+  /**
+   * Decision 4: a feature cut from the base must carry what the orchestrator
+   * prepared, so its commits on `runcastle/project` land before the branch is
+   * cut — and a landing that would hurt the human's checkout refuses the start.
+   */
+  describe('start_feature lands the orchestrator’s commits first', () => {
+    async function orchestratorCommits(file: string, content: string): Promise<void> {
+      const wt = join(tmpRepo(), 'wt')
+      cleanup.push(dirname(wt))
+      await g.raw(['worktree', 'add', '-b', 'runcastle/project', wt, 'main'])
+      writeFileSync(join(wt, file), content)
+      await simpleGit(wt).add([file]).commit(`orchestrator: ${file}`)
+    }
+
+    it('cuts the feature from a base that has them', async () => {
+      const session = orchestrator()
+      seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      cleanup.push(worktreeDir(projectId, 'parked'))
+      await orchestratorCommits('drive-setup.ts', '// prepared\n')
+
+      await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' })
+
+      expect(await g.raw(['show', 'feature/parked:drive-setup.ts'])).toBe('// prepared\n')
+      expect(await g.raw(['show', 'main:drive-setup.ts'])).toBe('// prepared\n')
+    })
+
+    it('refuses the start, cutting nothing, when the checkout is on another branch', async () => {
+      const session = orchestrator()
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      await orchestratorCommits('drive-setup.ts', '// prepared\n')
+      await g.checkoutLocalBranch('elsewhere')
+
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }))).toMatch(
+        /could not land first.*is on elsewhere/,
+      )
+      expect(getFeatureRow(ctx, draft.id).status).toBe('draft')
+      expect((await g.branchLocal()).all).not.toContain('feature/parked')
+    })
+
+    it('refuses the start on a conflict', async () => {
+      const session = orchestrator()
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      await orchestratorCommits('README.md', 'the orchestrator\n')
+      writeFileSync(join(repoPath, 'README.md'), 'the human\n')
+      await g.add(['README.md']).commit('human edit')
+
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }))).toMatch(
+        /conflict with main/,
+      )
+      expect(getFeatureRow(ctx, draft.id).status).toBe('draft')
+    })
+  })
+
   it('plan_feature launches a headless self-planning run, and stop_feature_run ends it', async () => {
     const session = orchestrator()
     const f = await started('planner')

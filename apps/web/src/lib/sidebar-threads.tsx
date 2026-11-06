@@ -98,8 +98,8 @@ export type OrchestratorLanding = { kind: 'chat'; threadId: string } | { kind: '
 
 /**
  * Arriving with no chat addressed: the active chat that moved last, else the
- * Conversations page, else (a project with no chats) nothing. Scenario and
- * preparation chats are never picked.
+ * Conversations page, else (a project with no chats) nothing. Scenario chats
+ * are never picked.
  */
 export function orchestratorLanding(
   threads: readonly ThreadEntry[],

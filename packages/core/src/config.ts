@@ -10,7 +10,7 @@ import * as z from 'zod'
 
 /**
  * The pipeline steps a model can be chosen for (issue #48). Each interactive
- * session kind (`chat`, `prepare`, `project`) and each AFK agent
+ * session kind (`chat`, `project`) and each AFK agent
  * (`implement`, `review`) plus the scripted `smoke` maps to one step.
  *
  * `review` is the burn's review pass — the agent that runs host-side once every
@@ -194,10 +194,9 @@ export const RuncastleConfig = z.preprocess(
     /**
      * The usage ping: the boot update check that also counts this install as
      * active (a random install ID, the version, the platform). `on` pings, `off`
-     * asks npm for the update banner instead. Unset means nobody has answered
-     * yet: an install from before the switch existed (it has an install ID)
-     * keeps pinging and is told once; a fresh one sends nothing until the
-     * first-run wizard records an answer. `DO_NOT_TRACK` beats either value.
+     * asks npm for the update banner instead. Unset counts as `on`: the ping is
+     * on by default and nobody is asked (the-orchestrator-prepares-the-project
+     * decision 16). `DO_NOT_TRACK` beats either value.
      */
     usageSignal: z.enum(['on', 'off']).optional(),
     /**

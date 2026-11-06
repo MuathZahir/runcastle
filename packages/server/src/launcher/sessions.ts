@@ -17,6 +17,8 @@ import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitProject } from '../services/events'
 import {
+  branchCommitsAhead,
+  currentCheckoutBranch,
   landProjectBranch,
   PROJECT_BRANCH,
   resolveSessionBranch,
@@ -25,7 +27,6 @@ import {
 import { getProjectById, rowToSession } from '../services/repo'
 import { hasThreadLog } from '../threads/log'
 import { runtimeAdapterFor } from './runtimes'
-import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -37,7 +38,7 @@ import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Exactly one of `featureId` / `projectId` is set: feature sessions carry their
- * feature and derive the project through it; a project-scoped `prepare` session
+ * feature and derive the project through it; a project-scoped `project` session
  * carries the project directly because it has no feature to derive one from.
  */
 export type CreateSessionInput = {
@@ -194,13 +195,6 @@ export function kickoffLineFor(
   return override ?? runtimeAdapterFor(runtime).kickoffLine(kind)
 }
 
-/**
- * The prepare kickoff for a project with NOTHING left to establish, spelled for
- * the default runtime (see {@link prepareConfirmKickoffFor} for the per-runtime
- * form the launcher uses).
- */
-export const PREPARE_CONFIRM_KICKOFF = prepareConfirmKickoffFor(DEFAULT_RUNTIME)
-
 /** What a launch is going to say to its thread, and what that implies. */
 export interface KickoffPlan {
   /** The briefing to send; absent means the per-kind default line. */
@@ -245,6 +239,11 @@ const inFlightLandings = new Set<Promise<void>>()
 
 /** What becomes of work a landing could not place — the same in every report. */
 const LANDING_KEPT = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+
+/** The same, for a landing made mid-chat ({@link landProjectBranchNow}), which its next caller retries. */
+const LANDING_KEPT_MID_CHAT =
+  `the orchestrator's work stays on ${PROJECT_BRANCH} and the landing is retried at its next ` +
+  'dry run or feature start'
 
 /**
  * Resolve once every landing kicked off so far has finished — including any
@@ -311,6 +310,70 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   })
 }
 
+/** Whether a mid-chat landing went through; `reason` is said to the human as is. */
+export type ProjectLandingNow = { ok: true } | { ok: false; reason: string }
+
+/**
+ * Land the orchestrator's commits on the base branch NOW, mid-chat (decision 4)
+ * — before a dry-run drive proves its `.runcastle/` scripts in the human's
+ * checkout, and before a feature branch is cut from the base. The same landing
+ * a closing chat does ({@link landProjectSession}), awaited and with its
+ * outcome handed back, and with `runcastle/project` kept so the orchestrator
+ * carries on working on it.
+ *
+ * It behaves like a `git pull` into the human's checkout, so it refuses where a
+ * pull would hurt them, and never stashes, resets or forces: when the checkout
+ * is on another branch (the commits would land somewhere they are not
+ * looking), when the merge conflicts, and when their uncommitted edits touch
+ * the files it brings (git itself refuses that merge). The refusal names the
+ * reason so the orchestrator can ask the human to switch branch or commit.
+ * Nothing to land is not a refusal.
+ */
+export async function landProjectBranchNow(
+  ctx: AppCtx,
+  project: Project,
+  sessionId: string,
+): Promise<ProjectLandingNow> {
+  let base: string
+  try {
+    base = await resolveSessionBranch(project)
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+  if ((await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)).length === 0) return { ok: true }
+
+  const checkedOut = await currentCheckoutBranch(project).catch(() => null)
+  if (checkedOut !== base) {
+    return {
+      ok: false,
+      reason:
+        `your checkout at ${project.repoPath} is on ${checkedOut ?? 'no branch (detached HEAD)'}, and the ` +
+        `orchestrator's commits land on ${base} — switch it to ${base} and try again. Nothing was moved.`,
+    }
+  }
+
+  const res = await landProjectBranch(project, base, { keepBranch: true })
+  if (!res) return { ok: true }
+  reportProjectLanding(ctx, project, res, { sessionId, midChat: true })
+  if (res.landed) return { ok: true }
+  if (res.conflict) {
+    const files = res.files?.length ? ` (${res.files.join(', ')})` : ''
+    return {
+      ok: false,
+      reason:
+        `the orchestrator's ${res.commits} commit(s) conflict with ${base}${files} — nothing was ` +
+        `merged; they stay on ${PROJECT_BRANCH}.`,
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `could not land the orchestrator's ${res.commits} commit(s) onto ${base}: ` +
+      `${res.error ?? 'unknown error'} — if your uncommitted edits touch the same files, commit ` +
+      'or put them aside and try again. Nothing was merged.',
+  }
+}
+
 /**
  * Put a project-branch landing on the project's timeline.
  *
@@ -335,6 +398,7 @@ export function reportProjectLanding(
       data: { branch: PROJECT_BRANCH, ...data, ...extra },
     })
   }
+  const kept = data.midChat === true ? LANDING_KEPT_MID_CHAT : LANDING_KEPT
   if (res.landed) {
     report(
       'project.landed',
@@ -344,13 +408,13 @@ export function reportProjectLanding(
   } else if (res.conflict) {
     report(
       'project.land_conflict',
-      `the orchestrator's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${LANDING_KEPT}`,
+      `the orchestrator's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${kept}`,
       { commits: res.commits, files: res.files ?? [] },
     )
   } else {
     report(
       'project.land_failed',
-      `could not land the orchestrator's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
+      `could not land the orchestrator's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${kept}`,
       { commits: res.commits, error: res.error ?? null },
     )
   }
@@ -491,31 +555,6 @@ export function clearSessionTitle(ctx: AppCtx, id: string): void {
   ctx.db.update(sessions).set({ title: null }).where(eq(sessions.id, id)).run()
 }
 
-/**
- * Whether this project has ever had a project-scoped conversation of this kind
- * run to an end. The signal behind "has the human done preparation" — a session
- * they opened and closed is one they sat through, whatever it managed to record.
- */
-export function hasCompletedProjectSession(
-  ctx: AppCtx,
-  projectId: string,
-  kind: SessionKind,
-): boolean {
-  return (
-    ctx.db
-      .select({ id: sessions.id })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.projectId, projectId),
-          eq(sessions.kind, kind),
-          eq(sessions.status, 'ended'),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  )
-}
 
 // --- re-entry cap -----------------------------------------------------------
 

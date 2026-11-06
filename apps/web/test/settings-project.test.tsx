@@ -286,7 +286,7 @@ describe('Settings — This project', () => {
     open()
 
     const stale = screen.getByText('Stale')
-    expect(stale.getAttribute('title')).toContain('Re-prepare the project')
+    expect(stale.getAttribute('title')).toContain('ask the Orchestrator')
     // The setup finding is the stale one; the fresher two carry no flag.
     expect(screen.getAllByText('Stale').length).toBe(1)
   })
@@ -297,7 +297,7 @@ describe('Settings — This project', () => {
 
     fireEvent.click(chip('Prepared · 11d ago · main +213'))
 
-    expect(screen.getByText(/Evidence · established by preparation/)).toBeTruthy()
+    expect(screen.getByText(/Evidence · measured by an older automatic run/)).toBeTruthy()
     expect(screen.getByText(SETUP_EVIDENCE)).toBeTruthy()
 
     fireEvent.keyDown(chip('Prepared · 11d ago · main +213'), { key: 'Escape' })

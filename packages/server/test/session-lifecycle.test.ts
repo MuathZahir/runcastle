@@ -407,7 +407,7 @@ describe('newestThread — the thread a launch reopens', () => {
 
     expect(newestThread(ctx, { featureId }, 'chat')?.ccSessionId).toBe('cc-chat')
     expect(newestThread(ctx, { featureId }, 'drive-fix')?.ccSessionId).toBe('cc-fix')
-    expect(newestThread(ctx, { featureId }, 'prepare')).toBeNull()
+    expect(newestThread(ctx, { featureId }, 'side')).toBeNull()
   })
 
   it('picks the newest row holding a conversation, running or not, over newer stillborn rows', async () => {

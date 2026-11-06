@@ -15,7 +15,7 @@ import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedLead } from './edi
  * tools, not shells.
  *
  * The line is the PLACE, not the kind alone (decisions §5): only a session whose
- * cwd is its feature's talk worktree is guarded. `prepare` and drive-fix run in
+ * cwd is its feature's talk worktree is guarded. drive-fix and scenario run in
  * the developer's own checkout, where installing is legitimate; the `project`
  * session's one `__project` worktree is bounded and reused. And unlike the edit
  * guard there is NO resolve-conflict exemption — resolve sessions are the main

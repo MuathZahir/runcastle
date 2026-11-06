@@ -204,7 +204,8 @@ const STEP_META: readonly {
   // Unattended — burns and scripted runs.
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
-  { step: 'prepare', label: 'Prepare', group: 'unattended', description: 'Measures setup, verify and baseline' },
+  // The step keeps its `prepare` key; preparation itself runs on the Orchestrator's model.
+  { step: 'prepare', label: 'Drive chats', group: 'unattended', description: 'Scenario and drive-fix chats' },
   { step: 'smoke', label: 'Smoke', group: 'unattended', description: 'Cheap scripted end-to-end check' },
 ]
 
@@ -467,7 +468,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   driveInstructions: {
     label: 'How to drive this app',
     tooltip:
-      'How to exercise this app once it is up: the sample project or scratch data a driver should use and may change, how to reach the states worth reviewing, and what to leave alone. Written by preparation, edited here, and injected verbatim into every drive-mode review and verification prompt.',
+      'How to exercise this app once it is up: the sample project or scratch data a driver should use and may change, how to reach the states worth reviewing, and what to leave alone. Written by the Orchestrator, edited here, and injected verbatim into every drive-mode review and verification prompt.',
     control: 'textarea',
     page: 'project',
     group: 'commands',
@@ -794,18 +795,24 @@ export function describeField(
   const readOnly = !field.editable
   const overridden = field.source === 'project'
 
+  const unit = unitFor(field, meta)
+  const ghostValue = ghostValueFor(field)
+  const sourceChip = sourceChipFor(field)
+  // A deliberate none (the-orchestrator-prepares-the-project decision 2): a
+  // finding with nothing to run, so the key was decided empty rather than left
+  // unset. It reads "None", with its evidence behind the chip as any value's.
+  const none = !!finding && !overridden && !ghostValue && toDisplay(field.value) === ''
+
   let note: string | null = null
   if (field.source === 'env') {
     note = `Set by ${FIELD_ENV_VAR[field.key] ?? 'the environment'}`
+  } else if (finding && none) {
+    note = `None, on purpose. ${describeFinding(finding)}`
   } else if (finding && overridden) {
     note = describeFinding(finding)
   } else if (field.scope === 'project') {
     note = overridden ? 'Overridden for this project' : 'Inherited from global'
   }
-
-  const unit = unitFor(field, meta)
-  const ghostValue = ghostValueFor(field)
-  const sourceChip = sourceChipFor(field)
 
   return {
     key: field.key,
@@ -813,7 +820,7 @@ export function describeField(
     ...(meta.tag ? { tag: meta.tag } : {}),
     tooltip: meta.tooltip,
     ...(meta.shortHelp ? { shortHelp: meta.shortHelp } : {}),
-    placeholder: meta.placeholder ?? '',
+    placeholder: none ? 'None' : (meta.placeholder ?? ''),
     ...(unit ? { unit } : {}),
     page: meta.page,
     group: meta.group,
@@ -832,7 +839,8 @@ export function describeField(
     source: field.source,
     note,
     ...(ghostValue ? { ghostValue } : {}),
-    ...(sourceChip ? { sourceChip } : {}),
+    // A none was decided for this project; a Global chip would say it was inherited.
+    ...(sourceChip && !none ? { sourceChip } : {}),
     clearable: isClearable(field),
     ...(finding ? { provenanceChip: provenanceChipFor(finding) } : {}),
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),

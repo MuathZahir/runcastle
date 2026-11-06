@@ -370,7 +370,7 @@ describe('Models page', () => {
       'Orchestrator chat',
       'Implement',
       'Review',
-      'Prepare',
+      'Drive chats',
       'Smoke',
     ]
     for (const step of steps) {
@@ -426,8 +426,8 @@ describe('Models page', () => {
     expect(screen.queryByLabelText('Model for Implement')).toBeNull()
     expect(screen.queryByLabelText('Default model')).toBeNull()
     // A step is found by its name, not only by its key.
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'prepare' } })
-    expect(screen.getByLabelText('Model for Prepare')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'drive chats' } })
+    expect(screen.getByLabelText('Model for Drive chats')).toBeTruthy()
     expect(screen.queryByLabelText('Note for my-proxy')).toBeNull()
   })
 })

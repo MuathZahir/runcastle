@@ -30,7 +30,7 @@ import { agentHost } from './types'
 
 /** The conversation kinds a feature's thread list holds, and the project's. */
 const FEATURE_THREAD_KINDS: SessionKind[] = ['chat', 'side', 'scenario', 'drive-fix']
-const PROJECT_THREAD_KINDS: SessionKind[] = ['project', 'prepare']
+const PROJECT_THREAD_KINDS: SessionKind[] = ['project']
 
 const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   chat: 'main',
@@ -38,7 +38,6 @@ const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   scenario: 'scenario',
   'drive-fix': 'scenario',
   project: 'project',
-  prepare: 'prepare',
 }
 
 /** The row behind a thread id; an unknown id is the caller's mistake. */

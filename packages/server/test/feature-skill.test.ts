@@ -29,11 +29,11 @@ describe('the feature skill', () => {
   it('ships as the entry skill the feature chat alone may open', () => {
     expect(skill()).toMatch(/^---\nname: feature\n/)
     expect(skill()).toContain('disable-model-invocation: false')
-    expect(ENTRY_SKILLS).toEqual(['feature', 'qa', 'project', 'prepare'])
+    expect(ENTRY_SKILLS).toEqual(['feature', 'qa', 'project'])
     expect(entrySkillsFor('chat')).toEqual(['feature'])
     expect(entrySkillsFor('side')).toEqual([])
     expect(entrySkillDenyRules('chat')).not.toContain('Skill(runcastle:feature)')
-    for (const kind of ['project', 'prepare', 'drive-fix', 'side'] as const) {
+    for (const kind of ['project', 'drive-fix', 'side'] as const) {
       expect(entrySkillDenyRules(kind)).toContain('Skill(runcastle:feature)')
     }
   })

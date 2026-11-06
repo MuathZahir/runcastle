@@ -7,12 +7,11 @@ import { kickoffLineFor } from '../src/launcher/sessions'
 import { promptMatchesKickoff } from '../src/services/conversations'
 
 describe('kickoff registry + override', () => {
-  const KINDS: SessionKind[] = ['chat', 'prepare', 'project', 'drive-fix']
+  const KINDS: SessionKind[] = ['chat', 'project', 'drive-fix']
 
   it('maps every session kind to a non-empty kickoff line naming its opening skill', () => {
     const skillByKind: Record<SessionKind, string> = {
       chat: '/runcastle:feature',
-      prepare: '/runcastle:prepare',
       project: '/runcastle:project',
       'drive-fix': 'retry_drive',
     }

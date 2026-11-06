@@ -136,7 +136,7 @@ interface CodexConfigInput {
  * `bypassPermissions`, the orchestrator's and a feature lead's posture
  * (`one-orchestrator-no-mode` decision 1; `small-fixes-before-publish` decision 3),
  * is `never` too: both work while the human is away. Host-side kinds
- * (`prepare`, `drive-fix`, `scenario`) pass no mode and stay in the sandbox.
+ * (`drive-fix`, `scenario`) pass no mode and stay in the sandbox.
  */
 function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-request' {
   return permissionMode === undefined ||
@@ -384,7 +384,7 @@ const CODEX_SKILLS_IGNORE = '.agents/'
  *
  * The whole skill DIRECTORY travels, not just its `SKILL.md`: several skills
  * send the session to an on-demand `./references/<name>.md` (the project skill's
- * triage procedure, its charter rules, prepare's recipes), and a reference the
+ * triage procedure, its charter rules, its preparation recipes), and a reference the
  * worktree never received is an instruction Codex cannot follow. A directory
  * with no `SKILL.md` is not a skill and is skipped, as before.
  *

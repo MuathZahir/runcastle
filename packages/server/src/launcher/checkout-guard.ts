@@ -6,8 +6,8 @@ import { CD_VERBS, commandsOf, isGit, VALUE_OPTIONS, within } from './lead-guard
 
 /**
  * The checkout guard (`small-fixes-before-publish` decisions 1 and 2): a
- * `PreToolUse` check on the shell commands of the three host-side kinds —
- * `prepare`, `drive-fix`, `scenario` — which work in the human's OWN checkout,
+ * `PreToolUse` check on the shell commands of the two host-side kinds —
+ * `drive-fix` and `scenario` — which work in the human's OWN checkout,
  * with their own uncommitted work in it.
  *
  * Those sessions used to prompt on `git commit` and on anything off the
@@ -42,7 +42,7 @@ export interface CheckoutGuardInput {
 
 /** The kinds this guard applies to. */
 export function guardsCheckout(kind: SessionKind): boolean {
-  return kind === 'prepare' || kind === 'drive-fix' || kind === 'scenario'
+  return kind === 'drive-fix' || kind === 'scenario'
 }
 
 /** Does this command line run a `git commit` (so the route knows to probe the index)? */

@@ -96,6 +96,14 @@ function findingRow(
 }
 
 /**
+ * Whether `key` has a provenance row at all — a value somebody established, or
+ * a deliberate "none" recorded with its evidence. Either one closes the key.
+ */
+export function hasFinding(ctx: AppCtx, projectId: string, key: ProvenanceKey): boolean {
+  return findingRow(ctx, projectId, key) !== undefined
+}
+
+/**
  * Whether a preparation run may write `key`. Anything a human set is off
  * limits, unconditionally — there is deliberately no override flag. Re-running
  * preparation is a routine action (a re-prepare button, a stale baseline), and
@@ -120,7 +128,12 @@ const UNVERIFIED = { verifiedAt: null, verifiedSha: null } as const
 
 export interface RecordFindingInput {
   key: ProvenanceKey
-  /** The established value; `null` clears both the value and its provenance. */
+  /**
+   * The established value. `null` clears both the value and its provenance,
+   * which hands the key back as open. A blank string is a deliberate "none"
+   * ("this repo has no database"): the column stays empty, but the provenance
+   * row is kept with its evidence, which closes the key without a value.
+   */
   value: string | null
   source: FindingSource
   evidence?: string
@@ -137,7 +150,7 @@ export function recordFinding(ctx: AppCtx, projectId: string, input: RecordFindi
   const { key, value, source, evidence, establishedSha } = input
   ctx.db.transaction((tx) => {
     tx.update(projects)
-      .set({ [COLUMN_NAME[key]]: value })
+      .set({ [COLUMN_NAME[key]]: value === null || value.trim() === '' ? null : value })
       .where(eq(projects.id, projectId))
       .run()
 

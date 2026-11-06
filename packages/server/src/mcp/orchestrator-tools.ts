@@ -15,7 +15,7 @@ import {
   endSession,
   launchSession,
 } from '../launcher/launcher'
-import { activeSessionsForFeature } from '../launcher/sessions'
+import { activeSessionsForFeature, landProjectBranchNow } from '../launcher/sessions'
 import { landChatCommits } from '../services/chat-branch'
 import { emit, runAsActor } from '../services/events'
 import { featureDocPath } from '../services/feature-docs'
@@ -127,7 +127,12 @@ export const toolTakeFeature = orchestratorTool(
   },
 )
 
-/** Start a draft, as Start does: refused where Start is. */
+/**
+ * Start a draft, as Start does: refused where Start is. The orchestrator's own
+ * commits (prepared `.runcastle/` scripts, charter edits, the draft's brief)
+ * land on the base branch first, so the feature is cut from a base that has
+ * them (decision 4); a refused landing refuses the start, with its reason.
+ */
 export const toolStartFeature = orchestratorTool(
   async (
     ctx: AppCtx,
@@ -135,6 +140,12 @@ export const toolStartFeature = orchestratorTool(
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
     const feature = requireHeldFeature(ctx, session, input.slug)
+    const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
+    if (!landing.ok) {
+      throw new GateError(
+        `the orchestrator's commits could not land first, so \`${input.slug}\` was not started: ${landing.reason}`,
+      )
+    }
     const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
     recordFeatureAction(ctx, session, feature.id, 'started')
     return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }
@@ -183,15 +194,23 @@ export const toolDrive = orchestratorTool(
   async (
     ctx: AppCtx,
     session: SessionRow,
-    input: { slug?: string; action: 'start' | 'stop' },
+    input: { slug?: string; action: 'start' | 'stop'; scenario?: string },
   ): Promise<TestDriveResult> => {
+    const opts = input.scenario ? { scenario: input.scenario } : {}
     if (input.slug === undefined) {
       const project = requireProjectById(ctx, requireOrchestratorSession(session))
-      return git.projectDrive(ctx, project, input.action)
+      return git.projectDrive(ctx, project, input.action, opts)
     }
     const feature = requireHeldFeature(ctx, session, input.slug)
     requireNotDraft(feature)
-    const result = await git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+    const result = await git.testDrive(
+      ctx,
+      projectForFeature(ctx, feature),
+      feature,
+      input.action,
+      'human',
+      opts,
+    )
     if (!result.deniedReason) {
       recordFeatureAction(ctx, session, feature.id, input.action === 'start' ? 'driveStarted' : 'driveStopped')
     }
@@ -369,9 +388,16 @@ export function registerOrchestratorTools(
       title: 'Start or stop a test drive',
       description:
         'Start or stop a test drive: of a feature’s branch with `slug`, of the project’s base ' +
-        'checkout without one. One drive runs on the machine at a time — a refusal comes back as ' +
-        '`deniedReason`.',
+        'checkout without one. With `scenario` (a scenario file path as the drive menu lists it, ' +
+        'e.g. `.runcastle/scenarios/onboarding/brand-new-install.ts`) a start lands on that ' +
+        'scenario once the app answers. One drive runs on the machine at a time — a refusal ' +
+        'comes back as `deniedReason`.',
       inputSchema: {
+        scenario: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('A scenario file to start the drive on. Ignored on stop.'),
         slug: SlugInput.optional().describe(
           'The feature whose branch to drive. Omit to drive the base branch.',
         ),

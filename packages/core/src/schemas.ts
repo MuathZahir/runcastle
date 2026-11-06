@@ -32,7 +32,7 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * feature and no phase to advance.
  * `drive-fix` = the one-click recovery from a failed test drive (multi-service
  * decision 9). It belongs to a FEATURE — the one whose drive died — but runs on
- * the HOST in the real checkout like `prepare`, because the environment it is
+ * the HOST in the real checkout, because the environment it is
  * there to repair is the developer's own machine.
  * `scenario` = the ＋ New scenario / Fix it chat docked beside a running human
  * drive (drive-scenarios decision 8). It runs on the HOST in the drive's
@@ -49,7 +49,6 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  */
 export const SessionKind = z.enum([
   'chat',
-  'prepare',
   'project',
   'drive-fix',
   'scenario',
@@ -58,25 +57,18 @@ export const SessionKind = z.enum([
 export type SessionKind = z.infer<typeof SessionKind>
 
 /**
- * The PROJECT-scoped session kinds: neither has a feature, so their
+ * The PROJECT-scoped session kinds: they have no feature, so their
  * `sessions.feature_id` is null (the only kinds for which that is true) and
  * `sessions.project_id` carries the scope instead.
  *
- * `project` is the intake session: it takes a lump of raw intent, grills it
- * until it resolves into N features, and creates them. It works in a
- * runcastle-owned worktree on `runcastle/project` and lands its commits on the
- * base branch — never in the human's checkout.
- *
- * It exists because a headless preparation run can measure a repo but cannot
- * ask a question. A real run established 7 of 8 keys and then declined the 8th
- * — it knew the variable name, wrote out what the value would look like, and
- * stopped, because supplying it meant inventing a bootstrap step the repo
- * documents nowhere. That is not a prompt problem; it needs a human. This kind
- * is the conversation that closes those gaps, and unlike the headless run it
- * executes on the HOST, so the five keys prep can only propose ("not executed —
- * host-only") can actually be run and verified.
+ * `project` is the orchestrator: it takes a lump of raw intent, grills it
+ * until it resolves into N features, and creates them, and it prepares the
+ * project (the prepared keys, proven by a dry-run drive) whenever it finds a
+ * key open or wrong. It works in a runcastle-owned worktree on
+ * `runcastle/project` and lands its commits on the base branch — never in the
+ * human's checkout.
  */
-export const PROJECT_SESSION_KINDS = ['prepare', 'project'] as const
+export const PROJECT_SESSION_KINDS = ['project'] as const
 
 /** True for session kinds that belong to a project rather than a feature. */
 export function isProjectSessionKind(kind: SessionKind): boolean {

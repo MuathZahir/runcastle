@@ -1,6 +1,6 @@
 # Skill packs
 
-**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Most of the pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `prepare` is original runcastle work.
+**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. The pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original.
 
 ## The `runcastle` pack
 
@@ -11,7 +11,6 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or writes tickets and runs rounds, reviews when it is worth it, hands over the drive; grilling, spec, tickets, rounds, planning alone, the preview and design live in its `references/` |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
-| `/runcastle:prepare` | entry for `kind=prepare` | *original* — establishes the project's prepared settings and drive machinery with the human |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
@@ -32,8 +31,9 @@ packs/
         │   └── references/         # loaded on demand by SKILL.md, never up front
         │       ├── charter.md
         │       ├── health-sweeps.md
+        │       ├── preparation.md
+        │       ├── preparation-recipes.md
         │       └── triage.md
-        ├── prepare/SKILL.md
         └── code-review/SKILL.md
 ```
 
@@ -78,8 +78,8 @@ another session's procedure — `project/SKILL.md` says "**Never run a design
 grilling**" while `feature`'s description sits in the same list offering exactly
 that.
 
-The **session-entry** skills — today `feature`, `qa`, `project` and
-`prepare` — used to carry `disable-model-invocation:
+The **session-entry** skills — today `feature`, `qa` and `project`
+— used to carry `disable-model-invocation:
 true` for that reason, on the build-era understanding that explicit invocation
 kept working (CC-INTEGRATION-NOTES §1). It no longer does: Claude Code now
 hard-blocks the **Skill tool** for such a skill even when the prompt names it,

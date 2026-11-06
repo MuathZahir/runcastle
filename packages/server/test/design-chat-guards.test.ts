@@ -32,7 +32,7 @@ describe('the lead is unguarded', () => {
   it('holds for chat and side sessions and no other kind', () => {
     expect(isUnguardedLead('chat')).toBe(true)
     expect(isUnguardedLead('side')).toBe(true)
-    for (const kind of ['drive-fix', 'scenario', 'prepare', 'project'] as const) {
+    for (const kind of ['drive-fix', 'scenario', 'project'] as const) {
       expect(isUnguardedLead(kind), kind).toBe(false)
     }
   })
@@ -51,7 +51,6 @@ describe('edit guard — every feature chat', () => {
   it('leaves other kinds guarded', () => {
     expect(edit({ kind: 'drive-fix' })).not.toBeNull()
     expect(edit({ kind: 'scenario' })).not.toBeNull()
-    expect(edit({ kind: 'prepare', featureSlug: undefined })).not.toBeNull()
   })
 })
 

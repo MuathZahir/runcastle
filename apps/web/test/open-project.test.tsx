@@ -19,6 +19,8 @@ const stub = vi.hoisted(() => ({
   /** What the next `project.initRepo` rejects with, or null to succeed. */
   initRejectWith: null as { message: string } | null,
   inited: [] as { repoPath: string }[],
+  /** What `system.version` says the server runs on. */
+  serverPlatform: 'linux',
 }))
 
 vi.mock('../src/trpc', async () => {
@@ -70,6 +72,8 @@ vi.mock('../src/trpc', async () => {
           useQuery: () => ({ data: undefined, isError: false, isLoading: false, error: null }),
         },
       },
+      // The machine the server runs on, which is where every typed path lives.
+      system: { version: { useQuery: () => ({ data: { version: 'test', platform: stub.serverPlatform } }) } },
     },
   }
 })
@@ -77,16 +81,9 @@ vi.mock('../src/trpc', async () => {
 const onCancel = vi.fn()
 const onOpened = vi.fn()
 
-/**
- * The paths these tests type are POSIX, and the screen's own validation is
- * deliberately platform-aware (`isAbsolutePath`, findings F17.4): on a Windows
- * host `/tmp/notes` is refused before the stubbed mutation ever runs, and the
- * screen answers a question nobody asked here. So the platform is pinned and
- * the file asks the same thing on every machine — the Windows-vs-POSIX rule
- * itself is covered by the pure-function tests in `platform.test.ts`.
- */
-function pinPosixPlatform(): void {
-  Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64', configurable: true })
+/** The browser's own platform, which must never decide what a path is. */
+function pinBrowserPlatform(value: string): void {
+  Object.defineProperty(navigator, 'platform', { value, configurable: true })
 }
 
 /** Drops the pin, leaving the environment's own `platform` getter in charge. */
@@ -112,7 +109,7 @@ function tryPath(path: string) {
 
 describe('OpenProject', () => {
   beforeEach(() => {
-    pinPosixPlatform()
+    stub.serverPlatform = 'linux'
     stub.rejectWith = null
     stub.opened = []
     stub.initRejectWith = null
@@ -124,6 +121,28 @@ describe('OpenProject', () => {
     restorePlatform()
     cleanup()
     vi.unstubAllGlobals()
+  })
+
+  // The onboarding drive's bug: a Windows browser on a Linux server refused a
+  // Linux path, judging it by the browser's machine.
+  it('judges a typed path by the server it opens on, not by the browser', () => {
+    pinBrowserPlatform('Win32')
+    open()
+    expect(
+      (screen.getByRole('textbox', { name: 'Repository path' }) as HTMLInputElement).placeholder,
+    ).toBe('/path/to/your/repo')
+    tryPath('/home/muath/projects/app')
+    expect(stub.opened).toEqual([{ repoPath: '/home/muath/projects/app' }])
+    expect(screen.queryByText('Enter an absolute path')).toBeNull()
+  })
+
+  it('asks for a Windows path, by example, when the server runs on Windows', () => {
+    stub.serverPlatform = 'win32'
+    open()
+    tryPath('/home/you/repo')
+    expect(stub.opened).toEqual([])
+    expect(screen.getByText('Enter an absolute path')).toBeTruthy()
+    expect(screen.getByText(/like C:\\Users\\you\\code\\your-repo/)).toBeTruthy()
   })
 
   it('is a kicker, a heading, a one-line lead and one row of controls', () => {

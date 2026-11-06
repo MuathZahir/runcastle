@@ -27,9 +27,9 @@ describe('projectDriveCard', () => {
     expect(projectDriveCard({ ...base, empty: true })).toEqual({ state: 'hidden' })
   })
 
-  it('offers preparation when neither a setup nor a dev command is set', () => {
+  it('offers to set drives up when neither a setup nor a dev command is set', () => {
     expect(projectDriveCard({ ...base, setupCommand: undefined, devCommand: '  ' })).toEqual({
-      state: 'prepare',
+      state: 'setUp',
     })
   })
 
@@ -44,11 +44,13 @@ describe('projectDriveCard', () => {
       state: 'blocked',
       reason: 'A test drive of feature/x is running',
     })
-    const dryRun = { projectId: 'proj_1', holderLabel: 'a preparation dry-run' }
-    expect(projectDriveCard({ ...base, drive: dryRun })).toEqual({
-      state: 'blocked',
-      reason: 'A preparation dry-run is running',
-    })
+  })
+
+  // The Orchestrator's dry run drives this project's checkout: it is this
+  // project's drive, with its page and its Stop, not a holder in the way.
+  it("is the way back to the Orchestrator's dry run", () => {
+    const dryRun = { dryRun: true, holderLabel: 'a preparation dry-run' }
+    expect(projectDriveCard({ ...base, drive: dryRun })).toEqual({ state: 'running' })
   })
 
   it('is ready while only another project drives — its drive info for this project is null', () => {

@@ -5,7 +5,7 @@ import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { launchPrepareSession, launchProjectSession, launchSession, type LaunchSessionOptions } from '../src/launcher/launcher'
+import { launchProjectSession, launchSession, type LaunchSessionOptions } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { codexRuntime } from '../src/launcher/runtimes/codex'
@@ -182,15 +182,6 @@ describe('each conversation kind’s ACP launch', () => {
     expect(brief).toContain(PROJECT_BRANCH)
   })
 
-  it('runs preparation in the real checkout with its brief, without prompts', async () => {
-    const { sessionId } = await launchPrepareSession(ctx, { projectId: project.id }, { spawn: false })
-    const spec = await acpLaunchOf(ctx, sessionId)
-
-    expect(getSessionRow(ctx, sessionId)?.worktreePath).toBe(repoPath)
-    expect(spec.sessionMode).toBe('bypassPermissions')
-    expect(await briefOf(ctx, sessionId)).toMatch(/prepar/i)
-  })
-
   it('gives a Codex feature chat its own home, approvals never, and has its hooks trusted', async () => {
     useRuntime('codex')
     const f = await feature()
@@ -290,7 +281,6 @@ describe('thread.new', () => {
     const threads = [
       (await caller().thread.new({ projectId: project.id })).threadId,
       (await caller().thread.new({ featureId: f.id })).threadId,
-      (await launchPrepareSession(ctx, { projectId: project.id }, { holdOpening: true })).sessionId,
     ]
 
     for (const threadId of threads) {
@@ -371,9 +361,8 @@ describe('thread.new', () => {
     const f = await feature()
     const { sessionId: main } = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { holdOpening: true })
     const { sessionId: orchestrator } = await launchProjectSession(ctx, { projectId: project.id }, { holdOpening: true })
-    const { sessionId: prepare } = await launchPrepareSession(ctx, { projectId: project.id }, { holdOpening: true })
 
-    for (const id of [main, orchestrator, prepare]) {
+    for (const id of [main, orchestrator]) {
       expect(promptsOf(id)).toEqual([expect.objectContaining({ source: 'runcastle', text: expect.stringMatching(/\n\nThe human's message follows\.$/) })])
     }
   })
@@ -394,7 +383,6 @@ describe('a launch’s opening held for the human’s first message', () => {
   it.each([
     ['the feature’s main chat', async (opts: LaunchSessionOptions) => launchSession(ctx, { featureId: (await feature()).id, kind: 'chat' }, opts)],
     ['a new orchestrator chat', (opts: LaunchSessionOptions) => launchProjectSession(ctx, { projectId: project.id, fresh: true }, opts)],
-    ['the preparation chat', (opts: LaunchSessionOptions) => launchPrepareSession(ctx, { projectId: project.id }, opts)],
   ])('%s sends its opening and the first message as one prompt in one turn', async (_, launch) => {
     const { id, fake } = await startOnFirstSend(launch)
     const [opening, hello] = promptsOf(id)
@@ -436,14 +424,13 @@ describe('boot reconciliation', () => {
 })
 
 describe('permission posture by kind and runtime', () => {
-  const modeOf = async (kind: 'chat' | 'side' | 'prepare', runtime: AgentRuntime) => {
-    const f = kind === 'prepare' ? undefined : await feature()
+  const modeOf = async (kind: 'chat' | 'side', runtime: AgentRuntime) => {
+    const f = await feature()
     const id = runtime === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5'
     const row = createSessionRow(ctx, {
       kind,
-      projectId: project.id,
-      ...(f ? { featureId: f.id } : {}),
-      worktreePath: f ? worktreeDir(project.id, f.slug) : repoPath,
+      featureId: f.id,
+      worktreePath: worktreeDir(project.id, f.slug),
       model: { id, runtime },
     })
     return (await acpLaunchInput(ctx, row)).permissionMode
@@ -452,10 +439,8 @@ describe('permission posture by kind and runtime', () => {
   it.each([
     ['chat', 'claude-code', 'bypassPermissions'],
     ['side', 'claude-code', 'bypassPermissions'],
-    ['prepare', 'claude-code', 'bypassPermissions'],
     ['chat', 'codex', 'bypassPermissions'], // danger-full-access, approvals never
     ['side', 'codex', 'bypassPermissions'],
-    ['prepare', 'codex', undefined], // keeps workspace-write
   ] as const)('%s on %s launches with %s', async (kind, runtime, mode) => {
     expect(await modeOf(kind, runtime)).toBe(mode)
   })

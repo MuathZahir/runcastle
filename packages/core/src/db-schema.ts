@@ -248,7 +248,7 @@ export const featureDependencies = sqliteTable(
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),
   /**
-   * Null for PROJECT-scoped sessions (`kind = 'prepare'` or `'project'` — see
+   * Null for PROJECT-scoped sessions (`kind = 'project'` — see
    * `PROJECT_SESSION_KINDS`), which exist before any feature does. Every other
    * kind carries its feature.
    *
@@ -270,7 +270,7 @@ export const sessions = sqliteTable('sessions', {
    * which derive their project through `feature_id` exactly as before.
    *
    * Events require a project id (`events.project_id` is NOT NULL — issue #44),
-   * and a `prepare` session has no feature to derive one from. Readers that
+   * and a `project` session has no feature to derive one from. Readers that
    * only have a session row — boot reconciliation, the hook receiver, the PTY
    * teardown — need it available without a lookup they cannot perform.
    *

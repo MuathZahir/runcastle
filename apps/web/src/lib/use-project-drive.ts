@@ -35,31 +35,40 @@ export function useProjectDrive(projectId: string): ProjectDriveApi {
     onSuccess: () => void utils.feature.driveInfo.invalidate(),
     onError: (e) => toast.push(e.message),
   })
+  // The Orchestrator's dry run shows here as a project drive, and ends through its own stop.
+  const dryRunStop = trpc.project.dryRunStop.useMutation({
+    onSuccess: () => void utils.feature.driveInfo.invalidate(),
+    onError: (e) => toast.push(e.message),
+  })
   const slot = driveQ.data ?? null
+
+  // A refusal is an answer, not an error: the slot is held, and the server's
+  // sentence names by whom.
+  const answered =
+    (action: 'start' | 'stop', then?: () => void, refused?: () => void) =>
+    (result: { ok: boolean; deniedReason?: string }) => {
+      if (result.ok) then?.()
+      else {
+        toast.push(result.deniedReason ?? `the drive could not ${action}`)
+        refused?.()
+      }
+    }
 
   const run = (action: 'start' | 'stop', then?: () => void, scenario?: string | null, refused?: () => void): void =>
     testDrive.mutate(
       { projectId, action, ...(scenario ? { scenario } : {}) },
-      {
-        onSuccess: (result) => {
-          // A refusal is an answer, not an error: the slot is held, and the
-          // server's sentence names by whom.
-          if (result.ok) then?.()
-          else {
-            toast.push(result.deniedReason ?? `the drive could not ${action}`)
-            refused?.()
-          }
-        },
-        onError: () => refused?.(),
-      },
+      { onSuccess: answered(action, then, refused), onError: () => refused?.() },
     )
 
   return {
     slot,
     drive: isThisProjectDrive(slot, projectId) ? slot : null,
     start: (scenario, onRefused) => run('start', undefined, scenario, onRefused),
-    stop: (onStopped) => run('stop', onStopped),
+    stop: (onStopped) =>
+      slot?.dryRun
+        ? dryRunStop.mutate({ projectId }, { onSuccess: answered('stop', onStopped) })
+        : run('stop', onStopped),
     starting: testDrive.isPending && testDrive.variables?.action === 'start',
-    stopping: testDrive.isPending && testDrive.variables?.action === 'stop',
+    stopping: dryRunStop.isPending || (testDrive.isPending && testDrive.variables?.action === 'stop'),
   }
 }

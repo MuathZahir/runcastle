@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEntry } from '@runcastle/core'
-import type { FeatureListItem, PrepView } from '../src/lib/api'
+import type { FeatureListItem } from '../src/lib/api'
 import type { DriveState } from '../src/lib/workspace'
 import { listItem, need } from './fixtures'
 import { openMenu } from './floating'
@@ -15,11 +15,8 @@ import { openMenu } from './floating'
  * show; the row-level words and dots are pinned in sidebar-row.test.ts.
  */
 
-const PREPARED: PrepView = { prepared: true, pendingKeys: [], findings: [] } as unknown as PrepView
-
 const data = vi.hoisted(() => ({
   features: [] as FeatureListItem[],
-  prep: undefined as unknown,
   notes: 0,
   threads: [] as ThreadEntry[],
   archive: vi.fn(),
@@ -41,7 +38,6 @@ vi.mock('../src/trpc', () => ({
       delete: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
     project: {
-      prep: { useQuery: () => ({ data: data.prep }) },
       list: { useQuery: () => ({ data: [] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: data.notes }) } },
@@ -83,10 +79,9 @@ const nav = {
 
 function rail(
   over: {
-    view?: 'feature' | 'project' | 'prepare'
+    view?: 'feature' | 'project'
     driving?: DriveState | null
     onOpenCmdk?: () => void
-    onOpenPreparation?: () => void
   } = {},
 ) {
   return render(
@@ -100,7 +95,6 @@ function rail(
         onSelectProject={vi.fn()}
         onNewChat={() => {}}
         onDraft={() => {}}
-        onOpenPreparation={over.onOpenPreparation ?? (() => {})}
         onOpenCmdk={over.onOpenCmdk}
         driving={over.driving ?? null}
       />
@@ -124,13 +118,11 @@ const titles = (region: HTMLElement) =>
 afterEach(() => {
   cleanup()
   data.features = []
-  data.prep = PREPARED
   data.notes = 0
   data.threads = []
   localStorage.clear()
   vi.clearAllMocks()
 })
-data.prep = PREPARED
 
 describe('the head', () => {
   it('has a Search icon button, the Create menu and close — no search field row', () => {
@@ -179,20 +171,10 @@ describe('the Orchestrator card', () => {
     expect(orchestrator().textContent).toContain('Waiting for you')
     expect(orchestrator().innerHTML).toContain('bg-warning')
   })
-
-  it('holds Re-prepare in its menu once preparation is done', () => {
-    const onOpenPreparation = vi.fn()
-    rail({ onOpenPreparation })
-    openMenu(screen.getByRole('button', { name: 'Project actions' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Re-prepare the project/ }))
-    expect(onOpenPreparation).toHaveBeenCalledOnce()
-    expect(screen.queryByText('Re-prepare project')).toBeNull()
-  })
 })
 
 describe('what needs you', () => {
-  it('lists preparation, then the waiting features, then the ones in progress — unheaded', () => {
-    data.prep = { prepared: false, pendingKeys: ['a', 'b'], findings: [] }
+  it('lists the waiting features, then the ones in progress — unheaded', () => {
     data.features = [
       titled('Order history', {
         ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
@@ -202,9 +184,6 @@ describe('what needs you', () => {
     ]
     rail()
     const needs = screen.getByRole('region', { name: 'Needs you' })
-    expect(within(needs).getByText('Prepare this project')).toBeTruthy()
-    expect(within(needs).getByText('2 to establish')).toBeTruthy()
-    expect(needs.textContent!.indexOf('Prepare this project')).toBeLessThan(needs.textContent!.indexOf('Coupons'))
     expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
     expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
     expect(within(needs).getByText('Ready to test')).toBeTruthy()

@@ -36,6 +36,8 @@ const PROJECT_TOOLS = [
   'merge_feature',
   'add_to_brief',
   'take_feature',
+  'record_finding',
+  'dry_run_drive',
 ]
 
 describe('the project skill, orchestrating', () => {
@@ -180,6 +182,67 @@ describe('the project skill, orchestrating', () => {
   })
 })
 
+/**
+ * The orchestrator prepares the project itself (decisions 3, 5, 8): §0 reads
+ * the start note's three facts, and the method lives in a reference loaded
+ * only when preparation is due.
+ */
+describe('the project skill, preparing', () => {
+  const opening = (): string => {
+    const text = read('project', 'SKILL.md')
+    const at = text.indexOf('## 0. Open by asking')
+    expect(at).toBeGreaterThanOrEqual(0)
+    return text.slice(at, text.indexOf('\n## 1.', at))
+  }
+  const reference = (): string => read('project', 'references', 'preparation.md')
+
+  it('prepares first only on a new project with code and open keys, and offers in one line otherwise', () => {
+    const text = opening()
+    expect(text).toContain('**The repo has code, keys are open, and no feature ever**')
+    expect(text).toContain('read `./references/preparation.md` and prepare the project')
+    expect(text).toContain('Ask what we are building only after')
+    expect(text).toContain('**The repo has code, keys are open, and the project has had features**')
+    expect(text).toContain('with one line offering to set up what is open')
+    expect(text).toContain('**An empty repo, or nothing open** — open by asking')
+  })
+
+  // The human's verdict on the onboarding drive (decision 17): a first chat that
+  // said "preparation", "all eight settings are closed" and "the whole gate"
+  // left a new user with no idea what was happening.
+  it('talks to a new user about their app, in plain words, and closes with what they can do', () => {
+    expect(opening()).toContain('**Talk about their app, never about runcastle**')
+    const text = reference()
+    expect(text).toContain('## Talking to someone new')
+    expect(text).toContain('**Lead with their app.**')
+    expect(text).toContain('**Plain words, always.**')
+    expect(text).toContain('**Close with what they can now do, not the list.**')
+    expect(text).toContain('Settings › This project')
+    expect(text).not.toContain('one line telling the human that ＋ New scenario')
+  })
+
+  it('loads the preparation method on demand, beside the other procedures', () => {
+    expect(read('project', 'SKILL.md')).toMatch(/\*\*Four procedures load on demand\*\*[^\n]*`\.\/references\/preparation\.md`/)
+    expect(reference()).toContain('`./preparation-recipes.md`')
+    expect(read('project', 'references', 'preparation-recipes.md')).toContain('## Postgres, one database per drive')
+  })
+
+  it('carries the method rewritten for the orchestrator', () => {
+    const text = reference()
+    // Landing: written in its worktree, landed by the dry run's start, refusals relayed.
+    expect(text).toContain('in your worktree and commit it')
+    expect(text).toContain('lands your commits on the base branch first')
+    expect(text).toContain('ask them to switch branch or commit their edits')
+    // None, later, can't-finish, ask only what it cannot find.
+    expect(text).toContain('recorded as a "none"')
+    expect(text).toContain('**"Later" means later.**')
+    expect(text).toContain('**A key you cannot settle stays open.**')
+    expect(text).toContain('**Ask only what you cannot find**')
+    expect(text).toContain('**Ask before you act.**')
+    // Nothing left of the preparation session's own exception.
+    expect(text).not.toMatch(/preparation session|a hook enforces it/)
+  })
+})
+
 describe('the project skill, with no Go, no quick changes and no missing tools', () => {
   const texts = (): string[] =>
     ['SKILL.md', 'references/triage.md', 'references/health-sweeps.md'].map((f) => read('project', ...f.split('/')))
@@ -233,8 +296,8 @@ describe('the deleted skills', () => {
   const skillsDir = join(resolvePluginDir(), 'skills')
   const DELETED = '(ideate|lead|spec|tickets|revisit|design)'
 
-  it('leave the pack with feature, qa, project, prepare and code-review', () => {
-    expect(readdirSync(skillsDir).sort()).toEqual(['code-review', 'feature', 'prepare', 'project', 'qa'])
+  it('leave the pack with feature, qa, project and code-review', () => {
+    expect(readdirSync(skillsDir).sort()).toEqual(['code-review', 'feature', 'project', 'qa'])
   })
 
   it('are named by no remaining skill text', () => {

@@ -150,7 +150,7 @@ function DesignSidebar({ state, current, onPick }: { state: State; current: stri
           state={state.threads.some((t) => t.state === 'waiting') ? 'waiting' : 'idle'}
           active
           onOpen={noop}
-          actions={[{ key: 'reprepare', label: 'Re-prepare the project', onSelect: noop }]}
+          actions={[]}
           onNewThread={noop}
           folded={folded}
           onToggleThreads={() => setFolded((v) => !v)}

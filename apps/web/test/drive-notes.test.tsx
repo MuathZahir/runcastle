@@ -37,6 +37,9 @@ vi.mock('../src/trpc', () => ({
       openScenarioChat: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       fixDrive: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
+    project: {
+      dryRunStop: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+    },
   },
 }))
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))

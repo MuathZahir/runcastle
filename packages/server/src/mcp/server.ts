@@ -53,7 +53,7 @@ import { reviewShots, type ReviewShots } from '../services/review-package'
 import { appendSaw, readSaw } from '../services/review-saw'
 import { captureReviewShot } from '../workflows/review-capture'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
+import { getSessionRow, landProjectBranchNow, mostRecentLiveSession } from '../launcher/sessions'
 import {
   createFeature,
   declareReady,
@@ -1318,7 +1318,7 @@ function checkpointDocsAfterReply(ctx: AppCtx, session: SessionRow, summary: str
   })
 }
 
-// --- project-scoped tools (`prepare` + `project` sessions) ------------------
+// --- project-scoped tools (`project` sessions) ------------------------------
 
 /**
  * The project a project-scoped tool call belongs to, or a refusal that says why.
@@ -1444,6 +1444,14 @@ export async function toolRecordFinding(
 ): Promise<RecordFindingResult> {
   const project = requireProject(ctx, session)
   const source: FindingSourceT = input.userSupplied ? 'human' : 'session'
+  const none = input.value.trim() === ''
+  // A "none" is a decision that this key stays empty for good, and only its
+  // evidence says why — without it, it is indistinguishable from a slip.
+  if (none && !input.evidence?.trim()) {
+    throw new InvalidInputError(
+      `recording ${input.key} as none needs evidence: say why this project has no value for it`,
+    )
+  }
 
   if (!isOverwritable(ctx, project.id, input.key) && !input.userSupplied) {
     return {
@@ -1473,20 +1481,22 @@ export async function toolRecordFinding(
 
   emitProject(ctx, project.id, {
     type: 'prep.finding_recorded',
-    message: `preparation session established ${input.key} (${source})`,
-    data: { key: input.key, source, sessionId: session.id },
+    message: none
+      ? `${input.key} recorded as none (${source})`
+      : `established ${input.key} (${source})`,
+    data: { key: input.key, source, sessionId: session.id, none },
   })
   return { ok: true, key: input.key, source }
 }
 
 /**
  * Drive what preparation recorded (decisions 1, 8): the server runs its real
- * test-drive machinery under a synthetic identity, and the prep session watches.
+ * test-drive machinery under a synthetic identity, and the orchestrator watches.
  *
- * Gated to `prepare` for two reasons that point the same way. It starts
- * services and creates a database on the host, which is exactly the authority a
- * preparation conversation has and no other session does; and the values it
- * proves are the ones this session just established, so anywhere else it would
+ * Gated to `project` for two reasons that point the same way. It starts
+ * services and creates a database on the host, which is exactly the authority
+ * the orchestrator has as the one that prepares the project; and the values it
+ * proves are the ones the orchestrator established, so anywhere else it would
  * be proving somebody else's homework.
  *
  * Everything it returns is what the machinery SAW — hook output tails, the
@@ -1502,12 +1512,28 @@ export async function toolDryRunDrive(
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.DryRunResult> {
   const project = requireProject(ctx, session)
-  if (session.kind !== 'prepare') {
+  if (session.kind !== 'project') {
     throw new GateError(
-      `the dry-run drive belongs to a preparation conversation, and this is a ${session.kind} ` +
-        'session. It starts services and creates a database on the human\'s machine — only the ' +
-        'session that established those values may run them.',
+      `the dry-run drive belongs to the orchestrator, and this is a ${session.kind} session. It ` +
+        "starts services and creates a database on the human's machine — only the session that " +
+        'prepares the project may run them.',
     )
+  }
+  // The orchestrator writes `.runcastle/` in its own worktree, and the drive runs
+  // in the human's checkout: its commits have to be there before they can be
+  // proven. A refused landing refuses the start, with the reason to relay. A
+  // start the held slot would refuse anyway is refused first, so it lands nothing.
+  if (input.action === 'start') {
+    const held = git.driveSlotHeldReason(project.id)
+    if (held) return { ok: false, action: 'start', deniedReason: held }
+    const landing = await landProjectBranchNow(ctx, project, session.id)
+    if (!landing.ok) {
+      return {
+        ok: false,
+        action: 'start',
+        deniedReason: `the orchestrator's commits could not land first, so nothing was started: ${landing.reason}`,
+      }
+    }
   }
   return git.dryRunDrive(ctx, project, input.action)
 }
@@ -2622,10 +2648,10 @@ const PROJECT_READ_NOTE =
  */
 export type McpAudience = SessionKindT | 'run'
 
-/** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
+/** Every kind whose session belongs to a FEATURE (the complement of the project kinds). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
 
-const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
+const PROJECT_KINDS: readonly SessionKindT[] = ['project']
 
 /**
  * `scenario` is in neither list: its scope follows its drive (feature or
@@ -2637,7 +2663,7 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
- * `requireProject`, `requireRunIdentity`, the `kind !== 'prepare'` and
+ * `requireProject`, `requireRunIdentity`, the `kind !== 'project'` and
  * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
@@ -2698,7 +2724,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
   // Single-kind tools, each gated on that kind at call time.
-  dry_run_drive: ['prepare'],
+  dry_run_drive: ['project'],
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],
@@ -2783,12 +2809,19 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Record a preparation finding',
         description:
-          'Store one established project setting from a preparation conversation. Refuses from a ' +
+          'Store one established project setting while preparing the project. Refuses from a ' +
           'feature session, and never overwrites a key a human already set (the refusal is ' +
-          'reported as `skipped`, not thrown).',
+          'reported as `skipped`, not thrown). To close a key that has no value for good ' +
+          '("this repo has no database"), record a deliberate none: an empty `value` WITH ' +
+          '`evidence` saying why. A none keeps the setting empty but stops it being open.',
         inputSchema: {
           key: PreparedKey.describe('Which project setting this value is for.'),
-          value: z.string().describe('The value to store, exactly as it should be used.'),
+          value: z
+            .string()
+            .describe(
+              'The value to store, exactly as it should be used — or an empty string to record ' +
+                'a deliberate none (requires `evidence`).',
+            ),
           evidence: z
             .string()
             .optional()
@@ -2822,11 +2855,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Prove the drive keys you recorded by running the REAL test-drive machinery — same ' +
           'identity variables, same hooks, same dev pane — under a synthetic identity (slug ' +
-          '`prep-dry-run`) on the current branch. Nothing is checked out. Ask the human before ' +
-          'starting: it starts services and creates a database on their machine. A clean full ' +
-          'pass stamps the participating keys verified, computed from what the machinery ' +
-          'observed — your own checks decide whether to fix and re-run, never the stamp. ' +
-          'Preparation sessions only.',
+          "`prep-dry-run`) in the human's checkout, on its current branch. Nothing is checked " +
+          'out. `start` first lands your committed work on the base branch, the way a closing ' +
+          'chat does, so commit your `.runcastle/` scripts before starting; the landing is ' +
+          'refused (and nothing starts) when their checkout is on another branch, on a conflict, ' +
+          'or when their uncommitted edits touch the same files — relay the reason and ask them ' +
+          'to switch or commit. Ask the human before starting: it starts services and creates a ' +
+          'database on their machine. A clean full pass stamps the participating keys verified, ' +
+          'computed from what the machinery observed — your own checks decide whether to fix ' +
+          'and re-run, never the stamp.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])

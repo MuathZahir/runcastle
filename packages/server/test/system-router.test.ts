@@ -1,7 +1,5 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getInstallId } from '../src/services/install-id'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -37,7 +35,7 @@ describe('runcastleVersion', () => {
 
 describe('system router', () => {
   it('reports the running version', async () => {
-    expect(await caller.system.version()).toEqual({ version: pkgVersion })
+    expect(await caller.system.version()).toEqual({ version: pkgVersion, platform: process.platform })
   })
 
   // Wiring only: the route reports the version it is actually running and the
@@ -64,34 +62,5 @@ describe('system router', () => {
     const info = await caller.system.checkUpdate()
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
-  })
-})
-
-// The one-time notice reads the live config, so the settings write that answers
-// it (write-through to `ctx.config`) is what ends it.
-describe('system.usageNotice', () => {
-  const withInstallId = () => {
-    vi.stubEnv('RUNCASTLE_DATA_DIR', mkdtempSync(join(tmpdir(), 'runcastle-usage-')))
-    vi.stubEnv('DO_NOT_TRACK', '')
-    getInstallId()
-  }
-
-  it('asks an install that pinged before the switch, until it answers', async () => {
-    withInstallId()
-    expect(await caller.system.usageNotice()).toEqual({ show: true })
-    config.usageSignal = 'off'
-    expect(await caller.system.usageNotice()).toEqual({ show: false })
-  })
-
-  it('never asks a fresh install, which the wizard tells instead', async () => {
-    vi.stubEnv('RUNCASTLE_DATA_DIR', mkdtempSync(join(tmpdir(), 'runcastle-usage-')))
-    vi.stubEnv('DO_NOT_TRACK', '')
-    expect(await caller.system.usageNotice()).toEqual({ show: false })
-  })
-
-  it('never asks under DO_NOT_TRACK', async () => {
-    withInstallId()
-    vi.stubEnv('DO_NOT_TRACK', '1')
-    expect(await caller.system.usageNotice()).toEqual({ show: false })
   })
 })

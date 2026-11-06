@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
-import { isAbsolutePath, pathPlaceholder } from '../lib/platform'
+import { isAbsoluteRepoPath, repoPathPlaceholder } from '../lib/platform'
+import { useServerPlatform } from '../lib/server-platform'
 import { repoOpenFailure, type RepoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
 import { useIsPhone } from '../lib/use-phone'
@@ -44,6 +45,8 @@ export function OpenProject({
   onOpened: (projectId: string) => void
   onCancel: () => void
 }) {
+  // Paths live on the server's machine, not the browser's (a Windows browser on a Linux server).
+  const serverPlatform = useServerPlatform()
   const [repoPath, setRepoPath] = useState('')
   const [picking, setPicking] = useState(false)
   // The last rejected path, so the failure names the folder the user actually
@@ -96,7 +99,7 @@ export function OpenProject({
     const path = (override ?? repoPath).trim()
     if (!path) return
     clearFailure()
-    if (!isAbsolutePath(path)) {
+    if (!isAbsoluteRepoPath(path, serverPlatform)) {
       setRelative(true)
       return
     }
@@ -121,7 +124,7 @@ export function OpenProject({
   const failure: RepoOpenFailure | null = relative
     ? {
         message: 'Enter an absolute path',
-        hint: `A path from the root of this machine, like ${pathPlaceholder()}.`,
+        hint: `A path from the root of the machine runcastle runs on, like ${repoPathPlaceholder(serverPlatform)}.`,
         path: null,
       }
     : rejection
@@ -153,7 +156,7 @@ export function OpenProject({
           className="flex-1"
           value={repoPath}
           onChange={(e) => setRepoPath(e.target.value)}
-          placeholder={pathPlaceholder()}
+          placeholder={repoPathPlaceholder(serverPlatform)}
           aria-label="Repository path"
           autoFocus
           spellCheck={false}

@@ -30,7 +30,6 @@ import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
-import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
@@ -43,14 +42,14 @@ import { FeatureLinksContext, type FeatureLinks } from './chat/thread/FeatureCar
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
  * The frame (DESIGN.md §Frame): the project sidebar on the canvas, and the
  * content panel holding one view — the selected feature (with its details
- * panel), the project home, preparation or the draft form. ⌘K opens the
+ * panel), the project home or the draft form. ⌘K opens the
  * command palette, ⌘B collapses the sidebar. Everything here is scoped to `projectId`; the outer
  * shell picks which project (or the portfolio home) is showing. The active test
  * drive (at most one globally) is shell state, shared by the workspace and status
  * bar.
  *
  * It also owns the in-project half of the URL (decision 1) — the feature, the
- * chat and preparation — because it is the only place that can resolve a
+ * chat and its conversations — because it is the only place that can resolve a
  * feature slug to the id the state machine selects by.
  */
 export function ProjectShell({ projectId, nav }: { projectId: string; nav: ProjectNavApi }) {
@@ -58,13 +57,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const {
     selectedFeatureId,
     projectSelected,
-    preparing,
     select,
     selectView,
     selectProject,
     showProject,
     openConversations,
-    startPreparation,
     setCmdk,
   } = ws
   const [startedDrive, setDriving] = useState<DriveState | null>(null)
@@ -107,10 +104,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
   const talk = useProjectTalk(projectId)
-  // Assumed prepared until it answers, so a fresh project's home never flashes
-  // through the call-to-action on its way to the real one.
+  // Whether the repo is born empty: Start the project's line, and no drive door.
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
-  const prepared = prep.data?.prepared ?? true
   const empty = prep.data?.empty ?? true
   // The one drive query every drive surface polls, read for the titlebar pill.
   const slot = trpc.feature.driveInfo.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data
@@ -169,11 +164,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       const onScreen =
         selectedFeatureId &&
         !projectSelected &&
-        !preparing &&
         features?.find((f) => f.id === selectedFeatureId)?.status !== 'draft'
       select(featureId, landingView(featureId, { featureId: onScreen ? selectedFeatureId : null, view: shownView }))
     },
-    [select, selectedFeatureId, projectSelected, preparing, features, shownView],
+    [select, selectedFeatureId, projectSelected, features, shownView],
   )
 
   /**
@@ -195,7 +189,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'conversations') openConversations()
-    else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
       // A view in the address wins, Work included when the address names it; a
       // bare feature path restores the remembered one — which, after a reload,
@@ -211,13 +204,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     } else if (phone) {
       // A phone lands on the list: nothing opens by itself, nothing stored is restored.
       select(null)
-    } else if (!selectedFeatureId && !projectSelected && !preparing) {
+    } else if (!selectedFeatureId && !projectSelected) {
       const target = landingFeature(features)
       if (target) {
         setLandedOn(target.id)
         openFeature(target.id)
       }
-    } else if (selectedFeatureId && !projectSelected && !preparing) {
+    } else if (selectedFeatureId && !projectSelected) {
       // The restored selection: settle the storage guess now the list can say
       // whether a session is live.
       selectView(rememberedView(selectedFeatureId, features.find((f) => f.id === selectedFeatureId)))
@@ -232,12 +225,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     select,
     selectedFeatureId,
     projectSelected,
-    preparing,
     openFeature,
     selectView,
     selectProject,
     openConversations,
-    startPreparation,
   ])
 
   // The address this shell is showing, and the setters a Back or Forward drives.
@@ -246,7 +237,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // landing above has run (an address written then would be corrected a render
   // later, leaving a stray entry behind), and while the Draft form owns the body
   // — an overlay is not a place, and opening it clears the pinned project row
-  // and any open preparation underneath it (decision 1).
+  // underneath it (decision 1).
   // The selected feature, read once: the URL wants its slug, the titlebar's
   // third breadcrumb level wants its title (decision 11).
   const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
@@ -255,7 +246,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const featureView = selectedFeature?.status === 'draft' ? 'work' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
-      ? locationFor({ projectId, preparing, projectSelected, conversations: ws.conversations, featureSlug: selectedSlug, featureView })
+      ? locationFor({ projectId, projectSelected, conversations: ws.conversations, featureSlug: selectedSlug, featureView })
       : null
 
   useHistorySync(location, (popped) => {
@@ -267,7 +258,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (!inside) select(null) // a bare `/p/<id>`: the project home
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'conversations') openConversations()
-    else if (inside.kind === 'prepare') startPreparation()
     else {
       // The popped path says exactly which view — a bare one is Work, not
       // "whatever was remembered", or Back from a tab could never reach it.
@@ -309,7 +299,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const [threadRequest, setThreadRequest] = useState<string | null>(null)
   const consumeThreadRequest = useCallback(() => setThreadRequest(null), [])
 
-  const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared, empty })
+  const view = workspaceView(ws)
   // The phone's chat bar Back: nothing open, which on a phone is the list.
   const backToList = () => select(null)
   // The details are one of the feature page's panel views (design-mode
@@ -322,14 +312,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       <section className="relative flex min-h-0 min-w-0 flex-col">
         <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={openFeature} />
       </section>
-    ) : view === 'prepare' ? (
-      // `onClose` only when there is somewhere to go back to: the automatic
-      // call-to-action IS the project home, so a Back button there would
-      // dead-end on the screen it just left.
-      <PreparationWorkspace
-        projectId={projectId}
-        {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
-      />
     ) : view === 'project' ? (
       <ProjectWorkspace
         projectId={projectId}
@@ -339,12 +321,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         inboxRequest={inboxRequest}
         onConsumeInboxRequest={consumeInboxRequest}
         empty={empty}
+        repoKnown={prep.data !== undefined}
         conversations={ws.conversations}
         threadRequest={threadRequest}
         onConsumeThreadRequest={consumeThreadRequest}
         onOpenConversations={ws.openConversations}
         onCloseConversations={ws.selectProject}
-        onOpenPreparation={ws.startPreparation}
         driveRequest={driveRequest}
         onConsumeDriveRequest={consumeDriveRequest}
         onBackToList={backToList}
@@ -387,7 +369,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // address, which on a desktop is the project home. Before the landing it
   // trusts the address rather than a stored selection the landing will drop.
   const nothingOpen = landed
-    ? !ws.creating && !preparing && !projectSelected && !selectedFeatureId
+    ? !ws.creating && !projectSelected && !selectedFeatureId
     : !insideProject(urlAtMount, projectId)
 
   const shell = (
@@ -404,7 +386,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onSelectProject={ws.selectProject}
             onNewChat={newChat}
             onDraft={ws.startDraft}
-            onOpenPreparation={ws.startPreparation}
             onOpenNote={jot}
             onOpenCmdk={() => setCmdk(true)}
             onOpenSettings={() => ws.openSettings()}
@@ -439,7 +420,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onOpenSettings={() => ws.openSettings()}
           onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
           onOpenPhoneSetup={openPhoneSetup}
-          onOpenPreparation={ws.startPreparation}
           // The palette navigates, it never launches: this opens the project
           // home, where the conversation list decides new-versus-resume.
           onOpenProjectChat={ws.selectProject}

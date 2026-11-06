@@ -56,11 +56,17 @@ export function identifierSafe(slug: string, max = MAX_ID_LENGTH): string {
  * than derived from git inside the script, because the preparation dry run
  * drives under a synthetic slug on whatever branch is already checked out.
  */
-export function driveIdentityEnv(identity: DriveIdentity): Record<string, string> {
+export function driveIdentityEnv(
+  identity: DriveIdentity,
+  scenario?: string,
+): Record<string, string> {
   return {
     RUNCASTLE_SLUG: identity.slug,
     RUNCASTLE_BRANCH: identity.branch,
     RUNCASTLE_ID: identifierSafe(identity.slug),
+    // Present exactly when the drive was started for a scenario, so setup can
+    // shape the environment before boot (the scenario itself runs after it).
+    ...(scenario ? { RUNCASTLE_SCENARIO: scenario } : {}),
   }
 }
 

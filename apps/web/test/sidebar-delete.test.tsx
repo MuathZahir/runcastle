@@ -25,7 +25,7 @@ vi.mock('../src/trpc', () => ({
       },
     },
     project: {
-      prep: { useQuery: () => ({ data: { prepared: true, pendingKeys: [], findings: [] } }) },
+      prep: { useQuery: () => ({ data: { pendingKeys: [], findings: [] } }) },
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'Project' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },
@@ -73,7 +73,6 @@ describe('Sidebar delete navigation', () => {
           onSelectProject={onSelectProject}
           onNewChat={() => {}}
           onDraft={() => {}}
-          onOpenPreparation={() => {}}
         />
       </ToastProvider>,
     )

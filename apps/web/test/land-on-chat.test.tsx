@@ -89,7 +89,7 @@ describe('the land-on-chat operation', () => {
     const { result: ws } = renderHook(() => useWorkspace('p1'))
     act(() => ws.current.select('feat_a', 'drive'))
     const urlBefore = pathFor(
-      locationFor({ projectId: 'p1', preparing: false, projectSelected: false, featureSlug: 'a', featureView: 'drive' }),
+      locationFor({ projectId: 'p1', projectSelected: false, featureSlug: 'a', featureView: 'drive' }),
     )
     const { result: landing } = renderHook(() => useLandOnChat('feat_a'), {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -110,7 +110,6 @@ describe('the land-on-chat operation', () => {
       pathFor(
         locationFor({
           projectId: 'p1',
-          preparing: false,
           projectSelected: false,
           featureSlug: 'a',
           featureView: ws.current.featureView,

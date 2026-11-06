@@ -96,7 +96,6 @@ function Body({ moment }: { moment: Moment }) {
         onBack={noop}
         onStop={noop}
         stopping={false}
-        onOpenPreparation={noop}
       />
     </div>
   )

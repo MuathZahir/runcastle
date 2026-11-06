@@ -21,7 +21,7 @@ describe('the threads a page lists', () => {
   it('takes the newest thread of a role as its main chat, and none when there is none', () => {
     const threads = [entry('old', 'main', 1), entry('side', 'side', 9), entry('new', 'main', 5)]
     expect(newestThread(threads, 'main')).toBe('new')
-    expect(newestThread(threads, 'prepare')).toBeNull()
+    expect(newestThread(threads, 'scenario')).toBeNull()
   })
 
   it('names a thread the list does not hold yet, and never lists one twice', () => {

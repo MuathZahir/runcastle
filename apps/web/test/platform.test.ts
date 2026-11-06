@@ -50,25 +50,27 @@ describe('modKeyLabel', () => {
   })
 })
 
+/**
+ * The path rules key on the SERVER's platform (Node's `process.platform`), never
+ * the browser's: the server opens the path, and a Windows browser on a Linux
+ * server types Linux paths (the-orchestrator-prepares-the-project, a bug the
+ * human hit on the onboarding drive).
+ */
 describe('repoPathPlaceholder', () => {
-  it('looks like a windows path on windows', () => {
-    expect(repoPathPlaceholder(WIN.platform, WIN.ua)).toMatch(/^[A-Z]:\\/)
+  it('looks like a windows path when the server runs on windows', () => {
+    expect(repoPathPlaceholder('win32')).toMatch(/^[A-Z]:\\/)
   })
 
-  it('looks like a posix path everywhere else', () => {
-    expect(repoPathPlaceholder(MAC.platform, MAC.ua)).toBe('/path/to/your/repo')
-    expect(repoPathPlaceholder(LINUX.platform, LINUX.ua)).toBe('/path/to/your/repo')
+  it('looks like a posix path for any other server, and before the server answers', () => {
+    expect(repoPathPlaceholder('darwin')).toBe('/path/to/your/repo')
+    expect(repoPathPlaceholder('linux')).toBe('/path/to/your/repo')
+    expect(repoPathPlaceholder(undefined)).toBe('/path/to/your/repo')
   })
 })
 
-/**
- * Decision 5 — a relative path used to reach the server, which resolved it
- * against its own working directory and reported that back. What counts as
- * absolute is a fact about the user's machine, so it is decided here.
- */
 describe('isAbsoluteRepoPath', () => {
-  const onWindows = (p: string) => isAbsoluteRepoPath(p, WIN.platform, WIN.ua)
-  const onPosix = (p: string) => isAbsoluteRepoPath(p, LINUX.platform, LINUX.ua)
+  const onWindows = (p: string) => isAbsoluteRepoPath(p, 'win32')
+  const onPosix = (p: string) => isAbsoluteRepoPath(p, 'linux')
 
   it('accepts a drive letter and a UNC share on windows', () => {
     expect(onWindows('C:\\Users\\you\\code\\repo')).toBe(true)
@@ -95,6 +97,18 @@ describe('isAbsoluteRepoPath', () => {
     expect(onPosix('./repo')).toBe(false)
     expect(onPosix('~/code/repo')).toBe(false) // the shell expands ~, we do not
     expect(onPosix('')).toBe(false)
+  })
+
+  // The bug: the browser on Windows, the server on Linux. The browser's own
+  // machine is not an input any more, so only the server's platform decides.
+  it('accepts a linux path for a linux server, the browser left out of it', () => {
+    expect(isAbsoluteRepoPath('/home/muath/projects/app', 'linux')).toBe(true)
+  })
+
+  it('lets either form through while the server has not said what it runs on', () => {
+    expect(isAbsoluteRepoPath('/home/you/repo', undefined)).toBe(true)
+    expect(isAbsoluteRepoPath('C:\\Users\\you\\repo', undefined)).toBe(true)
+    expect(isAbsoluteRepoPath('repo', undefined)).toBe(false)
   })
 
   it('judges the path the user typed, not the whitespace around it', () => {

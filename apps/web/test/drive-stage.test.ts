@@ -78,10 +78,10 @@ describe('before the server has answered', () => {
     expect(html).toContain('stop and toggle')
   })
 
-  it('says a preparation dry run is holding the drive rather than offering one', () => {
-    expect(render({ driveState: 'idle', drive: undefined, dryRun: true })).toContain(
-      'A preparation dry run is holding the drive',
-    )
+  it('says the Orchestrator’s dry run is holding the drive, and offers to stop it', () => {
+    const html = render({ driveState: 'idle', drive: undefined, dryRun: { onStop: () => undefined, stopping: false } })
+    expect(html).toContain('The Orchestrator’s dry run is holding the drive')
+    expect(html).toContain('Stop the dry run')
   })
 })
 

@@ -14,5 +14,5 @@ export function unverifiedWarning(keys: string[]): string {
     named.length === 1
       ? named[0]
       : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
-  return `${list} ${named.length === 1 ? 'was' : 'were'} never proven by a dry run — run preparation to verify.`
+  return `${list} ${named.length === 1 ? 'was' : 'were'} never proven by a dry run — ask the Orchestrator to verify.`
 }

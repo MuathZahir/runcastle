@@ -54,6 +54,37 @@ describe('describeField', () => {
     expect(row.note).toBe('Set by RUNCASTLE_MODEL')
   })
 
+  /**
+   * A deliberate none (the-orchestrator-prepares-the-project decision 2): the
+   * key has a finding but no value, so it was decided empty — not left unset.
+   */
+  it('reads a prepared key recorded as none as None, with its evidence', () => {
+    const none = describeField(field({ key: 'dbResetCommand', scope: 'project', value: null }), {
+      key: 'dbResetCommand',
+      source: 'session',
+      evidence: 'this repo has no database',
+      establishedAt: Date.now(),
+    })
+    expect(none.value).toBe('')
+    expect(none.placeholder).toBe('None')
+    expect(none.note).toMatch(/^None, on purpose\. Established in a chat on this machine/)
+    expect(none.evidence).toBe('this repo has no database')
+
+    const unset = describeField(field({ key: 'dbResetCommand', scope: 'project', value: null }))
+    expect(unset.placeholder).not.toBe('None')
+  })
+
+  it('shows no Global chip on a none for a key with a global twin', () => {
+    const none = describeField(field({ key: 'knownFailures', scope: 'project', value: null, source: 'default' }), {
+      key: 'knownFailures',
+      source: 'session',
+      evidence: 'the suite is green on main',
+      establishedAt: Date.now(),
+    })
+    expect(none.placeholder).toBe('None')
+    expect(none.sourceChip).toBeUndefined()
+  })
+
   it('flags serverPort as restart-required and renders it as a number control', () => {
     const row = describeField(
       field({ key: 'serverPort', value: 4512, restartRequired: true }),
@@ -1071,7 +1102,7 @@ describe('stepRows', () => {
       'Orchestrator chat',
       'Implement',
       'Review',
-      'Prepare',
+      'Drive chats',
       'Smoke',
     ])
     expect(rows.map((r) => r.group)).toEqual([

@@ -37,26 +37,34 @@ export function modKeyLabel(platform: string, userAgent = ''): string {
   return shortcutLabel('K', platform, userAgent)
 }
 
-/** A repository path that looks like one on this machine. */
-export function repoPathPlaceholder(platform: string, userAgent = ''): string {
-  return isWindowsLike(platform, userAgent) ? 'C:\\Users\\you\\code\\your-repo' : '/path/to/your/repo'
+/**
+ * A repository path that looks like one on the machine the server runs on.
+ * `serverPlatform` is Node's `process.platform` there (`win32`, `linux`,
+ * `darwin`), never the browser's: the path is opened by the server, and a
+ * Windows browser on a Linux server types Linux paths. Unknown (not answered
+ * yet) reads as POSIX.
+ */
+export function repoPathPlaceholder(serverPlatform: string | undefined): string {
+  return serverPlatform === 'win32' ? 'C:\\Users\\you\\code\\your-repo' : '/path/to/your/repo'
 }
 
 /**
- * Whether a repository path is absolute *on this machine* — a drive letter or a
- * UNC share on Windows, a leading slash everywhere else.
+ * Whether a repository path is absolute on the machine the server runs on — a
+ * drive letter or a UNC share on Windows, a leading slash everywhere else.
+ * While the server's platform is unknown, either form passes: refusing a good
+ * path is worse than letting the server judge it.
  *
  * A relative path used to be forwarded to the server, which resolved it against
  * its own working directory and then reported that directory back in the error
  * (decision 5) — an answer about a folder the user never named. The refusal
  * belongs here, in front of the request.
  */
-export function isAbsoluteRepoPath(path: string, platform: string, userAgent = ''): boolean {
+export function isAbsoluteRepoPath(path: string, serverPlatform: string | undefined): boolean {
   const trimmed = path.trim()
-  if (isWindowsLike(platform, userAgent)) {
-    return /^[A-Za-z]:[\\/]/.test(trimmed) || /^\\\\/.test(trimmed)
-  }
-  return trimmed.startsWith('/')
+  const windows = /^[A-Za-z]:[\\/]/.test(trimmed) || /^\\\\/.test(trimmed)
+  const posix = trimmed.startsWith('/')
+  if (serverPlatform === undefined) return windows || posix
+  return serverPlatform === 'win32' ? windows : posix
 }
 
 function nav(): { platform: string; userAgent: string } {
@@ -80,16 +88,4 @@ export function shortcut(key: string): string {
 export function shiftShortcut(key: string): string {
   const n = nav()
   return isMacLike(n.platform, n.userAgent) ? `⌘⇧${key}` : `Ctrl+Shift+${key}`
-}
-
-/** {@link repoPathPlaceholder} for the browser this is running in. */
-export function pathPlaceholder(): string {
-  const n = nav()
-  return repoPathPlaceholder(n.platform, n.userAgent)
-}
-
-/** {@link isAbsoluteRepoPath} for the browser this is running in. */
-export function isAbsolutePath(path: string): boolean {
-  const n = nav()
-  return isAbsoluteRepoPath(path, n.platform, n.userAgent)
 }

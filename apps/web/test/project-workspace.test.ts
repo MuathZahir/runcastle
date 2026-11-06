@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  matchesPreparation,
-  matchesProjectChat,
-  prepRailRow,
-  projectSessionState,
-  sessionBranchState,
-  workspaceView,
-} from '../src/lib/project-workspace'
+import { matchesProjectChat, projectSessionState, sessionBranchState, workspaceView } from '../src/lib/project-workspace'
 import type { ProjectSession } from '../src/lib/api'
 
 /**
@@ -19,15 +12,11 @@ import type { ProjectSession } from '../src/lib/api'
 const session = (status: 'launching' | 'live' | 'ended'): ProjectSession =>
   ({ id: 'sess_1', projectId: 'proj_1', kind: 'project', status, worktreePath: '/w' }) as ProjectSession
 
-/** A prepared project with one feature — the resting case every test varies. */
+/** Nothing selected — the resting case every test varies. */
 const state = (over: Partial<Parameters<typeof workspaceView>[0]> = {}) => ({
   creating: false,
-  preparing: false,
   projectSelected: false,
   selectedFeatureId: null,
-  featureCount: 1,
-  prepared: true,
-  empty: false,
   ...over,
 })
 
@@ -42,6 +31,11 @@ describe('workspaceView', () => {
     expect(workspaceView(state({ selectedFeatureId: 'f1' }))).toBe('feature')
   })
 
+  /**
+   * Nothing selected is the project home, which a new project opens on Start the
+   * project (the-orchestrator-prepares-the-project decision 1): whether to
+   * prepare is the Orchestrator's call, so no state yields a Preparation view.
+   */
   it('falls back to the project home with neither selected', () => {
     expect(workspaceView(state())).toBe('project')
   })
@@ -50,117 +44,6 @@ describe('workspaceView', () => {
     expect(
       workspaceView(state({ creating: true, projectSelected: true, selectedFeatureId: 'f1' })),
     ).toBe('create')
-  })
-
-  /**
-   * The call-to-action. An unprepared project with no features has exactly one
-   * sensible next step, and the whole point of the change is that it stops being
-   * a card beside the new-feature buttons — where it was, and where nobody found
-   * it.
-   */
-  it('gives the whole body to preparation on an unprepared, featureless project with code', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: false }))).toBe('prepare')
-  })
-
-  it('uses the ordinary empty home when a featureless project has nothing to prepare', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: true }))).toBe('project')
-  })
-
-  it('reads as the ordinary home once either half of that stops holding', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: true }))).toBe('project')
-    expect(workspaceView(state({ featureCount: 3, prepared: false }))).toBe('project')
-  })
-
-  // Opening it deliberately (the rail's nudge, ⌘K) beats every automatic rule
-  // below it — including one that would swap it away the moment it succeeds.
-  it('honours a deliberately opened preparation even for an empty repository', () => {
-    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1', empty: true }))).toBe(
-      'prepare',
-    )
-  })
-
-  it('still lets a creation form outrank it', () => {
-    expect(workspaceView(state({ creating: true, preparing: true }))).toBe('create')
-  })
-})
-
-describe('prepRailRow', () => {
-  /**
-   * The row that replaced the vanishing nudge. `prepared` is monotonic, so a
-   * boolean gate on it removed the rail row and the whole-body call-to-action at
-   * the same instant preparation succeeded — leaving nothing that represented a
-   * finished preparation and no way back to it. Both variants render.
-   */
-  it('carries the job while it is open', () => {
-    expect(prepRailRow({ prepared: false, pendingCount: 8, staleCount: 0 })).toMatchObject({
-      variant: 'todo',
-      count: 8,
-      label: 'Prepare this project',
-      // A bare "8" was read as a count of anything at all (findings F17.5).
-      badge: '8 to establish',
-    })
-  })
-
-  it('stays on as a way back once the job is done', () => {
-    expect(prepRailRow({ prepared: true, pendingCount: 0, staleCount: 0 })).toMatchObject({
-      variant: 'done',
-      label: 'Re-prepare the project',
-      badge: null,
-    })
-  })
-
-  // Prepared is not the same as current: the one number worth a badge afterwards
-  // is what has silently rotted, since agents trust a stale baseline.
-  it('badges drift rather than pending count once prepared', () => {
-    expect(prepRailRow({ prepared: true, pendingCount: 3, staleCount: 2 })).toMatchObject({
-      variant: 'done',
-      stale: 2,
-      badge: '2 stale',
-    })
-  })
-
-  it('drops the badge when there is no number to report', () => {
-    expect(prepRailRow({ prepared: false, pendingCount: 0, staleCount: 0 })?.badge).toBeNull()
-  })
-
-  // The two variants read as opposites, so there is no safe guess before the
-  // answer lands — "Re-prepare" flashing on an unprepared project is a lie.
-  it('renders nothing at all until the prep view answers', () => {
-    expect(prepRailRow(undefined)).toBeNull()
-    expect(prepRailRow(null)).toBeNull()
-  })
-})
-
-describe('matchesPreparation', () => {
-  it('still answers to the words it always did', () => {
-    expect(matchesPreparation('prepare')).toBe(true)
-    expect(matchesPreparation('baseline')).toBe(true)
-    expect(matchesPreparation('')).toBe(true)
-  })
-
-  /**
-   * The words someone types looking for preparation a SECOND time. All of these
-   * missed, which is how a finished preparation became unreachable for anyone who
-   * had not memorised the noun — the palette was the last way in.
-   */
-  it('answers to the words a re-run is searched for by', () => {
-    for (const q of ['re-prepare', 'reprepare', 'redo', 're-run', 'rerun', 'stale', 'findings'])
-      expect(matchesPreparation(q)).toBe(true)
-  })
-
-  it('stays out of the way of unrelated queries', () => {
-    expect(matchesPreparation('merge')).toBe(false)
-    expect(matchesPreparation('ticket')).toBe(false)
-  })
-
-  /**
-   * Preparation used to answer to 'talk' and 'ask' on the reasoning that the
-   * conversation was reached through its row. Typing "talk" landing on
-   * Preparation was the complaint; the chat has its own row now.
-   */
-  it('no longer answers to the words for having a conversation', () => {
-    expect(matchesPreparation('talk')).toBe(false)
-    expect(matchesPreparation('ask')).toBe(false)
   })
 })
 
@@ -174,16 +57,9 @@ describe('matchesProjectChat', () => {
     expect(matchesProjectChat('merge')).toBe(false)
     expect(matchesProjectChat('baseline')).toBe(false)
   })
-})
 
-/**
- * Decision 12 — the palette opens on its whole hand. Both project-scoped rows
- * are the ones with no home in the feature pipeline, so a palette that hid them
- * until the right noun was typed was the discoverability failure over again.
- */
-describe('the palette on an empty query', () => {
-  it('shows both project-scoped action rows', () => {
-    expect(matchesPreparation('')).toBe(true)
+  // Decision 12 — the palette opens on its whole hand.
+  it('shows on an empty query', () => {
     expect(matchesProjectChat('')).toBe(true)
   })
 })

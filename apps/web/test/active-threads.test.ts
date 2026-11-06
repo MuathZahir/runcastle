@@ -85,13 +85,11 @@ describe('arriving at the Orchestrator', () => {
 
   it('has nowhere to go in a project with no chats', () => {
     expect(orchestratorLanding([], [], now)).toEqual({ kind: 'none' })
-    expect(orchestratorLanding([thread('p', { role: 'prepare' })], [], now)).toEqual({ kind: 'none' })
   })
 
-  it('never picks a scenario or preparation chat', () => {
+  it('never picks a scenario chat', () => {
     const threads = [
       thread('s', { role: 'scenario', state: 'working', updatedAt: now }),
-      thread('p', { role: 'prepare', state: 'working', updatedAt: now }),
       thread('a'),
     ]
     expect(orchestratorLanding(threads, [], now)).toEqual({ kind: 'conversations' })

@@ -41,6 +41,7 @@ const fsStub = vi.hoisted(() => {
 
 vi.mock('../src/trpc', () => ({
   trpc: {
+    system: { version: { useQuery: () => ({ data: { version: 'test', platform: 'linux' } }) } },
     project: {
       roots: {
         useQuery: () => ({ data: [{ label: '~', path: '/home/you', kind: 'home' }] }),

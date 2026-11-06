@@ -155,6 +155,18 @@ describe('the project drive', () => {
     expect(eventTypes()).toContain('projectdrive.started')
   })
 
+  it.runIf(!WIN)('hands the setup hook RUNCASTLE_SCENARIO only when started for a scenario', async () => {
+    const seen = join(out, 'scenario.txt')
+    await configure('driveSetupCommand', `echo "[\${RUNCASTLE_SCENARIO-unset}]" > "${seen}"`)
+
+    await projectDrive(ctx, project, 'start')
+    expect(readFileSync(seen, 'utf8').trim()).toBe('[unset]')
+    await projectDrive(ctx, project, 'stop')
+
+    await projectDrive(ctx, project, 'start', { scenario: '.runcastle/scenarios/a/b.ts' })
+    expect(readFileSync(seen, 'utf8').trim()).toBe('[.runcastle/scenarios/a/b.ts]')
+  })
+
   it('reports itself through driveInfo: kind, project, branch, commit, start time, holder', async () => {
     const t0 = Date.now()
     await projectDrive(ctx, project, 'start')
