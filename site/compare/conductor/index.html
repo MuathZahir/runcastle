@@ -27,8 +27,8 @@
       href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
     <!-- The ?v= stamps make browsers refetch after a change; an old cached
          content.css would draw the posts unstyled. Bump both together. -->
-    <link rel="stylesheet" href="/styles.css?v=20261105" />
-    <link rel="stylesheet" href="/content.css?v=20261105" />
+    <link rel="stylesheet" href="/styles.css?v=20261106" />
+    <link rel="stylesheet" href="/content.css?v=20261106" />
 
     <script type="application/ld+json">
 {
@@ -108,20 +108,21 @@
 
         <h2>Conductor solved the easy half</h2>
         <p>
-          Conductor gave every task a workspace: a git worktree, a branch and an agent. Then the
-          rest was yours. You wrote the prompt, watched the run, read the diff and opened the pull
-          request. Every workspace you added was one more to supervise. Parallel agents make you
-          faster at writing prompts. They don't make you faster at shipping.
+          Conductor gave every task a workspace: a git worktree, a branch and an agent, with plan
+          mode and a code review panel. The rest was yours. You decided what to build, wrote a
+          prompt for each workspace, and ran the app to see if it worked. Every workspace you added
+          was one more to supervise. Parallel agents make you faster at writing prompts. They
+          don't make you faster at shipping.
         </p>
 
-        <div class="strip" role="img" aria-label="The software process, step by step. Conductor runs the build step and helps you open a pull request; idea, plan, design, review and test drive are left to you. runcastle runs every step and asks you twice: yes to the plan, and merge.">
+        <div class="strip" role="img" aria-label="The software process, step by step. Conductor covers planning, the build, code review and the pull request; the idea, design in your app and the test drive are left to you. runcastle runs every step and asks you twice: yes to the plan, and merge.">
           <div class="strip-row">
             <span class="strip-who">Conductor</span>
             <span class="strip-step is-you">Idea<small>you</small></span>
-            <span class="strip-step is-you">Plan<small>you</small></span>
+            <span class="strip-step is-on">Plan<small>plan mode</small></span>
             <span class="strip-step is-you">Design<small>you</small></span>
             <span class="strip-step is-on">Build<small>agents</small></span>
-            <span class="strip-step is-you">Review<small>you</small></span>
+            <span class="strip-step is-on">Review<small>code review</small></span>
             <span class="strip-step is-you">Test drive<small>you</small></span>
             <span class="strip-step is-on">Merge<small>PR button</small></span>
           </div>
@@ -182,7 +183,7 @@
                 <tr><td>Runs on</td><td>macOS, plus an iOS app</td><td>macOS, Windows, Linux, and your phone</td></tr>
                 <tr><td>Agents</td><td>Claude Code, Codex, Cursor, OpenCode</td><td>Claude Code, Codex</td></tr>
                 <tr><td>Isolation</td><td>A git worktree per workspace</td><td>A container per worker</td></tr>
-                <tr><td>Plans and reviews</td><td>You do</td><td>Built in</td></tr>
+                <tr><td>Plans and reviews</td><td>Plan mode and code review, per workspace</td><td>A plan per feature; a review that drives the app</td></tr>
                 <tr><td>Status</td><td>Joining Meta (Nov 4, 2026)</td><td>Free, source-available</td></tr>
               </tbody>
             </table>

@@ -565,7 +565,7 @@
 }
 
 /* The one line under the cards naming tools without a post. */
-.also {
+.article .also {
   margin-top: 28px;
   font-size: 14px;
   line-height: 1.6;
@@ -595,6 +595,20 @@
 @media (max-width: 620px) {
   .post-figure {
     margin-inline: 0;
+  }
+  /* Three or four columns on a phone: let every cell wrap so the last column
+     stays on screen instead of behind the scroll box's edge. */
+  .facts table {
+    table-layout: fixed;
+    font-size: 13px;
+  }
+  .facts th,
+  .facts td {
+    padding: 8px 8px;
+    overflow-wrap: anywhere;
+  }
+  .facts td:first-child {
+    white-space: normal;
   }
 }
 

@@ -54,8 +54,12 @@ by name: Kiro leaving Design, Review and Test drive to you, and Conductor
 being Mac-only (its installation docs). In particular, Conductor's cloud shutdown dates
 and its Mac app's support window were reported by research but not confirmed
 on Conductor's pages; they go in only if the build confirms them. Each fact
-table has these rows: Runs on, Agents, Isolation, Plans and reviews, and
-Price or Status. runcastle's side: macOS, Windows, Linux and your phone;
+table takes four or five rows from this set, whichever carry that post's
+argument: Runs on, Agents, Isolation, Parallel work, Plans and reviews, Runs
+your app to check it, License, and Price or Status. Credit what the other
+tool documents (Conductor's plan mode and code review; Claude Code's Chrome
+testing and Codex's browser use, which run when you ask); the argument is
+that runcastle does those steps on its own, every round. runcastle's side: macOS, Windows, Linux and your phone;
 Claude Code and Codex; a container per worker; built in; free and
 source-available (FSL-1.1-ALv2).
 

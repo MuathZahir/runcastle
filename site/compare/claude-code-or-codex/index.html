@@ -27,8 +27,8 @@
       href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
     <!-- The ?v= stamps make browsers refetch after a change; an old cached
          content.css would draw the posts unstyled. Bump both together. -->
-    <link rel="stylesheet" href="/styles.css?v=20261105" />
-    <link rel="stylesheet" href="/content.css?v=20261105" />
+    <link rel="stylesheet" href="/styles.css?v=20261106" />
+    <link rel="stylesheet" href="/content.css?v=20261106" />
 
     <script type="application/ld+json">
 {
@@ -102,16 +102,19 @@
           works. Ten agents means ten times that.
         </p>
         <div class="strip" role="img" aria-label="The software process step by step, Claude Code or Codex against runcastle.">
-          <div class="strip-row"><span class="strip-who">Claude Code or Codex</span><span class="strip-step is-on">Idea<small>Projects</small></span><span class="strip-step is-on">Plan<small>plan mode</small></span><span class="strip-step is-you">Design<small>you</small></span><span class="strip-step is-on">Build<small>agents</small></span><span class="strip-step is-you">Review<small>you</small></span><span class="strip-step is-you">Test drive<small>you</small></span><span class="strip-step is-on">Merge<small>PR</small></span></div>
+          <div class="strip-row"><span class="strip-who">Claude Code or Codex</span><span class="strip-step is-on">Idea<small>Projects</small></span><span class="strip-step is-on">Plan<small>plan mode</small></span><span class="strip-step is-you">Design<small>you</small></span><span class="strip-step is-on">Build<small>agents</small></span><span class="strip-step is-you">Review<small>if you ask</small></span><span class="strip-step is-you">Test drive<small>you</small></span><span class="strip-step is-on">Merge<small>PR</small></span></div>
           <div class="strip-row"><span class="strip-who">runcastle</span><span class="strip-step is-rc">Idea<small>orchestrator</small></span><span class="strip-step is-rc">Plan<small>you say yes</small></span><span class="strip-step is-rc">Design<small>in your app</small></span><span class="strip-step is-rc">Build<small>rounds</small></span><span class="strip-step is-rc">Review<small>walkthrough</small></span><span class="strip-step is-rc">Test drive<small>one click</small></span><span class="strip-step is-rc">Merge<small>you click</small></span></div>
-          <p class="strip-key">Dashed: not in their documented parallel-agent flow, so it's on you. Lit: runcastle does it.</p>
+          <p class="strip-key">Dashed: a step you have to start yourself. Lit: runcastle does it.</p>
         </div>
-        <h2>Nobody runs your app but you</h2>
+        <h2>They'll test your app. If you ask.</h2>
         <p>
-          That's the gap. In runcastle, the feature's agent designs new screens in your real
-          running app before anything is built. When a round lands, a review agent boots the
-          branch, clicks through the feature and records a walkthrough. The agent fixes what it
-          found. Then you get one click to <a href="/docs/features/">test drive the branch</a>.
+          Claude Code can <a href="https://code.claude.com/docs/en/chrome">open your app in Chrome
+          and click through it</a>, and Codex can use a browser, when you ask, one session at a
+          time. In runcastle it's a step that always happens. The feature's agent designs new
+          screens in your real running app before anything is built. When a round lands, a review
+          agent boots the branch, clicks through the feature and records a walkthrough, and the
+          agent fixes what it found. Then you get one click to
+          <a href="/docs/features/">test drive the branch</a>.
         </p>
         <figure class="post-figure">
           <img src="/assets/posts/review.webp" width="1840" height="1150" loading="lazy" alt="A feature ready to merge: the review package in the chat says it was verified on a test drive, with its walkthrough and screenshots." />
@@ -128,8 +131,8 @@
         </figure>
 
         <div class="facts">
-          <div class="table-scroll"><table><thead><tr><th></th><th>Claude Code</th><th>Codex</th><th>runcastle</th></tr></thead><tbody><tr><td>Parallel agents</td><td>Agent view, agent teams, Projects</td><td>Worktree threads, Codex Cloud</td><td>Rounds of workers</td></tr><tr><td>Isolation</td><td>A worktree per session</td><td>A worktree per thread</td><td>A container per worker</td></tr><tr><td>Runs your app to check it</td><td>Not in its docs</td><td>Not in its docs</td><td>Every review round</td></tr><tr><td>Price</td><td>Your Claude plan</td><td>Your ChatGPT plan</td><td>Free; runs on either plan</td></tr></tbody></table></div>
-          <p class="facts-src">Checked Nov 5, 2026 against <a href="https://code.claude.com/docs/en/agents">Claude Code's docs</a>, <a href="https://learn.chatgpt.com/docs/app">the Codex app docs</a> and <a href="https://learn.chatgpt.com/docs/environments/git-worktrees">Codex worktrees</a>.</p>
+          <div class="table-scroll"><table><thead><tr><th></th><th>Claude Code</th><th>Codex</th><th>runcastle</th></tr></thead><tbody><tr><td>Parallel agents</td><td>Agent view, agent teams, Projects</td><td>Worktree threads, Codex Cloud</td><td>Rounds of workers</td></tr><tr><td>Isolation</td><td>A worktree per session</td><td>A worktree per thread</td><td>A container per worker</td></tr><tr><td>Runs your app to check it</td><td>When you ask, in Chrome</td><td>When you ask, with browser use</td><td>Every review round, on its own</td></tr><tr><td>Price</td><td>Your Claude plan</td><td>Your ChatGPT plan</td><td>Free; runs on either plan</td></tr></tbody></table></div>
+          <p class="facts-src">Checked Nov 5, 2026 against <a href="https://code.claude.com/docs/en/agents">Claude Code's docs</a>, <a href="https://code.claude.com/docs/en/chrome">its Chrome guide</a>, <a href="https://learn.chatgpt.com/docs/app">the Codex app docs</a> and <a href="https://learn.chatgpt.com/docs/environments/git-worktrees">Codex worktrees</a>.</p>
         </div>
         <div class="post-cta">
           <p>Bring your next feature. Say yes once.</p>
