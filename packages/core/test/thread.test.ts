@@ -733,6 +733,30 @@ describe('foldThread', () => {
     expect(kinds(again.items)).toEqual(['compacted', 'compacted'])
   })
 
+  // lead-chats-stay-small decisions 6, 11
+  it('the divider says why runcastle compacted, and the context size before it and after it', () => {
+    const usage = (used: number): ThreadEventBody => ({ type: 'usage', context: { used, size: 1_000_000 } })
+    const run = (...body: ThreadEventBody[]) => foldThread(log(...body)).items.find((x) => x.kind === 'compacted')
+    const auto = prompt('c1', '/compact Keep …', { source: 'runcastle', hidden: true, compaction: 'idle' })
+    expect(run(usage(231_000), auto, { type: 'turn_started' }, { type: 'compacted', trigger: 'idle', before: 231_000 }, usage(64_000))).toEqual({
+      kind: 'compacted',
+      id: 'compacted:3',
+      trigger: 'idle',
+      before: 231_000,
+      after: 64_000,
+    })
+    // An older log's Compact now: a bare event in the hidden `/compact` turn reads as the human's, with the sizes the reports give.
+    expect(run(usage(90_000), prompt('c1', '/compact', { source: 'runcastle', hidden: true }), { type: 'compacted' }, usage(8_000))).toMatchObject({
+      trigger: 'manual',
+      before: 90_000,
+      after: 8_000,
+    })
+    // The runtime's own, inside a long turn: no reason; no after until a report comes.
+    expect(run(prompt('p1', 'Build it'), { type: 'turn_started' }, usage(200_000), { type: 'compacted' })).toEqual({ kind: 'compacted', id: 'compacted:3', before: 200_000 })
+    // A message sent while a compaction runs does not take its reason away.
+    expect(run(auto, { type: 'turn_started' }, prompt('p2', 'Hello'), { type: 'compacted', trigger: 'idle' })).toMatchObject({ trigger: 'idle' })
+  })
+
   it('the cost adds up across agent restarts: a new process counting from zero adds to what the last one spent', () => {
     const v = foldThread(
       log(
@@ -811,6 +835,11 @@ describe('foldThread', () => {
     const line = { i: 0, at: 1, type: 'prompt', id: 'p', text: 't', source: 'human' }
     expect(ThreadEvent.parse(line)).toEqual(line)
     expect(() => ThreadEvent.parse({ i: 0, at: 1, type: 'nope' })).toThrow()
+    // A compaction's reason and size are optional: an older log's bare one still parses.
+    expect(ThreadEvent.parse({ i: 1, at: 2, type: 'compacted' })).toEqual({ i: 1, at: 2, type: 'compacted' })
+    const told = { i: 2, at: 3, type: 'compacted', trigger: 'planned', before: 231_000 }
+    expect(ThreadEvent.parse(told)).toEqual(told)
+    expect(() => ThreadEvent.parse({ ...told, trigger: 'whenever' })).toThrow()
   })
 })
 
@@ -953,6 +982,22 @@ describe('awaitsHuman', () => {
     expect(awaitsHuman(log(prompt('p1'), started, said, { type: 'turn_ended', reason: 'cancelled' }), true)).toBe(false)
     expect(awaitsHuman(log(prompt('p1'), started, said, stopped), false)).toBe(false)
     expect(awaitsHuman(log(prompt('p1', '/compact', { hidden: true }), started, ended), true)).toBe(false)
+  })
+
+  // lead-chats-stay-small decision 14: a compaction at a quiet moment moves nothing the human waits on.
+  it('a compaction neither answers the reply before it nor makes one, while it runs or after', () => {
+    const compact = prompt('c1', '/compact Keep …', { source: 'runcastle', hidden: true, compaction: 'idle' })
+    const replied = [prompt('p1'), started, said, ended]
+    expect(awaitsHuman(log(...replied, compact, started), true)).toBe(true)
+    expect(awaitsHuman(log(...replied, compact, started, { type: 'compacted', trigger: 'idle' }, ended), true)).toBe(true)
+    expect(awaitsHuman(log(...replied, compact, started, ended, stopped), false)).toBe(true)
+    // An older log's Compact now too.
+    expect(awaitsHuman(log(...replied, prompt('c2', '/compact', { source: 'runcastle', hidden: true }), started, ended), true)).toBe(true)
+    // Nothing waited before it: nothing waits after it.
+    expect(awaitsHuman(log(compact, started, ended), true)).toBe(false)
+    // The human's message sent meanwhile answers the reply, and its own turn is the next reply.
+    expect(awaitsHuman(log(...replied, compact, started, prompt('p2'), ended), true)).toBe(false)
+    expect(awaitsHuman(log(...replied, compact, started, prompt('p2'), ended, started, said, ended), true)).toBe(true)
   })
 
   it('an empty thread waits on nobody', () => {

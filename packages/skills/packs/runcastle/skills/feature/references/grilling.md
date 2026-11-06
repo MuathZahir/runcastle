@@ -6,8 +6,8 @@ not settle, or when you are about to write or change `decisions.md`.
 ## Context hygiene is the whole game
 
 The spec and the tickets are best written by the context that did the grilling.
-**Never compact. Never `/clear`. Never suggest either.** If you feel context
-pressure, you grilled too wide: narrow, don't compact.
+**Never compact or `/clear` yourself:** runcastle compacts you at quiet moments,
+so what is settled must already be on disk. If you feel context pressure, narrow.
 
 ## Grill relentlessly
 

@@ -224,7 +224,8 @@ function Bar({ percent, tone = fullness(percent) }: { percent: number; tone?: To
   )
 }
 
-const k = (n: number) =>
+/** A token count as the composer and the chat say it: 231k, 1.2M. */
+export const k = (n: number) =>
   n >= 1_000_000 ? `${Number((n / 1_000_000).toFixed(1))}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
 
 /**

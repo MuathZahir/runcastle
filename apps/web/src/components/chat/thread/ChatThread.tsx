@@ -23,6 +23,7 @@ import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
 import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
+import { k } from './ComposerParts'
 import { ChangesCard, WorkBlock } from './Work'
 
 /** What a message's hover actions ask of the thread. */
@@ -287,7 +288,7 @@ function Item({
         </p>
       )
     case 'compacted':
-      return <Divider>Chat compacted — earlier turns are summarised for the agent</Divider>
+      return <Divider>{compactedLine(item)}</Divider>
     case 'model':
       return (
         <Divider>
@@ -300,6 +301,28 @@ function Item({
     case 'notice':
       return <Divider>{item.text}</Divider>
   }
+}
+
+/** Why runcastle compacted a chat by itself, as the divider says it (lead-chats-stay-small decision 11). */
+const COMPACTED_WHY = {
+  planned: 'after planning',
+  idle: 'while idle',
+  resume: 'before resuming',
+} as const
+
+
+/**
+ * The compaction divider: why runcastle did it, and the context size before
+ * and after when known. The human's Compact now (and an older log's) reads as
+ * it always has; one with no reason is the runtime's own, inside a long turn.
+ */
+function compactedLine(item: Extract<ThreadItem, { kind: 'compacted' }>): string {
+  const base =
+    item.trigger === 'manual'
+      ? 'Chat compacted — earlier turns are summarised for the agent'
+      : `Chat compacted automatically ${item.trigger ? COMPACTED_WHY[item.trigger] : 'during a long turn'}`
+  if (item.before === undefined) return base
+  return `${base} · ${k(item.before)}${item.after !== undefined ? ` → ${k(item.after)}` : ''}`
 }
 
 /**

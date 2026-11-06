@@ -3,11 +3,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { foldThread, type ThreadEvent, type ThreadItem } from '@runcastle/core'
+import { eq } from 'drizzle-orm'
+import { foldThread, threadActivity, type ThreadEvent, type ThreadItem } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
+import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { featureDocKey, recordSent, sentSha } from '../src/mcp/sent-memory'
+import { appendThreadEvent } from '../src/threads/log'
 import { subscribeLive } from '../src/services/bus'
 import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -439,6 +443,252 @@ describe('idle stop', () => {
     vi.advanceTimersByTime(IDLE_MS * 3)
     expect(host.isRunning(id)).toBe(true)
     expect(fake.last().killed).toBe(false)
+    // Nor is it compacted: an open ask is the human's to answer (lead-chats-stay-small decision 13).
+    expect(prompts()).toHaveLength(1)
+  })
+})
+
+/**
+ * Lead chats stay small (decisions 6, 9, 13, 14): a feature lead above the
+ * floor is compacted before its idle process stops and before a turn after a
+ * long quiet; the compaction is a hidden runcastle prompt, says why in its
+ * divider, and moves nothing the human waits on.
+ */
+describe('automatic compaction', () => {
+  const BIG = 300_000
+  const AFTER = 60_000
+  const textOf = (p: { prompt: { text?: string }[] }) => p.prompt[0]?.text ?? ''
+  const compactions = () => prompts().filter((p) => textOf(p).startsWith('/compact'))
+
+  /** A turn that reports a big context, and compacts on the compaction command as the adapters do. */
+  function compacting(extra: FakeScript = {}): FakeScript {
+    return {
+      ...extra,
+      turn: async (t) => {
+        const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
+        if (said.startsWith('/compact')) {
+          await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp1', status: 'completed' } as never)
+          await t.update({ sessionUpdate: 'usage_update', used: AFTER, size: 1_000_000 })
+          return
+        }
+        await t.update({ sessionUpdate: 'usage_update', used: used, size: 1_000_000 })
+        await t.say(`Answered: ${said}`)
+      },
+    }
+  }
+  let used = BIG
+  beforeEach(() => {
+    used = BIG
+  })
+
+  const stopped = (e: ThreadEvent[]) => {
+    const last = e.at(-1)
+    return last?.type === 'process' && last.state === 'stopped'
+  }
+
+  it('compacts an idle lead above the floor before stopping it, with the keep-instructions, quietly', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup(compacting())
+    const id = thread()
+    await host.prompt(id, { text: 'Plan it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    const events = await logUntil(id, stopped)
+    expect(compactions()).toHaveLength(1)
+    const sent = textOf(compactions()[0])
+    expect(sent).toMatch(/^\/compact Keep in the summary: what you are waiting on/)
+    expect(sent).toContain('docs/features/')
+    expect(sent).toContain('call the runcastle MCP tool get_feature_context before acting')
+    expect(events.find((e) => e.type === 'prompt' && e.text === sent)).toMatchObject({ source: 'runcastle', hidden: true, compaction: 'idle' })
+    expect(events.find((e) => e.type === 'compacted')).toMatchObject({ trigger: 'idle', before: BIG })
+    expect(foldThread(events).items.find((i) => i.kind === 'compacted')).toMatchObject({ trigger: 'idle', before: BIG, after: AFTER })
+    // The lead's reply still waits on the human; the compaction is no reply of its own.
+    expect(threadActivity(events, false, Date.now())).toBe('replied')
+    expect(fake.last().killed).toBe(true)
+    expect(getSessionRow(ctx, id)!.status).toBe('ended')
+  })
+
+  it('compacts plainly on Codex', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup(compacting())
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.6-sol', runtime: 'codex' } }).id
+    await host.prompt(id, { text: 'Plan it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await logUntil(id, stopped)
+    expect(compactions().map(textOf)).toEqual(['/compact'])
+  })
+
+  /**
+   * tools-and-skills-say-less: a read tool sends "unchanged" stubs for docs a
+   * session already holds. A compacted conversation no longer holds them, so any
+   * compaction the agent reports forgets what was sent — with no SessionStart
+   * hook (Codex), for the runtime's own mid-turn ceiling and runcastle's own.
+   */
+  it('forgets the docs a lead was sent on every compaction, with no hook to say so', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup({
+      turn: async (t) => {
+        const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
+        if (said.startsWith('/compact') || said.startsWith('Long')) {
+          // Each compaction under its own id, and reported completed twice, as claude-agent-acp does.
+          const compactionId = `cmp-${said.slice(0, 4)}`
+          await t.update({ sessionUpdate: 'compaction_update', compactionId, status: 'completed' } as never)
+          await t.update({ sessionUpdate: 'compaction_update', compactionId, status: 'completed' } as never)
+        }
+        await t.update({ sessionUpdate: 'usage_update', used: said.startsWith('/compact') ? AFTER : BIG, size: 1_000_000 })
+        if (!said.startsWith('/compact')) await t.say('Done')
+      },
+    })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.6-sol', runtime: 'codex' } }).id
+    const key = featureDocKey(featureId, 'spec.md')
+
+    recordSent(id, key, 'sha-1')
+    await host.prompt(id, { text: 'Long build turn' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(sentSha(id, key)).toBeUndefined()
+
+    recordSent(id, key, 'sha-2')
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await logUntil(id, stopped)
+    expect(compactions()).toHaveLength(1)
+    expect(sentSha(id, key)).toBeUndefined()
+  })
+
+  it('stops an idle lead without compacting below the floor, on a side thread, or once the feature has shipped', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup(compacting())
+    used = 100_000
+    const small = thread()
+    const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
+    for (const id of [small, side]) {
+      if (id === side) used = BIG
+      await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+      await logUntil(id, turnsEnded(1))
+    }
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await logUntil(small, stopped)
+    await logUntil(side, stopped)
+
+    ctx.db.update(features).set({ status: 'shipped' }).where(eq(features.id, featureId)).run()
+    const shipped = thread()
+    await host.prompt(shipped, { text: 'Hi' }, { source: 'human' })
+    await logUntil(shipped, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await logUntil(shipped, stopped)
+    expect(compactions()).toHaveLength(0)
+  })
+
+  it('compacts before a turn that follows a long quiet, after a restart too, and then sends the turn', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await host.stopAll('shutdown')
+
+    // A new server run: only the log says how long the lead has been quiet.
+    await new Promise((r) => setTimeout(r, 40))
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, autoCompact: { resumeGapMs: 30 } })
+    await host.prompt(id, { text: 'Back again' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(3))
+    expect(prompts().map(textOf).map((s) => s.split(' ')[0])).toEqual(['First', '/compact', 'Back'])
+    expect(events.find((e) => e.type === 'compacted')).toMatchObject({ trigger: 'resume', before: BIG })
+    expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'agent', text: 'Answered: Back again' })
+
+    // Right after, the quiet is short: no second compaction.
+    await host.prompt(id, { text: 'And again' }, { source: 'human' })
+    await logUntil(id, turnsEnded(4))
+    expect(compactions()).toHaveLength(1)
+  })
+
+  it('counts the quiet from the last thing the lead did, not its last finished turn: a crashed turn is recent', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await host.stopAll('shutdown')
+    await new Promise((r) => setTimeout(r, 40))
+    // A turn that died with the server: it started and said something, and never ended.
+    appendThreadEvent(id, { type: 'turn_started' })
+    appendThreadEvent(id, { type: 'process', state: 'stopped' })
+
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, autoCompact: { resumeGapMs: 30 } })
+    await host.prompt(id, { text: 'Back again' }, { source: 'human' })
+    await logUntil(id, (e) => e.filter((x) => x.type === 'turn_ended').length >= 2)
+    expect(compactions()).toHaveLength(0)
+  })
+
+  it('still compacts before resuming once the feature has shipped', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    ctx.db.update(features).set({ status: 'shipped' }).where(eq(features.id, featureId)).run()
+    await new Promise((r) => setTimeout(r, 40))
+    await host.prompt(id, { text: 'Merged?' }, { source: 'human' })
+    await logUntil(id, turnsEnded(3))
+    expect(compactions()).toHaveLength(1)
+  })
+
+  it('never compacts before resuming when the trigger is off or the context is small', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 0 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 20))
+    await host.prompt(id, { text: 'Second' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2))
+    expect(compactions()).toHaveLength(0)
+  })
+
+  it('queues a human message sent during a compaction behind it, never steering it in', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const base = compacting()
+    setup({
+      turn: async (t) => {
+        if (textOf({ prompt: t.prompt as { text?: string }[] }).startsWith('/compact')) await gate
+        await base.turn!(t)
+      },
+    }, { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 40))
+    await host.prompt(id, { text: 'Second' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await vi.waitFor(() => expect(compactions()).toHaveLength(1))
+    const { promptId } = await host.prompt(id, { text: 'Third' }, { source: 'human' })
+    // Shown at once, as a human's words are, but not steered into the compaction.
+    expect(readThreadEvents(id).find((e) => e.type === 'prompt' && e.id === promptId)).not.toHaveProperty('steered')
+    expect(methods()).not.toContain('_session/steering')
+    release()
+    await logUntil(id, turnsEnded(4))
+    expect(prompts().map(textOf).map((s) => s.split(' ')[0])).toEqual(['First', '/compact', 'Second', 'Third'])
+  })
+
+  it('stays up when a message arrives during the idle compaction, and the idle stop counts from its end', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const base = compacting()
+    setup({
+      turn: async (t) => {
+        if (textOf({ prompt: t.prompt as { text?: string }[] }).startsWith('/compact')) await gate
+        await base.turn!(t)
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await vi.waitFor(() => expect(compactions()).toHaveLength(1))
+    await host.prompt(id, { text: 'Still here' }, { source: 'human' })
+    release()
+    await logUntil(id, turnsEnded(3))
+    expect(host.isRunning(id)).toBe(true)
+    vi.advanceTimersByTime(IDLE_MS - 1000)
+    expect(host.isRunning(id)).toBe(true)
   })
 })
 

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { foldThread, type AgentRuntime, type Feature, type SessionPurpose, type ThreadEvent } from '@runcastle/core'
+import { foldThread, threadActivity, type AgentRuntime, type Feature, type SessionPurpose, type ThreadEvent } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -311,6 +311,39 @@ describe('a self-planning run', () => {
 
       expect(selfPlanEnded(f.id)).toEqual([])
       expect(selfPlanEnded(g.id)).toEqual([])
+    })
+
+    /**
+     * lead-chats-stay-small decisions 6a and 14: a big planning context is
+     * compacted at once, while the cache is warm, and the compaction's own turn
+     * end ends no second run, notifies nothing and keeps the plan's question.
+     */
+    it('compacts a lead whose plan left it above the floor, quietly', async () => {
+      const f = await feature('compacted')
+      fakeHost({
+        turn: async (t) => {
+          const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
+          if (said.startsWith('/compact')) {
+            await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp1', status: 'completed' } as never)
+            await t.update({ sessionUpdate: 'usage_update', used: 50_000, size: 1_000_000 })
+            return
+          }
+          await t.update({ sessionUpdate: 'usage_update', used: 260_000, size: 1_000_000 })
+          setWaiting(ctx, f.id, 'Start round 1?')
+        },
+      })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+      const events = await logUntil(sessionId, (e) => e.filter((x) => x.type === 'turn_ended').length >= 2)
+
+      const compaction = events.find((e) => e.type === 'prompt' && e.compaction)
+      expect(compaction).toMatchObject({ compaction: 'planned', hidden: true, source: 'runcastle', text: expect.stringContaining('docs/features/compacted/') })
+      const divider = foldThread(events).items.find((i) => i.kind === 'compacted')
+      expect(divider).toMatchObject({ trigger: 'planned', before: 260_000, after: 50_000 })
+      expect(selfPlanEnded(f.id)).toHaveLength(1)
+      expect(getFeatureRow(ctx, f.id).waitingReason).toBe('Start round 1?')
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'lead.human_message')).toBe(false)
+      // The plan's reply still waits on the human after the compaction.
+      expect(threadActivity(events, true, Date.now())).toBe('replied')
     })
   })
 })
