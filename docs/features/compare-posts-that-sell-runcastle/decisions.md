@@ -4,7 +4,7 @@ Planned without the human on 2026-11-05 (a headless planning run). Every decisio
 below is the lead's own call and carries an **Assumed.** line until the human
 confirms it.
 
-Check first: 7, 8, 3, 2
+Check first: 8, 3, 2
 
 ## 1. /compare/ becomes a blog index of the posts
 **Decision:** The 2.9k-word overview roundup is replaced by a short index page: one headline, the shared opening line ("Agents don't need more prompts. They need a process."), and one card per post (headline, one-line hook, date, read time). No roundup table on the index.
@@ -42,7 +42,7 @@ Check first: 7, 8, 3, 2
 ## 7. Four posts: Conductor, T3 Code, Claude Code or Codex on their own, and Kiro
 **Decision:** The series is four posts behind the index. Three are the agreed defaults, rewritten. The one new post is **Kiro** (AWS's agent IDE, which turns a prompt into requirements, a design and ordered tasks, then builds them with parallel agents). Everything else the research found stays out: Cursor 3's Agents Window, Paradev (formerly Superset), Vibe Kanban (now a community project after its company closed), Imbue's Sculptor, GitHub Copilot's cloud agent, Devin, Google Jules, Factory, Amp, Claude Squad and Nimbalyst (formerly Crystal).
 **Why:** Kiro is the only tool that claims runcastle's own job, running a process and not just agents, so it is where the argument most needs making: readers who find it will ask "isn't this the same thing?". The other tools are agent runners, and the "on their own" post already answers the two that every reader has: Claude Code's agent view and Projects, and the Codex app.
-**Assumed.** Alternative: a Cursor post instead of Kiro (more readers use Cursor, but it is an IDE with agents, the same argument as the Claude Code and Codex post), or no new post at all.
+The human picked Kiro on 2026-11-06.
 
 ## 8. The Conductor post becomes a "where to go next" post
 **Decision:** Conductor's changelog titles its Nov 4, 2026 release "Conductor is joining Meta". The post leads with that, stated plainly and linked, and argues that people leaving Conductor shouldn't swap it for another agent runner but move to a process. Its headline is about runcastle as the next home and does not mention Meta; the news sits in the lede. The post keeps the `/compare/conductor/` address. It states only what Conductor itself has published; the reported cloud shutdown dates and the Mac app's support window go in only if the build can confirm them on Conductor's own pages.
