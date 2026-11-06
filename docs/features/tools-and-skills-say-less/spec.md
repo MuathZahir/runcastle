@@ -41,11 +41,12 @@ unchanged; only doc bodies are deduplicated. The existing size ceiling logic
 still applies, now measured with stubs in place.
 
 **The orchestrator reads a status view** (decision 2). `get_feature_context({ slug })`
-for the project kind returns: the feature row's state fields, rounds with their
-landed and failed seqs, latest run, waiting reason and kind, `humanTypedAt`,
-held-by, dependencies, ticket rows as `{ seq, title, status, kind }`, open defect
-titles, design titles and states, and a doc index `{ relPath, bytes }` for every
-doc. `full: true` returns today's lead bundle, docs in full.
+for the project kind returns exactly what the orchestrator uses: the feature's
+status, waiting reason and kind, holder, `humanTypedAt`, whether a round is
+running, ticket counts by status, the latest ready declaration, the latest
+review's verdict and the count of open findings, design titles and states, base
+branch and `dependsOn`, and a doc index `{ relPath, bytes }` for every doc.
+`full: true` returns today's lead bundle, docs in full.
 
 **Writes answer with a receipt** (decision 3): `update_ticket` →
 `{ ok, seq, status, changed: string[] }`, `cancel_ticket` → `{ ok, seq, status }`,
@@ -57,7 +58,7 @@ current state before calling it, so the service's own rule is unchanged for
 other callers.
 
 **Settled tickets read short** (decision 5): `get_ticket` on a `done` or
-`cancelled` ticket omits `context` and `acceptanceCriteria` unless `full: true`.
+`cancelled` ticket omits `context` unless `full: true`; its acceptance criteria stay.
 
 **A feature's chat reads from where the thread left off** (decision 6). The read
 position is `{ transcriptPath, turnCount, shownCount, reviewShotCount }` per
@@ -81,9 +82,10 @@ sentences: what the tool does and when to reach for it; each parameter
 description a short phrase. Behaviour a description teaches that no skill
 teaches moves into the skill that uses the tool (the skills ticket carries
 those lines; the descriptions ticket lists them in its digest). A test builds
-the MCP server for the chat and project audiences, lists the tools over the
-real MCP client, and fails when the serialized list exceeds a budget set just
-above the new size (decision 9 as planned; see its challenge).
+the MCP server for every audience, lists the tools over the real MCP client,
+and fails when any one tool's description (or any parameter description)
+exceeds its length cap. There is no cap on a whole tool list, so a new tool
+never fails the build.
 
 **One tool-loading line, and no skill reload on resume** (decisions 12, 13, 15).
 The SessionStart note of a Claude Code session ends with
@@ -122,8 +124,8 @@ already in the conversation; a fresh conversation is still told to invoke it.
 - **The MCP tool server, called through the real MCP client** (existing; the
   pattern in the server's MCP tool tests): observes reply shapes, stubs on a
   repeat call, `full: true`, the orchestrator's status view, receipts, the
-  already-closed finding, settled-ticket reads, and the size of each audience's
-  tool list.
+  already-closed finding, settled-ticket reads, and each tool's description
+  length.
 - **The exported tool functions** (existing: the feature-context, ticket,
   finding and chat-read functions): the same behaviours at a lower level where
   a test needs a session row the client cannot easily fake.
@@ -149,8 +151,8 @@ already in the conversation; a fresh conversation is still told to invoke it.
 
 ## Open questions
 
-- The size budget for each audience's tool list is set by the descriptions
-  ticket from the measured result, not fixed here.
+- The exact per-description cap is set by the descriptions ticket (around 400
+  characters for a tool, 120 for a parameter).
 - Whether Claude Code keeps an invoked skill's text across compaction in every
   case; decision 13's wording ("only if its text is not already in the
   conversation") is safe either way.

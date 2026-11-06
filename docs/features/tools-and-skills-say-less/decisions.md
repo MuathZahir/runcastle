@@ -12,9 +12,10 @@ Check first: 1, 2, 5, 9, 10
 **Assumed.** Alternative: store the sent hashes in the database so they survive a restart.
 
 ## 2. The orchestrator gets a short status view of a feature
-**Decision:** When the orchestrator calls `get_feature_context({ slug })` it gets a status view: the feature's state, waiting reason, rounds and latest run, ticket rows without goals, open defect titles, design states and an index of the docs with their sizes, but no doc bodies. `full: true` returns the lead's whole working bundle, every doc in full (decision 8).
+**Decision:** When the orchestrator calls `get_feature_context({ slug })` it gets a status view: the feature's status, waiting reason and kind, holder, `humanTypedAt`, whether a round is running, ticket counts by status, the latest ready declaration, the latest review's verdict and the count of open findings, design states, base branch and `dependsOn`, and an index of the docs with their sizes, but no doc bodies. Everything else comes with `full: true`, which returns the lead's whole working bundle, every doc in full (decision 8).
 **Why:** The orchestrator mostly asks "where is this feature and does it need me?"; the lead's bundle cost it ~4M tokens over two weeks. Doc bodies stay one `read_feature_doc` away.
 **Assumed.** Alternative: a separate `feature_status` tool, leaving `get_feature_context` as it is.
+**Changed by the orchestrator:** it named the fields it actually uses when orchestrating; the view carries exactly those (ticket counts, not ticket rows).
 
 ## 3. Ticket and finding updates return a short receipt
 **Decision:** `update_ticket` returns `{ ok, seq, status, changed }` (the field names it changed), `cancel_ticket` returns `{ ok, seq, status }`, and `resolve_finding` returns `{ ok, findingId, status }`. None of them echoes the whole row.
@@ -28,10 +29,10 @@ Check first: 1, 2, 5, 9, 10
 **Challenged:** Still succeed, but add a short note when the finding's status differs from the one asked for (marked fixed, but it was dismissed), so the disagreement is not hidden.
 
 ## 5. A settled ticket's read leaves out its plan
-**Decision:** `get_ticket` on a done or cancelled ticket leaves out its `context` and `acceptanceCriteria` and keeps the goal, status, seams, error and the worker's digest. Pending, running and failed tickets come in full. `full: true` returns everything.
-**Why:** After a ticket lands, what a reader needs is what it did (the digest), not the instructions it was given; those were the bulk of ~4–6M tokens.
+**Decision:** `get_ticket` on a done or cancelled ticket leaves out its `context` and keeps the goal, acceptance criteria, status, seams, error and the worker's digest. Pending, running and failed tickets come in full. `full: true` returns everything.
+**Why:** After a ticket lands, a reader needs what it did (the digest) and what it was meant to do (the criteria), not the instructions it was given; `context` is the bulk of ~4–6M tokens.
 **Assumed.** Alternative: a `fields` option the caller picks from.
-**Challenged:** Keep the acceptance criteria and drop only `context`: whoever judges whether a done ticket did its job needs the criteria, and `context` is the bulky part anyway.
+**Changed by the orchestrator:** keep the acceptance criteria, as the challenger argued: whoever judges whether a done ticket did its job needs them.
 
 ## 6. Reading a feature's chat returns only what is new
 **Decision:** `read_feature_chat` remembers, per orchestrator thread and feature, how far it last read. A repeat call returns only the turns, shown files and review pictures added since, capped at the newest ~8k characters with a count of the earlier new turns it left out; with nothing new it says so in one line. A new conversation on the feature (a different transcript) is read as new. `full: true` returns the last ~8k characters as today. The memory resets like decision 1's.
@@ -49,10 +50,10 @@ Check first: 1, 2, 5, 9, 10
 **Assumed.** Alternative: a different option per tool, named for what it adds back.
 
 ## 9. Tool descriptions are one or two sentences, and a test keeps them short
-**Decision:** Every runcastle tool description says what the tool does and when to use it in one or two sentences; each parameter description is a short phrase. Teaching that matters moves into the skill that uses the tool; teaching that only explains a field its name already explains is dropped. A test measures the tool list each session kind is offered and fails past a set size, so the lists cannot grow back.
+**Decision:** Every runcastle tool description says what the tool does and when to use it in one or two sentences; each parameter description is a short phrase. Teaching that matters moves into the skill that uses the tool; teaching that only explains a field its name already explains is dropped. A test caps each tool's description length, so descriptions cannot grow back into essays while a genuinely new tool never fails the build.
 **Why:** The chat kind's 22 tools cost ~5.5k tokens and the project's 28 ~6.3k on every call; the skills already teach how to use them.
 **Assumed.** Alternative: shorten them once, with no test.
-**Challenged:** Cap each tool's description length instead of the whole list: a cap on the total fails the next feature that honestly needs a new tool, and the usual fix will be raising the number.
+**Changed by the orchestrator:** cap each description, not each kind's whole tool list, as the challenger argued: a cap on the total fails the next feature that honestly needs a new tool.
 
 ## 10. The project skill keeps only what every turn needs
 **Decision:** The project skill's main file keeps who the orchestrator is, how it opens, the standing Orchestrating rules, the closing move and the don'ts, plus a one-line pointer per job. Intake and the cut (with the working agreement), routing with Q&A and curation, the charter, health sweeps, notes triage and preparation each live in a reference file read only when that job comes up. The "Your tools" section is dropped, since it repeats the tool descriptions; its two non-tool facts (how to read shipped and in-flight features' docs, and which references exist) stay as short lines. Target: about half its size, ~25k characters or less.

@@ -188,7 +188,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="row"><span class="mono">… from the orchestrator</span><span class="b">The lead's whole working bundle</span><span class="a">A status view and a doc index <a class="pin" data-d="2">2</a></span></div>
       <div class="row"><span class="mono">update / cancel ticket, resolve finding</span><span class="b">The whole row echoed back</span><span class="a">A short receipt <a class="pin" data-d="3">3</a></span></div>
       <div class="row"><span class="mono">resolve_finding, already closed</span><span class="b">Fails (27% of calls)</span><span class="a">Succeeds, says it was already closed <a class="pin" data-d="4">4</a></span></div>
-      <div class="row"><span class="mono">get_ticket, done ticket</span><span class="b">Context and criteria too</span><span class="a">Goal, status and the worker's digest <a class="pin" data-d="5">5</a></span></div>
+      <div class="row"><span class="mono">get_ticket, done ticket</span><span class="b">Its full instructions too</span><span class="a">Criteria and the worker's digest, no instructions <a class="pin" data-d="5">5</a></span></div>
       <div class="row"><span class="mono">read_feature_chat</span><span class="b">Same last 8k each time</span><span class="a">Only what is new since the last read <a class="pin" data-d="6">6</a></span></div>
       <div class="row"><span class="mono">get_project_context</span><span class="b">Charter, all branches, all settings</span><span class="a">Charter marked unchanged; short branch facts <a class="pin" data-d="7">7</a></span></div>
     </div>
@@ -206,7 +206,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="card"><h3>Tool descriptions</h3>
         <div class="call"><span class="mono">chat, today</span><div class="track"><div class="bar dim" style="width:88%"></div></div><span class="note">~5.5k tokens</span></div>
         <div class="call"><span class="mono">project, today</span><div class="track"><div class="bar dim" style="width:100%"></div></div><span class="note">~6.3k tokens</span></div>
-        <div class="call"><span class="mono">after</span><div class="track"><div class="bar ok" style="width:35%"></div></div><span class="note">1–2 sentences each, test-guarded</span></div>
+        <div class="call"><span class="mono">after</span><div class="track"><div class="bar ok" style="width:35%"></div></div><span class="note">1–2 sentences each, length-capped</span></div>
       </div>
     </div>
   </div>
@@ -283,14 +283,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['A repeat feature read sends unchanged docs as a stub', 'Brief and decisions were ~66% of each reply, and 63 of 146 calls repeated in one session.', 'assumed'],
-    ['The orchestrator gets a short status view of a feature', 'It mostly asks where a feature is and whether it needs it; doc bodies stay one read away.', 'assumed'],
+    ['The orchestrator gets a short status view of a feature', 'It mostly asks where a feature is and whether it needs it. Changed by the orchestrator: the view carries exactly the fields it named.', 'assumed'],
     ['Ticket and finding updates return a short receipt', 'The caller just sent the change; echoing the row told it nothing (~8M tokens).', 'assumed'],
     ['Resolving a finding that already closed is not an error', '27 of 99 calls failed only because the fix ticket had already closed the finding.', 'assumed'],
-    ['A settled ticket\'s read leaves out its plan', 'After it lands, a reader needs what it did (the digest), not its instructions.', 'assumed'],
+    ['A settled ticket\'s read leaves out its plan', 'After it lands, a reader needs what it did and what it was meant to do, not its instructions. Changed by the orchestrator: criteria stay.', 'assumed'],
     ['Reading a feature\'s chat returns only what is new', '59 of 124 reads returned the same 8k the thread already had; capped at the newest 8k.', 'assumed'],
     ['The project read stops repeating the charter and the branch list', 'The branch list and settings matter only for an unusual base or preparation.', 'assumed'],
     ['One escape hatch, full: true, on every trimmed read', 'One name to learn; a trimmed reply never strands an agent.', 'assumed'],
-    ['Tool descriptions are one or two sentences, and a test keeps them short', 'Tool lists cost ~5.5k and ~6.3k tokens on every call; skills already teach their use.', 'assumed'],
+    ['Tool descriptions are one or two sentences, and a test keeps them short', 'Tool lists cost ~5.5k and ~6.3k tokens on every call. Changed by the orchestrator: the test caps each description, not the whole list.', 'assumed'],
     ['The project skill keeps only what every turn needs', 'At 49k characters it rides every orchestrator call; most of it serves one job at a time.', 'assumed'],
     ['Feature skill references load one at a time, and the plan page is copied, not read', 'Batch reads overflowed to files read whole (15.5M); the starter was read 80 times then copied anyway.', 'assumed'],
     ['Each session is told, once, how to load its runcastle tools in one go', 'Feature chats ran 143 tool searches, often one tool at a time.', 'assumed'],
@@ -303,9 +303,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [1, 'Store the sent hashes in the database so they survive a restart.', 'Rests on the hook reliably reporting compaction; if it ever misses one, a lead holds a stub for a doc it lost (it can still read the file).'],
-    [2, 'A separate feature_status tool, leaving get_feature_context as it is.', 'A guess about what you want the orchestrator to see by default.'],
-    [5, 'A fields option the caller picks from.', 'Challenged: keep acceptance criteria on done tickets, drop only context, so whoever judges the ticket still has them.', 'challenged'],
-    [9, 'Shorten once, with no test.', 'Challenged: cap each description\'s length instead of the whole list, so a new tool never fails the build.', 'challenged'],
+    [2, 'A separate feature_status tool, leaving get_feature_context as it is.', 'The orchestrator named its fields; you have not seen the view yourself.', 'orchestrator'],
+    [5, 'A fields option the caller picks from.', 'Changed by the orchestrator to keep acceptance criteria, as the challenger argued; you have not seen it.', 'orchestrator'],
+    [9, 'Shorten once, with no test.', 'Changed by the orchestrator to cap each description, not the whole list, as the challenger argued; you have not seen it.', 'orchestrator'],
     [10, 'Also move the Orchestrating rules into references, for a much smaller main file.', 'How much of the orchestrator\'s guidance should ride every call is your judgement more than mine.']
   ]
   var list = $('#dlist')
