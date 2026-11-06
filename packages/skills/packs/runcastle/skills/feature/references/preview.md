@@ -38,9 +38,22 @@ built.
 - **Exactly one file, `preview.html`, at the root of the feature's docs dir**:
   `docs/features/<slug>/preview.html`. Several screens or flows are sections of
   that one page, never more files.
-- **Start from `./preview-starter.html`.** Copy it to that path and fill it in.
-  It carries runcastle's theme tokens for both themes and the styles and markup
-  for the fixed parts; do not restyle them.
+- **Start from `./preview-starter.html`.** Copy it to that path with a shell
+  copy (`cp`), find its slots with `grep -n 'FILL:'` on the copy, and fill each
+  by editing; **never read the starter whole**. It carries runcastle's theme
+  tokens for both themes and the styles and markup for the fixed parts; do not
+  restyle them.
+- **The slots**, each a `<!-- FILL:<name> -->` line just above what to replace:
+  - `title`: the feature title in `<title>`.
+  - `what`: the `<h1>` title, the one- or two-sentence lede, `[slug]` in the meta line.
+  - `show`: replace the free-form comment below it with the show.
+  - `screen`: the example screen block; copy and rename it per screen, or delete it.
+  - `D`: one entry per decision, in order: `['Title', 'Why, in a sentence']`, or
+    `['Title', 'Why', 'assumed']` for a decision made without the human.
+  - `C`: Check first, a self-planned feature only, at most five:
+    `[decisionNumber, 'Alternative', 'Why unsure', 'tag'?]`; leave `[]` for a grilled feature.
+  - `later` / `not-this`: one `<li><i class="dot"></i>…</li>` per item left out.
+  - `hood`: the technical shape, inside the collapsed **Under the hood**.
 - **Throwaway explorations** may go under `docs/features/<slug>/prototypes/`.
   They are never shown; the app shows only `preview.html`.
 
