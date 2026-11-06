@@ -81,3 +81,12 @@ or wake.
 **Why:** The human: "Shouldn't all workers have the user's setup? … most users expect that",
 as Claude Code's own subagents do. Workers run with no permission prompts, so leaving a server out
 is the only reliable way to keep risky tools (Neon in write mode) out of reach.
+
+## 9. A worker gets a worker-sized set of runcastle's tools, served from outside the sandbox
+**Decision:** A worker's runcastle tools are: hand back, start its dev server, read the feature's
+state (tickets, designs, decisions, the lead's latest turns), show a file or screenshot in its own
+chat, and park a backlog feature. Runcastle serves them over the connection it already holds into
+the container, so the sandbox still cannot reach runcastle. None of the lead's tools (tickets,
+rounds, ready, landing, drives): a worker's only way to change the feature is its handback.
+**Why:** Workers run with no permission prompts; given the lead's tools they could start rounds or
+declare ready behind the lead, the side-chat trouble this feature removes.
