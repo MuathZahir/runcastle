@@ -25,3 +25,9 @@ Quick-win cut from the token analysis (2026-11-06), and the safety net under the
 ## Working agreement (cut 2, agreed 2026-11-06): autonomous
 
 The orchestrator carries this to merged on its own judgement, after the lead's review round.
+
+## Added by the orchestrator, 2026-11-06
+
+## Shared files (orchestrator, 2026-11-06)
+
+`feature/SKILL.md` and its references are also edited by `tools-and-skills-say-less` (trimming, "read only the reference for this step"). Keep your skill edits to the delegation guidance and the build-it-yourself section so whichever lands second rebases cleanly.
