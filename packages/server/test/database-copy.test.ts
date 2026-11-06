@@ -18,7 +18,7 @@ import {
 } from '../src/services/database-copy'
 import { emit, listAfter } from '../src/services/events'
 import { deliverToLead, LEAD_MESSAGE_NOT_SENT } from '../src/services/lead-delivery'
-import { notifyOrchestrator, ORCHESTRATOR_GATHER_MS } from '../src/services/orchestrator-notify'
+import { notifyOrchestrator, ORCHESTRATOR_GATHER_MS, ORCHESTRATOR_NEWS_NOT_SENT } from '../src/services/orchestrator-notify'
 import { getRunRow } from '../src/services/repo'
 import { getTicket, storeTickets, updateTicket } from '../src/services/tickets'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -205,5 +205,8 @@ describe('background messages on a copy', () => {
 
     expect(promptsOf(holder.id)).toEqual([])
     expect(fake.processes).toHaveLength(0)
+    const kept = listAfter(ctx, f.id, 0).filter((e) => e.type === ORCHESTRATOR_NEWS_NOT_SENT)
+    expect(kept).toHaveLength(1)
+    expect(kept[0].data).toMatchObject({ threadId: holder.id, eventId: event.id })
   })
 })

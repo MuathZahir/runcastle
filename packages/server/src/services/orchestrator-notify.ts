@@ -6,7 +6,7 @@ import { getSessionRow } from '../launcher/sessions'
 import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { mayStartInBackground } from './database-copy'
-import { getEventRow } from './events'
+import { emit, getEventRow } from './events'
 import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
@@ -75,6 +75,9 @@ type NewsEntry = Extract<PromptDisplay, { news: unknown }>['news'][number]
 type Described = { kind: 'end' | 'act'; text: string }
 
 const PREFIX = '[runcastle]'
+
+/** News a copied database (a test drive) kept from a holder it has not started. */
+export const ORCHESTRATOR_NEWS_NOT_SENT = 'orchestrator.news_not_sent'
 
 /** The longest a summary carried from an event gets, so a line stays one short line. */
 const SUMMARY_MAX = 80
@@ -398,7 +401,17 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
     if (!line || !threadId) return
     // In a test drive, news never starts a holder the driver has not started
     // (drives-never-touch-real-conversations decision 9).
-    if (!mayStartInBackground(getSessionRow(ctx, threadId))) return
+    if (!mayStartInBackground(getSessionRow(ctx, threadId))) {
+      // A type the notifier has no line for, so this event says nothing onward.
+      if (event.featureId) {
+        emit(ctx, event.featureId, {
+          type: ORCHESTRATOR_NEWS_NOT_SENT,
+          message: 'news not sent: this drive has not started the thread that holds this feature',
+          data: { threadId, eventId: event.id, line },
+        })
+      }
+      return
+    }
     const entry = { line, news: orchestratorNewsFor(event, state) }
     const gathered = gathering.get(threadId)
     if (gathered) {

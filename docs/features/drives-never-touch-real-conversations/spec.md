@@ -54,6 +54,12 @@ usual.
   - deletes every phone push subscription (the signing keys may stay).
   With nothing left running, the existing reconciliation and the interrupted-
   round wake find nothing to do.
+- **A fresh start runs in today's worktree.** A thread with no conversation
+  yet starts in its kind's worktree as it is computed now, and its row takes
+  that folder. A copied row names the live install's worktree, so without this
+  a fresh agent in a drive would run inside the real feature's worktree (or
+  fail when that folder is gone). A thread with a conversation keeps its folder,
+  since its conversation resumes from there. (Found by the review round.)
 - **No drive recovery in a copy.** With the setting on, boot skips recovering
   "cut-off" drives: every drive recorded in a copy belongs to the live install.
 - **Automatic messages start no conversation in a copy.** With the setting on,
