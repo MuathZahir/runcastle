@@ -19,3 +19,14 @@ per worker. Each starts on its assignment at once, makes a first pass, and shows
 its turn ends.
 **Why:** A Start click per worker would approve the same thing twice. Starting a worker is cheap
 (6–10 s plus an install) and an idle one stops its container, so the plan's yes is gate enough.
+
+## 3. The sidebar's thread list becomes the worker list
+**Decision:** The open feature's thread list in the sidebar is the worker list; the feature page
+gets no second list. It orders by status, not start time: the lead's chat first, then workers that
+need the human, then working ones, then a folded "Done (n)" for handed-back and landed workers. A
+row moves only when its status changes. Each row shows the worker's label with its one-line purpose
+beneath in a muted line. Features not open stay folded; their amber dot already lights when any
+worker needs the human. The look gets a live design pass before it is built.
+**Why:** The sidebar is already the one place threads are switched (`threads-in-the-sidebar`); a
+second list on the feature page would be a second place to look. The human: "It might need better
+UI."
