@@ -175,3 +175,15 @@ would ever clean them up.
 not landed; it lands or drops each first. A worker that hands back after the feature is ready is
 landed by the lead, who then declares ready again.
 **Why:** It closes the gap where a side chat changed a ready feature unseen by its lead.
+
+## 20. The lead's rule for offering workers
+**Decision:** The lead's instructions carry a firm rule. Taste work (a screen, a component, wording:
+anything the human would look at and tweak) gets a "with you" worker, one per piece judged
+separately. Self-contained build work that would take the lead more than a few minutes or much
+file reading gets an "on its own" worker. Small jobs (a few lines, docs, landing handbacks, fixing
+what a handback got slightly wrong) the lead does itself. It offers workers in its plan after the
+grill (label, one-line purpose, kind each) and mid-chat when the human starts iterating on a design
+in the lead's own chat. It picks each worker's model from the models the human described in
+Settings.
+**Why:** The human: "I wouldn't think to create a new thread". A loose "prefer workers" rule is how
+side chats ended up never offered.
