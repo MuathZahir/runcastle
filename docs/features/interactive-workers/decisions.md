@@ -40,3 +40,12 @@ branch with one tool, through the feature's landing queue like its own commits (
 message (the worker returns to working), or drops the worker.
 **Why:** The human's picture: "the worker hands the design back; the lead integrates". Nothing
 lands unseen, and two workers' changes always have someone fitting them together.
+
+## 5. Each assignment is "with you" or "on its own"; "with you" hands back only on the human's yes
+**Decision:** The lead marks every worker's assignment in the plan as "with you" (taste work) or
+"on its own". A "with you" worker makes its first pass, shows "needs you" and waits; it hands back
+only once the human says they are happy, or presses the **Hand back** button in its chat header,
+which tells the worker to write its summary and hand back. An "on its own" worker hands back when
+its done-when is met, and shows "needs you" only when it asks a real question.
+**Why:** The human's own example mixes the two ("taste work, each gets a worker with you; the data
+changes run in the background"). Taste work must not reach the lead before the human has seen it.
