@@ -332,7 +332,7 @@ async function endRound(
     setWaiting(ctx, featureId, provider ? providerHaltReason(provider) : halt, 'stuck')
     return
   }
-  await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle', reason: 'handback' })
+  await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle', reason: 'handback', background: true })
 }
 
 /**

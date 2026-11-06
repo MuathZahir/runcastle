@@ -69,7 +69,7 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 ## Situations
 
 - **An orchestrator relay** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's. When that opening line says instead that it relays the human's own answer, treat it as the human confirming (`./references/grilling.md`). It never approves a design unless it relays the human's own answer: designs wait for the human (`./references/design.md`, section 8).
-- **A merge conflict to resolve** — resolve it on the feature branch so both sides' intent survives, run the checks, commit.
+- **A merge conflict to resolve** — whoever sends it, first check it still stands (`git merge-base --is-ancestor <base> HEAD`). If the base is already in, say so in one line and stop: no checks, no review. Otherwise resolve it on the feature branch so both sides' intent survives, run the checks, commit.
 - **A shipped feature** — it is done: answer questions and amend its docs only.
 - **No human present** (a headless planning run) — follow `./references/planning-alone.md`.
 

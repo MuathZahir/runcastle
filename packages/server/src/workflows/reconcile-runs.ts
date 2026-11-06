@@ -170,7 +170,7 @@ export async function wakeInterruptedRounds(ctx: AppCtx, reconciled: Run[]): Pro
       if (event) notifyOrchestrator(ctx, event.id)
       const feature = tryGetFeature(ctx, run.featureId)
       const text = composeInterruptedWake(ctx, run)
-      if (feature && text) await deliverToLead(ctx, feature, { text, source: 'runcastle', reason: 'handback' })
+      if (feature && text) await deliverToLead(ctx, feature, { text, source: 'runcastle', reason: 'handback', background: true })
     } catch (err) {
       console.error('could not wake the lead of an interrupted round', err)
     }

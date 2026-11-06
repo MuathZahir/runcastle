@@ -8,7 +8,9 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
   return (
     `Proceed with your task: RESOLVE A MERGE CONFLICT. Merging ${base} into ${branch} conflicts ` +
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
-    `Run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
+    `First check it still stands: if \`git merge-base --is-ancestor ${base} HEAD\` succeeds, ${base} ` +
+    `is already in, so say so in one line and stop — no checks, no review. ` +
+    `Otherwise run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
     `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
     `When the merge commit is in, tell me ` +
     `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
@@ -58,7 +60,9 @@ export function ticketConflictKickoff(input: {
     `Proceed with your task: RESOLVE A MERGE CONFLICT. Ticket #${input.seq} (“${input.title}”) is ` +
     `fully implemented on branch ${input.branch}, but landing it on ${input.featureBranch} ` +
     `conflicts on: ${list}. Your working directory IS the talk worktree, already checked out on ` +
-    `${input.featureBranch}. Run \`git merge ${input.branch}\`, read both sides before resolving ` +
+    `${input.featureBranch}. If \`git merge-base --is-ancestor ${input.branch} HEAD\` already ` +
+    `succeeds, the ticket is in: skip straight to the retry below. Otherwise run ` +
+    `\`git merge ${input.branch}\`, read both sides before resolving ` +
     `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
     `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
     `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. When the merge commit is in, ` +

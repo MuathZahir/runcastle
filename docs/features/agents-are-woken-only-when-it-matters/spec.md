@@ -35,7 +35,6 @@ so workers can adopt it later unchanged.
 | lead waits for the human | wake |
 | lead declared ready | wake |
 | round failed | wake |
-| merge conflicted (not the orchestrator's own merge) | wake |
 | test drive failed to start | wake |
 | shipped (merged by the human) | wake |
 | draft started by itself / could not start | wake |
@@ -46,6 +45,7 @@ so workers can adopt it later unchanged.
 | round cut off by a restart | hold |
 | review / verification pass finished or failed | hold |
 | another thread took the feature | hold |
+| the human's own merge conflicted, or a conflict was resolved (decision 18) | hold |
 | human talking to a chat / chat went quiet (running holder only) | hold |
 | human started / stopped a test drive (running holder only) | hold |
 | human had a feature plan itself (running holder only) | hold |

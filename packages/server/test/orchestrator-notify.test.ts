@@ -120,7 +120,13 @@ describe('orchestratorLineFor — end events', () => {
       'a merge that conflicted',
       event('merge.conflict', { files: ['a.ts', 'b.ts'] }),
       held,
-      `[runcastle] export-csv merge conflicted in 2 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "export-csv" }).`,
+      `[runcastle] export-csv merge conflicted in 2 file(s) when the human merged it by hand. The human has the Resolve button on the feature: leave the conflict to them unless they ask you. Read it with get_feature_context({ slug: "export-csv" }).`,
+    ],
+    [
+      'a conflict that was resolved',
+      event('merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/export-csv' }, { message: 'merge conflict resolved — main is in feature/export-csv' }),
+      held,
+      '[runcastle] export-csv merge conflict resolved (main is in feature/export-csv). Nothing to relay. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a drive that failed',
@@ -161,6 +167,10 @@ describe('orchestratorLineFor — end events', () => {
     const line = orchestratorLineFor(long, held) as string
     expect(line).not.toContain('\n')
     expect(line.length).toBeLessThan(200)
+  })
+
+  it('says nothing when a landing merge retires its conflict: the shipped line says it', () => {
+    expect(orchestratorLineFor(event('merge.resolved', undefined, { message: 'conflict retired by the merge' }), held)).toBeNull()
   })
 
   it('wakes a stopped holder for an ending', () => {
@@ -282,7 +292,6 @@ describe('which lines wake the holder (agents-are-woken-only-when-it-matters dec
     ['the lead waits for the human', event('feature.waiting', { why: 'start round 1?' }), held],
     ['the lead declared ready', event('feature.ready_declared', {}), held],
     ['a round failed', event('run.finished', { status: 'failed' }), held],
-    ['a merge conflicted', event('merge.conflict', { files: [] }), held],
     ['a drive failed to start', event('testdrive.dev_failed'), held],
     ['the human merged it', event('feature.shipped'), held],
     ['a draft started by itself', event('feature.started', { autoStartedBy: 'core' }), held],
@@ -300,6 +309,7 @@ describe('which lines wake the holder (agents-are-woken-only-when-it-matters dec
     ['a review pass finished', event('ticket.done'), { ...held, ticket: review }],
     ['a verification pass failed', event('ticket.failed'), { ...held, ticket: { ...review, passKind: 'verification' } }],
     ['another thread took it', event('feature.taken', { name: 'Phone cut' }), held],
+    ['the human’s own merge conflicted', event('merge.conflict', { files: [] }), held],
     ['the human is talking to its chat', event('session.process_started', { sessionId: 's', source: 'human' }), { ...held, session: chat }],
     ['its chat went quiet', event('session.process_stopped', { sessionId: 's', startedBy: 'human' }), { ...held, session: chat }],
     ['the human started a drive', event('testdrive.started'), held],
@@ -469,7 +479,7 @@ describe('the notifier', () => {
     const newest = projectSession()
     const feature = heldFeature(holder)
 
-    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    emit(ctx, feature.id, { type: 'testdrive.dev_failed', message: 'boom' })
 
     expect(await promptLines(holder, 1)).toHaveLength(1)
     expect(promptsOf(newest)).toEqual([])
@@ -501,7 +511,7 @@ describe('the notifier', () => {
     const running = projectSession()
     const quiet = heldFeature(stopped, 'quiet')
     const busy = heldFeature(running, 'busy')
-    emit(ctx, busy.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    emit(ctx, busy.id, { type: 'testdrive.dev_failed', message: 'boom' })
     await promptLines(running, 1)
 
     emit(ctx, busy.id, { type: 'testdrive.started', message: 'x' })
@@ -525,7 +535,7 @@ describe('the notifier', () => {
     ])
     expect(promptsOf(taker)).toEqual([])
 
-    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    emit(ctx, feature.id, { type: 'testdrive.dev_failed', message: 'boom' })
     expect(await promptLines(taker, 1)).toHaveLength(1)
     expect(promptsOf(old)).toHaveLength(1)
   })
@@ -562,7 +572,7 @@ describe('the notifier', () => {
     const holder = projectSession()
     const feature = heldFeature(holder, 'export-csv')
     const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
-    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    emit(ctx, feature.id, { type: 'testdrive.dev_failed', message: 'boom' })
     await promptLines(holder, 1)
     await vi.waitFor(() => expect(sentPrompts(fake)).toHaveLength(1))
 

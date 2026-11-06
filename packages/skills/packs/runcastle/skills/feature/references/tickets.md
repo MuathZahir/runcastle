@@ -18,7 +18,7 @@ criteria and digest.
 ## The one thing that makes a runcastle ticket different
 
 Each ticket is executed by a **single fresh agent, alone, in a sandbox, with
-~100k tokens and NO way to ask a follow-up question.** It sees only what you put
+a context it re-reads on every call, and NO way to ask a follow-up question.** It sees only what you put
 in the ticket plus the code already in the repo. So — *inverting* the usual
 "avoid file paths, they go stale" rule — the ticket's `context` field **must be
 concrete and self-sufficient**: name the files to touch, the existing patterns
@@ -26,42 +26,47 @@ to copy, the type/schema shapes, the gotchas, the commands to run and verify
 with. A ticket that assumes the agent can ask "where does X live?" is a broken
 ticket. Over-specify context; under-specify nothing.
 
-## The second thing: a ticket costs ~10 minutes before it does any work — and pays it twice if it overruns
+**Never tell a worker to run the whole suite.** No "verify with typecheck and
+test from the repo root", no verify command to run whole, no full test run. The
+worker's prompt already holds the one check rule — the tests that cover each
+slice, and the static check once at the end — and the host runs the full gates
+once per round. Name the test files that cover the change instead.
 
-That fresh agent is fresh *every time*. Each ticket gets its own container: cold
-build, a full dependency install (measured 70–507s, ~2.5 min average), then an
-agent that re-reads the spec, the docs digest, and every file your `context`
-names — reading the repo was 16% of all agent time across 42 measured attempts.
-**This overhead is paid per ticket and is the same whether the ticket is twenty
-lines or a day's work.** Splitting one coherent piece of work into three tickets
-triples it, and adds two seams where a new agent has to reconstruct what the
-previous one had just finished learning.
+## The second thing: a ticket's cost grows with the square of its length
 
-But that meter runs both ways. A ticket too big to finish in one pass gets no
-cheap second wind: an iteration is not a retry (ADR-0008) — the container is
-rebuilt, the install runs again, and a brand-new agent re-reads everything from
-the last commit, having lost every conclusion its predecessor reached.
+Every call the worker makes re-reads its whole context, so a ticket that ends
+at twice the context costs about four times the tokens. Measured over two weeks
+of burns, the median ticket ended near 149k context, and the ten tickets that
+ended above 250k used **over a third of every token spent** — two of them more
+than 120M each, one a wide removal across four packages in a single ticket.
 
-So size a ticket to **earn its container and still land in one pass**:
-substantial, with room left at the end for the tests, the self-review and the
-commits. Fine-grained slicing belongs *inside* a ticket, as the
-`acceptanceCriteria` list: the worker works through the criteria and
-commits each finished slice, so one ticket with six criteria orients once; six
-one-criterion tickets orient six times.
+A ticket also costs ~10 minutes before it does any work: its own container, a
+dependency install, and a fresh read of the spec and every file your `context`
+names. That is real, but it is minutes, and the tail above is tens of millions
+of tokens. An iteration is not a retry either (ADR-0008): a ticket that overruns
+pays the container again and a new agent re-reads everything from its last
+commit.
 
-Expect a **handful of substantial tickets** for a feature — roughly 4–8, each
-worth a session. A dozen thin ones means you sliced by layer or by file, not by
-behaviour. Two or three giant ones means you will pay back the containers you
-saved, with interest, when they overrun.
+So size a ticket to **about six acceptance criteria in one area** — one package
+or one module — with room left at the end for the tests, the self-review and
+the commits. `emit_tickets` returns a warning for any ticket over eight
+criteria (it never refuses); read its `warnings` and split that ticket before
+you dispatch. Split a ticket only when it would pass that size, never as a
+habit: an ordinary ticket keeps its size, and a split that buys nothing pays a
+container for nothing.
+
+Expect a **handful of tickets** for a feature, each worth a session. A dozen
+thin ones means you sliced by layer or by file, not by behaviour; one that
+spans several packages with ten criteria is two tickets.
 
 ## 1. Draft vertical slices
 
 <vertical-slice-rules>
 - Each slice cuts a narrow but COMPLETE path through every layer it needs (schema, API, UI, tests) — vertical, NOT a horizontal slice of one layer.
 - A completed slice is demoable or verifiable on its own.
-- Each slice is worth one fresh ~100k-token agent session working alone and **lands inside it** — leave room for the orientation at the front and the tests, self-review and commits at the back.
+- Each slice is worth one fresh agent session working alone and **lands well inside it** — about six criteria in one area, with room for the orientation at the front and the tests, self-review and commits at the back.
 - **Merge when a merge test holds.** Two drafts are one ticket if they touch the same files, share a type or module, or the second one's first act would be re-reading what the first just wrote. Same for the obvious siblings of one behaviour: create/edit/delete of a resource, an endpoint and the UI that calls it, code and the tests that cover it.
-- **Split only for a real reason:** (a) a genuine gate — the later work cannot be written until the earlier work's interface exists; (b) the combined work would not land in one session; (c) a prefactor, which is its own slice done first ("make the change easy, then make the easy change"); (d) parallel width, under the rule below; (e) the wide-refactor sequence below.
+- **Split only for a real reason:** (a) a genuine gate — the later work cannot be written until the earlier work's interface exists; (b) the combined work would pass about six criteria or more than one area; (c) a prefactor, which is its own slice done first ("make the change easy, then make the easy change"); (d) parallel width, under the rule below; (e) the wide-refactor sequence below.
 - **Not reasons to split:** one ticket per file, layer, endpoint or component; keeping each ticket easy; keeping diffs small; separating tests from the code they test.
 - **Parallelism pays when the halves are file-disjoint.** Tickets with no blocking edge build concurrently, each on its own temp branch, landing one at a time (ADR-0002) — so two substantial slices touching *different* files buy real wall-clock. Two touching the *same* files race to land, and the loser fails on a merge conflict: that width costs a re-burn. Overlapping files → merge.
 </vertical-slice-rules>
@@ -157,7 +162,7 @@ that ＋ New scenario in a test drive sets scenarios up for this project.
 </ship-a-scenario>
 
 <wide-refactor-exception>
-A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract**. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each a ticket blocked by the expand, green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them all block a final integrate-and-verify ticket — green is promised only there.
+A **wide refactor** — one mechanical change (rename a column, retype a shared symbol, remove a concept) whose blast radius crosses more than one area — never lands as one ticket. Sequence it **expand → migrate → contract**, always, whether it breaks ten call sites or thousands. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each a ticket blocked by the expand, green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
 
 <preview-screen-block>
@@ -187,7 +192,7 @@ Each ticket:
 - **title** — `{group}: {task}`, in the domain vocabulary: `Checkout: apply the coupon at payment`.
 - **goal** — the end-to-end behaviour this ticket makes work, from the user's/caller's perspective. Not a layer list.
 - **context** — everything the sandboxed agent needs and cannot ask for: file paths, patterns to follow, type/schema shapes, gotchas, how to run and verify. Be concrete.
-- **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). Four to eight on a substantial ticket is right; a list running well past that will not land in one pass. Criteria are observable behaviours; ask for a test as a criterion only for a bug repro or a contract worth protecting, never for its own sake. A ticket that fixes red round gates names the failing command and test files in its `context` and has one criterion that re-runs them narrowed (never the full suite — the host runs that once per round). A review reports useless tests as low-severity observations, never defects: when the round already mints a fix ticket, fold those observations into it as one criterion (delete or rewrite the named tests), and never mint a ticket only to delete useless tests.
+- **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). About six is right; past eight, `emit_tickets` warns, and the ticket should be two. Criteria are observable behaviours; ask for a test as a criterion only for a bug repro or a contract worth protecting, never for its own sake. A ticket that fixes red round gates names the failing command and test files in its `context` and has one criterion that re-runs them narrowed (never the full suite — the host runs that once per round). A review reports useless tests as low-severity observations, never defects: when the round already mints a fix ticket, fold those observations into it as one criterion (delete or rewrite the named tests), and never mint a ticket only to delete useless tests.
 - **seams** — `string[]`, the public interfaces to test at (from the spec's Seams; prefer existing, prefer the highest, prefer one).
 - **blockedBy** — `number[]`, **required**, only true gates; `[]` when there are none.
 - **kind** — `"implementation"` (the default, omit it) or `"review"`.
@@ -208,18 +213,22 @@ of ids you may use.
 Check yourself, in this order:
 
 1. **Can any two of these be one ticket?** Take them pair by pair; merging changes the rest.
-2. **Would any one overrun?** Split it where its files stop overlapping.
-3. Is each survivor a demoable vertical slice, worth a session?
-4. Are the blocking edges minimal and true? State the critical path and the width against `burnConcurrency`, and reslice if the chain runs longer than roughly total / concurrency. Do independent tickets touch different files?
-5. Is every `context` self-sufficient for an agent that cannot ask?
-6. If you chose a review, is there exactly one `kind: "review"` ticket, blocked by the work it checks?
-7. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it?
+2. **Would any one overrun?** Past about six criteria, or across more than one area, split it where its files stop overlapping.
+3. **Does any `context` tell the worker to run the whole suite?** Take it out.
+4. Is each survivor a demoable vertical slice, worth a session?
+5. Are the blocking edges minimal and true? State the critical path and the width against `burnConcurrency`, and reslice if the chain runs longer than roughly total / concurrency. Do independent tickets touch different files?
+6. Is every `context` self-sufficient for an agent that cannot ask?
+7. If you chose a review, is there exactly one `kind: "review"` ticket, blocked by the work it checks?
+8. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it?
 
 Then `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do
-NOT write ticket files.** It returns `{ stored, ids }`, logs the timeline event
+NOT write ticket files.** It returns `{ stored, tickets, warnings }`, logs the timeline event
 itself, and opens the **Work** view beside the chat. Emit the **whole batch,
 fully enriched, in one call**; never emit placeholder contexts to enrich
 afterwards — a round dispatched mid-enrichment burns workers on placeholders.
+Then read `warnings`: each names a stored ticket shaped to overrun or starve
+(too many criteria, a thin or pasted context). Nothing was refused; fix the
+ticket with `update_ticket` before you dispatch.
 
 ## Reshaping tickets later
 

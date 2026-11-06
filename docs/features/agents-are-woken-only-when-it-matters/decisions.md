@@ -96,3 +96,9 @@ Check first: 3, 9, 10, 12, 16
 **Decision:** The wake/hold work (decisions 1–6, 9–14) is built first, on its own. The orchestrator compaction (decision 16) is built after `lead-chats-stay-small` has merged to main: this branch takes main, and the lead extends that feature's compaction triggers to orchestrator threads. If it has not merged by then, the lead tells the orchestrator and waits rather than building a copy.
 **Why:** The sibling has its plan but no code yet; building compaction here too would make the second mechanism the orchestrator ruled out.
 **Assumed.** Alternative: build a minimal orchestrator-only compaction now and fold it into the sibling's later.
+
+## 18. A conflict from the human's own merge is held
+**Supersedes:** the "a merge conflicted" entry of 3.
+**Decision:** A merge conflict line now holds instead of waking. So does the new "merge conflict resolved" line.
+**Why:** `drives-never-touch-real-conversations` (merged to main) made the conflict line reach the orchestrator only for a merge the human pressed, with the human holding the Resolve button and the orchestrator told to leave it to them. A line that asks nothing of the orchestrator is news by decision 1. The orchestrator's own `merge_feature` still returns its conflict directly.
+**Assumed.** Alternative: keep waking on it, so the orchestrator can tell the human about a conflict they already see.

@@ -4,6 +4,7 @@ import { launchSession } from '../launcher/launcher'
 import { newestThread } from '../launcher/sessions'
 import { hasThreadLog } from '../threads/log'
 import { agentHost } from '../threads/types'
+import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
 import { markHumanMessage } from './lead-status'
@@ -37,6 +38,13 @@ export interface LeadMessage {
    * turn. A message is a question unless its sender says otherwise.
    */
   reason?: WakeReason
+  /**
+   * A wake no click asked for (a round's end, a restart's cut-off round). On a
+   * copied database (a test drive) it reaches only a lead whose conversation
+   * began there; otherwise it is dropped, not held
+   * (drives-never-touch-real-conversations decision 9).
+   */
+  background?: boolean
 }
 
 /** A message waiting for the lead: the tagged text it goes out as, and what the human reads of it. */
@@ -59,6 +67,14 @@ interface HeldLine {
  * chat for the lead's next prompt and wakes nothing.
  */
 export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMessage): Promise<void> {
+  if (msg.background && !mayStartInBackground(newestThread(ctx, { featureId: feature.id }, 'chat'))) {
+    emit(ctx, feature.id, {
+      type: LEAD_MESSAGE_NOT_SENT,
+      message: 'message not sent: this drive has not started the agent’s chat',
+      data: { source: msg.source, text: msg.text },
+    })
+    return
+  }
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
   const lines: HeldLine[] = [
     ...(held.get(feature.id) ?? []),
@@ -101,6 +117,9 @@ async function leadThread(ctx: AppCtx, feature: Feature): Promise<string> {
   if (chat && (chat.ccSessionId || hasThreadLog(chat.id))) return chat.id
   return (await launchSession(ctx, { featureId: feature.id, kind: 'chat' })).sessionId
 }
+
+/** A background message a copied database (a test drive) kept from a lead it has not started. */
+export const LEAD_MESSAGE_NOT_SENT = 'lead.message_not_sent'
 
 /** Whether `session` is a feature's lead: its main chat. */
 export function isLeadSession(session: Pick<SessionRow, 'kind' | 'featureId'>): boolean {
