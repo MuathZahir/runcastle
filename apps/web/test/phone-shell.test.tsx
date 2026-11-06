@@ -137,6 +137,9 @@ function realHistory() {
   vi.mocked(window.history.back).mockRestore()
 }
 
+/** Lets the shell land and its effects settle. */
+const settle = () => act(() => new Promise((done) => setTimeout(done, 50)))
+
 /** The system's Back — Android's button — and where it lands. */
 async function systemBack(lands: string) {
   await act(async () => {
@@ -504,6 +507,31 @@ describe('a design on a phone', () => {
 
       await systemBack(LIST)
       await onList()
+    })
+
+    it.each([
+      ['the Plan', `/p/${PROJECT_ID}/f/${SLUG}/plan`, 'Plan'],
+      ['a design', DESIGN, 'Design'],
+    ])('walks out of %s opened straight by its link, as a notification opens it, and never back into it', async (_name, address, region) => {
+      const { fakes, over, threads } = withDesigns()
+      realHistory()
+      // Whatever page the link was tapped from, outside the app.
+      window.history.pushState(null, '', '/elsewhere')
+      window.history.pushState(null, '', address)
+      render(<Root path={address} threads={threads} extra={fakes} over={over} />)
+      await screen.findByRole('region', { name: region })
+      await settle()
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to the chat' }))
+      await waitFor(() => expect(window.location.pathname).toBe(CHAT))
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to the list' }))
+      await waitFor(() => expect(window.location.pathname).toBe(LIST))
+      await onList()
+      // Nothing of the app's is behind the list: the view's entry became the chat's, then the list's.
+      await act(async () => {
+        window.history.back()
+        await new Promise((done) => setTimeout(done, 20))
+      })
+      await waitFor(() => expect(window.location.pathname).toBe('/elsewhere'))
     })
 
     it('takes a sheet’s step off before the view its row opens, so Back goes view → chat → list', async () => {

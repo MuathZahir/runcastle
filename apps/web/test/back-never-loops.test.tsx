@@ -17,6 +17,7 @@ import { atWidth } from './phone-width'
 const PROJECT: AppLocation = { kind: 'project', projectId: 'p1' }
 const CHAT: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'chat' }
 const PLAN: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'plan' }
+const DESIGN: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'design' }
 const BETA: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'beta', view: 'chat' }
 
 /** A page whose location the buttons move, with one dialog over it. */
@@ -28,6 +29,7 @@ function Page({ dirty = false }: { dirty?: boolean }) {
     <>
       <button onClick={() => setLocation(CHAT)}>chat</button>
       <button onClick={() => setLocation(PLAN)}>plan</button>
+      <button onClick={() => setLocation(DESIGN)}>design</button>
       <button onClick={() => setLocation(BETA)}>beta</button>
       <button onClick={() => setOpen(true)}>open dialog</button>
       <Dialog open={open} onClose={() => setOpen(false)} label="Overlay" dirty={dirty}>
@@ -79,6 +81,18 @@ describe('closing a view (decisions 2, 5)', () => {
     await settle()
     expect(path()).toBe('/p/p1/f/alpha/chat')
     await back('/p/p1')
+  })
+
+  it('closes a view opened over another in place, so Back never returns to the view closed', async () => {
+    atWidth(false)
+    render(<Page />)
+    tap('chat')
+    tap('plan')
+    tap('design')
+    tap('chat') // the panel closes from the design, which came from the Plan
+    await settle()
+    expect(path()).toBe('/p/p1/f/alpha/chat')
+    await back('/p/p1/f/alpha/plan')
   })
 
   it('still pushes a move to another page, even one the entry behind names', async () => {

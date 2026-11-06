@@ -42,6 +42,19 @@ function pushEntry(path: string, extra: { overlay?: string } = {}): void {
   window.history.pushState(entry, '', path)
 }
 
+/**
+ * Put `path` in place of the entry showing, keeping what the entry knew of the
+ * place behind it: going back a level with nothing of the app's to step back
+ * to (a view or a chat opened straight by a link) must not stack the level
+ * above, or the next Back would return to the place just left.
+ */
+function replaceEntry(path: string): void {
+  window.history.replaceState(window.history.state, '', path)
+}
+
+/** Set by an on-screen Back with nothing of the app's behind it: the move its fallback makes replaces, never pushes. */
+let replaceNext = false
+
 /*
  * The app's own steps back. When the app takes an entry of its own off the
  * stack (a closed view stepping back to where it came from, a closed overlay
@@ -150,7 +163,15 @@ export function goToPath(path: string): void {
  */
 export function backInApp(fallback: () => void): void {
   if (entryState()?.runcastle) whenSettled(() => window.history.back())
-  else fallback()
+  else {
+    // Going up a level in place of the link's entry, so Back never comes back down to it.
+    replaceNext = true
+    fallback()
+    // A fallback that moved nothing leaves no mark on the next move.
+    setTimeout(() => {
+      replaceNext = false
+    }, 250)
+  }
 }
 
 /**
@@ -320,6 +341,8 @@ export function useHistorySync(
     }
     const normalizing = !normalized.current
     normalized.current = true
+    const up = replaceNext
+    replaceNext = false
     whenSettled(() => {
       if (currentPath() === path) return
       if (!normalizing) {
@@ -328,7 +351,12 @@ export function useHistorySync(
         // or Back would return to the view just closed (phone-fixes decision 2).
         const from = entryState()?.from
         const here = parsePath(currentPath())
-        if (from === path && location && here && samePage(here, location)) stepOff()
+        const sameSpot = !!location && !!here && samePage(here, location)
+        if (sameSpot && from === path) stepOff()
+        // Closing a view with nothing to step back to (one opened by a link, or
+        // over another view), or the on-screen Back's way up from a link: the
+        // place it goes takes the entry's place, or Back would loop into it.
+        else if (up || (sameSpot && location?.kind === 'feature' && location.view === 'chat')) replaceEntry(path)
         else pushEntry(path)
         return
       }
