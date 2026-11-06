@@ -16,7 +16,7 @@ import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { postReviewPackage } from '../threads/review-package'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
-import { addTicketTokens, refreshLeadTokens } from '../services/usage'
+import { addTicketTokens, refreshFeatureTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
 import { reuseGateResult } from './gate-reuse'
@@ -319,7 +319,7 @@ async function endRound(
     runId,
     data: result ?? { ok: null, failed: [] },
   })
-  refreshLeadTokens(ctx, featureId)
+  refreshFeatureTokens(ctx, featureId)
 
   const run = getRunRow(ctx, runId)
   if (run.status === 'cancelled') return

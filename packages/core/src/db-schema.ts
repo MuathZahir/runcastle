@@ -532,6 +532,8 @@ export const events = sqliteTable(
   (t) => [
     index('events_project_id_id_idx').on(t.projectId, t.id),
     index('events_feature_id_id_idx').on(t.featureId, t.id),
+    // The token count's launch-record lookup (honest-token-counts).
+    index('events_type_idx').on(t.type),
   ],
 )
 

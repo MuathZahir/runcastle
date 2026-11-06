@@ -13,7 +13,7 @@ import type {
 } from '@runcastle/core'
 import { logsDir, reviewDir, reviewGateLogPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
-import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
+import type { AgentStreamEvent, RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
@@ -39,6 +39,7 @@ import {
   emitTicketTiming,
   errorHeadline,
   harvestDigest,
+  harvestTicketTokens,
   readAgentFile,
   registerTicketAbort,
   releaseTicketAbort,
@@ -993,7 +994,10 @@ async function reviewTicketOutcome(
   let recorderConfirmed = true
   const reopenDrive = withheldReason ? withholdDrive(ctx.runId, withheldReason) : undefined
   try {
-    await (deps.runAgent ?? run)(options)
+    const result = await (deps.runAgent ?? run)(options)
+    // A review's worker spends like any other (`honest-token-counts` decision 5).
+    const iterations = (result as Partial<Pick<RunResult, 'iterations'>> | undefined)?.iterations
+    if (Array.isArray(iterations)) harvestTicketTokens(ctx, ticket, iterations, deps.model.runtime)
   } catch (err) {
     if (ctx.signal.aborted) cancellationError = err // run cancelled — the runner finalizes it
     else runError = err

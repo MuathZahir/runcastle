@@ -68,6 +68,8 @@ describe('events polling indexes (0019)', () => {
     expect(eventIndexes(db).sort()).toEqual([
       'events_feature_id_id_idx',
       'events_project_id_id_idx',
+      // 0061: the token count's launch-record lookup (honest-token-counts).
+      'events_type_idx',
     ])
     // The rows survived — this migration only adds indexes.
     const count = db.all(sql.raw('SELECT COUNT(*) AS n FROM events')) as { n: number }[]
@@ -79,7 +81,7 @@ describe('events polling indexes (0019)', () => {
     runMigrations(db, DRIZZLE_DIR)
     runMigrations(db, DRIZZLE_DIR)
 
-    expect(eventIndexes(db)).toHaveLength(2)
+    expect(eventIndexes(db)).toHaveLength(3)
   })
 
   it('plans both cursor polls through an index instead of a table scan', async () => {

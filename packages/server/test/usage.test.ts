@@ -4,13 +4,16 @@ import { join } from 'node:path'
 import { newId, type TokenUsage, type WorkflowCtx, type WorkflowDef } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { sessions, tickets } from '../src/db/schema'
+import { events, sessions, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { emit, listAfter } from '../src/services/events'
 import { getFeatureFull } from '../src/services/features'
 import { listRounds } from '../src/services/runs'
 import { storeTickets } from '../src/services/tickets'
-import { addTicketTokens, refreshSessionTokens } from '../src/services/usage'
+import { markAwaitingInput, setThreadPurpose } from '../src/launcher/sessions'
+import { getSessionRow } from '../src/launcher/sessions'
+import { clearEndedErrand } from '../src/services/resolved-merge'
+import { addTicketTokens, countConversation, recountAllSessions, refreshSessionTokens } from '../src/services/usage'
 import { harvestTicketTokens } from '../src/workflows/ticket-burner'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
@@ -46,12 +49,14 @@ const landingBurner: WorkflowDef = {
 describe('token telemetry', () => {
   let ctx: AppCtx
   let featureId: string
+  let projectId: string
   let dir: string
   let original: WorkflowDef | undefined
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
+    projectId = seedProject(ctx).id
+    featureId = seedFeature(ctx, projectId, {}).id
     dir = mkdtempSync(join(tmpdir(), 'rc-usage-'))
     original = workflowRegistry.get('ticket-burner')
     workflowRegistry.set('ticket-burner', landingBurner)
@@ -108,10 +113,10 @@ describe('token telemetry', () => {
       writeFileSync(lead.path, `${[ccLine('m1', 1, 100), ccLine('m2', 2, 20)].join('\n')}\n`)
       const counted = sessionRow(lead.id)?.tokenBreakdown?.countedAt ?? 0
       utimesSync(lead.path, new Date(counted + 1000), new Date(counted + 1000))
-      expect(refreshSessionTokens(ctx, lead.id, { lazy: true })).toBe(100)
+      expect(refreshSessionTokens(ctx, lead.id, { mode: 'lazy' })).toBe(100)
 
       utimesSync(lead.path, new Date(counted + 60_000), new Date(counted + 60_000))
-      expect(refreshSessionTokens(ctx, lead.id, { lazy: true })).toBe(120)
+      expect(refreshSessionTokens(ctx, lead.id, { mode: 'lazy' })).toBe(120)
     })
   })
 
@@ -208,5 +213,135 @@ describe('token telemetry', () => {
     })
     await done
     expect(sessionRow(lead.id)?.tokens).toBe(42)
+  })
+
+  describe('a conversation counted once (honest-token-counts)', () => {
+    /** A row of the conversation at `path`, created at `createdAt`. */
+    function seedRow(path: string, createdAt: number, extra: Partial<typeof sessions.$inferInsert> = {}): string {
+      const id = newId('sess')
+      ctx.db
+        .insert(sessions)
+        .values({ id, featureId, kind: 'chat', transcriptPath: path, status: 'ended', worktreePath: dir, createdAt, ...extra })
+        .run()
+      return id
+    }
+    /** A launch record at `ts`. */
+    function launch(sessionId: string, ts: number, type: string, purpose?: string | null): void {
+      ctx.db
+        .insert(events)
+        .values({ projectId, featureId, ts, type, message: 'm', data: { sessionId, ...(purpose !== undefined ? { purpose } : {}) } })
+        .run()
+    }
+    const write = (path: string, lines: string[]) => writeFileSync(path, `${lines.join('\n')}\n`)
+
+    it('files each message under the launch that wrote it, so the rows sum to the transcript', () => {
+      const path = join(dir, 'conv.jsonl')
+      write(path, [ccLine('m1', 2000, 10), ccLine('m2', 6000, 20), ccLine('m3', 9000, 40)])
+      const plan = seedRow(path, 1000, { purpose: 'self-plan' })
+      const chat = seedRow(path, 5000)
+      launch(plan, 1000, 'session.launching', 'self-plan')
+      launch(chat, 5000, 'session.launching')
+      launch(chat, 8000, 'session.purpose_set', 'resolve-conflict')
+
+      expect(countConversation(ctx, path)).toBe('counted')
+      expect(sessionRow(plan)).toMatchObject({
+        tokens: 10,
+        tokenBreakdown: { output: 10, byPurpose: { 'self-plan': { output: 10 } }, conversationTotal: 70 },
+      })
+      expect(sessionRow(chat)).toMatchObject({
+        tokens: 60,
+        tokenBreakdown: { output: 60, byPurpose: { none: { output: 20 }, 'resolve-conflict': { output: 40 } } },
+      })
+    })
+
+    it('ends a planning errand at its recorded end, for rows from before purpose changes were recorded', () => {
+      const path = join(dir, 'planned.jsonl')
+      write(path, [ccLine('m1', 2000, 10), ccLine('m2', 4000, 5)])
+      const id = seedRow(path, 1000)
+      launch(id, 1000, 'session.launching', 'self-plan')
+      launch(id, 3000, 'session.self_plan_ended')
+      countConversation(ctx, path)
+      expect(sessionRow(id)?.tokenBreakdown?.byPurpose).toMatchObject({ 'self-plan': { output: 10 }, none: { output: 5 } })
+    })
+
+    it('never lowers a figure when the transcript is cut short or gone', () => {
+      const path = join(dir, 'cut.jsonl')
+      write(path, [ccLine('m1', 2000, 10), ccLine('m2', 3000, 20)])
+      const id = seedRow(path, 1000)
+      countConversation(ctx, path)
+      write(path, [ccLine('m2', 3000, 20)])
+      expect(countConversation(ctx, path)).toBe('shrunk')
+      expect(sessionRow(id)?.tokens).toBe(30)
+      rmTemp(path)
+      expect(refreshSessionTokens(ctx, id)).toBe(30)
+    })
+
+    it('recounts old duplicated rows once, and collapses a conversation whose transcript is gone', async () => {
+      const kept = join(dir, 'kept.jsonl')
+      write(kept, [ccLine('m1', 2000, 10), ccLine('m2', 6000, 20)])
+      const a = seedRow(kept, 1000, { tokens: 30 })
+      const b = seedRow(kept, 5000, { tokens: 30 })
+      const gone = join(dir, 'gone.jsonl')
+      const g1 = seedRow(gone, 1000, { tokens: 500 })
+      const g2 = seedRow(gone, 2000, { tokens: 500 })
+
+      expect(await recountAllSessions(ctx)).toEqual({ recounted: 1, collapsed: 1 })
+      expect([sessionRow(a)?.tokens, sessionRow(b)?.tokens]).toEqual([10, 20])
+      expect(sessionRow(g1)).toMatchObject({ tokens: 0, tokenBreakdown: { recounted: false } })
+      expect(sessionRow(g2)).toMatchObject({ tokens: 500, tokenBreakdown: { recounted: false } })
+      // Self-marking: a second boot finds nothing to do.
+      expect(await recountAllSessions(ctx)).toEqual({ recounted: 0, collapsed: 0 })
+    })
+
+    it('counts a session with no feature when its turn ends', () => {
+      const path = join(dir, 'orchestrator.jsonl')
+      write(path, [ccLine('m1', 2000, 77)])
+      const id = newId('sess')
+      ctx.db
+        .insert(sessions)
+        .values({ id, projectId, kind: 'project', transcriptPath: path, status: 'live', worktreePath: dir, createdAt: 1000 })
+        .run()
+      markAwaitingInput(ctx, id)
+      expect(sessionRow(id)?.tokens).toBe(77)
+    })
+  })
+
+  describe('an errand belongs to its launch (honest-token-counts decisions 7, 12)', () => {
+    function seedChat(purpose: 'resolve-conflict' | 'lead-wake'): string {
+      const id = newId('sess')
+      ctx.db.insert(sessions).values({ id, featureId, kind: 'chat', status: 'ended', worktreePath: dir, purpose }).run()
+      return id
+    }
+
+    it('records every change of errand on the timeline', () => {
+      const id = seedChat('lead-wake')
+      setThreadPurpose(ctx, id, null)
+      setThreadPurpose(ctx, id, null)
+      const set = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.purpose_set')
+      expect(set).toHaveLength(1)
+      expect(set[0]?.data).toMatchObject({ sessionId: id, purpose: null })
+    })
+
+    it('clears a retired errand, and a merge conflict that no longer stands, before the next launch', () => {
+      for (const purpose of ['lead-wake', 'resolve-conflict'] as const) {
+        const id = seedChat(purpose)
+        const row = getSessionRow(ctx, id)
+        if (!row) throw new Error('no row')
+        expect(clearEndedErrand(ctx, row).purpose).toBeUndefined()
+        expect(sessionRow(id)?.purpose).toBeNull()
+      }
+    })
+
+    it('keeps resolve-conflict while the conflict stands', () => {
+      const id = seedChat('resolve-conflict')
+      emit(ctx, featureId, {
+        type: 'merge.conflict',
+        message: 'conflict',
+        data: { base: 'main', files: ['a.ts'] },
+      })
+      const row = getSessionRow(ctx, id)
+      if (!row) throw new Error('no row')
+      expect(clearEndedErrand(ctx, row).purpose).toBe('resolve-conflict')
+    })
   })
 })
