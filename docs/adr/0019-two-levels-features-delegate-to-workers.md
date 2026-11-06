@@ -33,9 +33,16 @@ drive-fix chat, side chat) with different rules.
 5. **The lead offers workers** — in its plan after grilling, and whenever a piece
    splits off — and prefers handing work to them. It may still write code itself
    when starting a worker is not worth it.
-6. **A parent is woken only by a handback or a real question.** Other news waits
-   for its next turn. The same rule holds between the orchestrator and its
-   features.
+6. **Agents talk to each other by tool call, never by mechanical pings.** A
+   child tells its parent by calling a tool when it judges the parent needs to
+   know: a handback, or a question only the parent can answer. A worker does
+   this to its lead, and a lead to the orchestrator, with the same tool and
+   rules. Events with no agent behind them (a server restart, a usage limit, a
+   container dying, a merge conflict, a failed round) come from runcastle only
+   to the one agent that owns that work, never up the tree; that agent decides
+   whether its parent needs to know. (Amended 2026-11-06, after the
+   orchestrator was pinged about every question of a grill the human was
+   holding with a feature's agent directly.)
 7. **The human finds their way by labels and status**, not by fewer threads: each
    feature lists its workers with "needs you" on top.
 8. **An agent's in-reply subagents are not workers.** They stay invisible tools.
