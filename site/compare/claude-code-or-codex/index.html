@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude Code or Codex on their own vs runcastle — parallel agents aren&#x27;t a process</title>
+    <meta name="description" content="Claude Code and Codex both run agents in parallel now. Neither runs your app to design, review or test drive what they built. runcastle runs that process, on either one." />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="canonical" href="https://runcastle.dev/compare/claude-code-or-codex/" />
+    <meta name="theme-color" content="#0a0c11" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://runcastle.dev/compare/claude-code-or-codex/" />
+    <meta property="og:title" content="Claude Code and Codex can run ten agents now. Who runs the project?" />
+    <meta property="og:description" content="Claude Code and Codex both run agents in parallel now. Neither runs your app to design, review or test drive what they built. runcastle runs that process, on either one." />
+    <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
+    <meta property="og:image:width" content="2324" />
+    <meta property="og:image:height" content="1160" />
+    <meta property="og:image:alt" content="runcastle, the software development engine." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude Code and Codex can run ten agents now. Who runs the project?" />
+    <meta name="twitter:description" content="Claude Code and Codex both run agents in parallel now. Neither runs your app to design, review or test drive what they built. runcastle runs that process, on either one." />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/geist-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
+    <!-- The ?v= stamps make browsers refetch after a change; an old cached
+         content.css would draw the posts unstyled. Bump both together. -->
+    <link rel="stylesheet" href="/styles.css?v=20261106" />
+    <link rel="stylesheet" href="/content.css?v=20261106" />
+
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Claude Code and Codex can run ten agents now. Who runs the project?",
+  "description": "Claude Code and Codex both run agents in parallel now. Neither runs your app to design, review or test drive what they built. runcastle runs that process, on either one.",
+  "url": "https://runcastle.dev/compare/claude-code-or-codex/",
+  "mainEntityOfPage": "https://runcastle.dev/compare/claude-code-or-codex/",
+  "datePublished": "2026-11-05",
+  "dateModified": "2026-11-05",
+  "author": {
+    "@type": "Organization",
+    "name": "runcastle",
+    "url": "https://runcastle.dev/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "runcastle",
+    "url": "https://runcastle.dev/"
+  }
+}
+    </script>
+  </head>
+  <body>
+    <a class="sr-only" href="#main">Skip to content</a>
+
+    <header class="nav" id="nav">
+      <div class="nav-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
+          </svg>
+          <span>runcastle</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#pipeline">How it works</a>
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+        </nav>
+
+        <div class="nav-right">
+          <a class="nav-gh" href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z" />
+            </svg>
+            GitHub
+          </a>
+          <a class="lp-btn lp-btn-primary" href="/#install">Get started</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="article post">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">runcastle</a><span class="crumbs-sep" aria-hidden="true">/</span>
+          <a href="/compare/">Compare</a><span class="crumbs-sep" aria-hidden="true">/</span>
+          <span aria-current="page">Claude Code or Codex on their own</span>
+        </nav>
+        <h1>Claude Code and Codex can run ten agents now. Who runs the project?</h1>
+        <p class="byline"><span>runcastle team</span><span class="dot"></span><span>Nov 5, 2026</span><span class="dot"></span><span>2 min read</span></p>
+        <p class="article-lede">Claude Code has <a href="https://code.claude.com/docs/en/agents">agent view, agent teams and Projects</a>. Codex gives every thread <a href="https://learn.chatgpt.com/docs/environments/git-worktrees">its own git worktree</a>. Running agents in parallel is solved. Running the project around them isn't.</p>
+        <p class="pull">Agents don't need more prompts. They need a process.</p>
+        <h2>More agents, same job</h2>
+        <p>
+          Either way, the job around the agents is still yours: decide what each one works on,
+          notice the one that's stuck, read every diff, and find out whether any of it actually
+          works. Ten agents means ten times that.
+        </p>
+        <div class="strip" role="img" aria-label="The software process step by step, Claude Code or Codex against runcastle.">
+          <div class="strip-row"><span class="strip-who">Claude Code or Codex</span><span class="strip-step is-on">Idea<small>Projects</small></span><span class="strip-step is-on">Plan<small>plan mode</small></span><span class="strip-step is-you">Design<small>you</small></span><span class="strip-step is-on">Build<small>agents</small></span><span class="strip-step is-you">Review<small>if you ask</small></span><span class="strip-step is-you">Test drive<small>you</small></span><span class="strip-step is-on">Merge<small>PR</small></span></div>
+          <div class="strip-row"><span class="strip-who">runcastle</span><span class="strip-step is-rc">Idea<small>orchestrator</small></span><span class="strip-step is-rc">Plan<small>you say yes</small></span><span class="strip-step is-rc">Design<small>in your app</small></span><span class="strip-step is-rc">Build<small>rounds</small></span><span class="strip-step is-rc">Review<small>walkthrough</small></span><span class="strip-step is-rc">Test drive<small>one click</small></span><span class="strip-step is-rc">Merge<small>you click</small></span></div>
+          <p class="strip-key">Dashed: a step you have to start yourself. Lit: runcastle does it.</p>
+        </div>
+        <h2>They'll test your app. If you ask.</h2>
+        <p>
+          Claude Code can <a href="https://code.claude.com/docs/en/chrome">open your app in Chrome
+          and click through it</a>, and Codex can use a browser, when you ask, one session at a
+          time. In runcastle it's a step that always happens. The feature's agent designs new
+          screens in your real running app before anything is built. When a round lands, a review
+          agent boots the branch, clicks through the feature and records a walkthrough, and the
+          agent fixes what it found. Then you get one click to
+          <a href="/docs/features/">test drive the branch</a>.
+        </p>
+        <figure class="post-figure">
+          <img src="/assets/posts/review.webp" width="1840" height="1150" loading="lazy" alt="A feature ready to merge: the review package in the chat says it was verified on a test drive, with its walkthrough and screenshots." />
+          <figcaption>The review package: verdict, checks, findings and a walkthrough, waiting in the chat.</figcaption>
+        </figure>
+        <h2>And you don't have to pick a side</h2>
+        <p>
+          runcastle drives Claude Code or Codex on the subscription you already pay for. Each
+          ticket gets the model that suits it, so one round can run Claude and GPT side by side.
+        </p>
+        <figure class="post-figure">
+          <img src="/assets/posts/build.webp" width="1840" height="1150" loading="lazy" alt="A round in progress: two tickets landed, three building in parallel on Claude and GPT models, the rest waiting on the tickets they need." />
+          <figcaption>One yes, ten tickets, each on the model picked for it, Claude and GPT side by side.</figcaption>
+        </figure>
+
+        <div class="facts">
+          <div class="table-scroll"><table><thead><tr><th></th><th>Claude Code</th><th>Codex</th><th>runcastle</th></tr></thead><tbody><tr><td>Parallel agents</td><td>Agent view, agent teams, Projects</td><td>Worktree threads, Codex Cloud</td><td>Rounds of workers</td></tr><tr><td>Isolation</td><td>A worktree per session</td><td>A worktree per thread</td><td>A container per worker</td></tr><tr><td>Runs your app to check it</td><td>When you ask, in Chrome</td><td>When you ask, with browser use</td><td>Every review round, on its own</td></tr><tr><td>Price</td><td>Your Claude plan</td><td>Your ChatGPT plan</td><td>Free; runs on either plan</td></tr></tbody></table></div>
+          <p class="facts-src">Checked Nov 5, 2026 against <a href="https://code.claude.com/docs/en/agents">Claude Code's docs</a>, <a href="https://code.claude.com/docs/en/chrome">its Chrome guide</a>, <a href="https://learn.chatgpt.com/docs/app">the Codex app docs</a> and <a href="https://learn.chatgpt.com/docs/environments/git-worktrees">Codex worktrees</a>.</p>
+        </div>
+        <div class="post-cta">
+          <p>Bring your next feature. Say yes once.</p>
+          <pre><code><span class="pre-prompt">$ </span>curl -fsSL https://runcastle.dev/install.sh | bash   <span class="pre-comment"># macOS, Linux</span>
+<span class="pre-prompt">&gt; </span>irm https://runcastle.dev/install.ps1 | iex          <span class="pre-comment"># Windows</span></code></pre>
+          <a class="lp-btn lp-btn-primary" href="/docs/">Read the docs</a>
+        </div>
+        <div class="next"><a href="/compare/conductor/"><span class="next-k">Next</span><span class="next-t">vs Conductor</span></a><a href="/compare/t3-code/"><span class="next-k">Or</span><span class="next-t">vs T3 Code</span></a></div>
+      </article>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
+            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
+          </svg>
+          <span>runcastle</span>
+        </a>
+        <nav class="footer-links" aria-label="Project links">
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
+          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">npm</a>
+          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">Issues</a>
+          <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
+            target="_blank">FSL-1.1</a>
+        </nav>
+        <span class="footer-meta">Built with runcastle</span>
+      </div>
+    </footer>
+
+  </body>
+</html>
