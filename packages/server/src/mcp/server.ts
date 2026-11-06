@@ -137,6 +137,7 @@ import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { recordFeatureAction, registerOrchestratorTools, requireProjectFeature } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
+import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha } from './sent-memory'
 
 /**
  * runcastle MCP server (SPEC §6) — zod-validated tools over Streamable HTTP
@@ -239,6 +240,11 @@ function requireFeatureId(session: SessionRow): string {
 /** Who a feature READ is for: the feature to read. */
 export interface FeatureReader {
   featureId: string
+  /**
+   * The conversation reading, when the caller is one — what its sent-memory is
+   * keyed by. Absent for a worker under a run header, which always reads in full.
+   */
+  sessionId?: string
 }
 
 /**
@@ -259,7 +265,7 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
       'this call carries neither a session nor a live run identity — nothing to read a feature for.',
     )
   }
-  return { featureId: requireFeatureId(caller.session) }
+  return { featureId: requireFeatureId(caller.session), sessionId: caller.session.id }
 }
 
 /**
@@ -274,7 +280,7 @@ export function projectFeatureReader(
 ): FeatureReader {
   const project = requireProject(ctx, session)
   const [featureId] = featureIdsBySlug(ctx, project.id, [slug])
-  return { featureId: featureId as string }
+  return { featureId: featureId as string, sessionId: session.id }
 }
 
 /** A merge-order dependency as an agent sees it: the slug it holds, and whether it shipped. */
@@ -368,6 +374,38 @@ export interface NotInlinedDoc {
   reason: string
 }
 
+/** A canonical doc sent whole. */
+export interface FeatureDocBody {
+  relPath: string
+  content: string
+}
+
+/** Said in every stub, so a subagent sharing its parent's session can still recover the doc. */
+export const UNCHANGED_DOC_NOTE =
+  'unchanged since this session last received it; read it at absPath or with read_feature_doc if it is not in view'
+
+/**
+ * A canonical doc this conversation was already sent and that has not changed
+ * since (`tools-and-skills-say-less` decisions 1, 16). It carries enough to
+ * read the doc again on its own: a subagent shares its parent's session, so it
+ * may get a stub for a doc it never saw.
+ */
+export interface UnchangedDoc {
+  relPath: string
+  absPath: string
+  sha: string
+  unchanged: true
+  note: typeof UNCHANGED_DOC_NOTE
+}
+
+/** How a conversation's read of the feature context is deduplicated. */
+export interface FeatureContextReadOptions {
+  /** Stub the docs this reader's session already holds, and remember what is sent. */
+  dedupe?: boolean
+  /** Resend every doc whole (still remembering what was sent). */
+  full?: boolean
+}
+
 /**
  * Key order is part of the contract: `JSON.stringify` keeps insertion order,
  * and `featureContext` builds this header first so the decision-critical fields
@@ -389,9 +427,11 @@ export interface FeatureContext {
   heldBy: string | null
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
-   * ceiling, whole, in fill order: brief → decisions → spec.
+   * ceiling, whole, in fill order: brief → decisions → spec. On a repeat read
+   * by the same conversation, a doc it already holds comes as an
+   * {@link UnchangedDoc} stub instead.
    */
-  docs: { relPath: string; content: string }[]
+  docs: (FeatureDocBody | UnchangedDoc)[]
   /**
    * The canonical docs that did NOT fit — never truncated, moved out whole with
    * a path to read them by. Empty when every one fit.
@@ -595,6 +635,7 @@ export function featureContext(
   ctx: AppCtx,
   reader: FeatureReader,
   scenarios?: FeatureScenarios,
+  options: FeatureContextReadOptions = {},
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
@@ -701,23 +742,109 @@ export function featureContext(
     rows = rows.filter((kept) => kept !== row)
   }
 
+  // A conversation re-reading gets a stub for each doc it already holds
+  // unchanged (decision 1); a run caller has no session and always reads whole.
+  const sessionId = options.dedupe ? reader.sessionId : undefined
+  const stubFor = (doc: FeatureDocBody, ref: NotInlinedDoc): UnchangedDoc | null => {
+    if (!sessionId || options.full) return null
+    const sha = contentSha(doc.content)
+    if (sentSha(sessionId, featureDocKey(feature.id, doc.relPath)) !== sha) return null
+    return { relPath: doc.relPath, absPath: ref.absPath, sha, unchanged: true, note: UNCHANGED_DOC_NOTE }
+  }
+
   // Every canonical doc starts in `notInlined`, and each is inlined in fill
   // order only if the WHOLE reply still fits — measured with the later docs'
-  // index entries still counted, so the final shape is the one checked.
+  // index entries still counted, so the final shape is the one checked. A stub
+  // is measured as a stub, so the room it frees can take a later doc whole.
   let context = assemble([], allDocsOut)
   for (const { doc, ref } of canonical) {
     const candidate = assemble(
-      [...context.docs, doc],
+      [...context.docs, stubFor(doc, ref) ?? doc],
       context.notInlined.filter((r) => r !== ref),
     )
     if (fits(candidate)) context = candidate
+  }
+  if (sessionId) {
+    for (const sent of context.docs) {
+      if ('content' in sent) recordSent(sessionId, featureDocKey(feature.id, sent.relPath), contentSha(sent.content))
+    }
   }
   return context
 }
 
 /** {@link featureContext} with its git-read scenarios block — what every MCP reply carries. */
-export async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
-  return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId))
+export async function featureContextWithGit(
+  ctx: AppCtx,
+  reader: FeatureReader,
+  options: FeatureContextReadOptions = {},
+): Promise<FeatureContext> {
+  return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId), options)
+}
+
+/**
+ * A feature as the orchestrator reads it by default (`tools-and-skills-say-less`
+ * decision 2): where it is and whether it needs the orchestrator, with ticket
+ * counts rather than rows and a docs index rather than bodies. `full: true`
+ * gets the lead's whole bundle instead.
+ */
+export interface FeatureStatusView {
+  slug: string
+  title: string
+  status: FeatureStatusT
+  waitingReason: string | null
+  waitingKind: WaitingKind | null
+  heldBy: string | null
+  humanTypedAt: number | null
+  /** A round (a burn) is running on the feature right now. */
+  roundRunning: boolean
+  ticketCounts: Record<TicketStatusT, number>
+  latestReady: ReadyDeclaration | null
+  /** The newest burned review pass's verdict; null when no review has burned. */
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
+  /** Defects the feature's reviews reported that nothing has resolved yet. */
+  openFindings: number
+  designs: { title: string; state: DesignState }[]
+  baseBranch: string | null
+  dependsOn: DependencyMark[]
+  /** Every doc in the feature's docs dir, by size; read one with read_feature_doc. */
+  docs: { relPath: string; bytes: number }[]
+}
+
+export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureStatusView {
+  const feature = getFeatureRow(ctx, reader.featureId)
+  const tickets = listByFeature(ctx, feature.id)
+  const ticketCounts = Object.fromEntries(TicketStatus.options.map((s) => [s, 0])) as Record<TicketStatusT, number>
+  for (const ticket of tickets) ticketCounts[ticket.status] += 1
+  const latestReview = latestBurnedReview(tickets)
+  const holder = holderOf(ctx, feature)
+  return {
+    slug: feature.slug,
+    title: feature.title,
+    status: feature.status,
+    waitingReason: feature.waitingReason,
+    waitingKind: feature.waitingKind,
+    heldBy: holder ? holderName(holder) : null,
+    humanTypedAt: humanTypedAt(ctx, feature.id),
+    roundRunning: listRunsByFeature(ctx, feature.id).some((run) => run.status === 'running'),
+    ticketCounts,
+    latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
+    reviewVerdict: latestReview?.reviewVerdict ?? null,
+    reviewVerdictReason: latestReview?.reviewVerdictReason ?? null,
+    openFindings: openDefectsOf(ctx, feature.id).length,
+    designs: leadDesigns(ctx, feature.id).map(({ title, state }) => ({ title, state })),
+    baseBranch: feature.baseBranch ?? null,
+    dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
+    docs: listDocs(ctx, feature).map((summary) => {
+      let bytes = 0
+      try {
+        bytes = Buffer.byteLength(readDoc(ctx, feature, summary.relPath).content, 'utf8')
+      } catch {
+        // An unreadable doc is indexed at zero, as featureContext treats it.
+      }
+      return { relPath: summary.relPath, bytes }
+    }),
+  }
 }
 
 function ticketRow(ticket: Ticket): FeatureContextTicketRow {
@@ -842,10 +969,18 @@ export function toolListTickets(
  * `get_feature_context` row leaves out. Addressed by `seq`, the number the UI,
  * `blockedBy` and those rows all speak in.
  */
-export function toolGetTicket(ctx: AppCtx, reader: FeatureReader, input: { seq: number }): Ticket {
+export function toolGetTicket(
+  ctx: AppCtx,
+  reader: FeatureReader,
+  input: { seq: number; full?: boolean },
+): Ticket | Omit<Ticket, 'context'> {
   const ticket = listByFeature(ctx, reader.featureId).find((t) => t.seq === input.seq)
   if (!ticket) throw new NotFoundError(`ticket #${input.seq} not found on this feature`)
-  return ticket
+  // A settled ticket's plan is spent (`tools-and-skills-say-less` decision 5):
+  // a reader needs what it did and what it was meant to do, not its instructions.
+  if (input.full || !SETTLED.includes(ticket.status)) return ticket
+  const { context: _plan, ...settled } = ticket
+  return settled
 }
 
 /** A stored ticket named the way the batch speaks about it: id, seq and title. */
@@ -931,6 +1066,21 @@ export function toolEmitTickets(
  * every other ticket stays editable mid-burn, which is how the chat shapes the
  * NEXT burn's work while this one runs.
  */
+/**
+ * What a ticket write answers with (`tools-and-skills-say-less` decision 3): the
+ * caller just sent the change, so the row is not echoed back.
+ */
+export interface TicketReceipt {
+  ok: true
+  seq: number
+  status: TicketStatusT
+}
+
+/** {@link TicketReceipt} plus the field names the edit sent. */
+export interface TicketUpdateReceipt extends TicketReceipt {
+  changed: string[]
+}
+
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
   // Scope first, existence second: a session with no feature has no business
   // asking about any ticket, and telling it "that id doesn't exist" would send
@@ -953,20 +1103,23 @@ export function toolUpdateTicket(
   ctx: AppCtx,
   session: SessionRow,
   input: { id: string } & TicketContentPatch,
-): { ok: true; ticket: Ticket } {
+): TicketUpdateReceipt {
   requireOwnTicket(ctx, session, input.id)
   const { id, ...patch } = input
   requireAnnotatedModels(ctx, [patch.model])
-  return { ok: true, ticket: editTicket(ctx, id, patch) }
+  const ticket = editTicket(ctx, id, patch)
+  const changed = Object.entries(patch).flatMap(([key, value]) => (value === undefined ? [] : [key]))
+  return { ok: true, seq: ticket.seq, status: ticket.status, changed }
 }
 
 export function toolCancelTicket(
   ctx: AppCtx,
   session: SessionRow,
   input: { id: string; reason?: string },
-): { ok: true; ticket: Ticket } {
+): TicketReceipt {
   requireOwnTicket(ctx, session, input.id)
-  return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
+  const ticket = cancelTicket(ctx, input.id, input.reason)
+  return { ok: true, seq: ticket.seq, status: ticket.status }
 }
 
 // --- the lead's rounds (`the-feature-lead-runs-rounds`) ------------------------
@@ -1210,14 +1363,40 @@ export function toolResolveFinding(
   ctx: AppCtx,
   session: SessionRow,
   input: ResolveFindingInputT,
-): { ok: true; finding: ReviewFinding } {
+): FindingReceipt {
   const featureId = requireFeatureId(session)
   const { findingId, disposition, note } = ResolveFindingInput.parse(input)
+  // A finding of this feature that already closed itself (its fix ticket
+  // landed) met the caller's intent: answer with its state rather than the
+  // service's refusal (`tools-and-skills-say-less` decision 4). A foreign or
+  // unknown finding falls through to the service, which still refuses it.
+  const current = listReviewFindings(ctx, featureId).find((finding) => finding.id === findingId)
+  if (current && (current.status === 'fixed' || current.status === 'dismissed')) {
+    const asked = disposition === 'addressed' ? 'fixed' : 'dismissed'
+    return {
+      ok: true,
+      findingId,
+      status: current.status,
+      alreadyClosed: true,
+      ...(current.status !== asked ? { note: `it was already ${current.status}, not ${asked}` } : {}),
+    }
+  }
   const finding =
     disposition === 'addressed'
       ? closeAsAddressed(ctx, featureId, findingId, note ?? '')
       : dismissAsAgent(ctx, featureId, findingId, note ?? '')
-  return { ok: true, finding }
+  return { ok: true, findingId, status: finding.status }
+}
+
+/** What `resolve_finding` answers with: the finding's status now, never the row. */
+export interface FindingReceipt {
+  ok: true
+  findingId: string
+  status: ReviewFinding['status']
+  /** It had already closed before this call, which changed nothing. */
+  alreadyClosed?: true
+  /** Present when it closed differently from how this call asked to close it. */
+  note?: string
 }
 
 /**
@@ -2152,11 +2331,18 @@ export interface BaseBranches {
  * would cut from, then the charter that binds every decision, then the indexes.
  */
 export interface ProjectContext {
-  project: Project
-  /** The base a new feature would cut from; see {@link BaseBranches}. */
-  baseBranches: BaseBranches
-  /** `CONTEXT.md` in full; absent when the project has no charter yet. */
-  charter?: string
+  /** The whole row with `full: true`; otherwise just what names it ({@link ProjectSummary}). */
+  project: Project | ProjectSummary
+  /**
+   * The base a new feature would cut from; see {@link BaseBranches}. The
+   * `selectable` list comes only with `full: true`.
+   */
+  baseBranches: BaseBranches | Omit<BaseBranches, 'selectable'>
+  /**
+   * `CONTEXT.md` in full; absent when the project has no charter yet. A stub on
+   * a repeat read by a conversation that already holds this version.
+   */
+  charter?: string | UnchangedCharter
   /**
    * Live ADRs as an INDEX — superseded ones are omitted (decision 13), and the
    * rest are named rather than inlined. Read one with `read_adr({ relPath })`.
@@ -2168,6 +2354,18 @@ export interface ProjectContext {
   featureIndex: string[]
   /** Says where shipped features' docs live and how to reach an unlisted one. */
   featureIndexNote: string
+}
+
+/**
+ * The project row as a default read carries it (`tools-and-skills-say-less`
+ * decision 7): the long prepared settings matter only when preparing.
+ */
+export type ProjectSummary = Pick<Project, 'id' | 'name' | 'repoPath' | 'sessionBranch'>
+
+/** The charter on a repeat read, when the conversation already holds this version. */
+export interface UnchangedCharter {
+  unchanged: true
+  sha: string
 }
 
 const ADRS_NOTE =
@@ -2217,19 +2415,37 @@ export const FEATURE_INDEX_SHIPPED_CAP = 50
 export async function toolGetProjectContext(
   ctx: AppCtx,
   session: SessionRow,
+  input: { full?: boolean } = {},
 ): Promise<ProjectContext> {
   const project = requireProject(ctx, session)
   const baseBranches = await readBaseBranches(project)
-  const charter = readCharter(session.worktreePath)
+  const charter = projectCharter(session, input.full === true)
+  const { selectable: _selectable, ...defaultBranches } = baseBranches
   return {
-    project,
-    baseBranches,
+    project: input.full
+      ? project
+      : { id: project.id, name: project.name, repoPath: project.repoPath, sessionBranch: project.sessionBranch },
+    baseBranches: input.full ? baseBranches : defaultBranches,
     ...(charter !== undefined ? { charter } : {}),
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
     featureIndex: featureIndex(ctx, project.id, session.id),
     featureIndexNote: FEATURE_INDEX_NOTE,
   }
+}
+
+/**
+ * The charter as this session should get it: whole the first time, and as an
+ * {@link UnchangedCharter} once the session holds this version — unless `full`.
+ * Either way the version sent whole is remembered.
+ */
+function projectCharter(session: SessionRow, full: boolean): string | UnchangedCharter | undefined {
+  const charter = readCharter(session.worktreePath)
+  if (charter === undefined) return undefined
+  const sha = contentSha(charter)
+  if (!full && sentSha(session.id, CHARTER_DOC_KEY) === sha) return { unchanged: true, sha }
+  recordSent(session.id, CHARTER_DOC_KEY, sha)
+  return charter
 }
 
 /**
@@ -3189,13 +3405,17 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           '(backlog, with an open dependency). Older shipped and archived ' +
           'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
           'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
-          '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`.',
-        inputSchema: {},
+          '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`. ' +
+          'By default the project row is cut to its name and paths, `selectable` is left out, and ' +
+          'a repeat sends the charter as unchanged; `full: true` returns all of it.',
+        inputSchema: {
+          full: z.boolean().optional().describe('Return the whole project row, every selectable base and the charter.'),
+        },
       },
-      async (_args, extra) => {
+      async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(await toolGetProjectContext(rs.ctx, rs.session))
+        return ok(await toolGetProjectContext(rs.ctx, rs.session, args))
       },
     )
   }
@@ -3437,30 +3657,36 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
         '`notInlined` was too large to include and MUST be read before acting ' +
         '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
-        'docs/features/<slug>/.',
+        'docs/features/<slug>/. A repeat call sends a doc you already hold unchanged as a ' +
+        'stub; `full: true` resends everything.',
     }
+    const full = z.boolean().optional().describe('Return every doc in full.')
     if (projectReads) {
       server.registerTool(
         'get_feature_context',
         {
           ...config,
-          description: config.description + PROJECT_READ_NOTE,
-          inputSchema: { slug: ReadSlug },
+          description:
+            config.description +
+            PROJECT_READ_NOTE +
+            ' From the orchestrator it returns a short status view; `full: true` returns the bundle.',
+          inputSchema: { slug: ReadSlug, full },
         },
-        async ({ slug }, extra) => {
+        async ({ slug, full: wantsFull }, extra) => {
           const r = await resolveProjectReader(extra, slug)
           if (!r) return noSession()
+          if (!wantsFull) return ok(featureStatusView(r.ctx, r.reader))
           return ok(await featureContextWithGit(r.ctx, r.reader))
         },
       )
     } else {
       server.registerTool(
         'get_feature_context',
-        { ...config, inputSchema: {} },
-        async (_args, extra) => {
+        { ...config, inputSchema: { full } },
+        async ({ full: wantsFull }, extra) => {
           const r = await resolveReader(extra)
           if (!r) return noSession()
-          return ok(await featureContextWithGit(r.ctx, r.reader))
+          return ok(await featureContextWithGit(r.ctx, r.reader, { dedupe: true, full: wantsFull }))
         },
       )
     }
@@ -3554,20 +3780,22 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
         'blockedBy, status, error, and the worker’s `digest` of what the round actually did. ' +
         '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
-        'rest here before editing, reviewing or planning around a ticket.',
+        'rest here before editing, reviewing or planning around a ticket. A done or cancelled ' +
+        'ticket leaves out its `context` unless `full: true`.',
     }
     const seq = z
       .number()
       .int()
       .min(1)
       .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.')
+    const full = z.boolean().optional().describe('Include a settled ticket’s context.')
     if (projectReads) {
       server.registerTool(
         'get_ticket',
         {
           ...config,
           description: config.description + PROJECT_READ_NOTE,
-          inputSchema: { slug: ReadSlug, seq },
+          inputSchema: { slug: ReadSlug, seq, full },
         },
         async ({ slug, ...args }, extra) => {
           const r = await resolveProjectReader(extra, slug)
@@ -3578,7 +3806,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     } else {
       server.registerTool(
         'get_ticket',
-        { ...config, inputSchema: { seq } },
+        { ...config, inputSchema: { seq, full } },
         async (args, extra) => {
           const r = await resolveReader(extra)
           if (!r) return noSession()
@@ -3655,7 +3883,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolUpdateTicket(rs.ctx, rs.session, args)
-        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.ticket.seq} updated`)
+        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.seq} updated`)
         return ok(result)
       },
     )
@@ -3682,7 +3910,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolCancelTicket(rs.ctx, rs.session, args)
-        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.ticket.seq} cancelled`)
+        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.seq} cancelled`)
         return ok(result)
       },
     )

@@ -7,6 +7,7 @@ import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launch
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
+import { clearSentMemoryOnStart } from '../mcp/sent-memory'
 import {
   getSessionRow,
   markAgentWorking,
@@ -170,6 +171,8 @@ function handleSessionStart(
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
   const source = typeof payload?.source === 'string' ? payload.source : undefined
 
+  // A conversation that lost its context no longer holds what read tools sent it.
+  clearSentMemoryOnStart(sessionId, source)
   const wasLive = getSessionRow(ctx, sessionId)?.status === 'live'
   markSessionLive(ctx, sessionId, { ccSessionId, transcriptPath })
   if (!wasLive) {
@@ -232,6 +235,7 @@ async function handleProjectScopedSessionStart(
   const source = typeof payload?.source === 'string' ? payload.source : undefined
 
   const noun = projectScopedNoun(session.kind)
+  clearSentMemoryOnStart(session.id, source)
   const wasLive = getSessionRow(ctx, session.id)?.status === 'live'
   markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
   if (!wasLive) {
