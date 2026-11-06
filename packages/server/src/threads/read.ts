@@ -191,12 +191,14 @@ export interface LeadState {
   inBackground: boolean
   /** Its process runs and it is mid-turn or its background work still runs. */
   working: boolean
+  /** Its process runs and its turn waits on the human's answer to a permission or a question. */
+  asking: boolean
   /** When its main chat last logged anything: when a reply it awaits an answer to ended. */
   since: number
 }
 
 /** What a feature with no lead at work reads as. */
-export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false, working: false, since: 0 }
+export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false, working: false, asking: false, since: 0 }
 
 /**
  * What the feature's lead is doing (decision 15): {@link threadActivity} over its
@@ -220,6 +222,7 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
         inBackground: activity === 'background',
         // No process survives a restart: a log cut off mid-turn is not working.
         working: running && (activity === 'turn' || activity === 'background'),
+        asking: running && activity === 'asking',
         since: at,
       },
     }

@@ -833,6 +833,26 @@ describe('lastPickedModel', () => {
 /** Whether the thread waits on the human, with no background work in these logs to weigh. */
 const awaitsHuman = (events: readonly ThreadEvent[], running: boolean): boolean => ['asking', 'replied'].includes(threadActivity(events, running, 0))
 
+describe('threadActivity and held prompts (agents-are-woken-only-when-it-matters decision 2)', () => {
+  const line = (body: ThreadEventBody, i: number): ThreadEvent => ({ ...body, i, at: 1_000 }) as ThreadEvent
+  const replied = [
+    { type: 'prompt', id: 'p1', text: 'Plan it', source: 'human' },
+    { type: 'turn_started' },
+    { type: 'agent_text', messageId: 'm1', text: 'Shall I start round 1?' },
+    { type: 'turn_ended', reason: 'end_turn' },
+  ] as ThreadEventBody[]
+
+  it('still waits on the human after a held line arrives, since it answers nothing', () => {
+    const held = { type: 'prompt', id: 'p2', text: '[runcastle] The human pressed Stop.', source: 'runcastle', held: true } as ThreadEventBody
+    expect(threadActivity([...replied, held].map(line), true, 1_000)).toBe('replied')
+  })
+
+  it('stops waiting once a prompt that is not held arrives', () => {
+    const sent = { type: 'prompt', id: 'p2', text: 'Yes', source: 'human' } as ThreadEventBody
+    expect(threadActivity([...replied, sent].map(line), true, 1_000)).not.toBe('replied')
+  })
+})
+
 describe('threadActivity with background work', () => {
   const at = 1_000
   const line = (body: ThreadEventBody, i: number, when = at): ThreadEvent => ({ ...body, i, at: when }) as ThreadEvent

@@ -598,6 +598,8 @@ class Host implements AgentHost {
   }
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
+    // An archived thread is done with: nothing wakes it at a usage reset.
+    if (reason === 'archived') this.dropResetWake(threadId)
     const t = this.threads.get(threadId)
     if (!t) return
     const turn = t.turn
@@ -1150,10 +1152,12 @@ class Host implements AgentHost {
   }
 
   /** Add `text` to what the thread's next prompt carries ahead of its words. */
-  private keepHeld(threadId: string, text: string, key?: string): void {
+  private keepHeld(threadId: string, text: string, key?: string, first = false): void {
+    if (text === '') return
     const pending = readPendingFork(threadId)
     const held = (pending.held ?? []).filter((h) => key === undefined || h.key !== key)
-    writePendingFork(threadId, { ...pending, held: [...held, { id: newId('held'), text, ...(key !== undefined ? { key } : {}) }] })
+    const entry = { id: newId('held'), text, ...(key !== undefined ? { key } : {}) }
+    writePendingFork(threadId, { ...pending, held: first ? [entry, ...held] : [...held, entry] })
   }
 
   /** The prompt is going to the agent: what it carries is said, so it leaves the disk. */
@@ -1175,7 +1179,9 @@ class Host implements AgentHost {
    */
   private async heldByLimit(t: Thread, item: Queued): Promise<void> {
     const first = item.blocks[0]
-    this.keepHeld(t.id, first?.type === 'text' ? first.text : item.text)
+    const said = first?.type === 'text' ? first.text : item.text
+    // It was said first, so it goes first; a reset wake it carried is said again by the next one.
+    this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, undefined, true)
     const runtime = this.runtimeOf(t.id)
     const at = limitLiftsAt((await this.usage(t.id)).limits, Date.now())
     if (at === undefined) {
@@ -1190,6 +1196,13 @@ class Host implements AgentHost {
   /** The runtime a thread runs on. */
   private runtimeOf(threadId: string): AgentRuntime {
     return getSessionRow(this.ctx, threadId)?.runtime ?? DEFAULT_RUNTIME
+  }
+
+  /** Forget a thread's reset wake, if it has one. */
+  private dropResetWake(threadId: string): void {
+    const timer = this.resetWakes.get(threadId)
+    if (timer) clearTimeout(timer)
+    this.resetWakes.delete(threadId)
   }
 
   /** Wake the thread once, a little after `at`; what it holds rides the wake. One per thread. */

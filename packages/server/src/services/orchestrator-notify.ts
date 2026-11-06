@@ -148,7 +148,9 @@ function describe(event: EventRow, state: NotifyState, slug: string): Described 
     }
     case 'run.finished': {
       const summary = typeof data.summary === 'string' ? clip(data.summary) : ''
-      // A finished round goes to its lead, whose ready or wait line follows; a failed one is the holder's to see.
+      // A finished round goes to its lead, whose ready or wait line follows; a failed one is the
+      // holder's to see. A cancelled one is the human's own Stop: they know.
+      if (data.status === 'cancelled') return { kind: 'end', text: `round cancelled${summary ? ` (${summary})` : ''}. ${tickets}`, reason: 'news' }
       const ok = data.status === 'succeeded'
       return { kind: 'end', text: `${ok ? 'round finished' : 'round failed'}${summary ? ` (${summary})` : ''}. ${tickets}`, reason: ok ? 'news' : 'handback' }
     }
@@ -275,6 +277,7 @@ function humanWords(event: EventRow, ticket: NotifyState['ticket']): NewsEvent |
         ? { tone: 'done', words: 'Finished planning' }
         : { tone: 'failed', words: 'Stopped before the plan was complete' }
     case 'run.finished': {
+      if (data.status === 'cancelled') return { tone: 'info', words: 'Round cancelled' }
       if (data.status === 'succeeded') {
         return { tone: 'done', words: typeof data.round === 'number' ? `Round ${data.round} finished` : 'Round finished' }
       }

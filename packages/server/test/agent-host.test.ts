@@ -1130,6 +1130,34 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     expect(texts()).toEqual(['Start', 'News\n\nA', 'B'])
   })
 
+  it('says what the limit stopped first, ahead of what was held after it, with one reset line however often it is hit', async () => {
+    const at = Date.now() + 300
+    setup(limited(2), { readUsage: spentUntil(at), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice'))
+    await host.prompt(id, { text: 'Later' }, { source: 'runcastle', hold: true })
+    // The reset wake hits the limit again, and is held for the next reset.
+    await logUntil(id, turnsEnded(2), 5000)
+    await logUntil(id, (e) => e.filter((x) => x.type === 'notice').length >= 2)
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, turnsEnded(3), 5000)
+    const last = texts().at(-1) ?? ''
+    expect(last.startsWith('News\n\nLater\n\nHi')).toBe(true)
+    expect(last.split('The usage limit has reset').length - 1).toBe(0)
+  })
+
+  it('wakes no archived thread at the reset', async () => {
+    setup(limited(), { readUsage: spentUntil(Date.now() + 200), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.includes('when the limit resets')))
+    await host.stop(id, 'archived')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(texts()).toEqual(['News'])
+    expect(host.isRunning(id)).toBe(false)
+  })
+
   it('leaves a human’s own message to them, but keeps what rode ahead of it', async () => {
     setup(limited(), { readUsage: spentUntil(Date.now() + 60_000), usageResetGraceMs: 0 })
     const id = thread()

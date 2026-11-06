@@ -245,6 +245,22 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     expect(sentToAgent()[0]).toContain('[runcastle] Round 1 returned\n\n[runcastle] The human pressed Stop')
   })
 
+  it('tells a lead whose turn waits on a permission about Stop when that turn ends', async () => {
+    fake.script.turn = async (t) => {
+      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) {
+        await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
+      }
+    }
+    const f = feature()
+    const id = chat(f.id)
+    await deliverToLead(ctx, f, { text: 'work', source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'ask'))
+
+    await stopFeature(ctx, f.id)
+
+    expect(promptsOf(id).some((p) => p.held)).toBe(false)
+  })
+
   it('holds Stop for an idle lead', async () => {
     const f = feature()
     const id = chat(f.id)

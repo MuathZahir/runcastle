@@ -305,6 +305,7 @@ describe('which lines wake the holder (agents-are-woken-only-when-it-matters dec
     ['planning ended after a wait went out', event('session.self_plan_ended', { complete: true }), waiting],
     ['planning stopped after a wait went out', event('session.self_plan_ended', { complete: false }), waiting],
     ['a round finished', event('run.finished', { status: 'succeeded' }), held],
+    ['the human cancelled a round', event('run.finished', { status: 'cancelled' }), held],
     ['a restart cut a round off', event('run.reconciled', { workflow: 'ticket-burner' }), held],
     ['a review pass finished', event('ticket.done'), { ...held, ticket: review }],
     ['a verification pass failed', event('ticket.failed'), { ...held, ticket: { ...review, passKind: 'verification' } }],

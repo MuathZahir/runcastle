@@ -42,6 +42,7 @@ so workers can adopt it later unchanged.
 | self-planning run ended, feature not waiting on the human | wake |
 | self-planning run ended, feature already waiting on the human | hold |
 | round finished | hold |
+| round cancelled by the human's Stop | hold |
 | round cut off by a restart | hold |
 | review / verification pass finished or failed | hold |
 | another thread took the feature | hold |
