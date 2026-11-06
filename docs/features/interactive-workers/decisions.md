@@ -141,3 +141,13 @@ the human, or stopped on idle, does not count. A worker over the limit waits in 
 "queued" in the sidebar, and starts by itself when a slot frees.
 **Why:** Workers and burns load the same machine; two separate limits would be two numbers for one
 machine. Not counting waiting workers keeps stepping into a "with you" worker unblocked.
+
+## 15. Previews go through runcastle's pass-through and wake only the sandbox
+**Decision:** A worker's preview goes through runcastle's existing design pass-through (the one the
+phone's Design screen uses), routed to that worker, so it works on the laptop, the VPS and the
+phone alike. The worker's chat header shows "Open preview" while its dev server runs. Opening a
+stopped worker's preview starts its container and dev server but not its agent; it stops again
+after the usual idle time. The worker's instructions say its dev server must accept connections
+from outside the container, and its dev-server tool says so when it does not.
+**Why:** The prototype's `localhost:<port>` address breaks once runcastle moves to the VPS.
+Looking at a design hours later should not need a throwaway message to wake the agent.
