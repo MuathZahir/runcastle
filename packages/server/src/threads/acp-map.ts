@@ -279,6 +279,8 @@ export function createUpdateMapper(newId: (prefix: string) => string): (update: 
   let thoughtRun: string | undefined
   /** Each announced subagent session, to the subagent the thread shows its work under. */
   const subagents = new Map<string, string>()
+  /** The compactions already logged, by the agent's id for each. */
+  const compacted = new Set<string>()
 
   /** Note a subagent session, announced on the thread's own session or (`parent`) on a subagent's. */
   const announced = (child: string, parent: string | undefined): void => {
@@ -351,7 +353,11 @@ export function createUpdateMapper(newId: (prefix: string) => string): (update: 
         return model ? [model] : []
       }
       case 'compaction_update':
-        return update.status === 'completed' ? [{ type: 'compacted' }] : []
+        // claude-agent-acp reports one compaction completed twice (the status,
+        // then again with its token counts): the thread logs it once.
+        if (update.status !== 'completed' || compacted.has(update.compactionId)) return []
+        compacted.add(update.compactionId)
+        return [{ type: 'compacted' }]
       default:
         // The prompts are logged as they are sent; modes, notices, session
         // messages and the rest have no place in the thread yet.

@@ -194,21 +194,39 @@ function FastToggle({ fast, onFast }: { fast: boolean; onFast: (on: boolean) => 
   return <IconButton label="Fast mode" icon={<IconFlame size={14} />} active={fast} onClick={() => onFast(!fast)} />
 }
 
-/** How full is too full: amber from 65%, red from 85%. */
-function fullness(percent: number): 'danger' | 'warning' | 'quiet' {
+type Tone = 'danger' | 'warning' | 'quiet'
+
+/** How full is too full, for the account's usage limits: amber from 65%, red from 85%. */
+function fullness(percent: number): Tone {
   return percent >= 85 ? 'danger' : percent >= 65 ? 'warning' : 'quiet'
 }
 
-function Bar({ percent }: { percent: number }) {
-  const tone = { danger: 'bg-danger', warning: 'bg-warning', quiet: 'bg-text-secondary' }[fullness(percent)]
+/**
+ * Where a context starts to cost (`honest-token-counts` decision 8): every
+ * message re-reads the whole context, so cost grows with its size, not with how
+ * full the window is. Amber from 200k, red from 400k — or from 85% of a small
+ * window, so a model that runs out first still warns before it does.
+ */
+const CONTEXT_WARN = 200_000
+const CONTEXT_DANGER = 400_000
+
+function contextTone(used: number, size: number): Tone {
+  if (used >= CONTEXT_DANGER || (size > 0 && used / size >= 0.85)) return 'danger'
+  return used >= CONTEXT_WARN ? 'warning' : 'quiet'
+}
+
+function Bar({ percent, tone = fullness(percent) }: { percent: number; tone?: Tone }) {
+  const fill = { danger: 'bg-danger', warning: 'bg-warning', quiet: 'bg-text-secondary' }[tone]
   return (
     <span className="block h-1 w-full overflow-hidden rounded-full bg-border">
-      <span className={cx('block h-full rounded-full', tone)} style={{ width: `${Math.min(100, percent)}%` }} />
+      <span className={cx('block h-full rounded-full', fill)} style={{ width: `${Math.min(100, percent)}%` }} />
     </span>
   )
 }
 
-const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+/** A token count as the composer and the chat say it: 231k, 1.2M. */
+export const k = (n: number) =>
+  n >= 1_000_000 ? `${Number((n / 1_000_000).toFixed(1))}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
 
 /**
  * How full the context is, as a small ring by Send; it opens to the numbers,
@@ -233,9 +251,10 @@ export function ContextMeter({
   const percent = Math.round((context.used / context.size) * 100)
   // A phone's footer row has no room for the bar beside the model, effort,
   // Attach and Send, so the number alone shows, coloured as the bar would be
-  // (phone-fixes decision 4). The popover keeps its bar.
+  // (phone-fixes decision 4). The popover keeps its bar. The number is the
+  // context's size, which is what the colour is about (honest-token-counts).
   const phone = useIsPhone()
-  const tone = fullness(percent)
+  const tone = contextTone(context.used, context.size)
   return (
     <Popover onOpenChange={(open) => open && onOpen?.()}>
       <PopoverTrigger
@@ -249,10 +268,10 @@ export function ContextMeter({
       >
         {!phone && (
           <span className="block w-5">
-            <Bar percent={percent} />
+            <Bar percent={percent} tone={tone} />
           </span>
         )}
-        <span className={cx(phone && tone === 'warning' && 'text-warning', phone && tone === 'danger' && 'text-danger')}>{percent}%</span>
+        <span className={cx(tone === 'warning' && 'text-warning', tone === 'danger' && 'text-danger')}>{k(context.used)}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">
@@ -263,7 +282,12 @@ export function ContextMeter({
                 {k(context.used)} of {k(context.size)} · {percent}%
               </span>
             </div>
-            <Bar percent={percent} />
+            <Bar percent={percent} tone={tone} />
+            {tone !== 'quiet' && (
+              <span className="text-xs text-text-tertiary">
+                Every message now re-reads the whole context. Compact now cuts the cost.
+              </span>
+            )}
             {context.costUsd !== undefined && (
               <span className="text-xs tabular-nums text-text-tertiary">This chat so far: ${context.costUsd.toFixed(2)}</span>
             )}

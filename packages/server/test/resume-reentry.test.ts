@@ -33,8 +33,8 @@ describe('the re-entry cap', () => {
   })
 
   /**
-   * There is no compaction, pruning or summarization anywhere in runcastle, so
-   * `--resume` is monotonic. A measured `prepare` conversation resumed across
+   * Nothing compacts, prunes or summarises a session other than a feature
+   * lead's chat, so for them `--resume` is monotonic. A measured `prepare` conversation resumed across
    * four rows reached 1.42 MB / ~91k tokens; past that, Claude Code's own
    * auto-compact fires and silently drops exactly the decision prose the revisit
    * came back for.

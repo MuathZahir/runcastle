@@ -67,6 +67,23 @@ describe('kickoff registry + override', () => {
     }
   })
 
+  it('tells a resumed conversation to invoke the skill only if its text is not already there, and is still a kickoff', () => {
+    for (const runtime of ['claude-code', 'codex'] as const) {
+      const chat = chatKickoffFor(runtime, true)
+      const selfPlan = selfPlanKickoffFor(runtime, true)
+      expect(chat).toContain('unless its text is already in this conversation')
+      expect(selfPlan).toContain('unless its text is already in this conversation')
+      // The rest of the self-plan briefing is untouched.
+      expect(selfPlan).toContain('no human is present')
+      expect(selfPlan).toContain('end by asking for the human')
+      // Recognised in a transcript from either form, so it stays out of the quotes.
+      expect(promptMatchesKickoff(chatKickoffFor(runtime), chat)).toBe(true)
+      expect(promptMatchesKickoff(selfPlanKickoffFor(runtime), selfPlan)).toBe(true)
+      // A fresh conversation's line is unchanged.
+      expect(chatKickoffFor(runtime)).not.toContain('unless')
+    }
+  })
+
   it('keeps a side session off rounds, with no word of Go', () => {
     const line = sideKickoffFor()
     expect(line).toContain('except run rounds')

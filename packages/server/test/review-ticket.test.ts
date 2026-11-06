@@ -1578,6 +1578,26 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
     expect(withheldDriveFor('run_1')).toBeUndefined()
   })
 
+  it('adds its worker run’s tokens to the review ticket (honest-token-counts decision 5)', async () => {
+    const transcript = join(dataDir, 'review-run.jsonl')
+    writeFileSync(
+      transcript,
+      `${JSON.stringify({ type: 'assistant', timestamp: '2026-11-06T10:00:00Z', message: { id: 'm1', usage: { input_tokens: 3, output_tokens: 7 } } })}\n`,
+    )
+    const added: Array<{ ticketId: string; total: number; sessionIds: string[] }> = []
+    const ctx = {
+      ...makeCtx([review(7)]),
+      addTicketTokens: (ticketId: string, usage: { total: number }, sessionIds: string[]) => {
+        added.push({ ticketId, total: usage.total, sessionIds })
+      },
+    }
+    await executeReviewTicket(ctx, review(7), reviewDeps({
+      runAgent: async () => ({ iterations: [{ sessionId: 'cc-r', sessionFilePath: transcript }], commits: [] }),
+      recorderReap: async () => ({ confirmed: true }),
+    }))
+    expect(added).toEqual([{ ticketId: review(7).id, total: 10, sessionIds: ['cc-r'] }])
+  })
+
   it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {
     const failed = await executeReviewTicket(makeCtx([review(4)]), review(4), reviewDeps({
       runAgent: async () => { throw new Error('agent crashed') },

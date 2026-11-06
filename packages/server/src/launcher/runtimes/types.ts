@@ -1,4 +1,5 @@
-import type { AgentRuntime, SessionKind } from '@runcastle/core'
+import type { AgentRuntime, SessionKind, SessionRow } from '@runcastle/core'
+import { envInt } from '../../util/env-int'
 import type { WriteArtifactsInput } from '../artifacts'
 
 /**
@@ -62,6 +63,21 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
 /** A headless launch has no terminal to type into, so its prompt is the whole briefing. */
 export function assertHeadlessKickoff(headless: boolean | undefined, line: string | undefined): void {
   if (headless && !line) throw new Error('a headless launch needs a kickoff line as its prompt')
+}
+
+/**
+ * The context size at which a feature lead's runtime compacts on its own inside
+ * a long turn (lead-chats-stay-small decision 8): Claude Code's
+ * `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, Codex's `model_auto_compact_token_limit`.
+ * `RUNCASTLE_AUTOCOMPACT_WINDOW` moves it for the install; `0` leaves each
+ * runtime's own. The quiet-moment compactions sit beside the idle stop in
+ * `threads/host.ts`.
+ */
+export const AUTOCOMPACT_WINDOW_TOKENS = envInt('RUNCASTLE_AUTOCOMPACT_WINDOW', 200_000)
+
+/** The auto-compact window a session launches with: a feature lead's (its main chat), and nobody else's. */
+export function autoCompactWindow(session: Pick<SessionRow, 'kind' | 'featureId'>): number | undefined {
+  return session.kind === 'chat' && session.featureId && AUTOCOMPACT_WINDOW_TOKENS > 0 ? AUTOCOMPACT_WINDOW_TOKENS : undefined
 }
 
 /** Keep comfortably below Windows' 32,767-character command-line ceiling. */

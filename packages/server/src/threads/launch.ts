@@ -13,6 +13,7 @@ import { heldSlugs } from '../services/holding'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
+import { clearEndedErrand } from '../services/resolved-merge'
 
 /**
  * How a thread's agent is launched over ACP: its runtime's {@link AcpLaunchSpec}
@@ -79,7 +80,9 @@ function hostSidePosture(runtime: string): { permissionMode?: string } {
  * today's launchers wrote it, and the kind's permission posture (which
  * `acpLaunch` turns into the session mode).
  */
-export async function acpLaunchInput(ctx: AppCtx, row: SessionRow): Promise<RuntimeLaunchInput> {
+export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<RuntimeLaunchInput> {
+  // An errand that is over is not handed on (`honest-token-counts` decision 12).
+  const row = clearEndedErrand(ctx, thread)
   const runtime = row.runtime ?? DEFAULT_RUNTIME
   const project = rowProject(ctx, row)
   const base = {

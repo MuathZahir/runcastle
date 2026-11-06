@@ -15,7 +15,7 @@ import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
-import { emitProject } from '../services/events'
+import { emitForSession, emitProject } from '../services/events'
 import {
   branchCommitsAhead,
   currentCheckoutBranch,
@@ -25,7 +25,9 @@ import {
   type ProjectLandResult,
 } from '../services/git'
 import { getProjectById, rowToSession } from '../services/repo'
+import { refreshSessionTokens } from '../services/usage'
 import { hasThreadLog } from '../threads/log'
+import { envInt } from '../util/env-int'
 import { runtimeAdapterFor } from './runtimes'
 
 /**
@@ -128,9 +130,15 @@ export function markAgentWorking(ctx: AppCtx, id: string): void {
   setAwaitingInput(ctx, id, false)
 }
 
-/** @see {@link markAgentWorking} — the other half of the turn. */
+/**
+ * @see {@link markAgentWorking} — the other half of the turn. A finished turn
+ * is also when the conversation's token count is brought up to date
+ * (`honest-token-counts` decision 3): its transcript is complete for now, and
+ * every kind of session passes here, the ones with no feature included.
+ */
 export function markAwaitingInput(ctx: AppCtx, id: string): void {
   setAwaitingInput(ctx, id, true)
+  refreshSessionTokens(ctx, id, { mode: 'turn' })
 }
 
 /**
@@ -441,6 +449,9 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
     .set({ status: 'ended', ...(existing.status !== 'ended' || existing.endedAt === undefined ? { endedAt: Date.now() } : {}) })
     .where(eq(sessions.id, id))
     .run()
+  // The last count of this run of the conversation (decision 3); a no-op when
+  // the turn's end already counted everything the transcript holds.
+  refreshSessionTokens(ctx, id, { mode: 'turn' })
   return getSessionRow(ctx, id)
 }
 
@@ -460,14 +471,27 @@ export function newestThread(
   return rows.find((row) => row.ccSessionId || hasThreadLog(row.id)) ?? rows[0] ?? null
 }
 
-/** Record the errand a thread was (re)opened on, which its brief and guards read. */
+/**
+ * Record the errand a thread was (re)opened on, which its brief and guards
+ * read — or, with null, that its errand is over. Emits `session.purpose_set`:
+ * the token count files what the conversation spends after this moment under
+ * the new purpose (`honest-token-counts` decision 1).
+ */
 export function setThreadPurpose(
   ctx: AppCtx,
   id: string,
   purpose: SessionPurpose | null,
   purposeData: MergeBranchPair | null = null,
 ): void {
+  const row = getSessionRow(ctx, id)
+  if (!row) return
   ctx.db.update(sessions).set({ purpose, purposeData }).where(eq(sessions.id, id)).run()
+  if ((row.purpose ?? null) === purpose) return
+  emitForSession(ctx, row, {
+    type: 'session.purpose_set',
+    message: purpose ? `session errand: ${purpose}` : 'session errand over',
+    data: { sessionId: id, purpose },
+  })
 }
 
 /**
@@ -562,14 +586,16 @@ export function clearSessionTitle(ctx: AppCtx, id: string): void {
  * How large a restored transcript may get before a relaunch stops resuming it
  * and starts FRESH instead, in bytes and in re-entries.
  *
- * There is no compaction, pruning or summarization anywhere in runcastle, so
- * `--resume` is monotonic: every re-entry restores everything the last one had
- * plus whatever it added. Measured on real transcripts, a `prepare`
- * conversation resumed across four session rows reached 1.42 MB / 464 turns /
- * ~91k tokens; an ordinary revisit resumes into ~35k. At eight to ten re-entries
- * that approaches the window, at which point Claude Code's own auto-compact
- * fires and silently drops exactly the decision prose the revisit came back for
- * — the worst possible moment to lose it, because nothing says it happened.
+ * Runcastle compacts only feature leads' chats (lead-chats-stay-small: at quiet
+ * moments, see `threads/host.ts`, and with a 200k auto-compact window, see
+ * `runtimes/types.ts`); nothing compacts, prunes or summarises any other
+ * session, so for them `--resume` is monotonic: every re-entry restores
+ * everything the last one had plus whatever it added. Measured on real
+ * transcripts, a `prepare` conversation resumed across four session rows
+ * reached 1.42 MB / 464 turns / ~91k tokens; an ordinary revisit resumes into
+ * ~35k. At eight to ten re-entries that approaches the window, at which point
+ * Claude Code's own auto-compact fires and drops whatever decision prose the
+ * revisit came back for that was never written to disk.
  *
  * Starting fresh is not a loss, and the revisit prompt already says why: "The
  * docs are the artifact — later phases read them, never the transcripts." This
@@ -580,13 +606,6 @@ export function clearSessionTitle(ctx: AppCtx, id: string): void {
  */
 export const RESUME_MAX_TRANSCRIPT_BYTES = envInt('RUNCASTLE_RESUME_MAX_BYTES', 1_000_000)
 export const RESUME_MAX_REENTRIES = envInt('RUNCASTLE_RESUME_MAX_REENTRIES', 8)
-
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (raw === undefined || raw.trim() === '') return fallback
-  const n = Number.parseInt(raw, 10)
-  return Number.isFinite(n) && n >= 0 ? n : fallback
-}
 
 /** Why a relaunch declined to resume; `null` means resuming is fine. */
 export interface ResumeCapVerdict {

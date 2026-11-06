@@ -38,8 +38,15 @@ function trimTurn(text: string): string {
   return t.length <= TURN_MAX_CHARS ? t : `${t.slice(0, TURN_MAX_CHARS).trimEnd()}… [cut]`
 }
 
-/** Last turns, newest last, oldest dropped first until the quote fits `max`. */
-export function capTurns(turns: TranscriptTurn[], max: number = EXCERPT_MAX_CHARS): string | null {
+/** A capped quote, and how many of the quotable turns it left out to fit. */
+export interface CappedTurns {
+  quote: string | null
+  /** Non-empty turns dropped, oldest first, because the quote would not fit. */
+  omitted: number
+}
+
+/** {@link capTurns}, also counting the turns the cap dropped. */
+export function capTurnsCounted(turns: TranscriptTurn[], max: number = EXCERPT_MAX_CHARS): CappedTurns {
   const lines = turns
     .map((turn) => ({ turn, text: trimTurn(turn.text) }))
     .filter((t) => t.text !== '')
@@ -52,15 +59,29 @@ export function capTurns(turns: TranscriptTurn[], max: number = EXCERPT_MAX_CHAR
     kept.unshift(line)
     size += line.length + 2
   }
-  return kept.length > 0 ? kept.join('\n\n') : null
+  return { quote: kept.length > 0 ? kept.join('\n\n') : null, omitted: lines.length - kept.length }
 }
 
-/** The feature's newest main chat's excerpt, read from its current transcript. */
-export function mainChatExcerpt(ctx: AppCtx, feature: Feature): MainChatExcerpt {
+/** Last turns, newest last, oldest dropped first until the quote fits `max`. */
+export function capTurns(turns: TranscriptTurn[], max: number = EXCERPT_MAX_CHARS): string | null {
+  return capTurnsCounted(turns, max).quote
+}
+
+/** The quotable turns of a feature's newest main chat, and where they were read. */
+export interface MainChatTurns {
+  /** Every turn worth quoting, oldest first: no kickoffs, no runtime records. */
+  turns: TranscriptTurn[]
+  /** The transcript they were read from; null when the chat has none recorded. */
+  transcriptPath: string | null
+  decisionsPath: string | null
+}
+
+/** The feature's newest main chat's quotable turns, read from its current transcript. */
+export function mainChatTurns(ctx: AppCtx, feature: Feature): MainChatTurns {
   const chat = listSessionsByFeature(ctx, feature.id)
     .filter((s) => s.kind === 'chat')
     .at(-1)
-  if (!chat) return { quote: null, transcriptPath: null, decisionsPath: null }
+  if (!chat) return { turns: [], transcriptPath: null, decisionsPath: null }
   const runtime = chat.runtime ?? DEFAULT_RUNTIME
   const decisionsPath = chat.worktreePath
     ? join(chat.worktreePath, featureDocsRel(feature.slug), 'decisions.md')
@@ -69,16 +90,22 @@ export function mainChatExcerpt(ctx: AppCtx, feature: Feature): MainChatExcerpt 
   const kickoffs = [kickoffLineFor('chat', undefined, runtime), selfPlanKickoffFor(runtime)]
   // A user turn is quoted only for what the human said: no kickoff, and none of
   // the runtime's own records (a slash command, its output, an interruption).
-  const said = transcript.turns.flatMap((turn): TranscriptTurn[] => {
+  const turns = transcript.turns.flatMap((turn): TranscriptTurn[] => {
     if (turn.role !== 'user') return [turn]
     if (kickoffs.some((kickoff) => promptMatchesKickoff(kickoff, turn.text))) return []
     const text = saidText(turn.text)
     return text ? [{ ...turn, text }] : []
   })
-  const quote = capTurns(said)
+  return { turns, transcriptPath: chat.transcriptPath ?? null, decisionsPath }
+}
+
+/** The feature's newest main chat's excerpt, read from its current transcript. */
+export function mainChatExcerpt(ctx: AppCtx, feature: Feature): MainChatExcerpt {
+  const { turns, transcriptPath, decisionsPath } = mainChatTurns(ctx, feature)
+  const quote = capTurns(turns)
   return {
     quote,
-    transcriptPath: quote && chat.transcriptPath ? chat.transcriptPath : null,
+    transcriptPath: quote && transcriptPath ? transcriptPath : null,
     decisionsPath,
   }
 }

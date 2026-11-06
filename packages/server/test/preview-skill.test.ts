@@ -178,6 +178,17 @@ describe('the design guide', () => {
 describe('the preview rules (feature/references/preview.md)', () => {
   const rules = (): string => read('feature', 'references', 'preview.md')
 
+  // Decision 11: the starter is copied and filled through its slots, never read
+  // whole, so every slot the rules list must be marked in the starter.
+  it('lists every slot the starter marks, to be filled after a cp without reading it whole', () => {
+    const text = rules()
+    expect(text).toContain('(`cp`)')
+    expect(text).toContain('**never read the starter whole**')
+    const marked = [...starter().matchAll(/<!-- FILL:([\w-]+) -->/g)].map((m) => m[1])
+    expect([...marked].sort()).toEqual(['C', 'D', 'hood', 'later', 'not-this', 'screen', 'show', 'title', 'what'])
+    for (const slot of marked) expect(text, slot).toContain(`\`${slot}\``)
+  })
+
   it('names the one file and the starter it is copied from', () => {
     const text = rules()
     expect(text).toContain('Exactly one file, `preview.html`, at the root of the feature\'s docs dir')

@@ -101,9 +101,16 @@ export const FEATURE_SKILL = 'feature'
  * chat, whatever the feature's state: every chat on a feature is its lead from
  * its first message, with one brief and one skill
  * (tickets-and-review-are-tools-not-phases decision 4).
+ *
+ * `resumed` is a conversation already under way: its skill text may still be in
+ * it, so it is not told to load it again. The shared first 40 characters are
+ * what `promptMatchesKickoff` recognises, so both forms start alike.
  */
-export function chatKickoffFor(runtime: AgentRuntime): string {
-  return `Proceed with your task: invoke ${skillRef(runtime, FEATURE_SKILL)} and continue this feature.`
+export function chatKickoffFor(runtime: AgentRuntime, resumed = false): string {
+  const skill = skillRef(runtime, FEATURE_SKILL)
+  return resumed
+    ? `Proceed with your task: invoke ${skill} and continue this feature, unless its text is already in this conversation (then just continue).`
+    : `Proceed with your task: invoke ${skill} and continue this feature.`
 }
 
 /**
@@ -128,10 +135,11 @@ export const ORCHESTRATING = 'Orchestrating'
  * the screens it adds or reshapes, designs-wait-for-you) without building, and
  * ends by asking for the human's yes.
  */
-export function selfPlanKickoffFor(runtime: AgentRuntime): string {
+export function selfPlanKickoffFor(runtime: AgentRuntime, resumed = false): string {
+  const skill = skillRef(runtime, FEATURE_SKILL)
   return (
     'Proceed with your task: no human is present and nobody will reply to you. Invoke ' +
-    `${skillRef(runtime, FEATURE_SKILL)} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
+    `${resumed ? `${skill} (unless its text is already in this conversation)` : skill} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
     'by yourself in this one run: plan it, design its screens where it adds or reshapes them, ' +
     "do not build it, and end by asking for the human's yes."
   )

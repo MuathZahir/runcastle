@@ -40,7 +40,7 @@ import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
 import { latestBurn, runClaimedTicketIds } from './runs'
-import { refreshLeadTokens } from './usage'
+import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import { needEventsByProject, needOf } from './feature-need'
 import {
@@ -421,8 +421,8 @@ async function scaffoldDocsOnFeatureBranch(
 
 export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
-  // Telemetry only (decision 25): the lead's tokens are recorded as it works, never returned.
-  refreshLeadTokens(ctx, id, { lazy: true })
+  // Telemetry only (decision 25): every conversation's tokens are recorded as it works, never returned.
+  refreshFeatureTokens(ctx, id, { mode: 'lazy' })
   const lead = leadState(ctx, id)
   return {
     feature,

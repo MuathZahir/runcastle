@@ -972,6 +972,7 @@ describe('claudeRuntime.writeArtifacts', () => {
       RUNCASTLE_SESSION_ID: 'sess_rt_chat',
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
       CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
     })
     // the marker that makes a nested CC skip writing its transcript, breaking --resume
     expect(spec.envScrub).toContain('CLAUDE_CODE_CHILD_SESSION')
@@ -1046,8 +1047,31 @@ describe('claudeRuntime.acpLaunch', () => {
       RUNCASTLE_SESSION_ID: 'sess_acp_chat',
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
       CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
     })
     expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
+  })
+
+  it("sets the 200k auto-compact window for a feature's lead only (lead-chats-stay-small decision 8)", async () => {
+    expect((await acpSpec()).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+    // Decision 16: the human's own `autoCompactEnabled: false` cannot switch it off.
+    const settingsOf = (id: string) => JSON.parse(readFileSync(join(sessionDir(id), 'settings.json'), 'utf8'))
+    expect(settingsOf('sess_acp_chat').autoCompactEnabled).toBe(true)
+    for (const kind of ['side', 'qa'] as const) {
+      const sess = session({ id: `sess_acp_${kind}`, kind })
+      created.push(sess.id)
+      const spec = await claudeRuntime.acpLaunch!({
+        session: sess,
+        project,
+        config,
+        feature: feature(),
+        worktreePath: 'C:\\wt\\dark-mode',
+        serverUrl: 'http://localhost:4512',
+        model: 'claude-sonnet-5',
+      })
+      expect(spec.env).not.toHaveProperty('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+      expect(settingsOf(sess.id)).not.toHaveProperty('autoCompactEnabled')
+    }
   })
 
   it('carries the model, the permission mode, the briefing files, prompt suggestions, file checkpoints and the background task set in the session _meta', async () => {
@@ -1180,8 +1204,9 @@ describe('codexRuntime.writeArtifacts', () => {
         : 'sandbox_mode = "workspace-write"',
     )
     expect(toml).toContain('approval_policy = "never"')
+    // a feature lead compacts a long turn at 200k, as on Claude Code (lead-chats-stay-small decision 8)
     expect(toml).toContain(
-      'approval_policy = "never"\ncheck_for_update_on_startup = false\n\n[features]',
+      'approval_policy = "never"\ncheck_for_update_on_startup = false\nmodel_auto_compact_token_limit = 200000\n\n[features]',
     )
     // the first-run "do you trust this folder?" gate, answered up front
     expect(toml).toContain(`[projects.${JSON.stringify(worktree)}]`)
@@ -1190,6 +1215,13 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('[mcp_servers.runcastle]')
     expect(toml).toContain('url = "http://localhost:4512/mcp"')
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }')
+  })
+
+  it("gives only a feature's lead the auto-compact limit", () => {
+    const render = (kind: SessionKind) => renderCodexConfig({ session: session({ id: `sess_codex_${kind}`, kind }), config, model: 'gpt-5.6-sol', worktreePath: worktree })
+    expect(render('chat')).toContain('model_auto_compact_token_limit = 200000')
+    expect(render('side')).not.toContain('model_auto_compact_token_limit')
+    expect(render('qa')).not.toContain('model_auto_compact_token_limit')
   })
 
   it('runs an unattended session unsandboxed on win32, where workspace-write degrades to read-only', () => {

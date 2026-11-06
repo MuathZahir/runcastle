@@ -180,7 +180,7 @@ describe('orchestratorLineFor — end events', () => {
 
   it('tells the holder when its draft started by itself, or could not', () => {
     expect(orchestratorLineFor(event('feature.started', { autoStartedBy: 'core' }), held)).toBe(
-      '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going.',
+      '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its brief says grill with you: then hand the human its chat.',
     )
     expect(orchestratorLineFor(event('feature.started', {}), held)).toBeNull()
     for (const type of ['feature.autostart.skipped', 'feature.autostart.failed']) {

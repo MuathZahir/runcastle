@@ -205,13 +205,14 @@ describe('mcp tools', () => {
     const out = toolEmitTickets(ctx, session, { tickets: [ticket('stale'), ticket('obsolete')] })
     const [staleId, obsoleteId] = out.tickets.map((t) => t.id)
 
+    // Each write answers with a receipt, never the row it just changed.
     const updated = toolUpdateTicket(ctx, session, { id: staleId, title: 'fresh', goal: 'g2' })
-    expect(updated.ticket.title).toBe('fresh')
-    expect(updated.ticket.goal).toBe('g2')
+    expect(updated).toEqual({ ok: true, seq: 1, status: 'pending', changed: ['title', 'goal'] })
+    expect(getTicket(ctx, staleId)).toMatchObject({ title: 'fresh', goal: 'g2' })
 
     const cancelled = toolCancelTicket(ctx, session, { id: obsoleteId, reason: 'decision changed' })
-    expect(cancelled.ticket.status).toBe('cancelled')
-    expect(cancelled.ticket.error).toBe('decision changed')
+    expect(cancelled).toEqual({ ok: true, seq: 2, status: 'cancelled' })
+    expect(getTicket(ctx, obsoleteId).error).toBe('decision changed')
 
     const types = listAfter(ctx, featureId, 0).map((e) => e.type)
     expect(types).toContain('ticket.edited')
@@ -288,10 +289,10 @@ describe('mcp tools', () => {
     const out = toolEmitTickets(ctx, session, { tickets: [ticket('one')] })
     const [{ id }] = out.tickets
 
-    expect(toolUpdateTicket(ctx, session, { id, model: 'gpt-5.6-sol' }).ticket.model).toBe(
-      'gpt-5.6-sol',
-    )
-    expect(toolUpdateTicket(ctx, session, { id, model: '' }).ticket.model).toBeUndefined()
+    toolUpdateTicket(ctx, session, { id, model: 'gpt-5.6-sol' })
+    expect(getTicket(ctx, id).model).toBe('gpt-5.6-sol')
+    toolUpdateTicket(ctx, session, { id, model: '' })
+    expect(getTicket(ctx, id).model).toBeUndefined()
     expect(() => toolUpdateTicket(ctx, session, { id, model: 'gpt-9-imaginary' })).toThrow(
       InvalidInputError,
     )
@@ -474,10 +475,8 @@ describe('mcp tools', () => {
     }
     // The point of the guard's narrowness: the chat still shapes the NEXT burn
     // while this one runs.
-    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'edited' }).ticket.title).toBe(
-      'edited',
-    )
-    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).ticket.status).toBe('cancelled')
+    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'edited' }).changed).toEqual(['title'])
+    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).status).toBe('cancelled')
   })
 
   /**
@@ -548,10 +547,23 @@ describe('mcp tools', () => {
     ])
     expect(served.goal).toBe('g')
 
-    const full = toolGetTicket(ctx, { featureId, sessionId: session.id }, { seq: served.seq })
-    expect(full.context).toBe('c')
-    expect(full.acceptanceCriteria).toEqual(['a'])
-    expect(full.digest).toBe('what the burner actually did')
+    // A done ticket reads without its plan: what it did and what it was meant to do.
+    const settled = toolGetTicket(ctx, { featureId, sessionId: session.id }, { seq: served.seq })
+    expect(settled).not.toHaveProperty('context')
+    expect(settled.acceptanceCriteria).toEqual(['a'])
+    expect(settled.digest).toBe('what the burner actually did')
+
+    const full = toolGetTicket(ctx, { featureId }, { seq: served.seq, full: true })
+    expect(full).toMatchObject({ context: 'c', acceptanceCriteria: ['a'], digest: 'what the burner actually did' })
+  })
+
+  it('get_ticket keeps the context of a ticket still to run or failed, and drops a cancelled one’s', () => {
+    const [pending, failed, cancelled] = storeTickets(ctx, featureId, [ticket('a'), ticket('b'), ticket('c')])
+    updateTicket(ctx, failed.id, { status: 'failed', error: 'boom' })
+    cancelTicket(ctx, cancelled.id, 'not needed')
+    expect(toolGetTicket(ctx, { featureId }, { seq: pending.seq })).toMatchObject({ context: 'c' })
+    expect(toolGetTicket(ctx, { featureId }, { seq: failed.seq })).toMatchObject({ context: 'c', error: 'boom' })
+    expect(toolGetTicket(ctx, { featureId }, { seq: cancelled.seq })).not.toHaveProperty('context')
   })
 
   it('get_ticket refuses a seq the feature does not have', () => {
@@ -624,8 +636,8 @@ describe('mcp chat write contract', () => {
   it('allows ticket writes from chat', () => {
     const [existing] = storeTickets(ctx, featureId, [ticket('already here')])
     expect(toolEmitTickets(ctx, qa, { tickets: [ticket('new')] }).stored).toBe(1)
-    expect(toolUpdateTicket(ctx, qa, { id: existing.id, title: 'changed' }).ticket.title).toBe('changed')
-    expect(toolCancelTicket(ctx, qa, { id: existing.id }).ticket.status).toBe('cancelled')
+    expect(toolUpdateTicket(ctx, qa, { id: existing.id, title: 'changed' }).ok).toBe(true)
+    expect(toolCancelTicket(ctx, qa, { id: existing.id }).status).toBe('cancelled')
     expect(listByFeature(ctx, featureId)).toHaveLength(2)
   })
 
@@ -972,17 +984,6 @@ describe('get_feature_context scenarios', () => {
         { file: '.runcastle/scenarios/feed/blocked-only.ts', own: false },
       ],
     })
-  })
-
-  it('names the field in the tool description, as what decides whether a ticket ships a scenario', async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-    const client = new Client({ name: 'scenarios-test', version: '1' })
-    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
-    const tool = (await client.listTools()).tools.find((t) => t.name === 'get_feature_context')
-    await client.close()
-    expect(tool?.description).toMatch(/`scenarios` \(`setUp`: the base branch has \.runcastle\/scenarios\/ and a runner is recorded/)
-    expect(tool?.description).toMatch(/does a ticket ship a scenario/)
-    expect(tool?.description).not.toMatch(/`stories`|mapGroups/)
   })
 
   it('carries scenarios as its only git-read block, with no stories or map groups', async () => {

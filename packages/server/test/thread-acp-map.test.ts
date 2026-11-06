@@ -50,6 +50,16 @@ describe('diffLines', () => {
 })
 
 describe('createUpdateMapper', () => {
+  it('logs a compaction once, however many times the adapter reports it completed (lead-chats-stay-small)', () => {
+    const map = mapper()
+    const update = (compactionId: string, status: string) =>
+      map({ sessionUpdate: 'compaction_update', compactionId, status } as never)
+    expect(update('c1', 'in_progress')).toEqual([])
+    expect(update('c1', 'completed')).toEqual([{ type: 'compacted' }])
+    expect(update('c1', 'completed')).toEqual([])
+    expect(update('c2', 'completed')).toEqual([{ type: 'compacted' }])
+  })
+
   it('gives chunks without a message id one id per contiguous run', () => {
     const map = mapper()
     const a = map({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hi' } })

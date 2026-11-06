@@ -397,7 +397,9 @@ async function openMainChat(
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: selfPlan ? 'launching a self-planning run' : resumed ? 'opening the chat thread' : 'launching chat session',
-    data: { sessionId: thread.id, kind: 'chat', worktreePath, ...modelStamp(thread), ...(input.purpose ? { purpose: input.purpose } : {}) },
+    // The errand the thread is on after this launch — a plain open mid-errand
+    // keeps it — which the token count files what follows under (honest-token-counts).
+    data: { sessionId: thread.id, kind: 'chat', worktreePath, ...modelStamp(thread), ...(thread.purpose ? { purpose: thread.purpose } : {}) },
   })
   if (resumed) {
     emit(ctx, feature.id, {
@@ -413,7 +415,7 @@ async function openMainChat(
   // Purpose-specific text comes first so it remains the immediate task, then
   // the feature's current state — which the host adds itself to the first
   // prompt of a resumed conversation it starts.
-  const opening = selfPlan ? selfPlanKickoffFor(runtime) : chatKickoffFor(runtime)
+  const opening = selfPlan ? selfPlanKickoffFor(runtime, resumed) : chatKickoffFor(runtime, resumed)
   const header = hostSaysHeader(ctx, thread, opts) ? undefined : chatKickoffHeader(ctx, feature, runtime, opening)
   const said = [plan.line, header].filter(Boolean).join(' ') || opening
   const line = tagRuncastlePrompt(kickoffLineFor('chat', said, runtime))
@@ -680,7 +682,7 @@ export async function launchScenarioSession(
   emitScoped(ctx, scope, {
     type: 'session.launching',
     message: `launching scenario session${setup ? ' in setup mode' : ''} on ${drive.branch}`,
-    data: { sessionId: row.id, kind: 'scenario', worktreePath: project.repoPath, branch: drive.branch, setup, ...modelStamp(row) },
+    data: { sessionId: row.id, kind: 'scenario', worktreePath: project.repoPath, branch: drive.branch, setup, ...(row.purpose ? { purpose: row.purpose } : {}), ...modelStamp(row) },
   })
   git.attachScenarioSession(project.id, row.id)
   emitScoped(ctx, scope, {

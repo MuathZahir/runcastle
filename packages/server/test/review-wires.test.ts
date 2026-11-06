@@ -452,17 +452,13 @@ describe('the review_drive tool description', () => {
     return tool?.description ?? ''
   }
 
-  it('says a held slot is worth polling and a dirty tree is final', async () => {
+  it('points at the refusal fields, leaving the wait rules to the review prompt', async () => {
     const description = await reviewDriveDescription()
 
-    // The wait, in the attempt count the skill also uses.
-    expect(description).toMatch(/slot_held/)
-    expect(description).toMatch(/retriable: true/)
-    expect(description).toMatch(/ten times/)
-    // And the refusal no amount of waiting clears.
-    expect(description).toMatch(/dirty/)
-    expect(description).toMatch(/retriable: false/)
-    expect(description).toMatch(/final/)
+    // The attempt count and the final dirty tree are taught by review-ticket.md.
+    expect(description).toMatch(/deniedCode/)
+    expect(description).toMatch(/retriable/)
+    expect(description).toMatch(/stop/)
     // The flat old rule is what sent a review to a repo-only review over a slot
     // that would have freed in ninety seconds.
     expect(description).not.toMatch(/never worth retrying/)

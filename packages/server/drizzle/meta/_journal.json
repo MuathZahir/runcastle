@@ -428,6 +428,13 @@
       "when": 1793750000000,
       "tag": "0060_drop_prepare_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1793800000000,
+      "tag": "0061_events_type_index",
+      "breakpoints": true
     }
   ]
 }
