@@ -30,9 +30,9 @@ Building it here does not mean doing it all in your own window: everything you r
 - **Surveys and reading across several files**: an Explore-type subagent returns a short map with file and line references; you keep the map.
 - **Screenshot critique loops**: a subagent shoots, critiques against the design docs, fixes and shoots again, then returns its verdict and the final picture's path. You still show the human that picture.
 - **A self-contained chunk of code** (a module with its tests, a component): a general-purpose subagent with a short brief. Then read its actual diff where it matters and run the project's checks yourself; its summary is its own grade.
-- **Name a model for every subagent**: Sonnet (on Codex, its smaller model) for reading, mapping and critique; your own model only where the work needs its judgement.
+- **Name a model for every subagent** from the human's use-case notes (`annotatedModels` in `get_feature_context`), as you would for a ticket: reading code usually goes to a model whose note fits simpler or medium work, judging a screen's design to the one whose note names UI work. With no notes, the subagent runs on your own model.
 
-You may still write code yourself when handing it off is not worth it. Read a file you will change with the Read tool and change it with Edit: no patch scripts in /tmp, no long heredocs.
+You may still write code yourself when handing it off is not worth it. Read a file you will change with the Read tool and change it with Edit: no patch scripts in /tmp, no long heredocs. A script is for one change across many files.
 
 When the feature changes how a screen looks, offer to show it live before you talk layout in words: `./references/design.md`.
 

@@ -9,8 +9,9 @@ You still look facts up, model the domain and park scope creep as
 
 **Survey the code through a subagent.** This chat goes on to build the feature,
 so every file you read here is carried into every later call. Send the codebase
-survey to one Explore-type subagent on a cheaper model (Sonnet; on Codex, its
-smaller model) with your questions, and keep the short map it returns. Read a
+survey to one Explore-type subagent, its model picked from the human's
+use-case notes (SKILL.md, "Build it the cheapest good way"), with your
+questions, and keep the short map it returns. Read a
 file yourself only to settle one fact the map left open.
 
 **This run plans; it does not build.** Whatever the plan says,
@@ -90,7 +91,8 @@ nothing.
 - **Look at your own screens.** Call `start_design_server({ command })`, which
   also records the command so the human's Design tab can start it later. Then
   check every state of every design page (each `?state=` address). With
-  `agent-browser` on the PATH, hand the loop to a subagent on a cheaper model:
+  `agent-browser` on the PATH, hand the loop to a subagent on the model the
+  human's notes give UI work:
   it runs `agent-browser open <url>`, `agent-browser screenshot <path>` (a
   temporary path, never in the repo), reads the image, critiques it against the
   project's design docs, fixes it and looks again, closes with

@@ -3,27 +3,24 @@
 Planned without the human (self-planning run, 2026-11-06). Every decision below is the
 lead's own recommendation, marked **Assumed.** until the human confirms it. The human
 confirmed the compaction decisions (5–11, 13–16) on 2026-11-06, relayed by the orchestrator;
-on 16 they left the call to the lead, who kept the override.
+on 16 they left the call to the lead, who kept the override. They then confirmed 1, 4 and 12
+and changed 3 (now 17). Decision 2 is the human's own words from the brief.
 
 ## 1. The lead hands reading, surveys and screenshot loops to its own subagents
 **Decision:** The feature skill tells the lead to prefer its own subagents (Claude Code's Agent tool, Codex's `spawn_agent`) for work whose output is bigger than its conclusion: code surveys, reading across several files, and screenshot critique loops. The subagent returns a short map, a verdict, or a picture path, and the lead keeps only that. The lead still shows the human the final picture (`show_file`, or `show_design`'s picture), so moving the loop out of the lead hides nothing from them. Small edits the lead still makes itself.
 **Why:** Reading code (~430M tokens), browser and screenshots (~220M) and tests (~73M) were done by the lead at huge context and then carried for every later call. A subagent pays for the reading once, in a small window.
-**Assumed.** Alternative: leave the skill's "build it yourself" wording and rely on compaction alone.
 
 ## 2. Writing code yourself stays allowed
 **Decision:** The skill prefers delegating but does not forbid the lead writing code. A self-contained chunk (a module with its tests, a component) goes to a general-purpose subagent with a short brief; the lead then reads the actual diff of anything non-trivial and runs the project's checks itself, rather than trusting the subagent's summary. A change of a few edits the lead makes itself, with the Edit tool.
 **Why:** The human said on 2026-11-06 that the lead may still write code when handing it off isn't worth it. These are the agent's own subagents, not runcastle workers: no container, no ticket.
-**Assumed.** Alternative: the lead writes all code itself and delegates only reading.
 
-## 3. Read-only subagents name a cheaper model
+## 3. Read-only subagents name a cheaper model (superseded by 17)
 **Decision:** The skill tells the lead to name a model for every subagent it spawns: Sonnet for surveys, mapping and screenshot critique (on Codex, its smaller model); the lead's own model only for work that needs it (UI judgement, tricky code).
 **Why:** 58 of 113 subagents ran on Opus only because no model was set. Haiku was weighed and rejected for surveys: a missed fact in a map costs more than the saving.
-**Assumed.** Alternative: Haiku for read-only mapping.
 
 ## 4. Edits go through the Edit tool, files are read with Read
-**Decision:** The skill tells the lead to read files it will change with the Read tool and change them with Edit, never with Python patch scripts in /tmp or long heredocs.
+**Decision:** The skill tells the lead to read files it will change with the Read tool and change them with Edit, never with Python patch scripts in /tmp or long heredocs. A script is only for one change across many files.
 **Why:** 157 scratch patch scripts and 43 failed heredocs, most likely because reading with `sed -n` leaves Edit's read-first rule unmet.
-**Assumed.** Alternative: say nothing and let compaction cap the cost.
 
 ## 5. Compaction keeps the same conversation
 **Decision:** Runcastle compacts the lead's existing conversation through the path the context meter's "Compact now" button already uses (runcastle sends the runtime's `/compact` command as a hidden prompt). It does not start a fresh lead thread seeded from the docs.
@@ -57,9 +54,6 @@ on 16 they left the call to the lead, who kept the override.
 **Decision:** The feature skill's grilling guidance drops "Never compact. Never `/clear`." It says instead that runcastle compacts the lead at quiet moments, the lead never compacts itself, and everything settled must be on disk at once, which is why decisions are recorded one at a time.
 **Why:** The old rule contradicts this feature; the reason behind it (keep decisions safe) survives as "write them down now".
 The edit is a one-line swap in the grilling reference, the only skill edit outside the delegation guidance and the "build it the cheapest good way" section, and the orchestrator is told so because "tools and skills say less" edits the same files.
-**Assumed.** Alternative: keep the rule for grilling only and compact only outside it.
-**Challenged:** The brief limits this feature's skill edits to the delegation guidance and the build-it-yourself section so the sibling feature rebases cleanly; the grilling section is outside that. (The rule flatly contradicts this feature, so it has to go; one paragraph is a trivial conflict to resolve.)
-**Changed by the orchestrator:** the grilling edit is a one-line swap of the "never compact" sentence, nothing more, because "tools and skills say less" trims the same reference files in parallel.
 
 ## 13. A message sent during a compaction waits for it
 **Decision:** While runcastle compacts a lead, the chat shows the lead working, and a message the human sends waits in the lead's queue and runs once the compaction finishes. Runcastle never starts a compaction while a turn, a question or a queued message is pending.
@@ -76,3 +70,8 @@ The edit is a one-line swap in the grilling reference, the only skill edit outsi
 ## 16. Runcastle turns compaction on for its feature leads, whatever the human's own settings say
 **Decision:** A runcastle-launched feature lead's per-session Claude Code settings carry `autoCompactEnabled: true`. Those settings reach Claude Code as `--settings`, which outranks the human's own `~/.claude/settings.json`, so an `autoCompactEnabled: false` there no longer switches off the 200k ceiling. Only feature leads get it: the human's own Claude Code and the orchestrator's chat keep the human's setting. With the ceiling turned off for the install, the override goes too.
 **Why:** The human's settings on this machine say `autoCompactEnabled: false`, which made the ceiling from 8 inert; the burner already overrides it the same way for workers.
+
+## 17. Subagents take their model from the human's use-case notes
+Supersedes: 3
+**Decision:** The lead picks each subagent's model from the human's use-case notes (`annotatedModels` in the feature context), the same way it picks a ticket's: reading code usually goes to the model whose note fits simpler or medium work (Sonnet or Haiku today), judging a screen's design to the one whose note names UI work (Opus today). With no notes, the subagent runs on the lead's own model.
+**Why:** The human's notes already say which model suits which work; a fixed "cheaper model" would ignore them, and Codex users have no Sonnet.

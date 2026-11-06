@@ -96,13 +96,15 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(s).toContain('an Explore-type subagent returns a short map')
     expect(s).toContain('You still show the human that picture.')
     expect(s).toContain('read its actual diff where it matters and run the project\'s checks yourself')
-    expect(s).toContain('**Name a model for every subagent**')
+    expect(s).toContain("**Name a model for every subagent** from the human's use-case notes (`annotatedModels`")
+    expect(s).toContain('With no notes, the subagent runs on your own model.')
+    expect(s).not.toContain('Sonnet')
   })
 
   it('still lets the lead write code, through Read and Edit', () => {
     const s = flat(skill())
     expect(s).toContain('You may still write code yourself')
-    expect(s).toContain('no patch scripts in /tmp, no long heredocs')
+    expect(s).toContain('no patch scripts in /tmp, no long heredocs. A script is for one change across many files.')
   })
 
   it('re-reads the feature state after any compaction', () => {
@@ -195,7 +197,7 @@ describe('the feature skill, planning with no human present', () => {
     expect(alone).toContain('**At most two\n  open choices per screen**')
     expect(alone).toContain('`start_design_server({ command })`')
     expect(flat(alone)).toContain('`agent-browser open <url>`')
-    expect(flat(alone)).toContain('hand the loop to a subagent on a cheaper model')
+    expect(flat(alone)).toContain("hand the loop to a subagent on the model the human's notes give UI work")
     expect(flat(alone)).toContain('Do not read the images yourself.')
     expect(alone).toContain('**Leave the designs uncommitted.**')
     expect(alone).toContain("lives in the design page, never in the app's own files")

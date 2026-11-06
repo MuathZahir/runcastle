@@ -275,10 +275,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['The lead hands reading, surveys and screenshot loops to its own subagents', 'Reading, screenshots and tests were done at huge context and carried for every later call; a subagent pays for them once in a small window. The lead still shows you the final picture.', 'assumed'],
-    ['Writing code yourself stays allowed', 'You said so on 2026-11-06. A self-contained chunk goes to a subagent; the lead reads its real diff and runs the checks itself. A few edits it makes itself.', 'assumed'],
-    ['Read-only subagents name a cheaper model', '58 of 113 subagents ran on Opus only because no model was set. Sonnet for surveys and critique; Haiku rejected because a missed fact costs more.', 'assumed'],
-    ['Edits go through the Edit tool, files are read with Read', '157 patch scripts in /tmp and 43 failed heredocs, likely because reading with sed skips the Edit tool’s read-first rule.', 'assumed'],
+    ['The lead hands reading, surveys and screenshot loops to its own subagents', 'Reading, screenshots and tests were done at huge context and carried for every later call; a subagent pays for them once in a small window. The lead still shows you the final picture.'],
+    ['Writing code yourself stays allowed', 'You said so on 2026-11-06. A self-contained chunk goes to a subagent; the lead reads its real diff and runs the checks itself. A few edits it makes itself.'],
+    ['Read-only subagents name a cheaper model (superseded by 17)', '58 of 113 subagents ran on Opus only because no model was set. Sonnet for surveys and critique; Haiku rejected because a missed fact costs more.'],
+    ['Edits go through the Edit tool, files are read with Read', '157 patch scripts in /tmp and 43 failed heredocs, likely because reading with sed skips the Edit tool’s read-first rule.'],
     ['Compaction keeps the same conversation', 'The "Compact now" path already works on both runtimes and the chat already shows it. A fresh thread would lose what is not yet in the docs.'],
     ['Runcastle compacts a lead at three moments, only above 150k', 'After planning and while idle run with a warm cache, so they are cheap; before resuming is the safety net after a restart. Below 150k a summary saves too little.'],
     ['A round coming back and a ready declaration get no trigger of their own', 'Rounds and drives outlast the 30-minute idle stop, so the lead is already compacted when results arrive. One rule instead of three hooks.'],
@@ -286,11 +286,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Only feature leads; after merge, only before a resume', 'Other chat kinds belong to sibling features. A shipped lead is rarely resumed, but when it is, a 490k rebuild is the cost this removes.'],
     ['The compaction is told what to keep', 'What the lead waits on, your latest words, unwritten agreements and uncommitted work; the docs hold the rest.'],
     ['The human sees each automatic compaction', 'The existing divider says it was automatic, why, and the size before and after, so a forgetful lead has a visible cause.'],
-    ['The skill stops saying "never compact"', 'It contradicts this feature. The reason behind it survives as "write each decision down the moment it settles".', 'assumed'],
+    ['The skill stops saying "never compact"', 'It contradicts this feature. The reason behind it survives as "write each decision down the moment it settles".'],
     ['A message sent during a compaction waits for it', 'Most likely right after planning. A few seconds’ wait beats wasting a half-done compaction.'],
     ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.'],
     ['After any compaction, the lead re-reads its feature state first', 'Added by the orchestrator: a summary is the model’s own judgement and nothing checks it; one call to get_feature_context does.'],
-    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Added on the orchestrator’s call, not yours: your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. Only feature leads get the override.']
+    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. You left the call to the lead, who kept it. Only feature leads get the override.'],
+    ['Subagents take their model from the human’s use-case notes', 'Replaces 3. Your notes already say which model suits which work: reading code to Sonnet or Haiku, a screen’s design to Opus. With no notes, the lead’s own model.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

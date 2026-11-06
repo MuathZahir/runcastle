@@ -69,8 +69,8 @@ less" edits the same files:
   loops return a verdict and the final picture's path, which you still show the human.
 - In a self-planning run, the codebase survey is one Explore-type subagent that returns a short
   map; the challenger stays as it is.
-- Name a model for every subagent: Sonnet (on Codex, its smaller model) for read-only and
-  critique work; your own model only where judgement needs it.
+- Name a model for every subagent from the human's use-case notes (`annotatedModels`), as for a
+  ticket; with no notes, the lead's own model (decision 17).
 - You may still write code. A self-contained chunk goes to a general-purpose subagent with a
   short brief; you read its actual diff where it matters and run the checks yourself. A few
   edits you make yourself: read the file with Read, change it with Edit, no patch scripts in
