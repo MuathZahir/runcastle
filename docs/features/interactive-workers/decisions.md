@@ -133,3 +133,11 @@ guidance.
 (app-driving, screenshots, the Review Package) is the heart of `burns-become-workers` and would
 roughly double this feature. The human: "Make sure that the next feature will retire it. I don't
 want old code and inconsistencies."
+
+## 14. One limit for agents working at once, shared by ticket agents and workers
+**Decision:** The existing machine-wide "how many burns at once" setting becomes "agents working at
+once" and counts ticket agents and workers in the middle of a turn together. A worker waiting for
+the human, or stopped on idle, does not count. A worker over the limit waits in line, shows
+"queued" in the sidebar, and starts by itself when a slot frees.
+**Why:** Workers and burns load the same machine; two separate limits would be two numbers for one
+machine. Not counting waiting workers keeps stepping into a "with you" worker unblocked.
