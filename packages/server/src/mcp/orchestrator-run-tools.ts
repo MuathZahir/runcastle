@@ -120,7 +120,10 @@ export function toolReadFeatureChat(
     })
   }
 
-  if (!input.full && last && transcriptPath === last.transcriptPath) {
+  // A transcript that shrank under the same path (rewritten, or its turns
+  // reparsed fewer) has no "since" to count from: read it as the first time.
+  const sameChat = last !== undefined && transcriptPath === last.transcriptPath && turns.length >= last.turnCount
+  if (!input.full && last && sameChat) {
     const { quote, omitted } = capTurnsCounted(turns.slice(last.turnCount))
     const newShown = shown.slice(last.shownCount)
     const newShots = shotsAfter(shots, last.reviewShotCount)

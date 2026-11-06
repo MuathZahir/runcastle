@@ -204,6 +204,21 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
       expect(toolReadFeatureChat(ctx, me, { slug: f.slug }).quote).toBe('Human: new talk about plums')
     })
 
+    it('reads a transcript that shrank under the same path as the first time', async () => {
+      const path = writeTranscript('rewritten', [
+        ['user', 'one'],
+        ['assistant', 'two'],
+        ['user', 'three'],
+      ])
+      const f = await chatting('rewritten', path)
+      const me = orchestrator()
+      toolReadFeatureChat(ctx, me, { slug: f.slug })
+      writeTranscript('rewritten', [['user', 'fresh start']])
+      const out = toolReadFeatureChat(ctx, me, { slug: f.slug })
+      expect(out.quote).toBe('Human: fresh start')
+      expect(out).not.toHaveProperty('reason')
+    })
+
     it('counts the new turns the cap left out', async () => {
       const long = 'x'.repeat(2_000)
       const path = writeTranscript('long', [['user', 'start']])

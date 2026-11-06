@@ -53,4 +53,10 @@ describe('tool description length', () => {
     }
     expect(tooLong).toEqual([])
   })
+
+  it('tells the orchestrator its feature read is a status view, not the lead’s repeat-call stubs', async () => {
+    const tool = (await listFor('project')).find((t) => t.name === 'get_feature_context')
+    expect(tool?.description).toMatch(/status view/)
+    expect(tool?.description).not.toMatch(/repeat call/i)
+  })
 })

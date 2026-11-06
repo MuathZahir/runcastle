@@ -1055,17 +1055,6 @@ export function toolEmitTickets(
 }
 
 /**
- * The two refusals every ticket edit passes: the id must belong to THIS
- * session's feature, and no live burn may already hold that ticket.
- *
- * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
- * across state changes — a round starts and finishes under it — so the audience
- * table, which is built once at spawn, cannot speak for what is running now. It
- * is deliberately narrow: only the lanes the live burn holds are frozen, and
- * every other ticket stays editable mid-burn, which is how the chat shapes the
- * NEXT burn's work while this one runs.
- */
-/**
  * What a ticket write answers with (`tools-and-skills-say-less` decision 3): the
  * caller just sent the change, so the row is not echoed back.
  */
@@ -1080,6 +1069,17 @@ export interface TicketUpdateReceipt extends TicketReceipt {
   changed: string[]
 }
 
+/**
+ * The two refusals every ticket edit passes: the id must belong to THIS
+ * session's feature, and no live burn may already hold that ticket.
+ *
+ * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
+ * across state changes — a round starts and finishes under it — so the audience
+ * table, which is built once at spawn, cannot speak for what is running now. It
+ * is deliberately narrow: only the lanes the live burn holds are frozen, and
+ * every other ticket stays editable mid-burn, which is how the chat shapes the
+ * NEXT burn's work while this one runs.
+ */
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
   // Scope first, existence second: a session with no feature has no business
   // asking about any ticket, and telling it "that id doesn't exist" would send
@@ -3452,9 +3452,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         {
           ...config,
           description:
-            config.description +
-            PROJECT_READ_NOTE +
-            ' From the orchestrator it returns a short status view; `full: true` returns the bundle.',
+            'Any feature of this project, named by `slug`, as a short status view: state, waiting ' +
+            'reason, ticket counts, review verdict and a docs index. `full: true` returns the lead’s whole bundle.',
           inputSchema: { slug: ReadSlug, full },
         },
         async ({ slug, full: wantsFull }, extra) => {
