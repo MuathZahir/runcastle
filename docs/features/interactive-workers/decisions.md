@@ -198,3 +198,10 @@ did beneath it ("Landed", "Sent back: …", "Dropped"); the worker's own chat en
 "Handed back" line. The look is settled in the design pass.
 **Why:** Plain messages would let the assignment scroll away and a handback read like any other
 message in the lead's chat.
+
+## 22. Workers are on for everyone; the experimental setting goes
+**Decision:** Workers ship on for every user and `experimentalWorkers` is removed. Without Docker or
+Podman running, the "+" and the lead's worker offers say so in plain words and point at the setup
+check (doctor), as a burn does today.
+**Why:** Side chats become workers (7); a switch would keep the old side-chat code alive for anyone
+who turned workers off, two code paths the human does not want.
