@@ -3,7 +3,7 @@
 Planned without the human (self-planning run, 2026-11-06). Every decision below is the
 lead's own recommendation, marked **Assumed.** until the human confirms it.
 
-Check first: 5, 6, 7, 8, 12
+Check first: 5, 6, 8, 16
 
 ## 1. The lead hands reading, surveys and screenshot loops to its own subagents
 **Decision:** The feature skill tells the lead to prefer its own subagents (Claude Code's Agent tool, Codex's `spawn_agent`) for work whose output is bigger than its conclusion: code surveys, reading across several files, and screenshot critique loops. The subagent returns a short map, a verdict, or a picture path, and the lead keeps only that. The lead still shows the human the final picture (`show_file`, or `show_design`'s picture), so moving the loop out of the lead hides nothing from them. Small edits the lead still makes itself.
@@ -88,4 +88,5 @@ The edit is a one-line swap in the grilling reference, the only skill edit outsi
 ## 16. Runcastle turns compaction on for its feature leads, whatever the human's own settings say
 **Decision:** A runcastle-launched feature lead's per-session Claude Code settings carry `autoCompactEnabled: true`. Those settings reach Claude Code as `--settings`, which outranks the human's own `~/.claude/settings.json`, so an `autoCompactEnabled: false` there no longer switches off the 200k ceiling. Only feature leads get it: the human's own Claude Code and the orchestrator's chat keep the human's setting. With the ceiling turned off for the install, the override goes too.
 **Why:** The human's settings on this machine say `autoCompactEnabled: false`, which made the ceiling from 8 inert; the burner already overrides it the same way for workers.
-**Changed by the orchestrator:** settled on the human's behalf, 2026-11-06; the orchestrator tells the human.
+**Assumed.** Alternative: respect the human's own `autoCompactEnabled: false`, leaving the ceiling off on this machine.
+**Changed by the orchestrator:** added on the orchestrator's call, 2026-11-06; the orchestrator later withdrew its claim to settle it for the human, so it waits for them.

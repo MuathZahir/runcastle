@@ -290,16 +290,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A message sent during a compaction waits for it', 'Most likely right after planning. A few seconds’ wait beats wasting a half-done compaction.', 'assumed'],
     ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.', 'assumed'],
     ['After any compaction, the lead re-reads its feature state first', 'Added by the orchestrator: a summary is the model’s own judgement and nothing checks it; one call to get_feature_context does.', 'assumed'],
-    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Settled by the orchestrator: your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. Only feature leads get the override.']
+    ['Runcastle turns compaction on for its feature leads, whatever the human’s own settings say', 'Added on the orchestrator’s call, not yours: your own settings say autoCompactEnabled: false, which made the 200k ceiling inert. Only feature leads get the override.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [5, 'Start a fresh lead thread seeded from the docs at each break.', 'The brief offered both. Compaction keeps the chat in one piece but keeps a summary you never see; a fresh thread starts cleaner but loses what is not yet written down.'],
     [6, 'Compact only before a cold turn, never while idle.', 'Compacting at the idle stop means a reply after 31 minutes meets a summarised lead. The 150k floor and 30-minute timing are guesses from the token analysis.'],
-    [7, 'Also compact when a round is dispatched or the lead declares ready.', 'The challenger worried a short round comes back to a big lead. The 200k ceiling bounds it, so I kept one rule.', 'challenged'],
     [8, '300k, which keeps more working detail in a long turn.', 'You chose 1M-context models for leads; a 200k ceiling takes most of that headroom away in long build turns.'],
-    [12, 'Keep "never compact" for grilling and compact only outside it.', 'It is the one skill edit outside the area agreed with "Tools and skills say less", so it may conflict when the second of the two lands.', 'challenged']
+    [16, 'Respect your own autoCompactEnabled: false and leave the ceiling off.', 'It overrides a setting you chose yourself, and you never agreed to it.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
