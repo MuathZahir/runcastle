@@ -61,6 +61,15 @@ data. Write no other code.
   line under its intro, `Check first: 8, 9, 17` (the numbers, at most five),
   kept in step with the Plan's Check first group; the Plan card counts it. Drop
   a number once the human confirms that decision.
+- **For the human.** Every decision that changes what the human gets — what
+  they or their users see, how the app or runcastle behaves for them, a setting
+  of their own — gets a `**For the human.**` line under its `**Assumed.**`
+  line, whether or not it is one of the five to check first. Each one is put to
+  the human before your plan gets its yes. A decision only about how the feature
+  is built gets no mark. Never override a setting the human set themselves
+  without marking it. A decision the brief records under
+  `## Decided with the human` is already theirs: copy it into `decisions.md`
+  without `**Assumed.**`.
 - **Show with cards, never the panel.** You may design the feature's screens
   (**Designing alone**, below) and call `show_design` and `show_plan`: they post
   cards and open nothing, so the human finds them when they are back. Never call
