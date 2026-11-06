@@ -3,6 +3,7 @@ import type { TicketKind } from '../src/schemas'
 import {
   DEGENERATE_BATCH_TICKETS,
   DOCS_DIGEST_WARN_BYTES,
+  OVERSIZED_TICKET_CRITERIA,
   PASTED_DOCUMENT_CHARS,
   THIN_TICKET_CONTEXT_CHARS,
   docsDigestSizeWarning,
@@ -19,12 +20,13 @@ const thickContext =
 
 const ticket = (
   seq: number,
-  over: Partial<{ goal: string; context: string; kind: TicketKind }> = {},
+  over: Partial<{ goal: string; context: string; kind: TicketKind; acceptanceCriteria: string[] }> = {},
 ) => ({
   seq,
   goal: 'Warn about thin ticket contexts on the burn card.',
   context: thickContext,
   kind: 'implementation' as TicketKind,
+  acceptanceCriteria: ['The card shows the warning.'],
   ...over,
 })
 
@@ -34,6 +36,16 @@ const codes = (tickets: Parameters<typeof ticketShapeWarnings>[0]) =>
 describe('ticketShapeWarnings', () => {
   it('says nothing about a well-formed batch', () => {
     expect(ticketShapeWarnings([ticket(1), ticket(2), ticket(3)])).toEqual([])
+  })
+
+  it('warns, naming the ticket, only above the criteria cap, and never on the review ticket', () => {
+    const criteria = (n: number) => Array.from({ length: n }, (_, i) => `criterion ${i + 1}`)
+    const atCap = ticket(1, { acceptanceCriteria: criteria(OVERSIZED_TICKET_CRITERIA) })
+    const over = ticket(2, { acceptanceCriteria: criteria(OVERSIZED_TICKET_CRITERIA + 1) })
+    const review = ticket(3, { kind: 'review', acceptanceCriteria: criteria(12) })
+    const warnings = ticketShapeWarnings([atCap, over, review])
+    expect(warnings.map((w) => w.code)).toEqual(['oversized-ticket'])
+    expect(warnings[0]!.message).toContain('#2')
   })
 
   /**

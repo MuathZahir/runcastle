@@ -17,6 +17,8 @@ import {
   buildFeatureBrief,
   buildIsolatedSetupCommand,
   buildBurnAgent,
+  HEADLESS_COMPACT_SETTINGS_ARG,
+  headlessAgentEnv,
   buildOtherSideBlock,
   buildSandboxOptions,
   burnAuthReady,
@@ -243,12 +245,20 @@ describe('renderTicketPrompt', () => {
     // Burns OOM-killed mid-suite lost a finished, passing fix every iteration
     // because the agent ran the full suite first and committed second.
     const template = readFileSync(burnerTemplatePath(), 'utf8')
-    expect(template).toMatch(/commit it \*before\* you start the project-wide static check/i)
+    expect(template).toMatch(/static check runs at the end, after the self-review in step 5 and its fixes are committed/i)
     expect(template).toMatch(/follow-up commit/i)
     expect(template).not.toMatch(/full suite once before your final commit/i)
-    // Self-review fixes must be committed before the checks re-run too.
     expect(template).not.toMatch(/re-run typecheck \+ tests/i)
-    expect(template).toMatch(/commit the fixes \*before\* you re-run the targeted tests and the static check/i)
+  })
+
+  // cheaper-burns decision 4: one check rule, stated once, that outranks a
+  // ticket context asking for whole-suite checks — and no step that says to
+  // typecheck before every commit.
+  it('states one check rule that wins over the ticket context', () => {
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    expect(template).toMatch(/The check rule — the only one; it wins over anything your ticket's context says/)
+    expect(template).toMatch(/static check \(the typecheck, or whatever plays that part\) \*\*once\*\*/)
+    expect(template).not.toMatch(/before each commit run typecheck/i)
   })
 
   it('makes the parent the only writer and bounds read-only subagent reports', () => {
@@ -579,13 +589,15 @@ describe('readDocsDigest (the allowlist)', () => {
     })
     const docs = readDocsDigest(projectId, slug)
 
-    expect(docs.included).toEqual(['brief.md', 'decisions.md', 'spec.md'])
+    expect(docs.included).toEqual(['spec.md'])
     expect(docs.text).toContain('the spec')
     // The 52 KB postmortem that used to be the bulk of every coder's context.
     expect(docs.text).not.toContain('o'.repeat(100))
     expect(docs.text).not.toContain('n'.repeat(100))
     // But it is still NAMED, with its reason and its path.
     expect(docs.withheld.map((w) => w.name).sort()).toEqual([
+      'brief.md',
+      'decisions.md',
       'findings.md',
       'outcome.md',
       'research/3-auth.md',
@@ -598,14 +610,28 @@ describe('readDocsDigest (the allowlist)', () => {
     expect(docs.bytes).toBeLessThan(3_000)
   })
 
-  it('orders the canonical docs brief → decisions → spec whatever the FS says', () => {
+  // cheaper-burns decision 7: the spec is inlined; the brief and decisions are
+  // listed first in the index, the decisions with a read-before-changing line.
+  it('inlines the spec alone and lists the brief and decisions with when to read them', () => {
     const { projectId, slug } = seedDocs({
-      'spec.md': '# spec',
-      'decisions.md': '# decisions',
-      'brief.md': '# brief',
+      'spec.md': '# spec\nthe spec',
+      'decisions.md': '# decisions\nthe decisions',
+      'brief.md': '# brief\nthe brief',
     })
     const docs = readDocsDigest(projectId, slug)
-    expect(docs.included).toEqual(['brief.md', 'decisions.md', 'spec.md'])
+    expect(docs.included).toEqual(['spec.md'])
+    expect(docs.withheld.map((w) => w.name)).toEqual(['brief.md', 'decisions.md'])
+    expect(docs.text).not.toContain('the decisions')
+    expect(docs.text).not.toContain('the brief')
+    expect(docs.text).toMatch(new RegExp(`docs/features/${slug}/decisions\\.md\` — .*before changing anything the spec does not spell out`))
+  })
+
+  it('inlines the brief when there is no spec', () => {
+    const { projectId, slug } = seedDocs({ 'brief.md': '# brief\nthe brief', 'decisions.md': '# d\nthe decisions' })
+    const docs = readDocsDigest(projectId, slug)
+    expect(docs.included).toEqual(['brief.md'])
+    expect(docs.text).toContain('the brief')
+    expect(docs.text).not.toContain('the decisions')
   })
 
   it('names a leftover map.md rather than inlining it', () => {
@@ -1065,7 +1091,31 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 
     it('sends only the overrides into a container, never the host env', () => {
       const env = buildBurnAgent(config('docker'), 'sk-token', CLAUDE_MODEL).env
-      expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
+      expect(env).toEqual({
+        CLAUDE_CODE_OAUTH_TOKEN: 'sk-token',
+        CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
+      })
+    })
+
+    // cheaper-burns decisions 5 and 6: every Claude Code agent compacts near
+    // 200k, on the host even against the human's own `autoCompactEnabled:
+    // false`; effort is sent only once runcastle's table sets one.
+    it('compacts every Claude Code agent near 200k, on the host and in a container', () => {
+      for (const sandbox of ['docker', 'noSandbox'] as const) {
+        const agent = buildBurnAgent(config(sandbox), 'sk-token', CLAUDE_MODEL)
+        expect(agent.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+        const { command } = agent.buildPrintCommand({ prompt: 'p', dangerouslySkipPermissions: false })
+        expect(command).toContain(HEADLESS_COMPACT_SETTINGS_ARG)
+      }
+    })
+
+    it('sends an effort level only when one is set, and never to Codex', () => {
+      expect(headlessAgentEnv('claude-code', undefined)).toEqual({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
+      expect(headlessAgentEnv('claude-code', 'medium')).toEqual({
+        CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
+        CLAUDE_CODE_EFFORT_LEVEL: 'medium',
+      })
+      expect(headlessAgentEnv('codex', 'medium')).toEqual({})
     })
 
     // A hand-set CODEX_API_KEY still crosses the boundary, where Codex's own

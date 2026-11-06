@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cheaper burns preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.levers{display:grid;gap:6px;margin-top:14px}
+.lv{display:grid;grid-template-columns:230px 1fr 64px;gap:12px;align-items:center;padding:6px 8px;border-radius:var(--radius-md)}
+.lv:hover{background:var(--color-surface-hover)}
+.lv .n{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.bar{height:10px;border-radius:999px;background:var(--color-fill-well);position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--color-accent)}
+.bar i.q{background:var(--color-warning)}
+.lv .v{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);text-align:right}
+.lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.lane{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 14px;background:var(--color-surface-raised)}
+.lane h3{margin-bottom:8px}
+.ba{display:grid;grid-template-columns:1fr;gap:6px}
+.ba div{display:grid;grid-template-columns:52px 1fr;gap:8px;font-size:12px;line-height:17px}
+.ba b{font-weight:500;color:var(--color-text-tertiary)}
+.ba .now{color:var(--color-text-secondary)}
+.ba .then{color:var(--color-text)}
+.ba hr{border:0;border-top:1px solid var(--color-border-subtle);margin:4px 0;grid-column:1/-1}
+.ask{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:10px 12px;margin-top:14px;background:var(--color-surface-raised);display:grid;gap:4px}
+.ask p{color:var(--color-text-secondary)}
+@media (max-width:760px){.lanes{grid-template-columns:1fr}.lv{grid-template-columns:1fr 56px}.lv .bar{grid-column:1/-1;order:3}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Cheaper burns</h1>
+  <p class="lede">Burns and reviews do the same work for far fewer tokens: smaller tickets, one check rule, compaction, a slimmer docs digest, and reviews that read text instead of pictures. Nothing on screen changes.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/cheaper-burns/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Estimated tokens saved over the two measured weeks, per lever (from the token analysis in the brief).</p>
+  <div class="levers">
+    <div class="lv"><span class="n">Smaller tickets <a class="pin" data-d="1">1</a><a class="pin" data-d="2">2</a><a class="pin" data-d="3">3</a></span><span class="bar"><i style="width:68%"></i></span><span class="v">~116M</span></div>
+    <div class="lv"><span class="n">Compaction at 200k <a class="pin" data-d="5">5</a><a class="pin" data-d="15">15</a></span><span class="bar"><i style="width:100%"></i></span><span class="v">~170M</span></div>
+    <div class="lv"><span class="n">Reviews read text, not pictures <a class="pin" data-d="8">8</a><a class="pin" data-d="9">9</a></span><span class="bar"><i style="width:59%"></i></span><span class="v">~100M</span></div>
+    <div class="lv"><span class="n">One check rule <a class="pin" data-d="4">4</a></span><span class="bar"><i style="width:38%"></i></span><span class="v">~65M</span></div>
+    <div class="lv"><span class="n">Spec-only docs digest <a class="pin" data-d="7">7</a></span><span class="bar"><i style="width:29%"></i></span><span class="v">~50M</span></div>
+    <div class="lv"><span class="n">Sonnet for burns, if you agree <a class="pin" data-d="12">12</a></span><span class="bar"><i class="q" style="width:100%"></i></span><span class="v">~half</span></div>
+  </div>
+
+  <div class="sub">
+    <h3>What each agent does differently</h3>
+    <div class="lanes">
+      <div class="lane"><h3>Ticket worker</h3><div class="ba">
+        <div><b>Now</b><span class="now">Typechecks before every commit, or once, depending on which line it read</span></div>
+        <div><b>Then</b><span class="then">Tests per commit; typecheck once at the end <a class="pin" data-d="4">4</a></span></div><hr>
+        <div><b>Now</b><span class="now">Brief, decisions and spec inlined on every call</span></div>
+        <div><b>Then</b><span class="then">Spec inlined; decisions read before changing anything the spec leaves open <a class="pin" data-d="7">7</a></span></div><hr>
+        <div><b>Now</b><span class="now">Grows to 700k context, never compacts</span></div>
+        <div><b>Then</b><span class="then">Compacts near 200k; effort set by runcastle <a class="pin" data-d="5">5</a><a class="pin" data-d="6">6</a></span></div><hr>
+        <div><b>Now</b><span class="now"><span class="mono">sed -i '417,433d'</span> gets through</span></div>
+        <div><b>Then</b><span class="then">Line-number edits blocked, Edit tool instead <a class="pin" data-d="11">11</a></span></div>
+      </div></div>
+      <div class="lane"><h3>Review agent</h3><div class="ba">
+        <div><b>Now</b><span class="now">Screenshots to look at; one browser step per call</span></div>
+        <div><b>Then</b><span class="then">Checks the text snapshot; chains steps; pictures only for you <a class="pin" data-d="8">8</a></span></div><hr>
+        <div><b>Now</b><span class="now">32k-character prompt, every call</span></div>
+        <div><b>Then</b><span class="then">Examples and repetition cut, every rule kept <a class="pin" data-d="9">9</a></span></div><hr>
+        <div><b>Now</b><span class="now">Runs at your own high effort, no compaction</span></div>
+        <div><b>Then</b><span class="then">Effort set by runcastle, compacts near 200k <a class="pin" data-d="6">6</a><a class="pin" data-d="15">15</a></span></div><hr>
+        <div><b>Now</b><span class="now">Chats with live agents in the drive</span></div>
+        <div><b>Then</b><span class="then">Starts no paid work unless a criterion asks <a class="pin" data-d="10">10</a></span></div>
+      </div></div>
+      <div class="lane"><h3>Feature lead</h3><div class="ba">
+        <div><b>Now</b><span class="now">Guide pushes toward a few big tickets</span></div>
+        <div><b>Then</b><span class="then">About six criteria, one area per ticket <a class="pin" data-d="1">1</a><a class="pin" data-d="16">16</a></span></div><hr>
+        <div><b>Now</b><span class="now">Nothing flags a 12-criteria ticket</span></div>
+        <div><b>Then</b><span class="then">emit_tickets warns above eight <a class="pin" data-d="2">2</a></span></div><hr>
+        <div><b>Now</b><span class="now">Writes "typecheck and test from the repo root"</span></div>
+        <div><b>Then</b><span class="then">Guide forbids whole-suite checks in tickets <a class="pin" data-d="4">4</a></span></div><hr>
+        <div><b>Now</b><span class="now">Wide removals in one ticket</span></div>
+        <div><b>Then</b><span class="then">Expand, migrate, contract <a class="pin" data-d="3">3</a></span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="ask">
+    <h3>Your call: the model for implementation burns <a class="pin" data-d="12">12</a></h3>
+    <p>Recommended: switch the implement step from Opus 1M to Sonnet 5.5 in Settings; leads keep putting UI and complex tickets on Opus. Or say "compare first" and nothing changes here.</p>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <p class="hint">The lead builds it in its own checkout <a class="pin" data-d="13">13</a>, then one review round reads the diff against the spec. Your test drive hand-starts this branch's server and burns one small ticket <a class="pin" data-d="17">17</a>. Two weeks after merge, the orchestrator checks the numbers <a class="pin" data-d="18">18</a>.</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Burns move onto the worker runner, transcripts kept: burns-become-workers</li>
+      <li><i class="dot"></i>Counting review tokens: honest-token-counts</li>
+      <li><i class="dot"></i>The lead's own chat size: lead-chats-stay-small</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Dropping the 1M model ids <a class="pin" data-d="14">14</a></li>
+      <li><i class="dot"></i>A standing token report <a class="pin" data-d="18">18</a></li>
+      <li><i class="dot"></i>Codex agents' compaction and effort</li>
+      <li><i class="dot"></i>Any new setting: all fixed defaults</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="ba">
+        <div><b>Guide</b><span class="now">Skill pack <span class="mono">feature/references/tickets.md</span>: sizing, expand–migrate–contract, no whole-suite checks in contexts.</span></div>
+        <div><b>Warning</b><span class="now"><span class="mono">ticketShapeWarnings</span> in core gains a criteria-count rule; <span class="mono">emit_tickets</span> returns <span class="mono">warnings</span>.</span></div>
+        <div><b>Env</b><span class="now"><span class="mono">buildAgentEnv</span>, Claude Code only, host and container: <span class="mono">CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000</span>, <span class="mono">CLAUDE_CODE_EFFORT_LEVEL</span> from one per-kind table, unset for now. Open: whether the host also needs a flag to beat <span class="mono">autoCompactEnabled:false</span>.</span></div>
+        <div><b>Digest</b><span class="now"><span class="mono">readDocsDigest</span> inlines spec only (brief if no spec); brief and decisions join the "on disk" index. Lead context unchanged.</span></div>
+        <div><b>Guard</b><span class="now"><span class="mono">GUARD_RULES</span>: one rule for any line-addressed <span class="mono">sed -i</span>, replacing the two-range rule.</span></div>
+        <div><b>Prompts</b><span class="now"><span class="mono">implement-ticket.md</span> and <span class="mono">resolve-conflict.md</span>: one check rule. <span class="mono">review-ticket.md</span>: text-snapshot checks, chained steps, no paid work, re-orient after compaction, examples and repetition cut.</span></div>
+        <div><b>Reach</b><span class="now">Live sessions get all of this only after publish and reinstall.</span></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["A ticket holds at most about six criteria, in one area", "Ten giant tickets used 36% of burn tokens; cost grows with the square of a ticket's length.", "assumed"],
+    ["Emitting an oversized ticket returns a warning, never a refusal", "The lead sees it before dispatch; a criteria count works in any language and repo.", "assumed"],
+    ["Wide removals are always expand, migrate, contract", "The costliest ticket on record was one wide removal across four packages.", "assumed"],
+    ["One check rule for ticket agents", "The prompt contradicts itself and lead contexts override it; typecheck ran 490 times.", "assumed"],
+    ["Burn and review agents compact at 200k", "Burns grow to ~700k and re-read it every call; the median ticket ends at 149k, so ordinary tickets never compact.", "assumed"],
+    ["Runcastle sets its headless agents' effort, defaults held for the human", "One easy-to-change place per kind of agent, left unset until you answer. The orchestrator recommends medium for burns, high for reviews.", "assumed"],
+    ["Workers get the spec inlined; brief and decisions become files to read", "~8k tokens a call re-reading docs; the spec is what workers build to.", "assumed"],
+    ["Review drives check by text, keep pictures for the human, and chain steps", "515 screenshots read back (~68M); over half of review calls were one browser step.", "assumed"],
+    ["The review prompt loses its examples and repetition, never a rule", "32k characters paid on every review call; every rule stays, and the report names what moved or merged.", "assumed"],
+    ["Reviews never start paid work inside the app they drive", "Reviews of runcastle were seen chatting with live agents in the drive.", "assumed"],
+    ["The burn guard blocks line-number edits with sed -i", "Single-range line surgery gets past today's two-range rule.", "assumed"],
+    ["Implementation burns default to Sonnet, with Opus for UI and complex tickets \u2014 only on the human's yes", "Sonnet tickets used about half the tokens in a small sample; it may change quality, so it is your call.", "assumed"],
+    ["The lead builds it, then one review round", "Mostly prompt edits plus three small code changes; one burn at a time means tickets buy no width.", "assumed"],
+    ["The 1M-context model stays; compaction caps it", "Compaction fixes the long-conversation waste on every model; which model is your setting.", "assumed"],
+    ["Reviews compact too, and lose nothing when they do", "Findings are reported as they are seen; one line restores the agent's place in the walk.", "assumed"],
+    ["Splitting oversized tickets is worth the extra container time", "About ten extra containers over two weeks for ~116M tokens; ordinary tickets keep their size.", "assumed"],
+    ["The test drive proves it on a real burn from this branch", "Normal drives run the installed runcastle, so only a hand-started server exercises this branch.", "assumed"],
+    ["Savings are checked once, by hand, after two weeks", "The burn records already hold per-ticket tokens; one comparison answers it.", "assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[12, "Keep Opus and compare the two models on similar tickets first.", "Five Sonnet tickets is a small sample, likely the easier ones; it may change quality.", "challenged"], [6, "Medium for every headless agent, as first planned.", "Held for you: reviews on your machine follow your own high-effort setting today."], [7, "Inline the spec and the decisions; list only the brief.", "Workers may undo a choice the spec does not restate.", "challenged"], [1, "Keep today's sizing and rely on the warning alone.", "More tickets means more containers and slower features."], [9, "Keep the prompt's length and only add the new rules.", "Cutting examples may weaken rules agents follow today.", "challenged"]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

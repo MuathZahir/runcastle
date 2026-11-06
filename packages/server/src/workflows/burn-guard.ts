@@ -51,6 +51,12 @@ export interface GuardRule {
  */
 const CMD_START = '(^|[;&|(]|&&)[[:space:]]*'
 
+/** sed's in-place flag, alone or clustered (`-i`, `-i.bak`, `-Ei`, `--in-place`), as its own word — never the `-fi` inside `my-file.txt`. */
+const SED_IN_PLACE = '[[:space:]](-[A-Za-z]*i[^[:space:]]*|--in-place[^[:space:]]*)'
+
+/** A sed command addressed by line number (`5d`, `$d`, `7,$c`, `5,+3a`), where a command starts. */
+const SED_LINE_EDIT = `(['";]|-e[[:space:]]+)([0-9]+|\\$)(,(\\+?[0-9]+|\\$))?[[:space:]]*[dcai]([^A-Za-z]|$)`
+
 export const GUARD_RULES: readonly GuardRule[] = [
   {
     id: 'no-stash',
@@ -114,6 +120,21 @@ export const GUARD_RULES: readonly GuardRule[] = [
     inspectQuotedArguments: true,
     reason:
       'Do not perform multi-range file surgery with `sed -i`. Use the Edit tool, which is atomic and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-sed-line-number-edit',
+    // An in-place sed whose program deletes, changes, inserts or appends at a
+    // line number: `sed -i '417,433d'`, `sed -i '$d'`, `sed -i 's/a/b/;5d'`,
+    // `sed -e '5d' -i f`, `sed -i -- '5,+3d'`. Line numbers go stale the moment
+    // an earlier edit lands, so these silently damage files (cheaper-burns
+    // decision 11). The in-place flag and the address may come in either order,
+    // hence the two halves. An address counts only where a sed command starts —
+    // just after the program's opening quote, a `;`, or an unquoted `-e` — so
+    // a pattern substitution (`sed -i 's/x/1d/'`) stays allowed.
+    pattern: `${CMD_START}sed(([[:space:]][^|&]*)?${SED_IN_PLACE}[^|&]*${SED_LINE_EDIT}|[[:space:]][^|&]*${SED_LINE_EDIT}[^|&]*${SED_IN_PLACE})`,
+    inspectQuotedArguments: true,
+    reason:
+      'Do not edit files by line number with `sed -i` — line numbers go stale as soon as an earlier edit lands. Use the Edit tool, which matches the text itself and fails loudly when it is not found.',
   },
   {
     id: 'no-cat-heredoc-edit',

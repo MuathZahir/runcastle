@@ -33,6 +33,7 @@ import {
   WaitingKind,
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
+  ticketShapeWarnings,
   isAgentDigestDoc,
   isProjectSessionKind,
   unstartedState,
@@ -887,7 +888,7 @@ export function toolEmitTickets(
   ctx: AppCtx,
   session: SessionRow,
   input: { tickets: TicketInputT[] },
-): { stored: number; tickets: StoredTicketRef[] } {
+): { stored: number; tickets: StoredTicketRef[]; warnings: string[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseMisKindedReview(input.tickets)
   // A session may only assign what `get_feature_context` offered it; the store
@@ -917,6 +918,9 @@ export function toolEmitTickets(
   return {
     stored: stored.length,
     tickets: stored.map((t) => ({ id: t.id, seq: t.seq, title: t.title })),
+    // Advisory only (cheaper-burns decision 2): the batch is already stored, and
+    // the lead reads these to split or enrich a ticket before it dispatches.
+    warnings: ticketShapeWarnings(stored).map((w) => w.message),
   }
 }
 
@@ -3600,7 +3604,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
           'annotatedModels whose note gives a reason to deviate — omit it otherwise and the round ' +
           'resolves the model the ordinary way. Storing the batch opens the human’s panel on Work, ' +
-          'so they see the tickets you just wrote.',
+          'so they see the tickets you just wrote. `warnings` names any stored ticket shaped to ' +
+          'overrun (too many criteria, a thin or pasted context): nothing is refused, but fix it ' +
+          'with update_ticket before you dispatch.',
         inputSchema: {
           tickets: z
             .array(TicketInput)

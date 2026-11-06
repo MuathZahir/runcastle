@@ -43,11 +43,22 @@ export const DEGENERATE_BATCH_TICKETS = 5
  */
 export const DOCS_DIGEST_WARN_BYTES = 40_000
 
+/**
+ * More acceptance criteria than this and a ticket is past the size one agent
+ * finishes cheaply. A ticket's cost grows with the square of its length (every
+ * call re-reads the whole context), and over two measured weeks the ten tickets
+ * that ended above 250k context used 36% of all burn tokens. The tickets guide
+ * aims at about six; this warns above eight, never refuses (cheaper-burns
+ * decisions 1 and 2).
+ */
+export const OVERSIZED_TICKET_CRITERIA = 8
+
 export type TicketShapeWarningCode =
   | 'thin-context'
   | 'pasted-document'
   | 'degenerate-batch'
   | 'oversized-docs-digest'
+  | 'oversized-ticket'
 
 export interface TicketShapeWarning {
   /** Stable handle for the surfaces and their tests; never shown to a human. */
@@ -62,7 +73,7 @@ export interface TicketShapeWarning {
  * and the card reads the rows themselves, so every warning can name its ticket
  * by the `#seq` the human sees on the ledger.
  */
-export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context' | 'kind'>
+export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context' | 'kind' | 'acceptanceCriteria'>
 
 /**
  * The tickets a shape check reads: the batch, minus its review ticket.
@@ -130,6 +141,15 @@ export function ticketShapeWarnings(
           `${named(ticket)} has a ${context.length}-character context — under ${THIN_TICKET_CONTEXT_CHARS} ` +
           'there is nothing for a coder to read before it writes: name the files, the existing ' +
           'pattern to follow, and the evidence that proves it done.',
+      })
+    }
+    if (ticket.acceptanceCriteria.length > OVERSIZED_TICKET_CRITERIA) {
+      out.push({
+        code: 'oversized-ticket',
+        message:
+          `${named(ticket)} has ${ticket.acceptanceCriteria.length} acceptance criteria — over ` +
+          `${OVERSIZED_TICKET_CRITERIA}, a ticket's context grows past what one agent finishes cheaply: ` +
+          'split it where its files stop overlapping, about six criteria each.',
       })
     }
     if (looksLikePastedDocument(context)) {
