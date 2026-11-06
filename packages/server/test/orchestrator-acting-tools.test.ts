@@ -450,7 +450,7 @@ describe('the orchestrator’s acting tools', () => {
         expect(project[name]?.required, name).toContain('slug')
         expect(Object.keys(chat[name]?.properties ?? {}), name).not.toContain('slug')
       }
-      expect(Object.keys(chat.get_feature_context?.properties ?? {})).toEqual([])
+      expect(Object.keys(chat.get_feature_context?.properties ?? {})).toEqual(['full'])
       expect(chat.read_feature_doc?.required).toEqual(['relPath'])
       expect(chat.get_ticket?.required).toEqual(['seq'])
     })

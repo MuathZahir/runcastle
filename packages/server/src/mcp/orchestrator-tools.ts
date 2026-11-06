@@ -332,9 +332,8 @@ export function registerOrchestratorTools(
     {
       title: 'Take a feature',
       description:
-        'Make this thread the holder of a feature, whoever holds it: you hear its news and may ' +
-        'act on it, and the thread that held it is told. Wakes nothing on the feature. Use it only ' +
-        'when the human asked you to act on this feature in this conversation. Refused once it shipped.',
+        'Make this thread the holder of a feature: you hear its news and may act on it. Use it only ' +
+        'when the human asked you to act on this feature here.',
       inputSchema: { slug: SlugInput },
     },
     toolTakeFeature,
@@ -387,17 +386,14 @@ export function registerOrchestratorTools(
     {
       title: 'Start or stop a test drive',
       description:
-        'Start or stop a test drive: of a feature’s branch with `slug`, of the project’s base ' +
-        'checkout without one. With `scenario` (a scenario file path as the drive menu lists it, ' +
-        'e.g. `.runcastle/scenarios/onboarding/brand-new-install.ts`) a start lands on that ' +
-        'scenario once the app answers. One drive runs on the machine at a time — a refusal ' +
+        'Start or stop a test drive of a feature’s branch (`slug`) or the base checkout. A refusal ' +
         'comes back as `deniedReason`.',
       inputSchema: {
         scenario: z
           .string()
           .min(1)
           .optional()
-          .describe('A scenario file to start the drive on. Ignored on stop.'),
+          .describe('A scenario file to land on; ignored on stop.'),
         slug: SlugInput.optional().describe(
           'The feature whose branch to drive. Omit to drive the base branch.',
         ),
@@ -412,10 +408,8 @@ export function registerOrchestratorTools(
     {
       title: 'Merge a feature',
       description:
-        'Merge a feature into its base through runcastle, as Merge does: the outcome doc, the ' +
-        'shipped state and the worktree clean-up. On a conflict it returns `conflict` and the ' +
-        '`files`; resolve them in the feature’s worktree (never while a session is live on it) ' +
-        'and merge again.',
+        'Merge a feature into its base, as Merge does. On a conflict it returns `conflict` and the ' +
+        '`files` to resolve in the worktree.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
@@ -426,9 +420,7 @@ export function registerOrchestratorTools(
     {
       title: 'Add to a feature’s brief',
       description:
-        'Append what the human told you later about a feature to its brief.md, as a dated ' +
-        'section, and commit it; on a draft it is added to the parked brief that Start turns ' +
-        'into brief.md. The brief is where the human’s intent for the feature lives.',
+        'Append what the human told you later about a feature to its brief, as a dated section.',
       inputSchema: {
         slug: SlugInput,
         text: z.string().min(1).describe('What the human said, in your words, as markdown.'),

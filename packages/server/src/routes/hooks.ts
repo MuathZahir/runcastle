@@ -1,4 +1,4 @@
-import { type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
+import { DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
@@ -7,6 +7,8 @@ import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launch
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
+import { toolsForAudience } from '../mcp/server'
+import { clearSentMemoryOnStart } from '../mcp/sent-memory'
 import {
   getSessionRow,
   markAgentWorking,
@@ -170,6 +172,8 @@ function handleSessionStart(
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
   const source = typeof payload?.source === 'string' ? payload.source : undefined
 
+  // A conversation that lost its context no longer holds what read tools sent it.
+  clearSentMemoryOnStart(sessionId, source)
   const wasLive = getSessionRow(ctx, sessionId)?.status === 'live'
   markSessionLive(ctx, sessionId, { ccSessionId, transcriptPath })
   if (!wasLive) {
@@ -180,10 +184,11 @@ function handleSessionStart(
     })
   }
 
+  const session = getSessionRow(ctx, sessionId)
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: sessionStartContext(ctx, feature),
+      additionalContext: sessionStartContext(ctx, feature, session),
     },
   }
 }
@@ -232,6 +237,7 @@ async function handleProjectScopedSessionStart(
   const source = typeof payload?.source === 'string' ? payload.source : undefined
 
   const noun = projectScopedNoun(session.kind)
+  clearSentMemoryOnStart(session.id, source)
   const wasLive = getSessionRow(ctx, session.id)?.status === 'live'
   markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
   if (!wasLive) {
@@ -317,8 +323,8 @@ async function projectScopedStartContext(ctx: AppCtx, session: SessionRow): Prom
   if (!project) return `[runcastle] ${noun} — project not found`
 
   const scope = `[runcastle] ${noun} for ${project.name} (${project.repoPath})`
-  if (session.kind === 'project') return `${scope}.\n${await orchestratorPrepNote(ctx, project)}`
-  return scope
+  const lines = [session.kind === 'project' ? `${scope}.\n${await orchestratorPrepNote(ctx, project)}` : scope]
+  return [...lines, ...toolLoadLine(session)].join('\n')
 }
 
 /**
@@ -517,7 +523,7 @@ function leadGuardDenial(
 }
 
 /** The SessionStart context digest: brief + status + tickets + pointer to MCP. */
-function sessionStartContext(ctx: AppCtx, feature: Feature): string {
+function sessionStartContext(ctx: AppCtx, feature: Feature, session: SessionRow | null): string {
   const tickets = listByFeature(ctx, feature.id)
   const byStatus = tickets.reduce<Record<string, number>>((acc, t) => {
     acc[t.status] = (acc[t.status] ?? 0) + 1
@@ -539,8 +545,20 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     `rounds run: ${featureRuns.length}; latest run: ${featureRuns[0]?.status ?? 'none'}`,
-    'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',
+    'A repeat `get_feature_context` returns only what changed; `read_feature_doc` returns any doc in full.',
+    ...toolLoadLine(session),
   ].join('\n')
+}
+
+/**
+ * The one line that loads every runcastle tool a Claude Code session is offered
+ * in a single ToolSearch, so it never loads them one at a time. Codex has no
+ * ToolSearch, so it gets none.
+ */
+function toolLoadLine(session: SessionRow | null): string[] {
+  if (!session || (session.runtime ?? DEFAULT_RUNTIME) !== 'claude-code') return []
+  const tools = toolsForAudience(session.kind).map((name) => `mcp__runcastle__${name}`)
+  return [`Load your runcastle tools once: ToolSearch "select:${tools.join(',')}"`]
 }
 
 export default hooks

@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { deliverToLead } from '../services/lead-delivery'
-import { mainChatExcerpt } from '../services/main-chat-excerpt'
+import { capTurns, capTurnsCounted, mainChatTurns } from '../services/main-chat-excerpt'
 import { shownCopies, type ShownCopy } from '../threads/shown'
 import { reviewShots, type ReviewShots } from '../services/review-package'
 import {
@@ -15,6 +15,7 @@ import {
   requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
+import { chatReadPosition, recordChatRead } from './sent-memory'
 
 /**
  * The orchestrator's tool that talks to a feature (`whole-cuts-plan-themselves`,
@@ -63,27 +64,89 @@ export type ReadFeatureChatResult = {
   quote: string | null
   transcriptPath: string | null
   reason?: string
+  /**
+   * On a read that continues this thread's last one: how many of the turns new
+   * since then the quote left out to fit, oldest first.
+   */
+  earlierNewTurnsOmitted?: number
   /** The files the chat showed, newest last; each `path` is a copy `show_file` can show again. */
   shown: ShownCopy[]
   /** The pictures this feature's reviews kept, newest pass first; each `path` works with show_file. */
   reviewShots: ReviewShots[]
 }
 
-/** The last turns of a feature's main chat, for reading what its agent said or asked. */
+const NOTHING_NEW = 'nothing new since your last read'
+
+/** Every shot of `passes`, oldest pass first, so later shots always land at the end. */
+function shotCount(passes: ReviewShots[]): number {
+  return passes.reduce((sum, pass) => sum + pass.shots.length, 0)
+}
+
+/** The shots past the first `seen` (counted oldest pass first), regrouped newest pass first. */
+function shotsAfter(passes: ReviewShots[], seen: number): ReviewShots[] {
+  if (seen > shotCount(passes)) return passes
+  let skip = seen
+  const fresh: ReviewShots[] = []
+  for (const pass of [...passes].reverse()) {
+    const shots = pass.shots.slice(skip)
+    skip = Math.max(0, skip - pass.shots.length)
+    if (shots.length > 0) fresh.unshift({ ...pass, shots })
+  }
+  return fresh
+}
+
+/**
+ * The last turns of a feature's main chat, for reading what its agent said or
+ * asked. A repeat read by the same thread of the same transcript returns only
+ * what was added since (`tools-and-skills-say-less` decision 6); `full` or a
+ * different transcript reads as the first time did.
+ */
 export function toolReadFeatureChat(
   ctx: AppCtx,
   session: SessionRow,
-  input: { slug: string },
+  input: { slug: string; full?: boolean },
 ): ReadFeatureChatResult {
   const feature = requireProjectFeature(ctx, session, input.slug)
-  const { quote, transcriptPath } = mainChatExcerpt(ctx, feature)
+  const { turns, transcriptPath } = mainChatTurns(ctx, feature)
+  const shown = shownCopies(ctx, feature.id)
+  const shots = reviewShots(ctx, feature.id)
+  const last = chatReadPosition(session.id, feature.id)
+  if (transcriptPath) {
+    recordChatRead(session.id, feature.id, {
+      transcriptPath,
+      turnCount: turns.length,
+      shownCount: shown.length,
+      reviewShotCount: shotCount(shots),
+    })
+  }
+
+  // A transcript that shrank under the same path (rewritten, or its turns
+  // reparsed fewer) has no "since" to count from: read it as the first time.
+  const sameChat = last !== undefined && transcriptPath === last.transcriptPath && turns.length >= last.turnCount
+  if (!input.full && last && sameChat) {
+    const { quote, omitted } = capTurnsCounted(turns.slice(last.turnCount))
+    const newShown = shown.slice(last.shownCount)
+    const newShots = shotsAfter(shots, last.reviewShotCount)
+    const nothingNew = quote === null && newShown.length === 0 && newShots.length === 0
+    return {
+      slug: feature.slug,
+      quote,
+      transcriptPath,
+      ...(nothingNew ? { reason: NOTHING_NEW } : {}),
+      earlierNewTurnsOmitted: omitted,
+      shown: newShown,
+      reviewShots: newShots,
+    }
+  }
+
+  const quote = capTurns(turns)
   return {
     slug: feature.slug,
     quote,
-    transcriptPath,
+    transcriptPath: quote ? transcriptPath : null,
     ...(quote === null ? { reason: 'no chat on disk yet' } : {}),
-    shown: shownCopies(ctx, feature.id),
-    reviewShots: reviewShots(ctx, feature.id),
+    shown,
+    reviewShots: shots,
   }
 }
 
@@ -98,10 +161,8 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to a feature's agent. It arrives marked as from the project's " +
-          'orchestrator, not the human, and still counts as a human message: it lets the agent ' +
-          'start a round again after a Stop. Set relaysHuman only when the message is the ' +
-          "human's own answer, passed on as they gave it; then it arrives marked as theirs, relayed.",
+          "Send a message to a feature's agent, marked as from the orchestrator. Set relaysHuman " +
+          "only for the human's own answer passed on as they gave it.",
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z.string().min(1).describe('What to change and why, or what you found.'),
@@ -125,13 +186,12 @@ export function registerOrchestratorRunTools(
       {
         title: 'Read a feature’s chat',
         description:
-          "The last turns of a feature's chat, for reading what its agent said or asked. " +
-          'Returns the quote and the transcript path; the quote is null, with a reason, when ' +
-          'the feature has no chat on disk yet. `shown` lists the files that chat showed, each ' +
-          'with a `path` that show_file can show again, even after the feature merged. ' +
-          '`reviewShots` lists the pictures its reviews kept. To put a review in front of the ' +
-          'human, use show_review_package.',
-        inputSchema: { slug: z.string().describe('The slug of the feature.') },
+          "The last turns of a feature's chat, plus the files it `shown` and its `reviewShots`. " +
+          'A repeat read returns only what is new; `full: true` returns the last turns again.',
+        inputSchema: {
+          slug: z.string().describe('The slug of the feature.'),
+          full: z.boolean().optional().describe('Return the last turns, not only what is new.'),
+        },
       },
       orchestratorTool(async (args, extra) => {
         const rs = await resolve(extra)

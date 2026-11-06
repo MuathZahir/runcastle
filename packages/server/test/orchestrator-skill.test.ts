@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
@@ -51,20 +51,61 @@ describe('the project skill, orchestrating', () => {
 
   it('is always in force, with nothing making it conditional', () => {
     const text = skill()
-    const top = text.slice(0, text.indexOf('## Your tools'))
+    const top = text.slice(0, text.indexOf('## 0.'))
     expect(top).toContain("**You are also always this project's orchestrator.**")
     expect(section()).toContain('This is standing guidance')
     expect(text).not.toMatch(/when your briefing says you are the orchestrator|applies only (then|when)/i)
     expect(text).not.toMatch(/setting|experimental|turns? the mode/i)
   })
 
-  it('names every tool the orchestrator has, and none it lost', () => {
+  // Decision 10: the main file rides every orchestrator call, so it keeps only
+  // what every turn needs and points at a reference per job.
+  it('keeps only what every turn needs, with a reference per job that exists', () => {
     const text = skill()
-    const tools = text.slice(text.indexOf('## Your tools'), text.indexOf('## 0.'))
-    for (const tool of PROJECT_TOOLS) expect(tools).toContain(`\`mcp__runcastle__${tool}(`)
-    expect(tools).toContain('`mcp__runcastle__send_to_feature({ slug, message, relaysHuman? })`')
-    expect(tools).toContain('`humanTypedAt`')
+    expect(text.length).toBeLessThanOrEqual(25_000)
+    expect(text).not.toContain('## Your tools')
+    expect(text).toContain('**Load your runcastle tools once**')
+    const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
+    expect(pointers).toEqual(expect.arrayContaining(['intake.md', 'routing.md', 'charter.md', 'health-sweeps.md', 'triage.md', 'preparation.md']))
+    for (const file of pointers) expect(existsSync(join(resolvePluginDir(), 'skills', 'project', 'references', file)), file).toBe(true)
+    expect(read('project', 'references', 'intake.md')).toContain('### 1c. Create — once the split is agreed')
+    expect(read('project', 'references', 'routing.md')).toContain('## 4. Curation — advisory only')
+  })
+
+  it('names every tool the orchestrator has across the skill and its references, and none it lost', () => {
+    const text = ['SKILL.md', ...readdirSync(join(resolvePluginDir(), 'skills', 'project', 'references'))]
+      .map((f) => (f === 'SKILL.md' ? read('project', f) : read('project', 'references', f)))
+      .join('\n')
+    for (const tool of PROJECT_TOOLS) expect(text, tool).toMatch(new RegExp(`\\b${tool}\\b`))
     expect(text).not.toMatch(/take_over_feature|record_test_note|complete_phase/)
+  })
+
+  it('asks for a working agreement at intake, and works within it while orchestrating', () => {
+    const intake = read('project', 'references', 'intake.md')
+    const agreement = intake.slice(intake.indexOf('## The working agreement'))
+    expect(agreement).toContain('**Before you create anything for a cut, ask the human how they want the work run.**')
+    expect(agreement).toContain('One question, with your recommendation')
+    expect(agreement).toContain('say what each means for merging')
+    expect(agreement).toContain('**Autonomous**: you carry everything through to merged')
+    expect(agreement).toContain('**Checkpoints they name**')
+    expect(agreement).toContain('merge only what they have passed there')
+    expect(agreement).toContain('**A check-in after each feature**')
+    expect(agreement).toContain('merge it only once they say so')
+    expect(agreement).toContain('**Always offer all three shapes**, even for a cut of one feature')
+    expect(agreement).toContain('**Every new request is a new cut**')
+    expect(agreement).toContain('unless the human has said the earlier agreement stands for it')
+    expect(agreement).toContain('**Write the agreement into the brief of every feature in the cut**')
+    const text = section()
+    expect(text.indexOf('### The working agreement')).toBeGreaterThanOrEqual(0)
+    expect(text.indexOf('### The working agreement')).toBeLessThan(text.indexOf('### Grill, create, plan, start'))
+    expect(text).toContain('`./references/intake.md`')
+    expect(text).toContain('**"You decide" means autonomous, merge included.**')
+    expect(text).toContain('**Outside a cut, merge only when the human asks you to.**')
+    expect(text).toContain('read the agreement back from the briefs')
+    expect(text).toContain('**Autonomous: never stop for a test drive.**')
+    expect(text).toContain('**never create review tickets yourself**')
+    expect(text).toContain('**Checkpoints: stop exactly at the points they named**')
+    expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
   })
 
   it('acts only on what the human asked, as far as they asked, or within a cut agreement', () => {
@@ -85,31 +126,6 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('Ending the orchestrator chat does not stop you for good')
   })
 
-  it('agrees how the cut is run before creating anything, merging included, and works within it', () => {
-    const text = section()
-    const agreement = text.indexOf('### The working agreement')
-    expect(agreement).toBeGreaterThanOrEqual(0)
-    expect(agreement).toBeLessThan(text.indexOf('### Grill, create, plan, start'))
-    expect(text).toContain('**Before you create anything for a cut, ask the human how they want the work run.**')
-    expect(text).toContain('One question, with your recommendation')
-    expect(text).toContain('say what each means for merging')
-    expect(text).toContain('**Autonomous**: you carry everything through to merged')
-    expect(text).toContain('**Checkpoints they name**')
-    expect(text).toContain('merge only what they have passed there')
-    expect(text).toContain('**A check-in after each feature**')
-    expect(text).toContain('merge it only once they say so')
-    expect(text).toContain('**"You decide" means autonomous, merge included.**')
-    expect(text).toContain('**Outside a cut, merge only when the human asks you to.**')
-    expect(text).toContain('**Always offer all three shapes**, even for a cut of one feature')
-    expect(text).toContain('**Every new request is a new cut**')
-    expect(text).toContain('unless the human has said the earlier agreement stands for it')
-    expect(text).toContain('**Write the agreement into the brief of every feature in the cut**')
-    expect(text).toContain('read the agreement back from the briefs')
-    expect(text).toContain('**Autonomous: never stop for a test drive.**')
-    expect(text).toContain('**never create review tickets yourself**')
-    expect(text).toContain('**Checkpoints: stop exactly at the points they named**')
-    expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
-  })
 
   it('puts a shared thing in one place, and says so before departing from the literal ask', () => {
     const text = section()
@@ -221,7 +237,7 @@ describe('the project skill, preparing', () => {
   })
 
   it('loads the preparation method on demand, beside the other procedures', () => {
-    expect(read('project', 'SKILL.md')).toMatch(/\*\*Four procedures load on demand\*\*[^\n]*`\.\/references\/preparation\.md`/)
+    expect(opening()).toContain('`./references/preparation.md`')
     expect(reference()).toContain('`./preparation-recipes.md`')
     expect(read('project', 'references', 'preparation-recipes.md')).toContain('## Postgres, one database per drive')
   })
@@ -245,7 +261,9 @@ describe('the project skill, preparing', () => {
 
 describe('the project skill, with no Go, no quick changes and no missing tools', () => {
   const texts = (): string[] =>
-    ['SKILL.md', 'references/triage.md', 'references/health-sweeps.md'].map((f) => read('project', ...f.split('/')))
+    ['references/routing.md', 'SKILL.md', 'references/intake.md', 'references/triage.md', 'references/health-sweeps.md'].map(
+      (f) => read('project', ...f.split('/')),
+    )
 
   it('mentions neither Go, go_feature nor a quick change', () => {
     for (const text of texts()) {
