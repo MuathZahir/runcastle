@@ -31,27 +31,30 @@ Check first: 12, 6, 7, 1, 9
 **Why:** Burns run on the 1M-context model with no compaction, so the giant tickets re-read up to ~700k on every call (~170M measured). Claude Code documents this variable and applies it to `[1m]` models. The median ticket ends at 149k, so ordinary tickets never compact; commit-often already limits what a compaction can lose.
 **Assumed.** Alternative: a higher window (300k–400k) that compacts fewer tickets but saves less.
 
-## 6. Headless agents run at medium effort, whatever the host's own settings say
-**Decision:** Every Claude Code agent runcastle runs headless is started at medium effort (`CLAUDE_CODE_EFFORT_LEVEL=medium`, which outranks every settings file). The same goes for decision 5's compaction: a headless agent compacts even when the human's own Claude settings turn auto-compaction off.
+## 6. Runcastle sets its headless agents' effort, defaults held for the human
+**Decision:** The effort a headless Claude Code agent runs at is set by runcastle, per kind of agent (implementation, conflict, review), in one place in the code that is easy to change, and passed as `CLAUDE_CODE_EFFORT_LEVEL`, which outranks every settings file. Until the human answers, every kind is left unset, so behaviour is unchanged: container burns run at the model's default (medium) and host reviews follow the human's own settings. The orchestrator recommends medium for implementation and high for reviews. Separately, decision 5's compaction holds even when the human's own Claude settings turn auto-compaction off.
 **Why:** Container burns already run at medium, the 5.5 models' default. But review tickets run on the host, where they read the human's own Claude settings, and on this machine those set Opus 5.5 to high effort and switch auto-compaction off. So reviews, the second-largest cost, run at high effort with no compaction. The human's settings are for their own sessions, not for unattended agents.
-**Assumed.** Alternative: leave effort unset and let host agents follow the human's settings.
+**Assumed.** Alternative: medium for every headless agent, as first planned.
+**Changed by the orchestrator:** it put the default to the human together with decision 12, and asked for the lever to be built now with the defaults held.
 
 ## 7. Workers get the spec inlined; brief and decisions become files to read
-**Decision:** The docs digest every burn and review agent receives inlines `spec.md` only. `brief.md` and `decisions.md` are listed by path, with one line each saying when to read them. A feature with no spec inlines its brief instead. The lead's own feature context is unchanged.
+**Decision:** The docs digest every burn and review agent receives inlines `spec.md` only. `brief.md` and `decisions.md` are listed by path; the line for `decisions.md` tells the agent to read it before changing anything the spec does not spell out. A feature with no spec inlines its brief instead. The lead's own feature context is unchanged.
 **Why:** The digest averages ~8k tokens per call and reached 109k characters; it is paid on every call of every ticket (~50M). The spec is what workers build to; the ticket's own context carries anything else they need.
 **Assumed.** Alternative: inline the spec and decisions, list only the brief.
 **Challenged:** With no spec, the decisions are where the design choices live, so the fallback should inline the brief and the decisions together; and workers who never open `decisions.md` may undo a choice the spec does not restate.
+**Changed by the orchestrator:** the read-before-changing line for `decisions.md` answers the challenger's second worry.
 
 ## 8. Review drives check by text, keep pictures for the human, and chain steps
 **Decision:** The review prompt tells the agent to verify every criterion from the page's text snapshot, never to take a screenshot in order to look at it, and to keep pictures only through the review's capture call (which stores them for the human without handing them back). It tells the agent to chain the actions between two snapshots into one shell call.
 **Why:** 515 screenshots were read into context (~68M) and 1,702 of ~3,188 review calls were single browser actions. Most of those reviews ran before the capture call shipped (2026-10-31), so the rule makes the capture call the only picture path rather than adding a new tool.
 **Assumed.** Alternative: block image reads in review sessions with a hook.
 
-## 9. The review prompt is cut to about half
-**Decision:** The review prompt template goes from ~32k characters to ~16k or less. Every hard rule stays; what goes is repeated explanation and the measured anecdotes that justify a rule after it is stated.
+## 9. The review prompt loses its examples and repetition, never a rule
+**Decision:** The review prompt template is cut by removing examples, anecdotes and repetition only; every rule stays, and there is no length target. The lead's report names each rule that moved or merged.
 **Why:** The template is paid on every call of every review (33 drive reviews cost 406M). The anecdotes earned their place when each rule was new; the rules are now settled.
 **Assumed.** Alternative: leave its length and only add decisions 8 and 10.
 **Challenged:** A fixed "half" target invites cutting the anecdotes that make agents obey a rule; cut repetition first and drop an anecdote only where the rule is clear without it, with no length target.
+**Changed by the orchestrator:** cut examples and repetition only, keep every rule, and report which rules moved or merged.
 
 ## 10. Reviews never start paid work inside the app they drive
 **Decision:** The review prompt says not to start work that costs money or runs long inside the app under test (sending a message to an AI agent, starting a job or a build) unless an acceptance criterion names it.
