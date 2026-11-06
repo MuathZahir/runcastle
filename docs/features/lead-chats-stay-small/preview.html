@@ -288,7 +288,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The human sees each automatic compaction', 'The existing divider says it was automatic, why, and the size before and after, so a forgetful lead has a visible cause.', 'assumed'],
     ['The skill stops saying "never compact"', 'It contradicts this feature. The reason behind it survives as "write each decision down the moment it settles".', 'assumed'],
     ['A message sent during a compaction waits for it', 'Most likely right after planning. A few seconds’ wait beats wasting a half-done compaction.', 'assumed'],
-    ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.', 'assumed']
+    ['A compaction never pings the human or moves the feature', 'It runs through the normal turn path; without this every quiet moment would end in a false "lead finished" alert.', 'assumed'],
+    ['After any compaction, the lead re-reads its feature state first', 'Added by the orchestrator: a summary is the model’s own judgement and nothing checks it; one call to get_feature_context does.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

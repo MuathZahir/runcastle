@@ -64,9 +64,10 @@ Check first: 5, 6, 7, 8, 12
 ## 12. The skill stops saying "never compact"
 **Decision:** The feature skill's grilling guidance drops "Never compact. Never `/clear`." It says instead that runcastle compacts the lead at quiet moments, the lead never compacts itself, and everything settled must be on disk at once, which is why decisions are recorded one at a time.
 **Why:** The old rule contradicts this feature; the reason behind it (keep decisions safe) survives as "write them down now".
-The edit is a one-paragraph swap in the grilling reference, the only skill edit outside the delegation guidance and the "build it the cheapest good way" section, and the orchestrator is told so because "tools and skills say less" edits the same files.
+The edit is a one-line swap in the grilling reference, the only skill edit outside the delegation guidance and the "build it the cheapest good way" section, and the orchestrator is told so because "tools and skills say less" edits the same files.
 **Assumed.** Alternative: keep the rule for grilling only and compact only outside it.
 **Challenged:** The brief limits this feature's skill edits to the delegation guidance and the build-it-yourself section so the sibling feature rebases cleanly; the grilling section is outside that. (The rule flatly contradicts this feature, so it has to go; one paragraph is a trivial conflict to resolve.)
+**Changed by the orchestrator:** the grilling edit is a one-line swap of the "never compact" sentence, nothing more, because "tools and skills say less" trims the same reference files in parallel.
 
 ## 13. A message sent during a compaction waits for it
 **Decision:** While runcastle compacts a lead, the chat shows the lead working, and a message the human sends waits in the lead's queue and runs once the compaction finishes. Runcastle never starts a compaction while a turn, a question or a queued message is pending.
@@ -77,3 +78,9 @@ The edit is a one-paragraph swap in the grilling reference, the only skill edit 
 **Decision:** An automatic compaction is not a turn as far as the feature is concerned: it raises no "needs you" ping, no orchestrator news, and leaves the feature's status and waiting reason exactly as they were. The idle timer that stops the lead's process counts from the compaction's end.
 **Why:** It runs as a hidden prompt through the same turn path as a real message; without this, every quiet moment would end with a false "lead finished" alert and could clear "Waiting for you · plan to approve".
 **Assumed.** Alternative: none worth taking; listed so the build does not miss it.
+
+## 15. After any compaction, the lead re-reads its feature state first
+**Decision:** After every compaction (runcastle's own at a quiet moment, or the runtime's 200k ceiling mid-turn), the lead's first move is to call `get_feature_context` (waiting question, running round, ready declaration) before acting on the summary. On Claude Code a hook that runs when a compacted session restarts tells it so; the keep-instructions and the feature skill say it too, which is what Codex leads get.
+**Why:** A summary is the model's own judgement and nothing checks it; one cheap read of the record does.
+**Assumed.** Alternative: trust the summary.
+**Changed by the orchestrator:** added on its go-ahead, 2026-11-06.

@@ -42,6 +42,11 @@ keep what the lead is waiting on, the human's latest words and anything agreed b
 written down, the work in progress and its uncommitted files, and note that
 `docs/features/<slug>/` holds every settled decision. Codex compacts plainly.
 
+After any compaction the lead re-reads its feature state before acting (decision 15): on
+Claude Code the session-start hook, which runs again when a compacted session restarts, says
+so in its added context; the keep-instructions say it too, and the skill says it for every
+runtime.
+
 The compaction must be invisible to the feature's state (decision 14): its turn end raises no
 "needs you" notification, no orchestrator news, does not run the self-plan-ending logic again,
 and leaves the waiting reason and status untouched. It never starts while a turn, a question or
@@ -70,9 +75,9 @@ less" edits the same files:
   short brief; you read its actual diff where it matters and run the checks yourself. A few
   edits you make yourself: read the file with Read, change it with Edit, no patch scripts in
   /tmp, no long heredocs.
-- Grilling: drop "Never compact. Never `/clear`." Runcastle compacts you at quiet moments; never
-  compact yourself; record each decision on disk the moment it settles, which is what keeps a
-  compaction from losing it.
+- Grilling: a one-line swap of "Never compact. Never `/clear`." for: runcastle compacts you at
+  quiet moments; never compact yourself; record each decision on disk the moment it settles.
+- Orient: after a compaction, call `get_feature_context` before anything else.
 
 ## Seams
 
