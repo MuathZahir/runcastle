@@ -3,18 +3,20 @@
 Planned without the human (self-planning run, 2026-11-06). Every decision below is the
 lead's own recommendation, marked **Assumed.** until the human confirms it.
 
+Check first: 5, 6, 7, 8, 12
+
 ## 1. The lead hands reading, surveys and screenshot loops to its own subagents
-**Decision:** The feature skill tells the lead to prefer its own subagents (Claude Code's Agent tool, Codex's `spawn_agent`) for work whose output is bigger than its conclusion: code surveys, reading across several files, and screenshot critique loops. The subagent returns a short map, a verdict, or a picture path, and the lead keeps only that. Small edits the lead still makes itself.
+**Decision:** The feature skill tells the lead to prefer its own subagents (Claude Code's Agent tool, Codex's `spawn_agent`) for work whose output is bigger than its conclusion: code surveys, reading across several files, and screenshot critique loops. The subagent returns a short map, a verdict, or a picture path, and the lead keeps only that. The lead still shows the human the final picture (`show_file`, or `show_design`'s picture), so moving the loop out of the lead hides nothing from them. Small edits the lead still makes itself.
 **Why:** Reading code (~430M tokens), browser and screenshots (~220M) and tests (~73M) were done by the lead at huge context and then carried for every later call. A subagent pays for the reading once, in a small window.
 **Assumed.** Alternative: leave the skill's "build it yourself" wording and rely on compaction alone.
 
 ## 2. Writing code yourself stays allowed
-**Decision:** The skill prefers delegating but does not forbid the lead writing code. A self-contained chunk (a module with its tests, a component) goes to a general-purpose subagent with a short brief; the lead reviews its diff summary. A change of a few edits the lead makes itself, with the Edit tool.
+**Decision:** The skill prefers delegating but does not forbid the lead writing code. A self-contained chunk (a module with its tests, a component) goes to a general-purpose subagent with a short brief; the lead then reads the actual diff of anything non-trivial and runs the project's checks itself, rather than trusting the subagent's summary. A change of a few edits the lead makes itself, with the Edit tool.
 **Why:** The human said on 2026-11-06 that the lead may still write code when handing it off isn't worth it. These are the agent's own subagents, not runcastle workers: no container, no ticket.
 **Assumed.** Alternative: the lead writes all code itself and delegates only reading.
 
 ## 3. Read-only subagents name a cheaper model
-**Decision:** The skill tells the lead to name a model for every subagent it spawns: Sonnet for surveys, mapping and screenshot critique; the lead's own model only for work that needs it (UI judgement, tricky code). Wording stays runtime-neutral.
+**Decision:** The skill tells the lead to name a model for every subagent it spawns: Sonnet for surveys, mapping and screenshot critique (on Codex, its smaller model); the lead's own model only for work that needs it (UI judgement, tricky code).
 **Why:** 58 of 113 subagents ran on Opus only because no model was set. Haiku was weighed and rejected for surveys: a missed fact in a map costs more than the saving.
 **Assumed.** Alternative: Haiku for read-only mapping.
 
@@ -37,15 +39,16 @@ lead's own recommendation, marked **Assumed.** until the human confirms it.
 **Decision:** The brief's other natural breaks, a round coming back and the lead declaring ready, are covered by the idle rule in 6(b): a round or a drive takes longer than the 30-minute idle stop, so the lead is already compacted when the round's wake or the human's notes arrive.
 **Why:** One rule instead of three hooks, and no compaction lands while the lead is about to act on fresh results.
 **Assumed.** Alternative: compact explicitly when a round is dispatched or when the lead declares ready.
+**Challenged:** A round shorter than 30 minutes comes back to an uncompacted 300k+ lead; add a trigger at dispatch unless the 200k ceiling applies. (It does apply: leads run on 1M models with the ceiling from 8, so a lead never carries much past 200k into a short round.)
 
 ## 8. A 200k ceiling inside long turns, for Claude Code leads
-**Decision:** Feature leads on Claude Code run with Claude Code's own auto-compact window set to 200k tokens, so a long build turn compacts itself instead of running to 400–700k. Codex leads keep their runtime's default.
-**Why:** 22 sessions peaked above 400k; a replay of real calls says compacting at 200k saves ~600M tokens over two weeks against ~400M at 300k. It only bites on 1M-context models; the default lead model already has a ~200k window. Decisions are written to disk as they settle, so a mid-turn summary loses little.
+**Decision:** Feature leads on Claude Code run with Claude Code's own auto-compact window set to 200k tokens, so a long build turn compacts itself instead of running to 400–700k. Codex leads get the same ceiling through Codex's own auto-compact limit, where the Codex runtime honours it.
+**Why:** 22 sessions peaked above 400k; a replay of real calls says compacting at 200k saves ~600M tokens over two weeks against ~400M at 300k. It bites because leads run on 1M-context models: 270 of the ~350 feature chats on record picked a `[1m]` model. Decisions are written to disk as they settle, so a mid-turn summary loses little.
 **Assumed.** Alternative: 300k, which keeps more working detail in a long turn and saves about a third less.
 
-## 9. Only feature leads, and only until the feature merges
-**Decision:** Automatic compaction applies to feature leads only, and stops once the feature has shipped. Orchestrator chats, Q&A, prepare and project sessions keep today's behaviour.
-**Why:** The brief scopes this to feature chats (1.3B of ~1.85B chat tokens); orchestrator size belongs to "agents are woken only when it matters" and burns to "cheaper burns". A shipped feature's lead is rarely resumed, so compacting it is spend for nothing.
+## 9. Only feature leads; after merge, only before a resume
+**Decision:** Automatic compaction applies to feature leads only. Once the feature has shipped, the after-planning and idle compactions stop, and only the before-resuming one (6c) still runs, when someone reopens the lead. Orchestrator chats, Q&A, prepare and project sessions keep today's behaviour.
+**Why:** The brief scopes this to feature chats (1.3B of ~1.85B chat tokens); orchestrator size belongs to "agents are woken only when it matters" and burns to "cheaper burns". A shipped lead is rarely resumed, so compacting it while idle is spend for nothing, but the rare resume (f750479c wrote 490k for a 6-call merge) is exactly the cost this feature removes.
 **Assumed.** Alternative: every long-lived chat kind.
 
 ## 10. The compaction is told what to keep
@@ -61,4 +64,16 @@ lead's own recommendation, marked **Assumed.** until the human confirms it.
 ## 12. The skill stops saying "never compact"
 **Decision:** The feature skill's grilling guidance drops "Never compact. Never `/clear`." It says instead that runcastle compacts the lead at quiet moments, the lead never compacts itself, and everything settled must be on disk at once, which is why decisions are recorded one at a time.
 **Why:** The old rule contradicts this feature; the reason behind it (keep decisions safe) survives as "write them down now".
+The edit is a one-paragraph swap in the grilling reference, the only skill edit outside the delegation guidance and the "build it the cheapest good way" section, and the orchestrator is told so because "tools and skills say less" edits the same files.
 **Assumed.** Alternative: keep the rule for grilling only and compact only outside it.
+**Challenged:** The brief limits this feature's skill edits to the delegation guidance and the build-it-yourself section so the sibling feature rebases cleanly; the grilling section is outside that. (The rule flatly contradicts this feature, so it has to go; one paragraph is a trivial conflict to resolve.)
+
+## 13. A message sent during a compaction waits for it
+**Decision:** While runcastle compacts a lead, the chat shows the lead working, and a message the human sends waits in the lead's queue and runs once the compaction finishes. Runcastle never starts a compaction while a turn, a question or a queued message is pending.
+**Why:** The most likely clash is right after planning, when the human comes back to the plan. Interrupting a compaction halfway would waste it; a few seconds' wait costs the human little.
+**Assumed.** Alternative: cancel the compaction when the human types.
+
+## 14. A compaction never pings the human or moves the feature
+**Decision:** An automatic compaction is not a turn as far as the feature is concerned: it raises no "needs you" ping, no orchestrator news, and leaves the feature's status and waiting reason exactly as they were. The idle timer that stops the lead's process counts from the compaction's end.
+**Why:** It runs as a hidden prompt through the same turn path as a real message; without this, every quiet moment would end with a false "lead finished" alert and could clear "Waiting for you · plan to approve".
+**Assumed.** Alternative: none worth taking; listed so the build does not miss it.
