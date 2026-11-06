@@ -191,7 +191,7 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       if (typeof data.autoStartedBy !== 'string') return null
       return {
         kind: 'end',
-        text: `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going.`,
+        text: `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its brief says grill with you: then hand the human its chat.`,
       }
     case AUTOSTART_SKIPPED:
     case AUTOSTART_FAILED:
