@@ -10,7 +10,7 @@ import {
   type StoredNav,
 } from './projects'
 import { parsePath, pathFor, projectIdOf } from './routes'
-import { currentPath, pushPath, replacePath } from './use-history-sync'
+import { currentPath, onAppPopState, pushPath, replacePath } from './use-history-sync'
 import type { Project } from './api'
 
 /**
@@ -231,8 +231,7 @@ export function useProjectNav(): ProjectNavApi {
         projectId ? { view: 'project', projectId } : { view: 'home', projectId: null },
       )
     }
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
+    return onAppPopState(onPop)
   }, [])
 
   // Deliberate navigation is what gets remembered — the chooser as much as a

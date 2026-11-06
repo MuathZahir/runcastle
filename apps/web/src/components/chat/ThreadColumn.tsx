@@ -108,8 +108,8 @@ export function ThreadColumn({
     return subscribeInbox(inbox, take)
   }, [inbox, attach])
 
-  // A phone's composer is the preview's (runcastle-on-your-phone): no meter and
-  // no quiet line under it, and no model controls while the agent works, so
+  // A phone's composer is the preview's (runcastle-on-your-phone): no quiet line
+  // under it, and no model controls while the agent works, so
   // "Working 1m 14s" fits beside Stop and Send.
   const phone = useIsPhone()
   const ask = view.ask
@@ -161,7 +161,6 @@ export function ThreadColumn({
       top={<PlanStrip plan={view.plan} tasks={view.tasks} />}
       {...(view.turnStartedAt ? { workingSince: view.turnStartedAt } : {})}
       meter={
-        !phone &&
         view.context && (
           <ContextMeter
             context={view.context}

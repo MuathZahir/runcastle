@@ -87,12 +87,13 @@ describe('the chat column’s composer on a phone', () => {
       'thread.events': ({ after }: { after?: number }) => ({ events: log.filter((e) => after === undefined || e.i > after) }),
     })
 
-  it('keeps the model controls and drops the meter and the line under it while idle', async () => {
+  it('keeps the model controls and the context meter, and drops the line under it, while idle', async () => {
     atWidth(true)
     const ended: ThreadEvent[] = [...opened, { i: 4, at, type: 'turn_ended', reason: 'end_turn' }]
     render(<ThreadColumn threadId="th1" meta="Feature worktree · feature/x" />, { wrapper: server(ended).Wrapper })
     expect(await screen.findByRole('button', { name: 'Model' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Context/ })).toBeNull()
+    // The meter shows on the phone as on the desktop (phone-fixes decision 4).
+    expect(screen.getByRole('button', { name: /Context \d+% used/ })).toBeTruthy()
     expect(screen.queryByText('Feature worktree · feature/x')).toBeNull()
   })
 
@@ -101,6 +102,7 @@ describe('the chat column’s composer on a phone', () => {
     render(<ThreadColumn threadId="th1" />, { wrapper: server(opened).Wrapper })
     expect(await screen.findByRole('button', { name: 'Stop' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Context/ })).toBeNull()
     expect(screen.getByRole('status').textContent).toContain('Working')
   })
 })

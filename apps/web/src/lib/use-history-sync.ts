@@ -7,10 +7,11 @@ import { parsePath, pathFor, samePage, type AppLocation } from './routes'
  * The nav hooks stay the owners of navigation state; this projects that state
  * onto the address bar and drives the same setters back when the browser
  * navigates. Nothing else in the app calls `pushState` — which is what keeps
- * the URL from becoming a second source of truth, and what makes "overlays
- * never enter history" a property of the code rather than a convention: the
- * palette, Settings, the Draft form and the read-only phase pin are
- * not representable as an {@link AppLocation}, so they cannot reach here.
+ * the URL from becoming a second source of truth. Overlays are not places:
+ * the palette, Settings, the Draft form and the read-only phase pin are not
+ * representable as an {@link AppLocation}, so they cannot reach here. The one
+ * exception is the phone, where an open overlay takes a Back step of its own
+ * ({@link useBackStep}) at the address already showing.
  */
 
 /** The path the browser is showing — `/` where there is no browser at all. */
@@ -19,15 +20,125 @@ export function currentPath(): string {
 }
 
 /**
- * What an entry the app pushed carries: the entry before it is the app's too.
- * It survives a reload, which a count in memory would not.
+ * What an entry the app pushed carries: the entry before it is the app's too,
+ * and `from` is the path it was pushed from, so closing a view can step back
+ * to it rather than push it again (phone-fixes decision 2). An overlay's entry
+ * also carries `overlay`, the id of the dialog that owns it (decision 3). The
+ * state survives a reload, which a count in memory would not.
  */
-const IN_APP = { runcastle: true } as const
+interface InAppEntry {
+  runcastle: true
+  from?: string
+  overlay?: string
+}
+
+function entryState(): Partial<InAppEntry> | null {
+  const state: unknown = window.history.state
+  return state && typeof state === 'object' ? (state as Partial<InAppEntry>) : null
+}
+
+function pushEntry(path: string, extra: { overlay?: string } = {}): void {
+  const entry: InAppEntry = { runcastle: true, from: currentPath(), ...extra }
+  window.history.pushState(entry, '', path)
+}
+
+/**
+ * Put `path` in place of the entry showing, keeping what the entry knew of the
+ * place behind it: going back a level with nothing of the app's to step back
+ * to (a view or a chat opened straight by a link) must not stack the level
+ * above, or the next Back would return to the place just left.
+ */
+function replaceEntry(path: string): void {
+  window.history.replaceState(window.history.state, '', path)
+}
+
+/** Set by an on-screen Back with nothing of the app's behind it: the move its fallback makes replaces, never pushes. */
+let replaceNext = false
+
+/*
+ * The app's own steps back. When the app takes an entry of its own off the
+ * stack (a closed view stepping back to where it came from, a closed overlay
+ * stepping off its entry), the `popstate` that follows is not the human going
+ * somewhere: the app already holds the place it lands on. So it is swallowed,
+ * and every history write asked for meanwhile waits until it lands — a write
+ * made before the step lands would be undone by it (a sheet that closes, then
+ * opens a view). `history.back()` is asynchronous, hence the queue.
+ */
+let stepping = 0
+let stepTimer: ReturnType<typeof setTimeout> | undefined
+const queued: (() => void)[] = []
+/** The app's `popstate` handlers: they hear the human's Back and Forward, never the app's own steps. */
+const popListeners = new Set<() => void>()
+/** The overlays open now, by the id their history entry carries. */
+const liveOverlays = new Set<string>()
+let listening = false
+
+function flush(): void {
+  while (stepping === 0 && queued.length > 0) queued.shift()?.()
+}
+
+function settle(): void {
+  stepping = 0
+  clearTimeout(stepTimer)
+  flush()
+}
+
+/** Take the app's own entry off the stack, swallowing the `popstate` it causes. */
+function stepOff(): void {
+  stepping++
+  clearTimeout(stepTimer)
+  // A Back with nothing behind fires no `popstate`; never hold the queue for it.
+  stepTimer = setTimeout(settle, 1000)
+  window.history.back()
+}
+
+/** Run a history write now, or once the app's own steps back have landed. */
+function whenSettled(write: () => void): void {
+  if (stepping === 0) write()
+  else queued.push(write)
+}
+
+function onPop(): void {
+  if (stepping > 0) {
+    stepping--
+    if (stepping === 0) settle()
+    return
+  }
+  for (const listener of [...popListeners]) listener()
+  // Landing on an overlay's entry with no overlay open (Back from a page opened
+  // over a closed sheet, Forward into one): the entry is a step to nowhere, so
+  // the app steps over it.
+  skipOrphanOverlay()
+}
+
+function skipOrphanOverlay(): void {
+  const overlay = entryState()?.overlay
+  if (overlay && !liveOverlays.has(overlay)) stepOff()
+}
+
+function listen(): void {
+  if (listening || typeof window === 'undefined') return
+  listening = true
+  window.addEventListener('popstate', onPop)
+  // A reload over an open overlay comes back with its entry and no overlay.
+  skipOrphanOverlay()
+}
+
+/** Hear the human's Back and Forward — never the app's own steps back. */
+export function onAppPopState(listener: () => void): () => void {
+  listen()
+  popListeners.add(listener)
+  return () => {
+    popListeners.delete(listener)
+  }
+}
 
 /** Add a history entry, so Back comes back to where we were. */
 export function pushPath(path: string): void {
-  if (typeof window === 'undefined' || currentPath() === path) return
-  window.history.pushState(IN_APP, '', path)
+  if (typeof window === 'undefined') return
+  whenSettled(() => {
+    if (currentPath() !== path) pushEntry(path)
+  })
 }
 
 /**
@@ -37,8 +148,11 @@ export function pushPath(path: string): void {
  */
 export function goToPath(path: string): void {
   if (typeof window === 'undefined') return
-  pushPath(path)
-  window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }))
+  listen()
+  whenSettled(() => {
+    if (currentPath() !== path) pushEntry(path)
+    for (const listener of [...popListeners]) listener()
+  })
 }
 
 /**
@@ -48,8 +162,16 @@ export function goToPath(path: string): void {
  * `fallback` rather than leaving the app.
  */
 export function backInApp(fallback: () => void): void {
-  if ((window.history.state as typeof IN_APP | null)?.runcastle) window.history.back()
-  else fallback()
+  if (entryState()?.runcastle) whenSettled(() => window.history.back())
+  else {
+    // Going up a level in place of the link's entry, so Back never comes back down to it.
+    replaceNext = true
+    fallback()
+    // A fallback that moved nothing leaves no mark on the next move.
+    setTimeout(() => {
+      replaceNext = false
+    }, 250)
+  }
 }
 
 /**
@@ -58,8 +180,51 @@ export function backInApp(fallback: () => void): void {
  * place, not two, and pushing it would put a Back step in the middle of it.
  */
 export function replacePath(path: string): void {
-  if (typeof window === 'undefined' || currentPath() === path) return
-  window.history.replaceState(null, '', path)
+  if (typeof window === 'undefined') return
+  whenSettled(() => {
+    if (currentPath() !== path) window.history.replaceState(null, '', path)
+  })
+}
+
+/**
+ * Give an overlay one Back step on the phone (phone-fixes decision 3): while
+ * `active`, it owns a history entry at the same address, and the system's Back
+ * takes that entry and calls `onBack`. `onBack` answers whether the overlay
+ * closed: one that asks first (typed text to discard) keeps its entry. Closing
+ * any other way steps off the entry, so Back never comes back to it.
+ */
+export function useBackStep(active: boolean, onBack: () => boolean): void {
+  const handler = useRef(onBack)
+  useEffect(() => {
+    handler.current = onBack
+  })
+  useEffect(() => {
+    if (!active || typeof window === 'undefined') return
+    listen()
+    const id = Math.random().toString(36).slice(2)
+    let pushed = false
+    let gone = false
+    const push = () =>
+      whenSettled(() => {
+        if (gone) return
+        pushEntry(`${currentPath()}${window.location.search}`, { overlay: id })
+        pushed = true
+      })
+    liveOverlays.add(id)
+    push()
+    const unlisten = onAppPopState(() => {
+      if (!pushed || entryState()?.overlay === id) return
+      // Back from a page opened over this overlay lands below its entry too.
+      pushed = false
+      if (!handler.current()) push()
+    })
+    return () => {
+      gone = true
+      unlisten()
+      liveOverlays.delete(id)
+      if (pushed && entryState()?.overlay === id) stepOff()
+    }
+  }, [active])
 }
 
 /** The query key the open chat thread rides under (`/p/x/f/slug?thread=sess_…`). */
@@ -132,11 +297,15 @@ export function useThreadInUrl(threadId: string | null | undefined): void {
   const settled = useContext(AddressSettled)
   useEffect(() => {
     if (threadId === undefined || !settled) return
-    const write = setTimeout(() => {
-      if (threadInUrl() === threadId) return
-      const search = threadId ? `?${new URLSearchParams({ [THREAD_PARAM]: threadId })}` : ''
-      window.history.replaceState(window.history.state, '', `${currentPath()}${search}`)
-    }, 0)
+    const write = setTimeout(
+      () =>
+        whenSettled(() => {
+          if (threadInUrl() === threadId) return
+          const search = threadId ? `?${new URLSearchParams({ [THREAD_PARAM]: threadId })}` : ''
+          window.history.replaceState(window.history.state, '', `${currentPath()}${search}`)
+        }),
+      0,
+    )
     return () => clearTimeout(write)
   }, [threadId, settled])
 }
@@ -170,16 +339,32 @@ export function useHistorySync(
       normalized.current = false
       return
     }
-    if (currentPath() !== path) {
+    const normalizing = !normalized.current
+    normalized.current = true
+    const up = replaceNext
+    replaceNext = false
+    whenSettled(() => {
+      if (currentPath() === path) return
+      if (!normalizing) {
+        // Closing a view goes back where it came from: when the entry behind
+        // is this page at `path`, step back to it rather than push it again,
+        // or Back would return to the view just closed (phone-fixes decision 2).
+        const from = entryState()?.from
+        const here = parsePath(currentPath())
+        const sameSpot = !!location && !!here && samePage(here, location)
+        if (sameSpot && from === path) stepOff()
+        // Closing a view with nothing to step back to (one opened by a link, or
+        // over another view), or the on-screen Back's way up from a link: the
+        // place it goes takes the entry's place, or Back would loop into it.
+        else if (up || (sameSpot && location?.kind === 'feature' && location.view === 'chat')) replaceEntry(path)
+        else pushEntry(path)
+        return
+      }
       // Going somewhere leaves the open thread behind; squaring up the page
       // the address already names (a view the path left out) keeps it.
-      if (normalized.current) window.history.pushState(IN_APP, '', path)
-      else {
-        const keep = location && samePage(parsePath(currentPath()), location) ? window.location.search : ''
-        window.history.replaceState(null, '', `${path}${keep}`)
-      }
-    }
-    normalized.current = true
+      const keep = location && samePage(parsePath(currentPath()), location) ? window.location.search : ''
+      window.history.replaceState(null, '', `${path}${keep}`)
+    })
   }, [path])
 
   // Held in a ref so the listener is subscribed once rather than re-subscribed
@@ -188,9 +373,5 @@ export function useHistorySync(
   useEffect(() => {
     handler.current = onPopState
   })
-  useEffect(() => {
-    const onPop = () => handler.current(parsePath(currentPath()))
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [])
+  useEffect(() => onAppPopState(() => handler.current(parsePath(currentPath()))), [])
 }

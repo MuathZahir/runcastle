@@ -88,6 +88,8 @@ export function PhoneChatBar({
       {views.length > 0 && <IconButton label="More" size="lg" icon={<IconMore />} onClick={() => setSheet('views')} />}
       {published && (
         <Sheet open={sheet === 'threads'} onClose={close} title="Chats">
+          {/* First, so it never needs a scroll however long the list (phone-fixes decision 1). */}
+          <SheetRow icon={<IconPlus />} label="New chat" onClick={after(published.newThread)} />
           {threads.map((t) => (
             <SheetRow
               key={t.id}
@@ -97,7 +99,6 @@ export function PhoneChatBar({
               onClick={after(() => published.pick(t.id))}
             />
           ))}
-          <SheetRow icon={<IconPlus />} label="New chat" onClick={after(published.newThread)} />
         </Sheet>
       )}
       <Sheet open={sheet === 'views'} onClose={close} label="Views">

@@ -291,7 +291,8 @@ export function Composer({
         </div>
         <div className="flex items-center gap-1 px-2 pt-1 pb-2">
           {footer}
-          <span className="ml-auto flex items-center gap-1">
+          {/* Never squeezed: where the row is tight, the model name shortens first. */}
+          <span className={cx('ml-auto flex shrink-0 items-center', phone ? 'gap-0.5' : 'gap-1')}>
             {working ? <WorkingClock since={workingSince} /> : meter}
             <IconButton label="Attach images" icon={<IconPaperclip />} size={control} onClick={() => picker.current?.click()} />
             <input

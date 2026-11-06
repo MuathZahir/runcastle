@@ -16,6 +16,7 @@ import {
 import { cx } from './ui/floating'
 import { SectionLabel } from './ui/list'
 import { useIsPhone } from './lib/use-phone'
+import { useBackStep } from './lib/use-history-sync'
 
 /**
  * The shared primitives (apps/web/DESIGN.md §Components, STYLE.md §Primitives).
@@ -370,6 +371,16 @@ export function Dialog({
   // gave it (runcastle-on-your-phone: a review package fills the phone).
   const phone = useIsPhone()
   const edge = size === 'full' && !inline && phone
+  // On a phone an open dialog is one Back step (phone-fixes decision 3): the
+  // system's Back closes it — asking first over typed text — before it leaves the page.
+  useBackStep(open && phone && !inline, () => {
+    if (!dirty) {
+      onClose()
+      return true
+    }
+    setConfirming(true)
+    return false
+  })
 
   useEffect(() => {
     if (!open) return
