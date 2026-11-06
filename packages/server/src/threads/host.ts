@@ -45,6 +45,7 @@ import { killProcessTree } from '../pty/kill-tree'
 import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
+import { clearSentMemory } from '../mcp/sent-memory'
 import { tryGetFeature } from '../services/repo'
 import { envInt } from '../util/env-int'
 import { runcastleVersion } from '../version'
@@ -1445,6 +1446,10 @@ class Host implements AgentHost {
    * runtime compacted by itself inside a turn) and the context size before it.
    */
   private compaction(t: Thread, body: Extract<ThreadEventBody, { type: 'compacted' }>): ThreadEventBody {
+    // The conversation no longer holds the docs it was sent: the next read sends
+    // them in full, not as "unchanged" stubs. Claude Code's compact-source
+    // SessionStart clears this too; this covers every runtime, Codex included.
+    clearSentMemory(t.id)
     const sent = t.turn?.compaction
     const before = sent ? sent.before : contextUsed(readThreadEvents(t.id))
     return { ...body, ...(sent ? { trigger: sent.trigger } : {}), ...(before !== undefined ? { before } : {}) }

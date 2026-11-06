@@ -10,6 +10,7 @@ import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { featureDocKey, recordSent, sentSha } from '../src/mcp/sent-memory'
 import { subscribeLive } from '../src/services/bus'
 import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -515,6 +516,39 @@ describe('automatic compaction', () => {
     vi.advanceTimersByTime(IDLE_MS + 1000)
     await logUntil(id, stopped)
     expect(compactions().map(textOf)).toEqual(['/compact'])
+  })
+
+  /**
+   * tools-and-skills-say-less: a read tool sends "unchanged" stubs for docs a
+   * session already holds. A compacted conversation no longer holds them, so any
+   * compaction the agent reports forgets what was sent — with no SessionStart
+   * hook (Codex), for the runtime's own mid-turn ceiling and runcastle's own.
+   */
+  it('forgets the docs a lead was sent on every compaction, with no hook to say so', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup({
+      turn: async (t) => {
+        const said = t.prompt.map((b) => (b.type === 'text' ? b.text : '')).join('')
+        if (said.startsWith('/compact') || said.startsWith('Long')) {
+          await t.update({ sessionUpdate: 'compaction_update', compactionId: 'cmp', status: 'completed' } as never)
+        }
+        await t.update({ sessionUpdate: 'usage_update', used: said.startsWith('/compact') ? AFTER : BIG, size: 1_000_000 })
+        if (!said.startsWith('/compact')) await t.say('Done')
+      },
+    })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.6-sol', runtime: 'codex' } }).id
+    const key = featureDocKey(featureId, 'spec.md')
+
+    recordSent(id, key, 'sha-1')
+    await host.prompt(id, { text: 'Long build turn' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(sentSha(id, key)).toBeUndefined()
+
+    recordSent(id, key, 'sha-2')
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    await logUntil(id, stopped)
+    expect(compactions()).toHaveLength(1)
+    expect(sentSha(id, key)).toBeUndefined()
   })
 
   it('stops an idle lead without compacting below the floor, on a side thread, or once the feature has shipped', async () => {
