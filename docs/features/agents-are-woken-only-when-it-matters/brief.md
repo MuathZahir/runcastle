@@ -37,3 +37,9 @@ Independent; starts now.
 ## Working agreement (cut 1, agreed 2026-11-06): checkpoints
 
 No checkpoint is named on this feature: the orchestrator carries it to merged on its own judgement, after the lead's review round.
+
+## Added by the orchestrator, 2026-11-06
+
+## Orchestrator compaction is on hold for the human (2026-11-06)
+
+The orchestrator told this feature to compact an oversized orchestrator chat in place (its change to decision 7). The human never agreed to runcastle compacting chats, and it is being settled with them in `lead-chats-stay-small`'s grill. Do not build the compaction part until that is decided. The wake/hold part stands as reviewed.
