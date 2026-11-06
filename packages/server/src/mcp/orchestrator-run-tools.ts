@@ -158,10 +158,8 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to a feature's agent. It arrives marked as from the project's " +
-          'orchestrator, not the human, and still counts as a human message: it lets the agent ' +
-          'start a round again after a Stop. Set relaysHuman only when the message is the ' +
-          "human's own answer, passed on as they gave it; then it arrives marked as theirs, relayed.",
+          "Send a message to a feature's agent, marked as from the orchestrator. Set relaysHuman " +
+          "only for the human's own answer passed on as they gave it.",
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z.string().min(1).describe('What to change and why, or what you found.'),
@@ -185,13 +183,8 @@ export function registerOrchestratorRunTools(
       {
         title: 'Read a feature’s chat',
         description:
-          "The last turns of a feature's chat, for reading what its agent said or asked. " +
-          'Returns the quote and the transcript path; the quote is null, with a reason, when ' +
-          'the feature has no chat on disk yet. `shown` lists the files that chat showed, each ' +
-          'with a `path` that show_file can show again, even after the feature merged. ' +
-          '`reviewShots` lists the pictures its reviews kept. To put a review in front of the ' +
-          'human, use show_review_package. A repeat read returns only what is new since your ' +
-          'last one; `full: true` returns the last turns again.',
+          "The last turns of a feature's chat, plus the files it `shown` and its `reviewShots`. " +
+          'A repeat read returns only what is new; `full: true` returns the last turns again.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           full: z.boolean().optional().describe('Return the last turns, not only what is new.'),

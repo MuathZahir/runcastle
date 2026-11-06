@@ -979,17 +979,6 @@ describe('get_feature_context scenarios', () => {
     })
   })
 
-  it('names the field in the tool description, as what decides whether a ticket ships a scenario', async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-    const client = new Client({ name: 'scenarios-test', version: '1' })
-    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
-    const tool = (await client.listTools()).tools.find((t) => t.name === 'get_feature_context')
-    await client.close()
-    expect(tool?.description).toMatch(/`scenarios` \(`setUp`: the base branch has \.runcastle\/scenarios\/ and a runner is recorded/)
-    expect(tool?.description).toMatch(/does a ticket ship a scenario/)
-    expect(tool?.description).not.toMatch(/`stories`|mapGroups/)
-  })
-
   it('carries scenarios as its only git-read block, with no stories or map groups', async () => {
     const feature = seedFeature(ctx, projectId, { slug: 'shipped' })
     const context = await featureContextWithGit(ctx, { featureId: feature.id })

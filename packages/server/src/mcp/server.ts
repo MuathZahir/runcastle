@@ -1313,20 +1313,11 @@ export function toolSetDesignState(
  * ticket carrying `originFindingId` already says everything a link means.
  */
 const ResolveFindingShape = {
-  findingId: z
-    .string()
-    .min(1)
-    .describe('The finding id, from `get_feature_context`’s openDefects.'),
-  disposition: z.enum(['addressed', 'dismissed']).describe(
-    '`addressed` closes it because work already answers it. `dismissed` closes it because it ' +
-      'is not worth fixing — not a defect, out of scope, or accepted as it is.',
-  ),
-  note: z
-    .string()
-    .optional()
-    .describe(
-      'REQUIRED: what addressed it, e.g. "ticket 7 rewrote the endpoint", or why it was dismissed.',
-    ),
+  findingId: z.string().min(1).describe('The finding id, from `openDefects`.'),
+  disposition: z
+    .enum(['addressed', 'dismissed'])
+    .describe('`addressed`: work already answers it. `dismissed`: not worth fixing.'),
+  note: z.string().optional().describe('REQUIRED: what addressed it, or why it was dismissed.'),
 }
 
 /**
@@ -3015,34 +3006,21 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Record a preparation finding',
         description:
-          'Store one established project setting while preparing the project. Refuses from a ' +
-          'feature session, and never overwrites a key a human already set (the refusal is ' +
-          'reported as `skipped`, not thrown). To close a key that has no value for good ' +
-          '("this repo has no database"), record a deliberate none: an empty `value` WITH ' +
-          '`evidence` saying why. A none keeps the setting empty but stops it being open.',
+          'Store one established project setting while preparing the project; never overwrites a ' +
+          'key a human set (reported as `skipped`). An empty `value` with `evidence` records a deliberate none.',
         inputSchema: {
           key: PreparedKey.describe('Which project setting this value is for.'),
           value: z
             .string()
-            .describe(
-              'The value to store, exactly as it should be used — or an empty string to record ' +
-                'a deliberate none (requires `evidence`).',
-            ),
+            .describe('The value to store; empty records a deliberate none (needs `evidence`).'),
           evidence: z
             .string()
             .optional()
-            .describe(
-              'How you know: the command you ran and its output, or what the human told you. ' +
-                'Always send it — a value with no provenance cannot be re-checked later.',
-            ),
+            .describe('How you know: the command and its output, or what the human said.'),
           userSupplied: z
             .boolean()
             .optional()
-            .describe(
-              'True ONLY when the human gave you this value or confirmed it verbatim. That marks ' +
-                'the key theirs and permanently stops future automatic runs from overwriting it. ' +
-                'Anything you worked out yourself is false, even if they were watching.',
-            ),
+            .describe('True only when the human gave or confirmed this value verbatim.'),
         },
       },
       async (args, extra) => {
@@ -3059,26 +3037,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Dry-run the test drive',
         description:
-          'Prove the drive keys you recorded by running the REAL test-drive machinery — same ' +
-          'identity variables, same hooks, same dev pane — under a synthetic identity (slug ' +
-          "`prep-dry-run`) in the human's checkout, on its current branch. Nothing is checked " +
-          'out. `start` first lands your committed work on the base branch, the way a closing ' +
-          'chat does, so commit your `.runcastle/` scripts before starting; the landing is ' +
-          'refused (and nothing starts) when their checkout is on another branch, on a conflict, ' +
-          'or when their uncommitted edits touch the same files — relay the reason and ask them ' +
-          'to switch or commit. Ask the human before starting: it starts services and creates a ' +
-          'database on their machine. A clean full pass stamps the participating keys verified, ' +
-          'computed from what the machinery observed — your own checks decide whether to fix ' +
-          'and re-run, never the stamp.',
+          'Prove the recorded drive keys by running the real test-drive machinery under a ' +
+          "synthetic identity in the human's checkout. Ask the human before `start`: it starts services and creates a database.",
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])
-            .describe(
-              '`start` runs driveSetupCommand, overlays the `.runcastle/drive.env` it wrote and ' +
-                'spawns devCommand. `status` reports the pane, the sniffed localhost URL and ' +
-                'whether that URL answers HTTP yet (`devReady`) — poll it while you inspect. ' +
-                '`stop` runs driveStopCommand and rules on the run.',
-            ),
+            .describe('`start` boots the drive, `status` reports it (poll `devReady`), `stop` tears it down.'),
         },
       },
       async (args, extra) => {
@@ -3095,54 +3059,18 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Drive the feature branch for review',
         description:
-          "Boot the integrated feature branch on the human's checkout, under your run's " +
-          'identity, so you can review it. ALWAYS stop what you started, including when the ' +
-          'review goes wrong: the drive holds a machine-wide slot and the human cannot use their ' +
-          'own checkout until you release it. A refused `start` says which refusal it is: ' +
-          '`deniedCode: "slot_held"` (`retriable: true`) means somebody else — a drive or a ' +
-          'preparation dry run — holds the machine-wide slot, which frees itself when they ' +
-          'finish, so call `start` again about ten times roughly thirty seconds apart before you ' +
-          'give up on it. `deniedCode: "dirty"` (`retriable: false`) is final — the uncommitted ' +
-          "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
-          'and review without the app. When your prompt said a drive is not available, every ' +
-          'action is refused (`retriable: false`) with the missing prerequisite as `deniedReason`. ' +
-          'Once the app answers, `scenario` and `try_call` replay the scenarios your prompt lists ' +
-          'against this same drive, with no restart: run as many as you need, one per criterion ' +
-          'if you like. Both are refused (`retriable: false`) unless your own review drive is the ' +
-          'live one. `capture` keeps a screenshot for the human, who may see nothing else: take ' +
-          'one wherever a screen shows what you checked. Refused unless your call carries a live ' +
-          'run identity.',
+          "Boot the feature branch on the human's checkout under your run's identity, to review it. " +
+          'Always `stop` what you started; a refusal carries `deniedCode` and `retriable`.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop', 'scenario', 'try_call', 'capture'])
             .describe(
-              '`start` switches the checkout to the feature branch, renders driveEnv (per-branch ' +
-                'database), runs driveSetupCommand and spawns devCommand. `status` reports the ' +
-                'drive and hands back the localhost URL once the dev server has printed one — ' +
-                'poll it, the URL is not ready at start. `stop` tears the environment down and ' +
-                'puts the checkout back. `scenario` runs the scenario `file` through the ' +
-                "project's runner, waits for it, and returns its `entryUrl` (open it with " +
-                'agent-browser) and `token`, or its `failure` (reason, exitCode, outputTail). ' +
-                '`try_call` sends the filled `.http` request of the scenario `file`, which must be ' +
-                'the one that just landed, and returns status, headers and body. `capture` keeps ' +
-                'a screenshot of your browser as it stands, with `caption`, for the human.',
+              '`start`/`status`/`stop` run the drive; `scenario` and `try_call` replay scenario `file`; ' +
+                '`capture` keeps a screenshot.',
             ),
-          file: z
-            .string()
-            .optional()
-            .describe(
-              'For `scenario` and `try_call`: the repo-relative scenario path, e.g. ' +
-                '`.runcastle/scenarios/checkout/expired-coupon.ts`.',
-            ),
-          caption: z
-            .string()
-            .max(200)
-            .optional()
-            .describe('For `capture`: one line saying what the picture shows, for someone who was not there.'),
-          outside: z
-            .boolean()
-            .optional()
-            .describe('For `capture`: true when the picture belongs to no scenario. It joins the latest scenario that landed otherwise.'),
+          file: z.string().optional().describe('For `scenario` and `try_call`: the repo-relative scenario path.'),
+          caption: z.string().max(200).optional().describe('For `capture`: one line on what the picture shows.'),
+          outside: z.boolean().optional().describe('For `capture`: true when it belongs to no scenario.'),
         },
       },
       async (args, extra) => {
@@ -3208,14 +3136,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Retry this feature’s test drive',
         description:
-          'Stop the failed drive if it is still holding the wheel, then start a fresh drive of ' +
-          'this feature — the real machinery, the same hooks, the same dev pane the human clicks. ' +
-          'Commit your fix to the feature branch first: a drive will not start on an uncommitted ' +
-          'tree, and the branch is what carries its own setup. The reply is what the machinery ' +
-          'saw — `drive.hookFailure` when setup failed again (command, exit code, output tail), ' +
-          '`drive.envKeys` for the variable names setup handed back, `drive.devUrl` / ' +
-          '`drive.devReady` for whether the app is serving yet. Call it as many times as the fix ' +
-          'takes. Drive-fix sessions only.',
+          'Stop the failed drive and start a fresh one of this feature. Commit your fix first; ' +
+          'the reply reports `drive.hookFailure`, `drive.envKeys`, `drive.devUrl` and `drive.devReady`.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -3232,12 +3154,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Land the human on a scenario',
         description:
-          'Run one scenario through the project’s scenario runner against the drive this session ' +
-          'is docked to — the same path the human’s picker takes — and, on success, point their ' +
-          'drive panel at its ENTRY_URL. Commit the scenario first. The reply is the landing ' +
-          '(`ok: true`, `entryUrl`) or the failure the human sees (`failure.reason`, ' +
-          '`failure.exitCode`, `failure.outputTail`), or `denied` when the drive refused the run. ' +
-          'Scenario sessions only.',
+          'Run one committed scenario against the drive this session is docked to and point the ' +
+          'human’s drive panel at its entry URL. Replies with `entryUrl`, a `failure`, or `denied`.',
         inputSchema: {
           file: z
             .string()
@@ -3277,10 +3195,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
   const DEPENDS_ON_SCHEMA = z
     .array(z.string().min(1))
     .optional()
-    .describe(
-      'Slugs of features in this project that must merge before this draft can be started; ' +
-        'only with `draft: true`. Create the dependency first, then the dependent.',
-    )
+    .describe('Slugs of features that must merge first; only with `draft: true`.')
 
   // A drafting TALK session may only park a draft (`createFeatureProject`), so
   // it is offered only that shape — the full-create arguments it would be
@@ -3294,12 +3209,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Park a feature draft',
         description:
-          'Park scope that surfaced here but belongs elsewhere: a row and its brief, no branch ' +
-          'and no files, until the human clicks Start. This is the ONLY create shape a feature ' +
-          'session has — cutting a branch belongs to the orchestrator; tell the human to open ' +
-          'it. When the parked scope builds on THIS feature, pass `dependsOn: [<this feature’s ' +
-          'slug>]` so it cannot start before this one merges. Nothing is launched: the new card ' +
-          'in the rail is the feedback.',
+          'Park scope that belongs elsewhere as a draft: a row and its brief, no branch, until the ' +
+          'human clicks Start. Use `dependsOn` when it builds on this feature.',
         inputSchema: {
           title: z.string().min(1).describe('The parked feature’s name.'),
           oneLiner: z.string().min(1).describe('One line saying what it is.'),
@@ -3323,49 +3234,19 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Create a feature',
         description:
-          'Create a feature — the end of intake: a title, a oneLiner and a brief, started or ' +
-          'parked (`draft: true`). No tickets: the feature’s own agent reads the brief and ' +
-          'judges the work. It opens NO terminal on what it creates; the new card in the rail is ' +
-          'the feedback, and the human decides what to work on next. From a feature session ' +
-          'only the draft shape is allowed — deflect scope creep here and leave full creation to ' +
-          'the orchestrator.',
+          'Create a feature from a title, one-liner and brief, started or parked (`draft: true`). ' +
+          'Opens no terminal; feature sessions may only park drafts.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
           baseBranch: z
             .string()
             .optional()
-            .describe(
-              'Branch to cut from — always pass it explicitly, naming the base you told the ' +
-                'human you would use (see `get_project_context`’s `baseBranches`). Omitted, it ' +
-                'falls back to whatever the project checkout happens to be on. Drafts pass none: ' +
-                'a parked feature picks its base at Start.',
-            ),
-          brief: z
-            .string()
-            .optional()
-            .describe(
-              'The reasoning you just worked out with the human — why this feature exists and ' +
-                'what it must NOT swallow. Becomes brief.md verbatim, and without it that ' +
-                'reasoning is lost.',
-            ),
-          draft: z
-            .boolean()
-            .optional()
-            .describe(
-              'PARK it instead of starting it: a row and its brief, no branch and no files, ' +
-                'until the human clicks Start. Ask them per feature whether to start or park.',
-            ),
+            .describe('Branch to cut from; pass it explicitly (not for drafts).'),
+          brief: z.string().optional().describe('Why it exists and what it must not swallow; becomes brief.md.'),
+          draft: z.boolean().optional().describe('Park it as a draft instead of starting it.'),
           dependsOn: DEPENDS_ON_SCHEMA,
-          upNext: z
-            .boolean()
-            .optional()
-            .describe(
-              'UP NEXT instead of backlog: with `draft: true` and `dependsOn`, the draft starts by ' +
-                'itself (branch cut, no session) as soon as every feature in `dependsOn` has ' +
-                'shipped. Without it the draft is in the backlog: not now, it waits for the ' +
-                'human’s Start.',
-            ),
+          upNext: z.boolean().optional().describe('With `draft` and `dependsOn`: start by itself once they ship.'),
         },
       },
       async (args, extra) => {
@@ -3382,22 +3263,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get project context',
         description:
-          'The project as it stands, in this order: the project row; `baseBranches` — the branch ' +
-          'a new feature would cut from: the checkout’s `current` branch, `currentIsSelectable` ' +
-          '(false mid test drive or on a detached HEAD, the one case with no default), every ' +
-          '`selectable` base, and the `detectedMain` line to suggest then; the charter ' +
-          '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
-          'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
-          'lines: every in-flight feature (whether a round runs, ticket counts), then every draft, then the ' +
-          `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped; a line ending ` +
-          '`· waits on: …` names the features it must wait to merge; a draft is marked `up next` ' +
-          '(starts by itself when they ship), `up next, stuck` (needs the human) or `blocked` ' +
-          '(backlog, with an open dependency). Older shipped and archived ' +
-          'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
-          'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
-          '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`. ' +
-          'By default the project row is cut to its name and paths, `selectable` is left out, and ' +
-          'a repeat sends the charter as unchanged; `full: true` returns all of it.',
+          'The project: base branch state, the charter, an index of live ADRs and a feature index. ' +
+          'A repeat sends the charter as unchanged; `full: true` returns everything.',
         inputSchema: {
           full: z.boolean().optional().describe('Return the whole project row, every selectable base and the charter.'),
         },
@@ -3474,13 +3341,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Set a draft’s dependencies',
         description:
-          'Replace a parked draft’s whole merge-order set: the draft cannot be started until ' +
-          'every feature in `dependsOn` has merged. Pass `[]` to clear it. Refused for a started ' +
-          'feature, a self-reference, an already-merged dependency or a cycle. Returns the stored ' +
-          'set, each with whether it has shipped. `upNext` moves the draft either way: true = up ' +
-          'next (starts by itself as soon as every feature in `dependsOn` has shipped; refused ' +
-          'when nothing is left unshipped), false = backlog (not now, waits for the human’s ' +
-          'Start); omitted leaves it as it is.',
+          'Replace a parked draft’s whole merge-order set (`[]` clears it); it cannot start until ' +
+          'they merge. `upNext` moves it between up next and backlog.',
         inputSchema: {
           slug: z.string().min(1).describe('The draft whose set this replaces.'),
           dependsOn: z
@@ -3506,16 +3368,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Read an ADR',
         description:
-          'One project-scope decision record, in full, out of this session’s own worktree — the ' +
-          'other half of the ADR index `get_project_context` returns.',
+          'One project decision record in full, from the ADR index `get_project_context` returns.',
         inputSchema: {
-          relPath: z
-            .string()
-            .min(1)
-            .describe(
-              'The `relPath` from the index (`docs/adr/0001-example.md`); a bare filename works ' +
-                'too. Refused if it resolves outside docs/adr/.',
-            ),
+          relPath: z.string().min(1).describe('The index `relPath`, or a bare filename.'),
         },
       },
       async (args, extra) => {
@@ -3532,16 +3387,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Read a feature brief',
         description:
-          'Any feature of the project, by slug: { slug, title, oneLiner, status, ' +
-          'brief } — what it is for, behind the one line `get_project_context` indexes it by. A ' +
-          'shipped feature’s brief is its docs/features/<slug>/brief.md in this worktree; an ' +
-          'in-flight or draft feature’s comes from the database, because its docs live on an ' +
-          'unmerged branch. When neither recorded one, `brief` is absent and a `note` says so.',
+          'Any feature’s brief by slug, with its title, one-liner and status.',
         inputSchema: {
-          slug: z
-            .string()
-            .min(1)
-            .describe('A feature slug, exactly as `get_project_context`’s index spells it.'),
+          slug: z.string().min(1).describe('A feature slug from the feature index.'),
         },
       },
       async (args, extra) => {
@@ -3558,43 +3406,23 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get work record',
         description:
-          'What features actually DID — facts only: per feature its status, ship date, run ' +
-          'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
-          '`featureSlug` each ticket also carries its `digest`: the worker’s own account, written ' +
-          'after the work — what it did, what surprised it, what it left undone. If they would not ' +
-          'all fit, the oldest tickets’ digests are moved out whole and those tickets say ' +
-          '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
-          'a `featureSlug` to get that one ticket with its digest. Never a ticket’s goal or ' +
-          'acceptance criteria — those are intent from before the code existed. Send a ' +
-          'featureSlug (optionally with seq) or a seam.',
+          'What features actually did, facts only: status, runs and tickets with commits, and by ' +
+          '`featureSlug` each worker’s digest. Send a `featureSlug` (with `seq` for one ticket) or a `seam`.',
         inputSchema: z.union([
           z.object({
             featureSlug: z
               .string()
               .min(1)
-              .describe('A feature slug, exactly as `get_project_context`’s index spells it: "what did X do?"'),
+              .describe('A feature slug from the feature index.'),
             seam: z.string().min(1).optional(),
-            seq: z
-              .number()
-              .int()
-              .min(1)
-              .optional()
-              .describe(
-                'One ticket of that feature, by its seq, returned alone with its digest — how to ' +
-                  'read a digest marked `digestNotInlined`.',
-              ),
+            seq: z.number().int().min(1).optional().describe('One ticket of that feature, with its digest.'),
           }),
           z.object({
             featureSlug: z.string().min(1).optional(),
             seam: z
               .string()
               .min(1)
-              .describe(
-                'A surface, asked sideways: "who has touched this area, and what happened?" ' +
-                  'Matched as a case-insensitive SUBSTRING of each ticket’s seams, because seams ' +
-                  'are free prose that differs between features — so a short fragment ' +
-                  '("router") finds more than an exact phrase.',
-              ),
+              .describe('A surface to ask about; matched as a case-insensitive substring of ticket seams.'),
             // Accepted only so the tool can refuse it: zod would otherwise strip a
             // `seq` sent without its featureSlug and run a plain seam search.
             seq: z.number().int().min(1).optional(),
@@ -3613,42 +3441,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'Get feature context',
       description:
-        'Everything true of the current feature, as a summary that never grows past what you ' +
-        'can see. It opens with a header: the feature row, `rounds` (every round so ' +
-        'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
-        '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
-        'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
-        'not replied — no round starts), `waitingReason` and its `waitingKind` (answer, plan, design or stuck), `humanTypedAt` (when the human last typed in this feature’s chat, ' +
-        'ms since the epoch, or null), `dependsOn` (the ' +
-        'features it waits on to merge, each `satisfied` once shipped) and `blocks` (the ' +
-        'drafts waiting on this feature, each with its `upNext` mark) and `upNext` (this ' +
-        'feature’s own mark: it starts by itself when its dependencies ship), `heldBy` (the name of the project thread holding it, or null), `annotatedModels` (the ' +
-        'models the operator described a use case for — the only ones `emit_tickets` may ' +
-        'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
-        'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-        'the newest round went; absent only on a feature that has never run a round), `scenarios` ' +
-        '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
-        'does a ticket ship a scenario for state the person driving would otherwise build by ' +
-        'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
-        'to reuse), ' +
-        '`reviewShots` (the pictures reviews kept, newest pass first), `designs` (every design ' +
-        'recorded with show_design: `title`, `path`, `state` — waiting, approved or dropped — ' +
-        '`approvedBy` — human by the Approve button, lead when you marked a yes they gave in words ' +
-        '— and `opened`, whether the human opened it since it was last shown; the human approves ' +
-        'quietly, so read approvals here), `reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
-        'walkthrough — read them before planning more work; null until a review has run). Then ' +
-        'every ticket as a row ' +
-        'with its goal; a ticket’s context, acceptance criteria and the worker’s digest are in ' +
-        '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
-        '`goalNotInlined` and the settled tickets named in `ticketsNotInlined` were moved out ' +
-        'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
-        'Then the to-do in full: `openDefects` (every defect no fix or resolution has closed) ' +
-        'and `findings` (the rest of what the latest review reported). Last, ' +
-        'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
-        '`notInlined` was too large to include and MUST be read before acting ' +
-        '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
-        'docs/features/<slug>/. A repeat call sends a doc you already hold unchanged as a ' +
-        'stub; `full: true` resends everything.',
+        'The current feature: header (status, rounds, waiting reason, dependencies, designs), ' +
+        'ticket rows, the to-do and the canonical docs. A repeat call returns only what ' +
+        'changed; `full: true` resends everything.',
     }
     const full = z.boolean().optional().describe('Return every doc in full.')
     if (projectReads) {
@@ -3686,17 +3481,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'Read a feature doc',
       description:
-        'One doc from this feature’s docs/features/<slug>/ directory, in full — the other half ' +
-        'of the `moreDocs` index `get_feature_context` returns. A doc marked `withheld` there ' +
-        'is fetchable too; the reason says whether it is worth your context.',
+        'One doc of this feature in full, including any `moreDocs` entry or doc left out of the context.',
     }
-    const relPath = z
-      .string()
-      .min(1)
-      .describe(
-        'Path relative to the feature’s docs dir, exactly as `moreDocs[].relPath` spells ' +
-          'it (`outcome.md`, `research/3-auth.md`). Refused if it escapes that dir.',
-      )
+    const relPath = z.string().min(1).describe('Path relative to the feature’s docs dir, as `moreDocs` spells it.')
     if (projectReads) {
       server.registerTool(
         'read_feature_doc',
@@ -3728,14 +3515,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'List tickets',
       description:
-        'This feature’s tickets as an index — { id, seq, title, status, kind, blockedBy, ' +
-        'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
-        'from; use it instead of `get_feature_context` when you only need to find or name a ' +
-        'ticket. A ticket’s full body is `get_ticket({ seq })`.',
+        'This feature’s tickets as an index with no prose; the cheap way to find a ticket’s id or seq.',
     }
-    const status = TicketStatus.optional().describe(
-      'Return only tickets in this state. Omit for all of them.',
-    )
+    const status = TicketStatus.optional().describe('Only tickets in this state.')
     if (projectReads) {
       server.registerTool(
         'list_tickets',
@@ -3767,17 +3549,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'Get a ticket',
       description:
-        'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
-        'blockedBy, status, error, and the worker’s `digest` of what the round actually did. ' +
-        '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
-        'rest here before editing, reviewing or planning around a ticket. A done or cancelled ' +
-        'ticket leaves out its `context` unless `full: true`.',
+        'One ticket in full, with the worker’s digest. A done or cancelled ticket leaves out ' +
+        '`context` unless `full: true`.',
     }
-    const seq = z
-      .number()
-      .int()
-      .min(1)
-      .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.')
+    const seq = z.number().int().min(1).describe('The ticket’s `seq`.')
     const full = z.boolean().optional().describe('Include a settled ticket’s context.')
     if (projectReads) {
       server.registerTool(
@@ -3812,13 +3587,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Emit tickets',
         description:
-          'Store this session’s ticket batch. Returns each stored ticket’s id, assigned `seq` ' +
-          'and title — `seq` is the number the UI shows and the number later blockedBy edges ' +
-          'speak in. Send the whole batch in one call: positions in `blockedBy` are positions ' +
-          'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
-          'annotatedModels whose note gives a reason to deviate — omit it otherwise and the round ' +
-          'resolves the model the ordinary way. Storing the batch opens the human’s panel on Work, ' +
-          'so they see the tickets you just wrote.',
+          'Store the whole ticket batch in one call; `blockedBy` positions are positions in this ' +
+          'call. Returns each ticket’s id and assigned `seq`.',
         inputSchema: {
           tickets: z
             .array(TicketInput)
@@ -3842,16 +3612,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Update ticket',
         description:
-          'Rewrite a stored ticket’s content (any subset of the fields). Only pending or failed ' +
-          'tickets can be edited: done/cancelled ones are history and burning ones are already ' +
-          'running. Use during a revisit when a decision change makes a ticket stale. `model` ' +
-          'reassigns the ticket’s model; pass "" to clear it and let the round resolve the model ' +
-          'the ordinary way.',
+          'Rewrite any subset of a pending or failed ticket’s fields. Returns a short receipt.',
         inputSchema: {
-          id: z
-            .string()
-            .min(1)
-            .describe('The ticket id, from `list_tickets` (cheapest) or `get_feature_context`.'),
+          id: z.string().min(1).describe('The ticket id, from `list_tickets`.'),
           title: z.string().optional().describe('New title.'),
           goal: z.string().optional().describe('New goal — what the worker must achieve.'),
           context: z.string().optional().describe('New context — what the worker needs to know first.'),
@@ -3885,15 +3648,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Cancel ticket',
         description:
-          'Cancel a ticket that is no longer needed — terminal, and only for pending or failed ' +
-          'ones. Workers skip cancelled tickets, and tickets blocked by a cancelled one ' +
-          'still build: cancellation counts as satisfied.',
+          'Cancel a pending or failed ticket for good; tickets blocked by it still build.',
         inputSchema: {
-          id: z.string().min(1).describe('The ticket id, from `list_tickets` or `get_feature_context`.'),
-          reason: z
-            .string()
-            .optional()
-            .describe('A short why, so the timeline explains the cancellation to the human.'),
+          id: z.string().min(1).describe('The ticket id, from `list_tickets`.'),
+          reason: z.string().optional().describe('A short why, for the timeline.'),
         },
       },
       async (args, extra) => {
@@ -3912,11 +3670,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Resolve a review finding',
         description:
-          'Close an open defect a review reported: `addressed` because work already answers it, ' +
-          'or `dismissed` because it is not worth fixing — with a note saying what addressed it ' +
-          'or why. To fix it through a ticket instead, emit that ticket with `originFindingId` ' +
-          'set — the round then closes the finding itself when that ticket lands. A defect stays ' +
-          'open until one of these happens.',
+          'Close an open review defect as `addressed` or `dismissed`, with a note. A finding that ' +
+          'already closed answers with its current status.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {
@@ -3933,17 +3688,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Record event',
         description:
-          'Add a note to the timeline the UI renders — the feature’s from a feature session, the ' +
-          'project’s from a project-scoped one. For milestones (decisions recorded, spec saved), ' +
-          'not for narration.',
+          'Add a milestone (not narration) to the timeline of the feature or project.',
         inputSchema: {
-          type: EventType.describe(
-            'A dotted `subject.verb` tag, lowercase (`decision.recorded`, `spec.saved`, ' +
-              '`intake.note`, `research.completed`). Reuse an existing tag wherever one fits: ' +
-              'the timeline is permanent and shared, and a vocabulary invented per session ' +
-              'cannot be filtered on later.',
-          ),
-          message: z.string().min(1).describe('One human-readable line. The UI shows this verbatim.'),
+          type: EventType.describe('A dotted `subject.verb` tag, e.g. `decision.recorded`; reuse existing tags.'),
+          message: z.string().min(1).describe('One human-readable line, shown verbatim.'),
         },
       },
       async (args, extra) => {
@@ -3960,20 +3708,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Dispatch a round',
         description:
-          'Start a round: one run of sandboxed workers over exactly the pending tickets you name ' +
-          '(a failed one is retried); every other pending ticket waits for a later round. Their ' +
-          'blockedBy edges order them inside the round. A blocker outside the round that landed ' +
-          'or was cancelled counts as satisfied; one still pending or failed, or one that does ' +
-          'not exist, refuses the round, naming each such edge. When the round returns you are woken ' +
-          'with its outcome, each ticket’s status and the verify-gate result. Start a round only ' +
-          'once the human has said yes to it in chat. Refused, with the reason, while a round is ' +
-          'already running, while the human is test-driving this feature, once it has shipped, ' +
-          'and after the human pressed Stop until they have replied.',
+          'Start a round of sandboxed workers over exactly the pending tickets you name, once the ' +
+          'human has said yes. You are woken with the outcome; refused with a reason when a round cannot start.',
         inputSchema: {
-          seqs: z
-            .array(z.number().int().min(1))
-            .min(1)
-            .describe('The seqs of the tickets this round covers, from list_tickets or get_feature_context.'),
+          seqs: z.array(z.number().int().min(1)).min(1).describe('The seqs of the tickets this round covers.'),
         },
       },
       async (args, extra) => {
@@ -4008,13 +3746,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Declare the feature ready for the human',
         description:
-          'Put a test drive in front of the human: "Ready for you · Test drive ▸ <scenario>". ' +
-          'This puts the feature under Needs you ("ready to test") until the human replies or ' +
-          'the next round runs. Run the project’s checks first, and tell the human in chat what ' +
-          'to test and how you checked the work (e.g. "typecheck and tests green; no review ' +
-          'agent, since it’s a one-file style change"). A declaration, never refused for the ' +
-          'work’s state: it returns `warnings` — a last round with failures — and you must relay ' +
-          'each one to the human.',
+          'Put a test drive in front of the human and mark the feature ready to test. Returns ' +
+          '`warnings` (such as a failed last round) to relay to the human.',
         inputSchema: {
           scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
         },
@@ -4033,21 +3766,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Say that nothing moves until the human acts, and why, in a few words — the feature ' +
-          'shows "Waiting for you · <why>" and sits under Needs you. Use it when you need the ' +
-          'human’s yes to start a round, a decision the plan did not settle, or when you are ' +
-          'stuck. The human’s next message, or your next dispatch, clears it.',
+          'Say that nothing moves until the human acts, and why; use it for a yes, a decision, or ' +
+          'when stuck. The human’s next message or your next dispatch clears it.',
         inputSchema: {
-          why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
-          kind: WaitingKind.optional().describe(
-            'Which kind of wait this is — the feature shows its own words and button for each: ' +
-              '"plan" when you ask the human’s yes to the plan or a round it did not settle ("Plan to approve"); ' +
-              '"design" only when a design you recorded with show_design waits for the human ("Design to approve"); ' +
-              'anything else you show for a yes — a file, a picture — is an answer, and a "design" wait with no ' +
-              'recorded design waiting reads as one; ' +
-              '"stuck" when you cannot go on (the runaway guard, the same failure again) ("Stopped · <why>"); ' +
-              '"answer" (the default) for a question only the human can answer ("Needs your answer · <why>").',
-          ),
+          why: z.string().min(1).describe('A few words on what you wait for.'),
+          kind: WaitingKind.optional().describe('`plan`, `design` (a recorded design), `stuck`, or `answer` (default).'),
         },
       },
       async (args, extra) => {
@@ -4064,27 +3787,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the design server',
         description:
-          'Run the project’s own frontend dev server in your worktree so the human can see a ' +
-          'design page live. Runcastle picks a free port and passes it as the env var ' +
-          'RUNCASTLE_DESIGN_PORT: put it in your command, pinned (for Vite: `bunx vite --port ' +
-          '$RUNCASTLE_DESIGN_PORT --strictPort`). Write the `$RUNCASTLE_DESIGN_PORT` form on every ' +
-          'OS, Windows included: runcastle substitutes the port before running, and records your ' +
-          'command as written. It returns { url, port, command } once the ' +
-          'server prints its localhost URL, or fails with the output tail after a minute without ' +
-          'one. The command is recorded in `.runcastle/design.json` — commit that file with your ' +
-          'design — so later calls may omit it. One server per feature: calling again returns ' +
-          'the running one; a different command restarts it. It stops when this session ends ' +
-          '(a headless run: when the run ends, unless the human has opened it since), ' +
-          'when the feature ships, or after 30 minutes with the design view closed.',
+          'Run the project’s frontend dev server in your worktree so the human can see designs live. ' +
+          'Returns { url, port, command }; one server per feature.',
         inputSchema: {
-          command: z
-            .string()
-            .min(1)
-            .optional()
-            .describe(
-              'The shell command that serves the design pages on $RUNCASTLE_DESIGN_PORT. Omit it ' +
-                'to run the command recorded in `.runcastle/design.json`.',
-            ),
+          command: z.string().min(1).optional().describe('Serves on $RUNCASTLE_DESIGN_PORT; omit to reuse the recorded one.'),
         },
       },
       async (args, extra) => {
@@ -4101,11 +3807,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human a panel',
         description:
-          'Open the panel beside the chat on the human’s screen, while you are talking about what ' +
-          'it shows: `work` (the feature’s tickets by round, with live status), `review` (ready ' +
-          'declarations, findings and evidence), `details` (timeline, docs and sessions) or ' +
-          '`drive` (the test drive). The plan is shown with show_plan and a design with ' +
-          'show_design: both leave a card in the chat, which this does not.',
+          'Open a panel (`work`, `review`, `details` or `drive`) beside the chat while you talk about what it shows.',
         inputSchema: {
           view: PanelView.describe('Which view the panel shows.'),
         },
@@ -4124,39 +3826,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human a design',
         description:
-          'Show one design page on the feature’s design server: it is recorded as one of the ' +
-          'feature’s designs (one per page, so showing the same page again updates it), a design ' +
-          'card is posted in this chat, and, when the human is watching, the Design view opens on ' +
-          'it. One design per screen (or per component): its states (empty, loading, error, a dialog ' +
-          'open) are buttons on a state switcher inside that one page, and an open choice of look is ' +
-          'a Tweak inside it, so never show a separate design for a state, a variant or a tweak. ' +
-          'Call it for every design you want the human to look at, again after every change: ' +
-          'showing a design again sets it back to waiting for the human, even if they had approved ' +
-          'it. The human approves a design with its Approve button; when they approve in words, ' +
-          'mark it with set_design_state. Start the server with start_design_server first. Returns ' +
-          '{ recorded, state }.',
+          'Record a design page from the design server and post its card in the chat. Showing it ' +
+          'again resets it to waiting; start the server first. Returns { recorded, state }.',
         inputSchema: {
-          path: z
-            .string()
-            .min(1)
-            .describe('The design page on the design server at its bare address, with no `?state=`, e.g. `/preview/checkout.html`.'),
-          title: z.string().min(1).max(120).describe('The screen the design is, in a few words, e.g. `Checkout`; never one of its states.'),
-          width: z
-            .number()
-            .int()
-            .min(200)
-            .max(3840)
-            .optional()
-            .describe('The screen width in CSS pixels the design is laid out at, e.g. `390` (mobile), `768`, `1440`.'),
-          picture: z
-            .string()
-            .min(1)
-            .optional()
-            .describe(
-              'A screenshot of the design (png, jpg, gif, webp or svg) for its card. A relative path ' +
-                'starts at your working folder; same places as show_file. A run with no human ' +
-                'watching passes the screenshot it took to check the screen.',
-            ),
+          path: z.string().min(1).describe('The page path on the design server, no `?state=`.'),
+          title: z.string().min(1).max(120).describe('The screen the design is, in a few words.'),
+          width: z.number().int().min(200).max(3840).optional().describe('Layout width in CSS pixels.'),
+          picture: z.string().min(1).optional().describe('A screenshot (png, jpg, gif, webp, svg) for its card.'),
         },
       },
       async (args, extra) => {
@@ -4173,10 +3849,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human the plan',
         description:
-          'Post a plan card in this chat and, when the human is watching, open the Plan view beside ' +
-          'it: the plan page (preview.html) with the decisions and spec. Call it when you ask for ' +
-          'the yes to the plan and after every redraw, so the human finds the plan in the chat when ' +
-          'they come back. Refused while the feature has no plan page, decisions or spec.',
+          'Post the plan card (plan page, decisions, spec) in this chat; call it when asking for the yes and after every redraw.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -4193,10 +3866,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Mark a design approved or dropped',
         description:
-          'Record what the human said in words about a design shown with show_design: `approved` ' +
-          'when they said yes to it (then commit it as "design: <title>"), `dropped` when they ' +
-          'rejected it. Only for their own words: a design they approved with its button is ' +
-          'already marked.',
+          'Record that the human approved or dropped a design in words; the Approve button already marks itself.',
         inputSchema: {
           path: z.string().min(1).describe('The design page, as passed to show_design.'),
           state: z.enum(['approved', 'dropped']).describe('What the human said.'),
@@ -4216,13 +3886,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human a file',
         description:
-          'Show one file in this chat. A picture appears inline; any other file appears as a card ' +
-          'the human clicks to open. It appears at once and stays when your work folds, but your ' +
-          'words before this call fold away: say what the file shows in `caption`, and put what ' +
-          'you need from the human in your words after it. The chat keeps a copy, so it still ' +
-          'works after the worktree is gone. It waits for nobody. One file per call, up to 100 MB, ' +
-          'from this project, its worktrees, review evidence or the temp folder. Make Markdown and ' +
-          'HTML self-contained: files they link to beside them are not copied.',
+          'Show one file (up to 100 MB) in this chat: a picture inline, anything else as a card. ' +
+          'It waits for nobody; make Markdown and HTML self-contained.',
         inputSchema: {
           path: z.string().min(1).describe('The file. A relative path starts at your working folder.'),
           caption: z.string().max(200).optional().describe('One line saying what the file shows.'),
@@ -4242,14 +3907,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Notify the human’s phone',
         description:
-          'Send the human a phone notification. Nothing else ever notifies them, so if you do not ' +
-          'call this they hear nothing. Call it when they asked to be told, or when you need them ' +
-          'and they seem to have left, for example after a long unattended round. Do not call it ' +
-          'during a back-and-forth, when they will see your reply anyway. Say what you want in ' +
-          'one plain sentence; it shows on their lock screen, so never put secrets or credentials ' +
-          'in it. A tap opens this chat, so show there whatever they should see. The answer says ' +
-          'how many phones it reached; relay any `note`. Refused on a feature an orchestrator ' +
-          'thread holds: only that thread notifies about it.',
+          'Send the human a phone notification when they asked to be told or you need them and they ' +
+          'seem away; one plain sentence, shown on the lock screen, no secrets.',
         inputSchema: {
           message: z
             .string()
@@ -4272,11 +3931,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show a review package',
         description:
-          'Show what a review left, as one attachment in this chat: its verdict, screenshots, ' +
-          'walkthrough, calls and findings. A click opens them all. It shows the newest pass that ' +
-          'took pictures, or the newest pass when none did, and returns `commitsSince`, how far the ' +
-          'branch has moved on from it: say so when that is above zero. Refused when the feature ' +
-          'has had no review. It waits for nobody.',
+          'Show the latest review (verdict, screenshots, findings) as one attachment in this chat. ' +
+          'Returns `commitsSince`, how far the branch has moved on since.',
         inputSchema: {
           slug: z.string().optional().describe("The feature's slug. A feature's own chats leave it out."),
         },
