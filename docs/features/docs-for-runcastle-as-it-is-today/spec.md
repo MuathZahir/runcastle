@@ -27,11 +27,11 @@ Every page carries the same docs subnav (the four pages) and a Next link to the 
 
 **Design previews** (decision 23). runcastle's design pass-through adds `Cache-Control: no-cache` to any forwarded response that carries no caching rule, keeping a rule the design server sets; covered by the pass-through's tests.
 
-**Who builds it** (decision 13). The lead, in this checkout, because the captures need the real database and demo project. Then one review round reads the result.
+**Who builds it** (decision 13). The lead, in this checkout. Then one review round reads the result.
 
 ## Seams
 
-- **The static site, served as files** (existing): `python3 -m http.server --directory site` (the design server's command) shows every page as runcastle.dev will. Observe each page, its subnav and Next links, and each image loading.
+- **The static site, served as files** (existing): `bun .runcastle/site-design-server.ts` (caching off) shows every page as runcastle.dev will. Observe each page, its subnav and Next links, and each image loading.
 - **`site/_redirects`** (new): Cloudflare Pages' redirect file; observe that each old docs URL maps to its replacement with 301. Not exercised by the local server, so checked by reading.
 - **`site/sitemap.xml`** (existing): observe it lists exactly the four docs URLs plus its untouched landing and compare entries.
 - **The pages' text** (existing): observe the words a newcomer reads: no "phase", "gate", "ideation", "burn", "Preparation page", "Project session", or "Claude Code" without "Codex" beside it; prose length per page.
@@ -46,4 +46,4 @@ Every page carries the same docs subnav (the four pages) and a Next link to the 
 
 ## Open questions
 
-- None open. The phone section has no picture (decision 17). Designing screens live needs a web frontend, and test drives cover web apps and HTTP APIs (the drive's API view), which is what Get started says.
+- None open. The phone section has no picture. Designing screens needs a web interface, and test drives cover web apps and HTTP APIs (the drive's API view), which is what Get started says.
