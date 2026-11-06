@@ -4,7 +4,7 @@ Planned without the human (a headless planning run, 2026-11-06). Every decision
 below is the lead's recommendation, accepted so the plan could be finished; each
 names the alternative it was chosen over.
 
-Check first: 3, 7, 9, 12
+Check first: 3, 7, 9, 10, 12
 
 ## 1. One wake rule, decided in one place, for both levels
 **Decision:** Every message runcastle sends to an agent on its parent's behalf is classed as either **wake** (a handback, or a real question the agent must answer) or **hold** (anything else). One shared function makes that call for both links that exist today: runcastle news to the orchestrator thread that holds a feature, and runcastle's messages to a feature's lead. It is written so workers can adopt it later without a second rule.
@@ -17,19 +17,21 @@ Check first: 3, 7, 9, 12
 **Assumed.** Alternative: drop held lines outright and let the agent read state when it next needs it.
 
 ## 3. Which orchestrator news lines wake, and which hold
-**Decision:** These **wake** the orchestrator thread that holds the feature: the lead waits for the human; the lead declared ready to test; a round failed; a merge conflicted (not one the orchestrator's own merge already reported); a test drive failed to start; the human merged the feature (shipped); a backlog feature started by itself, or could not start; a self-planning run stopped before its plan was complete while nothing waits on the human. These **hold**: the human is talking to a chat / its chat went quiet; the human started or stopped a test drive; the human had a feature plan itself; a self-planning run finished; a round finished; a round was cut off by a restart; a review or verification pass finished or failed; another thread took the feature; runcastle could not wake a lead.
+**Decision:** These **wake** the orchestrator thread that holds the feature: the lead waits for the human; the lead declared ready to test; a round failed; a merge conflicted (not one the orchestrator's own merge already reported); a test drive failed to start; the human merged the feature (shipped); a backlog feature started by itself, or could not start; runcastle could not wake a lead; a self-planning run ended (finished or not) while nothing waits on the human. These **hold**: the human is talking to a chat / its chat went quiet; the human started or stopped a test drive; the human had a feature plan itself; a self-planning run ended while the feature already waits on the human; a round finished; a round was cut off by a restart; a review or verification pass finished or failed; another thread took the feature.
 **Why:** The wake list is the brief's "must still hear and can act on" list plus failures nobody else will raise. Every held line either has a later wake that covers it (a finished round leads to the lead's ready or wait line; a cut-off round wakes the lead, which raises a wait if needed) or asks nothing of the orchestrator. On the analysed fortnight the held kinds were 133 of 308 news wakes and ~32M context tokens, before counting the 151 "noted" replies.
-**Assumed.** Alternative: keep "another thread took it" and "could not wake its lead" as wakes, since both are surprises the orchestrator might want to tell the human about.
+**Assumed.** Alternative: also wake on "another thread took it", a surprise the orchestrator might want to tell the human about.
+**Challenged:** "could not wake its lead" was first a hold; the challenger pointed out that the lead's later ready or wait line, which covers the held round lines, never comes when the lead cannot be woken, so holding it stalls a feature silently. Accepted: it wakes.
 
 ## 4. Lines that already only reach a running thread keep that gate
 **Decision:** Lines about what the human did (talking to a chat, a drive started or stopped, plan-it-yourself) still go only to a holder whose process is running, as today, and now hold instead of starting a turn.
 **Why:** A closed thread is doing nothing those lines could change; held, they still tell a live one before its next step. No reason to widen them.
 **Assumed.** Alternative: hold them for closed threads too, so a reopened thread reads the full history.
 
-## 5. "Finished planning" holds; the gathering window stays short
-**Decision:** A self-planning run that finished holds, always. A run that stopped incomplete wakes only when the feature is not already waiting on the human (that wait line already woke the orchestrator for it). The 300 ms window that gathers lines into one prompt stays as it is.
+## 5. "Finished planning" holds when a wait already went out; the gathering window stays short
+**Decision:** A self-planning run's end, finished or not, holds when the feature is already waiting on the human (that wait line already woke the orchestrator for it), and wakes otherwise. The 300 ms window that gathers lines into one prompt stays as it is.
 **Why:** Every one of the 28 "finished planning" wakes came within three minutes of a "waits for you" line for the same feature. Holding it removes that pair, and the duplicate message to a lead that followed, without delaying any real wake by widening the window.
 **Assumed.** Alternative: widen the window to about a minute so paired lines go out together.
+**Challenged:** a finished run first held always; the challenger noted a plan that ends without a wait would then never wake the orchestrator, which is the one meant to start the work. Accepted: the same conditional rule for both endings, which saves the same 28 wakes.
 
 ## 6. Background sub-agent wakes are handled in the orchestrator's guidance
 **Decision:** The project session's skill tells the orchestrator to do boot-time and other short reads in the foreground (parallel calls in one message), and to start a background sub-agent only for long independent work, so several reads return as one turn and not one wake each.
@@ -40,6 +42,7 @@ Check first: 3, 7, 9, 12
 **Decision:** When a wake is about to go to a holder thread whose conversation is past the resume cap (the existing 1 MB transcript / re-entry limit that already stops the human reopening it), runcastle opens a fresh orchestrator thread instead. The fresh thread takes over every feature the old one held, receives any lines the old one still held plus the wake itself, and is briefed that it continues from the old thread. The old thread is not restarted. The check runs whenever a wake goes out, not only when the human opens a chat, so a long-running thread that keeps being woken is also cut over at its next wake once it has stopped.
 **Why:** Today news restarts oversized chats through a path that skips the cap: none of 20 orchestrator sessions ever compacted, and contexts reached 190–352k. Opening a fresh thread keeps the orchestrator carrying features on its own judgement, which waiting for the human would stall.
 **Assumed.** Alternative: hold the wake until the human next opens the orchestrator chat, whose own cap then starts the fresh thread.
+**Challenged:** the challenger would ask the human first, since threads appearing on their own change the human's thread list and which thread is "the orchestrator", and would weigh compacting the old chat (the runtime summarising it in place) instead of a new thread. The answer stands: runcastle's resume cap already chose fresh over compacted ("the docs are the artifact"), and decisions 14 and 15 cover what the human sees.
 
 ## 8. Held lines move with the features when a chat is cut over
 **Decision:** Whenever a fresh orchestrator thread takes over from a capped one, whether a wake or the human opened it, lines the old thread was still holding move to the new one with its features.
@@ -47,14 +50,15 @@ Check first: 3, 7, 9, 12
 **Assumed.** Alternative: leave held lines on the old thread; the fresh one reads state from the features anyway.
 
 ## 9. A runcastle-started turn that hits the usage limit is re-sent at reset
-**Decision:** When a turn runcastle started (news to the orchestrator, or a message to a lead) ends because the provider's usage limit is hit, runcastle holds that turn's message again and wakes the thread once when the usage window resets, using the reset time the runtime already reports. If the reset time is unknown, the message stays held for the next prompt. A human's own message that hits the limit is left alone.
+**Decision:** When a turn runcastle started (news to the orchestrator, or a message to a lead) ends because the provider's usage limit is hit, runcastle holds that turn's message again and wakes the thread once when the usage window resets, using the reset time the runtime already reports. If the reset time is unknown, the message stays held for the next prompt. If the re-sent turn hits the limit again, it waits for the next reset the same way, so it is tried at most once per usage window. A human's own message that hits the limit is left alone.
 **Why:** Five orchestrator turns ended "You've hit your 5-hour limit" and their news was never acted on until the human typed "Continue all work". Holding alone would not help, since nothing prompts the thread after the limit.
 **Assumed.** Alternative: hold only, and let the human's next message carry it.
 
 ## 10. What reaches a feature's lead
-**Decision:** A lead is woken by: the human's messages (including the orchestrator's messages and relays, and Resume after a provider halt), a round coming back, and the human approving the last waiting design (it answers the lead's design wait and asks it to commit them). The notice that the human pressed Stop holds: it rides the human's next message.
-**Why:** The round's return is the handback; human and orchestrator messages are the questions. Stop asks nothing of the lead, and the server already refuses a dispatch after Stop, so waking an idle lead only to acknowledge it is a wasted turn.
-**Assumed.** Alternative: keep waking the lead on Stop so a lead mid-turn hears it at the end of that turn.
+**Decision:** A lead is woken by: the human's messages (including the orchestrator's messages and relays, and Resume after a provider halt), a round coming back, and the human approving the last waiting design (it answers the lead's design wait and asks it to commit them). The notice that the human pressed Stop reaches a lead whose turn is running at the end of that turn, as today, and holds for an idle lead: it rides the human's next message.
+**Why:** The round's return is the handback; human and orchestrator messages are the questions. An idle lead has nothing to stop, and the server already refuses a dispatch after Stop, so waking it only to acknowledge is a wasted turn. A busy lead may still be editing and committing, and must hear Stop before its next step.
+**Assumed.** Alternative: hold Stop always.
+**Challenged:** Stop first held always; the challenger pointed out that a lead mid-turn would keep editing and committing until the human's next message. Accepted: it holds only for an idle lead.
 
 ## 11. The round's return message is the whole handback
 **Decision:** The message a returning round wakes its lead with keeps its ticket list, gate result and findings, and its closing line tells the lead it holds everything about the round: read a ticket's digest with `get_ticket` only where it needs the detail (a failed ticket, a finding to fix), with no `get_feature_context` call to see the round again. The lead's round guidance says the same.
@@ -65,3 +69,18 @@ Check first: 3, 7, 9, 12
 **Decision:** A news block that was held reads "For its next turn" beside its time, in the same quiet text, so the human knows the orchestrator was not woken and why no reply follows. Nothing else in the chat changes.
 **Why:** Without the label a news block with no reply after it looks like the orchestrator ignored it.
 **Assumed.** Alternative: no visual change; held and waking news look the same.
+
+## 13. A newer line about what the human is doing replaces the older one
+**Decision:** While lines are held, a newer line about the human's activity on a feature replaces the held one it answers: "its chat went quiet" replaces "the human is talking to its chat", and "stopped the test drive" replaces "started a test drive". Every other held line is kept, in order. There is no size limit on held lines.
+**Why:** A thread closed for a day would otherwise read a stale "busy" line followed by its own correction; the brief shows out-of-date news costing turns. The other lines are one short line each and each still true, so a limit buys nothing.
+**Assumed.** Alternative: keep every held line as it arrived.
+
+## 14. No agent or human can ask for extra wakes
+**Decision:** The wake list in decision 3 is fixed. There is no tool for an orchestrator, and no setting for the human, to ask to be woken by a held kind (for example "wake me when this round finishes").
+**Why:** Every held kind is covered by a later wake, and a per-feature switch is machinery nobody has asked for. It can be added later if a real need shows.
+**Assumed.** Alternative: a tool the orchestrator calls to be woken by one held kind on one feature.
+
+## 15. A cut-over is visible, and the old thread points to the new one
+**Decision:** When a wake opens a fresh orchestrator thread (decision 7), the old thread shows a closing line saying the conversation grew too large and was continued in the new thread, by name, and the fresh thread appears in the thread list as any new chat does. Opening or typing into the old thread afterwards goes to the thread that continued it, not to another fresh one. A cut-over only happens while the old thread's process is stopped, so it never takes features from under a conversation the human is having.
+**Why:** The human should never find their features moved without a trace, and two fresh threads for one cut-over would split the holds.
+**Assumed.** Alternative: start another fresh thread whenever the old one is opened, as the resume cap does today.
