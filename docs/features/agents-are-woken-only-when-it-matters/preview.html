@@ -195,7 +195,6 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><i class="dot live"></i>a lead waits for the human</li>
         <li><i class="dot live"></i>a lead declared ready to test</li>
         <li><i class="dot live"></i>a round failed</li>
-        <li><i class="dot live"></i>a merge conflicted</li>
         <li><i class="dot live"></i>a test drive failed to start</li>
         <li><i class="dot live"></i>the human merged a feature</li>
         <li><i class="dot live"></i>a backlog feature started by itself, or could not</li>
@@ -210,6 +209,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><i class="dot"></i>a round finished, or a restart cut it off</li>
         <li><i class="dot"></i>a review pass finished or failed</li>
         <li><i class="dot"></i>another thread took the feature</li>
+        <li><i class="dot"></i>the human's own merge conflicted <a class="pin" data-d="18">18</a></li>
       </ul></div>
     </div>
   </div>
@@ -350,7 +350,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['No agent or human can ask for extra wakes', 'Every held kind is covered by a later wake; a switch is machinery nobody asked for.', A],
     ['A cut-over is visible, and the old thread points to the new one', 'Replaced by 16.', 'replaced'],
     ['An oversized orchestrator chat is compacted in place, not handed over', 'The orchestrator asked for it: chats appearing by themselves confuse the human, and compaction fixes the context size while keeping the thread and its holds.', 'orchestrator'],
-    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'lead-chats-stay-small has its plan but no code yet; building compaction here too would make a second mechanism.', A]
+    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'lead-chats-stay-small has its plan but no code yet; building compaction here too would make a second mechanism.', A],
+    ['A conflict from the human\u2019s own merge is held', 'After drives-never-touch-real-conversations, that line reaches the orchestrator only for a merge the human pressed, with the human holding the Resolve button: it asks nothing of the orchestrator.', A]
   ]
   var C = [
     [3, 'Keep more lines as wakes, for example "another thread took it".', 'It is the core of the feature: any line you rely on hearing at once must be on the wake side. "Could not wake its lead" moved to wake after the challenge.', 'challenged'],
