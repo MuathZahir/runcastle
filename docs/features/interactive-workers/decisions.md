@@ -90,3 +90,13 @@ the container, so the sandbox still cannot reach runcastle. None of the lead's t
 rounds, ready, landing, drives): a worker's only way to change the feature is its handback.
 **Why:** Workers run with no permission prompts; given the lead's tools they could start rounds or
 declare ready behind the lead, the side-chat trouble this feature removes.
+
+## 10. No settings page: workers ask before MCP calls, as the human's own chats do
+**Decision:** Supersedes the Workers settings page in 8 (the rest of 8 stands). A worker gets exactly
+the human's setup with no per-server switch. Inside the sandbox it never asks (editing files and
+running commands touch only its own copy); any call through the human's MCP servers asks the
+human, following their own "always allow" rules, and a worker waiting on such a prompt shows
+"needs you" and pings like any other need.
+**Why:** The human: "In claude code, subagents have the exact same setup as the agents. What's the
+difference here." The only difference was that workers never asked; making MCP calls ask closes it,
+and a page of per-kind switches would read as managing every chat's servers.
