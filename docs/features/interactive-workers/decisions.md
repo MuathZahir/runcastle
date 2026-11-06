@@ -58,3 +58,26 @@ bundling them per feature is a later fix.
 **Why:** A "with you" worker is meant to be iterated with promptly; shown only in the sidebar it
 would sit unseen and its container would stop on idle. The pings are runcastle's own, so a feature
 held by an orchestrator thread still gets them.
+
+## 7. Side chats become unassigned workers
+**Decision:** The "+" on the open feature's sidebar row starts a worker with no assignment, in
+place of today's side chat. It runs in a sandbox on its own branch like any worker, opens with the
+feature's state and the lead's latest turns (as side chats do today), and waits for the human. It
+hands back through the same Hand back button, and the lead lands, returns or drops it. A worker
+only asked questions has nothing to hand back and just goes idle; a worker with commits stays out
+of Done until it is handed back or dropped.
+**Why:** One kind of thread instead of two, and nothing reaches the feature behind the lead's back
+(a side chat once changed a feature after it was declared ready, unseen by its lead). Side chats
+were used 4 times in two weeks, so losing the host checkout costs little.
+
+## 8. Workers carry the human's whole Claude setup; MCP servers can be switched off per server
+**Decision:** At start or wake, a worker gets a read-only copy of the human's Claude setup: global
+CLAUDE.md and rules, skills, agents, enabled plugins, model and effort settings, and their MCP
+servers (user-level, plugin-provided and the repo's own) with their logins. Hooks stay out (they run
+host-path scripts). A new **Workers** page in Settings lists every MCP server with an "Available to
+workers" toggle, all on by default; the servers switched off are one machine-wide list in
+runcastle's config, and a worker never sees their tools. A change applies at a worker's next start
+or wake.
+**Why:** The human: "Shouldn't all workers have the user's setup? … most users expect that",
+as Claude Code's own subagents do. Workers run with no permission prompts, so leaving a server out
+is the only reliable way to keep risky tools (Neon in write mode) out of reach.
