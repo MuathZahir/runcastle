@@ -160,7 +160,9 @@ const prodDir = join(homedir(), '.runcastle')
  */
 const brandNewInstall = process.env.RUNCASTLE_SCENARIO === ONBOARDING_SCENARIO
 const driveDb = join(dataDir, 'runcastle.db')
-for (const suffix of ['', '-wal', '-shm']) rmSync(driveDb + suffix, { force: true })
+// `-detached` is the drive server's note that it already cut this copy loose
+// from the live install; a fresh copy must be cut loose again.
+for (const suffix of ['', '-wal', '-shm', '-detached']) rmSync(driveDb + suffix, { force: true })
 if (brandNewInstall) {
   for (const file of ['.env', 'config.json']) rmSync(join(dataDir, file), { force: true })
   console.log('[drive-setup] brand-new install — no .env, config.json or database copied')
@@ -191,6 +193,7 @@ for (const file of brandNewInstall ? [] : ['.env', 'config.json']) {
  * which exercises a branch's migrations against real data.
  */
 const prodDb = join(prodDir, 'runcastle.db')
+let copiedDb = false
 if (brandNewInstall) {
   // Skip the snapshot; the empty database is created by the server at boot.
 } else if (existsSync(prodDb)) {
@@ -200,6 +203,7 @@ if (brandNewInstall) {
   } finally {
     source.close()
   }
+  copiedDb = true
   console.log(`[drive-setup] snapshotted ${prodDb}`)
 } else {
   console.warn(`[drive-setup] no database at ${prodDb} — the drive starts empty`)
@@ -229,6 +233,15 @@ emit({
   RUNCASTLE_HOOK_CLIENT: pkg('packages', 'server', 'src', 'launcher', 'hook-client.ts'),
   RUNCASTLE_SANDCASTLE_TEMPLATE: pkg('packages', 'server', 'src', 'assets', 'sandcastle'),
 })
+
+/**
+ * The snapshot still holds the live install's conversation ids, running rounds,
+ * drive and phone subscriptions, and Claude Code's and Codex's config dirs are
+ * shared with it. Told the database is a copy, the drive's server cuts all of
+ * that loose at its first boot, before anything can resume a real conversation
+ * (drives-never-touch-real-conversations decision 1).
+ */
+if (copiedDb) emit({ RUNCASTLE_DATABASE_IS_COPY: '1' })
 
 console.log(`[drive-setup] data dir ${dataDir}`)
 console.log(`[drive-setup] port ${port}`)

@@ -24,6 +24,7 @@ import streamApp from './routes/stream'
 import threadsApp from './routes/threads'
 import designsApp from './routes/designs'
 import { mountWebAppIfBuilt } from './routes/web'
+import { detachCopyOnce, isDatabaseCopy } from './services/database-copy'
 import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { recoverCutOffDrives } from './services/git'
@@ -117,6 +118,19 @@ export async function startServer(): Promise<void> {
   runMigrations(db)
 
   const ctx: AppCtx = { db, config }
+
+  // A test drive boots on a copy of the live database, whose conversation ids,
+  // running rounds and phone subscriptions all still point at the live install.
+  // Cut them loose before anything below reconciles or wakes them
+  // (drives-never-touch-real-conversations decision 1).
+  const detached = detachCopyOnce(ctx, dbPath())
+  if (detached) {
+    console.log(
+      `detached a copied database: ${detached.conversations} conversation(s), ${detached.runs} running run(s), ` +
+        `${detached.tickets} burning ticket(s), ${detached.pushSubscriptions} phone subscription(s)`,
+    )
+  }
+
   const app = buildApp(ctx)
 
   // This context's config came from `~/.runcastle/config.json`, so let it follow
@@ -149,7 +163,9 @@ export async function startServer(): Promise<void> {
   // A drive the restart cut off comes back into its project's slot, so it is
   // named wherever it blocks and one Stop runs its stop script and returns the
   // checkout home. After both reconciliations: a review drive's round is dead by now.
-  const cutOff = await recoverCutOffDrives(ctx)
+  // On a copied database every recorded drive is the live install's, never this
+  // server's leftover (decision 4).
+  const cutOff = isDatabaseCopy() ? [] : await recoverCutOffDrives(ctx)
   if (cutOff.length > 0) {
     console.log(`recovered ${cutOff.length} drive(s) cut off by the restart — stop them to tidy up`)
   }

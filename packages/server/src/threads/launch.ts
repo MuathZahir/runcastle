@@ -1,4 +1,6 @@
+import { eq } from 'drizzle-orm'
 import { DEFAULT_RUNTIME, resolveModelEntry, type ModelEntry, type ModelStep, type Project, type SessionRow } from '@runcastle/core'
+import { sessions } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { serverUrlFor } from '../launcher/artifacts'
@@ -23,7 +25,22 @@ export async function acpLaunchFor(ctx: AppCtx, row: SessionRow): Promise<AcpLau
   const runtime = runtimeAdapterFor(row.runtime ?? DEFAULT_RUNTIME)
   const ready = runtime.checkReady()
   if (!ready.ok) throw new GateError(`${ready.reason}. ${ready.doctorHint}`)
-  return runtime.acpLaunch(await acpLaunchInput(ctx, row))
+  const input = await acpLaunchInput(ctx, row)
+  adoptWorktree(ctx, row, input.worktreePath)
+  return runtime.acpLaunch(input)
+}
+
+/**
+ * A thread with no conversation yet starts wherever its kind's worktree is NOW,
+ * not where its row was made: the folder may have gone (an archive, a sweep),
+ * and in a test drive the row was copied from the live install and names the
+ * live install's own worktree (drives-never-touch-real-conversations). The row
+ * takes the new folder, so the agent's process and its session open there. A
+ * thread with a conversation keeps its folder: its conversation resumes from it.
+ */
+function adoptWorktree(ctx: AppCtx, row: SessionRow, worktreePath: string): void {
+  if (row.ccSessionId || row.worktreePath === worktreePath) return
+  ctx.db.update(sessions).set({ worktreePath }).where(eq(sessions.id, row.id)).run()
 }
 
 /** The model step each conversation kind runs on when its row recorded none. */

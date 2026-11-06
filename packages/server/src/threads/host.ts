@@ -871,11 +871,15 @@ class Host implements AgentHost {
   }
 
   private async connect(t: Thread, given: SessionRow): Promise<void> {
-    const row = this.followSettings(given)
+    const followed = this.followSettings(given)
     // Read before the session opens: the adapter announces its own model as it
     // opens (claude-agent-acp), and that logged announcement is not a pick.
-    const intended = this.intendedConfig(t.id, row)
-    const spec = await this.launch(this.ctx, row)
+    const intended = this.intendedConfig(t.id, followed)
+    const spec = await this.launch(this.ctx, followed)
+    // The launch may have moved a thread with no conversation yet to its kind's
+    // current worktree (`adoptWorktree`): open the process and session there.
+    const moved = getSessionRow(this.ctx, t.id)?.worktreePath
+    const row = moved && moved !== followed.worktreePath ? { ...followed, worktreePath: moved } : followed
     const proc = await this.transport(spec, row)
     t.proc = proc
     void proc.exited.then(({ stderr }) => this.crashed(t, stderr))
