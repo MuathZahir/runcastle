@@ -187,3 +187,14 @@ in the lead's own chat. It picks each worker's model from the models the human d
 Settings.
 **Why:** The human: "I wouldn't think to create a new thread". A loose "prefer workers" rule is how
 side chats ended up never offered.
+
+## 21. Assignment and handback are cards
+**Decision:** A worker's chat opens with an assignment card that stays at its top: label, one-line
+purpose, "with you" or "on its own", goal, done-when, model, and who started it (the lead, or
+"Started by you" for a "+" worker, which has no goal). The worker's chat header shows its label,
+status, "Open preview" while its dev server runs, and "Hand back". A handback is a card in the
+lead's chat (summary, commit count, files changed, a link to the worker's chat) with what the lead
+did beneath it ("Landed", "Sent back: …", "Dropped"); the worker's own chat ends with a matching
+"Handed back" line. The look is settled in the design pass.
+**Why:** Plain messages would let the assignment scroll away and a handback read like any other
+message in the lead's chat.
