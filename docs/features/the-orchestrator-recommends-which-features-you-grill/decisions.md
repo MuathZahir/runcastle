@@ -16,10 +16,11 @@ Check first: 1, 3, 5, 7, 9
 **Assumed.** Alternative: a third mode where the feature plans itself and the human reviews the plan before round 1.
 
 ## 3. When to recommend a grill, and which way to lean
-**Decision:** Recommend **grill with you** when the feature shapes how the human works or what they see, is big or hard to undo, or has open questions its brief marks as the human's. Recommend **plans itself** for bug fixes and well-specified mechanical work. When unsure, recommend the grill.
-**Why:** The human's complaint is too little grilling ("If the feature is important or big, I would usually like to get grilled"). A wrongly recommended grill costs one "no, plan it yourself"; a wrongly skipped one costs a plan built on guesses.
+**Decision:** Recommend **grill with you** when the feature decides how something new works or looks (where the human would have opinions), is big or hard to undo, or has open questions its brief marks as the human's. A new screen, a new workflow, or a change to how the human works with agents gets the grill. Recommend **plans itself** for bug fixes, well-specified mechanical work, and small visible tweaks to something that already exists (a meter colour, a label). When unsure, recommend the grill. The skill carries one or two short examples of each side.
+**Why:** The human's complaint is too little grilling ("If the feature is important or big, I would usually like to get grilled"). A wrongly recommended grill costs one "no, plan it yourself"; a wrongly skipped one costs a plan built on guesses. Narrowing the trigger to new things and examples keeps the lean from turning into a grill for every visible change.
 **Assumed.** Alternative: lean to "plans itself" when unsure, to save the human's time.
 **Challenged:** "Shapes how the human works or what they see" covers most of this product, so leaning to the grill risks over-grilling; tighten the trigger or cap how many grills a cut queues.
+**Changed by the orchestrator:** narrowed the trigger from "shapes how the human works or what they see" to "decides how something new works or looks", with small tweaks to existing things planning themselves, siding partly with the challenger.
 
 ## 4. The mode is written in each brief, next to the working agreement
 **Decision:** Each feature's brief carries one line with its planning mode and the reason, in the same place as the working agreement: in the `brief` passed when the feature is created, or appended with the tool that adds to a brief (`add_to_brief`) for a feature that already exists or when the mode changes. After a compaction or relaunch the orchestrator reads it back from the brief.

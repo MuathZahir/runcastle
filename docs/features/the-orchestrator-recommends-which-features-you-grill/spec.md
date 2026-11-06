@@ -10,7 +10,7 @@ After a cut is agreed, the orchestrator asks the human how far to carry the work
 
 **Rules the orchestrator follows** (decisions 1–11):
 
-- Recommend a grill when the feature shapes how the human works or what they see, is big or hard to undo, or has open questions its brief marks as the human's. Bug fixes and well-specified mechanical work plan themselves. When unsure, recommend the grill.
+- Recommend a grill when the feature decides how something new works or looks (where the human would have opinions), is big or hard to undo, or has open questions its brief marks as the human's: a new screen, a new workflow, a change to how the human works with agents. Bug fixes, well-specified mechanical work and small visible tweaks to something that exists (a meter colour, a label) plan themselves. When unsure, recommend the grill. The skill gives one or two short examples of each side.
 - Write the mode and its reason into each brief next to the working agreement, and append changes with `add_to_brief`. Read it back after a compaction or relaunch.
 - For a "grill with you" feature: never call `plan_feature`, never give its plan the yes on its own judgement, and skip the pre-plan questions it asks before a self-planned run. Start it with `start_feature` if it is still a draft and the agreement allows, then hand the human the chat (bundled with anything else that needs them). Only that feature and its dependents wait; there is no time-out fallback.
 - A feature with no recorded mode is judged by the same rule; when the orchestrator would recommend a grill, it asks before a self-planning run.

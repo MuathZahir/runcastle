@@ -108,6 +108,32 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
   })
 
+  it('recommends a planning mode per feature at the cut, and leaves a grill feature to the human', () => {
+    const intake = read('project', 'references', 'intake.md')
+    expect(intake).toContain('- **Give every feature a planning mode.**')
+    const mode = intake.slice(intake.indexOf('## The planning mode'))
+    expect(mode).toContain('**Every feature in a cut proposal carries a planning mode, with a one-line reason**')
+    expect(mode).toContain('- **Grill with you**')
+    expect(mode).toContain('- **Plans itself**')
+    expect(mode).toContain('**Recommend the grill** when the feature decides how something new works or looks')
+    expect(mode).toContain('small visible tweaks to something that already exists')
+    expect(mode).toContain('**When unsure, recommend the grill**')
+    expect(mode).toContain('- Grill with you: a new screen')
+    expect(mode).toContain('- Plans itself: "the login cache serves a stale user"')
+    expect(mode).toContain('**Write the mode into each feature\'s brief**, beside the working agreement')
+    expect(mode).toContain('**Never call `plan_feature` on it, and never give its plan the yes yourself**')
+    expect(mode).toContain('which you relay as their answer (`send_to_feature` with `relaysHuman: true`)')
+    expect(mode).toContain('**Hand the human its chat.**')
+    expect(mode).toContain('`notify_human` once; do not nag')
+    expect(mode).toContain('There is no fallback')
+    expect(mode).toContain("**After their yes, the cut's working agreement takes over unchanged**")
+    expect(mode).toContain('**A brief with no planning mode**')
+    const text = section()
+    expect(text).toContain('**A "grill with you" feature never plans itself**')
+    expect(text).toContain('on a "grill with you" feature that yes is the human\'s, never yours')
+    expect(text).toContain('within the agreement and its planning mode')
+  })
+
   it('acts only on what the human asked, as far as they asked, or within a cut agreement', () => {
     const text = section()
     expect(text).toContain(

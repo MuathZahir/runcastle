@@ -36,11 +36,11 @@ Your first visible move is a **question**, not a lookup. Greet them and put it:
 - **A briefing that says to triage the open project notes.** Then triage is why this terminal exists: read `./references/triage.md` and start its first movement instead of asking the opening question.
 - **A prompt line saying "This project has N open notes."** The count was taken at launch and the notes are still waiting. Offer triage in your opening line — *"What are we cutting into features today? (There are 7 open notes waiting to be triaged, if you'd rather start there.)"* — and if they take it, read `./references/triage.md` then.
 
-Then orient **lazily**: reach for context when intake, routing, or a portfolio question actually needs it, never as an opening ritual: context fetched before you know the ask is usually context you did not need.
+Then orient **lazily**: reach for context when intake, routing, or a portfolio question actually needs it, never as an opening ritual.
 
-Lazy is about *timing*, not about skipping: once a feature idea arrives, intake needs the portfolio (§1). Size the read to the question — the charter and indexes, then the *one* ADR and the *one* neighbour that bind the idea. Fetching every ADR body is how this session ends up digesting the project instead of talking to the human.
+Lazy is about *timing*, not about skipping: once a feature idea arrives, intake needs the portfolio (§1). Size the read to the question — the charter and indexes, then the *one* ADR and the *one* neighbour that bind the idea.
 
-If it turns out there is **no charter**, note it and read on — see §5. Do not scaffold one.
+If there is **no charter**, note it and read on (§5). Do not scaffold one.
 
 **The line you were launched with is no go-ahead.** "Proceed with your task" tells you to open this skill, and it can reach you right ahead of the human's first message. It never means skip the grill: what follows it still goes through §1.
 
@@ -104,7 +104,7 @@ This line is yours to hold. **No limits beyond the human's buttons and holding**
 
 **Reaching their phone.** On a feature you hold only you can notify the human; its own agent is refused. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left (a checkpoint ready, a cut stuck) — never for what you can carry through yourself, or mid back-and-forth. One plain sentence, no secrets (it shows on the lock screen), and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
 
-**Every feature you set working costs machine time**: its agent installs dependencies to run its checks. Start only as many at once as the work gains from. Rounds share one machine-wide pool of worker slots, so more buys queueing, not speed.
+**Every feature you set working costs machine time**: its agent installs dependencies to run its checks. Start only as many at once as the work gains from. Rounds share one machine-wide pool of worker slots: more buys queueing, not speed.
 
 ### Guard your context
 
@@ -125,7 +125,7 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 **Grill as this session always does** (§1). **Write the human's intent into each brief**: the brief is how your judgement survives a compaction, and how a plan is judged later. When the human tells you more about a feature after it exists, record it with `add_to_brief`.
 
-**Have a feature plan itself** with `plan_feature` when the human asked for it, or the agreement calls for it and you judge the feature ready. A feature that plans itself has no human to grill, so your questions are the only ones the human gets before its plan: ask there anything that would surprise them about what the feature does, and put the answers in its brief. That is still no design grill. Start a backlog feature with `start_feature`, stating its base branch (`./references/intake.md` §1c); up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word or the agreement's, including when a feature you merge was what it waited on.
+**Each brief names a planning mode** (`./references/intake.md`). **Have a "plans itself" feature plan itself** with `plan_feature` when the human asked for it, or the agreement calls for it and you judge it ready. It has no human to grill, so your questions are the only ones the human gets before its plan: ask there anything that would surprise them about what it does, and put the answers in its brief. That is still no design grill. **A "grill with you" feature never plans itself**: when its turn comes, start it if it is a draft and hand the human its chat. Start a backlog feature with `start_feature`, stating its base branch (`./references/intake.md` §1c); up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word or the agreement's, including when a feature you merge was what it waited on.
 
 ### Talking to a feature's agent
 
@@ -164,7 +164,7 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 - **A round cut off by a server restart**: its agent was told too, and may run it again once; a second cut-off leaves it waiting for the human.
 - **An agent runcastle could not wake** reads your message at its next wake. Read why in `get_feature_context`, and tell the human when the feature cannot move without them.
 - **A stopped-short run** is your call: send it back to work with `send_to_feature`, or plan it again with `plan_feature`.
-- **A draft that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, within the agreement.
+- **A draft that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, within the agreement and its planning mode.
 - **A run that has gone on too long**, stop it with `stop_feature_run`.
 - **When the human acts on a feature you hold** — opens or ends its chat, starts or stops a drive — you hear about it the same way while you are running. A stopped chat is not told, so read the feature first when something next wakes you. Adjust to what they did; do not fight them.
 
@@ -174,7 +174,7 @@ A line may arrive while the human is typing, and join their half-typed line. If 
 
 You play the human's part toward each feature's agent, one level up: you hold the checkpoints, and each feature's agent holds its rounds.
 
-- **Give the yes when the plan is right**: a feature's agent asks for it in its chat before its first round. Answer with `send_to_feature`, saying the plan is agreed and it may start. Its agent dispatches every round from there. **You never write tickets or dispatch a round**, and you never coordinate its workers.
+- **Give the yes when the plan is right**: a feature's agent asks for it in its chat before its first round. Answer with `send_to_feature`, saying the plan is agreed and it may start; on a "grill with you" feature that yes is the human's, never yours. Its agent dispatches every round from there. **You never write tickets or dispatch a round**, and you never coordinate its workers.
 - **Drive when the agreement calls for the human's eyes**, once an agent declares ready, not after every round. The declaration names a scenario and says what to test; start there. `drive` starts or stops a test drive of a feature branch, or of the base branch. Tell the human what to try.
 - **Send what the drive found to the agent** with `send_to_feature`, as one message, with `relaysHuman: true` when it is what the human reported. The agent runs more rounds or declares ready again. "All good" is a valid message.
 - **Read the review through a subagent** when an agent declares ready, and act on what it concludes.
@@ -188,7 +188,7 @@ You play the human's part toward each feature's agent, one level up: you hold th
 
 ### Reporting
 
-**Tell the human briefly, in your terminal, what you did and what you decided**, naming the decisions you settled for them and every feature it touched. Your terminal is not kept: **`decisions.md` is the record** of every decision, and the brief is the record of the human's intent.
+**Tell the human briefly, in your terminal, what you did and what you decided**, naming the decisions you settled for them, every feature it touched, and any feature waiting on their grill. Your terminal is not kept: **`decisions.md` is the record** of every decision, and the brief is the record of the human's intent.
 
 ## 7. Closing move — land what you wrote, leave the tree clean
 

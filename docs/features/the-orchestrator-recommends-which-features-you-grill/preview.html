@@ -252,7 +252,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['The planning mode rides on the cut proposal', 'Each feature line in the proposal shows its mode and a one-line reason; you confirm or flip modes in the same answer as the cut.', 'assumed'],
     ['Two modes: "grill with you" and "plans itself"', 'Checking a self-made plan is already covered by the agreement\'s checkpoints.', 'assumed'],
-    ['When to recommend a grill, and which way to lean', 'Grill when it shapes how you work or what you see, is big or hard to undo, or has open questions marked as yours. When unsure, grill.', 'assumed'],
+    ['When to recommend a grill, and which way to lean', 'Grill when it decides how something new works or looks, is big or hard to undo, or has open questions marked as yours. Small tweaks to existing things plan themselves. When unsure, grill. (Trigger narrowed by the orchestrator.)', 'assumed'],
     ['The mode is written in each brief, next to the working agreement', 'The orchestrator\'s chat is not kept; the brief is.', 'assumed'],
     ['A "grill with you" feature\'s plan and its yes belong to the human', 'Never sent to plan itself; the orchestrator never says yes for you, only relays your own words.', 'assumed'],
     ['When its turn comes, the orchestrator hands the human the chat', 'One message naming the features to grill and the order; one phone ping if you seem away.', 'assumed'],
@@ -266,7 +266,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [1, 'Ask the mode as its own question, next to the working-agreement one.', 'A guess at how you like to be asked. The challenger worried one yes to the cut approves modes you never read.'],
-    [3, 'Lean to "plans itself" when unsure.', 'Leaning to the grill matches what you said, but the challenger warned it may over-grill.', 'challenged'],
+    [3, 'Lean to "plans itself" when unsure.', 'Leaning to the grill matches what you said; the orchestrator narrowed the trigger after the challenger warned it may over-grill.', 'changed by the orchestrator'],
     [5, 'Your yes only counts when given in the feature\'s own chat.', 'Decides whether you can approve a grilled plan from the orchestrator\'s chat.'],
     [7, 'A grilled feature always gets a check-in before merge.', 'Under "autonomous" a grilled feature merges without you seeing the result.', 'challenged'],
     [9, 'Change only the skill; leave the server untouched.', 'The brief says prompt-only; this touches one server news line.', 'challenged']
