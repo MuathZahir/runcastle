@@ -88,6 +88,38 @@ describe('the feature skill', () => {
   })
 })
 
+describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)', () => {
+  it('prefers its own subagents for reading, surveys and screenshot loops, each on a named model', () => {
+    const s = flat(skill())
+    expect(s).toContain('Prefer your own subagents')
+    expect(s).toContain('not runcastle workers')
+    expect(s).toContain('an Explore-type subagent returns a short map')
+    expect(s).toContain('You still show the human that picture.')
+    expect(s).toContain('read its actual diff where it matters and run the project\'s checks yourself')
+    expect(s).toContain('**Name a model for every subagent**')
+  })
+
+  it('still lets the lead write code, through Read and Edit', () => {
+    const s = flat(skill())
+    expect(s).toContain('You may still write code yourself')
+    expect(s).toContain('no patch scripts in /tmp, no long heredocs')
+  })
+
+  it('re-reads the feature state after any compaction', () => {
+    expect(flat(skill())).toContain('after any compaction, call `get_feature_context` before you act on the summary')
+  })
+
+  it('surveys the code through a subagent when planning alone', () => {
+    expect(flat(read('references', 'planning-alone.md'))).toContain('Send the codebase survey to one Explore-type subagent')
+  })
+
+  it('no longer forbids compaction, only compacting yourself', () => {
+    const grilling = flat(read('references', 'grilling.md'))
+    expect(grilling).not.toContain('Never compact. Never `/clear`.')
+    expect(grilling).toContain('Never compact or `/clear` yourself:** runcastle compacts you at quiet moments')
+  })
+})
+
 describe('the feature skill, running rounds', () => {
   const text = (): string => read('references', 'rounds.md')
 
@@ -153,7 +185,9 @@ describe('the feature skill, planning with no human present', () => {
     expect(alone).toContain("**adds a screen or changes a screen's layout**")
     expect(alone).toContain('**At most two\n  open choices per screen**')
     expect(alone).toContain('`start_design_server({ command })`')
-    expect(alone).toContain('`agent-browser\n  open <url>`')
+    expect(flat(alone)).toContain('`agent-browser open <url>`')
+    expect(flat(alone)).toContain('hand the loop to a subagent on a cheaper model')
+    expect(flat(alone)).toContain('Do not read the images yourself.')
     expect(alone).toContain('**Leave the designs uncommitted.**')
     expect(alone).toContain("lives in the design page, never in the app's own files")
     expect(flat(alone)).toContain('never once per state')

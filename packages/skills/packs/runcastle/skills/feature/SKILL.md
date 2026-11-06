@@ -13,7 +13,7 @@ The good order is still: understand, decide, write it down, build, check, hand o
 
 ## Orient
 
-Call `mcp__runcastle__get_feature_context` first, and again whenever you are unsure of the state. It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, others indexed in `moreDocs[]`), its tickets as summary rows (`get_ticket({ seq })` holds one ticket's detail and digest), its rounds, your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. A doc listed in `notInlined` is too big to inline: read it before you act. This conversation may have resumed; trust the record over your memory of it, and never re-ask what `decisions.md` already settles.
+Call `mcp__runcastle__get_feature_context` first, and again whenever you are unsure of the state. It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, others indexed in `moreDocs[]`), its tickets as summary rows (`get_ticket({ seq })` holds one ticket's detail and digest), its rounds, your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. A doc listed in `notInlined` is too big to inline: read it before you act. This conversation may have resumed; trust the record over your memory of it, and never re-ask what `decisions.md` already settles. Runcastle compacts this chat at quiet moments, and the runtime compacts it inside a long turn: after any compaction, call `get_feature_context` before you act on the summary.
 
 ## Understand before you build
 
@@ -23,7 +23,16 @@ Write `spec.md` once what the feature does is settled, whether you build it your
 
 ## Build it the cheapest good way
 
-Workers are a tool, not the default. Each ticket pays for a container, an install and a fresh read of the repo before it does any work, so weigh that against building in your own window. Workers earn it when the work splits into pieces that genuinely run in parallel, when it is too big to fit one context window beside this conversation, or when it is long unattended work the human should not wait on in chat. Otherwise build it yourself, a whole small feature included, not only the leftovers. Work you hand off you write as tickets (`./references/tickets.md`); `emit_tickets` opens the **Work** view beside the chat for you. If something you started yourself keeps growing, make the rest tickets.
+Workers are a tool, not the default. Each ticket pays for a container, an install and a fresh read of the repo before it does any work, so weigh that against building in your own window. Workers earn it when the work splits into pieces that genuinely run in parallel, when it is too big to fit one context window beside this conversation, or when it is long unattended work the human should not wait on in chat. Otherwise build it in this checkout, a whole small feature included, not only the leftovers. Work you hand off you write as tickets (`./references/tickets.md`); `emit_tickets` opens the **Work** view beside the chat for you. If something you started yourself keeps growing, make the rest tickets.
+
+Building it here does not mean doing it all in your own window: everything you read stays in this chat and is paid for again on every later call. Prefer your own subagents (the Agent tool in Claude Code, `spawn_agent` in Codex; not runcastle workers) for work whose output is bigger than its conclusion:
+
+- **Surveys and reading across several files**: an Explore-type subagent returns a short map with file and line references; you keep the map.
+- **Screenshot critique loops**: a subagent shoots, critiques against the design docs, fixes and shoots again, then returns its verdict and the final picture's path. You still show the human that picture.
+- **A self-contained chunk of code** (a module with its tests, a component): a general-purpose subagent with a short brief. Then read its actual diff where it matters and run the project's checks yourself; its summary is its own grade.
+- **Name a model for every subagent**: Sonnet (on Codex, its smaller model) for reading, mapping and critique; your own model only where the work needs its judgement.
+
+You may still write code yourself when handing it off is not worth it. Read a file you will change with the Read tool and change it with Edit: no patch scripts in /tmp, no long heredocs.
 
 When the feature changes how a screen looks, offer to show it live before you talk layout in words: `./references/design.md`.
 
