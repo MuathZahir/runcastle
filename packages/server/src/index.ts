@@ -11,6 +11,7 @@ import {
 } from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
+import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions } from './launcher/reconcile'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
@@ -169,6 +170,17 @@ export async function startServer(): Promise<void> {
   if (cutOff.length > 0) {
     console.log(`recovered ${cutOff.length} drive(s) cut off by the restart — stop them to tidy up`)
   }
+
+  // The one-time honest recount of every conversation's tokens
+  // (honest-token-counts decision 4). Self-marking, so later boots find nothing
+  // to do; not awaited, and it yields between conversations.
+  void recountAllSessions(ctx)
+    .then((r) => {
+      if (r.recounted + r.collapsed > 0) {
+        console.log(`token recount: ${r.recounted} conversation(s) recounted, ${r.collapsed} with no transcript left collapsed`)
+      }
+    })
+    .catch(() => {})
 
   // Talk worktrees of shipped/archived features and of projects that are gone
   // (a full checkout each). After both reconciliations, so nothing still marked

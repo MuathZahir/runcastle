@@ -3,6 +3,44 @@ import type { AppCtx } from '../db/types'
 import { emit, listAfter } from './events'
 import { isAncestor } from './git'
 import { getProjectById } from './repo'
+import { setThreadPurpose } from '../launcher/sessions'
+import { sessions } from '../db/schema'
+import { and, eq } from 'drizzle-orm'
+
+/**
+ * The merge is resolved, so a chat opened to resolve it is done with that
+ * errand (`honest-token-counts` decision 12): its purpose clears, its next
+ * launch is briefed as the ordinary chat, and what it spends from here is no
+ * longer filed under resolve-conflict.
+ */
+function endConflictErrands(ctx: AppCtx, featureId: string): void {
+  const rows = ctx.db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.featureId, featureId), eq(sessions.purpose, 'resolve-conflict')))
+    .all()
+  for (const row of rows) setThreadPurpose(ctx, row.id, null)
+}
+
+/** Errands no launch opens any more: a row still carrying one is never on it. */
+const RETIRED_ERRANDS: ReadonlySet<string> = new Set(['start-lap', 'relay', 'lead-wake'])
+
+/**
+ * A thread still marked with an errand that is over — a retired one, or a
+ * merge conflict that no longer stands (resolved before errands ended, or in
+ * another checkout) — is the ordinary chat again: its purpose clears before its
+ * process starts, so the agent is never handed an errand that is gone
+ * (`honest-token-counts` decision 12). Returns the row as it now stands.
+ */
+export function clearEndedErrand(ctx: AppCtx, row: SessionRow): SessionRow {
+  if (!row.purpose) return row
+  const over =
+    RETIRED_ERRANDS.has(row.purpose) ||
+    (row.purpose === 'resolve-conflict' && (!row.featureId || !unresolvedMergeConflict(listAfter(ctx, row.featureId, 0))))
+  if (!over) return row
+  setThreadPurpose(ctx, row.id, null)
+  return { ...row, purpose: undefined, purposeData: undefined }
+}
 
 /** Best-effort probe for whether a resolve-conflict session landed its merge. */
 export async function noteResolvedMerge(
@@ -19,6 +57,7 @@ export async function noteResolvedMerge(
       message: `merge conflict resolved — ${pair.mergeFrom} is in ${pair.mergeInto}`,
       data: { sessionId: session.id, ...pair },
     })
+    endConflictErrands(ctx, feature.id)
   } catch {
     // Never break session teardown over a timeline probe.
   }
@@ -58,6 +97,7 @@ export async function reconcileStandingConflict(ctx: AppCtx, feature: Feature): 
       message: `merge conflict resolved — ${base} is in ${feature.branch}`,
       data: { mergeFrom: base, mergeInto: feature.branch },
     })
+    endConflictErrands(ctx, feature.id)
   } catch {
     // A timeline probe never breaks the hook or the read that asked it.
   } finally {
