@@ -58,6 +58,8 @@ beforeAll(async () => {
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.write('first ')
       finishStream = () => res.end('last')
+    } else if (req.url === '/immutable.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'max-age=31536000,immutable' }).end('1')
     } else if (req.url === '/moved') {
       res.writeHead(302, { location: `http://${own}/preview/x.html` }).end()
     } else {
@@ -149,6 +151,16 @@ describe('forwarding', () => {
     let rest = ''
     for (let r = await reader.read(); !r.done; r = await reader.read()) rest += new TextDecoder().decode(r.value)
     expect(rest).toBe('last')
+  })
+
+  it('asks the browser to check every time when the design server says nothing about caching', async () => {
+    const res = await designPassFetch(withCookie('/preview/x.html'), lookup)
+    expect(res.headers.get('cache-control')).toBe('no-cache')
+  })
+
+  it('keeps the design server’s own caching rule', async () => {
+    const res = await designPassFetch(withCookie('/immutable.js'), lookup)
+    expect(res.headers.get('cache-control')).toBe('max-age=31536000,immutable')
   })
 
   it('keeps a redirect to the design server’s own address on the pass-through', async () => {
