@@ -49,3 +49,12 @@ which tells the worker to write its summary and hand back. An "on its own" worke
 its done-when is met, and shows "needs you" only when it asks a real question.
 **Why:** The human's own example mixes the two ("taste work, each gets a worker with you; the data
 changes run in the background"). Taste work must not reach the lead before the human has seen it.
+
+## 6. A worker that needs the human pings desktop and phone
+**Decision:** A worker entering "needs you" is a feature need like any other: runcastle pings the
+desktop and every subscribed phone once ("<feature> · <worker label> needs you"), and the tap opens
+that worker's chat, not the lead's. No batching; if several pings at once prove noisy in use,
+bundling them per feature is a later fix.
+**Why:** A "with you" worker is meant to be iterated with promptly; shown only in the sidebar it
+would sit unseen and its container would stop on idle. The pings are runcastle's own, so a feature
+held by an orchestrator thread still gets them.
