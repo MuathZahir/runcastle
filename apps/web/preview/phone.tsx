@@ -13,7 +13,7 @@ import { OrchestratorCard, Shelf, SidebarBackdrop, SidebarFeatureRow, ThreadGlyp
 import { Markdown } from '../src/components/Markdown'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
-import { ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
+import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
 import { ApprovalDock, QuestionDock } from '../src/components/chat/thread/AskDock'
 import {
   IconArchive,
@@ -237,6 +237,7 @@ function DesignScreen({ open, onBack }: { open: Open; onBack: () => void }) {
 function ThreadsSheet({ onClose, onPick }: { onClose: () => void; onPick: () => void }) {
   return (
     <Sheet title="Threads" onClose={onClose}>
+      <SheetRow icon={<IconPlus />} label="New thread" onClick={onClose} />
       {threads('idle')
         .slice(0, 3)
         .map((t) => (
@@ -245,7 +246,6 @@ function ThreadsSheet({ onClose, onPick }: { onClose: () => void; onPick: () => 
             <span className="min-w-0 flex-1 truncate text-base text-text">{t.title}</span>
           </button>
         ))}
-      <SheetRow icon={<IconPlus />} label="New thread" onClick={onClose} />
     </Sheet>
   )
 }
@@ -310,6 +310,7 @@ function ChatScreen({ open, onBack }: { open: Open; onBack: () => void }) {
                   onStop={noop}
                   placeholder="Message the agent"
                   top={<PlanStrip plan={moment.plan ?? []} tasks={[]} onStopTask={noop} />}
+                  meter={<ContextMeter context={{ used: 84_000, size: 200_000 }} limits={[]} onCompact={noop} />}
                   footer={moment.state === 'working' ? undefined : <ModelControls runtime="claude-code" models={MODELS} model={model} onModel={setModel} effort={effort} onEffort={setEffort} fast={fast} onFast={setFast} />}
                   workingSince={moment.state === 'working' ? Date.now() - 74_000 : undefined}
                 />

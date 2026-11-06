@@ -2,7 +2,7 @@
 
 Planned without the human (a headless planning run). Every decision below is assumed until the human confirms it.
 
-Check first: 3, 4, 5
+Check first: 3, 4, 5, 6
 
 ## 1. New chat is the first row of the thread sheet
 **Decision:** In a chat's thread sheet (the sheet that opens from the chat's title), "New chat" moves from after the thread list to its first row, above every thread. It keeps its name and its "+" icon, the same words as the list's own "+" menu.
@@ -10,7 +10,7 @@ Check first: 3, 4, 5
 **Assumed.** Alternative: keep New chat last but pin it to the sheet's foot so it is always visible.
 
 ## 2. Back is fixed once, in the app's one history layer
-**Decision:** Closing a view never adds a history entry. When the app moves to the place the browser has just behind it, it steps Back instead of pushing a new entry. Each entry the app pushes remembers the place it came from, so this holds after a reload too. Every view that closes by itself (the design view's Back, Approve on the last design, a doc's way back) then walks out the way the system Back does. A view opened straight from a link or a notification, with nothing of the app's behind it, still walks out one level: Back goes to its chat, then to the list.
+**Decision:** Closing a view never adds a history entry. When the app moves to another view of the same page (a feature's chat, from its design or Plan) and the browser has that place just behind it, it steps Back instead of pushing a new entry. Moving to another feature or page still adds an entry, as before. Each entry the app pushes remembers the place it came from, so this holds after a reload too. Every view that closes by itself (the design view's Back, Approve on the last design, a doc's way back) then walks out the way the system Back does. A view opened straight from a link or a notification, with nothing of the app's behind it, still walks out one level: Back goes to its chat, then to the list.
 **Why:** The loop comes from the phone's design view: its Back closes the view by pushing the chat's address as a new entry, so the entry with the design stays behind it and the next Back returns to it. Patching that one button would leave the same trap for every other view that closes itself. The brief asks for the cause, not a patch per view.
 **Assumed.** Alternative: make each view's Back button call the existing "step back" helper, as the chat's own Back already does.
 
@@ -29,3 +29,8 @@ Check first: 3, 4, 5
 **Decision:** The history fix in decision 2 is not phone-only. On the desktop, closing a panel (Plan, Tickets, Design) also steps back rather than adding an entry, so the browser's Back no longer reopens a panel you just closed, and Forward reopens it. Overlays on the desktop stay out of history, as before.
 **Why:** The desktop has the same loop: open the Plan, close it, press Back, and the Plan opens again. One history layer serves both, and splitting it by screen size would keep two rules where there is one bug.
 **Assumed.** Alternative: limit the step-back to the phone and leave the desktop's history exactly as it is.
+
+## 6. On the phone the meter is the percentage alone, and the model name shortens first
+**Decision:** On the phone, the context meter in the composer's bottom row shows its percentage without the small bar. The number turns amber from 65% and red from 85%, the same warning the bar gives. Tapping it opens the same details, bar included. The effort level always reads in full; where the row is still too tight, the model's name shortens. At 390px wide it reads "Opus…"; at 360px only its first letter shows.
+**Why:** Found while building: with the bar, the row was 19px too wide at 390px, and both the model and the effort level shrank to "O…" and "H.". The bar is the widest part of the meter that says nothing the number does not. Supersedes the "exactly as on the desktop" part of decision 4.
+**Assumed.** Alternative: put the percentage in the chat bar under the title ("Waiting for you · 42%"), leaving the composer row as it was.

@@ -172,7 +172,8 @@ function EffortPicker({
   const phone = useIsPhone()
   return (
     <Select value={effort} onValueChange={(next) => next !== 'default' && onEffort(next as Effort)}>
-      <SelectTrigger aria-label="Effort" className={CHIP}>
+      {/* The level always reads in full; the model's name is what shortens. */}
+      <SelectTrigger aria-label="Effort" className={cx(CHIP, phone && 'shrink-0')}>
         {!phone && <span className="text-text-tertiary">Effort</span>}
         <SelectValue />
       </SelectTrigger>
@@ -193,8 +194,13 @@ function FastToggle({ fast, onFast }: { fast: boolean; onFast: (on: boolean) => 
   return <IconButton label="Fast mode" icon={<IconFlame size={14} />} active={fast} onClick={() => onFast(!fast)} />
 }
 
+/** How full is too full: amber from 65%, red from 85%. */
+function fullness(percent: number): 'danger' | 'warning' | 'quiet' {
+  return percent >= 85 ? 'danger' : percent >= 65 ? 'warning' : 'quiet'
+}
+
 function Bar({ percent }: { percent: number }) {
-  const tone = percent >= 85 ? 'bg-danger' : percent >= 65 ? 'bg-warning' : 'bg-text-secondary'
+  const tone = { danger: 'bg-danger', warning: 'bg-warning', quiet: 'bg-text-secondary' }[fullness(percent)]
   return (
     <span className="block h-1 w-full overflow-hidden rounded-full bg-border">
       <span className={cx('block h-full rounded-full', tone)} style={{ width: `${Math.min(100, percent)}%` }} />
@@ -225,20 +231,28 @@ export function ContextMeter({
   onOpen?: () => void
 }) {
   const percent = Math.round((context.used / context.size) * 100)
+  // A phone's footer row has no room for the bar beside the model, effort,
+  // Attach and Send, so the number alone shows, coloured as the bar would be
+  // (phone-fixes decision 4). The popover keeps its bar.
+  const phone = useIsPhone()
+  const tone = fullness(percent)
   return (
     <Popover onOpenChange={(open) => open && onOpen?.()}>
       <PopoverTrigger
         aria-label={`Context ${percent}% used`}
         className={cx(
           BARE_BUTTON,
-          'flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-xs tabular-nums text-text-tertiary',
+          'flex h-7 cursor-pointer items-center gap-1.5 rounded-md text-xs tabular-nums text-text-tertiary',
+          phone ? 'px-1' : 'px-1.5',
           'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary data-[state=open]:bg-surface-hover',
         )}
       >
-        <span className="block w-5">
-          <Bar percent={percent} />
-        </span>
-        <span>{percent}%</span>
+        {!phone && (
+          <span className="block w-5">
+            <Bar percent={percent} />
+          </span>
+        )}
+        <span className={cx(phone && tone === 'warning' && 'text-warning', phone && tone === 'danger' && 'text-danger')}>{percent}%</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">

@@ -221,7 +221,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </div>
 
   <div class="sub" data-state="after" id="s3">
-    <div class="ba"><h3>3 · Context meter on the phone <a class="pin" data-d="4">4</a></h3>
+    <div class="ba"><h3>3 · Context meter on the phone <a class="pin" data-d="4">4</a> <a class="pin" data-d="6">6</a></h3>
       <div class="seg"><button data-to="before" aria-pressed="false">Before</button><button data-to="after" aria-pressed="true">After</button></div></div>
 <!-- screen:phone-composer -->
     <div class="screen phone">
@@ -229,15 +229,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="comp">
         <div class="box">Message the agent</div>
         <div class="foot">
-          <span class="chip">Opus 5.5 ▾</span><span class="chip">high ▾</span>
+          <span class="chip" data-when="before">Opus 5.5 ▾</span><span class="chip" data-when="after">Opus… ▾</span><span class="chip">High ▾</span>
           <span style="margin-left:auto;display:flex;align-items:center;gap:2px">
-            <span class="meter" data-when="after"><i></i>42%</span>
+            <span class="meter" data-when="after">42%</span>
             <span class="ib"><svg class="i" viewBox="0 0 16 16"><path d="M10.5 5 6 9.5a1.4 1.4 0 0 0 2 2l4.6-4.6a2.8 2.8 0 0 0-4-4L4 7.5a4.2 4.2 0 0 0 6 6L13.5 10"/></svg></span><span class="ib send">↑</span>
           </span>
         </div>
       </div>
     </div>
-    <p class="hint" style="text-align:center;margin-top:8px" data-when="after">Same bar and percentage as the desktop. Tap it for the numbers, usage limits and Compact now. While the agent works the clock takes its place.</p>
+    <p class="hint" style="text-align:center;margin-top:8px" data-when="after">The percentage, amber from 65% and red from 85%. Tap it for the bar, the numbers, usage limits and Compact now. While the agent works the clock takes its place.</p>
 <!-- /screen:phone-composer -->
   </div>
 </section>
@@ -269,14 +269,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-      <p class="hint">Built by the lead in this checkout, no tickets. Then one review round: a real browser at phone width walks every Back path and takes screenshots.</p>
+      <p class="hint">Built by the lead in this checkout, no tickets; one review ticket at the end. Then one review round: a real browser at phone width walks every Back path and takes screenshots.</p>
       <div class="flowcard"><h3>The history layer (one place writes history)</h3>
-        <p class="hint">Each entry the app pushes remembers the path it came from. Moving to that path calls <span class="mono">history.back()</span> instead of pushing.</p>
+        <p class="hint">Each entry the app pushes remembers the path it came from. Moving to another view of the same page at that path steps back instead of pushing; the app's own steps back are swallowed, and writes wait for them to land.</p>
         <div class="flow"><span class="step mono">/f/x</span><span class="arrow">push →</span><span class="step mono">/f/x/design {from:/f/x}</span><span class="arrow">close → back()</span><span class="step good mono">/f/x</span></div></div>
       <div class="flowcard"><h3>The dialog shell (every overlay and sheet)</h3>
         <p class="hint">On the phone: open pushes one entry at the same address; a pop closes the dialog; closing by button steps off the entry; an action after closing waits for that step; an orphan entry after a reload is skipped.</p></div>
       <div class="flowcard"><h3>The composer</h3>
-        <p class="hint">The thread column stops leaving the meter out on the phone. The model chip truncates first at 360px. The phone mockup page gains the meter.</p></div>
+        <p class="hint">The thread column stops leaving the meter out on the phone; there its trigger drops the bar. The right side and the effort level never shrink, so the model name truncates. The phone mockup page gains the meter and New thread on top.</p></div>
       <div class="flowcard"><h3>How it is checked</h3>
         <p class="hint">Unit tests on the history layer and the dialog shell (open, Back, close, reload, two in a row); typecheck; the review round on a real history stack.</p></div>
     </div>
@@ -297,12 +297,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Back is fixed once, in the app\'s one history layer', 'The loop comes from the design view closing itself by adding a new history entry. Fixing it where history is written covers every view that closes itself, not just designs.', 'assumed'],
     ['On the phone, an overlay opened from a chat takes one Back step', 'Today Back on an open file or Review Package leaves the chat for the list. One rule in the dialog shell covers files, packages and sheets. Desktop unchanged.', 'assumed'],
     ['The phone shows the context meter where the desktop does', 'One meter in one place, opening the same details. It was hidden only to fit the 390px composer; the model name shortens first where it is tight.', 'assumed'],
-    ['The Back fix applies to the desktop too', 'Desktop has the same loop: close the Plan, press Back, the Plan opens again. One history layer, one rule.', 'assumed']
+    ['The Back fix applies to the desktop too', 'Desktop has the same loop: close the Plan, press Back, the Plan opens again. One history layer, one rule.', 'assumed'],
+    ['On the phone the meter is the percentage alone, and the model name shortens first', 'Found while building: with the bar the row was 19px too wide at 390px and the model and effort shrank to "O…" and "H.". The number turns amber and red as the bar would.', 'assumed']
   ]
   var C = [
     [3, 'Only full-screen overlays (file, Review Package) take a Back step; sheets stay out of history.', 'The independent challenger disagreed: the brief scopes full-screen views and forbids a new navigation model.', 'challenged'],
     [4, 'Show the percentage under the chat title, or in the "…" sheet, and leave the composer alone.', 'It reverses the approved phone design\'s "no meter", and the footer row is tight at 360px.'],
-    [5, 'Keep the step-back to the phone; leave desktop history as it is.', 'It changes how Back and Forward behave on the desktop, which the brief did not mention.']
+    [5, 'Keep the step-back to the phone; leave desktop history as it is.', 'It changes how Back and Forward behave on the desktop, which the brief did not mention.'],
+    [6, 'Show the percentage under the chat title ("Waiting for you · 42%") and leave the composer row as it was.', 'At 360px wide the model name shows only its first letter.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

@@ -128,6 +128,24 @@ function browserBack(to: string) {
   })
 }
 
+/**
+ * The browser's own back stack, for a test that walks it: happy-dom keeps one,
+ * and its Back lands asynchronously with the entry's state, as a phone's does.
+ */
+function realHistory() {
+  vi.mocked(window.history.pushState).mockRestore()
+  vi.mocked(window.history.back).mockRestore()
+}
+
+/** The system's Back — Android's button — and where it lands. */
+async function systemBack(lands: string) {
+  await act(async () => {
+    window.history.back()
+    await new Promise((settled) => setTimeout(settled, 20))
+  })
+  await waitFor(() => expect(window.location.pathname).toBe(lands))
+}
+
 beforeEach(() => {
   stubPhone()
   vi.stubGlobal('EventSource', TestEventSource)
@@ -242,7 +260,8 @@ describe('runcastle on a phone', () => {
     render(<Root path={`/p/${PROJECT_ID}/chat`} threads={[thread('th_new', 'Plan the export', 2), thread('th_old', 'Audit the journal', 1)]} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Orchestrator — switch chat' }))
     const sheet = screen.getByRole('dialog', { name: 'Chats' })
-    expect(within(sheet).getByRole('button', { name: 'New chat' })).toBeTruthy()
+    // First, above every thread, so it needs no scroll (phone-fixes decision 1).
+    expect(within(sheet).getAllByRole('button')[0]?.textContent).toBe('New chat')
     fireEvent.click(within(sheet).getByRole('button', { name: 'Audit the journal' }))
     expect(screen.queryByRole('dialog', { name: 'Chats' })).toBeNull()
     await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
@@ -426,6 +445,80 @@ describe('a design on a phone', () => {
     await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
     expect(await screen.findByRole('region', { name: 'Cart' })).toBeTruthy()
     await waitFor(() => expect(seen).toEqual([{ designId: 'older' }]))
+  })
+
+  describe('Back walks out one level at a time (phone-fixes decisions 2, 3)', () => {
+    async function onChatFromList(fakes: TrpcFakes, over: Partial<FeatureFull>, threads: ThreadEntry[]) {
+      realHistory()
+      render(<Root path={LIST} threads={threads} extra={fakes} over={over} />)
+      await onList()
+      fireEvent.click(screen.getByRole('button', { name: /Export notes as PDF/ }))
+      await screen.findByRole('button', { name: 'Back to the list' })
+      await waitFor(() => expect(window.location.pathname).toBe(CHAT))
+    }
+
+    it('goes design → chat → list, and never back into the design it closed', async () => {
+      const { fakes, over, threads } = withDesigns()
+      await onChatFromList(fakes, over, threads)
+      fireEvent.click(await screen.findByRole('button', { name: 'Open the design Invite' }))
+      await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to the chat' }))
+      await waitFor(() => expect(window.location.pathname).toBe(CHAT))
+      await screen.findByRole('button', { name: 'Back to the list' })
+
+      await systemBack(LIST)
+      await onList()
+      expect(screen.queryByRole('region', { name: 'Invite' })).toBeNull()
+    })
+
+    it('opens two things in a row from one chat, and Back still ends on the list', async () => {
+      const { fakes, over, threads } = withDesigns()
+      await onChatFromList(fakes, over, threads)
+      fireEvent.click(await screen.findByRole('button', { name: 'Open the design Invite' }))
+      await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
+      await systemBack(CHAT)
+
+      fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+      fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Plan/ }))
+      await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/f/${SLUG}/plan`))
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to the chat' }))
+      await waitFor(() => expect(window.location.pathname).toBe(CHAT))
+
+      await systemBack(LIST)
+      await onList()
+    })
+
+    it('closes a sheet with Back, then leaves the chat with the next', async () => {
+      const { fakes, over, threads } = withDesigns()
+      await onChatFromList(fakes, over, threads)
+      fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+      expect(screen.getByRole('dialog', { name: 'Views' })).toBeTruthy()
+
+      await act(async () => {
+        window.history.back()
+        await new Promise((settled) => setTimeout(settled, 20))
+      })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Views' })).toBeNull())
+      expect(window.location.pathname).toBe(CHAT)
+      expect(screen.getByRole('button', { name: 'Back to the list' })).toBeTruthy()
+
+      await systemBack(LIST)
+      await onList()
+    })
+
+    it('takes a sheet’s step off before the view its row opens, so Back goes view → chat → list', async () => {
+      const { fakes, over, threads } = withDesigns()
+      await onChatFromList(fakes, over, threads)
+      fireEvent.click(await screen.findByRole('button', { name: 'More' }))
+      fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Design/ }))
+      await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
+      expect(await screen.findByRole('region', { name: 'Cart' })).toBeTruthy()
+
+      await systemBack(CHAT)
+      await screen.findByRole('button', { name: 'Back to the list' })
+      await systemBack(LIST)
+      await onList()
+    })
   })
 
   it('starts a stopped server from its recorded command', async () => {
