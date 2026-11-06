@@ -11,6 +11,7 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { featureDocKey, recordSent, sentSha } from '../src/mcp/sent-memory'
+import { appendThreadEvent } from '../src/threads/log'
 import { subscribeLive } from '../src/services/bus'
 import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -595,6 +596,23 @@ describe('automatic compaction', () => {
     await host.prompt(id, { text: 'And again' }, { source: 'human' })
     await logUntil(id, turnsEnded(4))
     expect(compactions()).toHaveLength(1)
+  })
+
+  it('counts the quiet from the last thing the lead did, not its last finished turn: a crashed turn is recent', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await host.stopAll('shutdown')
+    await new Promise((r) => setTimeout(r, 40))
+    // A turn that died with the server: it started and said something, and never ended.
+    appendThreadEvent(id, { type: 'turn_started' })
+    appendThreadEvent(id, { type: 'process', state: 'stopped' })
+
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, autoCompact: { resumeGapMs: 30 } })
+    await host.prompt(id, { text: 'Back again' }, { source: 'human' })
+    await logUntil(id, (e) => e.filter((x) => x.type === 'turn_ended').length >= 2)
+    expect(compactions()).toHaveLength(0)
   })
 
   it('still compacts before resuming once the feature has shipped', async () => {

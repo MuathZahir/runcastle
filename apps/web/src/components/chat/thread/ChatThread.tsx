@@ -23,6 +23,7 @@ import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
 import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
+import { k } from './ComposerParts'
 import { ChangesCard, WorkBlock } from './Work'
 
 /** What a message's hover actions ask of the thread. */
@@ -309,8 +310,6 @@ const COMPACTED_WHY = {
   resume: 'before resuming',
 } as const
 
-/** A context size as the divider says it: 231k. */
-const kTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 
 /**
  * The compaction divider: why runcastle did it, and the context size before
@@ -323,7 +322,7 @@ function compactedLine(item: Extract<ThreadItem, { kind: 'compacted' }>): string
       ? 'Chat compacted — earlier turns are summarised for the agent'
       : `Chat compacted automatically ${item.trigger ? COMPACTED_WHY[item.trigger] : 'during a long turn'}`
   if (item.before === undefined) return base
-  return `${base} · ${kTokens(item.before)}${item.after !== undefined ? ` → ${kTokens(item.after)}` : ''}`
+  return `${base} · ${k(item.before)}${item.after !== undefined ? ` → ${k(item.after)}` : ''}`
 }
 
 /**

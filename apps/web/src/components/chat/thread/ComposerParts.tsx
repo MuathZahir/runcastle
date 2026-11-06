@@ -208,7 +208,8 @@ function Bar({ percent }: { percent: number }) {
   )
 }
 
-const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+/** A token count as the composer and the chat say it: 231k. */
+export const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 
 /**
  * How full the context is, as a small ring by Send; it opens to the numbers,

@@ -963,8 +963,11 @@ class Host implements AgentHost {
     let n = 0
     const opening = this.hook(() => this.lifecycle.opening?.(row))
     // A lead reopening its conversation: how long it has been quiet, for the resume compaction.
+    // The agent's last logged work, not its last finished turn (a crashed turn has none); not a
+    // process event (the idle stop logs one half an hour after the cache last warmed), nor a
+    // prompt (the one this start is for is already logged, and a prompt is no model call).
     const reopens = row.kind === 'chat' && !!row.featureId && !!row.ccSessionId && !readPendingFork(row.id).open
-    const lastActiveAt = reopens ? readThreadEvents(row.id).findLast((e) => e.type === 'turn_ended')?.at : undefined
+    const lastActiveAt = reopens ? readThreadEvents(row.id).findLast((e) => e.type !== 'process' && e.type !== 'prompt')?.at : undefined
     const t: Thread = {
       id: row.id,
       state: 'starting',

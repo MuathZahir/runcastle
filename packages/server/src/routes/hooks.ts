@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
+import { COMPACT_TEXT, DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
@@ -199,9 +199,6 @@ function handleSessionStart(
 /** What a feature session's start context opens with when the start is a compaction's. */
 export const AFTER_COMPACTION = 'Your context was just compacted. Before acting on the summary, call get_feature_context.'
 
-/** The runtime's compaction command, which runcastle sends as a prompt at quiet moments: no human typed it. */
-const COMPACT_COMMAND = /^\/compact(\s|$)/
-
 /**
  * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
  * `session_id` and `transcript_path` too, so it backs up `SessionStart`: a
@@ -389,7 +386,7 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt === undefined || isRuncastlePrompt(prompt) || COMPACT_COMMAND.test(prompt.trimStart())) return
+  if (prompt === undefined || isRuncastlePrompt(prompt) || COMPACT_TEXT.test(prompt.trimStart())) return
   markHumanMessage(ctx, feature.id, { typed: true })
 }
 

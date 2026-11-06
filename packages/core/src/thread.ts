@@ -556,7 +556,7 @@ export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
 }
 
 /** The runtime's compaction command, as a prompt starts with it (`/compact`, or `/compact <instructions>`). */
-const COMPACT_TEXT = /^\/compact(\s|$)/
+export const COMPACT_TEXT = /^\/compact(\s|$)/
 
 /**
  * A compaction runcastle sent: why, or `manual` for an older log's hidden
