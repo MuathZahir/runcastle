@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Another machine or your phone — runcastle docs</title>
-    <meta name="description" content="Run runcastle on a server so features keep building while your laptop sleeps, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
+    <meta name="description" content="Run runcastle on a server so features keep building while your laptop is off, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
     <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/docs/vps/" />
     <meta name="theme-color" content="#0a0c11" />
     <meta property="og:type" content="article" />
     <meta property="og:url" content="https://runcastle.dev/docs/vps/" />
     <meta property="og:title" content="Another machine or your phone — runcastle docs" />
-    <meta property="og:description" content="Run runcastle on a server so features keep building while your laptop sleeps, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
+    <meta property="og:description" content="Run runcastle on a server so features keep building while your laptop is off, move an existing setup with runcastle move, and check in from your phone over Tailscale." />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/content.css" />
     <link rel="stylesheet" href="/docs.css" />
+    <script src="/docs.js" defer></script>
   </head>
 
   <body>
@@ -66,7 +67,7 @@
 
         <h1>Another machine or your phone</h1>
         <p class="article-lede">
-          Put runcastle on a server so features keep building while your laptop sleeps, and check on them from your phone.
+          Run runcastle on a server, so features keep building while your laptop is off, and check on them from your phone.
         </p>
 
         <nav class="subnav" aria-label="Docs">
@@ -78,40 +79,57 @@
 
         <h2>On a server</h2>
         <ol>
-          <li>Log in as a normal user with sudo; the install refuses root.</li>
-          <li>Run the install. On a server, let it answer for you:
-<pre><code>$ curl -fsSL https://runcastle.dev/install.sh | bash -s -- --yes --agent claude</code></pre>
-            Use <code>--agent codex</code> or <code>--agent both</code> for the others.</li>
-          <li>Log out and back in, so the docker group applies.</li>
-          <li>Sign in: <code>claude auth login</code> then <code>runcastle token</code>, or <code>codex login</code>.</li>
-          <li>Keep it running: <code>runcastle service install</code>. It starts at boot and restarts if it stops.</li>
+          <li>Log in as a normal user that can use sudo. The installer will not run as root.</li>
+          <li>Run the installer. <code>--yes</code> answers its question for you, and
+            <code>--agent</code> picks the coding agent to install: <code>claude</code>,
+            <code>codex</code> or <code>both</code>.
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL https://runcastle.dev/install.sh | bash -s -- --yes --agent claude</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+          </li>
+          <li>Log out and back in. The installer added you to the docker group, and that only takes
+            effect on a new login.</li>
+          <li>Sign in to your coding agent.
+            <p><strong>Claude Code:</strong> sign in, then save the token workers use while you are away.</p>
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>claude auth login</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>runcastle token</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+            <p><strong>Codex:</strong> sign in. Workers use the same login.</p>
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>codex login</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+          </li>
+          <li>Make runcastle start when the server boots, and restart if it stops:
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>runcastle service install</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+          </li>
         </ol>
 
         <h2>Reach it</h2>
         <p>
-          It has no login and listens on 127.0.0.1 only, so never expose it. Forward both ports
-          over SSH, then open <code>http://localhost:4512</code>:
+          runcastle has no login of its own, so it only listens on the server itself. Never open it
+          to the internet. From your own computer, connect with SSH and forward its two ports:
         </p>
-<pre><code>$ ssh -L 4512:localhost:4512 -L 4514:localhost:4514 user@host</code></pre>
-        <p>Port 4514 serves designs. Without it the Design view stays empty.</p>
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>ssh -L 4512:localhost:4512 -L 4514:localhost:4514 user@host</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+        <p>
+          Then open <code>http://localhost:4512</code> in your browser. Port 4514 carries the design
+          previews. Without it, the Design view stays empty.
+        </p>
 
         <h2>Move an existing setup</h2>
         <p>
-          <code>runcastle move user@host</code> carries your projects, every branch, uncommitted
-          work and runcastle's own data to a Linux or macOS machine. Add <code>--dry-run</code> to
-          look first.
+          Already using runcastle on your laptop? This copies your projects, with every branch and
+          any uncommitted work, and runcastle's own data, to a Linux or macOS machine:
         </p>
+        <div class="doc-cmd"><div class="doc-line"><span class="pr" aria-hidden="true">$</span><code>runcastle move user@host</code><button type="button" class="doc-cp" aria-label="Copy the command"><svg class="copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span class="label">Copy</span></button></div></div>
+        <p>Run it with <code>--dry-run</code> first to see what it would copy, without copying anything.</p>
 
         <h2>On your phone</h2>
         <p>
           Install <a href="https://tailscale.com/download" rel="noopener" target="_blank">Tailscale</a>
-          on the machine and your phone. In runcastle, open Settings → General →
-          <strong>On your phone</strong>, turn the link on and scan the QR code. It stays on your own
-          Tailscale network, never the internet.
+          on the machine running runcastle and on your phone, signed in to the same account. In
+          runcastle, open Settings → General → <strong>On your phone</strong>, turn the link on, and
+          scan the QR code. The link only works inside your own Tailscale network, never on the
+          public internet.
         </p>
         <p>
-          Add the page to your home screen and turn on notifications: a feature that needs you
-          then reaches your phone. On an iPhone they work only from the home screen.
+          Add the page to your phone's home screen and turn on notifications: runcastle then tells
+          your phone when a feature needs you. On an iPhone, notifications only work from the
+          home-screen app.
         </p>
 
         <div class="next">
@@ -145,7 +163,6 @@
         <span class="footer-meta">Built with runcastle</span>
       </div>
     </footer>
-
 
   </body>
 </html>

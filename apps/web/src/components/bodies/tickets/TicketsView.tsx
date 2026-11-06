@@ -239,7 +239,7 @@ export function TicketsView({ featureId, onOpenDoc }: { featureId: string; onOpe
 }
 
 /** What an opened ticket can do and read — every call and read lives in `TicketsView`. */
-interface TicketControls {
+export interface TicketControls {
   roster: readonly ModelEntry[]
   /** Any mutation is in flight: every action waits for it. */
   busy: boolean
@@ -388,7 +388,7 @@ const STATE: Record<LaneState, { glyph: ReactNode; word: string; tone?: string }
  * becomes a card: its actions, the goal and acceptance, then the worker's live
  * log or its digest.
  */
-function TicketItem({
+export function TicketItem({
   ticket,
   index,
   tickets,

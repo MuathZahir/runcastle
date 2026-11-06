@@ -1,0 +1,119 @@
+/* ==========================================================================
+   runcastle.dev docs pages
+   --------------------------------------------------------------------------
+   Docs-only additions on top of styles.css + content.css: the four-stage row
+   and the placing of the app pictures. content.css is shared with the compare
+   pages, so nothing docs-only goes there. Every value resolves to a :root
+   custom property from styles.css. No JS.
+   ========================================================================== */
+
+/* The four stages a feature goes through, as one row of labelled dots. */
+.article .stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 8px 0 32px;
+  padding: 0;
+  padding-inline-start: 0;
+  margin-inline-start: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.article .stages li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.article .stages li::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.article .stages li + li::after {
+  order: -1;
+  content: "";
+  width: 14px;
+  height: 1px;
+  margin-right: 6px;
+  background: var(--border-strong);
+}
+
+/* ==========================================================================
+   APP PICTURES — the app's own components, rendered to static HTML by
+   apps/web/preview/docs-pages.tsx into a declarative shadow root that carries
+   the app's CSS (assets/docs/app.css). This file only places them.
+   ========================================================================== */
+.doc-fig { margin: 20px 0 36px; }
+.doc-fig figcaption {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.doc-app {
+  --w: 640px;
+  --fw: min(var(--w), 960px, 100vw - var(--gutter) * 2);
+  width: var(--fw);
+  margin-inline: calc((100% - var(--fw)) / 2);
+}
+
+/* ==========================================================================
+   COMMANDS — one command per block, with a copy button; where a command
+   differs by system, tabs pick the system (docs.js remembers the choice).
+   Same look as the landing page's install box.
+   ========================================================================== */
+.doc-cmd { margin: 14px 0 22px; }
+.doc-cmd + .doc-cmd { margin-top: -14px; }
+.doc-os {
+  display: inline-flex; gap: 2px; margin-bottom: 8px; padding: 3px;
+  border-radius: 9px; background: var(--surface-inset); border: 1px solid var(--border-subtle);
+}
+.doc-os button {
+  height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-tertiary); cursor: pointer;
+  transition: background-color var(--dur-1), color var(--dur-1);
+}
+.doc-os button:hover { color: var(--text); }
+.doc-os button[aria-selected="true"] {
+  background: var(--surface-raised); color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.doc-line {
+  display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 6px 0 16px; line-height: 1.5;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+}
+.doc-line + .doc-line { margin-top: 8px; }
+.doc-line[hidden] { display: none; }
+.doc-line .pr { flex: none; font-family: var(--font-mono); font-size: 13.5px; color: var(--accent-text); opacity: 0.8; }
+.doc-line code {
+  /* A long command wraps rather than hiding its end past the edge. */
+  flex: 1; min-width: 0; padding-block: 12px; white-space: normal; overflow-wrap: anywhere;
+  font-family: var(--font-mono); font-size: 13.5px; color: var(--text); background: none; padding: 0; border: 0;
+}
+.doc-cp {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+  border: 0; border-radius: var(--radius-md); background: transparent; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-secondary);
+  transition: background-color var(--dur-1), color var(--dur-1);
+}
+.doc-cp:hover { background: var(--surface-hover); color: var(--text); }
+.doc-cp svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.doc-cp .ok { display: none; color: var(--success); }
+.doc-cp.done .copy { display: none; }
+.doc-cp.done .ok { display: block; }
+/* Without JS there is nothing to copy with and no tabs: show every system's line. */
+html:not(.js) .doc-cp, html:not(.js) .doc-os { display: none; }
+@media (max-width: 520px) {
+  /* Room for the command: the Copy button keeps only its icon. */
+  .doc-cp .label { display: none; }
+  .doc-cp { padding: 0 10px; }
+  .doc-line { gap: 8px; padding-left: 12px; }
+  .doc-line .pr, .doc-line code { font-size: 12.5px; }
+  .doc-line code { overflow-wrap: break-word; }
+}
