@@ -167,7 +167,7 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
 <!-- 1 · what this is -->
 <header id="what">
   <h1>Workers: prototype an agent you can enter inside a sandbox</h1>
-  <p class="lede">A spike. One worker runs as a normal runcastle chat inside a burn sandbox: you open it, type to it, see its dev server, and it hands back to its lead. It ends with numbers so you can pick sandbox or host at checkpoint 1.</p>
+  <p class="lede">A spike. One worker runs as a normal runcastle chat inside a burn sandbox: you open it, type to it, see its dev server, and it hands back to its lead. It ends with numbers so you can pick sandbox or host at checkpoint 1. The orchestrator agreed it with changes: no host networking, a scratch data folder, a timed handoff, and no product UI.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/workers-prototype-an-agent-you-can-enter-inside-a-sandbox/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -181,41 +181,39 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
     <h3>A worker's life</h3>
     <p class="hint">Everything here sits behind one setting, off by default <a class="pin" data-d="5">5</a>.</p>
     <div class="flow">
-      <div class="step"><div class="who"><b>Lead</b>asked by you</div><p><strong>Starts a worker</strong> with a label, a goal and a done-when <a class="pin" data-d="4">4</a>. Runcastle builds a burn sandbox on the worker's own branch <a class="pin" data-d="7">7</a>.</p></div>
+      <div class="step"><div class="who"><b>Lead</b>asked by you</div><p><strong>Starts a worker</strong> with a label, a goal and a done-when <a class="pin" data-d="4">4</a>. Runcastle builds a burn sandbox on the worker's own branch, publishing one port <a class="pin" data-d="7">7</a> <a class="pin" data-d="23">23</a>.</p></div>
       <div class="step"><div class="who"><b>Worker</b>in the sandbox</div><p><strong>Works live, as a normal chat</strong> <a class="pin" data-d="1">1</a>, with no permission prompts <a class="pin" data-d="15">15</a>. Starts the project's dev server on its own port <a class="pin" data-d="13">13</a>.</p></div>
-      <div class="step"><div class="who"><b>You</b>any time</div><p><strong>Open it from the feature's chat list</strong> <a class="pin" data-d="6">6</a>, type to it, click <strong>Open preview</strong> to see its screen.</p></div>
-      <div class="step"><div class="who"><b>Lead</b>any time</div><p><strong>Can message it</strong>, queued to its turn's end <a class="pin" data-d="22">22</a>, or discard it <a class="pin" data-d="21">21</a>.</p></div>
-      <div class="step"><div class="who"><b>Runcastle</b>after 30 idle min</div><p><strong>Stops the agent and the container</strong>, keeping its files <a class="pin" data-d="8">8</a>. No pool to return a seat to yet <a class="pin" data-d="9">9</a>. Your next message, or opening its preview <a class="pin" data-d="20">20</a>, starts it again.</p></div>
-      <div class="step"><div class="who"><b>Worker</b>when done</div><p><strong>Hands back</strong>: a summary plus its commits. The lead is woken once and never reads the transcript <a class="pin" data-d="10">10</a>. Commits stay on the worker's branch <a class="pin" data-d="11">11</a>. It can still be talked to <a class="pin" data-d="12">12</a>. If it dies, the lead is woken once too <a class="pin" data-d="19">19</a>.</p></div>
+      <div class="step"><div class="who"><b>You</b>any time</div><p><strong>Open it from the feature's chat list</strong>, where it is a side chat named "Worker: …" <a class="pin" data-d="26">26</a>; type to it; open the <strong>localhost address it gives</strong> to see its screen.</p></div>
+      <div class="step"><div class="who"><b>Runcastle</b>after 30 idle min</div><p><strong>Stops the agent and the container</strong>, keeping its files <a class="pin" data-d="8">8</a>. No pool to return a seat to yet <a class="pin" data-d="9">9</a>. Your next message starts it again, dev server included.</p></div>
+      <div class="step"><div class="who"><b>Worker</b>when done</div><p><strong>Hands back</strong>: a summary plus its commits. The lead is woken once and never reads the transcript <a class="pin" data-d="10">10</a>. Commits stay on the worker's branch <a class="pin" data-d="11">11</a>.</p></div>
     </div>
   </div>
 
   <div class="sub">
     <h3>What crosses the container wall</h3>
-    <p class="hint">Only the chat's stream. The adapter and the CLI live together inside <a class="pin" data-d="2">2</a>; the network is the host's <a class="pin" data-d="3">3</a>.</p>
+    <p class="hint">Only the chat's stream goes in, and only the preview port comes out. The adapter and the CLI live together inside <a class="pin" data-d="2">2</a>; nothing inside can reach runcastle <a class="pin" data-d="23">23</a>.</p>
     <div class="wall">
-      <div class="box"><h3>Host · runcastle server</h3><ul><li>Thread host: event log, prompt queue, idle timer (unchanged)</li><li>Worker service: start, stop, wake, handback</li><li>MCP at localhost:4512</li><li>Design proxy shows the preview</li></ul></div>
+      <div class="box"><h3>Host · runcastle server</h3><ul><li>Thread host: event log, prompt queue, idle timer (unchanged)</li><li>Worker service: start, stop, wake, handback</li><li>Reads the handback file at turn end</li><li>Worker state: one JSON file each <a class="pin" data-d="24">24</a></li></ul></div>
       <div class="pipe"><i></i>docker exec -i<br>ACP over stdio<i></i></div>
-      <div class="box c"><h3>Burn sandbox · host network</h3><ul><li>ACP adapter, mounted read-only from the host</li><li>Claude Code CLI (in the image)</li><li>Clone at /home/agent/repo, commits pushed to the worker branch</li><li>Dev server on the worker's port</li></ul></div>
+      <div class="box c"><h3>Burn sandbox · bridge network, one port on 127.0.0.1</h3><ul><li>ACP adapter, mounted read-only from the host</li><li>Claude Code CLI (in the image)</li><li>Clone at /home/agent/repo, commits pushed to the worker branch</li><li>Worker tools (hand_back, start_dev_server): an MCP server inside</li><li>Dev server on the published port</li></ul></div>
     </div>
   </div>
 
   <div class="sub">
     <h3>Where you meet it</h3>
-    <p class="hint">No new screen: the feature's chat list and the normal chat view, plus a tag, a status and one link <a class="pin" data-d="6">6</a>.</p>
+    <p class="hint">No new screen and no new controls: the worker is a side chat named "Worker: …" in the normal chat view <a class="pin" data-d="26">26</a>. The tag, status and preview link drawn in the first plan went to interactive-workers <a class="pin" data-d="6">6</a>.</p>
 <!-- screen:worker-in-chat-list -->
     <div class="screen"><div class="mock">
       <div class="side"><h4>Chats</h4>
         <div class="row"><span class="dot live"></span>Lead<span class="st">waiting</span></div>
-        <div class="row sel"><span class="wtag">Worker</span>Settings page redesign<span class="st">working</span></div>
-        <div class="row"><span class="wtag">Worker</span>Empty states<span class="st">handed back</span></div>
-        <div class="row"><span class="wtag">Worker</span>Copy pass<span class="st">stopped</span></div>
+        <div class="row sel"><span class="dot"></span>Worker: Settings page redesign<span class="st"></span></div>
+        <div class="row"><span class="dot"></span>Worker: Empty states<span class="st"></span></div>
         <div class="row"><span class="dot"></span>Side chat<span class="st"></span></div>
       </div>
       <div class="main">
-        <div class="hdr"><span class="wtag">Worker</span><h3>Settings page redesign</h3><span class="hint">sandbox · working</span><span class="lnk">Open preview ↗</span></div>
+        <div class="hdr"><h3>Worker: Settings page redesign</h3></div>
         <div class="msgs">
-          <div class="msg">Dev server is up on its port. I moved the burn settings into their own group; tests pass. Committed.</div>
+          <div class="msg">Dev server is up: open http://localhost:41000/. I moved the burn settings into their own group; tests pass. Committed.</div>
           <div class="msg me">Make the group headers smaller and keep the save bar at the bottom.</div>
           <div class="msg">On it.</div>
         </div>
@@ -223,18 +221,18 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
       </div>
     </div></div>
 <!-- /screen:worker-in-chat-list -->
-    <div class="states"><span><i class="dot live"></i>working</span><span><i class="dot"></i>waiting</span><span><i class="dot"></i>stopped (idle)</span><span><i class="dot ok"></i>handed back</span><span><i class="dot no"></i>failed</span><a class="pin" data-d="12">12</a></div>
   </div>
 
   <div class="sub">
     <h3>What you get at checkpoint 1</h3>
-    <p class="hint">A report with medians of at least five runs, sandbox next to a host chat <a class="pin" data-d="16">16</a>, and a hands-on try <a class="pin" data-d="18">18</a>. The lead builds and measures it itself <a class="pin" data-d="17">17</a>; Claude Code only <a class="pin" data-d="14">14</a>.</p>
+    <p class="hint">A report with medians of five runs, sandbox next to a host chat <a class="pin" data-d="16">16</a>, measured by a harness <a class="pin" data-d="27">27</a>, plus a timed handoff <a class="pin" data-d="25">25</a> and a hands-on try on a scratch server <a class="pin" data-d="18">18</a>. The lead builds it itself <a class="pin" data-d="17">17</a>; Claude Code only <a class="pin" data-d="14">14</a>.</p>
     <table class="m">
       <tr><th>Measured</th><th>Sandbox worker</th><th>Host chat</th></tr>
       <tr><td>Cold start</td><td class="q">to measure</td><td class="q">to measure (+ worktree and install)</td></tr>
       <tr><td>Wake after idle stop</td><td class="q">to measure</td><td class="q">to measure</td></tr>
       <tr><td>First reply · full turn (trivial, small edit)</td><td class="q">to measure</td><td class="q">to measure</td></tr>
       <tr><td>Dev server answering (start, after wake)</td><td class="q">to measure</td><td class="q">to measure</td></tr>
+      <tr><td>Attach by handoff: headless run, then resume</td><td class="q">to measure</td><td class="q">—</td></tr>
       <tr><td>Handback size vs what the lead would have read</td><td class="q" colspan="2">to measure</td></tr>
     </table>
   </div>
@@ -259,7 +257,8 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>Codex workers</li>
       <li><i class="dot"></i>A host-worktree worker (measured via a host chat instead)</li>
-      <li><i class="dot"></i>A portable relay instead of host networking</li>
+      <li><i class="dot"></i>A relay letting the sandbox reach runcastle</li>
+      <li><i class="dot"></i>The worker row, statuses, failure wakes, preview wake, cleanup, lead messages: recommendations for interactive-workers</li>
       <li><i class="dot"></i>A "New worker" button for you</li>
       <li><i class="dot"></i>Any change to the burn engine</li>
     </ul></div>
@@ -272,13 +271,13 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
       <div class="flow">
-        <div class="step"><div class="who"><b>New</b>session kind</div><p><span class="mono">worker</span>, with a record: label, goal, done-when, status, branch, container, dev port and command, latest handback.</p></div>
-        <div class="step"><div class="who"><b>New</b>transport</div><p>At the thread host's existing transport seam: for a worker, <span class="mono">docker|podman exec -i &lt;container&gt; node /opt/acp/adapter.js</span>, container paths for cwd and briefing. Resume is the same <span class="mono">session/load</span> chats use.</p></div>
-        <div class="step"><div class="who"><b>New</b>worker service</div><p>Sandcastle's long-lived <span class="mono">createSandbox</span> with the burn image, mounts and isolated clone; <span class="mono">stop</span>/<span class="mono">start</span> by container name on idle and wake; remove on discard and when the feature ships or is archived. Emits an event on every change.</p></div>
-        <div class="step"><div class="who"><b>MCP</b>lead</div><p><span class="mono">start_worker</span>, <span class="mono">message_worker</span>, <span class="mono">discard_worker</span>, only with the setting on.</p></div>
-        <div class="step"><div class="who"><b>MCP</b>worker</div><p><span class="mono">hand_back({ summary })</span> → record + one <span class="mono">deliverToLead</span>; <span class="mono">start_dev_server({ command? })</span>, defaulting to the recorded design command.</p></div>
-        <div class="step"><div class="who"><b>Web</b></div><p>Tag, label and status on the chat-list row; "Open preview" and a stopped note in the chat header.</p></div>
-        <div class="step"><div class="who"><b>Open</b></div><p>Whether the adapter bundles to one file; whether sandcastle's sandbox survives stop/start underneath it. Both settled while building and written into the report.</p></div>
+        <div class="step"><div class="who"><b>No</b>new table</div><p>None: a worker is a <span class="mono">side</span> thread plus one JSON file under the data folder's <span class="mono">workers/</span>: label, goal, done-when, status, branch, container, port, handbacks, timings.</p></div>
+        <div class="step"><div class="who"><b>New</b>transport</div><p>At the thread host's existing transport seam, which may now also say how the session opens: <span class="mono">docker|podman exec -i &lt;container&gt; node /opt/runcastle/acp.mjs</span>, cwd <span class="mono">/home/agent/repo</span>, the worker MCP server, bypass mode. Resume is the same <span class="mono">session/load</span> chats use.</p></div>
+        <div class="step"><div class="who"><b>New</b>worker service</div><p>A plain <span class="mono">docker run -p 127.0.0.1:P:P</span> of the burn image (sandcastle cannot publish a port), the host repo's git dir mounted so commits come back as refs, the adapter bundled to one file and mounted read-only; <span class="mono">stop</span>/<span class="mono">start</span> on idle and wake.</p></div>
+        <div class="step"><div class="who"><b>MCP</b>lead</div><p><span class="mono">start_worker</span> (provisional name), only with the setting on.</p></div>
+        <div class="step"><div class="who"><b>MCP</b>worker</div><p>A stdio MCP server inside the sandbox: <span class="mono">hand_back({ summary })</span> writes a file the server reads at turn end, then one <span class="mono">deliverToLead</span>; <span class="mono">start_dev_server({ command? })</span> runs detached on the published port.</p></div>
+        <div class="step"><div class="who"><b>Web</b></div><p>No change.</p></div>
+        <div class="step"><div class="who"><b>Harness</b></div><p>The measuring harness: <span class="mono">packages/server/src/workers/spike-harness.ts</span>, scratch <span class="mono">RUNCASTLE_DATA_DIR</span> only.</p></div>
       </div>
     </div>
   </details>
@@ -296,35 +295,40 @@ table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-
   var D = [
     ['The worker runs live in the sandbox as a normal thread, not by handoff', 'The thread host already takes a pluggable transport, so a live thread costs one new transport; handoff gives nothing to watch while it works.', 'assumed'],
     ['The ACP adapter runs inside the container; runcastle talks to it over docker exec -i', 'The adapter and the CLI share session files and paths; keeping both inside means no path translation and resume finds its files. The adapter is mounted from the host, so the burn image is unchanged.', 'assumed'],
-    ['The prototype uses host networking for the sandbox', 'Lets the agent reach runcastle and the app reach its dev server with no sandcastle change. Docker Desktop needs a setting; any host service is reachable from the sandbox.', 'assumed'],
+    ['The prototype uses host networking for the sandbox', 'Superseded by 23: the orchestrator ruled host networking out.', 'superseded'],
     ['A worker is a new thread kind owned by the feature, started by its lead', 'The worker model has the lead delegating; your own door belongs to interactive-workers.', 'assumed'],
     ['All of it sits behind an experimental setting, off by default, and is trimmed before merge', 'Lets the branch merge without exposing half-built workers; code your checkpoint choice will not reuse is removed first.', 'assumed'],
-    ['No new screen: the worker appears in the feature\'s existing thread list', 'The real list is interactive-workers\' job, and reusing the chat view is part of the proof.', 'assumed'],
+    ['No new screen: the worker appears in the feature\'s existing thread list', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
     ['The sandbox is a burn sandbox, kept alive', 'The question is whether a burn sandbox can host a thread; the burn engine itself is not changed.', 'assumed'],
     ['Idle workers stop their container and resume on the next message', 'A stopped container holds no memory or CPU but keeps the clone, installs, uncommitted work and session files.', 'assumed'],
     ['No worker pool yet', 'There is no machine-wide burn pool today; building one belongs to burns-become-workers.', 'assumed'],
     ['A handback is a tool call that wakes the lead once', 'Summary plus commits, never the transcript: that keeps the lead small. It must include direction you gave the worker directly.', 'assumed'],
     ['A handback does not land the commits', 'Landing is burn machinery the brief keeps unchanged; the lead merges the branch itself if it wants it.', 'assumed'],
-    ['A handed-back worker can still be talked to', 'A worker is reachable at any time; "landed" and "needs you" wait for later features.', 'assumed'],
+    ['A handed-back worker can still be talked to', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
     ['The dev server runs inside the sandbox on a port runcastle assigns', 'A server the runner owns can be restarted on wake and stopped with the worker.', 'assumed'],
     ['Claude Code only', 'One runtime answers the question.', 'assumed'],
     ['Inside the sandbox the worker runs without permission prompts', 'The container is the boundary, as for burns.', 'assumed'],
     ['The report measures the sandbox against today\'s host chats; the host fallback is not built', 'A host chat already is the fallback\'s runtime; the host worktree and install time is measured too.', 'assumed'],
     ['The lead builds the spike itself, then one review round', 'The spike needs Docker on the host to start and time sandboxes; a burn worker runs inside a container and cannot.', 'assumed'],
     ['The human gets a hands-on try before checkpoint 1', '"Fast enough to iterate with" is partly a feel; the test drive is that try, on a hand-started branch server.', 'assumed'],
-    ['A failed worker wakes its lead once', 'Otherwise a lead could wait forever on a worker that will never hand back.', 'assumed'],
-    ['Opening the preview of a stopped worker wakes its sandbox, not its agent', 'Coming back hours later to look at a design should not need a throwaway message.', 'assumed'],
-    ['Workers are cleaned up: by the lead, and when the feature ends', 'Each stopped container keeps a full clone and its installs; nothing else would remove them.', 'assumed'],
-    ['The lead can message a worker at any time', 'A lead correcting a running worker is the normal case.', 'assumed']
+    ['A failed worker wakes its lead once', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['Opening the preview of a stopped worker wakes its sandbox, not its agent', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['Workers are cleaned up: by the lead, and when the feature ends', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['The lead can message a worker at any time', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['One published port per worker; the sandbox cannot reach the host', 'An agent with every permission on the host network could reach runcastle\'s own API and everything on the machine. The worker\'s tools run inside and write a file the server reads at turn end.', 'assumed'],
+    ['The spike never touches the live data folder; worker state is a file per worker', 'A spike must not be able to break the live install; no table or migration for code that may be thrown away.', 'assumed'],
+    ['The report times one attach-by-handoff resume too', 'Two measured routes are evidence; one number and an argument are not.', 'assumed'],
+    ['The spike builds only what the measurements and the hands-on try need', 'The worker is a side chat named "Worker: …"; its preview is the localhost address it gives. Product decisions went to interactive-workers.', 'assumed'],
+    ['Measurements run in a standalone harness, the app proof on the scratch server', 'Timing through a running server adds noise; the server path needs proving once.', 'assumed']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [1, 'Attach by handoff: the worker runs headless, Open resumes its session later.', 'The brief asked for one route picked with evidence; this plan builds only the live one and falls back to handoff only if live fails.'],
-    [3, 'A small relay over docker exec stdio (works everywhere, exposes only /mcp).', 'Host networking lets a permission-free agent reach runcastle\'s unauthenticated API and anything on the host; the challenger objected to that.', 'challenged'],
+    [1, 'Attach by handoff: the worker runs headless, Open resumes its session later.', 'The live route is the pick; the report now times handoff too, so check the two numbers.'],
     [11, 'A handback lands the branch through the landing queue.', 'You may want to see a real landing before judging workers.'],
     [16, 'Build the host-worktree worker too, for a true side by side.', 'The checkpoint choice rests on this comparison; a host chat stands in for the host worker.'],
-    [17, 'Hand the code to burn tickets and measure afterwards.', 'The brief\'s evidence says a lead working alone in one big window is the problem; the challenger wanted the measuring done in a side chat.', 'challenged']
+    [23, 'Host networking, or a relay letting the sandbox reach only /mcp.', 'Set by the orchestrator, not you: the safest route, but the handback becomes a file read at turn end, not a call runcastle sees at once.', 'orchestrator'],
+    [25, 'Argue for the live route without timing handoff.', 'Set by the orchestrator, not you; it decides how question 1 is answered.', 'orchestrator']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

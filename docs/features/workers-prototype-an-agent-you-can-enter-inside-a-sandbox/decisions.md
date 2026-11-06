@@ -1,9 +1,11 @@
 # Decisions — Workers: prototype an agent you can enter inside a sandbox
 
 Planned without the human (headless self-planning run, 2026-11-06). Every decision below is
-assumed until the human confirms it.
+assumed until the human confirms it. The project's orchestrator, which carries this cut for the
+human until checkpoint 1, agreed the plan the same day with changes: those are marked
+**Changed by the orchestrator**, and decisions 23 to 27 are its.
 
-Check first: 1, 3, 11, 16, 17
+Check first: 1, 11, 16, 23, 25
 
 ## 1. The worker runs live in the sandbox as a normal thread, not by handoff
 **Decision:** The worker's agent runs inside its sandbox as an ACP thread from its first
@@ -45,6 +47,7 @@ building only if the sandbox route wins at checkpoint 1. The setting's descripti
 plainly what host networking exposes.
 **Assumed.** Alternative: a relay over `docker exec` stdio (works everywhere, no setting, only
 exposes `/mcp`), or a new port-publish hunk in the sandcastle patch.
+**Superseded by 23.**
 **Challenged:** Together with decision 15 (no permission prompts), an agent with every
 permission can reach runcastle's unauthenticated API (merge, start drives) and anything on the
 host, which on the coming VPS is everything; fine for measuring, not for merged code.
@@ -56,6 +59,9 @@ human starts one by asking the lead.
 **Why:** The worker model has the lead delegating; the human's own "start a worker" door
 belongs to `interactive-workers`.
 **Assumed.** Alternative: a "New worker" button in the app for the human.
+**Changed by the orchestrator:** every tool name in this feature (`start_worker`, `hand_back`,
+`start_dev_server`, `message_worker`, `discard_worker`) is provisional; `interactive-workers`
+names them for real.
 
 ## 5. All of it sits behind an experimental setting, off by default, and is trimmed before merge
 **Decision:** One config flag (`experimentalWorkers`) turns on the `worker` tools and
@@ -74,6 +80,7 @@ header gains one link, "Open preview", while its dev server runs. Nothing is des
 **Why:** The real worker list is `interactive-workers`' job. Reusing the thread view is also
 part of the proof: the same view must work for a sandboxed thread.
 **Assumed.** Alternative: a first cut of a worker list.
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
 
 ## 7. The sandbox is a burn sandbox, kept alive
 **Decision:** The worker's container is built the way a burn's is: the same image, cache
@@ -83,6 +90,10 @@ ends. The burn engine itself is not changed.
 **Why:** The question is whether a burn sandbox can host a thread; a lighter container would
 answer a different question. Sandcastle already offers a long-lived sandbox with exec.
 **Assumed.** Alternative: a plain container with the repo mounted.
+**Changed by the orchestrator (through 23):** sandcastle cannot publish a port (its
+`docker run` takes no `-p`, and adding one means regenerating the permanent patch, ADR-0011),
+so the worker's container is started with a plain `docker run` / `podman run` of the same burn
+image, user, cache mount and isolated-clone setup, plus the published port.
 
 ## 8. Idle workers stop their container and resume on the next message
 **Decision:** After 30 idle minutes (the chat rule in ADR-0015, never while the agent waits on
@@ -129,6 +140,7 @@ failed.
 **Why:** The brief's worker is reachable at any time. "Landed" and "needs you" wait for
 landing and the wake rule.
 **Assumed.** Alternative: a handback closes the worker for good.
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
 
 ## 13. The dev server runs inside the sandbox on a port runcastle assigns
 **Decision:** Each worker gets its own port. The worker starts the project's dev server with
@@ -138,6 +150,9 @@ pass-through proxy, opened from "Open preview".
 **Why:** A server process the runner owns can be restarted on resume (decision 8) and stopped
 with the worker; one the agent backgrounds in its own shell dies unseen.
 **Assumed.** Alternative: the agent starts it in the background itself and reports the port.
+**Changed by the orchestrator (through 23 and 26):** the tool runs inside the sandbox, and the
+human opens the preview at the `localhost` address of the published port, not through the
+design proxy.
 
 ## 14. Claude Code only
 **Decision:** Workers run on Claude Code. Codex workers are not prototyped.
@@ -161,6 +176,8 @@ what the lead would have read doing the job itself. It lists what did not work. 
 decides sandbox or host at checkpoint 1.
 **Why:** A host side chat already is the fallback's runtime, so building a host worker would
 measure the same thing twice.
+**Changed by the orchestrator:** the report also says whether a host worker could get its own
+port and preview, so both sides of the checkpoint choice are described on the same terms.
 **Assumed.** Alternative: build the host-worktree worker too, behind the same flag, for a
 side-by-side.
 
@@ -173,6 +190,8 @@ runs inside a container and cannot. The work is also one tightly connected chang
 **Challenged:** The brief's evidence is that a lead working alone in one huge window is the
 problem; the lead should run the measuring sessions in a host side chat to keep its own window
 small and try the pattern being argued for.
+**Changed by the orchestrator:** the lead builds the spike itself, and the repeated measuring
+sessions run through subagents so the lead's own window stays small.
 
 ## 18. The human gets a hands-on try before checkpoint 1
 **Decision:** The ready message and the report say how to try a worker by hand: start this
@@ -180,6 +199,8 @@ branch's server (live sessions run the installed runcastle, not the branch), tur
 on, ask the lead for a worker that changes a screen, open it, type to it, open its preview.
 The test drive is that try.
 **Why:** "Fast enough to iterate with" is partly a feel; numbers alone will not settle it.
+**Changed by the orchestrator (through 24):** the try runs on this branch's server against a
+scratch data folder, never `~/.runcastle`.
 **Assumed.** Alternative: the report's numbers only.
 
 ## 19. A failed worker wakes its lead once
@@ -188,6 +209,7 @@ failed and the lead is woken once with what failed. This is not the wake rule, o
 minimum so a lead never waits on a worker that will never hand back.
 **Why:** Only a handback wakes the lead otherwise (decision 10).
 **Assumed.** Alternative: failures only show in the thread list.
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
 
 ## 20. Opening the preview of a stopped worker wakes its sandbox, not its agent
 **Decision:** "Open preview" on a stopped worker starts its container and dev server without
@@ -196,6 +218,7 @@ after the same idle time.
 **Why:** Iterating on a design means coming back to look at it; a dead link would make the
 human send a throwaway message just to see the screen.
 **Assumed.** Alternative: the link shows "stopped, send a message to wake it".
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
 
 ## 21. Workers are cleaned up: by the lead, and when the feature ends
 **Decision:** The lead can discard a worker (`discard_worker`), which removes its container
@@ -203,6 +226,7 @@ and branch. A feature's remaining workers are removed when it ships or is archiv
 **Why:** Each stopped container keeps a full clone plus installed packages; nothing else would
 ever remove them.
 **Assumed.** Alternative: leave them for the human to clear by hand.
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
 
 ## 22. The lead can message a worker at any time
 **Decision:** The lead sends a worker a message with `message_worker`; during a turn it is
@@ -211,3 +235,69 @@ waiting, stopped or handed-back worker alike.
 **Why:** Decision 12 covered only a handed-back worker; a lead correcting a running worker is
 the normal case.
 **Assumed.** Alternative: the lead can only message a worker once it has handed back.
+**Withdrawn — changed by the orchestrator:** a product decision the spike does not need to take its measurements; it is now a recommendation for `interactive-workers` (see the end of this file), not something this feature builds.
+
+## 23. One published port per worker; the sandbox cannot reach the host
+**Decision:** Supersedes: 3. The worker's container stays on Docker's ordinary bridge network,
+as a burn's does, and publishes exactly one port, its dev server's, bound to `127.0.0.1` on
+the host. Nothing inside the sandbox can reach runcastle: the worker's own tools
+(`hand_back`, `start_dev_server`) are a small MCP server that runs inside the container and
+writes what the worker said to a file; runcastle reads it through `docker exec` when the
+worker's turn ends. If publishing a port cannot work, that is reported as a finding; there is
+no fallback to host networking.
+**Why:** An agent with every permission on the host network could reach runcastle's own
+unauthenticated API (merge, drives) and everything else on the machine, which is moving to a
+VPS. A file read at turn end keeps the handback a tool call with no way out of the sandbox.
+**Assumed.** Alternative: host networking (decision 3), or a relay that lets the sandbox reach
+only `/mcp`.
+**Changed by the orchestrator:** it ruled out host networking.
+
+## 24. The spike never touches the live data folder; worker state is a file per worker
+**Decision:** Everything the spike runs, the hands-on try included, uses a scratch data folder
+(`RUNCASTLE_DATA_DIR`), never `~/.runcastle`. A worker's state (label, goal, container,
+branch, port, status, handback) is one JSON file in the data folder; no table and no
+migration are added.
+**Why:** The human's live runcastle runs on `~/.runcastle`; a spike must not be able to break
+it, and a schema change is not worth making for code that may be thrown away.
+**Assumed.** Alternative: a `workers` table, migrated only in the scratch folder.
+**Changed by the orchestrator:** it set both rules.
+
+## 25. The report times one attach-by-handoff resume too
+**Decision:** The live thread in the sandbox stays the pick (decision 1), but the spike also
+runs one headless `claude -p` in a worker's sandbox, then resumes that captured session
+interactively through the adapter in the same sandbox, and times it. The report compares the
+two routes on numbers.
+**Why:** Question 1 asked for a pick with evidence; two measured routes are evidence, one
+number and an argument are not.
+**Assumed.** Alternative: argue for the live route without timing handoff.
+**Changed by the orchestrator:** it asked for the second number.
+
+## 26. The spike builds only what the measurements and the hands-on try need
+**Decision:** No new web UI. A worker appears in the app as one of the feature's side chats,
+labelled "Worker: <label>", and opens in the normal chat view, where the human types to it.
+Its preview is opened at the `localhost` address of its published port, which the worker and
+the report both state. Statuses are only what the spike reads (running, stopped, handed
+back). Idle stop (decision 8) stays, because resume is one of the measurements.
+**Why:** The orchestrator moved the product decisions (list row, status model, failure wakes,
+preview wakes, cleanup, queued messages) to `interactive-workers`.
+**Assumed.** Alternative: the small UI of decision 6.
+**Changed by the orchestrator:** it cut the product decisions.
+
+## 27. Measurements run in a standalone harness, the app proof on the scratch server
+**Decision:** The timings come from a script that drives the same sandbox transport and ACP
+client the server uses, against this repo, with the host chat as the baseline; repeated runs
+are dispatched through subagents. The end-to-end proof (lead starts a worker, the human opens
+and types to it, it hands back and the lead is woken) runs once on this branch's server with a
+scratch data folder.
+**Why:** Timing through a running server adds noise and needs a live lead; the server path
+needs proving once, not five times.
+**Assumed.** Alternative: take every measurement through the running server.
+
+## Recommendations for `interactive-workers`
+Withdrawn from this feature by the orchestrator; the spike's experience will refine them.
+- A worker row in the feature's thread list with a "Worker" tag, its label and its status, and an "Open preview" link in its chat header (was 6).
+- Statuses working, waiting, stopped, handed back, failed; a handed-back worker can still be talked to (was 12).
+- A failed worker wakes its lead once, so a lead never waits forever (was 19).
+- Opening a stopped worker's preview wakes its sandbox and dev server but not its agent (was 20).
+- The lead can discard a worker; a feature's workers are removed when it ships or is archived (was 21).
+- The lead can message a worker at any time, queued to its turn's end (was 22).

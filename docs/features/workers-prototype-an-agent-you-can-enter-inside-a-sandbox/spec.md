@@ -8,107 +8,85 @@ handback instead of filling the lead's window. Before anything is built for real
 unknown: can an agent run as a runcastle thread inside a burn sandbox, stay reachable by the
 human (typing to it, seeing its dev server), give its resources back when idle, and still be
 fast enough to iterate with? If not, workers run on the host in their own git worktree instead.
-The human decides that at checkpoint 1, and needs evidence and a hands-on try to decide.
+The human decides that at checkpoint 1 and needs numbers and a hands-on try to decide.
 
 ## Approach
 
-**What the human sees.** With the experimental setting on (decision 5), the human asks a
-feature's lead for a worker. A row appears in the feature's thread list, where side chats
-already show, tagged "Worker" with its label and status (working, waiting, stopped, handed
-back, failed). Opening it shows the normal chat view, live while the worker works; the human
-types to it like any chat. When the worker runs a dev server, the chat header shows "Open
-preview", which opens it through runcastle's existing design pass-through proxy; on a stopped
-worker that link wakes the sandbox and dev server first (decision 20). When the worker is done
-it hands back: the lead gets one message with the summary and the commits, and the row says
-"handed back". Either side can keep talking to it afterwards.
+**What the human sees.** With the experimental setting on (decision 5), a feature's lead
+starts a worker. It shows in the app as one of the feature's side chats, titled "Worker:
+<label>", and opens in the normal chat view, live while it works; the human types to it like
+any chat. When the worker starts its dev server it says the address to open
+(`http://localhost:<port>/`), served from inside its sandbox through the one port the sandbox
+publishes. When done it hands back: the lead gets one message with the summary, the commits
+and how to merge them. Nothing else in the app changes (decision 26).
 
 **The shape.**
 
-- **Worker record and service (new).** A worker is a session of a new kind, `worker`, owned by
-  a feature, with a record beside it: label, goal, done-when, status, its branch (cut from the
-  feature branch), container name, dev port and dev command, and the latest handback. A worker
-  service owns its life: start, stop on idle, wake (sandbox only, or sandbox plus agent),
-  handback, fail, discard, and cleanup when the feature ships or is archived. Every mutation
-  emits an event, as the project's rule requires, so the thread list and header update live.
-- **The sandbox.** Built the way a burn's is (decision 7): sandcastle's long-lived sandbox
-  (`createSandbox`) with the burn image, cache mounts, the isolated clone at
-  `/home/agent/repo` and its post-commit push to the worker branch (ADR-0005), plus host
-  networking (decision 3) and a read-only mount of the host's ACP adapter bundled to one file
-  (decision 2). Idle stop is `docker stop` / `podman stop` by container name, wake is
-  `start`; the container is removed only on discard or cleanup. The burn engine
-  (`ticket-burner`, the landing queue, attempt chaining) is not changed.
-- **The sandbox transport (new, at an existing seam).** The thread host already accepts a
-  transport: the function that starts an agent process and returns its ACP stream. For a
-  `worker` session it runs the adapter inside the container with `docker exec -i` (Podman
-  alike) and hands its stdio to the host unchanged. Session cwd and briefing paths are
-  container paths. Everything else in the thread host (event log, reducer, prompt queue,
-  steering, idle timer, `session/load` on resume) is reused as is. The idle stop also stops the
-  container (decision 8), never while the agent waits on the human.
-- **Briefing.** The worker's system prompt carries its assignment (label, goal, done-when),
-  says to work in `/home/agent/repo` and commit as it goes, to start the dev server with its
-  tool, and to finish with `hand_back`, whose summary must include any direction the human
-  gave it directly. It runs with permissions bypassed and without runcastle's host guards
-  (decision 15). Its MCP config points at `localhost:<serverPort>/mcp` with its own session
-  header, so it sees only the worker tools.
-- **MCP tools.** For the lead (feature audiences, only with the setting on):
-  `start_worker({ label, goal, doneWhen })`, `message_worker({ worker, text })` (queued to the
-  turn's end during a turn), `discard_worker({ worker })`. For the worker:
-  `hand_back({ summary })` and `start_dev_server({ command? })`, defaulting to the design
-  command the project records in `.runcastle/design.json`, with the worker's port in
-  `RUNCASTLE_DESIGN_PORT`. The runner starts the command detached inside the container and
-  restarts it on every wake.
-- **Handback and failure.** `hand_back` records the summary, the worker branch's commits
-  against the feature branch and the files they touch, marks the worker handed back, and
-  wakes the lead once through the existing lead delivery (`deliverToLead`). Nothing lands: the
-  lead merges the branch itself if it wants it (decision 11). A dead container, a crashed
-  adapter or a failed setup marks the worker failed and wakes the lead once with the reason
-  (decision 19).
-- **Web.** The thread list row (tag, label, status) and the chat header's "Open preview" link
-  and stopped note. No new screen.
-- **The report.** `docs/features/<slug>/report.md`: what was built, what worked and what did
-  not, and a table of medians over at least five runs each on this repo:
-  cold start (sandbox create plus setup plus adapter ready), wake after idle stop (container
-  start plus `session/load`), time to first streamed update and full turn time on two fixed
-  prompts (a trivial one and a small code edit), time until the dev server answers after
-  `start_dev_server` and after a wake; and the same for a host side chat, plus the time to
-  create a host worktree and install its dependencies. One line sets a handback's size beside
-  what the lead would have read doing the job itself. It ends with the sandbox-or-host
-  question for checkpoint 1 and how to try a worker by hand (decision 18). Docker Desktop's
-  host-networking setting and the security cost of host networking are stated plainly.
-
-The lead builds this in its own checkout and takes the measurements on the host (decision 17),
-then runs one review round.
+- **Worker record (new, no database — decision 24).** One JSON file per worker under
+  `<dataDir>/workers/`, keyed by its thread's session id: label, goal, done-when, container,
+  branch (cut from the feature branch), port, status, handbacks and setup timings.
+- **The sandbox (decisions 7, 8, 23).** A plain `docker run` / `podman run` of the burn image,
+  as the agent user, on the ordinary bridge network, publishing one port on `127.0.0.1`.
+  Sandcastle is not used for the container because it cannot publish a port without a new
+  patch hunk. Mounts: the host repo's git dir (so commits come back as refs), the runtime dir
+  (read-only), and a shared cache volume. Setup clones the worker branch into
+  `/home/agent/repo` with a post-commit hook that pushes every commit back (ADR-0005's shape),
+  then installs dependencies by lockfile. Idle stop is `docker stop`; wake is `docker start`,
+  which also restarts the dev server the worker last ran. The burn engine is not changed.
+- **The runtime dir.** The ACP adapter (`claude-agent-acp`, the bridge between ACP and Claude
+  Code) bundled to one file with Bun, once per adapter version, plus the worker's MCP script.
+  Mounted read-only, so the burn image is unchanged (decision 2).
+- **The sandbox transport (new, at an existing seam).** The thread host already takes a
+  transport, the function that starts an agent process. A transport may now also say how the
+  session opens: its cwd, MCP servers, session options and permission mode. For a worker
+  thread it runs `docker exec -i … node /opt/runcastle/acp.mjs` with the Claude token passed by
+  name, and opens the session in `/home/agent/repo` with the worker's own MCP server,
+  permissions bypassed (decision 15) and the worker's briefing appended to the system prompt.
+  Event log, reducer, prompt queue, idle timer and `session/load` are reused as they are.
+- **The worker's tools (decision 23).** A dependency-free stdio MCP server inside the sandbox:
+  `hand_back({ summary })` writes the summary to a file; `start_dev_server({ command? })` runs
+  the command (default: the project's recorded design command) detached on the worker's port
+  with `PORT`, `RUNCASTLE_DESIGN_PORT` and `HOST=0.0.0.0`, waits until it answers on the
+  container's own address, and says when it only listens on localhost (which a published port
+  cannot reach). Nothing in the sandbox can reach runcastle.
+- **Handback (decisions 10, 11).** When a worker's turn ends, the server reads the handback
+  file through `docker exec`; a new one is recorded with the worker branch's commits and
+  files and wakes the lead once through the existing lead delivery. Nothing lands.
+- **The lead's tool.** `start_worker({ label, goal, doneWhen })`, offered to the feature's
+  main chat only when the setting is on. Names are provisional (decision 4).
+- **The measuring harness (decisions 16, 25, 27).** A script that drives the same sandbox code
+  and adapter with a bare ACP client against a scratch clone of this repo, five runs per side,
+  medians: cold start (container, clone, install, adapter, session), a trivial turn and a small
+  commit turn, the dev server answering from the host, a handback turn and its size, stop,
+  wake to first reply, the dev server after wake, and an attach-by-handoff resume (headless
+  `claude -p` in the sandbox, then its session loaded through the adapter). The host side does
+  the same in a host git worktree with the host's own Claude Code. It needs a scratch
+  `RUNCASTLE_DATA_DIR`.
+- **The report.** `report.md` in this folder: numbers, what worked and what did not, whether a
+  host worker could get its own port and preview, the security and portability notes, and how
+  to try a worker by hand on a scratch server (decision 18).
 
 ## Seams
 
-- **Thread host transport** (existing). Inject a fake ACP agent behind the sandbox transport's
-  exec step and observe that a `worker` session gets the exec command, container paths and
-  `session/load` on resume, through the same tests that cover the thread host today.
-- **Worker service** (new). Start, idle stop, wake, handback, fail, discard and feature-end
-  cleanup, with the container runtime calls behind an injected runner; observe the worker
-  record, the events emitted and the container commands issued.
-- **MCP server per audience** (existing). The five tools appear only for the right session
-  kinds and only with the setting on; `hand_back` produces one lead delivery with summary and
-  commits; a failure produces one.
-- **`thread.list` / thread view over tRPC** (existing). Workers come back with tag, label,
-  status and dev-server address.
-- **The live run** (manual). The measurements in `report.md` and the hands-on try are the
-  real proof; the review round drives it if a drive can start the branch's server.
+- **Thread host transport** (existing, widened). A fake ACP agent behind a transport that
+  supplies session options shows the session opening with them (`workers-spike.test.ts`).
+- **Sandbox argv** (new, pure). One published loopback port, no host networking, the token by
+  name only, the clone and push-on-commit hook.
+- **The live run** (manual). The harness's numbers and one end-to-end run on this branch's
+  server with a scratch data folder.
 
 ## Out of scope
 
-- The real worker list and the lead offering workers on its own: `interactive-workers`.
-- Moving burn tickets, reviews and conflict resolvers onto workers, a machine-wide worker pool,
-  and landing a worker's commits through the landing queue: `burns-become-workers`.
-- When agents get woken beyond "handed back" and "failed": `agents-are-woken-only-when-it-matters`.
-- Codex workers (decision 14), a host-worktree worker (decision 16), a portable relay instead
-  of host networking (decision 3), and a "new worker" door for the human (decision 4).
-- Phone layouts beyond what the shared thread list already gives.
+- The worker list, statuses, failure wakes, preview waking a stopped sandbox, cleanup and lead
+  messages: recommendations for `interactive-workers` (end of `decisions.md`).
+- Moving burns, reviews and resolvers onto workers, a worker pool, and landing a worker's
+  commits: `burns-become-workers`.
+- When agents get woken beyond a handback: `agents-are-woken-only-when-it-matters`.
+- Codex workers, a host-worktree worker, a relay letting the sandbox reach `/mcp`, a "new
+  worker" door for the human.
 
 ## Open questions
 
-- Whether the adapter bundles to one file that runs under the image's Node; if not, it is
-  installed into the container at setup, and the report says which and what it costs.
-- Whether sandcastle's long-lived sandbox survives a `docker stop` / `start` underneath it, or
-  the worker service must drive the container directly after creation. Settled while building.
 - Which code survives the merge is decided after checkpoint 1 (decision 5).
+- A worker whose container dies is only visible in its thread's error today; failure wakes
+  are for `interactive-workers`.
