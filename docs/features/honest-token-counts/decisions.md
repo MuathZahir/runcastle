@@ -66,3 +66,13 @@ Check first: 1, 4, 6, 8, 9
 **Decision:** Later features compare weighted tokens per day (and per landed ticket) before and after they ship, using the documented query over a date window. No baseline snapshot is stored: the one-time recount makes the past honest, so the baseline is simply the dates before a fix.
 **Why:** Gives every later saving one yardstick without a new table or a moment someone must remember to snapshot.
 **Assumed.** Alternative: store a dated baseline snapshot when this feature ships.
+
+## 12. An errand lasts until it is done, not until the next launch
+**Decision:** Supersedes: 7 (how the label ends). A session's purpose ends when its errand does: a resolve-conflict when the merge conflict no longer stands, a self-planning run when its planning turn ends (as today). Retired errands (start-lap, relay, lead-wake) and a conflict errand whose conflict is already gone are cleared before the conversation's agent next starts, so it is never handed an errand that is over. A new errand launch still replaces the old one. Every change of purpose is recorded on the timeline, and the token count files what follows under the new purpose.
+**Why:** Found while building. A plain open of the chat happens every time the human clicks into it, often while a conflict is still being resolved; clearing the purpose then would drop the edit permission the conflict resolution relies on. Ending the errand on its own outcome is both safe and the honest moment for per-purpose totals.
+**Assumed.** Alternative: clear the purpose on any launch without one (decision 7 as first written).
+
+## 13. A turn's end recounts the whole transcript, only when it changed
+**Decision:** Supersedes: 3 (how a turn's count reads). A count at a turn's end re-reads the whole transcript when it changed since the last count, and skips it otherwise; there is no partial read. Lines that cannot hold a count are skipped before parsing.
+**Why:** Measured while building: the largest transcript on this machine (52 MB, 132M tokens) counts in about 165 ms in full. Reading only the new part would need to track partial messages across reads for no visible gain.
+**Assumed.** Alternative: read only what the transcript gained since the last count (decision 3 as first written).

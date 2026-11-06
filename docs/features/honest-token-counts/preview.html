@@ -190,7 +190,7 @@ body[data-ba="before"] .a, body[data-ba="after"] .b{display:none}
   </div>
 
   <div class="sub">
-    <h3>One conversation, three launches <a class="pin" data-d="1">1</a> <a class="pin" data-d="7">7</a></h3>
+    <h3>One conversation, three launches <a class="pin" data-d="1">1</a> <a class="pin" data-d="12">12</a></h3>
     <p class="hint">A conversation resumed three times. Each message is counted once, by the launch that was running when it was written, and filed under that launch's purpose.</p>
     <svg viewBox="0 0 760 150" class="flow" role="img" aria-label="Timeline of one conversation split across three launches">
       <line x1="20" y1="112" x2="730" y2="112" stroke="var(--color-border-strong)" stroke-width="1.5"/><path d="M724 108 L732 112 L724 116" fill="none" stroke="var(--color-border-strong)" stroke-width="1.5"/><text x="20" y="108" fill="var(--color-text-tertiary)" font-size="11">time</text>
@@ -244,7 +244,7 @@ body[data-ba="before"] .a, body[data-ba="after"] .b{display:none}
     <h3>How it gets built</h3>
     <p class="hint">No worker tickets for the build: it is one connected change to the counting code that fits one session, and workers here run one at a time anyway.</p>
     <ol class="steps">
-      <li><i class="dot live"></i>The lead builds it in this chat, with the project's typecheck and tests green.</li>
+      <li><i class="dot ok"></i>The lead builds it in this chat, with the project's typecheck and tests green.</li>
       <li><i class="dot live"></i>One review round: a review ticket checks the code against the spec and the meter on screen.</li>
       <li><i class="dot"></i>You test-drive the meter and read the recount; then Merge.</li>
     </ol>
@@ -281,12 +281,12 @@ body[data-ba="before"] .a, body[data-ba="after"] .b{display:none}
     <div class="sub">
       <ul class="hoodlist">
         <li><b>Core summing</b> gains a per-message form: each counted message with its timestamp and its split (input, 5 min and 1 h cache writes, cache read, output). Sub-agent transcripts as today.</li>
-        <li><b>Usage service</b> counts a whole conversation at once: the rows sharing its transcript plus the launch records (the existing "session launching" event, added where a launch path lacks one). Each row stores total, split and a by-purpose split.</li>
-        <li><b>When:</b> turn end reads only the new part of the transcript (byte offset + last message id); session end recounts in full; feature read and round end stay as backstops. A missing or shorter transcript never lowers a figure.</li>
+        <li><b>Usage service</b> counts a whole conversation at once: the rows sharing its transcript plus the launch records (the "session launching" event and a new "purpose set" event, indexed by type). Each row stores total, split and a by-purpose split.</li>
+        <li><b>When:</b> turn end and session end recount the transcript when it changed (lines without a count are skipped unparsed); feature read and round end stay as backstops. A missing or shorter transcript never lowers a figure.</li>
         <li><b>Backfill:</b> one pass on first boot, guarded so it runs once. Gone transcripts: newest row keeps the figure, the others go to zero, all marked not recounted.</li>
         <li><b>Review workflow</b> keeps its worker run's result and feeds the same harvest implementation tickets use.</li>
         <li><b>Weighted tokens</b> are derived, never stored: one core function plus a documented SQL query (per day, kind, purpose).</li>
-        <li><b>Launcher</b> sets or clears a reused row's purpose on every launch.</li>
+        <li><b>Errands</b>: every purpose change is an event; a resolved conflict clears its errand; retired or finished errands clear before the agent starts.</li>
         <li><b>Meter</b>: tone rule and label in the shared context-meter component; thresholds are constants.</li>
         <li><b>Sandcastle patch</b>: file tools added to its tool-argument map.</li>
       </ul>
@@ -314,7 +314,9 @@ body[data-ba="before"] .a, body[data-ba="after"] .b{display:none}
     ['Every context meter colours by context size, not by how full the window is', 'Each message re-reads the whole context, so cost grows with size; amber at 650k of 1M comes far too late. The number changes to "212k" so a colour never contradicts a small percentage.', 'assumed'],
     ['No new place shows the totals', 'Nothing asked for needs a screen. The spec documents the query that sums them, raw and weighted.', 'assumed'],
     ['Burn logs show file work too', 'Burn logs see only shell, web and sub-agent calls. One line per tool in a patch runcastle already keeps.', 'assumed'],
-    ['Savings are measured in weighted tokens over a date window; no snapshot is saved', 'One yardstick for every later saving, with no table and no moment someone must remember.', 'assumed']
+    ['Savings are measured in weighted tokens over a date window; no snapshot is saved', 'One yardstick for every later saving, with no table and no moment someone must remember.', 'assumed'],
+    ['An errand lasts until it is done, not until the next launch', 'Supersedes 7. Found while building: the human opens the chat while a conflict is still being resolved, and clearing the purpose then would drop the edit permission the resolution needs. A resolve-conflict ends when the conflict is resolved; retired or finished errands clear before the agent next starts.', 'assumed'],
+    ['A turn\u2019s end recounts the whole transcript, only when it changed', 'Supersedes 3 in part. Measured: the largest transcript here (52 MB) counts in about 165 ms, so a partial read is not worth its complexity.', 'assumed']
   ]
   var C = [
     [1, 'Count each conversation once on its newest record only, with no per-purpose split.', 'Forces the shape of the counting code and the backfill; the split costs work that only pays off if per-purpose totals matter to you.'],
