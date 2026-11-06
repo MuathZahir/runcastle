@@ -119,3 +119,17 @@ file, skills, config and MCP servers, as 8 does for Claude Code), resume after a
 auto-review (11). The prototype's Claude-Code-only limit is removed.
 **Why:** Side chats become workers (7), so Claude-Code-only workers would take side chats away from
 Codex users. Burns and chats already run Codex, the burns inside the same sandbox image.
+
+## 13. All build work moves to workers; the review round stays until `burns-become-workers`
+**Decision:** From this feature on, the lead hands off build work only as workers ("with you" or "on
+its own") and no longer writes build tickets. An "on its own" worker gets the lead's assignment and
+hands back when done; the lead lands it and runs the project's checks itself, and where one piece
+must wait for another it starts the second after landing the first. Rounds remain only for the
+end-of-feature review ticket. `burns-become-workers` must retire the review round, the remaining
+ticket and round machinery and the conflict-fixing agent, leaving no rounds and no old code behind.
+This feature removes what it replaces itself: the side-chat thread kind and the lead's build-ticket
+guidance.
+**Why:** Two background tools would make the lead pick inconsistently. Rebuilding the review
+(app-driving, screenshots, the Review Package) is the heart of `burns-become-workers` and would
+roughly double this feature. The human: "Make sure that the next feature will retire it. I don't
+want old code and inconsistencies."
