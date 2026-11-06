@@ -54,6 +54,23 @@ export type AgentDigestDoc = (typeof AGENT_DIGEST_DOCS)[number]
  * files a mature feature accumulates, and re-reading them is how an agent talks
  * itself into redoing or second-guessing work that already landed.
  */
+/**
+ * The one canonical doc a burn or review agent gets INLINED: the first of these
+ * that exists. The spec is what workers build to; the brief stands in for a
+ * feature that has none (cheaper-burns decision 7). Inlining all three cost
+ * ~8k tokens on every call of every ticket, so the others are listed by path
+ * with {@link LISTED_CANONICAL_DOC_REASONS} instead. The lead's own feature
+ * context is not this: it keeps inlining all three.
+ */
+export const AGENT_INLINED_DOC_PREFERENCE: readonly AgentDigestDoc[] = ['spec.md', 'brief.md', 'decisions.md']
+
+/** Why a canonical doc an agent is not handed inline is still worth opening. */
+export const LISTED_CANONICAL_DOC_REASONS: Readonly<Record<AgentDigestDoc, string>> = {
+  'brief.md': 'why this feature exists — read it only if the purpose of your ticket is unclear',
+  'decisions.md': 'what was decided and why — read it before changing anything the spec does not spell out',
+  'spec.md': 'what the feature is — read it before changing anything your ticket does not spell out',
+}
+
 export const WITHHELD_FEATURE_DOCS: Readonly<Record<string, string>> = {
   'outcome.md': 'the previous run’s outcome report — human-facing, and the burner digests it is built from are already on their tickets',
   'test-notes.md': 'test-drive notes already triaged into tickets',

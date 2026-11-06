@@ -124,6 +124,16 @@ describe('burn guard rules', () => {
       )
     })
 
+    it('denies sed in-place edits addressed by line number, but not substitutions', () => {
+      expect(denied("sed -i '417,433d' src/a.ts")).toBe('no-sed-line-number-edit')
+      expect(denied("cd /repo && sed -i -e '12d' src/a.ts")).toBe('no-sed-line-number-edit')
+      expect(denied('sed -i.bak "40c replaced" src/a.ts')).toBe('no-sed-line-number-edit')
+      expect(denied("sed --in-place '7,$d' src/a.ts")).toBe('no-sed-line-number-edit')
+      expect(denied("sed -E -i '3a added' src/a.ts")).toBe('no-sed-line-number-edit')
+      expect(denied("sed -i 's/old/new/g' src/a.ts")).toBeNull()
+      expect(denied("sed -n '10,20p' src/a.ts | grep -i foo")).toBeNull()
+    })
+
     it('allows non-editing interpreter and sed commands', () => {
       expect(denied('node script.js')).toBeNull()
       expect(denied("perl -e 'print 1'")).toBeNull()
@@ -236,9 +246,9 @@ describe('the codex guard twin', () => {
 
     for (const script of [installedScript('claude-code'), installedScript('codex')]) {
       for (const rule of GUARD_RULES) {
-        expect(script).toContain(rule.pattern)
-        // As the script quotes it: reasons contain apostrophes, which `sh`
-        // single-quoting escapes as '\''.
+        // As the script quotes them: patterns and reasons may contain
+        // apostrophes, which `sh` single-quoting escapes as '\''.
+        expect(script).toContain(rule.pattern.split("'").join(`'\\''`))
         expect(script).toContain(rule.reason.split("'").join(`'\\''`))
       }
       // Both emit the one deny verdict claude AND codex understand — same

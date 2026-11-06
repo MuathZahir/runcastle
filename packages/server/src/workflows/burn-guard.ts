@@ -116,6 +116,19 @@ export const GUARD_RULES: readonly GuardRule[] = [
       'Do not perform multi-range file surgery with `sed -i`. Use the Edit tool, which is atomic and fails loudly when its target text is not found.',
   },
   {
+    id: 'no-sed-line-number-edit',
+    // An in-place sed whose program is addressed by line number and deletes,
+    // changes, inserts or appends: `sed -i '417,433d'`, `sed -i -e '12d'`,
+    // `sed --in-place '40c x'`. Line numbers go stale the moment an earlier edit
+    // lands, so these silently damage files (cheaper-burns decision 11).
+    // Pattern substitutions (`sed -i 's/a/b/'`) stay allowed: the program must
+    // START with a digit, optionally quoted.
+    pattern: `${CMD_START}sed[[:space:]]+([^;|&]*[[:space:]])?(-[A-Za-z]*i[^[:space:]]*|--in-place[^[:space:]]*)[[:space:]]+(-e[[:space:]]+)?['"]?[0-9]+(,([0-9]+|\\$))?[[:space:]]*[dcai]`,
+    inspectQuotedArguments: true,
+    reason:
+      'Do not edit files by line number with `sed -i` — line numbers go stale as soon as an earlier edit lands. Use the Edit tool, which matches the text itself and fails loudly when it is not found.',
+  },
+  {
     id: 'no-cat-heredoc-edit',
     pattern: `${CMD_START}cat[[:space:]]+>>?[[:space:]]*[^[:space:]|]+[[:space:]]*<<`,
     reason:

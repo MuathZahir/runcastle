@@ -24,6 +24,9 @@ import {
   docsDigestSizeWarning,
   fmtClock,
   isAgentDigestDoc,
+  AGENT_INLINED_DOC_PREFERENCE,
+  LISTED_CANONICAL_DOC_REASONS,
+  type AgentDigestDoc,
   newId,
   resolveBurnCacheMode,
   resolveModelEntry,
@@ -833,7 +836,7 @@ export function buildDocsDigest(
       [
         '### Also on disk, not inlined',
         '',
-        'These exist in this feature\'s docs directory and are NOT reproduced above. Read one only if your ticket points at it:',
+        'These exist in this feature\'s docs directory and are NOT reproduced above. Each line says when one is worth opening:',
         '',
         ...withheld.map((w) => `- \`${at(w.name)}\` — ${w.reason}`),
       ].join('\n'),
@@ -4145,12 +4148,21 @@ export function readDocsDigest(projectId: string, slug: string): DocsDigestResul
     files.push({ name, content })
   }
 
-  const text = buildDocsDigest(files, withheld, docsRel)
+  // One canonical doc inlined, the rest listed first in the index with a
+  // reason to open them (cheaper-burns decision 7).
+  const inlinedName = AGENT_INLINED_DOC_PREFERENCE.find((name) => files.some((f) => f.name === name))
+  const inlined = files.filter((f) => f.name === inlinedName)
+  const listed: WithheldDoc[] = files
+    .filter((f) => f.name !== inlinedName)
+    .map((f) => ({ name: f.name, reason: LISTED_CANONICAL_DOC_REASONS[f.name as AgentDigestDoc] }))
+  const index = [...listed, ...withheld]
+
+  const text = buildDocsDigest(inlined, index, docsRel)
   return {
     text,
     bytes: text.length,
-    included: files.map((f) => f.name),
-    withheld,
+    included: inlined.map((f) => f.name),
+    withheld: index,
     ...(files.length === 0 ? { missing: 'no-canonical-docs' as const } : {}),
   }
 }
@@ -4247,6 +4259,7 @@ function buildAgentEnv(
   onHost: boolean,
   token: string | undefined,
   runtime: AgentRuntime,
+  role: HeadlessAgentRole,
   extraEnv?: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const env: Record<string, string> = {}
@@ -4256,9 +4269,65 @@ function buildAgentEnv(
     }
   }
   if (token) env[RUNTIME_AUTH_KEY[runtime]] = token
+  Object.assign(env, headlessAgentEnv(runtime, HEADLESS_AGENT_EFFORT[role]))
   if (onHost && extraEnv) Object.assign(env, extraEnv)
   return env
 }
+
+/** Which headless agent a burn builds — the key its effort is looked up by. */
+export type HeadlessAgentRole = 'implement' | 'conflict' | 'review'
+
+/** The effort levels Claude Code accepts in `CLAUDE_CODE_EFFORT_LEVEL`. */
+export type HeadlessEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/**
+ * The effort runcastle runs each kind of headless agent at — the one place to
+ * change it (cheaper-burns decision 6). `undefined` sends nothing, so the agent
+ * keeps today's behaviour: a container burn runs at the model's own default
+ * (medium on the 5.5 models) and a host agent follows the human's own Claude
+ * settings. Every entry is held unset until the human picks the defaults; the
+ * orchestrator's recommendation is medium for `implement` and high for
+ * `review`. A value here outranks every settings file.
+ */
+export const HEADLESS_AGENT_EFFORT: Readonly<Record<HeadlessAgentRole, HeadlessEffort | undefined>> = {
+  implement: undefined,
+  conflict: undefined,
+  review: undefined,
+}
+
+/**
+ * Where a headless Claude Code agent compacts its conversation (cheaper-burns
+ * decision 5). Burns run on 1M-context models and used to grow to ~700k,
+ * re-reading all of it on every call; the median ticket ends near 149k, so an
+ * ordinary ticket never reaches this and only the oversized tail compacts.
+ */
+export const HEADLESS_AUTO_COMPACT_WINDOW = 200_000
+
+/**
+ * The environment runcastle itself sets on every headless agent, over whatever
+ * the host env carried. Claude Code only: Codex has its own compaction and
+ * effort knobs, and this feature leaves Codex agents alone.
+ */
+export function headlessAgentEnv(
+  runtime: AgentRuntime,
+  effort: HeadlessEffort | undefined,
+): Record<string, string> {
+  if (runtime !== 'claude-code') return {}
+  return {
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(HEADLESS_AUTO_COMPACT_WINDOW),
+    ...(effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort } : {}),
+  }
+}
+
+/**
+ * `--settings` turning auto-compaction back on. On the host, Claude Code reads
+ * the human's own `~/.claude/settings.json`, and an `autoCompactEnabled: false`
+ * there disables compaction whatever `CLAUDE_CODE_AUTO_COMPACT_WINDOW` says;
+ * flag settings outrank user settings, so this restores it for the agent alone.
+ * Double quotes with escaped inner quotes read the same in a POSIX shell and
+ * through cmd.exe's argv parsing, which the host path runs on Windows.
+ */
+export const HEADLESS_COMPACT_SETTINGS_ARG = '--settings "{\\"autoCompactEnabled\\":true}"'
 
 /**
  * The runcastle MCP server, in both the forms a runtime can take it: Claude Code
@@ -4300,6 +4369,8 @@ export interface BurnAgentOptions {
    * human's own.
    */
   bypassHookTrust?: boolean
+  /** Which kind of agent this is, for its effort level. Defaults to `implement`. */
+  role?: HeadlessAgentRole
 }
 
 /**
@@ -4340,7 +4411,7 @@ export function buildBurnAgent(
   options: BurnAgentOptions = {},
 ): AgentProvider {
   const onHost = options.onHost ?? config.sandbox === 'noSandbox'
-  const env = buildAgentEnv(onHost, token, model.runtime, options.hostEnv)
+  const env = buildAgentEnv(onHost, token, model.runtime, options.role ?? 'implement', options.hostEnv)
   const agent =
     model.runtime === 'codex'
       ? codex(model.id, { env } satisfies CodexOptions)
@@ -4392,6 +4463,7 @@ function buildAgentExtraArgs(runtime: AgentRuntime, options: BurnAgentOptions): 
     return args
   }
   if (options.mcp) args.push(`--mcp-config ${quoteArg(options.mcp.path)}`)
+  args.push(HEADLESS_COMPACT_SETTINGS_ARG)
   return args
 }
 
@@ -5042,7 +5114,7 @@ async function burnTicket(
       beginSetupSpan(resolveBranch)
       makeKillable(containerName)
       result = await run({
-        agent: buildBurnAgent(config, token, model, agentOptions),
+        agent: buildBurnAgent(config, token, model, { ...agentOptions, role: 'conflict' }),
         sandbox: selectSandbox(config, project, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt,
