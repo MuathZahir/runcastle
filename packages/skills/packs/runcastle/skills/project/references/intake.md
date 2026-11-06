@@ -99,8 +99,8 @@ It is written into `brief.md` verbatim and it is what the feature's agent (and e
 
 **Recommend the grill** when the feature decides how something new works or looks (where the human would have opinions), is big or hard to undo, or has open questions its brief marks as the human's. **Recommend plans itself** for bug fixes, well-specified mechanical work, and small visible tweaks to something that already exists. **When unsure, recommend the grill**: a needless grill costs the human one "plan it yourself"; a skipped one costs a plan built on guesses.
 
-- Grill with you: a new screen ("a page listing every run"); a new workflow or a change to how the human works with agents ("leads ask before each round"); a storage choice that is hard to undo.
-- Plans itself: "the login cache serves a stale user"; "the token meter turns amber at 80%"; a renamed label.
+- Grill with you: a new screen ("a page listing every run"); a change to how the human works with agents ("leads ask before each round").
+- Plans itself: "the login cache serves a stale user"; "the token meter turns amber at 80%".
 
 The human confirms or flips modes in the same answer that confirms the cut. That answer is not the shape question §1b requires, and a cut of one feature gets a mode too. **Write the mode into each feature's brief**, beside the working agreement, as one line with its reason (`Planning mode: grill with you — <reason>`). The human can flip a mode at any time: record it with `add_to_brief` and work to it.
 
