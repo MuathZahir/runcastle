@@ -9,6 +9,7 @@ import {
   dismiss,
   listByFeature as listFindings,
   markFixProgress,
+  markFixed,
 } from '../src/services/review-findings'
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
@@ -118,7 +119,7 @@ describe('the agent resolves a review’s open defects', () => {
         disposition: 'dismissed',
         note: 'retries are out of scope for this feature',
       })
-      expect(result).toMatchObject({ ok: true, finding: { status: 'dismissed' } })
+      expect(result).toEqual({ ok: true, findingId, status: 'dismissed' })
       expect(findingById(findingId)).toMatchObject({
         status: 'dismissed',
         resolvedBy: 'session',
@@ -150,11 +151,29 @@ describe('the agent resolves a review’s open defects', () => {
       expect(findingById(findingId)?.status).toBe('failed')
     })
 
-    it('refuses a defect that is no longer open', () => {
+    it('answers a finding that already closed with its status, changing nothing', () => {
+      const fixedId = openDefect('Fixed when its ticket landed')
+      markFixed(ctx, fixedId)
+      expect(
+        toolResolveFinding(ctx, session, { findingId: fixedId, disposition: 'addressed', note: 'n' }),
+      ).toEqual({ ok: true, findingId: fixedId, status: 'fixed', alreadyClosed: true })
+      expect(findingById(fixedId)?.resolutionNote).not.toBe('n')
+
+      const dismissedId = openDefect('Dismissed by the human')
+      dismiss(ctx, dismissedId)
+      expect(
+        toolResolveFinding(ctx, session, { findingId: dismissedId, disposition: 'addressed', note: 'n' }),
+      ).toEqual({ ok: true, findingId: dismissedId, status: 'dismissed', alreadyClosed: true })
+      expect(findingById(dismissedId)?.status).toBe('dismissed')
+    })
+
+    it('still refuses another feature’s closed finding', () => {
       const findingId = openDefect()
       dismiss(ctx, findingId)
+      const other = seedFeature(ctx, project.id, { slug: 'other' })
+      const stranger = createSessionRow(ctx, { featureId: other.id, kind: 'chat', worktreePath: repoPath })
       expect(() =>
-        toolResolveFinding(ctx, session, { findingId, disposition: 'addressed', note: 'n' }),
+        toolResolveFinding(ctx, stranger, { findingId, disposition: 'dismissed', note: 'n' }),
       ).toThrow(InvalidInputError)
     })
   })

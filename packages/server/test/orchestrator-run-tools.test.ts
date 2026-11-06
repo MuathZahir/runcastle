@@ -144,6 +144,95 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     })
   })
 
+  describe('read_feature_chat from where this thread left off', () => {
+    const line = (role: 'user' | 'assistant', text: string): string =>
+      JSON.stringify({ type: role, message: { content: text } })
+
+    function writeTranscript(name: string, turns: Array<['user' | 'assistant', string]>): string {
+      const path = join(repoPath, `${name}.jsonl`)
+      writeFileSync(path, `${turns.map(([r, t]) => line(r, t)).join('\n')}\n`)
+      return path
+    }
+
+    async function chatting(slug: string, path: string): Promise<Feature> {
+      const f = await feature(slug)
+      const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+      markSessionLive(ctx, chat.id, { transcriptPath: path })
+      return f
+    }
+
+    it('returns only the turns added since the last read, and says when nothing is new', async () => {
+      const path = writeTranscript('chat', [
+        ['user', 'make the cache hourly'],
+        ['assistant', 'done, it expires hourly'],
+      ])
+      const f = await chatting('talking', path)
+      const me = orchestrator()
+
+      const first = toolReadFeatureChat(ctx, me, { slug: f.slug })
+      expect(first.quote).toBe('Human: make the cache hourly\n\nAssistant: done, it expires hourly')
+
+      expect(toolReadFeatureChat(ctx, me, { slug: f.slug })).toMatchObject({
+        quote: null,
+        transcriptPath: path,
+        reason: 'nothing new since your last read',
+        shown: [],
+        reviewShots: [],
+      })
+
+      writeTranscript('chat', [
+        ['user', 'make the cache hourly'],
+        ['assistant', 'done, it expires hourly'],
+        ['assistant', 'should it also expire on deploy?'],
+      ])
+      const next = toolReadFeatureChat(ctx, me, { slug: f.slug })
+      expect(next).toMatchObject({ quote: 'Assistant: should it also expire on deploy?', earlierNewTurnsOmitted: 0 })
+      expect(next).not.toHaveProperty('reason')
+
+      // `full` reads as the first read did; another thread starts from scratch.
+      expect(toolReadFeatureChat(ctx, me, { slug: f.slug, full: true }).quote).toContain('make the cache hourly')
+      expect(toolReadFeatureChat(ctx, orchestrator(), { slug: f.slug }).quote).toContain('make the cache hourly')
+    })
+
+    it('reads a different transcript as a new chat', async () => {
+      const f = await chatting('cleared', writeTranscript('before', [['user', 'old talk about pears']]))
+      const me = orchestrator()
+      toolReadFeatureChat(ctx, me, { slug: f.slug })
+
+      const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+      markSessionLive(ctx, chat.id, { transcriptPath: writeTranscript('after', [['user', 'new talk about plums']]) })
+      expect(toolReadFeatureChat(ctx, me, { slug: f.slug }).quote).toBe('Human: new talk about plums')
+    })
+
+    it('reads a transcript that shrank under the same path as the first time', async () => {
+      const path = writeTranscript('rewritten', [
+        ['user', 'one'],
+        ['assistant', 'two'],
+        ['user', 'three'],
+      ])
+      const f = await chatting('rewritten', path)
+      const me = orchestrator()
+      toolReadFeatureChat(ctx, me, { slug: f.slug })
+      writeTranscript('rewritten', [['user', 'fresh start']])
+      const out = toolReadFeatureChat(ctx, me, { slug: f.slug })
+      expect(out.quote).toBe('Human: fresh start')
+      expect(out).not.toHaveProperty('reason')
+    })
+
+    it('counts the new turns the cap left out', async () => {
+      const long = 'x'.repeat(2_000)
+      const path = writeTranscript('long', [['user', 'start']])
+      const f = await chatting('long', path)
+      const me = orchestrator()
+      toolReadFeatureChat(ctx, me, { slug: f.slug })
+      writeTranscript('long', [['user', 'start'], ...Array.from({ length: 6 }, (): ['assistant', string] => ['assistant', long])])
+      const out = toolReadFeatureChat(ctx, me, { slug: f.slug })
+      // 8k of quote holds three 2k turns; the three older new ones are counted, not sent.
+      expect(out.earlierNewTurnsOmitted).toBe(3)
+      expect(out.quote?.split('\n\n')).toHaveLength(3)
+    })
+  })
+
   describe('refuses through the shared gate', () => {
     it('from a session that is not an orchestrator', async () => {
       const f = await feature('humans')

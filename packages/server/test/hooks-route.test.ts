@@ -11,6 +11,7 @@ import { features, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import { toolsForAudience } from '../src/mcp/server'
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
@@ -73,7 +74,12 @@ describe('hooks route', () => {
     expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
     expect(json.hookSpecificOutput.additionalContext).toContain('[runcastle] Demo feature')
     expect(json.hookSpecificOutput.additionalContext).toContain('status: Talking with you')
-    expect(json.hookSpecificOutput.additionalContext).toContain('get_feature_context')
+    expect(json.hookSpecificOutput.additionalContext).toContain('returns only what changed')
+    // A Claude Code session ends with one line that loads every runcastle tool at once.
+    const lastLine = json.hookSpecificOutput.additionalContext.split('\n').at(-1)
+    expect(lastLine).toBe(
+      `Load your runcastle tools once: ToolSearch "select:${toolsForAudience('chat').map((n) => `mcp__runcastle__${n}`).join(',')}"`,
+    )
 
     const session = getSessionRow(ctx, sessionId)
     expect(session?.status).toBe('live')
@@ -917,6 +923,12 @@ describe('hooks route, project-scoped sessions', () => {
       const note = await startNote()
       expect(note).toContain('Open prepared keys: none.')
       expect(note).toContain('open as usual.')
+    })
+
+    it('ends with the one line that loads every orchestrator tool', async () => {
+      const note = await startNote()
+      const tools = toolsForAudience('project').map((n) => `mcp__runcastle__${n}`)
+      expect(note.split('\n').at(-1)).toBe(`Load your runcastle tools once: ToolSearch "select:${tools.join(',')}"`)
     })
   })
 

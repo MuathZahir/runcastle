@@ -566,6 +566,28 @@ describe('project-session MCP tools', () => {
     expect(() => toolReadFeatureBrief(ctx, session, { slug: 'nope' })).toThrow(NotFoundError)
   })
 
+  it('a repeat read sends the charter it already sent as unchanged, and trims the row and bases', async () => {
+    write(repoPath, 'CONTEXT.md', '# Charter\n\nthe first version\n')
+
+    const first = await toolGetProjectContext(ctx, session)
+    expect(first.charter).toBe('# Charter\n\nthe first version\n')
+    expect(Object.keys(first.project)).toEqual(['id', 'name', 'repoPath', 'sessionBranch'])
+    expect(first.baseBranches).not.toHaveProperty('selectable')
+    expect(first.baseBranches).toHaveProperty('detectedMain')
+
+    const repeat = await toolGetProjectContext(ctx, session)
+    expect(repeat.charter).toEqual({ unchanged: true, sha: expect.stringMatching(/^[0-9a-f]{64}$/) })
+
+    // An edited charter comes whole again; `full` always resends everything.
+    write(repoPath, 'CONTEXT.md', '# Charter\n\nthe second version\n')
+    expect((await toolGetProjectContext(ctx, session)).charter).toContain('the second version')
+    const full = await toolGetProjectContext(ctx, session, { full: true })
+    expect(full.charter).toContain('the second version')
+    expect(full.baseBranches).toHaveProperty('selectable')
+    expect(full.project).toMatchObject({ id: projectId })
+    expect(Object.keys(full.project).length).toBeGreaterThan(Object.keys(first.project).length)
+  })
+
   it('reports an absent charter as absent, with no error', async () => {
     const out = await toolGetProjectContext(ctx, session)
     expect(out.charter).toBeUndefined()
@@ -583,7 +605,7 @@ describe('project-session MCP tools', () => {
     await g.raw(['branch', 'develop'])
     await g.checkout('develop')
 
-    const out = await toolGetProjectContext(ctx, session)
+    const out = await toolGetProjectContext(ctx, session, { full: true })
 
     expect(out.baseBranches.current).toBe('develop')
     expect(out.baseBranches.currentIsSelectable).toBe(true)
@@ -595,7 +617,7 @@ describe('project-session MCP tools', () => {
     const g = simpleGit(repoPath)
     await g.raw(['branch', 'feature/dark-mode'])
 
-    const out = await toolGetProjectContext(ctx, session)
+    const out = await toolGetProjectContext(ctx, session, { full: true })
 
     expect(out.baseBranches.selectable).not.toContain('feature/dark-mode')
   })
@@ -610,7 +632,7 @@ describe('project-session MCP tools', () => {
     await g.raw(['branch', 'feature/dark-mode'])
     await g.checkout('feature/dark-mode')
 
-    const out = await toolGetProjectContext(ctx, session)
+    const out = await toolGetProjectContext(ctx, session, { full: true })
 
     expect(out.baseBranches.current).toBe('feature/dark-mode')
     expect(out.baseBranches.currentIsSelectable).toBe(false)
@@ -624,7 +646,7 @@ describe('project-session MCP tools', () => {
     const head = (await g.revparse(['HEAD'])).trim()
     await g.checkout(['--detach', head])
 
-    const out = await toolGetProjectContext(ctx, session)
+    const out = await toolGetProjectContext(ctx, session, { full: true })
 
     expect(out.baseBranches.current).toBe('')
     expect(out.baseBranches.currentIsSelectable).toBe(false)

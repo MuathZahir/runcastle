@@ -65,8 +65,11 @@ result, any review findings and where the digests are.
    another relied on? Did a decision turn out wrong? Fix the contract in code,
    amend `decisions.md` and `spec.md` when what was decided changed, and update
    the pending tickets. A contract reported wrong is a reason to re-plan.
-3. **Handle review findings.** A finding stays open until you resolve it: fix it
-   in a round or yourself, or dismiss it and say why. A review reports useless
+3. **Handle review findings.** Read `reviewEvidence` (the latest review's
+   DIGEST.md, screenshots and walkthrough) before planning more work. A finding
+   stays open until you resolve it: fix it in a round (emit the fix ticket with
+   `originFindingId` and the finding closes when that ticket lands) or yourself
+   (`resolve_finding`), or dismiss it and say why. A review reports useless
    tests as low-severity observations, never defects: when the round you are
    planning already mints a fix ticket, fold them into it (one acceptance
    criterion: delete or rewrite the named tests), so they go at no extra sandbox

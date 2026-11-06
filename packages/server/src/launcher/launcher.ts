@@ -413,7 +413,7 @@ async function openMainChat(
   // Purpose-specific text comes first so it remains the immediate task, then
   // the feature's current state — which the host adds itself to the first
   // prompt of a resumed conversation it starts.
-  const opening = selfPlan ? selfPlanKickoffFor(runtime) : chatKickoffFor(runtime)
+  const opening = selfPlan ? selfPlanKickoffFor(runtime, resumed) : chatKickoffFor(runtime, resumed)
   const header = hostSaysHeader(ctx, thread, opts) ? undefined : chatKickoffHeader(ctx, feature, runtime, opening)
   const said = [plan.line, header].filter(Boolean).join(' ') || opening
   const line = tagRuncastlePrompt(kickoffLineFor('chat', said, runtime))

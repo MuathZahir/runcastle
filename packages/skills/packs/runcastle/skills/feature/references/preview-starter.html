@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
 <title>[Feature title] preview</title>
 <style>
 /* ---- runcastle theme: dark is the default, light is a full peer.
@@ -132,6 +133,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 <!-- 1 · what this is -->
 <header id="what">
+  <!-- FILL:what -->
   <h1>[Feature title]</h1>
   <p class="lede">[One or two sentences: what this feature is, in the human's words.]</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/[slug]/preview.html</span></div>
@@ -143,6 +145,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 2 · the show -->
 <section id="show">
   <h2>The show</h2>
+  <!-- FILL:show -->
   <!-- THE SHOW IS FREE-FORM. Replace this comment with whatever explains how the
        feature will work: screens, clickable prototypes, skeletons, flows, before
        and after, scenarios. There is no template. Pin a decision's number where
@@ -157,6 +160,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
        <p>States: empty · loading · full · error.</p>
        <p class="mono">src/components/File.tsx · design page /preview/path</p></div>
   -->
+<!-- FILL:screen -->
 <!-- screen:example-name -->
 <!--
     <div class="screen">
@@ -177,9 +181,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <section id="left-out">
   <h2>What is left out</h2>
   <div class="out2">
+    <!-- FILL:later -->
     <div><h3>Later</h3><ul>
       <li><i class="dot"></i>[Deferred to a backlog feature]</li>
     </ul></div>
+    <!-- FILL:not-this -->
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>[Out of scope]</li>
     </ul></div>
@@ -191,6 +197,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
+      <!-- FILL:hood -->
       <!-- [The technical shape, for a reader who wants it. Draw it where you can.] -->
     </div>
   </details>
@@ -203,11 +210,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var $ = function (s, r) { return (r || document).querySelector(s) }
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
 
+  // <!-- FILL:D -->
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['[Decision 1 title]', '[Why, in a sentence]']
   ]
+  // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = []
