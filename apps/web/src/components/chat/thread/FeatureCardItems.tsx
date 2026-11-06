@@ -44,11 +44,14 @@ export function RuncastleDisplay({
   display,
   agentText,
   at,
+  held = false,
 }: {
   display: NonNullable<Extract<ThreadItem, { kind: 'user' }>['display']>
   agentText: string
   /** When the line arrived, for the news block's "6m ago". */
   at?: number
+  /** Held for the agent's next turn rather than waking it (agents-are-woken-only-when-it-matters decision 12). */
+  held?: boolean
 }) {
   const { find, open, linked } = useLiveFeature()
   if ('news' in display) {
@@ -58,6 +61,7 @@ export function RuncastleDisplay({
         agentText={agentText}
         onOpen={open}
         linked={linked}
+        held={held}
         {...(at !== undefined ? { when: relTimeAgo(at) } : {})}
       />
     )

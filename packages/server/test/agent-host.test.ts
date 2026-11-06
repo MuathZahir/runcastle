@@ -1029,3 +1029,67 @@ describe('a thread always shows what is happening', () => {
     }
   })
 })
+
+describe('held prompts and the usage limit (agents-are-woken-only-when-it-matters decisions 2, 9, 13)', () => {
+  const texts = () => prompts().map((p) => p.prompt[0]?.text)
+  const LIMIT = "You've hit your 5-hour limit · resets 8pm (Europe/Berlin)"
+
+  /** A Claude usage read whose 5-hour window is used up and resets at `at`. */
+  const spentUntil = (at: number) => async () => ({ rate_limits: { five_hour: { utilization: 100, resets_at: new Date(at).toISOString() } } })
+
+  /** A script whose first `fails` turns end on the usage limit. */
+  function limited(fails = 1): FakeScript {
+    let n = 0
+    return {
+      turn: async (t) => {
+        if (n++ < fails) {
+          await t.say(LIMIT)
+          throw new Error(LIMIT)
+        }
+        await t.say('Done.')
+      },
+    }
+  }
+
+  it('marks held prompts, says them in order ahead of the next one, and lets a keyed one replace its own', async () => {
+    setup()
+    const id = thread()
+    await host.prompt(id, { text: 'talking' }, { source: 'runcastle', hold: true, holdKey: 'chat' })
+    await host.prompt(id, { text: 'round finished' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'quiet' }, { source: 'runcastle', hold: true, holdKey: 'chat' })
+    expect(fake.processes).toHaveLength(0)
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(texts()).toEqual(['round finished\n\nquiet\n\nHello'])
+    expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([true, true, true, false])
+    const view = foldThread(events)
+    expect(view.items.filter((i) => i.kind === 'user' && i.held)).toHaveLength(3)
+    expect(view.items.some((i) => i.kind === 'user' && i.held && i.starting)).toBe(false)
+  })
+
+  it('keeps runcastle’s message the limit stopped, holds what comes meanwhile, and sends both once the limit resets', async () => {
+    const at = Date.now() + 400
+    setup(limited(), { readUsage: spentUntil(at), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.includes('when the limit resets')))
+    await host.prompt(id, { text: 'More news' }, { source: 'runcastle' })
+    expect(texts()).toEqual(['News'])
+
+    const events = await logUntil(id, turnsEnded(2), 5000)
+    expect(texts()[1]).toMatch(/^News\n\nMore news\n\n\[runcastle\] The usage limit has reset\./)
+    expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([false, true, false])
+  })
+
+  it('leaves a human’s own message to them, but keeps what rode ahead of it', async () => {
+    setup(limited(), { readUsage: spentUntil(Date.now() + 60_000), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'Held news' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2))
+    expect(texts()).toEqual(['Held news\n\nHi', 'Held news\n\nAgain'])
+    expect(readThreadEvents(id).some((e) => e.type === 'notice')).toBe(false)
+  })
+})

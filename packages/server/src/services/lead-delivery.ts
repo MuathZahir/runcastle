@@ -11,6 +11,7 @@ import { getRunRow } from './repo'
 import { listByFeature as listFindings } from './review-findings'
 import { listRounds, runClaimedTicketIds } from './runs'
 import { listByIds } from './tickets'
+import { wakes, type WakeReason } from './wake-rule'
 
 /**
  * The one way anything reaches a feature's lead (`the-feature-lead-runs-rounds`
@@ -30,6 +31,12 @@ export interface LeadMessage {
    * agent: what the feature's chat shows the human in place of the marked text.
    */
   orchestrator?: { text: string; relayed: boolean }
+  /**
+   * The wake rule's tag (`wake-rule.ts`; `agents-are-woken-only-when-it-matters`
+   * decision 10): news is held for the lead's next prompt instead of starting a
+   * turn. A message is a question unless its sender says otherwise.
+   */
+  reason?: WakeReason
 }
 
 /** A message waiting for the lead: the tagged text it goes out as, and what the human reads of it. */
@@ -47,7 +54,8 @@ interface HeldLine {
  *
  * A delivery that fails to reach the thread (the runtime cannot run, the chat
  * cannot be opened) keeps its message: it goes ahead of the next one, and
- * `lead.wake_failed` says why meanwhile.
+ * `lead.wake_failed` says why meanwhile. News (`reason: 'news'`) is held in the
+ * chat for the lead's next prompt and wakes nothing.
  */
 export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMessage): Promise<void> {
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
@@ -60,17 +68,18 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
   const display = said.length === lines.length ? { orchestrator: said } : undefined
   try {
     const threadId = await leadThread(ctx, feature)
+    const hold = !wakes(msg.reason ?? 'question')
     await agentHost(ctx).prompt(
       threadId,
       { text: lines.map((l) => l.text).join('\n\n') },
-      { source: 'runcastle', ...(display ? { display } : {}) },
+      { source: 'runcastle', ...(hold ? { hold: true } : {}), ...(display ? { display } : {}) },
     )
     held.delete(feature.id)
     failures.delete(feature.id)
     emit(ctx, feature.id, {
       type: 'lead.message_queued',
       message: `message sent to the agent's chat (${msg.source})`,
-      data: { source: msg.source, sessionId: threadId, route: 'prompt', text: msg.text },
+      data: { source: msg.source, sessionId: threadId, route: hold ? 'held' : 'prompt', text: msg.text },
     })
   } catch (err) {
     held.set(feature.id, lines)
@@ -79,6 +88,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     failures.set(feature.id, { reason, at, since: failures.get(feature.id)?.since ?? at })
     const data: LeadWakeFailedData & LeadMessage = { exitCode: null, tail: reason, messages: lines.length, ...msg }
     delete data.orchestrator
+    delete data.reason
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
   }
 }
@@ -153,8 +163,9 @@ export function composeRoundWake(ctx: AppCtx, featureId: string, runId: string):
           ...findings.map((f) => `- [${f.severity} ${f.kind}] ${f.title} — ${f.location} (${f.status})`),
         ]
       : []),
-    'Read each ticket’s digest with get_ticket({ seq }), then fix it yourself, dispatch the next ' +
-      'round, ask the human, or declare ready.',
+    'This is the whole round: no need to fetch it again. Read a ticket’s digest with get_ticket({ seq }) ' +
+      'only where you need its detail (a failed ticket, a finding to fix), then fix it yourself, dispatch ' +
+      'the next round, ask the human, or declare ready.',
   ]
   return lines.join('\n')
 }

@@ -225,6 +225,8 @@ export interface UsageLimit {
   percent: number
   /** When it resets, said for a person: "3:40 pm", "Thu 9:00 am". */
   resets: string
+  /** When it resets, ms since the epoch; absent when the runtime did not say. */
+  resetsAt?: number
 }
 
 /** The usage popover's numbers: the account's limits and which plan it is on. */
@@ -290,6 +292,11 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     hidden: z.boolean().optional(),
     /** What the human reads of a runcastle prompt; the agent never gets it. */
     display: PromptDisplay.optional(),
+    /**
+     * Held for the agent's next prompt (`PromptOptions.hold`): it started no turn
+     * and answers nothing, so it neither waits for an agent nor ends a reply.
+     */
+    held: z.boolean().optional(),
   }),
   /** The agent process: starting on a prompt, running, stopped (idle, shutdown, crash). */
   z.object({
@@ -431,6 +438,8 @@ export type ThreadItem =
       from?: 'runcastle'
       /** What the human reads of a runcastle line, in place of its text. */
       display?: PromptDisplay
+      /** Held for the agent's next turn: it woke nobody, so no answer follows it. */
+      held?: boolean
       /** When the line arrived; carried with `display`, for a news block's "6m ago". */
       at?: number
     }
@@ -581,6 +590,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   let lastMessage: string | undefined
   for (const e of liveEvents(events)) {
     if (e.type === 'prompt') {
+      // A held line rides the next prompt: it answers nothing the agent said.
+      if (e.held) continue
       answering = !e.hidden
       replied = false
     } else if (e.type === 'turn_started') {
@@ -934,8 +945,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           ...(e.steered ? { steered: true } : {}),
           ...(e.source === 'runcastle' ? { from: 'runcastle' as const } : {}),
           ...(e.display ? { display: e.display, at: e.at } : {}),
+          ...(e.held ? { held: true } : {}),
         }
-        if (view.process !== 'running' && !e.steered) {
+        if (view.process !== 'running' && !e.steered && !e.held) {
           // Only the latest prompt waits visibly: a held opening's next prompt takes its place.
           if (startingPrompt) delete startingPrompt.starting
           item.starting = true

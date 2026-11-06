@@ -8,6 +8,7 @@ import { subscribeLive } from './bus'
 import { getEventRow } from './events'
 import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
+import { wakes, type WakeReason } from './wake-rule'
 
 /**
  * What a project thread hears about the features it holds
@@ -15,6 +16,12 @@ import { getTicket } from './tickets'
  * one `[runcastle]` line said into the HOLDER as a runcastle prompt
  * ({@link notifyOrchestrator}), and into no other thread, however new. A feature
  * nobody holds produces nothing, and a shipped one has nothing more to say.
+ *
+ * Each line is tagged by the wake rule (`wake-rule.ts`; `agents-are-woken-only-
+ * when-it-matters` decisions 3–5): a handback or a question wakes the holder,
+ * starting it when its process has stopped; news is held, logged in its chat
+ * and said with its next prompt. A gathered batch with one waking line carries
+ * the rest with it.
  *
  * Two kinds of event reach it:
  *
@@ -27,26 +34,25 @@ import { getTicket } from './tickets'
  *   answered it, and only while the holder's process runs: they tell a working
  *   thread to wait or carry on, and a closed one is doing neither (decision 12).
  *
- * | Event type                        | Kind | When                                        |
- * |-----------------------------------|------|---------------------------------------------|
- * | `session.self_plan_ended`         | end  | a self-planning run exited (`data.complete`) |
- * | `session.run_ended`               | end  | a headless run exited (rows before threads) |
- * | `run.finished`                    | end  | a round finished or failed (`data.status`)  |
- * | `run.reconciled`                  | end  | a server restart cut a round off            |
- * | `feature.waiting`                 | end  | the agent waits for the human (`data.why`)  |
- * | `feature.ready_declared`          | end  | the agent declared the work ready to test   |
- * | `lead.wake_failed`                | end  | runcastle could not wake the agent          |
- * | `ticket.done` / `ticket.failed`   | end  | only for a review or verification ticket    |
- * | `feature.shipped`                 | end  | a merge landed                              |
- * | `merge.conflict`                  | end  | a merge conflicted                          |
- * | `testdrive.dev_failed`            | end  | a drive's dev server failed to start        |
- * | `feature.started`                 | end  | only a draft that started by itself         |
- * | `feature.autostart.*`             | end  | a draft could not start by itself           |
- * | `feature.taken`                   | end  | another thread took it; goes to the old holder |
- * | `session.launching`               | act  | a self-planning run was launched            |
- * | `session.process_started`         | act  | the human's message started a thread        |
- * | `session.process_stopped`         | act  | that thread's process stopped               |
- * | `testdrive.started` / `.stopped`  | act  | a test drive (not the review agent's)       |
+ * | Event type                        | Kind | Wakes?   | When                                        |
+ * |-----------------------------------|------|----------|---------------------------------------------|
+ * | `session.self_plan_ended`         | end  | unless the feature already waits on the human | a self-planning run exited (`data.complete`) |
+ * | `run.finished`                    | end  | failed   | a round finished or failed (`data.status`)  |
+ * | `run.reconciled`                  | end  | no       | a server restart cut a round off            |
+ * | `feature.waiting`                 | end  | yes      | the agent waits for the human (`data.why`)  |
+ * | `feature.ready_declared`          | end  | yes      | the agent declared the work ready to test   |
+ * | `lead.wake_failed`                | end  | yes      | runcastle could not wake the agent          |
+ * | `ticket.done` / `ticket.failed`   | end  | no       | only for a review or verification ticket    |
+ * | `feature.shipped`                 | end  | yes      | a merge landed                              |
+ * | `merge.conflict`                  | end  | yes      | a merge conflicted                          |
+ * | `testdrive.dev_failed`            | end  | yes      | a drive's dev server failed to start        |
+ * | `feature.started`                 | end  | yes      | only a draft that started by itself         |
+ * | `feature.autostart.*`             | end  | yes      | a draft could not start by itself           |
+ * | `feature.taken`                   | end  | no       | another thread took it; goes to the old holder |
+ * | `session.launching`               | act  | no       | a self-planning run was launched            |
+ * | `session.process_started`         | act  | no       | the human's message started a thread        |
+ * | `session.process_stopped`         | act  | no       | that thread's process stopped               |
+ * | `testdrive.started` / `.stopped`  | act  | no       | a test drive (not the review agent's)       |
  *
  * A merge is its landing or conflict above. Project-level events produce nothing.
  */
@@ -61,6 +67,8 @@ export interface NotifyState {
     holderId: string | null
     /** Whether the holder's process is running. */
     holderRunning: boolean
+    /** Whether the feature waits on the human (a waiting reason is set). */
+    waiting?: boolean
   }
   /** The session the event names (`data.sessionId`), when there is one. */
   session?: Pick<SessionRow, 'kind' | 'purpose' | 'headless'>
@@ -70,7 +78,12 @@ export interface NotifyState {
 
 type NewsEntry = Extract<PromptDisplay, { news: unknown }>['news'][number]
 
-type Described = { kind: 'end' | 'act'; text: string }
+/**
+ * A line: what kind of event it is, its words, the wake rule's tag, and for a
+ * line about what the human is doing, the key a newer such line replaces it by
+ * while both are held (decision 13).
+ */
+type Described = { kind: 'end' | 'act'; text: string; reason: WakeReason; key?: string }
 
 const PREFIX = '[runcastle]'
 
@@ -109,23 +122,24 @@ function isHeadless(session: NotifyState['session']): boolean {
 }
 
 /** What happened and what to read next, without the prefix or the slug; null for no line. */
-function describe(event: EventRow, session: NotifyState['session'], ticket: NotifyState['ticket'], slug: string): Described | null {
+function describe(event: EventRow, state: NotifyState, slug: string): Described | null {
+  const { session, ticket } = state
   const data = record(event.data)
   const context = `Read it with get_feature_context({ slug: "${slug}" }).`
   const tickets = `Read it with list_tickets({ slug: "${slug}" }).`
   switch (event.type) {
-    case 'session.self_plan_ended':
+    case 'session.self_plan_ended': {
+      // A run that ends on a wait already woke the holder with the wait's line (decision 5).
+      const reason: WakeReason = state.feature?.waiting ? 'news' : 'handback'
       return data.complete === true
-        ? { kind: 'end', text: `finished planning. ${context}` }
-        : { kind: 'end', text: `stopped before the plan was complete. ${context}` }
-    case 'session.run_ended':
-      return data.complete === true
-        ? { kind: 'end', text: `headless run finished. ${context}` }
-        : { kind: 'end', text: `headless run stopped before it finished. ${context}` }
+        ? { kind: 'end', text: `finished planning. ${context}`, reason }
+        : { kind: 'end', text: `stopped before the plan was complete. ${context}`, reason }
+    }
     case 'run.finished': {
       const summary = typeof data.summary === 'string' ? clip(data.summary) : ''
-      const verb = data.status === 'succeeded' ? 'round finished' : 'round failed'
-      return { kind: 'end', text: `${verb}${summary ? ` (${summary})` : ''}. ${tickets}` }
+      // A finished round goes to its lead, whose ready or wait line follows; a failed one is the holder's to see.
+      const ok = data.status === 'succeeded'
+      return { kind: 'end', text: `${ok ? 'round finished' : 'round failed'}${summary ? ` (${summary})` : ''}. ${tickets}`, reason: ok ? 'news' : 'handback' }
     }
     case 'run.reconciled':
       // Only a round is news; its lead is woken with the same counts.
@@ -133,6 +147,7 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return {
         kind: 'end',
         text: `round interrupted by a server restart (${String(data.landedTickets)} landed, ${String(data.pendingTickets)} pending). ${tickets}`,
+        reason: 'news',
       }
     case 'feature.waiting': {
       // "ready to test" is the ready line's; a cleared reason is not news.
@@ -140,11 +155,12 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return {
         kind: 'end',
         text: `waits for you: ${clip(data.why, WHY_MAX)}. Read what it asked with read_feature_chat({ slug: "${slug}" }).`,
+        reason: 'question',
       }
     }
     case 'feature.ready_declared': {
       const scenario = typeof data.scenario === 'string' ? clip(data.scenario) : ''
-      return { kind: 'end', text: `declared ready to test${scenario ? ` (drive: ${scenario})` : ''}. ${context}` }
+      return { kind: 'end', text: `declared ready to test${scenario ? ` (drive: ${scenario})` : ''}. ${context}`, reason: 'handback' }
     }
     case 'lead.wake_failed':
       // The messages wait for the agent's next wake; without this line a sender
@@ -152,56 +168,70 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return {
         kind: 'end',
         text: `could not wake its agent, so messages sent to it have not reached it yet (${clip(event.message)}). ${context}`,
+        // Nothing else will come from a lead that cannot be woken: held, the feature would stall unseen.
+        reason: 'question',
       }
     case 'ticket.done':
     case 'ticket.failed': {
       if (ticket?.kind !== 'review') return null
       const pass = ticket.passKind === 'verification' ? 'verification pass' : 'review pass'
       const verb = event.type === 'ticket.done' ? 'finished' : 'failed'
-      return { kind: 'end', text: `${pass} (ticket ${ticket.seq}) ${verb}. ${tickets}` }
+      return { kind: 'end', text: `${pass} (ticket ${ticket.seq}) ${verb}. ${tickets}`, reason: 'news' }
     }
     case 'feature.shipped':
-      return { kind: 'end', text: `${clip(event.message)}: shipped. Backlog features waiting on it may start now. ${context}` }
+      return { kind: 'end', text: `${clip(event.message)}: shipped. Backlog features waiting on it may start now. ${context}`, reason: 'handback' }
     case 'merge.conflict': {
       const files = Array.isArray(data.files) ? data.files.length : 0
       return {
         kind: 'end',
         text: `merge conflicted${files > 0 ? ` in ${files} file(s)` : ''}. Resolve it in the feature's worktree, then merge_feature again. ${context}`,
+        reason: 'question',
       }
     }
     case 'testdrive.dev_failed':
-      return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
+      return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}`, reason: 'question' }
     case 'feature.started':
       if (typeof data.autoStartedBy !== 'string') return null
       return {
         kind: 'end',
         text: `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going.`,
+        reason: 'question',
       }
     case AUTOSTART_SKIPPED:
     case AUTOSTART_FAILED:
-      return { kind: 'end', text: `${clip(event.message, WHY_MAX)}. ${context}` }
+      return { kind: 'end', text: `${clip(event.message, WHY_MAX)}. ${context}`, reason: 'question' }
     case 'feature.taken': {
       const name = typeof data.name === 'string' ? `the thread "${clip(data.name)}"` : 'another thread'
-      return { kind: 'end', text: `was taken by ${name}, so you will hear nothing more about it and it is no longer yours to act on.` }
+      return { kind: 'end', text: `was taken by ${name}, so you will hear nothing more about it and it is no longer yours to act on.`, reason: 'news' }
     }
     case 'session.launching':
       // Plan it yourself is the human's act; its end is its own END event above.
       if (!session || session.purpose !== 'self-plan') return null
-      return { kind: 'act', text: `the human had it plan itself. Wait for the run to end.` }
+      return { kind: 'act', text: `the human had it plan itself. Wait for the run to end.`, reason: 'news' }
     case 'session.process_started':
       // A thread runcastle started (a wake, a kickoff) is runcastle delivering, not the human acting.
       // A side thread never makes the feature busy.
       if (!session || data.source !== 'human' || session.kind === 'side' || isHeadless(session)) return null
-      return { kind: 'act', text: `the human is talking to its ${session.kind} thread; it is busy until that conversation goes quiet.` }
+      return {
+        kind: 'act',
+        text: `the human is talking to its ${session.kind} thread; it is busy until that conversation goes quiet.`,
+        reason: 'news',
+        key: `talking:${slug}:${session.kind}`,
+      }
     case 'session.process_stopped':
       if (!session || data.startedBy !== 'human' || session.kind === 'side' || isHeadless(session)) return null
-      return { kind: 'act', text: `the human's ${session.kind} conversation on it went quiet; it is free again. ${context}` }
+      return {
+        kind: 'act',
+        text: `the human's ${session.kind} conversation on it went quiet; it is free again. ${context}`,
+        reason: 'news',
+        key: `talking:${slug}:${session.kind}`,
+      }
     case 'testdrive.started':
       if (data.purpose === 'review') return null
-      return { kind: 'act', text: `the human started a test drive of it.` }
+      return { kind: 'act', text: `the human started a test drive of it.`, reason: 'news', key: `drive:${slug}` }
     case 'testdrive.stopped':
       if (data.purpose === 'review') return null
-      return { kind: 'act', text: `the human stopped the test drive of it. ${context}` }
+      return { kind: 'act', text: `the human stopped the test drive of it. ${context}`, reason: 'news', key: `drive:${slug}` }
     default:
       return null
   }
@@ -221,10 +251,6 @@ function humanWords(event: EventRow, ticket: NotifyState['ticket']): NewsEvent |
       return data.complete === true
         ? { tone: 'done', words: 'Finished planning' }
         : { tone: 'failed', words: 'Stopped before the plan was complete' }
-    case 'session.run_ended':
-      return data.complete === true
-        ? { tone: 'done', words: 'Worker finished' }
-        : { tone: 'failed', words: 'Worker stopped before it finished' }
     case 'run.finished': {
       if (data.status === 'succeeded') {
         return { tone: 'done', words: typeof data.round === 'number' ? `Round ${data.round} finished` : 'Round finished' }
@@ -280,7 +306,7 @@ function humanWords(event: EventRow, ticket: NotifyState['ticket']): NewsEvent |
 /** What an event says to its holder, or null when it says nothing; the gate both the line and the news go through. */
 function described(event: EventRow, state: NotifyState): Described | null {
   if (!event.featureId || !state.feature?.holderId) return null
-  const said = describe(event, state.session, state.ticket, state.feature.slug)
+  const said = describe(event, state, state.feature.slug)
   if (!said) return null
   if (said.kind === 'act' && !state.feature.holderRunning) return null
   if (record(event.data).actor === 'orchestrator' && (said.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
@@ -294,8 +320,14 @@ function described(event: EventRow, state: NotifyState): Described | null {
  * Pure: everything it needs about the feature, session and ticket is in `state`.
  */
 export function orchestratorLineFor(event: EventRow, state: NotifyState): string | null {
+  return orchestratorDeliveryFor(event, state)?.line ?? null
+}
+
+/** The line for `event`, whether it wakes the holder, and its hold key; null for no line. Pure, as {@link orchestratorLineFor}. */
+export function orchestratorDeliveryFor(event: EventRow, state: NotifyState): { line: string; wake: boolean; key?: string } | null {
   const said = described(event, state)
-  return said && state.feature ? `${PREFIX} ${state.feature.slug} ${said.text}` : null
+  if (!said || !state.feature) return null
+  return { line: `${PREFIX} ${state.feature.slug} ${said.text}`, wake: wakes(said.reason), ...(said.key ? { key: said.key } : {}) }
 }
 
 /** The same event in the human's words, with the feature it is about; null exactly when there is no line. */
@@ -318,7 +350,7 @@ function stateFor(ctx: AppCtx, event: EventRow): NotifyState {
     const over = feature.status === 'shipped' && event.type !== AUTOSTART_FAILED
     const holderId = over ? null : (feature.heldBy ?? null)
     const holderRunning = holderId !== null && agentHost(ctx).isRunning(holderId)
-    state.feature = { slug: feature.slug, title: feature.title, holderId, holderRunning }
+    state.feature = { slug: feature.slug, title: feature.title, holderId, holderRunning, waiting: !!feature.waitingReason }
   }
   const sessionId = record(event.data).sessionId
   if (typeof sessionId === 'string') {
@@ -344,8 +376,11 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
  */
 export const ORCHESTRATOR_GATHER_MS = 300
 
+/** One gathered line: its text, the human's words for it, whether it wakes, and its hold key. */
+type Gathered = { line: string; news: ReturnType<typeof orchestratorNewsFor>; wake: boolean; key?: string }
+
 /** Lines gathering per orchestrator thread, until their prompt goes. */
-const gathering = new Map<string, { line: string; news: ReturnType<typeof orchestratorNewsFor> }[]>()
+const gathering = new Map<string, Gathered[]>()
 
 /** A batch's news for the human: one entry per feature, its events in arrival order. */
 function newsByFeature(batch: { news: ReturnType<typeof orchestratorNewsFor> }[]): NewsEntry[] {
@@ -368,20 +403,22 @@ function recipient(event: EventRow, state: NotifyState): string | null {
 
 /**
  * Add the line for one event to what the feature's holder hears next (decision
- * 20; chat-as-web-components decision 6): one runcastle prompt with a line per
- * event, queued to the end of a running turn and starting the thread when no
- * process runs. Best effort: nothing is retried or sent to another thread, and
- * nothing here throws into the emitter.
+ * 20; chat-as-web-components decision 6). A gathered batch with a waking line
+ * is one runcastle prompt with a line per event, queued to the end of a running
+ * turn and starting the thread when no process runs; a batch of news only is
+ * held, a line at a time, for the thread's next prompt (`agents-are-woken-only-
+ * when-it-matters` decisions 2, 3). Best effort: nothing is retried or sent to
+ * another thread, and nothing here throws into the emitter.
  */
 export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
   try {
     const event = getEventRow(ctx, eventId)
     if (!event) return
     const state = stateFor(ctx, event)
-    const line = orchestratorLineFor(event, state)
+    const delivery = orchestratorDeliveryFor(event, state)
     const threadId = recipient(event, state)
-    if (!line || !threadId) return
-    const entry = { line, news: orchestratorNewsFor(event, state) }
+    if (!delivery || !threadId) return
+    const entry: Gathered = { ...delivery, news: orchestratorNewsFor(event, state) }
     const gathered = gathering.get(threadId)
     if (gathered) {
       gathered.push(entry)
@@ -391,17 +428,32 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
     setTimeout(() => {
       const batch = gathering.get(threadId) ?? []
       gathering.delete(threadId)
-      const news = newsByFeature(batch)
-      agentHost(ctx)
-        .prompt(
-          threadId,
-          { text: batch.map((b) => b.line).join('\n') },
-          { source: 'runcastle', ...(news.length > 0 ? { display: { news } } : {}) },
-        )
-        .catch((err) => console.error('orchestrator notifier failed', err))
+      deliver(ctx, threadId, batch).catch((err) => console.error('orchestrator notifier failed', err))
     }, ORCHESTRATOR_GATHER_MS).unref?.()
   } catch (err) {
     console.error('orchestrator notifier failed', err)
+  }
+}
+
+/** Say a gathered batch: one prompt when a line in it wakes, else each line held for the next prompt. */
+async function deliver(ctx: AppCtx, threadId: string, batch: Gathered[]): Promise<void> {
+  const host = agentHost(ctx)
+  if (batch.some((b) => b.wake)) {
+    const news = newsByFeature(batch)
+    await host.prompt(
+      threadId,
+      { text: batch.map((b) => b.line).join('\n') },
+      { source: 'runcastle', ...(news.length > 0 ? { display: { news } } : {}) },
+    )
+    return
+  }
+  for (const b of batch) {
+    const news = newsByFeature([b])
+    await host.prompt(
+      threadId,
+      { text: b.line },
+      { source: 'runcastle', hold: true, ...(b.key ? { holdKey: b.key } : {}), ...(news.length > 0 ? { display: { news } } : {}) },
+    )
   }
 }
 

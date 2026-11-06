@@ -111,6 +111,20 @@ describe("runcastle's lines in a thread", () => {
     } as ThreadItem
     render(thread([item], links()))
     expect(screen.getByText('6m ago')).toBeTruthy()
+    expect(screen.queryByText('For its next turn')).toBeNull()
+  })
+
+  it('says news was held for the next turn when it woke nobody', () => {
+    const item = {
+      ...runcastle('[runcastle] f2-slug round finished.', {
+        news: [{ featureId: 'f2', title: 'Offline sync', events: [{ tone: 'done', words: 'Round 2 finished' }] }],
+      }),
+      at: Date.now() - 6 * 60_000,
+      held: true,
+    } as ThreadItem
+    render(thread([item], links()))
+    expect(screen.getByText('6m ago')).toBeTruthy()
+    expect(screen.getByText('For its next turn')).toBeTruthy()
   })
 
   it('draws a kickoff with a summary as one Runcastle line', () => {

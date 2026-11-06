@@ -52,7 +52,8 @@ export function formatResets(at: Date, now: Date = new Date()): string {
 
 function limit(label: string, percent: number | undefined, resets: Date | undefined): UsageLimit[] {
   if (percent === undefined) return []
-  return [{ label, percent: clampPercent(percent), resets: resets ? formatResets(resets) : '' }]
+  const at = resets && !Number.isNaN(resets.getTime()) ? resets.getTime() : undefined
+  return [{ label, percent: clampPercent(percent), resets: resets ? formatResets(resets) : '', ...(at !== undefined ? { resetsAt: at } : {}) }]
 }
 
 /** "ChatGPT Pro" from the pushed auth status, else from a bare plan type. */

@@ -3,12 +3,14 @@ import { join } from 'node:path'
 import type { EventRow, Feature, Project, SessionRow } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { sessions } from '../src/db/schema'
+import { eq } from 'drizzle-orm'
+import { features, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive, setSessionTitle } from '../src/launcher/sessions'
 import { emit, emitProject, runAsActor } from '../src/services/events'
 import {
   ORCHESTRATOR_GATHER_MS,
+  orchestratorDeliveryFor,
   orchestratorLineFor,
   startOrchestratorNotifier,
   type NotifyState,
@@ -18,7 +20,7 @@ import { openProject } from '../src/services/projects'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import type { AgentHost } from '../src/threads/types'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
-import { promptsOf } from './support/thread-launch'
+import { promptsOf, sentPrompts } from './support/thread-launch'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
@@ -77,12 +79,6 @@ describe('orchestratorLineFor — end events', () => {
       event('session.self_plan_ended', { complete: false }),
       held,
       '[runcastle] export-csv stopped before the plan was complete. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a relay run that finished',
-      event('session.run_ended', { complete: true }),
-      held,
-      '[runcastle] export-csv headless run finished. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a round that succeeded',
@@ -277,6 +273,57 @@ describe('orchestratorLineFor — act events', () => {
 
   it('leaves the review agent’s drive alone', () => {
     expect(orchestratorLineFor(event('testdrive.started', { purpose: 'review' }), held)).toBeNull()
+  })
+})
+
+describe('which lines wake the holder (agents-are-woken-only-when-it-matters decisions 3–5)', () => {
+  const review = { seq: 4, kind: 'review', passKind: 'review' } as const
+  const waking: [string, EventRow, NotifyState][] = [
+    ['the lead waits for the human', event('feature.waiting', { why: 'start round 1?' }), held],
+    ['the lead declared ready', event('feature.ready_declared', {}), held],
+    ['a round failed', event('run.finished', { status: 'failed' }), held],
+    ['a merge conflicted', event('merge.conflict', { files: [] }), held],
+    ['a drive failed to start', event('testdrive.dev_failed'), held],
+    ['the human merged it', event('feature.shipped'), held],
+    ['a draft started by itself', event('feature.started', { autoStartedBy: 'core' }), held],
+    ['a draft could not start', event('feature.autostart.failed'), held],
+    ['its lead could not be woken', event('lead.wake_failed'), held],
+    ['planning ended with nothing waiting', event('session.self_plan_ended', { complete: true }), held],
+    ['planning stopped with nothing waiting', event('session.self_plan_ended', { complete: false }), held],
+  ]
+  const waiting: NotifyState = { feature: { ...held.feature!, waiting: true } }
+  const news: [string, EventRow, NotifyState][] = [
+    ['planning ended after a wait went out', event('session.self_plan_ended', { complete: true }), waiting],
+    ['planning stopped after a wait went out', event('session.self_plan_ended', { complete: false }), waiting],
+    ['a round finished', event('run.finished', { status: 'succeeded' }), held],
+    ['a restart cut a round off', event('run.reconciled', { workflow: 'ticket-burner' }), held],
+    ['a review pass finished', event('ticket.done'), { ...held, ticket: review }],
+    ['a verification pass failed', event('ticket.failed'), { ...held, ticket: { ...review, passKind: 'verification' } }],
+    ['another thread took it', event('feature.taken', { name: 'Phone cut' }), held],
+    ['the human is talking to its chat', event('session.process_started', { sessionId: 's', source: 'human' }), { ...held, session: chat }],
+    ['its chat went quiet', event('session.process_stopped', { sessionId: 's', startedBy: 'human' }), { ...held, session: chat }],
+    ['the human started a drive', event('testdrive.started'), held],
+    ['the human stopped a drive', event('testdrive.stopped'), held],
+    ['the human had it plan itself', event('session.launching', { sessionId: 's' }), { ...held, session: { ...chat, purpose: 'self-plan' } }],
+  ]
+
+  it.each(waking)('%s wakes', (_name, e, state) => {
+    expect(orchestratorDeliveryFor(e, state)?.wake).toBe(true)
+  })
+
+  it.each(news)('%s is held', (_name, e, state) => {
+    expect(orchestratorDeliveryFor(e, state)?.wake).toBe(false)
+  })
+
+  it('keys the human’s activity so a newer line replaces the one it answers', () => {
+    const key = (e: EventRow, state: NotifyState) => orchestratorDeliveryFor(e, state)?.key
+    const talking = key(event('session.process_started', { sessionId: 's', source: 'human' }), { ...held, session: chat })
+    const quiet = key(event('session.process_stopped', { sessionId: 's', startedBy: 'human' }), { ...held, session: chat })
+    expect(talking).toBeDefined()
+    expect(quiet).toBe(talking)
+    expect(key(event('testdrive.started'), held)).toBe(key(event('testdrive.stopped'), held))
+    expect(key(event('testdrive.started'), held)).not.toBe(talking)
+    expect(key(event('run.finished', { status: 'succeeded' }), held)).toBeUndefined()
   })
 })
 
@@ -481,6 +528,70 @@ describe('the notifier', () => {
     emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
     expect(await promptLines(taker, 1)).toHaveLength(1)
     expect(promptsOf(old)).toHaveLength(1)
+  })
+
+  it('holds a batch of news for the next prompt, starting nothing', async () => {
+    const holder = projectSession()
+    markSessionEnded(ctx, holder)
+    const feature = heldFeature(holder, 'export-csv')
+
+    emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '3/3 tickets done' } })
+
+    const [prompt] = await promptLines(holder, 1).then(() => promptsOf(holder))
+    expect(prompt).toMatchObject({ held: true, display: { news: [{ events: [{ tone: 'done' }] }] } })
+    await settle()
+    expect(host.isRunning(holder)).toBe(false)
+  })
+
+  it('says held lines ahead of the next waking one, in one turn', async () => {
+    const holder = projectSession()
+    markSessionEnded(ctx, holder)
+    const feature = heldFeature(holder, 'export-csv')
+
+    emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '3/3 tickets done' } })
+    await promptLines(holder, 1)
+    emit(ctx, feature.id, { type: 'feature.waiting', message: 'x', data: { why: 'start round 2?' } })
+
+    await vi.waitFor(() => expect(sentPrompts(fake)).toHaveLength(1))
+    const [sent] = sentPrompts(fake)
+    expect(sent.indexOf('round finished (3/3 tickets done)')).toBeGreaterThanOrEqual(0)
+    expect(sent.indexOf('round finished')).toBeLessThan(sent.indexOf('waits for you: start round 2?'))
+  })
+
+  it('lets a newer line about the human’s chat replace the held one it answers', async () => {
+    const holder = projectSession()
+    const feature = heldFeature(holder, 'export-csv')
+    const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
+    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    await promptLines(holder, 1)
+    await vi.waitFor(() => expect(sentPrompts(fake)).toHaveLength(1))
+
+    emit(ctx, feature.id, { type: 'session.process_started', message: 'x', data: { sessionId: lead.id, source: 'human' } })
+    await settle()
+    emit(ctx, feature.id, { type: 'session.process_stopped', message: 'x', data: { sessionId: lead.id, startedBy: 'human' } })
+    await settle()
+    expect(promptsOf(holder).filter((p) => p.held)).toHaveLength(2)
+    emit(ctx, feature.id, { type: 'feature.ready_declared', message: 'ready' })
+
+    await vi.waitFor(() => expect(sentPrompts(fake)).toHaveLength(2))
+    const sent = sentPrompts(fake)[1]
+    expect(sent).toContain('went quiet')
+    expect(sent).not.toContain('is talking to its')
+    expect(sent).toContain('declared ready to test')
+  })
+
+  it('holds the end of a planning run when the feature already waits on the human', async () => {
+    const holder = projectSession()
+    markSessionEnded(ctx, holder)
+    const feature = heldFeature(holder, 'export-csv')
+    ctx.db.update(features).set({ waitingReason: 'start round 1?' }).where(eq(features.id, feature.id)).run()
+
+    emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
+
+    await promptLines(holder, 1)
+    expect(promptsOf(holder)[0].held).toBe(true)
+    await settle()
+    expect(host.isRunning(holder)).toBe(false)
   })
 
   it('never lets a failure reach the service that emitted', () => {

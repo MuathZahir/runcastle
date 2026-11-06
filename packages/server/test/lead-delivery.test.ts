@@ -6,6 +6,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { listAfter } from '../src/services/events'
+import { stopFeature } from '../src/services/features'
 import { deliverToLead, leadDeliveryState } from '../src/services/lead-delivery'
 import { isRuncastlePrompt, tagRuncastlePrompt } from '../src/services/lead-prompt'
 import { getFeatureRow } from '../src/services/repo'
@@ -210,6 +211,55 @@ describe('deliverToLead', () => {
     expect(promptsOf(id)[0].text).toBe('[runcastle] Round 1 returned\n\n[runcastle] Round 2 returned')
     expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
     await logUntil(id, turnsEnded(1))
+  })
+})
+
+describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', () => {
+  it('holds news for the lead’s next prompt, starting nothing', async () => {
+    const f = feature()
+    const id = chat(f.id)
+
+    await deliverToLead(ctx, f, { text: 'something happened', source: 'runcastle', reason: 'news' })
+
+    expect(promptsOf(id)).toEqual([expect.objectContaining({ text: '[runcastle] something happened', held: true })])
+    expect(host.isRunning(id)).toBe(false)
+    const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
+    expect(queued?.data).toMatchObject({ route: 'held' })
+
+    await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(sentToAgent()[0].startsWith('[runcastle] something happened\n\n[runcastle] notes')).toBe(true)
+  })
+
+  it('holds Stop for an idle lead', async () => {
+    const f = feature()
+    const id = chat(f.id)
+
+    await stopFeature(ctx, f.id)
+
+    expect(promptsOf(id)).toEqual([expect.objectContaining({ text: expect.stringContaining('The human pressed Stop'), held: true })])
+    expect(host.isRunning(id)).toBe(false)
+  })
+
+  it('tells a lead mid-turn about Stop at the end of that turn', async () => {
+    let release!: () => void
+    const released = new Promise<void>((r) => {
+      release = r
+    })
+    fake.script.turn = async (t) => {
+      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) await released
+    }
+    const f = feature()
+    const id = chat(f.id)
+    await deliverToLead(ctx, f, { text: 'work', source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
+
+    await stopFeature(ctx, f.id)
+    release()
+
+    await logUntil(id, turnsEnded(2))
+    expect(sentToAgent()[1]).toContain('The human pressed Stop')
+    expect(promptsOf(id).some((p) => p.held)).toBe(false)
   })
 })
 

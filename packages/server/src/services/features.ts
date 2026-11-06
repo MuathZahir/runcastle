@@ -671,6 +671,8 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
       `[runcastle] The human pressed Stop${stopped ? ' — the running round was cancelled; landed work stays' : ''}. ` +
       'Dispatch nothing until the human replies.',
     source: 'runcastle',
+    // A lead mid-turn must hear it before its next step; an idle one has nothing to stop (decision 10).
+    reason: leadState(ctx, featureId).working ? 'question' : 'news',
   })
   return updated
 }

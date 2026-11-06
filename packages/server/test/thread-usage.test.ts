@@ -30,8 +30,8 @@ describe('codexUsageReport', () => {
     })
     expect(report).toEqual({
       limits: [
-        { label: 'Current 5-hour window', percent: 42, resets: 'Thu 9:00 am' },
-        { label: 'This week', percent: 7, resets: 'Thu 9:00 am' },
+        { label: 'Current 5-hour window', percent: 42, resets: 'Thu 9:00 am', resetsAt: weekReset.getTime() },
+        { label: 'This week', percent: 7, resets: 'Thu 9:00 am', resetsAt: weekReset.getTime() },
       ],
       plan: 'ChatGPT Pro',
     })
@@ -76,8 +76,8 @@ describe("a Codex thread's usage limits", () => {
     const report = codexUsageReport(await readCodexRateLimits(appServer))
     expect(report).toEqual({
       limits: [
-        { label: 'Current 5-hour window', percent: 42, resets: expect.any(String) },
-        { label: 'This week', percent: 7, resets: expect.any(String) },
+        { label: 'Current 5-hour window', percent: 42, resets: expect.any(String), resetsAt: expect.any(Number) },
+        { label: 'This week', percent: 7, resets: expect.any(String), resetsAt: expect.any(Number) },
       ],
       plan: 'ChatGPT Pro',
     })
@@ -105,8 +105,8 @@ describe('claudeUsageReport', () => {
     })
     expect(report).toEqual({
       limits: [
-        { label: 'Current 5-hour window', percent: 31, resets: 'Thu 9:00 am' },
-        { label: 'This week', percent: 13, resets: 'Thu 9:00 am' },
+        { label: 'Current 5-hour window', percent: 31, resets: 'Thu 9:00 am', resetsAt: reset.getTime() },
+        { label: 'This week', percent: 13, resets: 'Thu 9:00 am', resetsAt: reset.getTime() },
         { label: 'This week · Sonnet', percent: 5, resets: '' },
       ],
       plan: 'Claude Max',

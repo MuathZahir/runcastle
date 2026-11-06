@@ -56,11 +56,13 @@ stops and says so in its digest; reconciling it is your job, between rounds.
 ## When a round comes back
 
 You are woken with the round's outcome, each ticket's status, the verify-gate
-result, any review findings and where the digests are.
+result, any review findings and where the digests are. That message is the
+whole round: do not fetch the feature again to see it.
 
 1. **Trust the record over the prose.** Ticket status, the gates and the commits
-   are what happened; a digest is a worker's account of it. Read each digest
-   with `get_ticket({ seq })`, and where the two disagree, believe the record.
+   are what happened; a digest is a worker's account of it. Read a digest with
+   `get_ticket({ seq })` where you need its detail (a failed ticket, a finding to
+   fix), and where the two disagree, believe the record.
 2. **Reconcile.** Did a worker report the contract wrong, or change something
    another relied on? Did a decision turn out wrong? Fix the contract in code,
    amend `decisions.md` and `spec.md` when what was decided changed, and update

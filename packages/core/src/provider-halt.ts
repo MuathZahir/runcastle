@@ -61,6 +61,15 @@ export function classifyProviderHalt(headline: string, now: Date = new Date()): 
   return null
 }
 
+/**
+ * Whether an agent's turn ended on the account's usage limit: Claude Code's
+ * "You've hit your 5-hour limit · resets 8pm", or a runtime's "usage limit
+ * reached". A plain rate limit (a 429 worth retrying) is not one.
+ */
+export function isUsageLimitText(text: string): boolean {
+  return /\bhit your\b[^.\n]*\blimit\b|usage limit/i.test(text)
+}
+
 /** The waiting reason a provider halt sets on its feature. */
 export function providerHaltReason(halt: ProviderHalt): string {
   switch (halt.kind) {
