@@ -19,7 +19,7 @@ export type Engine = 'docker' | 'podman'
 
 /** Where things live inside the sandbox. */
 export const IN = {
-  hostGit: '/home/agent/host.git',
+  origin: '/home/agent/origin.git',
   repo: '/home/agent/repo',
   state: '/home/agent/.runcastle',
   runtime: '/opt/runcastle',
@@ -32,8 +32,12 @@ export interface SandboxSpec {
   container: string
   image: string
   port: number
-  /** The host repo's git dir (`git rev-parse --git-common-dir`), mounted read-write so commits come back as refs. */
-  gitCommonDir: string
+  /**
+   * The worker's own bare copy of the feature branch, mounted read-write: commits are pushed
+   * into it, and the host fetches them back. The host repo itself is never mounted, so nothing
+   * in the sandbox can plant a hook or config in it (review finding).
+   */
+  originDir: string
   /** The host dir holding the adapter bundle and the worker MCP script. */
   runtimeDir: string
   uid: number
@@ -51,7 +55,7 @@ export function runArgs(s: SandboxSpec): string[] {
     '-p',
     `127.0.0.1:${s.port}:${s.port}`,
     '-v',
-    `${s.gitCommonDir}:${IN.hostGit}`,
+    `${s.originDir}:${IN.origin}`,
     '-v',
     `${s.runtimeDir}:${IN.runtime}:ro`,
     '-v',
@@ -80,7 +84,7 @@ export function setupScript(i: SetupInput): string {
   const hook = [
     '#!/bin/sh',
     'unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE',
-    `git push -q ${IN.hostGit} HEAD:refs/heads/${i.workerBranch} 2>/dev/null || { sleep 1; git push -q ${IN.hostGit} HEAD:refs/heads/${i.workerBranch} || echo "runcastle: commit sync failed (will retry on your next commit)" >&2; }`,
+    `git push -q ${IN.origin} HEAD:refs/heads/${i.workerBranch} 2>/dev/null || { sleep 1; git push -q ${IN.origin} HEAD:refs/heads/${i.workerBranch} || echo "runcastle: commit sync failed (will retry on your next commit)" >&2; }`,
     'exit 0',
   ].join('\n')
   return [
@@ -89,7 +93,7 @@ export function setupScript(i: SetupInput): string {
     "git config --global --add safe.directory '*'",
     `git config --global user.name ${q(i.gitName)}`,
     `git config --global user.email ${q(i.gitEmail)}`,
-    `git clone -q --branch ${q(i.workerBranch)} ${IN.hostGit} ${IN.repo}`,
+    `git clone -q --branch ${q(i.workerBranch)} ${IN.origin} ${IN.repo}`,
     `printf '%s\\n' ${q(hook)} > ${IN.repo}/.git/hooks/post-commit`,
     `chmod +x ${IN.repo}/.git/hooks/post-commit`,
   ].join('\n')
@@ -164,8 +168,9 @@ export async function containerState(engine: Engine, container: string): Promise
 }
 
 /** A free loopback port for the worker to publish. */
-export async function pickFreePort(from = 41000, tries = 400): Promise<number> {
+export async function pickFreePort(from = 41000, tries = 400, taken: ReadonlySet<number> = new Set()): Promise<number> {
   for (let p = from; p < from + tries; p++) {
+    if (taken.has(p)) continue
     const free = await new Promise<boolean>((resolve) => {
       const srv = createServer()
       srv.once('error', () => resolve(false))

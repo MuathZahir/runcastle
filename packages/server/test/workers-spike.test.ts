@@ -22,7 +22,7 @@ describe('worker sandbox argv', () => {
     container: 'runcastle-worker-abc',
     image: 'sandcastle:runcastle',
     port: 41001,
-    gitCommonDir: '/repo/.git',
+    originDir: '/data/workers/origins/abc.git',
     runtimeDir: '/data/workers/runtime/0.97.0',
     uid: 1001,
     gid: 1001,
@@ -35,6 +35,9 @@ describe('worker sandbox argv', () => {
     expect(args).not.toContain('--network')
     expect(args.some((a) => a.startsWith('--net') || a === 'host')).toBe(false)
     expect(args).toContain('/data/workers/runtime/0.97.0:/opt/runcastle:ro')
+    // The host repo is never mounted: only the worker's own bare copy (review finding).
+    expect(args).toContain('/data/workers/origins/abc.git:/home/agent/origin.git')
+    expect(args.some((a) => a.includes('/repo/.git'))).toBe(false)
     expect(args.at(-1)).toBe('sandcastle:runcastle')
   })
 
@@ -48,7 +51,7 @@ describe('worker sandbox argv', () => {
 
   it('clones the worker branch and pushes every commit back to it', () => {
     const script = setupScript({ featureBranch: 'feature/x', workerBranch: 'runcastle/worker/abc', gitName: "O'Neil", gitEmail: 'a@b.c' })
-    expect(script).toContain("git clone -q --branch 'runcastle/worker/abc' /home/agent/host.git /home/agent/repo")
+    expect(script).toContain("git clone -q --branch 'runcastle/worker/abc' /home/agent/origin.git /home/agent/repo")
     expect(script).toContain('HEAD:refs/heads/runcastle/worker/abc')
     expect(script).toContain(`user.name 'O'\\''Neil'`)
   })

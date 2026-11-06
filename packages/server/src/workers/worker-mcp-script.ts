@@ -86,11 +86,11 @@ async function startDev(command) {
     }
     await new Promise((r) => setTimeout(r, 300))
   }
-  const local = await answers('127.0.0.1', PORT)
+  const local = (await answers('127.0.0.1', PORT)) || (await answers('::1', PORT))
   const tail = (() => { try { return fs.readFileSync(path.join(STATE, 'dev.log'), 'utf8').slice(-1500) } catch { return '' } })()
   return text(
     (local
-      ? 'The server listens on 127.0.0.1 only, which the published port cannot reach: make it listen on 0.0.0.0 (for Vite: --host 0.0.0.0).'
+      ? 'The server listens on localhost only, which the published port cannot reach: make it listen on 0.0.0.0 (for Vite: --host 0.0.0.0).'
       : 'Nothing answered on port ' + PORT + ' within 90s.') + '\n\nLog tail:\n' + tail,
     true,
   )

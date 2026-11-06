@@ -131,4 +131,7 @@ export async function workerStopped(ctx: AppCtx, row: SessionRow, reason: StopRe
   }
 }
 
-export { isWorker }
+/** A worker thread, with the setting on: the lifecycle hooks read the same switch as the transport. */
+export function isWorkerThread(ctx: AppCtx, id: string): boolean {
+  return workersEnabled(ctx) && isWorker(id)
+}

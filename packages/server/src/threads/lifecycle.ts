@@ -8,7 +8,7 @@ import { emitForSession } from '../services/events'
 import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { isWorker, workerStopped, workerTurnEnded } from '../workers/service'
+import { isWorkerThread, workerStopped, workerTurnEnded } from '../workers/service'
 import type { ThreadLifecycle } from './host'
 
 /**
@@ -43,14 +43,14 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
     },
 
     turnEnded(row, source) {
-      if (isWorker(row.id)) void workerTurnEnded(ctx, row).catch((err) => console.error(`worker ${row.id}: handback`, err))
+      if (isWorkerThread(ctx, row.id)) void workerTurnEnded(ctx, row).catch((err) => console.error(`worker ${row.id}: handback`, err))
       // Only runcastle's prompt is the planning errand; what the human types into it after is a chat.
       if (source !== 'runcastle') return
       endSelfPlan(ctx, row)
     },
 
     stopped(row, reason, startedBy) {
-      if (isWorker(row.id)) void workerStopped(ctx, row, reason).catch((err) => console.error(`worker ${row.id}: stop`, err))
+      if (isWorkerThread(ctx, row.id)) void workerStopped(ctx, row, reason).catch((err) => console.error(`worker ${row.id}: stop`, err))
       // A planning run stopped mid-turn (the human's Stop, a crash) is over too.
       endSelfPlan(ctx, row)
       // A project conversation's commits land on the base branch when it stops (decision 18).

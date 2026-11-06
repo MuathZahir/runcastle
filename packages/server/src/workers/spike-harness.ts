@@ -20,7 +20,7 @@ import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { IN, adapterEntry, engineRun, installScript, pickFreePort } from './sandbox'
 import { claudeToken } from './service'
-import { createWorkerSandbox, removeSandbox, stopSandbox, takeHandback, workerProcess } from './worker'
+import { createWorkerSandbox, removeSandbox, stopSandbox, takeHandback, workerOrigin, workerProcess } from './worker'
 
 const execFileP = promisify(execFile)
 const sh = async (cmd: string, cwd?: string): Promise<string> =>
@@ -186,6 +186,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     row.trivialText = t1.text
     const t2 = await turn(o, EDIT)
     row.editTotalMs = t2.totalMs
+    await sh(`git fetch -q '${workerOrigin(rec.id)}' +refs/heads/${rec.branch}:refs/heads/${rec.branch}`, scratch)
     row.editCommitOnHost = (await sh(`git log --oneline main..${rec.branch}`, scratch)).includes('spike hello')
     if (i === 1) row.devDefault = (await callDevTool('docker', rec.container, rec.port, rec.previewUrl, dev)).said
     const d = await callDevTool('docker', rec.container, rec.port, rec.previewUrl, devBound)
@@ -203,6 +204,8 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     await stopSandbox(rec)
     row.stopMs = Math.round(performance.now() - t0)
     t0 = performance.now()
+    // Polled from the moment of the wake, beside it: when the preview answers again.
+    const devWake = untilAnswers(rec.previewUrl, 120_000)
     const proc2 = await workerProcess(rec, token, model)
     row.wakeSandboxMs = Math.round(performance.now() - t0)
     const o2 = await open(proc2, proc2.session!, o.sessionId)
@@ -211,8 +214,15 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     const t4 = await turn(o2, TRIVIAL)
     row.wakeFirstMs = t4.firstMs
     row.wakeToFirstReplyMs = Math.round(performance.now() - t0 - (t4.totalMs - (t4.firstMs ?? t4.totalMs)))
-    row.devAfterWakeMs = await untilAnswers(rec.previewUrl, 120_000)
+    row.devAfterWakeMs = await devWake
     await proc2.kill()
+    // Live reattach to a running sandbox: the like-for-like twin of the handoff attach below.
+    t0 = performance.now()
+    const proc2b = await workerProcess(rec, token, model)
+    const o2b = await open(proc2b, proc2b.session!, o.sessionId)
+    const t4b = await turn(o2b, TRIVIAL)
+    row.liveReattachToFirstReplyMs = Math.round(performance.now() - t0 - (t4b.totalMs - (t4b.firstMs ?? t4b.totalMs)))
+    await proc2b.kill()
     // Attach by handoff (decision 25): a headless run, then its captured session resumed interactively.
     t0 = performance.now()
     const out = await engineRun(

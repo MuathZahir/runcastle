@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
@@ -79,6 +79,11 @@ export function writeWorker(rec: WorkerRecord): void {
   writeFileSync(workerFile(rec.id), JSON.stringify(rec, null, 2))
 }
 
+/** The worker's own bare copy of the feature branch, which its sandbox pushes into. */
+export function workerOrigin(id: string): string {
+  return join(workersDir(), 'origins', `${id}.git`)
+}
+
 export function isWorker(id: string): boolean {
   return existsSync(workerFile(id))
 }
@@ -134,7 +139,8 @@ export interface NewWorkerInput {
 
 /** Create the worker's branch and sandbox: container up, clone made, dependencies installed. Times each step. */
 export async function createWorkerSandbox(input: NewWorkerInput): Promise<WorkerRecord> {
-  const port = await pickFreePort()
+  // A stopped worker's port is free on the host but still its own: never hand it out again (review finding).
+  const port = await pickFreePort(41000, 400, new Set(listWorkers().filter((w) => w.status !== 'failed').map((w) => w.port)))
   const short = input.id.replace(/[^a-zA-Z0-9]/g, '').slice(-10).toLowerCase()
   const rec: WorkerRecord = {
     id: input.id,
@@ -159,8 +165,12 @@ export async function createWorkerSandbox(input: NewWorkerInput): Promise<Worker
   try {
     const t0 = performance.now()
     const runtimeDir = await timed(rec, 'runtimeBundle', () => ensureRuntimeDir())
-    const gitCommonDir = (await git(input.repoPath, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim()
-    await git(input.repoPath, ['branch', '-f', rec.branch, input.featureBranch])
+    const originDir = workerOrigin(rec.id)
+    await timed(rec, 'originCopy', async () => {
+      rmSync(originDir, { recursive: true, force: true })
+      await execFileP('git', ['clone', '-q', '--bare', '--no-hardlinks', '--single-branch', '--branch', input.featureBranch, input.repoPath, originDir])
+      await git(originDir, ['branch', '-f', rec.branch, input.featureBranch])
+    })
     const gitName = (await git(input.repoPath, ['config', 'user.name']).catch(() => 'runcastle worker')).trim()
     const gitEmail = (await git(input.repoPath, ['config', 'user.email']).catch(() => 'worker@runcastle.local')).trim()
     await timed(rec, 'containerRun', () =>
@@ -171,7 +181,7 @@ export async function createWorkerSandbox(input: NewWorkerInput): Promise<Worker
           container: rec.container,
           image: rec.image,
           port,
-          gitCommonDir,
+          originDir,
           runtimeDir,
           uid: process.getuid?.() ?? 1000,
           gid: process.getgid?.() ?? 1000,
@@ -219,10 +229,12 @@ export async function stopSandbox(rec: WorkerRecord): Promise<void> {
   writeWorker(fresh)
 }
 
-/** Remove the sandbox and the worker branch (the harness's cleanup; `discard` for interactive-workers). */
+/** Remove the sandbox, the worker branch, its bare copy and its record (the harness's cleanup; `discard` for interactive-workers). */
 export async function removeSandbox(rec: WorkerRecord): Promise<void> {
   await engineRun(rec.engine, ['rm', '-f', rec.container]).catch(() => {})
   await git(rec.repoPath, ['branch', '-D', rec.branch]).catch(() => {})
+  rmSync(workerOrigin(rec.id), { recursive: true, force: true })
+  rmSync(workerFile(rec.id), { force: true })
 }
 
 /** A handback the worker wrote since the last one read, with its commits and files from the host's refs. */
@@ -236,6 +248,8 @@ export async function takeHandback(rec: WorkerRecord): Promise<WorkerHandback | 
   if (!raw.trim()) return undefined
   const said = JSON.parse(raw) as { summary: string; at: number }
   if (rec.lastHandbackAt && said.at <= rec.lastHandbackAt) return undefined
+  // The worker's commits sit in its own bare copy until the host fetches them; a fetch runs none of that repo's hooks.
+  await git(rec.repoPath, ['fetch', '-q', workerOrigin(rec.id), `+refs/heads/${rec.branch}:refs/heads/${rec.branch}`]).catch(() => {})
   const range = `${rec.featureBranch}..${rec.branch}`
   const commits = (await git(rec.repoPath, ['log', '--format=%h %s', range]).catch(() => '')).split('\n').filter(Boolean)
   const files = (await git(rec.repoPath, ['diff', '--name-only', `${rec.featureBranch}...${rec.branch}`]).catch(() => ''))
