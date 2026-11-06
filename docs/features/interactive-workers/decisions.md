@@ -205,3 +205,10 @@ Podman running, the "+" and the lead's worker offers say so in plain words and p
 check (doctor), as a burn does today.
 **Why:** Side chats become workers (7); a switch would keep the old side-chat code alive for anyone
 who turned workers off, two code paths the human does not want.
+
+## 23. Existing side chats become read-only transcripts
+**Decision:** Side chats made before this ships stay listed in their feature's "Done" group as
+read-only transcripts marked "Old side chat": readable, not typeable. To carry one on, the human
+starts a worker with the "+" and pastes what it needs.
+**Why:** Reopening them as side chats would keep the old side-chat code alive, and converting them
+into workers is code for a handful of chats (4 in two weeks).
