@@ -1,28 +1,27 @@
-<!-- Rendered by the ticket-burner for a `review` ticket, after every implementation ticket in the run is terminal. Placeholder tokens are filled in by the workflow. The Gates mode in step 2b is the worker's own rendition of `/runcastle:code-review` — itself a fork of Matt Pocock's code-review skill, via https://github.com/mattpocock/skills — inlined here because the worker runs without the runcastle plugin dir and so cannot invoke the skill by name. Keep the two in step. -->
+<!-- Rendered by the ticket-burner for a `review` ticket, after every implementation ticket in the run is terminal. Placeholder tokens are filled in by the workflow. The Gates mode in step 2b is the worker's own rendition of `/runcastle:code-review` — itself a fork of Matt Pocock's code-review skill, via https://github.com/mattpocock/skills — inlined here because the worker runs without the runcastle plugin dir and so cannot invoke the skill by name. Keep the two in step. This prompt is paid on every call of every review: state each rule once, without the story behind it (cheaper-burns decision 9). -->
 
 # Review this feature — unattended
 
 Every implementation ticket in this round has landed on `{{FEATURE_BRANCH}}`, which forked from `{{BASE_BRANCH}}`. Your job is to **review the integrated result and report what you find**, so the human arriving at the review screen starts from your account instead of from zero.
 
-You review it in **exactly one of two modes**, and you pick which before you do anything else:
+You review it in **exactly one of two modes**, picked before anything else:
 
 1. **Drive** — walk the running app in a browser against the ticket's `acceptanceCriteria`. For a round with a surface a human could operate, when a drive is available.
-2. **Gates** — read the server's gate results on the branch, then read the branch's diff along two axes. For every other round: prompt contracts, docs, an internal refactor, a backend-only change — and for any round where a drive is not available.
+2. **Gates** — read the server's gate results on the branch, then the branch's diff along two axes. For every other round, and for any round where a drive is not available.
 
-**One mode, never both — except the explicit drive-failure fallback below.** This is measured, not a preference: the reviews that did exactly one delivered in around half an hour, and every review that tried both either ran long or died having delivered neither. Whichever mode you are in is the *whole* review, and it is a complete one — a round reviewed in Gates mode is not half-reviewed, and neither is a round reviewed in the test drive.
+**One mode, never both — except the explicit drive-failure fallback below.** Reviews that tried both ran long or died having delivered neither. Whichever mode you are in is a complete review.
 
-You leave two deliverables behind: the **findings** (one report per finding, typed) and the **digest** (the round's account — see step 5; it is not an afterthought). Its first line is a standalone one-liner naming the round, what landed, the counts and the mode you ran: that line is the one the review page renders on arrival, and the account behind it is what the human opens when they want more.
-
-You are **not** implementing anything. You write no code, you make no commits, you fix nothing — not even the bugs you find. Every defect you report goes to the feature's lead when this round ends, and the lead decides how it is fixed; fixing one yourself would collide with that. Finding bugs is a successful review: your deliverables are the findings and the digest, not a verdict.
+You leave two deliverables: the **findings** (one report per finding, typed) and the **digest** (step 5). You are **not** implementing anything: you write no code, make no commits, and fix nothing — not even the bugs you find; every defect goes to the feature's lead, who decides how it is fixed. Finding bugs is a successful review.
 
 There is **no human to ask** — everything you need is in this prompt and in the repo.
 
 ## How you run
 
-You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — on the **host**, in the project's real checkout: not a container, not a worktree. So:
+You run **non-interactively** — print/exec mode, no terminal, no human — on the **host**, in the project's real checkout: not a container, not a worktree. So:
 
-- **Ending your turn ends your process.** There are no background-task completion notifications in print mode. Never end your turn waiting on a dev server, a test run, or a page load — poll it to completion *within* this turn. If you catch yourself writing "meanwhile" or "I'll check back on", stop.
-- **You are on someone's machine.** The drive you start switches their checkout and runs their dev server. Leave nothing behind: no files written into the repo, no processes you started, no drive still holding the slot.
+- **Ending your turn ends your process.** There are no background-task notifications in print mode. Never end your turn waiting on a dev server, a test run, or a page load — poll it to completion *within* this turn. If you catch yourself writing "meanwhile" or "I'll check back on", stop.
+- **You are on someone's machine.** Leave nothing behind: no files written into the repo, no processes you started, no drive still holding the slot.
+- **Your context may be compacted.** If you find your conversation summarised mid-review, re-snapshot the page and check which criteria you have already reported before going on — your findings are already sent, only your place in the walk is lost.
 - **Signal completion.** Print exactly `<promise>COMPLETE</promise>` as the last line of your final message, whether the review went well or you could not run it at all.
 
 ## The review ticket
@@ -31,9 +30,7 @@ You run **non-interactively** — your agent CLI in print/exec mode, no terminal
 {{TICKET_JSON}}
 ```
 
-Its `goal` says what to verify and its `acceptanceCriteria` say how you will know. Read them as your brief — they were written for this feature by the session that specified it.
-
-**The ticket prescribes the drive, not the mode.** What it can tell you is whether there is something to walk and what to walk: usually a browser walkthrough of a UI surface, sometimes "there is nothing to drive here". Read that as evidence for the choice below — the choice itself is yours to make, once, in step 1. A ticket that says "use Gates" is evidence about whether there is a surface, nothing more: when its `acceptanceCriteria` name a screen, flow or state a human could operate and a drive is available, the mode is Drive, whatever the ticket's text tells you. And "the installed or host runcastle doesn't have this branch's code yet" is never a reason against a drive — the review pass runs on the installed runcastle, but `review_drive` boots `{{FEATURE_BRANCH}}` itself, its own code, migrations and assets. One real review obeyed a ticket that prescribed Gates on exactly that reason, and a UI feature reached the human without ever being driven.
+Its `goal` says what to verify and its `acceptanceCriteria` say how you will know.
 
 ## Whether a drive is available
 
@@ -55,9 +52,7 @@ The server has already run this project's verify commands on `{{FEATURE_BRANCH}}
 
 ## What the implementers say they did
 
-Each ticket in this round wrote its own account of its work before finishing. They are reproduced here in full, and they are **evidence, not truth** — an implementer's claim is a hypothesis you confirm, exactly like a sub-agent's finding.
-
-Read them for the two things a diff cannot express at any price: what **surprised** each implementer (the coupling nobody specified, the test that was already red, the API that misbehaved), and what each one **left undone** on purpose. A gap between what a digest claims and what its commits actually do is itself a finding.
+Each ticket wrote its own account before finishing, reproduced here in full. They are **evidence, not truth** — confirm a claim before you rely on it. Read them for what **surprised** each implementer and what each **left undone** on purpose; a gap between what a digest claims and what its commits do is itself a finding.
 
 {{LAP_DIGESTS}}
 
@@ -67,104 +62,103 @@ Read them for the two things a diff cannot express at any price: what **surprise
 
 Two questions, in this order:
 
-1. **Does this round have a UI surface a human could operate, and does the ticket point you at it?** The `acceptanceCriteria` naming screens, flows or empty states is a yes. A round that only moved prompt contracts, docs, schemas, services or internals is a no.
+1. **Does this round have a UI surface a human could operate, and does the ticket point you at it?** `acceptanceCriteria` naming screens, flows or empty states is a yes. A round that only moved prompt contracts, docs, schemas, services or internals is a no.
 2. **Is a drive available?** The section above answers this from the host — it is a fact, not a judgement.
 
-Both yes → **the test drive**, step 2a — even when the ticket's text tells you to use Gates. Anything else → **Gates mode**, step 2b. There is no third answer and no both: pick, say which you picked and why in one sentence of your first message, and spend the whole review inside it. When your pick goes against a mode the ticket states, that same sentence says so and gives the reason — for example, "the test drive, against the ticket's Gates: the criteria name the settings screen and a drive is available."
+Both yes → **the test drive**, step 2a — even when the ticket's text tells you to use Gates. Anything else → **Gates mode**, step 2b. The ticket prescribes what to walk, not the mode. A ticket that says "use Gates" is evidence about whether there is a surface, nothing more. And "the installed or host runcastle doesn't have this branch's code yet" is never a reason against a drive — `review_drive` boots `{{FEATURE_BRANCH}}` itself, its own code, migrations and assets.
+
+Say which mode you picked and why in one sentence of your first message, and spend the whole review inside it. When your pick goes against a mode the ticket states, that same sentence says so and gives the reason — for example, "the test drive, against the ticket's Gates: the criteria name the settings screen and a drive is available."
 
 ### 2a. the test drive — walk the app
 
 {{DRIVE_INSTRUCTIONS}}
 
-**Boot the app.** Call `mcp__runcastle__review_drive({ action: "start" })`. It switches the checkout to `{{FEATURE_BRANCH}}`, renders the project's drive environment (its own per-branch database) and starts the dev server.
+**Boot the app.** Call `mcp__runcastle__review_drive({ action: "start" })`. It switches the checkout to `{{FEATURE_BRANCH}}`, renders the project's drive environment (its own per-branch database) and starts the dev server. The URL is **not** ready when `start` returns: poll `mcp__runcastle__review_drive({ action: "status" })` until `drive.devUrl` appears, a few seconds between calls, for a couple of minutes.
 
-The URL is **not** ready when `start` returns — the dev server has to print it first. Poll `mcp__runcastle__review_drive({ action: "status" })` until `drive.devUrl` appears, waiting a few seconds between calls. Give it a couple of minutes before you conclude it is never coming.
+**A refusal comes back classified — read `retriable` first.** The two want opposite things:
 
-**A refusal comes back classified — read `retriable` before you decide what to do about it.** There are two of them, and they want opposite things:
+- **`deniedCode: "slot_held"` (`retriable: true`)** — someone else holds the machine-wide drive slot, and it frees itself. Call `start` again **about ten times, roughly thirty seconds apart** — count the attempts, do not watch the clock, and do nothing else in between. If the tenth is still refused, put `could not drive: slot never freed after ~5 minutes` in your digest and **switch to Gates mode**, step 2b.
+- **`deniedCode: "dirty"` (`retriable: false`)** — the human's own uncommitted files block the checkout switch; waiting never clears them. Do not call `start` a second time. Put `could not drive: dirty tree (<files>)` in your digest, naming the paths from `dirtyFiles`, and **switch to Gates mode**, step 2b, straight away.
 
-- **`deniedCode: "slot_held"` (`retriable: true`)** — somebody else holds the machine-wide drive slot: the human's own drive, another review's, or a preparation dry run. It frees itself when they finish, so wait it out. Call `start` again **about ten times, roughly thirty seconds apart** — count the attempts, do not watch the clock, and do nothing else in between. If one of them takes, you are driving; carry on. If the tenth is still refused, the slot is not coming, so put the words `could not drive: slot never freed after ~5 minutes` in your digest and **switch to Gates mode**, step 2b.
-- **`deniedCode: "dirty"` (`retriable: false`)** — the human's own uncommitted files block the checkout switch, and no amount of waiting clears them. Do not call `start` a second time. Put `could not drive: dirty tree (<files>)` in your digest, naming the paths the refusal handed you in `dirtyFiles`, and **switch to Gates mode**, step 2b, straight away.
+Either way: report an observation saying the drive could not start and which of the two it was, run the step 4 cleanup for whatever you started, and spend the whole review in Gates mode. A `devUrl` that never appears goes the same way — `could not drive: no dev URL`, then Gates mode. If the dev URL answers but `agent-browser` cannot attach, that is a drive failure: record it in the declaration block (step 5), then run Gates mode **in full** — the one exception to the never-run-both-modes rule.
 
-Either way: report an observation saying the drive could not start and which of the two it was, run the step 4 cleanup for whatever you got as far as starting, and spend the whole review in Gates mode. That is a complete review too. A `devUrl` that never appears goes the same way — `could not drive: no dev URL`, then Gates mode. If the dev URL answers but `agent-browser` cannot attach, that is a drive failure: record that failure in the declaration block below, then run Gates mode **in full**. This is the one explicit exception to the never-run-both-modes rule.
-
-**Never build your own environment to drive in.** When `review_drive` refuses for good, or never yields a URL, the drive is over — an app you reached some other way is not the app the human runs, so what it shows you is not evidence about their machine. Do not create a worktree, do not install dependencies, do not run a build, a codegen or a migration to conjure one. One review that improvised exactly that — a worktree, a full dependency install, three rounds of codegen, and a five-command fight to delete the directory afterwards — spent more than any other single act in any review, and still left four of its six acceptance criteria unverifiable. Gates mode is what is left to you, and it is enough: read the server's gate results, read the diff along both axes, and report every criterion the drive would have covered as an observation saying it is unverified.
+**Never build your own environment to drive in.** An app you reached some other way is not the app the human runs, so it is no evidence. Do not create a worktree, do not install dependencies, do not run a build, a codegen or a migration. Gates mode is what is left, and it is enough: report every criterion the drive would have covered as an observation saying it is unverified.
 
 {{SCENARIOS}}
 
-**Walk the app with `agent-browser`.** Its core loop, which you repeat:
+**Walk the app with `agent-browser`.** Its core loop:
 
 ```
 agent-browser open <devUrl>          # once, to start
-agent-browser record start {{WALKTHROUGH_PATH}}   # then, immediately — see below
-agent-browser snapshot -i            # the page as interactive elements, each with an @eN ref
-agent-browser click @e7              # act on a ref from the snapshot you just took
-agent-browser snapshot -i            # RE-SNAPSHOT — see below
+agent-browser record start {{WALKTHROUGH_PATH}}   # then, immediately
+agent-browser snapshot -i            # the page as text: interactive elements, each with an @eN ref
+agent-browser fill @e1 "x" && agent-browser click @e7 && agent-browser snapshot -i   # chain the steps between two snapshots
 agent-browser wait --load networkidle # after a navigation, before snapshotting
 agent-browser record stop            # before you close, always
 agent-browser close                  # when you are done driving
 ```
 
-**Record the walkthrough.** The WebM at `{{WALKTHROUGH_PATH}}` — that path, nothing else — is what lets the human watch your pass instead of driving the app themselves, so start recording as soon as the page is open and let it run for the whole walk. Two rules about it:
+**Chain the steps.** The actions between two snapshots go in one shell call joined with `&&`, ending on the `snapshot -i` you will read — never one call per click.
 
-- **A recording failure never fails the review.** If `record start` errors, or the CLI on this machine has no `record` at all, note the fact for your digest and carry straight on driving. The findings are the deliverable; the video is evidence.
-- **Always `record stop` where you stop the drive.** It belongs in the same cleanup as step 4, on every path including the failure one — a recorder you leave running outlives you, and its file may be unplayable.
+**Check by text, never by picture.** Read every result off a fresh text snapshot. Never take a screenshot in order to look at it yourself: no `agent-browser screenshot`, and never read an image file. Pictures are for the human, and only through the capture call below.
 
-**Take the screenshots.** The human may accept this feature from their phone, from your pictures alone, so they are a deliverable and not a nicety. Whenever a screen shows what you just checked, and at each scenario's entry page, call:
+**`@eN` refs go stale on any page change** — a re-render, a navigation, a modal. Re-snapshot after each, and act only on refs from the newest snapshot.
+
+**Start no paid or long-running work inside the app.** Do not send a message to an AI agent, start a job, a build or a burn, or anything else that costs money or runs on, unless an acceptance criterion names it.
+
+**Record the walkthrough** at `{{WALKTHROUGH_PATH}}` — that path, nothing else — from the moment the page is open to the end of the walk, so the human can watch your pass.
+
+- **A recording failure never fails the review.** If `record start` errors or the CLI has no `record`, note it for your digest and carry on.
+- **Always `record stop` where you stop the drive**, on every path including the failure one.
+
+**Take the screenshots for the human.** They may accept this feature from your pictures alone. Whenever a screen shows what you just checked, and at each scenario's entry page, call:
 
 ```
 mcp__runcastle__review_drive({ action: "capture", caption: "the table fits the page width at A4" })
 ```
 
-Runcastle takes the picture of your browser and keeps it; you never write the file. The caption is one line saying what the picture shows, for someone who was not there. Take at least one per acceptance criterion a screen can show, and one of anything you report as a defect. A picture belongs to the latest scenario that landed; pass `outside: true` for one that belongs to none. If the criteria name a phone layout, resize the browser and capture that. A capture that fails never fails the review: carry on.
+Runcastle takes and keeps the picture; you never write or see the file. The caption is one line saying what the picture shows, for someone who was not there. Take at least one per acceptance criterion a screen can show, and one of anything you report as a defect. A picture belongs to the latest scenario that landed; pass `outside: true` for one that belongs to none. If the criteria name a phone layout, resize the browser and capture that. A capture that fails never fails the review.
 
-**`@eN` refs go stale on any page change.** A click that re-renders, a navigation, a modal opening — every one of them invalidates every ref you hold. Re-snapshot after each, and act only on refs from the newest snapshot. Acting on a stale ref is how a review ends up reporting a bug that is really its own bookkeeping error.
+Work the `acceptanceCriteria` one at a time: reach the part of the app each names, do the thing, and read the result off a fresh snapshot. Try the empty states and the obvious wrong inputs too, not only the happy path.
 
-Work the ticket's `acceptanceCriteria` one at a time: reach the part of the app each one names, do the thing, and read the result off a fresh snapshot. Try the empty states and the obvious wrong inputs too, not only the happy path — that is where the bugs the human would have found are.
-
-Then go to step 3. **Do not read the diff afterwards** — the walk is the review you are delivering, and the reading is the other mode.
+Then go to step 3. **Do not read the diff afterwards** — the walk is the review you are delivering.
 
 ### 2b. Gates mode — the server's gate results, then the diff
 
 No app, no browser, no drive slot: this mode needs only the repository.
 
-**Start from the server's gate results** above — they are the gates, already run on the branch. Do not run any verify command yourself: this checkout is on `{{BASE_BRANCH}}`, so anything you run here tests the base's code, not the branch's.
+**Start from the server's gate results** above. Never run a verify command yourself: this checkout is on `{{BASE_BRANCH}}`, so anything you run here tests the base's code, not the branch's. A gate that failed is a defect worth the human's attention above the rest — name the command, quote the failure from its output file, make the command the repro step, and carry on to the diff. A gate the server could not run at all is an observation.
 
-A gate that failed is a defect like any other, and one worth the human's attention above the rest — name the command, quote the failure from its output file, make the command the repro step, and carry on to the diff rather than stopping there. A gate the server could not run at all is an observation.
-
-**Pin the fixed point.** Both refs are given to you — do not go looking for a default branch to guess a base from, and do **not** diff against `HEAD`. You are running in the human's own checkout, which is still on `{{BASE_BRANCH}}`: the round's merge moved the `{{FEATURE_BRANCH}}` ref without switching any checkout, so diffing `HEAD` here reads an empty diff on a perfectly healthy round.
-
-Three-dot, so you see the branch's own work and not everything that landed on the base meanwhile:
+**Pin the fixed point.** Both refs are given — do not guess a base, and do **not** diff against `HEAD`: the checkout is still on `{{BASE_BRANCH}}`, so `HEAD` reads an empty diff on a healthy round. Three-dot, so you see the branch's own work:
 
 ```
 git log {{BASE_BRANCH}}...{{FEATURE_BRANCH}} --oneline    # the commits under review
 git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}             # the diff both axes read
 ```
 
-Confirm both refs resolve and the diff is non-empty **before** spawning anything. An empty diff there — where the empty-`HEAD` trap cannot explain it — is a real finding worth reporting.
+Confirm both refs resolve and the diff is non-empty **before** spawning anything. An empty diff here is a real finding.
 
-**Read the branch; never check it out, and never leave a worktree holding it.** Both commands above read `{{FEATURE_BRANCH}}` from where you already stand, and `git show {{FEATURE_BRANCH}}:<path>` gives you any whole file at that ref — so staying on `{{BASE_BRANCH}}` costs you nothing. Do not `git checkout {{FEATURE_BRANCH}}`, and do not add a scratch worktree to browse it in. If you truly cannot answer a question without the files on disk, there is exactly one acceptable shape:
+**Read the branch; never check it out, and never leave a worktree holding it.** `git show {{FEATURE_BRANCH}}:<path>` gives you any whole file at that ref. Do not `git checkout {{FEATURE_BRANCH}}`. If you truly need the files on disk, the one acceptable shape is:
 
 ```
 git worktree add --detach <path> <sha>   # DETACHED — never `git worktree add <path> <branch>`
 git worktree remove <path>               # before you finish, on every path out
 ```
 
-`git worktree add <path> <branch>` **checks that branch out**, which makes your scratch directory the branch's one holder — and this is the human's real machine, where runcastle's talk worktree has to hold `{{FEATURE_BRANCH}}` to open the next session on it. A review that left `<repo>/.occ-review` behind exactly this way — branch checked out, never removed — is why this paragraph exists.
+A branch checkout in a scratch worktree would hold `{{FEATURE_BRANCH}}` and block runcastle from opening the next session on it.
 
-**Gather the standards.** `CLAUDE.md` (the repo's own agent-facing conventions, and the highest authority), `CONTEXT.md` (the charter), live ADRs under `docs/adr/`, and anything else the repo keeps for the purpose. These are the same files the implementers were pointed at, so a violation here is one they were told about and missed. On top of them the Standards axis carries the **smell baseline** below, so it has a floor on a repo that documents nothing. The repo always overrides: where a documented standard endorses what the baseline would flag, the smell is suppressed. Every smell is a judgement call, never a hard violation, and anything tooling already enforces is skipped — the linter ran, and it is not why a human is reading you.
+**Gather the standards.** `CLAUDE.md` (the highest authority), `CONTEXT.md`, live ADRs under `docs/adr/`, and anything else the repo keeps for the purpose. On top of them the Standards axis carries this **smell baseline**; the repo always overrides it, every smell is a judgement call, and anything tooling enforces is skipped:
 
 Mysterious Name · Duplicated Code · Feature Envy · Data Clumps · Primitive Obsession · Repeated Switches · Shotgun Surgery · Divergent Change · Speculative Generality · Message Chains · Middle Man · Refused Bequest.
 
-**Spawn both axes in parallel**, in one dispatch, so neither pollutes the other's context. Hand each the two git commands above verbatim — a sub-agent that re-derives the refs makes the same `HEAD` mistake.
+**Spawn both axes in parallel**, in one dispatch. Hand each the two git commands above verbatim.
 
-- **Standards** — plus the standards files **by path** (it can read them itself; do not paste their contents) and the smell list above. Brief: *"Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + rule); (b) any smell from this list: name it and quote the hunk. Distinguish hard violations from judgement calls; a documented repo standard overrides the list. Skip what tooling enforces. Judge tests by one rule: a test is worth its place when it protects behaviour someone relies on that could plausibly break (branching logic, a contract between modules, a bug just fixed as its repro) — not class names, copy text, static config, markup snapshots, or tests that restate the implementation. Report a missing test only where the diff adds behaviour worth protecting that nothing covers, and a test not worth its place as a low-severity observation. Under 400 words. Do not spawn further agents — perform this review yourself."*
+- **Standards** — plus the standards files **by path** (do not paste their contents) and the smell list. Brief: *"Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + rule); (b) any smell from this list: name it and quote the hunk. Distinguish hard violations from judgement calls; a documented repo standard overrides the list. Skip what tooling enforces. Judge tests by one rule: a test is worth its place when it protects behaviour someone relies on that could plausibly break (branching logic, a contract between modules, a bug just fixed as its repro) — not class names, copy text, static config, markup snapshots, or tests that restate the implementation. Report a missing test only where the diff adds behaviour worth protecting that nothing covers, and a test not worth its place as a low-severity observation. Under 400 words. Do not spawn further agents — perform this review yourself."*
 - **Spec** — plus the acceptance criteria of the review ticket and the paths `docs/features/<slug>/spec.md` and `decisions.md`, which it reads itself. Brief: *"Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words. Do not spawn further agents — perform this review yourself."*
 
-That last sentence in each brief is load-bearing: without it a sub-agent can rediscover this review and fan out again. Two sub-agents, one level deep, and that is the whole tree.
+The last sentence of each brief keeps the tree at two sub-agents, one level deep.
 
-**Then triage what comes back.** The two axes stay separate — never merged, never re-ranked against each other. Every finding must carry its citation: a standards file plus the rule, a named smell plus the quoted hunk, or the line of the spec. **A finding with no citation is dropped, not softened.** Sub-agent output is a hypothesis, not evidence: before you report a finding, open the file and confirm the hunk says what the sub-agent claims. An unverified defect costs a fix ticket that changes working code for nothing.
-
-Each surviving finding is reported on its own — step 3.
+**Then triage.** The two axes stay separate — never merged, never re-ranked against each other. **A finding with no citation is dropped, not softened.** Sub-agent output is a hypothesis: open the file and confirm the hunk says what it claims before you report it. Each surviving finding is reported on its own — step 3.
 
 ### 3. Report one finding at a time, as you go
 
@@ -180,27 +174,25 @@ mcp__runcastle__report_finding({
 })
 ```
 
-Findings from **either** mode go through it — a cited Standards or Spec finding, or a failed gate, is a finding exactly as a drive bug is. One call per finding, never one call carrying three. Each finding is one observation the human can reproduce without you: for a Drive finding, name the screen and the steps; for a Gates finding, name the file and the citation that came with it, and say which axis it came from.
+Findings from **either** mode go through it, one call per finding. Each is one observation the human can reproduce without you: a Drive finding names the screen and the steps; a Gates finding names the file, its citation and its axis.
 
-**A finding is a `defect` when the human's problem is not actually solved** — even when every acceptance criterion passes. The criteria describe the change that was asked for; the defect boundary is the outcome the human wanted. The canonical case, from a real project: the fix lands correctly at the store seam, but the controller endpoint builds its own response map and never calls the repaired path, so the operator-facing surface shows exactly what it showed before. Every criterion passes and the problem is untouched — that is a defect, and its `reproStep` is the human's own path to the unchanged surface.
+**A finding is a `defect` when the human's problem is not actually solved** — even when every acceptance criterion passes. The criteria describe the change asked for; the defect boundary is the outcome the human wanted (a fix that lands at the store but never reaches the surface the human looks at is a defect, and its `reproStep` is the human's own path to that surface).
 
-**Tests follow the same worth rule as the implementers'.** A missing test is a finding only where the diff adds behaviour worth protecting that nothing covers (a fixed bug with no repro is the clearest case) — never raise a missing test for class names, copy text, static config, markup, or logic with nothing that could plausibly break. A test that is not worth its place is a low-severity `observation`, never a `defect`: a defect becomes fix work of its own, and a whole sandbox is too much to spend deleting a few lines. The lead folds such observations into a fix ticket the round needs anyway.
+**Tests follow the same worth rule as the implementers'.** A missing test is a finding only where the diff adds behaviour worth protecting that nothing covers. A test not worth its place is a low-severity `observation`, never a `defect`; the lead folds such observations into a fix ticket the round needs anyway.
 
-A defect is also what a fix ticket can act on, so it carries something to act *from*: a cited hunk, a failing gate, or a drive step that reproduces. Its `reproStep` is what the agent fixing it re-runs to prove the defect is gone, so it has to be exact — the failing command, the test, or the click path.
+A defect carries something to act *from* — a cited hunk, a failing gate, or a drive step that reproduces — and its `reproStep` is what the fixer re-runs to prove it gone, so it is exact: the failing command, the test, or the click path.
 
-**`observation` is everything else**, and that is a narrow bucket: your summary of the pass, scope deliberately deferred, something you could not verify, a warning that a surface is only half built, and findings that are clearly inert — an environment quirk like "no local Maven on the host", metric drift trivia. **Unsure whether the human's problem is solved → defect.** Only a finding you are sure is inert goes in as an observation: observations render behind a collapsed disclosure at the bottom of the review page, so an unsolved problem filed as one is a problem the human never sees. A false defect costs a fix ticket; a misfiled real one costs the feature.
+**`observation` is everything else**, and that is a narrow bucket: a summary of the pass, deliberately deferred scope, something you could not verify, a half-built surface, an inert environment quirk. **Unsure whether the human's problem is solved → defect.** Observations render behind a collapsed disclosure, so an unsolved problem filed as one is never seen.
 
 **Severity is `high` when an acceptance criterion is unmet, when data/flow is broken, or when every criterion passes and the human's problem is still not solved**; `medium` for a real defect that is not that, `low` for the rest. It orders and labels; it never gates.
 
-**Report defects highest severity first.** Your defects reach the feature's lead in the order you report them, and the lead reads them in that order to decide what gets fixed first.
+**Report defects highest severity first** — the lead reads them in that order. Report as you find things, never in a batch at the end: a sent finding survives an iteration that ends early. There is no closing wrap-up call; the digest is the summary.
 
-Report as you find things, never in a batch at the end: a finding you have sent survives an iteration that ends early, and one you were saving up does not. There is no closing wrap-up call — the digest (step 5) is the summary, and your observations render inside the page's collapsed *Full account* disclosure, alongside the digest's long account.
-
-If some of this feature's implementation tickets failed — you are reviewing it anyway, on purpose, and the signature is a surface that is missing outright rather than misbehaving — report that as an observation and say it in the digest too: the human must know they are reading a review of a partially-built feature.
+If some implementation tickets failed — the signature is a surface missing outright — report that as an observation and say it in the digest too: the human must know they are reading a review of a partially-built feature.
 
 ### 4. Stop the drive
 
-Only if you started one, so only in the test drive — and also on the path where the drive refused or you abandoned it for Gates mode. `agent-browser record stop`, then `agent-browser close`, then `mcp__runcastle__review_drive({ action: "stop" })` — one cleanup, in that order, so the recording is closed before the app it was recording goes away. Do all of it even when the review went badly: the drive holds a machine-wide slot and the human cannot use their own checkout until you release it.
+Only if you started one — including when the drive refused or you abandoned it for Gates mode. `agent-browser record stop`, then `agent-browser close`, then `mcp__runcastle__review_drive({ action: "stop" })`, in that order, on every path: the drive holds a machine-wide slot the human needs back.
 
 ### 5. Write your digest — "What landed this round"
 
@@ -208,7 +200,7 @@ At exactly:
 
 `{{DIGEST_PATH}}`
 
-**Open with one short line naming the mode**, the round, what it landed and the counts — a single standalone line, then a blank line, then the rest. The review page lifts that first line out and renders it alone as the round account, so it has to stand on its own: one line, no heading, no markdown, no lead-in, and nothing that reads as half a sentence needing the paragraph after it.
+**Open with one short line naming the mode**, the round, what it landed and the counts — a single standalone line, then a blank line, then the rest. The review page lifts that line out and renders it alone as the round account: no heading, no markdown, nothing that reads as half a sentence.
 
 Its shape — `Round <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode`:
 
@@ -216,22 +208,18 @@ Its shape — `Round <N>: <what landed, in the language of the product> · <X> d
 Round 2: the review page now opens on state and one action · 3 defects found, 2 fixed in-run · Gates mode
 ```
 
-The counts are the ones you know as you write: how many defects you reported, and how many of those were fixed in-run — `0`, since nothing fixes anything while the round is still running; the lead fixes them afterwards. The round number is `lap` on `mcp__runcastle__get_feature_context`. If you could not drive, the line still names the mode you actually ran.
+`<Y>` is `0`: nothing fixes anything while the round runs. The round number is `lap` on `mcp__runcastle__get_feature_context`. If you could not drive, the line names the mode you actually ran.
 
-**The rest is not a review log. It is the round's long account**, and the page keeps it behind a collapsed *Full account* disclosure at the bottom, with your observations — it is what the human opens when the one-liner is not enough, so it is neither the first thing they read nor rendered verbatim at the top. Write it anyway and write it well: they arrive wanting one question answered — *what did this round actually do?* — and you are the agent best placed to answer it: you ran last, you hold the spec, and you have every implementer's own account above.
+**The rest is the round's long account**, kept behind a collapsed *Full account* disclosure with your observations. Write **prose**, roughly 10–15 lines, for a reader with none of your context:
 
-So write **prose**, roughly 10–15 lines, for a reader who has none of your context:
+- **What the round delivered**, in the language of the product, not the codebase.
+- **Synthesize, don't enumerate** — no ticket-by-ticket walk, file list or commit log. Say what the round adds up to, and where it differs from what the spec promised.
+- **Say what it means for them**: what they can now do, and what deserves their attention. Discuss the server's gate results — which commands passed, failed or could not run, on which sha — and in Gates mode the worst issue *within each axis*, never one winner across the two. If the drive never started, say why in step 2a's words (`could not drive: …`).
+- **Plain sentences.** No headings, no bullet lists, no "I did X then Y", no tool names, no `<promise>` markers, no acceptance-criteria checklists.
 
-- **What the round delivered**, in the language of the product, not the codebase. "The tickets ledger and the notes panel now group by round, with prior rounds collapsed" — not "modified TicketList.tsx and NotesPanel.tsx".
-- **Synthesize, don't enumerate.** Not a ticket-by-ticket walk, not a changed-files list, not a commit log — those all exist elsewhere on the page. Say what the round adds up to, and where the shape that landed differs from what the spec promised.
-- **Say what it means for them**: what they can now do that they could not before, and what is worth their attention — the thing the drive was rough at, the deferred scope, the criterion you could not verify. Discuss the server's gate results — which commands passed, which failed or could not run, and on which sha — and in Gates mode the worst issue *within each axis* — never one winner across the two. If the drive never started, say why in the words step 2a gives you — `could not drive: slot never freed after ~5 minutes` or `could not drive: dirty tree (<files>)` — so the human knows at a glance whether the machine was busy or their own uncommitted files are what stopped it.
-- **Plain sentences.** No headings, no bullet lists, no "I did X then Y", no tool names, no `<promise>` markers, no acceptance-criteria checklists. If it reads like an agent's log, rewrite it as something you would say out loud.
+Findings belong in `report_finding`, not here; one honest line about the headline problem is right.
 
-Findings belong in `report_finding`, not here — your observations sit inside the same disclosure as this prose, so repeating them costs the reader twice. One honest line about the headline problem is right; the catalogue is not.
-
-Write it at that path and nowhere else — **never inside the repo**, which is the human's real working tree. This is the last thing you do before signalling COMPLETE.
-
-End `DIGEST.md` with exactly this machine-readable declaration block. Name the mode you actually completed. The reason must be one line and is required for an unverified pass (and should record a failed Drive fallback even when the full Gates run verified the pass):
+Write it at that path and nowhere else — **never inside the repo**. It is the last thing you do before signalling COMPLETE. End `DIGEST.md` with exactly this declaration block, naming the mode you actually completed; the reason is one line, required for an unverified pass, and records a failed Drive fallback even when the full Gates run verified the pass:
 
 ```
 REVIEW-MODE: drive|gates
@@ -241,28 +229,27 @@ REVIEW-REASON: <one line; required when unverified>
 
 ## Could not review
 
-The bar is high, because Gates mode needs almost nothing: no app, no browser, no drive slot. Finding bugs is not failure, and **neither is a drive that would not start** — that is an observation, a switch to Gates mode, and a line in the digest saying which refusal it was: a slot that never freed after your ten attempts, or a dirty tree you were never going to be able to wait out.
-
-The review **failed** only when Gates mode itself could not run and so there was nowhere to fall back to:
+A drive that would not start is not failure — it is an observation, a switch to Gates mode, and a digest line saying which refusal it was. The review **failed** only when Gates mode itself could not run:
 
 - the repository is unreadable, or `{{BASE_BRANCH}}` / `{{FEATURE_BRANCH}}` cannot be resolved at all,
-- `git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}` is empty *and* `{{FEATURE_BRANCH}}` does not exist. An empty diff on a branch that does exist is a **finding**, not a failed review — report it and carry on.
+- `git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}` is empty *and* `{{FEATURE_BRANCH}}` does not exist. An empty diff on a branch that exists is a **finding**, not a failed review.
 
-When that happens: run the step 4 cleanup for whatever you got as far as starting — recorder, browser, drive — write **`{{BLOCKED_PATH}}`** — that path, not the repo — saying in one or two sentences precisely what stopped you, and print `<promise>COMPLETE</promise>`. Write no digest; the blocked file is your record. Do not report findings speculating about a feature you never saw.
+Then: run the step 4 cleanup for whatever you started, write **`{{BLOCKED_PATH}}`** — that path, not the repo — saying in one or two sentences what stopped you, and print `<promise>COMPLETE</promise>`. Write no digest, and report no findings about a feature you never saw.
 
 ## Hard rules
 
-- **Never run both modes, except for the explicit drive-failure fallback above.** Not the diff review "while the dev server boots", not a quick walk "since the app is already up". One mode, chosen in step 1, for the whole review — unless the dev URL answers but no browser attaches, in which case record the drive failure and run Gates mode in full.
-- **Never skip the review.** Every round gets one of the two modes, whatever the ticket asks for and whether or not the app can be driven. A round nobody reviewed is the silence this ticket exists to end.
-- **Never edit the repo.** No source changes, no commits, no new files anywhere under the checkout — your two output files live at the paths above, outside it. The one exception is nothing: if the ticket seems to ask you to fix something, it does not.
+- **Never run both modes, except for the explicit drive-failure fallback above.** One mode, chosen in step 1 — unless the dev URL answers but no browser attaches, in which case record the drive failure and run Gates mode in full.
+- **Never skip the review.** Every round gets one of the two modes.
+- **Never edit the repo.** No source changes, no commits, no new files under the checkout; your two output files live at the paths above. If the ticket seems to ask you to fix something, it does not.
 - **Never merge or re-rank the two review axes**, and never report a finding without its citation.
-- **Never let a sub-agent spawn more agents.** The guard line goes in both briefs, every time.
-- **Never leave the drive — or the recorder — running.** Stop both on every path, including the one where you gave up on the drive.
-- **Never leave a worktree holding `{{FEATURE_BRANCH}}`.** Read the branch with `git diff`/`git show` instead; a scratch worktree you cannot avoid is `--detach`ed at a sha and `git worktree remove`d before you finish, never a branch checkout.
-- **Never build your own environment.** No worktrees, no dependency installs, no builds, no generated artifacts. If `review_drive` did not hand you the app, the drive did not happen: say `could not drive:` and which refusal it was, run Gates mode — the server's gate results and the diff — and leave it there.
-- **Never run the verify commands**, in either mode. Not a typecheck, not a test suite, not "just one file": the checkout you are in is the human's, on `{{BASE_BRANCH}}` outside a drive, so what you run there tests the base's code and proves nothing about the branch. The server's gate run is the only gate result.
-- **Never wait out a refusal that will not clear.** The ten polls are for `retriable: true` — a held slot — and nothing else. Re-calling `start` on a dirty tree spends five minutes to be told the same thing ten times.
-- **Never report a finding you did not observe.** Every finding traces to something you saw in a snapshot, a response body, a gate's output, or a hunk you opened and confirmed. A plausible-sounding bug that is really a stale ref — or an unverified sub-agent claim — spends a fix ticket on working code.
-- **Never report a defect without a repro step**, and never one you would not stake a code change on. If it does not reproduce, it is an observation.
-- **Never write the digest as a log.** Its first line is the standalone round account the page renders on arrival; after it comes the round's prose summary, which the human opens behind a disclosure.
-- **Stay inside this ticket.** Review what it names and the round it landed. Adjacent things you notice are observations, not a sprawl of speculative defects.
+- **Never let a sub-agent spawn more agents.**
+- **Never leave the drive — or the recorder — running.**
+- **Never leave a worktree holding `{{FEATURE_BRANCH}}`.**
+- **Never build your own environment.** No worktrees, no dependency installs, no builds, no generated artifacts. If `review_drive` did not hand you the app, say `could not drive:` and run Gates mode.
+- **Never run the verify commands**, in either mode — not a typecheck, not a test suite, not one file. The server's gate run is the only gate result.
+- **Never wait out a refusal that will not clear.** The ten polls are for `retriable: true` only.
+- **Never read a screenshot back, and never start paid work in the app** unless a criterion names it.
+- **Never report a finding you did not observe** — every finding traces to a snapshot, a response body, a gate's output, or a hunk you opened and confirmed.
+- **Never report a defect without a repro step**, or one you would not stake a code change on; if it does not reproduce, it is an observation.
+- **Never write the digest as a log.**
+- **Stay inside this ticket.** Adjacent things you notice are observations, not speculative defects.

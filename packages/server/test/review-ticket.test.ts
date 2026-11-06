@@ -873,6 +873,18 @@ describe('what the review agent is handed', () => {
     expect(template).toMatch(/no `<promise>` markers inside the digest/i)
   })
 
+  // cheaper-burns decisions 8, 10 and 15: check by text, keep pictures for the
+  // human, chain steps, start no paid work in the app, re-orient after a
+  // compaction.
+  it('has the drive check by text, chain its steps, and start no paid work', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+    expect(template).toMatch(/Check by text, never by picture/)
+    expect(template).toMatch(/no `agent-browser screenshot`, and never read an image file/)
+    expect(template).toMatch(/in one shell call joined with `&&`/)
+    expect(template).toMatch(/Start no paid or long-running work inside the app/)
+    expect(template).toMatch(/re-snapshot the page and check which criteria you have already reported/)
+  })
+
   it('tells the agent where the recording is optional and where it is not', () => {
     const template = readFileSync(reviewTemplatePath(), 'utf8')
 

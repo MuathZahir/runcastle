@@ -124,7 +124,13 @@ describe('orchestratorLineFor — end events', () => {
       'a merge that conflicted',
       event('merge.conflict', { files: ['a.ts', 'b.ts'] }),
       held,
-      `[runcastle] export-csv merge conflicted in 2 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "export-csv" }).`,
+      `[runcastle] export-csv merge conflicted in 2 file(s) when the human merged it by hand. The human has the Resolve button on the feature: leave the conflict to them unless they ask you. Read it with get_feature_context({ slug: "export-csv" }).`,
+    ],
+    [
+      'a conflict that was resolved',
+      event('merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/export-csv' }, { message: 'merge conflict resolved — main is in feature/export-csv' }),
+      held,
+      '[runcastle] export-csv merge conflict resolved (main is in feature/export-csv). Nothing to relay. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a drive that failed',
@@ -165,6 +171,10 @@ describe('orchestratorLineFor — end events', () => {
     const line = orchestratorLineFor(long, held) as string
     expect(line).not.toContain('\n')
     expect(line.length).toBeLessThan(200)
+  })
+
+  it('says nothing when a landing merge retires its conflict: the shipped line says it', () => {
+    expect(orchestratorLineFor(event('merge.resolved', undefined, { message: 'conflict retired by the merge' }), held)).toBeNull()
   })
 
   it('wakes a stopped holder for an ending', () => {

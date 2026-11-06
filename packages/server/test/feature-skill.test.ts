@@ -149,6 +149,15 @@ describe('the feature skill, writing tickets', () => {
     expect(text()).toContain('**When it does not clear the bar, reslice.**')
   })
 
+  // cheaper-burns decisions 1, 3 and 4: size by criteria and area, wide
+  // removals always in three steps, no whole-suite checks in a context.
+  it('sizes tickets small and keeps whole-suite checks out of contexts', () => {
+    expect(text()).toContain('about six acceptance criteria in one area')
+    expect(text()).toContain('**Never tell a worker to run the whole suite.**')
+    expect(text()).toContain('**expand → migrate → contract**, always')
+    expect(text()).not.toContain('triples it')
+  })
+
   it('has a review ticket, when there is one, say what to walk', () => {
     expect(text()).toContain('**Say what to walk, never which mode.**')
   })

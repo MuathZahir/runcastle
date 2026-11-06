@@ -5,7 +5,8 @@ import { tickets } from '../db/schema'
 import { getSessionRow } from '../launcher/sessions'
 import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
-import { getEventRow } from './events'
+import { mayStartInBackground } from './database-copy'
+import { emit, getEventRow } from './events'
 import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
@@ -39,6 +40,7 @@ import { getTicket } from './tickets'
  * | `ticket.done` / `ticket.failed`   | end  | only for a review or verification ticket    |
  * | `feature.shipped`                 | end  | a merge landed                              |
  * | `merge.conflict`                  | end  | a merge conflicted                          |
+ * | `merge.resolved`                  | end  | a standing conflict was resolved            |
  * | `testdrive.dev_failed`            | end  | a drive's dev server failed to start        |
  * | `feature.started`                 | end  | only a draft that started by itself         |
  * | `feature.autostart.*`             | end  | a draft could not start by itself           |
@@ -73,6 +75,9 @@ type NewsEntry = Extract<PromptDisplay, { news: unknown }>['news'][number]
 type Described = { kind: 'end' | 'act'; text: string }
 
 const PREFIX = '[runcastle]'
+
+/** News a copied database (a test drive) kept from a holder it has not started. */
+export const ORCHESTRATOR_NEWS_NOT_SENT = 'orchestrator.news_not_sent'
 
 /** The longest a summary carried from an event gets, so a line stays one short line. */
 const SUMMARY_MAX = 80
@@ -163,12 +168,23 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
     case 'feature.shipped':
       return { kind: 'end', text: `${clip(event.message)}: shipped. Backlog features waiting on it may start now. ${context}` }
     case 'merge.conflict': {
+      // Reached here only for a merge the human pressed: the orchestrator's own
+      // merge_feature already returned its conflict (ANSWERED_END_TYPES). The
+      // human holds the Resolve button, so relaying it would resolve it twice
+      // (drives-never-touch-real-conversations decision 7).
       const files = Array.isArray(data.files) ? data.files.length : 0
       return {
         kind: 'end',
-        text: `merge conflicted${files > 0 ? ` in ${files} file(s)` : ''}. Resolve it in the feature's worktree, then merge_feature again. ${context}`,
+        text:
+          `merge conflicted${files > 0 ? ` in ${files} file(s)` : ''} when the human merged it by hand. ` +
+          `The human has the Resolve button on the feature: leave the conflict to them unless they ask you. ${context}`,
       }
     }
+    case 'merge.resolved':
+      // A merge that landed retires its conflict on the way to shipping; that
+      // is the shipped line's news, not this one.
+      if (typeof data.mergeFrom !== 'string' || typeof data.mergeInto !== 'string') return null
+      return { kind: 'end', text: `merge conflict resolved (${data.mergeFrom} is in ${data.mergeInto}). Nothing to relay. ${context}` }
     case 'testdrive.dev_failed':
       return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
     case 'feature.started':
@@ -249,6 +265,8 @@ function humanWords(event: EventRow, ticket: NotifyState['ticket']): NewsEvent |
     }
     case 'feature.shipped':
       return { tone: 'done', words: 'Merged — shipped' }
+    case 'merge.resolved':
+      return { tone: 'done', words: 'Merge conflict resolved' }
     case 'merge.conflict': {
       const files = Array.isArray(data.files) ? data.files.length : 0
       return { tone: 'failed', words: files > 0 ? `Merge conflicted in ${files} ${files === 1 ? 'file' : 'files'}` : 'Merge conflicted' }
@@ -381,6 +399,19 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number): void {
     const line = orchestratorLineFor(event, state)
     const threadId = recipient(event, state)
     if (!line || !threadId) return
+    // In a test drive, news never starts a holder the driver has not started
+    // (drives-never-touch-real-conversations decision 9).
+    if (!mayStartInBackground(getSessionRow(ctx, threadId))) {
+      // A type the notifier has no line for, so this event says nothing onward.
+      if (event.featureId) {
+        emit(ctx, event.featureId, {
+          type: ORCHESTRATOR_NEWS_NOT_SENT,
+          message: 'news not sent: this drive has not started the thread that holds this feature',
+          data: { threadId, eventId: event.id, line },
+        })
+      }
+      return
+    }
     const entry = { line, news: orchestratorNewsFor(event, state) }
     const gathered = gathering.get(threadId)
     if (gathered) {
