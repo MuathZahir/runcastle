@@ -73,6 +73,7 @@ import {
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
+import { withWorkers } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
@@ -102,6 +103,12 @@ export interface AgentProcess {
   exited: Promise<{ stderr: string }>
   /** End the process and everything it started. */
   kill(): Promise<void>
+  /**
+   * How the session opens, when the process runs somewhere the row's own paths
+   * do not exist (a worker's sandbox, workers spike decision 2): its cwd, MCP
+   * servers, session options and permission mode, in place of the launch's.
+   */
+  session?: { cwd: string; mcpServers: acp.McpServer[]; meta?: Record<string, unknown>; mode?: string }
 }
 
 /** Starts the agent process a launch describes. */
@@ -908,14 +915,16 @@ class Host implements AgentHost {
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
-    const session: acp.NewSessionRequest = { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
+    const session: acp.NewSessionRequest = proc.session
+      ? { cwd: proc.session.cwd, mcpServers: proc.session.mcpServers, _meta: proc.session.meta ?? spec.sessionMeta }
+      : { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
     let opened: acp.NewSessionResponse | acp.LoadSessionResponse | acp.ForkSessionResponse
     const fork = readPendingFork(t.id).open
     if (fork && fork !== 'fresh') {
       const forked = await conn.agent.request(acp.methods.agent.session.fork, {
         ...session,
         sessionId: fork.from,
-        _meta: { ...spec.sessionMeta, ...forkAtMeta(fork.messageId) },
+        _meta: { ...session._meta, ...forkAtMeta(fork.messageId) },
       })
       t.sessionId = forked.sessionId
       opened = forked
@@ -942,7 +951,7 @@ class Host implements AgentHost {
       t.sessionId = created.sessionId
       opened = created
     }
-    const mode = spec.sessionMode
+    const mode = proc.session?.mode ?? spec.sessionMode
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
@@ -1388,7 +1397,7 @@ type GlobalWithHost = typeof globalThis & { [HOST_KEY]?: AgentHost }
 /** The process-wide host, pinned on `globalThis` so a `bun --hot` reload keeps its processes. */
 export function processAgentHost(ctx: AppCtx): AgentHost {
   const g = globalThis as GlobalWithHost
-  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx, lifecycle: threadLifecycle(ctx) })
+  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx, lifecycle: threadLifecycle(ctx), transport: withWorkers(ctx, spawnAdapter) })
   return g[HOST_KEY]
 }
 

@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { loadConfig } from '@runcastle/core/config-load'
+import { startWorker } from '../workers/service'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -2698,6 +2700,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
+  start_worker: ['chat'],
   // Refused at call time on a feature another thread holds (`toolNotifyHuman`).
   notify_human: ['chat', 'project'],
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
@@ -2761,6 +2764,18 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
  * so, which is a worse failure than an over-long list; the call-time guards
  * still refuse anything the caller may not do.
  */
+/** The workers spike's tools: registered only with `experimentalWorkers` on. */
+const WORKER_TOOLS = new Set(['start_worker'])
+
+/** Whether the workers spike is on; read per build, since the MCP server is built per request. */
+function workersFlagOn(): boolean {
+  try {
+    return loadConfig().experimentalWorkers === true
+  } catch {
+    return false
+  }
+}
+
 function registeredFor(tool: string, audience: McpAudience | undefined): boolean {
   if (audience === undefined) return true
   if (!ALL_AUDIENCES.includes(audience)) return true
@@ -2770,6 +2785,7 @@ function registeredFor(tool: string, audience: McpAudience | undefined): boolean
 /** The tool names a given audience is offered — the assertion tests read. */
 export function toolsForAudience(audience: McpAudience | undefined): string[] {
   return Object.keys(TOOL_AUDIENCES)
+    .filter((tool) => !WORKER_TOOLS.has(tool) || workersFlagOn())
     .filter((tool) => registeredFor(tool, audience))
     .sort()
 }
@@ -3805,6 +3821,37 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolDeclareReady(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  // The workers spike (decision 4; the name is provisional). Registered only with experimentalWorkers on.
+  if (wants('start_worker') && workersFlagOn()) {
+    server.registerTool(
+      'start_worker',
+      {
+        title: 'Start a worker (experimental)',
+        description:
+          'Start a worker: an agent in its own sandbox container, on its own branch cut from this feature branch, ' +
+          'with one assignment. The human can open it from the feature chat list and type to it; it publishes one port ' +
+          'for its dev server. When done it hands back a summary and its commits, which reach you as a message; its ' +
+          'commits stay on its branch until you merge them. Returns once its sandbox is ready.',
+        inputSchema: {
+          label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Settings page layout".'),
+          goal: z.string().min(1).describe('What the worker should do.'),
+          doneWhen: z.string().min(1).describe('How the worker knows it is done.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        if (!rs.session.featureId) return ok({ error: 'start_worker needs a feature session' })
+        const feature = getFeatureRow(rs.ctx, rs.session.featureId)
+        try {
+          return ok(await startWorker(rs.ctx, feature, args))
+        } catch (err) {
+          return ok({ error: err instanceof Error ? err.message : String(err) })
+        }
       },
     )
   }
