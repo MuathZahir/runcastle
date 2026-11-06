@@ -319,6 +319,24 @@ index 2a1d6d7e902e34620d64929418b34c715ab65d7d..b2927e71168cd6a25a61639769148df2
  import { mkdirSync, appendFileSync } from 'fs';
  import path, { join, posix, dirname, relative } from 'path';
  import { styleText } from 'util';
+@@ -2790,7 +2793,16 @@ var TOOL_ARG_FIELDS = {
+   Bash: "command",
+   WebSearch: "query",
+   WebFetch: "url",
+-  Agent: "description"
++  Agent: "description",
++  // runcastle patch — file work shows in burn logs and timing too
++  // (honest-token-counts decision 10). See docs/adr/0011-sandcastle-patch-is-permanent.md.
++  Read: "file_path",
++  Write: "file_path",
++  Edit: "file_path",
++  MultiEdit: "file_path",
++  NotebookEdit: "notebook_path",
++  Grep: "pattern",
++  Glob: "pattern"
+ };
+ var extractErrorMessage = (obj) => {
+   const err = obj.error;
 diff --git a/dist/sandboxes/daytona.js b/dist/sandboxes/daytona.js
 index 0230713e13fb6782a77e0a5966624ebdef563ac3..5f9c371a498feac3b1e27ac4c28d98fd48b13f83 100644
 --- a/dist/sandboxes/daytona.js
