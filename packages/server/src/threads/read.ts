@@ -3,6 +3,7 @@ import {
   DEFAULT_RUNTIME,
   foldThread,
   lastHumanAt,
+  outsideCompactions,
   threadActivity,
   type SessionKind,
   type SessionRow,
@@ -209,7 +210,8 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
   for (const row of featureSessions(ctx, featureId, ['chat'])) {
     if (!hasThreadLog(row.id)) continue
     const { events } = foldedLog(row.id)
-    const at = events.at(-1)?.at ?? row.createdAt ?? 0
+    // A compaction at a quiet moment is not the lead moving: a reply waits on the human from when it was made.
+    const at = outsideCompactions(events).at(-1)?.at ?? row.createdAt ?? 0
     if (newest && newest.at >= at) continue
     const running = agentHost(ctx).isRunning(row.id)
     const activity = threadActivity(events, running, Date.now())

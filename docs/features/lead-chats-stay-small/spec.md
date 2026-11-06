@@ -112,7 +112,9 @@ less" edits the same files:
 
 ## Open questions
 
-- Whether the Codex ACP runtime reads Codex's auto-compact token limit from the config runcastle
-  writes; settled while building.
+- Whether the Codex ACP runtime acts on Codex's auto-compact token limit. Built: lead sessions'
+  Codex config carries `model_auto_compact_token_limit = 200000` (a key codex-cli 0.164.0 has,
+  in the config file the Codex adapter reads), but no live Codex lead has run with it yet, and
+  Codex ignores unknown keys, so a clean load does not prove it is read.
 - Whether 150k is the right floor once real compactions are measured; the env var lets it move
   without a release. A re-run of the token analysis two weeks after merge would tell.

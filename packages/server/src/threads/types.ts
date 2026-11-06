@@ -84,6 +84,8 @@ export interface AgentHost {
    * Compact the conversation: the runtime's compaction command, sent as a
    * hidden runcastle prompt (starting the agent when none runs); the adapter's
    * compaction update is the thread's divider. Refused while the agent works.
+   * The host compacts a feature lead by itself too, at quiet moments (see
+   * `AUTOCOMPACT_MIN_TOKENS` in `host.ts`); neither kind's turn moves the feature.
    */
   compact(threadId: string): Promise<void>
 }

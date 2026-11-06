@@ -180,13 +180,22 @@ function handleSessionStart(
     })
   }
 
+  // After a compaction the agent holds only its own summary: it re-reads the
+  // record before acting on it (lead-chats-stay-small decision 15).
+  const context = sessionStartContext(ctx, feature)
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: sessionStartContext(ctx, feature),
+      additionalContext: source === 'compact' ? `${AFTER_COMPACTION}\n${context}` : context,
     },
   }
 }
+
+/** What a feature session's start context opens with when the start is a compaction's. */
+export const AFTER_COMPACTION = 'Your context was just compacted. Before acting on the summary, call get_feature_context.'
+
+/** The runtime's compaction command, which runcastle sends as a prompt at quiet moments: no human typed it. */
+const COMPACT_COMMAND = /^\/compact(\s|$)/
 
 /**
  * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
@@ -368,11 +377,14 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  * "Stopping"). A prompt without runcastle's tag is one the human typed — into
  * the thread's composer, which sends it as it was written — so it stamps the
  * feature's last-human-message mark. A payload with no prompt text says
- * nothing about who wrote it, so it stamps nothing.
+ * nothing about who wrote it, so it stamps nothing. Nor does the compaction
+ * command: runcastle sends it, and stamping it would clear what the feature
+ * waits on (lead-chats-stay-small decision 14).
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
+  if (prompt === undefined || isRuncastlePrompt(prompt) || COMPACT_COMMAND.test(prompt.trimStart())) return
+  markHumanMessage(ctx, feature.id, { typed: true })
 }
 
 async function handleSessionEnd(

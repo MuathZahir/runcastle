@@ -5,6 +5,7 @@ import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk/unstable'
 import {
   BACKGROUND_WINDOW_MS,
+  contextUsed,
   DEFAULT_RUNTIME,
   foldThread,
   lastPickedModel,
@@ -17,6 +18,7 @@ import {
   type AskAnswer,
   type Attachment,
   type BackgroundTask,
+  type CompactTrigger,
   type FileChange,
   type PromptDisplay,
   type SessionRow,
@@ -43,6 +45,8 @@ import { killProcessTree } from '../pty/kill-tree'
 import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
+import { tryGetFeature } from '../services/repo'
+import { envInt } from '../util/env-int'
 import { runcastleVersion } from '../version'
 import {
   catalogFromOptions,
@@ -127,6 +131,8 @@ export interface AgentHostDeps {
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
   /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
   backgroundWindowMs?: number
+  /** When a feature lead is compacted at a quiet moment; {@link AUTOCOMPACT} by default. */
+  autoCompact?: Partial<AutoCompactPolicy>
 }
 
 /**
@@ -141,7 +147,7 @@ export interface ThreadLifecycle {
   briefing?(row: SessionRow): string | undefined
   /** The process runs; `source` is who sent the prompt that started it. */
   started?(row: SessionRow, source: PromptOptions['source']): void
-  /** A turn ended; `source` is who sent the prompt it answered. */
+  /** A turn ended; `source` is who sent the prompt it answered. Never a compaction's turn, which moves nothing. */
   turnEnded?(row: SessionRow, source: PromptOptions['source']): void
   /** The process stopped, with who started it. */
   stopped?(row: SessionRow, reason: StopReason, startedBy: PromptOptions['source']): void
@@ -204,6 +210,35 @@ function writePendingFork(threadId: string, fork: PendingFork): void {
 export const IDLE_STOP_MS = 30 * 60_000
 
 /**
+ * Lead chats stay small (lead-chats-stay-small decisions 6, 9): a feature lead
+ * whose context is above {@link AUTOCOMPACT_MIN_TOKENS} is compacted after its
+ * self-planning run, before its idle process stops, and before a turn that
+ * follows more than {@link AUTOCOMPACT_RESUME_GAP_MS} of quiet. Each is set for
+ * the install by its env var, `0` turning it off (the floor turns them all off).
+ */
+export const AUTOCOMPACT_MIN_TOKENS = envInt('RUNCASTLE_AUTOCOMPACT_MIN_TOKENS', 150_000)
+export const AUTOCOMPACT_RESUME_GAP_MS = envInt('RUNCASTLE_AUTOCOMPACT_RESUME_GAP_MS', 55 * 60_000)
+export const AUTOCOMPACT_AFTER_PLANNING = envInt('RUNCASTLE_AUTOCOMPACT_AFTER_PLANNING', 1) > 0
+export const AUTOCOMPACT_WHILE_IDLE = envInt('RUNCASTLE_AUTOCOMPACT_WHILE_IDLE', 1) > 0
+
+/** When the host compacts a feature lead by itself; see {@link AUTOCOMPACT_MIN_TOKENS}. */
+export interface AutoCompactPolicy {
+  /** The context size above which a lead is compacted; 0: never. */
+  minTokens: number
+  /** How long a lead's quiet must have lasted for its next turn to be preceded by a compaction; 0: never. */
+  resumeGapMs: number
+  afterPlanning: boolean
+  whileIdle: boolean
+}
+
+export const AUTOCOMPACT: AutoCompactPolicy = {
+  minTokens: AUTOCOMPACT_MIN_TOKENS,
+  resumeGapMs: AUTOCOMPACT_RESUME_GAP_MS,
+  afterPlanning: AUTOCOMPACT_AFTER_PLANNING,
+  whileIdle: AUTOCOMPACT_WHILE_IDLE,
+}
+
+/**
  * How long a turn the agent started by itself (Claude Code answering a finished
  * background command) may go quiet before it is over, on a runtime with no
  * signal for its end. Claude's own signal is its session going idle.
@@ -264,6 +299,25 @@ const STEER_METHOD = '_session/steering'
  */
 const COMPACT_COMMAND = '/compact'
 
+/**
+ * The compaction runcastle sends a lead by itself (decision 10). Claude Code
+ * takes instructions after its command — what the summary must keep, where the
+ * rest is, and to re-read the record first (decision 15); Codex's command takes
+ * none, so it compacts plainly.
+ */
+export function autoCompactCommand(runtime: AgentRuntime, slug: string | undefined): string {
+  if (runtime === 'codex') return COMPACT_COMMAND
+  const docs = slug ? `docs/features/${slug}/` : "the feature's docs"
+  return [
+    COMPACT_COMMAND,
+    'Keep in the summary: what you are waiting on (the human, a round, a drive, a review);',
+    "the human's latest words, and anything agreed with them but not yet written down;",
+    'the work in progress and its uncommitted files.',
+    `Every settled decision is already in ${docs} (decisions.md, spec.md), so the summary need not repeat them.`,
+    'After this compaction, your first move is to call the runcastle MCP tool get_feature_context before acting.',
+  ].join(' ')
+}
+
 /** What a self-planning run's asks are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
 
@@ -307,6 +361,13 @@ interface Queued {
   display?: PromptDisplay
   /** Already in the log (a human's words show at once); runcastle's are logged when sent. */
   logged: boolean
+  /** A compaction, and why it was sent: its turn moves nothing the feature waits on. */
+  compaction?: CompactTrigger
+}
+
+/** A compaction command as a hidden runcastle prompt: no message in the thread, logged as it is sent. */
+function compaction(text: string, trigger: CompactTrigger): Queued {
+  return { id: newId('prompt'), text, blocks: [{ type: 'text', text }], source: 'runcastle', hidden: true, logged: false, compaction: trigger }
 }
 
 /** The running turn. */
@@ -319,6 +380,8 @@ interface Turn {
   self?: boolean
   /** A self-started turn on a runtime with no end signal ends when this fires. */
   quiet?: ReturnType<typeof setTimeout>
+  /** A compaction's turn, why it was sent and the context size it started from. */
+  compaction?: { trigger: CompactTrigger; before?: number }
 }
 
 interface Thread {
@@ -355,6 +418,13 @@ interface Thread {
   configOptions?: acp.SessionConfigOption[]
   /** The session was given an effort the human picked: its level is no longer the one its model starts on. */
   effortPicked?: boolean
+  /**
+   * When the conversation this process loaded last finished a turn, read off the
+   * log as it started: how long it was quiet before this process's first turn.
+   */
+  lastActiveAt?: number
+  /** The idle stop is waiting for its compaction: the process stops when that turn ends, if nothing else came. */
+  stopAfterCompaction?: boolean
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */
@@ -436,6 +506,7 @@ class Host implements AgentHost {
   private readonly selfTurnQuietMs: number
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   private readonly backgroundWindowMs: number
+  private readonly autoCompact: AutoCompactPolicy
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -453,6 +524,7 @@ class Host implements AgentHost {
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
+    this.autoCompact = { ...AUTOCOMPACT, ...deps.autoCompact }
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -478,6 +550,12 @@ class Host implements AgentHost {
     }
     const t = this.threads.get(threadId)
     if (t?.turn && opts.source === 'runcastle') {
+      t.queue.push(item)
+      return { promptId: item.id }
+    }
+    if (t?.turn?.compaction) {
+      // Never steered into a compaction (decision 13): it runs once that ends.
+      this.logPrompt(t.id, item)
       t.queue.push(item)
       return { promptId: item.id }
     }
@@ -544,16 +622,51 @@ class Host implements AgentHost {
     const t = this.threads.get(threadId)
     if (t?.turn || t?.ask || t?.queue.length) throw new GateError('the agent is working: compact once its turn ends')
     seedFromTranscript(this.ctx, threadId)
-    const item: Queued = {
-      id: newId('prompt'),
-      text: COMPACT_COMMAND,
-      blocks: [{ type: 'text', text: COMPACT_COMMAND }],
-      source: 'runcastle',
-      hidden: true,
-      logged: false,
-    }
+    const item = compaction(COMPACT_COMMAND, 'manual')
     this.logPrompt(threadId, item)
     this.enqueue(t ?? this.start(row, 'runcastle'), item)
+  }
+
+  /**
+   * The compaction a feature lead gets at a quiet moment (decision 6), when it
+   * is one: a lead whose context is above the floor, with the trigger on, and
+   * (after planning, while idle) a feature not yet shipped. Never one while a
+   * turn, an ask or a queued prompt is pending (decision 13); `queued` is the
+   * prompt a resume compaction goes ahead of.
+   */
+  private autoCompaction(t: Thread, trigger: Exclude<CompactTrigger, 'manual'>, queued = 0): Queued | null {
+    const policy = this.autoCompact
+    const on = { planned: policy.afterPlanning, idle: policy.whileIdle, resume: policy.resumeGapMs > 0 }[trigger]
+    if (!on || policy.minTokens <= 0 || t.turn || t.ask || t.queue.length > queued) return null
+    const row = getSessionRow(this.ctx, t.id)
+    if (row?.kind !== 'chat' || !row.featureId) return null
+    const feature = tryGetFeature(this.ctx, row.featureId)
+    if (!feature) return null
+    if (trigger !== 'resume' && (feature.status === 'shipped' || feature.status === 'archived')) return null
+    const used = contextUsed(readThreadEvents(t.id))
+    if (used === undefined || used <= policy.minTokens) return null
+    return compaction(autoCompactCommand(row.runtime ?? DEFAULT_RUNTIME, feature.slug), trigger)
+  }
+
+  /** Compact the lead now, when it is due one (see {@link autoCompaction}); whether it was. */
+  private compactNow(t: Thread, trigger: 'planned' | 'idle'): boolean {
+    const item = this.autoCompaction(t, trigger)
+    if (!item) return false
+    this.enqueue(t, item)
+    return true
+  }
+
+  /**
+   * The compaction that goes ahead of `next` when the lead has been quiet past
+   * the resume gap since its last turn — in this process, or as the log said
+   * when it loaded the conversation.
+   */
+  private resumeCompaction(t: Thread, next: Queued): Queued | null {
+    if (next.compaction) return null
+    const last = t.turnEndedAt ?? t.lastActiveAt
+    if (last === undefined || Date.now() - last <= this.autoCompact.resumeGapMs) return null
+    // `next` is already off the queue; whatever else waits goes after it, as before.
+    return this.autoCompaction(t, 'resume', t.queue.length)
   }
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
@@ -848,6 +961,9 @@ class Host implements AgentHost {
   private start(row: SessionRow, startedBy: PromptOptions['source']): Thread {
     let n = 0
     const opening = this.hook(() => this.lifecycle.opening?.(row))
+    // A lead reopening its conversation: how long it has been quiet, for the resume compaction.
+    const reopens = row.kind === 'chat' && !!row.featureId && !!row.ccSessionId && !readPendingFork(row.id).open
+    const lastActiveAt = reopens ? readThreadEvents(row.id).findLast((e) => e.type === 'turn_ended')?.at : undefined
     const t: Thread = {
       id: row.id,
       state: 'starting',
@@ -860,6 +976,7 @@ class Host implements AgentHost {
       agents: 0,
       startedBy,
       ...(opening ? { opening } : {}),
+      ...(lastActiveAt !== undefined ? { lastActiveAt } : {}),
     }
     this.threads.set(t.id, t)
     appendThreadEvent(t.id, { type: 'process', state: 'starting' })
@@ -978,6 +1095,8 @@ class Host implements AgentHost {
     // A new conversation under the old id would write over whatever is left of the old one.
     if (created.sessionId === row.ccSessionId) throw new Error(`the new conversation came back under the old one's id (${created.sessionId})`)
     t.sessionId = created.sessionId
+    // A new conversation holds none of the old one's context: nothing to compact.
+    delete t.lastActiveAt
     const briefing = this.hook(() => this.lifecycle.briefing?.(row))
     if (briefing) t.opening = briefing
     else delete t.opening
@@ -1068,6 +1187,7 @@ class Host implements AgentHost {
       ...(steered ? { steered: true } : {}),
       ...(item.hidden ? { hidden: true } : {}),
       ...(item.display ? { display: item.display } : {}),
+      ...(item.compaction ? { compaction: item.compaction } : {}),
     })
     item.logged = true
     // A message answers the lead's reply (`leadAwaitsHuman`): the header and the
@@ -1106,13 +1226,21 @@ class Host implements AgentHost {
     if (t.state !== 'running' || t.turn) return
     const next = t.queue.shift()
     if (!next) return this.armIdle(t)
-    if (!next.logged) this.logPrompt(t.id, next)
-    void this.runTurn(t, next)
+    // A lead quiet past the resume gap is compacted before the turn it comes back to (decision 6c).
+    const ahead = this.resumeCompaction(t, next)
+    if (ahead) t.queue.unshift(next)
+    const item = ahead ?? next
+    if (!item.logged) this.logPrompt(t.id, item)
+    void this.runTurn(t, item)
   }
 
   private async runTurn(t: Thread, item: Queued): Promise<void> {
     if (t.idle) clearTimeout(t.idle)
     const turn = this.newTurn(t)
+    if (item.compaction) {
+      const before = contextUsed(readThreadEvents(t.id))
+      turn.compaction = { trigger: item.compaction, ...(before !== undefined ? { before } : {}) }
+    }
     t.turn = turn
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
@@ -1149,7 +1277,26 @@ class Host implements AgentHost {
     const row = getSessionRow(this.ctx, t.id)
     // The turn may have written files: the composer's `@` lists them afresh.
     if (row) forgetWorktreeFiles(row.worktreePath)
+    if (item.compaction) return this.compacted(t, end.reason)
+    // Read before the lifecycle ends the run and makes the thread the lead's ordinary chat.
+    const planned = item.source === 'runcastle' && row?.purpose === 'self-plan'
     if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source))
+    // A self-planning run is over: the lead is compacted while its cache is warm (decision 6a).
+    if (planned && this.compactNow(t, 'planned')) return
+    this.pump(t)
+  }
+
+  /**
+   * A compaction's turn ended. It is not a turn as far as the feature is
+   * concerned (decision 14): no lifecycle runs, so nothing is announced, no
+   * self-planning run ends again, and what the feature waits on stays. The idle
+   * stop it went ahead of goes on unless something came meanwhile; otherwise the
+   * idle timer starts over from now.
+   */
+  private compacted(t: Thread, reason: TurnEnd): void {
+    const stop = t.stopAfterCompaction && reason !== 'cancelled' && !t.queue.length && !t.ask
+    t.stopAfterCompaction = false
+    if (stop) return void this.stop(t.id, 'idle')
     this.pump(t)
   }
 
@@ -1247,7 +1394,10 @@ class Host implements AgentHost {
   private armIdle(t: Thread): void {
     if (t.idle) clearTimeout(t.idle)
     t.idle = setTimeout(() => {
-      if (this.threads.get(t.id) === t && !t.turn && !t.ask && !t.queue.length) void this.stop(t.id, 'idle')
+      if (this.threads.get(t.id) !== t || t.turn || t.ask || t.queue.length) return
+      // A lead is compacted before it stops, while its cache is still warm (decision 6b); it stops when that ends.
+      if (this.compactNow(t, 'idle')) t.stopAfterCompaction = true
+      else void this.stop(t.id, 'idle')
     }, this.idleMs)
     t.idle.unref?.()
   }
@@ -1268,7 +1418,8 @@ class Host implements AgentHost {
     }
     const own = !t.sessionId || sessionId === t.sessionId
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
-    for (const body of t.map(update, own ? undefined : sessionId)) {
+    for (const mapped of t.map(update, own ? undefined : sessionId)) {
+      const body = mapped.type === 'compacted' ? this.compaction(t, mapped) : mapped
       // The model a session opens on is logged once it runs, after the thread's own
       // choice is applied; the adapter's announcement while it opens is not news.
       if (body.type === 'model' && t.state === 'starting') continue
@@ -1283,6 +1434,16 @@ class Host implements AgentHost {
       }
       appendThreadEvent(t.id, body)
     }
+  }
+
+  /**
+   * A compaction the agent reports, with why runcastle sent it (none: the
+   * runtime compacted by itself inside a turn) and the context size before it.
+   */
+  private compaction(t: Thread, body: Extract<ThreadEventBody, { type: 'compacted' }>): ThreadEventBody {
+    const sent = t.turn?.compaction
+    const before = sent ? sent.before : contextUsed(readThreadEvents(t.id))
+    return { ...body, ...(sent ? { trigger: sent.trigger } : {}), ...(before !== undefined ? { before } : {}) }
   }
 
   /**
