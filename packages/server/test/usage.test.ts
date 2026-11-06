@@ -282,15 +282,39 @@ describe('token telemetry', () => {
       const a = seedRow(kept, 1000, { tokens: 30 })
       const b = seedRow(kept, 5000, { tokens: 30 })
       const gone = join(dir, 'gone.jsonl')
-      const g1 = seedRow(gone, 1000, { tokens: 500 })
-      const g2 = seedRow(gone, 2000, { tokens: 500 })
+      const split = (output: number) => ({ input: 0, cacheCreation: 0, cacheRead: 0, output })
+      const g1 = seedRow(gone, 1000, { tokens: 500, tokenBreakdown: split(500) })
+      const g2 = seedRow(gone, 2000, { tokens: 400, tokenBreakdown: split(400) })
 
       expect(await recountAllSessions(ctx)).toEqual({ recounted: 1, collapsed: 1 })
       expect([sessionRow(a)?.tokens, sessionRow(b)?.tokens]).toEqual([10, 20])
       expect(sessionRow(g1)).toMatchObject({ tokens: 0, tokenBreakdown: { recounted: false } })
-      expect(sessionRow(g2)).toMatchObject({ tokens: 500, tokenBreakdown: { recounted: false } })
+      // The newest row takes the largest figure with the split that goes with it.
+      expect(sessionRow(g2)).toMatchObject({ tokens: 500, tokenBreakdown: { output: 500, recounted: false } })
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.tokens_counted' && (e.data as { sessionId?: string }).sessionId === g1)).toHaveLength(1)
       // Self-marking: a second boot finds nothing to do.
       expect(await recountAllSessions(ctx)).toEqual({ recounted: 0, collapsed: 0 })
+    })
+
+    it('leaves a conversation it already counted honest when its transcript later goes', async () => {
+      const path = join(dir, 'later-gone.jsonl')
+      write(path, [ccLine('m1', 2000, 10)])
+      const counted = seedRow(path, 1000)
+      countConversation(ctx, path)
+      const fresh = seedRow(path, 5000)
+      rmTemp(path)
+      await recountAllSessions(ctx)
+      expect(sessionRow(counted)).toMatchObject({ tokens: 10, tokenBreakdown: { conversationTotal: 10, recounted: true } })
+      expect(sessionRow(fresh)).toMatchObject({ tokens: null, tokenBreakdown: { recounted: false } })
+    })
+
+    it('files a non-chat session under the purpose it was created with', () => {
+      const path = join(dir, 'scenario.jsonl')
+      write(path, [ccLine('m1', 2000, 9)])
+      const id = seedRow(path, 1000, { kind: 'scenario', purpose: 'scenario-setup' })
+      launch(id, 1000, 'session.launching')
+      countConversation(ctx, path)
+      expect(sessionRow(id)?.tokenBreakdown?.byPurpose).toEqual({ 'scenario-setup': expect.objectContaining({ output: 9 }) })
     })
 
     it('counts a session with no feature when its turn ends', () => {

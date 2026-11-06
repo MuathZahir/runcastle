@@ -85,6 +85,7 @@ var noSandbox = (options) => {
   if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
 };
 var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\\/=]{120,}'/g, "'…'");
+var TOOL_ARG_FIELDS = { Bash: "command", Read: "file_path", NotebookEdit: "notebook_path", Glob: "pattern" };
 `
 
 /** The same bundle built from the REGISTRY copy: v1.2.11's output. */

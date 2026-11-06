@@ -70,6 +70,10 @@ Alternatives considered and rejected:
      argument, and the three handle interfaces in
      `SandboxProvider-EkSMuBp8.d.ts` declare the field. Drop any link and the
      bound silently reverts to the 64 KiB default;
+     And the burn-log one (`honest-token-counts` decision 10): `Read`, `Write`,
+     `Edit`, `MultiEdit`, `NotebookEdit`, `Grep` and `Glob` added to
+     `TOOL_ARG_FIELDS` in `index.js`, so the stream parser logs file work too;
+     `sandcastle-file-tool-logs.test.ts` pins it;
    - `git diff --cached --full-index > patches/@ai-hero%2Fsandcastle@<ver>.patch`
      and update the `patchedDependencies` key to the new version;
    - upstream ships every `dist/*.js` bundle with its `//# sourceMappingURL=`
@@ -82,8 +86,8 @@ Alternatives considered and rejected:
      it, which is why the trim is written down rather than guessed at;
    - a plain `bun install` does not always re-apply a changed patch:
      `rm -rf node_modules/.bun/@ai-hero+sandcastle@<ver> && bun install --force`;
-   - `sandcastle-volume-mount.test.ts` and `sandcastle-exec-failure.test.ts` must
-     go red with the patch removed and green with it back (they rely on
+   - `sandcastle-volume-mount.test.ts`, `sandcastle-exec-failure.test.ts` and
+     `sandcastle-file-tool-logs.test.ts` must go red with the patch removed and green with it back (they rely on
      `server.deps.inline: ['@ai-hero/sandcastle']` in `vitest.config.ts`).
 3. **The patch ships by bundling, and the build proves it.** `patchedDependencies`
    reaches only this workspace's `node_modules`: a user's `bun add -g runcastle`

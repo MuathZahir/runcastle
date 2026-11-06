@@ -6,6 +6,7 @@ import {
   countedMessages,
   DEFAULT_RUNTIME,
   splitOf,
+  type TokenBreakdown,
   type TokenUsage,
   sumSessionUsage,
   type UsageSplit,
@@ -163,6 +164,7 @@ const LAUNCH_EVENTS = ['session.launching', 'session.purpose_set', 'session.self
  */
 function launchesOf(ctx: AppCtx, rows: SessionSelect[]): Launch[] {
   const ids = rows.map((r) => r.id)
+  const byId = new Map(rows.map((r) => [r.id, r]))
   const sessionIdOf = sql<string>`json_extract(${events.data}, '$.sessionId')`
   const recorded = ctx.db
     .select({ ts: events.ts, data: events.data, sessionId: sessionIdOf })
@@ -172,7 +174,11 @@ function launchesOf(ctx: AppCtx, rows: SessionSelect[]): Launch[] {
     .all()
     .map((e) => {
       const purpose = (e.data as { purpose?: unknown } | null)?.purpose
-      return { sessionId: e.sessionId, at: e.ts, purpose: typeof purpose === 'string' ? purpose : NO_PURPOSE }
+      const row = byId.get(e.sessionId)
+      // Only a main chat's purpose ever changes; any other row keeps the one it
+      // was created with, which launch records before this feature left out.
+      const fallback = row && row.kind !== 'chat' ? (row.purpose ?? NO_PURPOSE) : NO_PURPOSE
+      return { sessionId: e.sessionId, at: e.ts, purpose: typeof purpose === 'string' ? purpose : fallback }
     })
   const seen = new Set(recorded.map((l) => l.sessionId))
   const unrecorded = rows
@@ -319,27 +325,46 @@ export function refreshFeatureTokens(ctx: AppCtx, featureId: string, opts: { mod
 }
 
 /**
- * Collapse a conversation the recount cannot redo (its transcript is gone, or
- * shorter than its old figure): the rows each held the whole conversation, so
- * the newest keeps that figure and the rest go to zero, all marked not
- * recounted (decision 4). Rows never counted stay null, marked the same way so
- * the recount does not visit them again.
+ * Settle a conversation the recount cannot redo (its transcript is gone, or
+ * shorter than its old figure), decision 4. Rows from before this feature each
+ * held the whole conversation, so the row that held the largest figure gives it,
+ * with its split, to the newest row; the rest go to zero. A conversation this
+ * feature already counted is honest as it stands: only its rows never counted
+ * are marked. Every row ends marked not recounted, so the recount does not
+ * visit it again, and each row whose total moved emits `session.tokens_counted`.
  */
 function collapseConversation(ctx: AppCtx, transcriptPath: string): void {
   const rows = conversationRows(ctx, transcriptPath)
-  const figure = Math.max(...rows.map((r) => r.tokens ?? -1))
+  const honest = rows.some((r) => r.tokenBreakdown?.conversationTotal !== undefined)
+  const largest = rows
+    .filter((r) => r.tokens !== null)
+    .reduce<SessionSelect | undefined>((best, r) => (!best || (r.tokens ?? 0) > (best.tokens ?? 0) ? r : best), undefined)
   const newest = rows[rows.length - 1]
   for (const row of rows) {
-    const keeps = row === newest && figure >= 0
-    const breakdown = keeps && row.tokenBreakdown ? row.tokenBreakdown : { ...splitOf(ZERO_USAGE) }
-    ctx.db
-      .update(sessions)
-      .set({
-        tokens: figure < 0 ? null : keeps ? figure : 0,
-        tokenBreakdown: { ...breakdown, recounted: false },
+    let tokens: number | null
+    let breakdown: TokenBreakdown
+    if (honest) {
+      if (row.tokenBreakdown?.conversationTotal !== undefined) continue
+      tokens = row.tokens
+      breakdown = { ...(row.tokenBreakdown ?? splitOf(ZERO_USAGE)), recounted: false }
+    } else if (!largest) {
+      tokens = null
+      breakdown = { ...splitOf(ZERO_USAGE), recounted: false }
+    } else if (row === newest) {
+      tokens = largest.tokens
+      breakdown = { ...(largest.tokenBreakdown ?? splitOf(ZERO_USAGE)), recounted: false }
+    } else {
+      tokens = 0
+      breakdown = { ...splitOf(ZERO_USAGE), recounted: false }
+    }
+    ctx.db.update(sessions).set({ tokens, tokenBreakdown: breakdown }).where(eq(sessions.id, row.id)).run()
+    if (tokens !== row.tokens) {
+      emitForSession(ctx, rowToSession(row), {
+        type: 'session.tokens_counted',
+        message: `session tokens settled by the recount: ${tokens ?? 'none'}`,
+        data: { sessionId: row.id, tokens },
       })
-      .where(eq(sessions.id, row.id))
-      .run()
+    }
   }
 }
 
