@@ -30,9 +30,10 @@ would pass the cap. Wide removals or renames spanning more than one area are alw
 migrate → contract. Ticket contexts must never tell a worker to run the full suite, the verify
 commands whole, or "typecheck and test from the repo root".
 `emit_tickets` returns `warnings: string[]` alongside `stored`/`ids`, built by the existing
-ticket-shape module in `@runcastle/core` (which today has no caller): one sentence per
-implementation ticket with more than eight criteria, naming it by seq. Review tickets are exempt,
-as they are from the other shape checks. The lead skill tells leads to read and act on it.
+ticket-shape module in `@runcastle/core` (which had no caller): one sentence per warning, each
+naming its ticket by seq. The new rule warns on an implementation ticket with more than eight
+criteria; the module's existing thin-context and pasted-document warnings ride along. Review
+tickets are exempt, as they are from the other shape checks. The lead skill tells leads to read and act on it.
 
 **2. The worker prompt and its environment (decisions 4, 5, 6, 7, 11, 14).**
 - The implement prompt states one check rule, once: targeted tests before each commit; the
@@ -50,11 +51,13 @@ as they are from the other shape checks. The lead skill tells leads to read and 
 - The docs digest handed to burn, conflict and review agents inlines `spec.md` only. `brief.md`
   and `decisions.md` move into the digest's existing "on disk, not inlined" index, each with one
   line saying when to read it: the brief for why the feature exists, the decisions before
-  changing anything the spec does not spell out. With no spec, the brief is inlined instead. The
+  changing anything the spec does not spell out. With no spec, the brief is inlined instead (and with neither, the decisions). The
   lead's `get_feature_context` keeps inlining all three; only the burner-side digest changes.
 - The burn guard gains a rule denying in-place `sed` programs addressed by line number (one
   line, one range, or a change/insert/append at a line number), pointing at the Edit tool.
-  Pattern substitutions stay allowed. The old two-range rule is folded into it.
+  Pattern substitutions stay allowed. The flag and the program may come in either order, and a
+  line edit after a substitution (`'s/a/b/;5d'`) counts. The old two-range rule stays beside it
+  for the case it alone covers, two pattern-addressed ranges (`/a/,/b/d;/c/,/d/d`).
 
 **3. The review prompt (decisions 8, 9, 10, 15).**
 - Verify every criterion from the text snapshot. Never take a screenshot in order to look at it;
@@ -109,6 +112,7 @@ runcastle is published and reinstalled.
 
 - **Decisions 6 and 12 are open until the human answers** (the orchestrator has put both to
   them): the effort per kind of agent, and Sonnet or compare first for implementation burns.
-- Whether `CLAUDE_CODE_AUTO_COMPACT_WINDOW` alone compacts a host agent whose user settings set
-  `autoCompactEnabled: false`, or whether a flag-level setting must also turn it back on. Settled
-  while building by trying it on the host; the env variable is the documented lever.
+- Settled while building: the human's `autoCompactEnabled: false` blocks the env variable (Claude
+  Code's docs: whichever turns compaction off, the other cannot turn it back on), so every headless
+  Claude Code agent also gets `--settings "{\"autoCompactEnabled\":true}"`, which outranks user
+  settings. Only a hand-started burn on the host proves it fires (decision 17).

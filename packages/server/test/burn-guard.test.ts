@@ -130,6 +130,21 @@ describe('burn guard rules', () => {
       expect(denied('sed -i.bak "40c replaced" src/a.ts')).toBe('no-sed-line-number-edit')
       expect(denied("sed --in-place '7,$d' src/a.ts")).toBe('no-sed-line-number-edit')
       expect(denied("sed -E -i '3a added' src/a.ts")).toBe('no-sed-line-number-edit')
+      // Spellings the first version let through: flag after the program, a
+      // line edit after a substitution, `--`, `$` and relative ranges.
+      for (const cmd of [
+        "sed -e '5d' -i f",
+        "sed '5d' -i f",
+        "sed -i -e 's/a/b/' -e '5d' f",
+        "sed -i 's/a/b/;5d' f",
+        "sed -i -- '5d' f",
+        "sed -i '$d' f",
+        "sed -i '5,+3d' f",
+      ]) {
+        expect(denied(cmd), cmd).toBe('no-sed-line-number-edit')
+      }
+      expect(denied("sed -i 's/x/1d/' src/a.ts")).toBeNull()
+      expect(denied("sed '3d' my-file.txt")).toBeNull()
       expect(denied("sed -i 's/old/new/g' src/a.ts")).toBeNull()
       expect(denied("sed -n '10,20p' src/a.ts | grep -i foo")).toBeNull()
     })

@@ -45,16 +45,6 @@ export const PREVIEW_FILE = 'preview.html'
 export type AgentDigestDoc = (typeof AGENT_DIGEST_DOCS)[number]
 
 /**
- * Docs deliberately left out of an agent digest, with the reason — kept as data
- * so the payload builders can TELL the agent what exists and was withheld
- * rather than silently dropping it.
- *
- * All three are records of work already finished. They are written FOR humans
- * (and for the project session's later portfolio lookups), they are the largest
- * files a mature feature accumulates, and re-reading them is how an agent talks
- * itself into redoing or second-guessing work that already landed.
- */
-/**
  * The one canonical doc a burn or review agent gets INLINED: the first of these
  * that exists. The spec is what workers build to; the brief stands in for a
  * feature that has none (cheaper-burns decision 7). Inlining all three cost
@@ -71,6 +61,16 @@ export const LISTED_CANONICAL_DOC_REASONS: Readonly<Record<AgentDigestDoc, strin
   'spec.md': 'what the feature is — read it before changing anything your ticket does not spell out',
 }
 
+/**
+ * Docs deliberately left out of an agent digest, with the reason — kept as data
+ * so the payload builders can TELL the agent what exists and was withheld
+ * rather than silently dropping it.
+ *
+ * All three are records of work already finished. They are written FOR humans
+ * (and for the project session's later portfolio lookups), they are the largest
+ * files a mature feature accumulates, and re-reading them is how an agent talks
+ * itself into redoing or second-guessing work that already landed.
+ */
 export const WITHHELD_FEATURE_DOCS: Readonly<Record<string, string>> = {
   'outcome.md': 'the previous run’s outcome report — human-facing, and the burner digests it is built from are already on their tickets',
   'test-notes.md': 'test-drive notes already triaged into tickets',

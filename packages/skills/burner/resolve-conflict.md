@@ -15,7 +15,7 @@ You run **non-interactively** — your agent CLI in print/exec mode, no terminal
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Run long commands (installs, the static check) in the foreground with a generous timeout. If you catch yourself writing "while that runs" or "meanwhile", stop — that sentence is how an iteration dies mid-merge.
 - **An unfinished merge does not survive you.** Resolved-but-uncommitted files are discarded when your process ends, and the next iteration restarts the merge from scratch. Once the conflicts are resolved and the tree is sane, land the merge commit — then verify and fix forward on top of it.
 - **Signal completion.** When the merge commit is in, print exactly `<promise>COMPLETE</promise>` as the last line of your final message. Do the same after writing `BLOCKED.md` (see hard rules).
-- **Run the repo's test command as the repo defines it** — no `--maxWorkers`, `--pool`, `--shard`, or `--runInBand`. Serialising a suite has been measured at 10–20 minutes for work its configured concurrency does in under a minute.
+- **Run the repo's test command as the repo defines it, narrowed to the files you check** — no `--maxWorkers`, `--pool`, `--shard`, or `--runInBand`. Serialising a suite has been measured at 10–20 minutes for work its configured concurrency does in under a minute.
 - **Use `Read`, `Grep`, and `Edit`** for files; keep `Bash` for git, typecheck, and tests. Reading with `cat`/`sed` and editing with `python3` heredocs is among the largest measured time sinks in real rounds.
 
 ## Where to work
@@ -60,7 +60,7 @@ These commits landed on `{{FEATURE_BRANCH}}` while you were working — this is 
 
 3. **Resolve by intent, not by picking a side.** For every `<<<<<<< / ======= / >>>>>>>` hunk, keep *both* behaviours working. Reconcile the logic where the two sides genuinely overlap — the feature docs above are the tie-breaker on intent. Never delete one side's behaviour just to make the conflict go away, and never resolve by taking your whole side (`--ours`) or theirs (`--theirs`) wholesale unless one side is genuinely a strict superset.
 
-4. **Watch for semantic conflicts, not just textual ones.** Files that merged cleanly can still be broken by the other side's rename, signature change, or moved export. After resolving the marked hunks, run the static check (typecheck) once and the tests covering both sides' touched code — never the full suite, whatever a ticket's context says — and fix what the merge broke.
+4. **Watch for semantic conflicts, not just textual ones.** Files that merged cleanly can still be broken by the other side's rename, signature change, or moved export. After resolving the marked hunks, run the tests covering both sides' touched code and the static check (typecheck) once — once more only if it found something you then fixed — and fix what the merge broke. Never the full suite or the verify commands whole, whatever a ticket's context says.
 
    Spend your checks carefully: capture a run's output to a file (`<command> > /tmp/verify.log 2>&1`) and grep that file rather than re-running to re-read it. Never `git stash` mid-merge: it is unrecoverable if your process dies, and it will strand the merge state.
 

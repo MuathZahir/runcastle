@@ -853,7 +853,11 @@ export interface DocsDigestResult {
   readonly bytes: number
   /** Canonical docs inlined, in digest order. */
   readonly included: readonly string[]
-  /** Docs named but not inlined. */
+  /**
+   * Docs named but not inlined: the canonical docs listed rather than inlined
+   * (brief, decisions) first, each with when to open it, then the reports
+   * genuinely withheld (outcome, findings, …).
+   */
   readonly withheld: readonly WithheldDoc[]
   /**
    * Set when the digest carries NO spec at all. A round can legitimately run this
