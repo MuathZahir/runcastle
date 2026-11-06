@@ -1,6 +1,9 @@
 # Workers spike: findings for checkpoint 1
 
-Measured on 2026-11-06 on this Linux machine (Docker 29.9, the `sandcastle:runcastle` burn
+Measured on 2026-11-06 on this Linux machine, in two harness runs: run 1 timed both sides under the
+same conditions; run 2 re-timed the sandbox after the review round's fixes (raw results for both
+are in `measurements/`). The machine was quieter during run 2, so compare sandbox to host within
+run 1 only. Measured (Docker 29.9, the `sandcastle:runcastle` burn
 image, Claude Code 2.1.316 in the image and 2.1.318 on the host, model Sonnet 5.5 for the timed
 turns). Everything ran against a scratch data folder and scratch clones; `~/.runcastle` and the
 live repo were never written to.
@@ -11,12 +14,12 @@ An agent runs well as a runcastle thread inside a burn sandbox. The human opened
 app's chat list, typed to it in the normal chat view, and watched it edit, commit and restart its
 dev server. The page was reachable from the host through the one port the sandbox publishes,
 its commits arrived on the host as a branch, and its handback woke the lead once with about
-180 tokens. An idle worker's container stops and comes back on the next message in about
-5 seconds, dev server included. **Speed is not the deciding factor.** The sandbox is within a
+180 tokens. An idle worker's container stops and comes back on the next message in 3–6 seconds,
+with its dev server answering about a second after the wake. **Speed is not the deciding factor.** The sandbox is within a
 second or two of a host chat everywhere, because the model's own time dominates. What separates
 the two routes is what each one costs elsewhere (see "Sandbox or host" below).
 
-## Numbers (medians of 5 runs per side, milliseconds)
+## Numbers (run 1: medians of 5 runs per side, milliseconds)
 
 The sandbox column runs the worker code in this branch. The host column is the stand-in the
 plan agreed for a host worker: a fresh git worktree, a dependency install, and the same adapter
@@ -36,10 +39,29 @@ running the host's own Claude Code. Repo: a scratch clone of runcastle itself.
 | **Wake after idle stop, to first reply** | **5,408** | **6,476** |
 | · container start + dev server restart | 943 | — |
 | · adapter up + reload conversation | 616 + 1,367 | 3,031 |
-| Dev server answering after wake | 42 | — |
 | Stop on idle | 5,553 | — |
 | Handback turn (agent calls the tool, ends turn) | 10,502 | — |
-| Handback text the lead receives | 140 chars (harness), 733 chars (app run) | — |
+| Handback record (summary + commits + files, as JSON) | 140 chars (harness's fixed one-line summary) | — |
+
+The host's wake row is the same steps a host thread takes after its 30-minute idle stop: the
+adapter starts again and reloads the conversation, then replies (`wakeToFirstReplyMs` in the raw
+results).
+
+### Run 2: the sandbox after the review's fixes (medians of 5)
+
+Each worker now copies the feature branch into its own bare repository (0.3 s here, 2 s with a
+cold disk cache) instead of mounting the host repo; the timings below include it.
+
+| Step | Sandbox |
+|---|---|
+| Cold start, total | 6,006 |
+| First reply to a one-word prompt | 3,248 |
+| Small edit + commit, whole turn | 7,075 |
+| Wake after idle stop, to first reply | 3,319 |
+| Preview answering again, timed from the start of the wake | 1,051 |
+| Live: reattach to a running sandbox, to first reply | 3,083 |
+| Handoff: attach to a headless run's session in a running sandbox, to first reply | 3,877 |
+| Headless turn before that handoff | 3,730 |
 
 Spread: sandbox cold start ran 6.6–16.3 s and host 6.2–10.5 s; edit turns ran 3.9–15.6 s and
 4.7–7.2 s. The model's response time moves every row that includes a turn.
@@ -56,22 +78,25 @@ Two things are not like-for-like, and they push in opposite directions:
 
 **Live, on numbers.** Both routes were run in the same sandbox:
 
-| Route | What it costs to get a reply from a worker you open |
-|---|---|
-| Live (the worker runs as a thread; you open it while it works or after) | 5.4 s to first reply after an idle stop; 0 s while running |
-| Handoff (the worker ran headless; you open it later and its session is resumed) | 4.2 s to first reply after attaching (5.8 s for the headless turn before it) |
+Both routes were timed the same way in run 2: a running sandbox, a fresh adapter, the
+conversation loaded, then a one-word reply.
 
-Handoff saves about a second when opening a cold worker. It gives up being able to watch the
-worker and type to it mid-task, which is the reason workers exist. The live route also needed
-nothing the handoff route didn't: both load the same captured conversation through the same
-adapter.
+| Route | To first reply (median) |
+|---|---|
+| Live: reattach to the worker's own thread | 3.1 s |
+| Handoff: attach to a headless run's captured session | 3.9 s |
+
+Handoff is no faster; within the noise they are the same work, since both load a conversation
+through the same adapter. Handoff also gives up watching the worker and typing to it mid-task,
+which is the reason workers exist. (Run 1 set a wake from a *stopped* container against a
+handoff on a *running* one; the review rightly called that unfair, and run 2 replaces it.)
 
 ## Question 2: fast enough to iterate with?
 
 Yes, on this machine. One message to a running worker costs the same as one to a host chat.
-Starting a worker costs about 10 s (up to about 25 s on an empty dependency cache), and waking an
-idle one about 5.5 s. On a design loop, the preview came back 42 ms after the wake, so the dev
-server is never the bottleneck. In the app run, the human's "make the footer grey and commit"
+Starting a worker costs 6–10 s (up to about 25 s on an empty dependency cache), and waking an
+idle one 3–6 s. After a wake the preview answers again about 1 s in, well before the agent's
+first reply, so the dev server is not the bottleneck. In the app run, the human's "make the footer grey and commit"
 took 18 s end to end, and a message to a stopped worker took 7.2 s.
 
 ## Question 3: seeing its dev server
@@ -95,7 +120,7 @@ Works, with one sharp edge.
 Yes. After an idle stop, the worker holds no process and no running container (no CPU, no
 memory). It keeps its disk: the clone, its installs, uncommitted work, and Claude Code's
 conversation files. The next message runs `docker start`, restarts the dev server, reloads the
-conversation, and replies, in about 5.4 s. The conversation continued exactly where it was.
+conversation, and replies, in 3–6 s. The conversation continued exactly where it was.
 
 - Stopping takes 5.5 s because the image's `sleep infinity` ignores the stop signal, so Docker
   waits out its timeout. This is harmless, since it happens in the background. Adding `--init`
@@ -124,7 +149,7 @@ but it grows with the task, and the lead's window only ever gains the handback.
 | Built here? | Yes, behind `experimentalWorkers` | No; measured as a host chat in a fresh worktree |
 | Speed | Within 1–2 s of host; wakes faster | Within 1–2 s of sandbox; starts faster |
 | Its own port and preview? | Yes: one published port, reachable from the host | Yes, and simpler: the design server already gives a host chat its own port and preview proxy today. A host dev server measured 1.8 s to answer. |
-| Isolation | Strong: the agent cannot reach runcastle, the host's services, or other worktrees. It runs with no permission prompts. | None beyond permission prompts: it shares the human's machine, network and runcastle's unauthenticated API |
+| Isolation | Better, not complete. The agent cannot reach runcastle (it listens on the host's loopback only) and cannot touch the host repo (it works on its own bare copy, see below). It can reach host services that listen on all interfaces, through the bridge, as burns can today. It runs with no permission prompts. | None beyond permission prompts: it shares the human's machine, network and runcastle's unauthenticated API |
 | The human's own skills, plugins and MCP servers | **Absent**: a clean container. Bringing them in means mounting or copying `~/.claude` | Present, as in every chat (the brief keeps user-level skills loaded) |
 | Works on Docker Desktop (Mac, Windows) / Podman | Not tested. Published ports are standard on both; the `.git` mount crosses Docker Desktop's slow file layer once per clone. | No container needed |
 | Billing | The burn token (`CLAUDE_CODE_OAUTH_TOKEN`) | The CLI's own login |
@@ -142,9 +167,19 @@ the human nearby. In either case, the user-skills question is the one to settle 
 - **The project's design command was unreachable** from outside the container (see question 3).
 - **The thread's footer says "Feature worktree · feature/<slug>"** for a worker, which is wrong:
   the worker works in its sandbox on its own branch.
-- **The host repo's `.git` is mounted read-write** so commits come back as refs. That means the
-  agent could rewrite any ref in the project. Burns already mount it the same way through
-  sandcastle's worktrees.
+- **Fixed after the review: the host repo's `.git` is no longer mounted.** The first version
+  mounted it read-write so commits came back as refs, which let the agent write hooks or config
+  that would later run on the host. Each worker now gets its own bare copy of the feature branch,
+  pushes into that, and the host fetches the worker's branch from it at handback (a fetch runs
+  none of that repo's hooks). Burns still mount the host repo through sandcastle's worktrees; the
+  same question applies to them.
+- **Fixed after the review: a stopped worker's port could be handed to the next worker**, so
+  the first could not start again. Ports of existing workers are now never reused.
+- **If a worker's conversation cannot be reloaded, the thread starts a new one** with a notice.
+  The thread host's guard against that checks the host's disk, where a worker's conversation
+  never is. A real worker needs the guard to look inside its sandbox.
+- **The setting is read in two places**: the lead's tool list reads the config file, the rest
+  reads the server's loaded config. They agree unless the file changes while the server runs.
 - **Failure handling is not built.** A dead container shows as an error in the worker's thread,
   and the lead is not told (now a recommendation for `interactive-workers`).
 - **Podman, Docker Desktop and Codex were not tested.**
@@ -178,7 +213,7 @@ To re-run the measurements:
 All of it sits behind `experimentalWorkers`, off by default:
 
 - `packages/server/src/workers/`: the sandbox, the worker record, the transport, the in-sandbox
-  tools, the app wiring and the harness.
+  tools, the app wiring and the harness. Raw harness results are in `measurements/`.
 - One widened seam in the thread host: a transport may say how its session opens.
 - One lead tool, `start_worker`.
 

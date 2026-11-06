@@ -28,9 +28,11 @@ and how to merge them. Nothing else in the app changes (decision 26).
 - **The sandbox (decisions 7, 8, 23).** A plain `docker run` / `podman run` of the burn image,
   as the agent user, on the ordinary bridge network, publishing one port on `127.0.0.1`.
   Sandcastle is not used for the container because it cannot publish a port without a new
-  patch hunk. Mounts: the host repo's git dir (so commits come back as refs), the runtime dir
-  (read-only), and a shared cache volume. Setup clones the worker branch into
-  `/home/agent/repo` with a post-commit hook that pushes every commit back (ADR-0005's shape),
+  patch hunk. Mounts: the worker's own bare copy of the feature branch (never the host repo,
+  so nothing in the sandbox can plant a hook or config there), the runtime dir (read-only), and
+  a shared cache volume. Setup clones the worker branch into `/home/agent/repo` with a
+  post-commit hook that pushes every commit into the bare copy (ADR-0005's shape); the host
+  fetches the worker's branch from it at handback,
   then installs dependencies by lockfile. Idle stop is `docker stop`; wake is `docker start`,
   which also restarts the dev server the worker last ran. The burn engine is not changed.
 - **The runtime dir.** The ACP adapter (`claude-agent-acp`, the bridge between ACP and Claude
