@@ -11,3 +11,11 @@ repo. The human revisits this after using it.
 **Why:** The human at checkpoint 1: "Let's try the sandbox. We can test it for now." The prototype
 measured no speed reason to prefer the host; the sandbox lets a worker run with no permission
 prompts safely.
+
+## 2. The human's yes to the plan, or to an offer in chat, starts the workers
+**Decision:** The workers the lead lists in its plan start when the human says yes to the plan; a
+worker the lead offers later in chat starts on the human's yes in chat. There is no Start click
+per worker. Each starts on its assignment at once, makes a first pass, and shows "needs you" when
+its turn ends.
+**Why:** A Start click per worker would approve the same thing twice. Starting a worker is cheap
+(6–10 s plus an install) and an idle one stops its container, so the plan's yes is gate enough.
