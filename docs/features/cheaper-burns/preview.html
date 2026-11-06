@@ -181,9 +181,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <div><b>Now</b><span class="now">Typechecks before every commit, or once, depending on which line it read</span></div>
         <div><b>Then</b><span class="then">Tests per commit; typecheck once at the end <a class="pin" data-d="4">4</a></span></div><hr>
         <div><b>Now</b><span class="now">Brief, decisions and spec inlined on every call</span></div>
-        <div><b>Then</b><span class="then">Spec inlined; the others are files it can open <a class="pin" data-d="7">7</a></span></div><hr>
+        <div><b>Then</b><span class="then">Spec inlined; decisions read before changing anything the spec leaves open <a class="pin" data-d="7">7</a></span></div><hr>
         <div><b>Now</b><span class="now">Grows to 700k context, never compacts</span></div>
-        <div><b>Then</b><span class="then">Compacts near 200k, medium effort <a class="pin" data-d="5">5</a><a class="pin" data-d="6">6</a></span></div><hr>
+        <div><b>Then</b><span class="then">Compacts near 200k; effort set by runcastle <a class="pin" data-d="5">5</a><a class="pin" data-d="6">6</a></span></div><hr>
         <div><b>Now</b><span class="now"><span class="mono">sed -i '417,433d'</span> gets through</span></div>
         <div><b>Then</b><span class="then">Line-number edits blocked, Edit tool instead <a class="pin" data-d="11">11</a></span></div>
       </div></div>
@@ -191,9 +191,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <div><b>Now</b><span class="now">Screenshots to look at; one browser step per call</span></div>
         <div><b>Then</b><span class="then">Checks the text snapshot; chains steps; pictures only for you <a class="pin" data-d="8">8</a></span></div><hr>
         <div><b>Now</b><span class="now">32k-character prompt, every call</span></div>
-        <div><b>Then</b><span class="then">About half, every rule kept <a class="pin" data-d="9">9</a></span></div><hr>
+        <div><b>Then</b><span class="then">Examples and repetition cut, every rule kept <a class="pin" data-d="9">9</a></span></div><hr>
         <div><b>Now</b><span class="now">Runs at your own high effort, no compaction</span></div>
-        <div><b>Then</b><span class="then">Medium effort, compacts near 200k <a class="pin" data-d="6">6</a><a class="pin" data-d="15">15</a></span></div><hr>
+        <div><b>Then</b><span class="then">Effort set by runcastle, compacts near 200k <a class="pin" data-d="6">6</a><a class="pin" data-d="15">15</a></span></div><hr>
         <div><b>Now</b><span class="now">Chats with live agents in the drive</span></div>
         <div><b>Then</b><span class="then">Starts no paid work unless a criterion asks <a class="pin" data-d="10">10</a></span></div>
       </div></div>
@@ -254,10 +254,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="ba">
         <div><b>Guide</b><span class="now">Skill pack <span class="mono">feature/references/tickets.md</span>: sizing, expand–migrate–contract, no whole-suite checks in contexts.</span></div>
         <div><b>Warning</b><span class="now"><span class="mono">ticketShapeWarnings</span> in core gains a criteria-count rule; <span class="mono">emit_tickets</span> returns <span class="mono">warnings</span>.</span></div>
-        <div><b>Env</b><span class="now"><span class="mono">buildAgentEnv</span>, Claude Code only, host and container: <span class="mono">CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000</span>, <span class="mono">CLAUDE_CODE_EFFORT_LEVEL=medium</span>. Open: whether the host also needs a flag to beat <span class="mono">autoCompactEnabled:false</span>.</span></div>
+        <div><b>Env</b><span class="now"><span class="mono">buildAgentEnv</span>, Claude Code only, host and container: <span class="mono">CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000</span>, <span class="mono">CLAUDE_CODE_EFFORT_LEVEL</span> from one per-kind table, unset for now. Open: whether the host also needs a flag to beat <span class="mono">autoCompactEnabled:false</span>.</span></div>
         <div><b>Digest</b><span class="now"><span class="mono">readDocsDigest</span> inlines spec only (brief if no spec); brief and decisions join the "on disk" index. Lead context unchanged.</span></div>
         <div><b>Guard</b><span class="now"><span class="mono">GUARD_RULES</span>: one rule for any line-addressed <span class="mono">sed -i</span>, replacing the two-range rule.</span></div>
-        <div><b>Prompts</b><span class="now"><span class="mono">implement-ticket.md</span> and <span class="mono">resolve-conflict.md</span>: one check rule. <span class="mono">review-ticket.md</span>: text-snapshot checks, chained steps, no paid work, re-orient after compaction, ~half the length.</span></div>
+        <div><b>Prompts</b><span class="now"><span class="mono">implement-ticket.md</span> and <span class="mono">resolve-conflict.md</span>: one check rule. <span class="mono">review-ticket.md</span>: text-snapshot checks, chained steps, no paid work, re-orient after compaction, examples and repetition cut.</span></div>
         <div><b>Reach</b><span class="now">Live sessions get all of this only after publish and reinstall.</span></div>
       </div>
     </div>
@@ -279,10 +279,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["Wide removals are always expand, migrate, contract", "The costliest ticket on record was one wide removal across four packages.", "assumed"],
     ["One check rule for ticket agents", "The prompt contradicts itself and lead contexts override it; typecheck ran 490 times.", "assumed"],
     ["Burn and review agents compact at 200k", "Burns grow to ~700k and re-read it every call; the median ticket ends at 149k, so ordinary tickets never compact.", "assumed"],
-    ["Headless agents run at medium effort, whatever the host's own settings say", "Host reviews read your own Claude settings, which set Opus to high effort and switch compaction off.", "assumed"],
+    ["Runcastle sets its headless agents' effort, defaults held for the human", "One easy-to-change place per kind of agent, left unset until you answer. The orchestrator recommends medium for burns, high for reviews.", "assumed"],
     ["Workers get the spec inlined; brief and decisions become files to read", "~8k tokens a call re-reading docs; the spec is what workers build to.", "assumed"],
     ["Review drives check by text, keep pictures for the human, and chain steps", "515 screenshots read back (~68M); over half of review calls were one browser step.", "assumed"],
-    ["The review prompt is cut to about half", "32k characters paid on every review call; the rules are settled, the anecdotes repeat them.", "assumed"],
+    ["The review prompt loses its examples and repetition, never a rule", "32k characters paid on every review call; every rule stays, and the report names what moved or merged.", "assumed"],
     ["Reviews never start paid work inside the app they drive", "Reviews of runcastle were seen chatting with live agents in the drive.", "assumed"],
     ["The burn guard blocks line-number edits with sed -i", "Single-range line surgery gets past today's two-range rule.", "assumed"],
     ["Implementation burns default to Sonnet, with Opus for UI and complex tickets \u2014 only on the human's yes", "Sonnet tickets used about half the tokens in a small sample; it may change quality, so it is your call.", "assumed"],
@@ -295,7 +295,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [[12, "Keep Opus and compare the two models on similar tickets first.", "Five Sonnet tickets is a small sample, likely the easier ones; it may change quality.", "challenged"], [6, "Let host agents follow your own Claude settings (high effort for Opus).", "Overrides a setting you chose, for the agents runcastle runs on your machine."], [7, "Inline the spec and the decisions; list only the brief.", "Workers may undo a choice the spec does not restate.", "challenged"], [1, "Keep today's sizing and rely on the warning alone.", "More tickets means more containers and slower features."], [9, "Keep the prompt's length and only add the new rules.", "Cutting anecdotes may weaken rules agents follow today.", "challenged"]]
+  var C = [[12, "Keep Opus and compare the two models on similar tickets first.", "Five Sonnet tickets is a small sample, likely the easier ones; it may change quality.", "challenged"], [6, "Medium for every headless agent, as first planned.", "Held for you: reviews on your machine follow your own high-effort setting today."], [7, "Inline the spec and the decisions; list only the brief.", "Workers may undo a choice the spec does not restate.", "challenged"], [1, "Keep today's sizing and rely on the warning alone.", "More tickets means more containers and slower features."], [9, "Keep the prompt's length and only add the new rules.", "Cutting examples may weaken rules agents follow today.", "challenged"]]
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

@@ -42,13 +42,15 @@ as they are from the other shape checks. The lead skill tells leads to read and 
   commit" goes. The conflict-resolver prompt is brought into line.
 - The agent-environment builder used for every headless agent (`buildAgentEnv`, reached through
   `buildBurnAgent`) adds, for the Claude Code runtime only, on host and in containers:
-  `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000` and `CLAUDE_CODE_EFFORT_LEVEL=medium`. On the host,
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, and `CLAUDE_CODE_EFFORT_LEVEL` from one per-kind table
+  (implementation, conflict, review) that is easy to change; every entry is unset until the human
+  answers decision 6, so effort behaves as today. On the host,
   compaction must also hold when the human's own Claude settings turn auto-compaction off (see
   Open questions). Codex agents are unchanged.
 - The docs digest handed to burn, conflict and review agents inlines `spec.md` only. `brief.md`
   and `decisions.md` move into the digest's existing "on disk, not inlined" index, each with one
-  line saying when to read it (the brief for why the feature exists, the decisions when a
-  choice in the spec seems open to question). With no spec, the brief is inlined instead. The
+  line saying when to read it: the brief for why the feature exists, the decisions before
+  changing anything the spec does not spell out. With no spec, the brief is inlined instead. The
   lead's `get_feature_context` keeps inlining all three; only the burner-side digest changes.
 - The burn guard gains a rule denying in-place `sed` programs addressed by line number (one
   line, one range, or a change/insert/append at a line number), pointing at the Edit tool.
@@ -63,8 +65,8 @@ as they are from the other shape checks. The lead skill tells leads to read and 
 - Never start paid or long-running work inside the app under test (messaging an AI agent,
   starting a job or a build) unless a criterion names it.
 - After a compaction, re-snapshot and check which criteria are already reported before going on.
-- The template is cut from ~32k characters to ~16k or less. Every hard rule stays; repeated
-  explanation and after-the-fact anecdotes go.
+- The template loses examples, anecdotes and repetition only; every rule stays, with no length
+  target. The lead's report names each rule that moved or merged.
 
 **4. The model default (decision 12) — the human's call, no code.**
 If the human says yes, they switch the implementation step's model in Settings from
@@ -105,8 +107,8 @@ runcastle is published and reinstalled.
 
 ## Open questions
 
-- **Decision 12 is open until the human answers**: switch implementation burns to Sonnet, or
-  compare first.
+- **Decisions 6 and 12 are open until the human answers** (the orchestrator has put both to
+  them): the effort per kind of agent, and Sonnet or compare first for implementation burns.
 - Whether `CLAUDE_CODE_AUTO_COMPACT_WINDOW` alone compacts a host agent whose user settings set
   `autoCompactEnabled: false`, or whether a flag-level setting must also turn it back on. Settled
   while building by trying it on the host; the env variable is the documented lever.
