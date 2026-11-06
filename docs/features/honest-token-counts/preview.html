@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Honest token counts preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.tally{margin-top:12px;border-collapse:collapse;width:100%;max-width:720px}
+.tally th{text-align:left;font-weight:400;font-size:12px;color:var(--color-text-tertiary);padding:4px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.tally td{padding:8px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary)}
+.tally td:first-child{color:var(--color-text)}
+body[data-ba="before"] .a, body[data-ba="after"] .b{display:none}
+.flow{width:100%;max-width:760px;margin-top:8px;font-family:var(--font-sans)}
+.weights{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.weights div{display:flex;gap:10px;align-items:baseline;padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.weights b{font-weight:400;color:var(--color-text-secondary)}.weights span{font-family:var(--font-mono)}
+.meterwrap{margin-top:12px;padding:16px;max-width:520px;display:grid;gap:10px}
+.mrow{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px}
+.mlabel{font-size:12px;color:var(--color-text-tertiary)}
+.composer{display:flex;align-items:center;gap:8px;height:40px;padding:0 6px 0 12px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-raised)}
+.composer .ph{flex:1;color:var(--color-text-disabled)}
+.trig{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums;padding:0 6px;height:28px;border-radius:var(--radius-md)}
+.bar{display:block;width:20px;height:4px;border-radius:999px;background:var(--color-border);overflow:hidden}
+.bar.wide{width:100%}
+.bar > span{display:block;height:100%;border-radius:999px;background:var(--color-text-secondary)}
+.send{display:grid;place-items:center;width:28px;height:28px;border-radius:var(--radius-md);background:var(--color-primary);color:var(--color-on-primary)}
+.pop{justify-self:end;width:288px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-raised);display:grid;gap:8px}
+.ph2{display:flex;justify-content:space-between;align-items:baseline}.ph2 span{font-size:12px;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+.pop p{font-size:12px;color:var(--color-text-tertiary)}
+.btn{justify-self:start;padding:3px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px}
+.pad{margin-top:4px}
+.steps{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.steps li{display:flex;gap:10px;align-items:center;color:var(--color-text-secondary)}
+.hoodlist{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--color-text-secondary);max-width:760px}
+.hoodlist b{color:var(--color-text);font-weight:500}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Honest token counts</h1>
+  <p class="lede">Every agent conversation runcastle runs is counted once and correctly, cost is readable from the counts, and the context meter warns where cost starts to hurt. This lands before the token-cutting features so their savings show.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>Planned without you · the lead builds it, then one review round</span><span class="mono">docs/features/honest-token-counts/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>What gets counted, last two weeks</h3>
+    <p class="hint">Before: today's database. After: what the one-time recount would record. <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></p>
+    <div class="seg" role="group" aria-label="Before or after"><button aria-pressed="true" data-ba="before">Before</button><button aria-pressed="false" data-ba="after">After</button></div>
+    <table class="tally">
+      <thead><tr><th>Who spent it</th><th>Recorded</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Feature chats (main)</td><td><span class="b">2.8B, counted 6× on resumed chats</span><span class="a">~1.7B, each message once</span></td><td><span class="b"><i class="dot no"></i></span><span class="a"><i class="dot ok"></i></span></td></tr>
+        <tr><td>Orchestrator chats</td><td><span class="b">nothing</span><span class="a">~221M</span></td><td><span class="b"><i class="dot no"></i></span><span class="a"><i class="dot ok"></i></span></td></tr>
+        <tr><td>Side chats, prepare sessions</td><td><span class="b">nothing</span><span class="a">~13M + prepare</span></td><td><span class="b"><i class="dot no"></i></span><span class="a"><i class="dot ok"></i></span></td></tr>
+        <tr><td>Implementation tickets</td><td><span class="b">counted</span><span class="a">counted</span></td><td><i class="dot ok"></i></td></tr>
+        <tr><td>Review tickets</td><td><span class="b">nothing (325 tickets)</span><span class="a">counted from now on; past ones lost</span></td><td><span class="b"><i class="dot no"></i></span><span class="a"><i class="dot ok"></i></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>One conversation, three launches <a class="pin" data-d="1">1</a> <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">A conversation resumed three times. Each message is counted once, by the launch that was running when it was written, and filed under that launch's purpose.</p>
+    <svg viewBox="0 0 760 150" class="flow" role="img" aria-label="Timeline of one conversation split across three launches">
+      <line x1="20" y1="112" x2="730" y2="112" stroke="var(--color-border-strong)" stroke-width="1.5"/><path d="M724 108 L732 112 L724 116" fill="none" stroke="var(--color-border-strong)" stroke-width="1.5"/><text x="20" y="108" fill="var(--color-text-tertiary)" font-size="11">time</text>
+      <rect x="20" y="40" width="220" height="60" rx="6" fill="var(--color-accent-subtle)" stroke="var(--color-accent)"/>
+      <text x="32" y="62" fill="var(--color-text)" font-size="13">Launch 1 · self-plan</text>
+      <text x="32" y="84" fill="var(--color-text-secondary)" font-size="12">messages → self-plan</text>
+      <rect x="260" y="40" width="200" height="60" rx="6" fill="var(--color-fill-well)" stroke="var(--color-border-strong)"/>
+      <text x="272" y="62" fill="var(--color-text)" font-size="13">Launch 2 · resolve-conflict</text>
+      <text x="272" y="84" fill="var(--color-text-secondary)" font-size="12">messages → resolve-conflict</text>
+      <rect x="480" y="40" width="260" height="60" rx="6" fill="var(--color-fill-card)" stroke="var(--color-border-strong)"/>
+      <text x="492" y="62" fill="var(--color-text)" font-size="13">Launch 3 · you chat (no purpose)</text>
+      <text x="492" y="84" fill="var(--color-text-secondary)" font-size="12">messages → none; no conflict line</text>
+      <text x="20" y="138" fill="var(--color-text-tertiary)" font-size="12">Before: every launch's record held the whole conversation, and launch 3 still said "resolves a merge conflict".</text>
+    </svg>
+  </div>
+
+  <div class="sub">
+    <h3>Raw tokens versus weighted tokens <a class="pin" data-d="6">6</a></h3>
+    <p class="hint">Weighted tokens price every kind as uncached input. Cache reads are 97% of the raw total but a tenth of the price.</p>
+    <div class="weights">
+      <div><b>input</b><span>×1</span></div>
+      <div><b>cache read</b><span>×0.1</span></div>
+      <div><b>cache write, 5 min</b><span>×1.25</span></div>
+      <div><b>cache write, 1 h</b><span>×2</span></div>
+      <div><b>output</b><span>×5</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The context meter by Send <a class="pin" data-d="8">8</a></h3>
+    <p class="hint">Pick a context size. Same 1M window throughout; the last one is a 200k-window model.</p>
+    <div class="seg" role="group" aria-label="Context size"><button aria-pressed="false" data-m="150">150k</button><button aria-pressed="true" data-m="250">250k</button><button aria-pressed="false" data-m="450">450k</button><button aria-pressed="false" data-m="180s">180k of 200k</button></div>
+<!-- screen:context-meter -->
+    <div class="screen meterwrap">
+      <div class="mrow"><span class="mlabel">Before</span>
+        <div class="composer"><span class="ph">Message…</span><span class="trig"><span class="bar"><span id="mb-bar"></span></span><span id="mb-num">25%</span></span><span class="send">↑</span></div></div>
+      <div class="mrow"><span class="mlabel">After</span>
+        <div class="composer"><span class="ph">Message…</span><span class="trig"><span class="bar"><span id="ma-bar"></span></span><span id="ma-num">250k</span></span><span class="send">↑</span></div></div>
+      <div class="pop">
+        <div class="ph2"><b>Context</b><span id="pop-num">250k of 1M · 25%</span></div>
+        <span class="bar wide"><span id="pop-bar"></span></span>
+        <p id="pop-line">Every message now re-reads the whole context. Compact now cuts the cost.</p>
+        <span class="btn">Compact now</span>
+      </div>
+      <p class="hint pad">Amber from 200k, red from 400k or 85% of the window. Every chat's meter changes: feature, side, orchestrator, desktop and phone.</p>
+    </div>
+<!-- /screen:context-meter -->
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <p class="hint">No worker tickets for the build: it is one connected change to the counting code that fits one session, and workers here run one at a time anyway.</p>
+    <ol class="steps">
+      <li><i class="dot live"></i>The lead builds it in this chat, with the project's typecheck and tests green.</li>
+      <li><i class="dot live"></i>One review round: a review ticket checks the code against the spec and the meter on screen.</li>
+      <li><i class="dot"></i>You test-drive the meter and read the recount; then Merge.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A screen showing spend per feature (its own feature once the numbers are trusted)</li>
+      <li><i class="dot"></i>Keeping burn transcripts (comes with burns-become-workers)</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Changing how much any session spends</li>
+      <li><i class="dot"></i>Dollar figures, budgets or limits</li>
+      <li><i class="dot"></i>Recovering past review tickets' tokens</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <ul class="hoodlist">
+        <li><b>Core summing</b> gains a per-message form: each counted message with its timestamp and its split (input, 5 min and 1 h cache writes, cache read, output). Sub-agent transcripts as today.</li>
+        <li><b>Usage service</b> counts a whole conversation at once: the rows sharing its transcript plus the launch records (the existing "session launching" event, added where a launch path lacks one). Each row stores total, split and a by-purpose split.</li>
+        <li><b>When:</b> turn end reads only the new part of the transcript (byte offset + last message id); session end recounts in full; feature read and round end stay as backstops. A missing or shorter transcript never lowers a figure.</li>
+        <li><b>Backfill:</b> one pass on first boot, guarded so it runs once. Gone transcripts: newest row keeps the figure, the others go to zero, all marked not recounted.</li>
+        <li><b>Review workflow</b> keeps its worker run's result and feeds the same harvest implementation tickets use.</li>
+        <li><b>Weighted tokens</b> are derived, never stored: one core function plus a documented SQL query (per day, kind, purpose).</li>
+        <li><b>Launcher</b> sets or clears a reused row's purpose on every launch.</li>
+        <li><b>Meter</b>: tone rule and label in the shared context-meter component; thresholds are constants.</li>
+        <li><b>Sandcastle patch</b>: file tools added to its tool-argument map.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['A conversation is counted once, and each message goes to the launch that wrote it', 'Resumed launches each held the whole total (one 14.76M chat read as 6 × 14.76M). Counting once fixes the sum; splitting by launch keeps per-purpose totals honest even when one record is reused for several errands. Changed after the challenger: the split is by launch, not by record.', 'assumed'],
+    ['Every session kind with a transcript is counted, on both runtimes', 'The orchestrator alone is ~221M of two weeks (~12% of chat tokens) and is uncounted today.', 'assumed'],
+    ['Counts are taken when a turn ends and when a session ends', 'Sessions with no feature never refresh today, and a third of counted chats drift. Turn end reads only the new part, so long orchestrator chats stay cheap; a vanished transcript never zeroes a good figure.', 'assumed'],
+    ['Existing sessions are recounted once, from the transcripts still on disk', 'Later savings are measured against this baseline; without a recount the baseline is wrong. Where a transcript is gone, the duplicated old figures collapse onto one record.', 'assumed'],
+    ['Review tickets are counted like implementation tickets', 'All 325 review tickets are uncounted (423M in two weeks); the review path drops the run result.', 'assumed'],
+    ['Cost is read as "weighted tokens", worked out from the stored split', 'Cache reads are 97% of the raw total. A ratio to the input price survives price and model changes; worked out on read, so weights can change without a recount.', 'assumed'],
+    ['A session’s purpose label follows the current launch', 'A resolve-conflict purpose sticks forever today, and every later launch tells the agent it is resolving a conflict.', 'assumed'],
+    ['Every context meter colours by context size, not by how full the window is', 'Each message re-reads the whole context, so cost grows with size; amber at 650k of 1M comes far too late. The number changes to "212k" so a colour never contradicts a small percentage.', 'assumed'],
+    ['No new place shows the totals', 'Nothing asked for needs a screen. The spec documents the query that sums them, raw and weighted.', 'assumed'],
+    ['Burn logs show file work too', 'Burn logs see only shell, web and sub-agent calls. One line per tool in a patch runcastle already keeps.', 'assumed'],
+    ['Savings are measured in weighted tokens over a date window; no snapshot is saved', 'One yardstick for every later saving, with no table and no moment someone must remember.', 'assumed']
+  ]
+  var C = [
+    [1, 'Count each conversation once on its newest record only, with no per-purpose split.', 'Forces the shape of the counting code and the backfill; the split costs work that only pays off if per-purpose totals matter to you.'],
+    [4, 'Count honestly from now on only.', 'The recount rewrites two weeks of stored figures in place.'],
+    [6, 'Dollars from a per-model price table.', 'A guess at how you want to read cost; weighted tokens are not money.'],
+    [8, 'Keep the percentage and only change the colours; or other thresholds than 200k / 400k.', 'A visible change to every chat, and the thresholds are a judgement call.'],
+    [9, 'A "spent so far" line on each feature.', 'The brief left it open; you may want to see the numbers without a query.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  // the show: before/after toggle and the meter states
+  document.body.dataset.ba = 'before'
+  $$('[data-ba]').forEach(function (b) { b.addEventListener('click', function () {
+    $$('[data-ba]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    document.body.dataset.ba = b.dataset.ba
+  }) })
+  var tones = { quiet: 'var(--color-text-secondary)', warning: 'var(--color-warning)', danger: 'var(--color-danger)' }
+  function oldTone(p) { return p >= 85 ? 'danger' : p >= 65 ? 'warning' : 'quiet' }
+  function newTone(used, size) { return used >= 400 || used / size >= 0.85 ? 'danger' : used >= 200 ? 'warning' : 'quiet' }
+  function meter(key) {
+    var small = key === '180s'
+    var used = parseInt(key, 10), size = small ? 200 : 1000
+    var p = Math.round(used / size * 100)
+    var o = oldTone(p), n = newTone(used, size)
+    $('#mb-bar').style.width = p + '%'; $('#mb-bar').style.background = tones[o]; $('#mb-num').textContent = p + '%'
+    $('#ma-bar').style.width = p + '%'; $('#ma-bar').style.background = tones[n]; $('#ma-num').textContent = used + 'k'
+    $('#ma-num').style.color = n === 'quiet' ? '' : tones[n]
+    $('#pop-bar').style.width = p + '%'; $('#pop-bar').style.background = tones[n]
+    $('#pop-num').textContent = used + 'k of ' + (small ? '200k' : '1M') + ' · ' + p + '%'
+    $('#pop-line').style.display = n === 'quiet' ? 'none' : ''
+  }
+  $$('[data-m]').forEach(function (b) { b.addEventListener('click', function () {
+    $$('[data-m]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    meter(b.dataset.m)
+  }) })
+  meter('250')
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
