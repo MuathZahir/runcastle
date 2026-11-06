@@ -113,6 +113,7 @@ describe('the project skill, orchestrating', () => {
     expect(intake).toContain('- **Give every feature a planning mode.**')
     const mode = intake.slice(intake.indexOf('## The planning mode'))
     expect(mode).toContain('**Every feature in a cut proposal carries a planning mode, with a one-line reason**')
+    expect(mode).toContain('- **Grilled here**')
     expect(mode).toContain('- **Grill with you**')
     expect(mode).toContain('- **Plans itself**')
     expect(mode).toContain('**Recommend the grill** when the feature decides how something new works or looks')
@@ -134,6 +135,25 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('never a grill feature\'s plan')
     expect(text).toContain('a "grill with you" one waits for the human\'s chat')
     expect(text).toContain('the briefs for each cut\'s agreement and planning modes')
+  })
+
+  // The human, 2026-11-06: "I want to explore each decision and each branch of the
+  // tree when we're grilling", and a yes to a message is not a yes to everything in it.
+  it('grills one decision at a time, walks every branch, and takes a yes for the one question asked', () => {
+    const intake = read('project', 'references', 'intake.md')
+    const grill = intake.slice(intake.indexOf('## How you grill'), intake.indexOf('## Where each feature is grilled'))
+    expect(grill).toContain('**One decision per question.**')
+    expect(grill).toContain('**Walk every branch of the decision tree.**')
+    expect(grill).toContain('**Never put a decision inside a paragraph**')
+    expect(grill).toContain('**An answer settles only the question it answers.**')
+    const where = intake.slice(intake.indexOf('## Where each feature is grilled'))
+    expect(where).toContain('**Small and nearly concrete**')
+    expect(where).toContain('**grill it here**, to the end, before you create it')
+    expect(where).toContain('`## Decided with the human`')
+    expect(intake).toContain('**Autonomous means the building runs unattended, never that decisions are made for them.**')
+    expect(intake).toContain('**The cut is features and their boundaries, nothing more**')
+    expect(skill()).toContain('**Never decide for the human.**')
+    expect(read('feature', 'references', 'planning-alone.md')).toContain('- **For the human.** Every decision that changes what the human gets')
   })
 
   it('acts only on what the human asked, as far as they asked, or within a cut agreement', () => {
@@ -197,9 +217,15 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain("reorient from runcastle's record, not from memory")
   })
 
-  it('asks the human one question at a time, only when a wrong guess would cost a round', () => {
+  // The human, 2026-11-06: "I don't want you to make decisions on my behalf and lay
+  // them down in a paragraph." Every decision that changes what they get is theirs,
+  // under every agreement; only how it is built is the orchestrator's.
+  it('puts every decision that changes what the human gets to them, one question at a time', () => {
     const text = section()
-    expect(text).toContain('a wrong guess would cost a round')
+    expect(text).toContain('**A decision that changes what the human gets is theirs, under every agreement**')
+    expect(text).toContain('`**For the human.**`')
+    expect(text).toContain('Autonomous covers the building, never their decisions')
+    expect(text).not.toContain('a wrong guess would cost a round')
     expect(text).toContain('**One question at a time**')
     expect(text).toContain('**Keep everything else moving while you wait**')
     expect(text).toContain("saying it is the human's answer")
