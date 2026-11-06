@@ -67,20 +67,26 @@ thread log.
 is flagged, and the chat's news block shows "For its next turn" beside its time
 in the same tertiary text. No other screen changes, so nothing was designed.
 
-**Cut-over of oversized orchestrator chats** (decisions 7, 8, 15). Before a
-waking batch goes to a holder whose process is stopped, the notifier applies the
-existing resume cap (transcript bytes and re-entries, the same verdict the human's
-open uses). Past it, runcastle opens a fresh orchestrator thread through the
-same path the human's capped open uses: the fresh thread inherits every hold,
-receives the old thread's held lines, and is briefed with the usual orchestrator
-kickoff plus a line naming the thread it continues. The waking batch is then
-prompted into the fresh thread. The old thread gets a closing runcastle line
-("This conversation grew too large and continues in “<title>”") and its session
-row records the thread that continued it (one new nullable column, with a
-migration). Opening or messaging a thread that has a successor opens the newest
-thread in that chain instead of starting another fresh one. The human's capped
-open moves held lines too (decision 8). A holder whose process runs is never cut
-over mid-conversation; it is checked again at its next wake once stopped.
+**Oversized orchestrator chats are compacted in place** (decisions 16, 17).
+`lead-chats-stay-small` gives the agent host automatic compaction for feature
+leads: the existing compact path (the runtime's `/compact` as a hidden prompt),
+run above a context threshold before an idle stop and before a turn after a long
+gap, plus the runtime's own mid-turn auto-compact ceiling, invisible to feature
+state, with keep-instructions and a re-read of the record afterwards. This
+feature extends those same triggers to orchestrator threads and builds no second
+mechanism. Because the before-a-turn trigger sits in the host's turn path, a news
+wake that restarts a stopped orchestrator compacts it first, which closes the gap
+the brief found. The orchestrator's keep-instructions and the project skill say:
+after a compaction, re-read `get_project_context` and the briefs of the held
+features (each carries its cut's working agreement) before acting. The thread,
+its holds and its held lines stay where they are. The launcher's resume cap stops
+starting fresh orchestrator chats, since its 1 MB test measures the whole
+transcript file and not the context after the last compaction. If resuming a
+transcript over 1 MB proves unworkable even after compaction, a hand-over to a
+fresh chat comes back as the fallback, and the report says why.
+
+This part is built last, after `lead-chats-stay-small` merges to main and this
+branch takes main (decision 17).
 
 **Usage limit** (decision 9). When a turn runcastle started (news, or a message
 to a lead) ends with the provider's usage-limit reply, recognised with the same
@@ -119,9 +125,7 @@ held kind.
   self-plan line and the running-holder gate.
 - **`notifyOrchestrator` against a fake agent host (existing)** — observes, for
   a gathered batch, whether the host got a prompt or a hold, the text and news
-  display it got, and, with a capped holder, that a fresh thread was opened,
-  inherited the holds and held lines, and got the prompt while the old thread
-  got its closing line.
+  display it got.
 - **The agent host's prompt with `hold` (existing, extended)** — with the fake
   transport: held entries ride the next prompt in order; a replace key drops the
   older entry; a runcastle-sourced turn ending on a usage-limit reply re-holds its
@@ -130,9 +134,13 @@ held kind.
 - **`deliverToLead` (existing)** — observes that Stop to an idle lead is held,
   Stop to a running lead is queued, and the other messages wake; the round-return
   text's closing line.
-- **The project launch (existing)** — opening a capped thread with a successor
-  opens the newest thread in its chain; a capped open without one moves held
-  lines to the fresh thread.
+- **The agent host's automatic compaction (from `lead-chats-stay-small`)** —
+  the same fake-runtime tests, run for an orchestrator thread: above the
+  threshold it is compacted before an idle stop and before a turn after a long
+  gap, including a turn a news wake starts; the compaction leaves its holds and
+  held lines in place.
+- **The project launch (existing)** — opening an orchestrator thread past the
+  1 MB transcript size resumes it rather than starting a fresh chat.
 - **The news block (existing component)** — renders "For its next turn" for a
   held delivery and nothing for a waking one.
 
@@ -147,7 +155,14 @@ held kind.
 - Turning off background sub-agents through runtime settings.
 - Any tool or setting for asking to be woken by a held kind (decision 14).
 
+- A second compaction mechanism, or handing an orchestrator's features to a
+  fresh chat, unless resuming proves unworkable (decision 16).
+
 ## Open questions
+
+- Whether Claude Code resumes a compacted conversation from its last
+  compaction regardless of the transcript file's size; checked by hand while
+  building decision 16.
 
 - Whether the background sub-agent guidance actually cuts those wakes is only
   measurable afterwards, with the same token analysis that found them.

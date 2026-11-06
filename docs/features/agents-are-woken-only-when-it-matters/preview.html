@@ -230,17 +230,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </div>
 
   <div class="sub">
-    <h3>An oversized orchestrator chat is handed over, not restarted <a class="pin" data-d="7">7</a> <a class="pin" data-d="8">8</a> <a class="pin" data-d="15">15</a></h3>
+    <h3>An oversized orchestrator chat is compacted in place <a class="pin" data-d="16">16</a> <a class="pin" data-d="17">17</a></h3>
     <div class="flow">
       <span class="box wake">a waking line arrives</span><span class="arrow">→</span>
-      <span class="box bad">holder is stopped and past the 1 MB resume cap</span><span class="arrow">→</span>
-      <span class="box good">fresh orchestrator thread: takes its features + held lines, gets the wake</span>
+      <span class="box bad">stopped orchestrator, context over the threshold</span><span class="arrow">→</span>
+      <span class="box good">same chat compacted first, then the news</span><span class="arrow">→</span>
+      <span class="box hold">it re-reads the project and the briefs before acting</span>
     </div>
-    <div class="flow">
-      <span class="box hold">old thread: "continues in “…”"</span><span class="arrow">→</span>
-      <span class="box hold">opening it later goes to the new thread</span>
-    </div>
-    <p class="hint" style="margin-top:6px">A thread whose process is running is never cut over mid-conversation.</p>
+    <p class="hint" style="margin-top:6px">Same mechanism as lead-chats-stay-small, built here last, once that feature is on main. Holds and held lines stay put; no new chats appear. Decisions 7, 8 and 15 are replaced.</p>
   </div>
 
   <div class="sub">
@@ -299,7 +296,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>Turning off background sub-agents in the runtime</li>
       <li><i class="dot"></i>A tool or setting to ask for extra wakes</li>
-      <li><i class="dot"></i>Compacting the orchestrator chat in place</li>
+      <li><i class="dot"></i>A second compaction mechanism, or handing features to a fresh chat</li>
     </ul></div>
   </div>
 </section>
@@ -318,7 +315,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <ul style="margin-top:14px;padding-left:18px;color:var(--color-text-secondary)">
         <li>Thread host: the held preface becomes an ordered list of entries on disk, each with an optional replace key; a usage-limit check on turns runcastle started, with one timed wake at the runtime's reported reset.</li>
         <li>Orchestrator notifier: a wake/hold class per line, the dead "headless run" lines removed, and the resume-cap check before a wake to a stopped holder.</li>
-        <li>Launcher: the capped cut-over shared by news and the human's open; sessions gain a nullable "continued in" column (migration) that the open follows.</li>
+        <li>Compaction: lead-chats-stay-small's automatic triggers extended to orchestrator threads, with orchestrator keep-instructions; the launcher's 1 MB resume cap no longer starts fresh orchestrator chats.</li>
         <li>Lead delivery: Stop held for an idle lead; the round-return message's closing line.</li>
         <li>Web: the news block's "For its next turn" label from a held flag on the prompt display.</li>
         <li>Skills: the project skill's foreground-reads guidance; the feature skill's round guidance.</li>
@@ -343,22 +340,24 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Lines that already only reach a running thread keep that gate', 'A closed thread is doing nothing those lines could change.', A],
     ['"Finished planning" holds when a wait already went out; the gathering window stays short', 'All 28 measured "finished planning" wakes came within minutes of a wait line for the same feature; a short window keeps real wakes prompt.', A],
     ['Background sub-agent wakes are handled in the orchestrator’s guidance', 'That wake is the runtime’s own; runcastle cannot hold it. 49 wakes, 24M tokens, mostly boot-time reads.', A],
-    ['News never restarts an oversized orchestrator chat', 'News restarted chats past the cap; contexts reached 190–352k and never shrank. A fresh thread keeps the orchestrator working on its own.', A],
-    ['Held lines move with the features when a chat is cut over', 'Otherwise held news sits on a thread nobody will prompt again.', A],
+    ['News never restarts an oversized orchestrator chat', 'Replaced by 16.', 'replaced'],
+    ['Held lines move with the features when a chat is cut over', 'Replaced by 16.', 'replaced'],
     ['A runcastle-started turn that hits the usage limit is re-sent at reset', 'Five turns ended on the limit and their news waited for the human to type "continue"; holding alone would not help.', A],
     ['What reaches a feature’s lead', 'Round return is the handback, messages are the questions. Stop wakes a busy lead (it may still be editing) and waits for an idle one.', A],
     ['The round’s return message is the whole handback', 'Leads re-fetched what the wake already told them; saying so is cheaper than slimming it.', A],
     ['Held news looks held in the chat', 'Without a label, a news block with no reply after it looks ignored.', A],
     ['A newer line about what the human is doing replaces the older one', 'A long-closed thread would otherwise read a stale "busy" line and its correction.', A],
     ['No agent or human can ask for extra wakes', 'Every held kind is covered by a later wake; a switch is machinery nobody asked for.', A],
-    ['A cut-over is visible, and the old thread points to the new one', 'Features never move without a trace, and one cut-over never makes two fresh threads.', A]
+    ['A cut-over is visible, and the old thread points to the new one', 'Replaced by 16.', 'replaced'],
+    ['An oversized orchestrator chat is compacted in place, not handed over', 'The orchestrator asked for it: chats appearing by themselves confuse the human, and compaction fixes the context size while keeping the thread and its holds.', 'orchestrator'],
+    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'lead-chats-stay-small has its plan but no code yet; building compaction here too would make a second mechanism.', A]
   ]
   var C = [
     [3, 'Keep more lines as wakes, for example "another thread took it".', 'It is the core of the feature: any line you rely on hearing at once must be on the wake side. "Could not wake its lead" moved to wake after the challenge.', 'challenged'],
-    [7, 'Hold the wake until you next open the orchestrator chat, or compact the old chat in place.', 'New orchestrator threads appear in your list on their own; the challenger would have asked you first.', 'challenged'],
     [9, 'Hold only; your next message carries the missed news.', 'Adds a timed wake at the usage reset, new machinery you may not want.'],
     [10, 'Hold Stop always, or wake on it always as today.', 'Changed after the challenge: a busy lead hears Stop at its turn’s end, an idle one only with your next message.', 'challenged'],
-    [12, 'No visual change at all.', 'A guess about whether you want to see which news was held.']
+    [12, 'No visual change at all.', 'A guess about whether you want to see which news was held.'],
+    [16, 'Hand the features to a fresh orchestrator chat (the earlier plan).', 'Changed by the orchestrator, not by you; it also waits on lead-chats-stay-small landing first.', 'orchestrator']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

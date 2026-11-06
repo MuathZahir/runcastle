@@ -4,7 +4,7 @@ Planned without the human (a headless planning run, 2026-11-06). Every decision
 below is the lead's recommendation, accepted so the plan could be finished; each
 names the alternative it was chosen over.
 
-Check first: 3, 7, 9, 10, 12
+Check first: 3, 9, 10, 12, 16
 
 ## 1. One wake rule, decided in one place, for both levels
 **Decision:** Every message runcastle sends to an agent on its parent's behalf is classed as either **wake** (a handback, or a real question the agent must answer) or **hold** (anything else). One shared function makes that call for both links that exist today: runcastle news to the orchestrator thread that holds a feature, and runcastle's messages to a feature's lead. It is written so workers can adopt it later without a second rule.
@@ -84,3 +84,15 @@ Check first: 3, 7, 9, 10, 12
 **Decision:** When a wake opens a fresh orchestrator thread (decision 7), the old thread shows a closing line saying the conversation grew too large and was continued in the new thread, by name, and the fresh thread appears in the thread list as any new chat does. Opening or typing into the old thread afterwards goes to the thread that continued it, not to another fresh one. A cut-over only happens while the old thread's process is stopped, so it never takes features from under a conversation the human is having.
 **Why:** The human should never find their features moved without a trace, and two fresh threads for one cut-over would split the holds.
 **Assumed.** Alternative: start another fresh thread whenever the old one is opened, as the resume cap does today.
+
+## 16. An oversized orchestrator chat is compacted in place, not handed over
+**Supersedes:** 7, 8, 15.
+**Decision:** An orchestrator thread is never replaced by a fresh one because it grew large. It gets the same automatic compaction that `lead-chats-stay-small` builds for feature leads, reusing that mechanism, with no second one: compacted in place by the agent host's existing compact path when its context is over the same threshold, at the same quiet moments (before an idle stop, and before a turn after a long gap, which covers a news wake restarting a stopped thread), plus the same mid-turn ceiling. Its keep-instructions and the project skill tell it, after any compaction, to re-read its record (`get_project_context` and the briefs of the features it holds, which carry each cut's working agreement) before acting, not to trust the summary. The thread keeps its holds and its held lines, so nothing moves. The 1 MB resume cap no longer starts a fresh orchestrator chat when the human opens one. A hand-over to a fresh chat comes back only if resuming a transcript over 1 MB proves unworkable even after compaction, and the report must say why.
+**Why:** New orchestrator chats appearing by themselves would confuse the human, and the problem the analysis found is context size, which compaction fixes while keeping the thread and its holds.
+**Assumed.** Alternative: the hand-over to a fresh chat of decisions 7, 8 and 15.
+**Changed by the orchestrator:** it asked for compaction in place, reusing `lead-chats-stay-small`'s mechanism, with a fresh chat only as a fallback that must be explained.
+
+## 17. The orchestrator compaction is built last, on the sibling's code
+**Decision:** The wake/hold work (decisions 1–6, 9–14) is built first, on its own. The orchestrator compaction (decision 16) is built after `lead-chats-stay-small` has merged to main: this branch takes main, and the lead extends that feature's compaction triggers to orchestrator threads. If it has not merged by then, the lead tells the orchestrator and waits rather than building a copy.
+**Why:** The sibling has its plan but no code yet; building compaction here too would make the second mechanism the orchestrator ruled out.
+**Assumed.** Alternative: build a minimal orchestrator-only compaction now and fold it into the sibling's later.
