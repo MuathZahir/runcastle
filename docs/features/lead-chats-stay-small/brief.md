@@ -31,3 +31,9 @@ The orchestrator carries this to merged on its own judgement, after the lead's r
 ## Shared files (orchestrator, 2026-11-06)
 
 `feature/SKILL.md` and its references are also edited by `tools-and-skills-say-less` (trimming, "read only the reference for this step"). Keep your skill edits to the delegation guidance and the build-it-yourself section so whichever lands second rebases cleanly.
+
+## Added by the orchestrator, 2026-11-06
+
+## Planning mode changed: grill with the human (2026-11-06)
+
+The human, after seeing the plan page: "when did we agree on compacting?? The user should be on the same page when these decisions are made." They never agreed that runcastle compacts their chats. The orchestrator put it under "quick wins" and gave the plan's yes itself, and it also decided on its own to override the human's `autoCompactEnabled: false`. Both are withdrawn as orchestrator decisions. Every decision that changes how the human's chats behave is theirs, settled in a grill in this feature's chat. The orchestrator does not merge this feature until the human has given their yes there.
