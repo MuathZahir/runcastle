@@ -1,5 +1,7 @@
 # Agents are woken only when it matters
 
+> **Out of date (2026-11-06).** The human re-scoped this feature (decision 19): agents talk by tool call, and the news-line wake/hold table below is dropped. This spec is rewritten after the grill that follows `interactive-workers`' handback design.
+
 ## Problem
 
 The orchestrator (the project thread that holds features and carries them to
