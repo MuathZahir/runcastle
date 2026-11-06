@@ -151,3 +151,27 @@ after the usual idle time. The worker's instructions say its dev server must acc
 from outside the container, and its dev-server tool says so when it does not.
 **Why:** The prototype's `localhost:<port>` address breaks once runcastle moves to the VPS.
 Looking at a design hours later should not need a throwaway message to wake the agent.
+
+## 16. A failed worker wakes its lead once
+**Decision:** When a worker's container dies, its setup fails or its agent crashes, it shows
+"failed" in the sidebar and the lead gets one short message saying what failed; the lead retries,
+drops it, or does the job itself.
+**Why:** Only a handback wakes the lead otherwise, so a lead could wait forever on a worker that
+will never hand back.
+
+## 17. The lead can message any worker at any time
+**Decision:** The lead sends any worker a message; one sent mid-turn waits for the turn's end, as
+runcastle's own messages to chats do.
+**Why:** A lead correcting a running worker is the normal case, not only after a handback.
+
+## 18. Dropping a worker removes it; a feature's workers go when it merges or is archived
+**Decision:** Dropping a worker removes its container and branch. When the feature merges or is
+archived, all its workers are removed.
+**Why:** Each stopped worker keeps a full copy of the repo plus installed packages; nothing else
+would ever clean them up.
+
+## 19. No "ready" while a worker works or holds unlanded work
+**Decision:** The lead cannot declare ready while any worker is working or holds commits that have
+not landed; it lands or drops each first. A worker that hands back after the feature is ready is
+landed by the lead, who then declares ready again.
+**Why:** It closes the gap where a side chat changed a ready feature unseen by its lead.
