@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workers: prototype an agent you can enter inside a sandbox preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;gap:0;margin-top:14px}
+.step{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:start;padding:10px 0;border-bottom:1px solid var(--color-border-subtle)}
+.step .who{font-size:12px;color:var(--color-text-tertiary);padding-top:1px}
+.step .who b{display:block;color:var(--color-text);font-weight:500;font-size:13px}
+.step p{color:var(--color-text-secondary)}
+.step p strong{color:var(--color-text);font-weight:500}
+.wall{display:grid;grid-template-columns:1fr 60px 1fr;gap:0;align-items:stretch;margin-top:14px}
+.box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised)}
+.box h3{margin-bottom:6px}
+.box ul{margin:0;padding-left:16px;color:var(--color-text-secondary)}
+.box.c{border-style:dashed;border-color:var(--color-border-strong)}
+.pipe{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;font-size:11px;color:var(--color-text-tertiary);text-align:center}
+.pipe i{display:block;width:100%;height:2px;background:var(--color-accent)}
+.mock{display:grid;grid-template-columns:240px 1fr;min-height:250px}
+.mock .side{border-right:1px solid var(--color-border);background:var(--color-surface-inset);padding:10px 8px}
+.mock .side h4{margin:0 6px 6px;font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-md);color:var(--color-text-secondary)}
+.row.sel{background:var(--color-surface-selected);color:var(--color-text)}
+.row .st{margin-left:auto;font-size:11px;color:var(--color-text-tertiary)}
+.wtag{font-size:10px;padding:0 5px;border-radius:var(--radius-sm);background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.mock .main{display:flex;flex-direction:column}
+.hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--color-border)}
+.hdr .lnk{margin-left:auto;color:var(--color-accent-text);font-size:12px}
+.msgs{padding:12px 14px;display:grid;gap:8px;flex:1}
+.msg{max-width:440px;padding:7px 10px;border-radius:var(--radius-md);background:var(--color-fill-card);color:var(--color-text-secondary)}
+.msg.me{justify-self:end;background:var(--color-accent-subtle);color:var(--color-text)}
+.comp{margin:0 14px 12px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);color:var(--color-text-tertiary)}
+table.m{border-collapse:collapse;margin-top:12px;width:100%;max-width:720px}
+table.m th,table.m td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--color-border-subtle);font-weight:400}
+table.m th{color:var(--color-text-tertiary);font-size:12px}
+table.m td.q{color:var(--color-text-disabled);font-family:var(--font-mono);font-size:12px}
+.states{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--color-text-secondary)}
+.states span{display:inline-flex;align-items:center;gap:6px}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Workers: prototype an agent you can enter inside a sandbox</h1>
+  <p class="lede">A spike. One worker runs as a normal runcastle chat inside a burn sandbox: you open it, type to it, see its dev server, and it hands back to its lead. It ends with numbers so you can pick sandbox or host at checkpoint 1. The orchestrator agreed it with changes: no host networking, a scratch data folder, a timed handoff, and no product UI. At checkpoint 1 the human chose the sandbox route, as a trial.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/workers-prototype-an-agent-you-can-enter-inside-a-sandbox/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="sub">
+    <h3>A worker's life</h3>
+    <p class="hint">Everything here sits behind one setting, off by default <a class="pin" data-d="5">5</a>.</p>
+    <div class="flow">
+      <div class="step"><div class="who"><b>Lead</b>asked by you</div><p><strong>Starts a worker</strong> with a label, a goal and a done-when <a class="pin" data-d="4">4</a>. Runcastle builds a burn sandbox on the worker's own branch, publishing one port <a class="pin" data-d="7">7</a> <a class="pin" data-d="23">23</a>.</p></div>
+      <div class="step"><div class="who"><b>Worker</b>in the sandbox</div><p><strong>Works live, as a normal chat</strong> <a class="pin" data-d="1">1</a>, with no permission prompts <a class="pin" data-d="15">15</a>. Starts the project's dev server on its own port <a class="pin" data-d="13">13</a>.</p></div>
+      <div class="step"><div class="who"><b>You</b>any time</div><p><strong>Open it from the feature's chat list</strong>, where it is a side chat named "Worker: …" <a class="pin" data-d="26">26</a>; type to it; open the <strong>localhost address it gives</strong> to see its screen.</p></div>
+      <div class="step"><div class="who"><b>Runcastle</b>after 30 idle min</div><p><strong>Stops the agent and the container</strong>, keeping its files <a class="pin" data-d="8">8</a>. No pool to return a seat to yet <a class="pin" data-d="9">9</a>. Your next message starts it again, dev server included.</p></div>
+      <div class="step"><div class="who"><b>Worker</b>when done</div><p><strong>Hands back</strong>: a summary plus its commits. The lead is woken once and never reads the transcript <a class="pin" data-d="10">10</a>. Commits stay on the worker's branch <a class="pin" data-d="11">11</a>.</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What crosses the container wall</h3>
+    <p class="hint">Only the chat's stream goes in, and only the preview port comes out. The adapter and the CLI live together inside <a class="pin" data-d="2">2</a>; nothing inside can reach runcastle <a class="pin" data-d="23">23</a>.</p>
+    <div class="wall">
+      <div class="box"><h3>Host · runcastle server</h3><ul><li>Thread host: event log, prompt queue, idle timer (unchanged)</li><li>Worker service: start, stop, wake, handback</li><li>Reads the handback file at turn end</li><li>Worker state: one JSON file each <a class="pin" data-d="24">24</a></li></ul></div>
+      <div class="pipe"><i></i>docker exec -i<br>ACP over stdio<i></i></div>
+      <div class="box c"><h3>Burn sandbox · bridge network, one port on 127.0.0.1</h3><ul><li>ACP adapter, mounted read-only from the host</li><li>Claude Code CLI (in the image)</li><li>Clone at /home/agent/repo, commits pushed to the worker branch</li><li>Worker tools (hand_back, start_dev_server): an MCP server inside</li><li>Dev server on the published port</li></ul></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Where you meet it</h3>
+    <p class="hint">No new screen and no new controls: the worker is a side chat named "Worker: …" in the normal chat view <a class="pin" data-d="26">26</a>. The tag, status and preview link drawn in the first plan went to interactive-workers <a class="pin" data-d="6">6</a>.</p>
+<!-- screen:worker-in-chat-list -->
+    <div class="screen"><div class="mock">
+      <div class="side"><h4>Chats</h4>
+        <div class="row"><span class="dot live"></span>Lead<span class="st">waiting</span></div>
+        <div class="row sel"><span class="dot"></span>Worker: Settings page redesign<span class="st"></span></div>
+        <div class="row"><span class="dot"></span>Worker: Empty states<span class="st"></span></div>
+        <div class="row"><span class="dot"></span>Side chat<span class="st"></span></div>
+      </div>
+      <div class="main">
+        <div class="hdr"><h3>Worker: Settings page redesign</h3></div>
+        <div class="msgs">
+          <div class="msg">Dev server is up: open http://localhost:41000/. I moved the burn settings into their own group; tests pass. Committed.</div>
+          <div class="msg me">Make the group headers smaller and keep the save bar at the bottom.</div>
+          <div class="msg">On it.</div>
+        </div>
+        <div class="comp">Message the worker…</div>
+      </div>
+    </div></div>
+<!-- /screen:worker-in-chat-list -->
+  </div>
+
+  <div class="sub">
+    <h3>What you get at checkpoint 1</h3>
+    <p class="hint">A report with medians of five runs, sandbox next to a host chat <a class="pin" data-d="16">16</a>, measured by a harness <a class="pin" data-d="27">27</a>, plus a timed handoff <a class="pin" data-d="25">25</a> and a hands-on try on a scratch server <a class="pin" data-d="18">18</a>. The lead builds it itself <a class="pin" data-d="17">17</a>; Claude Code only <a class="pin" data-d="14">14</a>.</p>
+    <table class="m">
+      <tr><th>Measured</th><th>Sandbox worker</th><th>Host chat</th></tr>
+      <tr><td>Cold start</td><td class="q">to measure</td><td class="q">to measure (+ worktree and install)</td></tr>
+      <tr><td>Wake after idle stop</td><td class="q">to measure</td><td class="q">to measure</td></tr>
+      <tr><td>First reply · full turn (trivial, small edit)</td><td class="q">to measure</td><td class="q">to measure</td></tr>
+      <tr><td>Dev server answering (start, after wake)</td><td class="q">to measure</td><td class="q">to measure</td></tr>
+      <tr><td>Attach by handoff: headless run, then resume</td><td class="q">to measure</td><td class="q">—</td></tr>
+      <tr><td>Handback size vs what the lead would have read</td><td class="q" colspan="2">to measure</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The real worker list; the lead offering workers: interactive-workers</li>
+      <li><i class="dot"></i>Burns, reviews, resolvers as workers; a worker pool; landing a worker's commits: burns-become-workers</li>
+      <li><i class="dot"></i>When agents get woken: agents-are-woken-only-when-it-matters</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Codex workers</li>
+      <li><i class="dot"></i>A host-worktree worker (measured via a host chat instead)</li>
+      <li><i class="dot"></i>A relay letting the sandbox reach runcastle</li>
+      <li><i class="dot"></i>The worker row, statuses, failure wakes, preview wake, cleanup, lead messages: recommendations for interactive-workers</li>
+      <li><i class="dot"></i>A "New worker" button for you</li>
+      <li><i class="dot"></i>Any change to the burn engine</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow">
+        <div class="step"><div class="who"><b>No</b>new table</div><p>None: a worker is a <span class="mono">side</span> thread plus one JSON file under the data folder's <span class="mono">workers/</span>: label, goal, done-when, status, branch, container, port, handbacks, timings.</p></div>
+        <div class="step"><div class="who"><b>New</b>transport</div><p>At the thread host's existing transport seam, which may now also say how the session opens: <span class="mono">docker|podman exec -i &lt;container&gt; node /opt/runcastle/acp.mjs</span>, cwd <span class="mono">/home/agent/repo</span>, the worker MCP server, bypass mode. Resume is the same <span class="mono">session/load</span> chats use.</p></div>
+        <div class="step"><div class="who"><b>New</b>worker service</div><p>A plain <span class="mono">docker run -p 127.0.0.1:P:P</span> of the burn image (sandcastle cannot publish a port), a bare copy of the feature branch per worker (the host repo is never mounted; the host fetches the worker's branch at handback), the adapter bundled to one file and mounted read-only; <span class="mono">stop</span>/<span class="mono">start</span> on idle and wake.</p></div>
+        <div class="step"><div class="who"><b>MCP</b>lead</div><p><span class="mono">start_worker</span> (provisional name), only with the setting on.</p></div>
+        <div class="step"><div class="who"><b>MCP</b>worker</div><p>A stdio MCP server inside the sandbox: <span class="mono">hand_back({ summary })</span> writes a file the server reads at turn end, then one <span class="mono">deliverToLead</span>; <span class="mono">start_dev_server({ command? })</span> runs detached on the published port.</p></div>
+        <div class="step"><div class="who"><b>Web</b></div><p>No change.</p></div>
+        <div class="step"><div class="who"><b>Harness</b></div><p>The measuring harness: <span class="mono">packages/server/src/workers/spike-harness.ts</span>, scratch <span class="mono">RUNCASTLE_DATA_DIR</span> only.</p></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['The worker runs live in the sandbox as a normal thread, not by handoff', 'The thread host already takes a pluggable transport, so a live thread costs one new transport; handoff gives nothing to watch while it works.', 'assumed'],
+    ['The ACP adapter runs inside the container; runcastle talks to it over docker exec -i', 'The adapter and the CLI share session files and paths; keeping both inside means no path translation and resume finds its files. The adapter is mounted from the host, so the burn image is unchanged.', 'assumed'],
+    ['The prototype uses host networking for the sandbox', 'Superseded by 23: the orchestrator ruled host networking out.', 'superseded'],
+    ['A worker is a new thread kind owned by the feature, started by its lead', 'The worker model has the lead delegating; your own door belongs to interactive-workers.', 'assumed'],
+    ['All of it sits behind an experimental setting, off by default, and is trimmed before merge', 'Lets the branch merge without exposing half-built workers; code your checkpoint choice will not reuse is removed first.', 'assumed'],
+    ['No new screen: the worker appears in the feature\'s existing thread list', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['The sandbox is a burn sandbox, kept alive', 'The question is whether a burn sandbox can host a thread; the burn engine itself is not changed.', 'assumed'],
+    ['Idle workers stop their container and resume on the next message', 'A stopped container holds no memory or CPU but keeps the clone, installs, uncommitted work and session files.', 'assumed'],
+    ['No worker pool yet', 'There is no machine-wide burn pool today; building one belongs to burns-become-workers.', 'assumed'],
+    ['A handback is a tool call that wakes the lead once', 'Summary plus commits, never the transcript: that keeps the lead small. It must include direction you gave the worker directly.', 'assumed'],
+    ['A handback does not land the commits', 'Landing is burn machinery the brief keeps unchanged; the lead merges the branch itself if it wants it.', 'assumed'],
+    ['A handed-back worker can still be talked to', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['The dev server runs inside the sandbox on a port runcastle assigns', 'A server the runner owns can be restarted on wake and stopped with the worker.', 'assumed'],
+    ['Claude Code only', 'One runtime answers the question.', 'assumed'],
+    ['Inside the sandbox the worker runs without permission prompts', 'The container is the boundary, as for burns.', 'assumed'],
+    ['The report measures the sandbox against today\'s host chats; the host fallback is not built', 'A host chat already is the fallback\'s runtime; the host worktree and install time is measured too.', 'assumed'],
+    ['The lead builds the spike itself, then one review round', 'The spike needs Docker on the host to start and time sandboxes; a burn worker runs inside a container and cannot.', 'assumed'],
+    ['The human gets a hands-on try before checkpoint 1', '"Fast enough to iterate with" is partly a feel; the test drive is that try, on a hand-started branch server.', 'assumed'],
+    ['A failed worker wakes its lead once', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['Opening the preview of a stopped worker wakes its sandbox, not its agent', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['Workers are cleaned up: by the lead, and when the feature ends', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['The lead can message a worker at any time', 'Withdrawn by the orchestrator: now a recommendation for interactive-workers.', 'withdrawn'],
+    ['One published port per worker; the sandbox cannot reach the host', 'An agent with every permission on the host network could reach runcastle\'s own API and everything on the machine. The worker\'s tools run inside and write a file the server reads at turn end.', 'assumed'],
+    ['The spike never touches the live data folder; worker state is a file per worker', 'A spike must not be able to break the live install; no table or migration for code that may be thrown away.', 'assumed'],
+    ['The report times one attach-by-handoff resume too', 'Two measured routes are evidence; one number and an argument are not.', 'assumed'],
+    ['The spike builds only what the measurements and the hands-on try need', 'The worker is a side chat named "Worker: …"; its preview is the localhost address it gives. Product decisions went to interactive-workers.', 'assumed'],
+    ['Measurements run in a standalone harness, the app proof on the scratch server', 'Timing through a running server adds noise; the server path needs proving once.', 'assumed'],
+    ['Interactive workers run in the sandbox, as a trial', 'The human\'s choice at checkpoint 1: "Let\'s try the sandbox. We can test it for now." The host stand-in measuring code is removed; the rest stays behind experimentalWorkers.']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [1, 'Attach by handoff: the worker runs headless, Open resumes its session later.', 'The live route is the pick; the report now times handoff too, so check the two numbers.'],
+    [11, 'A handback lands the branch through the landing queue.', 'You may want to see a real landing before judging workers.'],
+    [23, 'Host networking, or a relay letting the sandbox reach only /mcp.', 'Set by the orchestrator, not you: the safest route, but the handback becomes a file read at turn end, not a call runcastle sees at once.', 'orchestrator'],
+    [25, 'Argue for the live route without timing handoff.', 'Set by the orchestrator, not you; it decides how question 1 is answered.', 'orchestrator']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
