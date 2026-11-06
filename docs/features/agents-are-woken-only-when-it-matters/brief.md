@@ -43,3 +43,14 @@ No checkpoint is named on this feature: the orchestrator carries it to merged on
 ## Orchestrator compaction is on hold for the human (2026-11-06)
 
 The orchestrator told this feature to compact an oversized orchestrator chat in place (its change to decision 7). The human never agreed to runcastle compacting chats, and it is being settled with them in `lead-chats-stay-small`'s grill. Do not build the compaction part until that is decided. The wake/hold part stands as reviewed.
+
+## Added by the orchestrator, 2026-11-06
+
+## Two wake gaps found while running the cut (orchestrator, 2026-11-06)
+
+Both are the opposite of over-waking: the orchestrator was never told.
+
+1. **A lead's reply to the orchestrator arrives silently.** When the orchestrator messages a lead and the lead answers by simply ending its turn (no `declare_ready`, no `wait_for_you`), runcastle sends the orchestrator nothing. On 11-06 the workers prototype finished its post-checkpoint trim at 17:30 with "The branch is ready to merge", and the orchestrator only learned of it when the human asked. Under this feature's rule that answer is a handback: it should wake the orchestrator that sent the message.
+2. **A server restart leaves mid-turn leads stopped.** A restart at 12:42 UTC ended every live chat; leads with a running round were told and re-dispatched, but three leads that were mid-turn without a round (running their suite, resolving findings) got no notice and just stopped until the orchestrator woke them by hand.
+
+Whether these belong in this feature or a follow-up is the lead's call; either way, say which in the report.
