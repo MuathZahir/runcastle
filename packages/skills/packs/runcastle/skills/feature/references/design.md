@@ -39,9 +39,24 @@ the human (section 8).
 3. Check `.runcastle/design.json`. If it exists it holds the command that serves
    design pages here; reuse it.
 
-## 2. One design page per state
+## 2. One design page per screen, its states inside
 
-Each page mounts one state. Two ways to reach it:
+**One design per screen** the feature adds or reshapes, or one per component
+when the feature changes a component rather than a screen. A component that
+appears on several screens is one design for the component, plus a screen
+design only where a screen's layout changes around it. The human approves one
+thing per screen.
+
+**Never a second design for a state, a variant or a tweak.** Every state of the
+screen (empty, loading, error, full, a dialog open, a wizard step) is reached
+from a **state switcher** on that one page. An open choice of look is a Tweak
+inside the same page (section 4), never a with-and-without pair. A phone width
+and a desktop width of the same page are one design: the Design tab changes the
+width. Light and dark are one design too. A phone layout gets its own design
+only when it is a different screen (a different component), not a narrower view
+of the same one.
+
+Two ways to reach each state:
 
 - **Mount the piece directly with made-up props.** A message bubble with a long
   message. This is the quick route for anything small.
@@ -49,6 +64,25 @@ Each page mounts one state. Two ways to reach it:
   screen's queries at the `fetch` edge, and named mutations too, so "send"
   works. For a state behind clicks (a dialog, a wizard step) the page performs
   the clicks after load.
+
+**The switcher.** Write it in the design page, in the project's own framework;
+runcastle ships none. Every switcher has the same shape, so the human meets the
+same control on every design:
+
+- a small panel pinned to a corner, labelled as a design control ("Design ·
+  states") and styled apart from the product, so nobody judges it as UI;
+- every state as a visible button with a plain name, the current one marked;
+  never a dropdown, so the human sees how many states there are;
+- the current state in the page's address as `?state=<name>`, so a reload, a
+  link or your own screenshot lands on it;
+- the page stays live: the switcher jumps to a state, and the human can still
+  click through the screen from there;
+- a theme toggle beside the states where the project has themes, as its own
+  control, not as more states;
+- the Tweaks, when there are any, as a collapsible part of the same panel
+  (section 4).
+
+A screen with a single state needs no switcher.
 
 **A design page is a dead end on purpose.** Other routes have no fakes, and may
 not even compile in a design server, so a click that leaves the page strands the
@@ -58,7 +92,7 @@ handler on `a[href]`) and do nothing, or show a small "navigation is off in this
 design page" note. A flow across several screens is one design page per screen,
 not navigation.
 
-States need no address and no backend. In runcastle's own repo start from
+States need no route in the app and no backend. In runcastle's own repo start from
 `.runcastle/preview/`: `fake-api.ts` (fake tRPC), `shell-fakes.ts` (the session
 data the shell needs), `app-at.tsx` (renders the real `App` at an address) and
 `event-source.ts` (a silent event stream).
@@ -73,12 +107,15 @@ data the shell needs), `app-at.tsx` (renders the real `App` at an address) and
   `.runcastle/design.json`. **Commit that file with the design.** Once it exists
   the argument is optional.
 - `mcp__runcastle__show_design({ path, title, width?, picture? })` shows a design
-  page: `path` is the page on the design server, `title` is a name a human would
-  use ("Invoice list, empty"). It records the design for this feature, posts a
+  page: `path` is the page on the design server, at its bare address with no
+  `?state=`, and `title` names the screen as a human would ("Invoice list"),
+  never one of its states. It records the design for this feature, posts a
   design card in the chat, and opens the human's Design tab at that page when
   they have the feature open. Call it for **every** design page you show, once
-  per page; calling it again for the same page updates it and puts it back to
-  waiting. It refuses while no server runs and none is recorded. The page lays
+  per page, never once per state; calling it again for the same page updates it
+  and puts it back to waiting. Its `picture` shows the state that tells the most
+  about the screen, and your message names the states its switcher holds, so
+  the human knows what to click through before approving. It refuses while no server runs and none is recorded. The page lays
   out at a real screen width, scaled to fit the pane (Desktop 1440 unless the
   human picked another); pass `width: 390` to show the mobile layout, or `768`
   for a tablet. `picture` is an image file of the design (for example your own
@@ -102,7 +139,10 @@ data dir, not in the repo; never commit it.
 
 **Tweaks.** For a choice that is genuinely still open (an accent colour,
 density, which of two layouts, a radius), add a small collapsible **Tweaks**
-menu in a corner of the design page. Three or four controls at most. The menu
+menu to the design page, folded into the switcher's panel when the page has
+one. **Never show the choice as two designs**, one with the tweak and one
+without: the human would approve the same screen twice. Three or four controls
+at most. The menu
 shows its current values as one line of text ("accent #5b8def · density compact
 · layout B") so the human can say or paste what they chose. Do not add one for a
 choice that is not open. Keep everything the menu needs in the design page,
@@ -114,7 +154,9 @@ files: deleting the menu must leave nothing behind.
 When the human settles:
 
 1. Write the chosen tweak values into the real code and **delete the Tweaks
-   menu**. Nothing from tweaks ships.
+   menu**. Nothing from tweaks ships. **Keep the state switcher**: it is
+   committed with the design page, so whoever opens the page later, the worker
+   that wires the screen included, can reach every state.
 2. Commit the component, its design page and its sample data as
    `design: <what>`. Include `.runcastle/design.json` if it is new or changed.
 3. **Never commit unapproved work.** Leave it uncommitted, or drop it. Before
@@ -157,6 +199,8 @@ committed.
 
 Preview files are a byproduct. Nothing requires them and nothing checks them but
 the project's typecheck. If one has gone stale when you next open it, repair it.
+An older screen whose states are split across several design pages is brought
+into one page with a switcher when you next work on that screen.
 
 ## 8. Designs that wait for the human
 
@@ -166,7 +210,8 @@ When the human comes back:
 
 - **They approve a screen**: commit it as section 5 says.
 - **They ask for changes**: iterate as in section 4, and call `show_design` again
-  for each page you changed (it goes back to waiting). If they ask and leave
+  for each page you changed (it goes back to waiting). A change to any one
+  state re-shows the whole design: it is one design, approved once. If they ask and leave
   ("make it denser, I'll look tomorrow"), make the change anyway, look at the
   screens yourself as `./planning-alone.md` says, show them again, and leave
   them uncommitted.

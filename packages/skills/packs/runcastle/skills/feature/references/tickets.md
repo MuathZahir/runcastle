@@ -169,7 +169,7 @@ A **designed-screen block** holds no mock. It names a component committed in des
 </preview-screen-block>
 
 <connect-designed-screens>
-A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its design page in its `context`, and says plainly that **the look is approved**. Its job is to **connect, never restyle**:
+A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its design page in its `context`, and says plainly that **the look is approved**. The states on the design page's switcher are the states the wiring must reach with real data. Its job is to **connect, never restyle**:
 
 - swap the sample data for real data (queries, API calls);
 - add the behaviour the design left out;

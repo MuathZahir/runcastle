@@ -3,123 +3,57 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Claude Code UIs compared — T3 Code, Conductor, raw skills, runcastle</title>
-    <meta
-      name="description"
-      content="An honest roundup of the tools that put a UI around Claude Code: T3 Code, Conductor, the raw terminal-plus-skills workflow, and runcastle. Platform, price, parallelism, planning and merge gating, side by side, with sources."
-    />
+    <title>Compare runcastle with Conductor, Claude Code, Codex, T3 Code and Kiro</title>
+    <meta name="description" content="Every tool here hands you coding agents. runcastle runs the software process around them: plan, design, build, review, test drive, merge. Short posts, one tool at a time." />
     <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/compare/" />
     <meta name="theme-color" content="#0a0c11" />
 
-    <meta property="og:type" content="article" />
+    <meta property="og:type" content="website" />
     <meta property="og:url" content="https://runcastle.dev/compare/" />
-    <meta
-      property="og:title"
-      content="Claude Code UIs compared — T3 Code, Conductor, raw skills, runcastle"
-    />
-    <meta
-      property="og:description"
-      content="Four ways to run Claude Code: the raw terminal with skills, a multi-agent control plane, a native Mac cockpit, and a pipeline that gates the merge. What each is for, and when to pick it."
-    />
-    <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
+    <meta property="og:title" content="Agents don&#x27;t need more prompts. They need a process." />
+    <meta property="og:description" content="Every tool here hands you coding agents. runcastle runs the software process around them: plan, design, build, review, test drive, merge. Short posts, one tool at a time." />
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
     <meta property="og:image:width" content="2324" />
     <meta property="og:image:height" content="1160" />
-    <meta
-      property="og:image:alt"
-      content="The runcastle workspace: a feature board on the left, a feature on its tickets phase with ten dependency-ordered tickets, and a gate panel offering the Burn click."
-    />
+    <meta property="og:image:alt" content="runcastle, the software development engine." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta
-      name="twitter:title"
-      content="Claude Code UIs compared — T3 Code, Conductor, raw skills, runcastle"
-    />
-    <meta
-      name="twitter:description"
-      content="The category, laid out fairly: what each Claude Code UI is for, where each one wins, and which one to pick for the work you actually have."
-    />
+    <meta name="twitter:title" content="Agents don&#x27;t need more prompts. They need a process." />
+    <meta name="twitter:description" content="Every tool here hands you coding agents. runcastle runs the software process around them: plan, design, build, review, test drive, merge. Short posts, one tool at a time." />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
       href="/assets/fonts/geist-latin-wght-normal.woff2" />
     <link rel="preload" as="font" type="font/woff2" crossorigin
       href="/assets/fonts/geist-mono-latin-wght-normal.woff2" />
-    <link rel="stylesheet" href="/styles.css" />
-    <link rel="stylesheet" href="/content.css" />
+    <!-- The ?v= stamps make browsers refetch after a change; an old cached
+         content.css would draw the posts unstyled. Bump both together. -->
+    <link rel="stylesheet" href="/styles.css?v=20261106" />
+    <link rel="stylesheet" href="/content.css?v=20261106" />
 
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "Article",
-        "headline": "Claude Code UIs compared",
-        "description": "A roundup of the tools layered over Claude Code and other agent CLIs — T3 Code, Conductor, the raw skills workflow, and runcastle — compared on platform, price, workflow opinion, parallelism, planning and merge gating.",
-        "url": "https://runcastle.dev/compare/",
-        "mainEntityOfPage": "https://runcastle.dev/compare/",
-        "author": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
-        "publisher": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" }
-      }
-    </script>
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "ItemList",
-        "name": "Claude Code UIs compared",
-        "url": "https://runcastle.dev/compare/",
-        "itemListOrder": "https://schema.org/ItemListUnordered",
-        "numberOfItems": 4,
-        "itemListElement": [
-          {
-            "@type": "ListItem",
-            "position": 1,
-            "item": {
-              "@type": "SoftwareApplication",
-              "name": "Claude Code",
-              "applicationCategory": "DeveloperApplication",
-              "url": "https://claude.com/claude-code"
-            }
-          },
-          {
-            "@type": "ListItem",
-            "position": 2,
-            "item": {
-              "@type": "SoftwareApplication",
-              "name": "T3 Code",
-              "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "macOS, Windows, Linux, iOS, Android",
-              "url": "https://t3.codes/"
-            }
-          },
-          {
-            "@type": "ListItem",
-            "position": 3,
-            "item": {
-              "@type": "SoftwareApplication",
-              "name": "Conductor",
-              "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "macOS",
-              "url": "https://conductor.build/"
-            }
-          },
-          {
-            "@type": "ListItem",
-            "position": 4,
-            "item": {
-              "@type": "SoftwareApplication",
-              "name": "runcastle",
-              "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "macOS, Windows, Linux",
-              "url": "https://runcastle.dev/"
-            }
-          }
-        ]
-      }
+{
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  "headline": "Agents don't need more prompts. They need a process.",
+  "description": "Every tool here hands you coding agents. runcastle runs the software process around them: plan, design, build, review, test drive, merge. Short posts, one tool at a time.",
+  "url": "https://runcastle.dev/compare/",
+  "mainEntityOfPage": "https://runcastle.dev/compare/",
+  "author": {
+    "@type": "Organization",
+    "name": "runcastle",
+    "url": "https://runcastle.dev/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "runcastle",
+    "url": "https://runcastle.dev/"
+  }
+}
     </script>
   </head>
-
   <body>
     <a class="sr-only" href="#main">Skip to content</a>
 
-    <!-- ===================== NAV ===================== -->
     <header class="nav" id="nav">
       <div class="nav-inner">
         <a class="brand" href="/" aria-label="runcastle home">
@@ -149,338 +83,67 @@
     </header>
 
     <main id="main">
-      <article class="article">
+      <article class="article post">
         <nav class="crumbs" aria-label="Breadcrumb">
           <a href="/">runcastle</a>
           <span class="crumbs-sep" aria-hidden="true">/</span>
           <span aria-current="page">Compare</span>
         </nav>
 
-        <h1>Claude Code UIs compared</h1>
+        <h1>Agents don't need more prompts. They need a process.</h1>
         <p class="article-lede">
-          Claude Code is a coding agent that lives in a terminal, and a small category of tools has
-          grown up around it: desktop apps, control planes, kanban boards and pipelines that give
-          those agents a surface, isolate them from each other, and help you review what they wrote.
-          This page is a map of that category — <strong>the raw terminal-plus-skills workflow, T3
-          Code, Conductor, and runcastle</strong> — and a pointer to the head-to-head pages behind
-          each one.
+          Every tool here hands you coding agents. runcastle runs the software process around
+          them: plan, design, build, review, test drive, merge. Short posts on what that changes,
+          one tool at a time.
         </p>
 
-        <nav class="subnav" aria-label="Comparisons">
-          <a href="/compare/" aria-current="page">All comparisons</a>
-          <a href="/compare/claude-code/">vs Claude Code</a>
-          <a href="/compare/t3-code/">vs T3 Code</a>
-          <a href="/compare/conductor/">vs Conductor</a>
-          <a href="/docs/">Docs</a>
-        </nav>
-
-        <div class="note">
-          <p>
-            <strong>Whose page this is.</strong> runcastle.dev is runcastle's own site, so read this
-            the way you would read any vendor's comparison — with the receipts. Everything here
-            about another tool comes from its own site, docs or README, checked on
-            <strong>10 August 2026</strong> and linked at the bottom; runcastle sits in the same
-            table on the same dimensions; and every section below names the cases where the other
-            tool is the better pick. Where a claim would need us to be flattering, we would rather
-            be checkable.
-          </p>
-        </div>
-
-        <h2>What this category actually is</h2>
-        <p>
-          None of these tools is a model, and none of them is an agent. They all sit on top of agent
-          CLIs you have already installed and are already paying for — Claude Code first, often
-          Codex, Cursor or OpenCode as well — and they compete on what they put <em>around</em> the
-          agent. That turns out to be a handful of things: a surface you can read a diff in, a way
-          to run more than one agent without them trampling each other's files, and some story for
-          getting the finished work onto a branch you trust.
-        </p>
-        <p>
-          Two questions separate them more than any feature list. <strong>How many agent CLIs does
-          it drive?</strong> — one is an opinion, five is a hedge. And <strong>how much does it
-          insist on before an agent starts typing?</strong> — some tools take your task as given
-          and are deliberately neutral about it; others refuse to start until the task has been
-          argued into a spec. Almost every difference in the table below is downstream of those two
-          answers.
-        </p>
-        <p>
-          Isolation is the one thing everybody agrees on. Every tool here gives concurrent agents
-          their own branch and their own checkout, usually via git worktrees, because the
-          alternative — several agents editing one working tree — fails immediately and obviously.
-        </p>
-
-        <h2>The four workflows, side by side</h2>
-        <p>
-          These are the dimensions the head-to-head pages actually established, with sources on
-          each of those pages.
-        </p>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Dimension</th>
-                <th scope="col">Claude Code + skills</th>
-                <th scope="col">T3 Code</th>
-                <th scope="col">Conductor</th>
-                <th scope="col">runcastle</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Platform</th>
-                <td>Any terminal — macOS, Windows, Linux</td>
-                <td>Desktop (Electron), web, iOS, Android</td>
-                <td>macOS only; Windows and Linux have a waitlist</td>
-                <td>Browser UI on <code>localhost:4512</code>; macOS, Windows, Linux</td>
-              </tr>
-              <tr>
-                <th scope="row">Price &amp; licence</th>
-                <td>Free; the skill packs are MIT. You pay for the Claude plan</td>
-                <td>Free, MIT, bring your own subscriptions</td>
-                <td>Free plan for local workspaces; Pro $50/month, Teams $60/user/month, Enterprise
-                  custom</td>
-                <td>Free, source-available (FSL), bring your own Claude plan</td>
-              </tr>
-              <tr>
-                <th scope="row">Agents driven</th>
-                <td>Claude Code</td>
-                <td>Claude Code, Codex, Cursor, Grok Build, OpenCode</td>
-                <td>Claude Code, Codex, Cursor, OpenCode</td>
-                <td>Claude Code only</td>
-              </tr>
-              <tr>
-                <th scope="row">Workflow opinion</th>
-                <td>Strong, but advisory — the skills are markdown you can edit or ignore</td>
-                <td>Deliberately light; it never gets between you and the agent</td>
-                <td>Light on the work, strong on the path from workspace to pull request</td>
-                <td>Strong and enforced — six phases, and the app decides what happens next</td>
-              </tr>
-              <tr>
-                <th scope="row">Parallelism model</th>
-                <td>You, running more terminals</td>
-                <td>Threads mapped to git worktrees, across several repos at once</td>
-                <td>One workspace per task = one worktree and branch; cloud workspaces on paid
-                  plans</td>
-                <td>Unblocked tickets burn at once in containers on one feature branch; features run
-                  in parallel</td>
-              </tr>
-              <tr>
-                <th scope="row">Planning stage</th>
-                <td>The skills give you one — <code>/grill-me</code>, <code>/to-spec</code>,
-                  <code>/to-tickets</code> — if you remember to run it</td>
-                <td>None by design; you bring the task</td>
-                <td>None by design; you brief the workspace</td>
-                <td>Mandatory: grilling → spec → dependency-ordered tickets, before any build</td>
-              </tr>
-              <tr>
-                <th scope="row">Merge gating</th>
-                <td>None — nothing stands between the spec and the merge</td>
-                <td>Diff viewer and checkpoints, then one button to commit, push and open a PR</td>
-                <td>Review the diff, open a pull request, merge, archive the workspace</td>
-                <td>Gates block by default between phases; overrides take a recorded one-line
-                  reason</td>
-              </tr>
-              <tr>
-                <th scope="row">Where the record lives</th>
-                <td>Wherever you put it</td>
-                <td>Commits and pull requests</td>
-                <td>Commits, pull requests, archived workspaces</td>
-                <td>Commits, plus spec/decisions/notes as markdown in
-                  <code>docs/features/</code></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h2>Raw Claude Code + a skills workflow</h2>
-        <p>
-          The baseline, and a genuinely good one. Claude Code
-          <a href="https://code.claude.com/docs/en/skills" rel="noopener" target="_blank">skills</a>
-          are <code>SKILL.md</code> files that live in <code>~/.claude/skills/</code> or a repo's
-          <code>.claude/skills/</code>; a pack like
-          <a href="https://github.com/mattpocock/skills" rel="noopener" target="_blank">Matt
-          Pocock's</a> gives you the whole methodology — grill the idea, freeze it into a spec, cut
-          tracer-bullet tickets, implement at the seams, review — for the price of a plugin install.
-          Every rule is a markdown file you can read and rewrite, and it works in any repo on any
-          machine with no server, no container runtime and no port to remember.
-        </p>
-        <p>
-          What it cannot reach is anything outside one conversation: a skill is instructions inside
-          a session, and parallel features, decisions that must survive next week, and a check that
-          stands between the spec and the merge all live between sessions.
-        </p>
-        <p>
-          <strong>Choose this if…</strong> you ship one thing at a time and you are usually at the
-          keyboard while the agent runs; you are still tuning the methodology itself and want to
-          edit a skill and see the change in the session you are already in; you cannot run a
-          container or you are on a locked-down machine; or your work is exploratory — debugging,
-          spikes, reading unfamiliar code — rather than feature-shaped.
-          <a href="/compare/claude-code/">runcastle vs raw Claude Code + skills →</a>
-        </p>
-
-        <h2>T3 Code</h2>
-        <p>
-          From <a href="https://t3.gg/" rel="noopener" target="_blank">Theo</a> and Ping Labs,
-          <a href="https://t3.codes/" rel="noopener" target="_blank">T3 Code</a> calls itself “the
-          open-source control plane for coding agents”. It drives five agent CLIs — Claude Code,
-          Codex, Cursor, Grok Build, OpenCode — from an Electron desktop app, a web app, and native
-          iOS and Android apps, so you can start and review work from a phone. Threads map to git
-          worktrees, you can switch models mid-thread, and a thread ends with one button that
-          commits, pushes and opens the pull request. It is free, MIT, and it does not resell
-          tokens: your subscriptions stay yours. It is also young and says so — the README's own
-          warning is “We are very very early in this project. Expect bugs”.
-        </p>
-        <p>
-          <strong>Choose this if…</strong> multi-model is a hard requirement, or you want to kick
-          off and review work away from your desk, or you juggle several repositories at once, or
-          you simply want less opinion — for a bug fix you can describe in a sentence, a thread plus
-          a diff viewer plus a PR button is exactly the right amount of tool.
-          <a href="/compare/t3-code/">runcastle vs T3 Code →</a>
-        </p>
-
-        <h2>Conductor</h2>
-        <p>
-          <a href="https://conductor.build/" rel="noopener" target="_blank">Conductor</a> is a
-          polished native Mac app for running parallel Claude Code, Codex, Cursor and OpenCode
-          agents “in isolated workspaces on your Mac”. Its unit is the workspace: “Each task gets
-          its own workspace, branch, files, terminal, diff, and review path” — a git worktree
-          underneath, with the app creating the branch, copying the local files you allow, running
-          your setup and run scripts, keeping the diff visible and tracking pull request state until
-          the workspace is archived. That path from task to merged PR is a hard surface to build
-          well, and Conductor is built around getting it right for several sessions at once. The
-          local tier is free with your own subscriptions; cloud workspaces, multiplayer and the team
-          features sit on paid plans. It is macOS-only today: the install page says plainly that it
-          “is not available for Windows or Linux yet”.
-        </p>
-        <p>
-          <strong>Choose this if…</strong> you are on a Mac and your work is already shaped — a
-          queue of well-understood bugs, chores and small PRs that does not need to be grilled into
-          a spec — especially if review happens on GitHub with other humans, or you want a team and
-          cloud story rather than a purely local one.
-          <a href="/compare/conductor/">runcastle vs Conductor →</a>
-        </p>
-
-        <h2>runcastle</h2>
-        <p>
-          runcastle is an opinionated programming system layered on Claude Code — the IDE to Claude
-          Code's text editor. Every feature gets a persistent session that walks
-          <a href="/docs/pipeline/">six phases: ideation, spec, tickets, build, review,
-          shipped</a>. You get grilled on an idea until a spec and a set of dependency-ordered
-          tickets fall out; sandboxed agents burn those tickets AFK in a Docker or Podman container,
-          committing to the feature's branch; you test drive the result on its own port and merge.
-          <a href="/docs/gates/">Gates</a> sit between the phases, block by default, and take an
-          override with a one-line reason that is recorded. It runs entirely on your machine — a Bun
-          server plus a browser UI at <code>http://localhost:4512</code>, source-available under
-          the FSL, no account
-          and no hosted backend — on macOS, Windows and Linux, and it requires Claude Code on a paid
-          Claude plan as its engine.
-        </p>
-        <p>
-          The narrow engine support is the price of the opinion: injected skill packs, phase rules,
-          hooks and its own MCP server are all built on Claude Code's extension points, so unlike
-          the other two apps here there is no model dropdown at all. The pipeline is also real
-          ceremony — on a one-line bug fix it is overhead, and it is meant to be.
-        </p>
-        <p>
-          <strong>Choose this if…</strong> the work is a feature rather than a task, the expensive
-          part is deciding what to build, and you want to be absent rather than attentive while it
-          gets built — plus a record of why the code is like that, committed to your own repo. If
-          the terminal is keeping up with you today, you do not need it yet; the honest trigger is
-          noticing that you have become the scheduler.
-          <a href="/compare/claude-code/">The case against runcastle, in more detail →</a>
-        </p>
-
-        <h2>Also in the category</h2>
-        <p>
-          These did not get a head-to-head page yet and are listed so the map is not misleading —
-          one sentence each, no deep claims.
-        </p>
-        <ul>
+        <ul class="post-list">
           <li>
-            <strong><a href="https://vibekanban.com/" rel="noopener" target="_blank">Vibe
-            Kanban</a></strong> — an open-source kanban board over parallel coding agents, each task
-            in its own git worktree, whose own site now says “Vibe Kanban is sunsetting. The project
-            will continue as open source and community maintained.”
+            <a class="post-card" href="/compare/conductor/">
+              <span class="post-card-vs">vs Conductor</span>
+              <span class="post-card-t">After Conductor, don't settle for another agent runner.</span>
+              <span class="post-card-arrow" aria-hidden="true">&rarr;</span>
+              <span class="post-card-hook">Conductor is joining Meta. If you need a new home, get a process, not just more agents.</span>
+              <span class="post-card-meta">Nov 5, 2026 · 2 min read</span>
+            </a>
           </li>
           <li>
-            <strong><a href="https://github.com/stravu/crystal" rel="noopener"
-            target="_blank">Crystal</a></strong> — an MIT-licensed desktop app for running several
-            Claude Code and Codex sessions in parallel worktrees, deprecated in February 2026 in
-            favour of its successor, Nimbalyst.
+            <a class="post-card" href="/compare/claude-code-or-codex/">
+              <span class="post-card-vs">Claude Code or Codex on their own</span>
+              <span class="post-card-t">Claude Code and Codex can run ten agents now. Who runs the project?</span>
+              <span class="post-card-arrow" aria-hidden="true">&rarr;</span>
+              <span class="post-card-hook">Agent view, Projects and the Codex app run agents in parallel. The planning, checking and testing are still yours.</span>
+              <span class="post-card-meta">Nov 5, 2026 · 2 min read</span>
+            </a>
           </li>
           <li>
-            <strong><a href="https://github.com/smtg-ai/claude-squad" rel="noopener"
-            target="_blank">Claude Squad</a></strong> — an open-source terminal app that manages
-            several agents (Claude Code, Codex, Gemini CLI, Aider), each in its own tmux session and
-            git worktree, if you would rather stay in the terminal than open a GUI.
+            <a class="post-card" href="/compare/t3-code/">
+              <span class="post-card-vs">vs T3 Code</span>
+              <span class="post-card-t">T3 Code puts every agent in one window. The work is still yours to run.</span>
+              <span class="post-card-arrow" aria-hidden="true">&rarr;</span>
+              <span class="post-card-hook">The best remote control for your agents isn't a process. Here's what one adds.</span>
+              <span class="post-card-meta">Nov 5, 2026 · 2 min read</span>
+            </a>
+          </li>
+          <li>
+            <a class="post-card" href="/compare/kiro/">
+              <span class="post-card-vs">vs Kiro</span>
+              <span class="post-card-t">Kiro writes the spec. runcastle ships the feature.</span>
+              <span class="post-card-arrow" aria-hidden="true">&rarr;</span>
+              <span class="post-card-hook">Both plan before they build. runcastle also designs in your real app and test drives the result before you see it.</span>
+              <span class="post-card-meta">Nov 6, 2026 · 2 min read</span>
+            </a>
           </li>
         </ul>
 
-        <h2>Choosing, in one paragraph</h2>
-        <p>
-          If you want more than one model, or you want to work from a phone, take T3 Code. If you
-          are on a Mac, your tasks are already well-shaped, and your review happens in GitHub pull
-          requests, take Conductor. If you ship one feature at a time with your hands on the
-          keyboard, stay in the terminal with skills and spend nothing. If the expensive part of
-          your work is deciding what to build, and you want tickets burning while you are asleep
-          behind a gate that blocks the merge, that is what runcastle is for. None of that is a
-          commitment: every tool here leaves your repository a normal git repository, so switching
-          costs you an install and nothing else.
+        <p class="also">
+          Also on the list: Cursor, Paradev, Vibe Kanban, Sculptor, Copilot's cloud agent, Devin,
+          Jules, Amp and Claude Squad. They run agents, one or many, and leave the process to you,
+          so <a href="/compare/claude-code-or-codex/">the Claude Code and Codex post</a> makes the case.
         </p>
-
-        <h2>Sources and method</h2>
-        <p>
-          Every claim about another tool on this page comes from that tool's own site, docs or
-          README, checked on <strong>10 August 2026</strong>; the head-to-head pages carry the full
-          source lists and the exact quotes. This is fast-moving software — Conductor was on release
-          0.79.0 and T3 Code's own README warned it was very early — so if you are reading this much
-          later, check the originals.
-        </p>
-        <ul>
-          <li>
-            <a href="https://t3.codes/" rel="noopener" target="_blank">t3.codes</a> and
-            <a href="https://github.com/pingdotgg/t3code" rel="noopener" target="_blank">pingdotgg/t3code</a>
-            — T3 Code positioning, supported harnesses, platforms, licence, project status.
-          </li>
-          <li>
-            <a href="https://conductor.build/" rel="noopener" target="_blank">conductor.build</a>,
-            its <a href="https://www.conductor.build/docs/" rel="noopener" target="_blank">docs</a>
-            and <a href="https://www.conductor.build/pricing" rel="noopener"
-              target="_blank">pricing</a> — the workspace model, macOS-only availability, plans.
-          </li>
-          <li>
-            <a href="https://code.claude.com/docs/en/skills" rel="noopener" target="_blank">Claude
-            Code skills docs</a> and
-            <a href="https://github.com/mattpocock/skills" rel="noopener" target="_blank">Matt
-            Pocock's skills</a> — how the raw workflow is installed and run.
-          </li>
-          <li>
-            <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">runcastle's
-            README and CONTEXT.md</a>, plus <a href="/docs/">the docs</a> on this site — every claim
-            about runcastle.
-          </li>
-        </ul>
-        <p>
-          If something here is out of date, or unfair to a tool that is not ours,
-          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">open
-          an issue</a> and it gets corrected. We would rather lose an argument on this page than
-          win one with a stale fact.
-        </p>
-
-        <div class="next">
-          <a href="/docs/">
-            <span class="next-k">Docs</span>
-            <span class="next-t">Install runcastle and run the loop</span>
-          </a>
-          <a href="/#install">
-            <span class="next-k">Try it</span>
-            <span class="next-t">curl -fsSL https://runcastle.dev/install.sh | bash</span>
-          </a>
-        </div>
       </article>
     </main>
 
-    <!-- ===================== FOOTER ===================== -->
     <footer class="footer">
       <div class="wrap footer-inner">
         <a class="brand" href="/" aria-label="runcastle home">
@@ -502,5 +165,6 @@
         <span class="footer-meta">Built with runcastle</span>
       </div>
     </footer>
+
   </body>
 </html>

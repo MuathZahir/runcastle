@@ -13,8 +13,8 @@ docs.css            docs-only additions: the stage row and where the app picture
 install.sh          the one-line install for macOS and Linux; hands over to `runcastle setup`
 install.ps1         the same for Windows
 _headers            serves both install scripts as plain text
-_redirects          sends the retired docs URLs (pipeline, gates, project, preparation) on
-docs/, compare/     article pages; they load styles.css + content.css and no JS
+_redirects          old addresses: the retired docs pages and the old /compare/claude-code/ post
+docs/, compare/     article pages; they load styles.css + content.css (docs also docs.css, docs.js)
   docs/             get started; features/ how a feature goes; orchestrator/; vps/ another
                     machine or your phone
 assets/
@@ -22,7 +22,8 @@ assets/
   favicon.svg       copy of apps/web/public/favicon.svg
   fonts/            Geist + Geist Mono variable subsets (latin), self-hosted
   logos/            Simple Icons brand marks (used by the compare pages)
-  screens/          PNG captures for the root README only
+  screens/          PNG captures of the app, for the root README
+  posts/            the same captures as 1840px WebP, for the compare posts
   docs/app.css      the app's own CSS, for the docs pictures (generated, see below)
   video/            the launch film; no page links to it since the isometric landing
 ```
