@@ -3976,7 +3976,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           summary: z
             .string()
             .min(1)
-            .describe('What is done, what is left, what you need, and anything the human told you directly: the orchestrator never reads your chat.'),
+            .describe("Done, left, what you need, and what the human told you: the orchestrator never reads your chat."),
         },
       },
       async (args, extra) => {
