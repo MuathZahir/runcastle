@@ -19,12 +19,17 @@ which ones need them.
 
 ### What the human sees
 
-**The worker list is the sidebar's thread list** under the open feature (decision 3). The lead's
-chat comes first, then **Needs you**, then **Working** (including **queued** workers over the
-limit), then a folded **Done (n)**: handed back, landed, dropped, and read-only **Old side chat**
-transcripts (decision 23). Each row shows the worker's label, a muted one-line purpose and a
-status mark. A row moves only when its status changes. The "+" on the open feature's row starts an
-unassigned worker in place of a side chat (decision 7).
+**The worker list is the feature's own sidebar page** (decisions 3, 24). Opening a feature swaps
+the left sidebar to its page, built like the features list one level down. A header row holds a
+back chevron to the features list, the feature's progress glyph and title, and a "+" that starts
+an unassigned worker in place of a side chat (decision 7). Then come the **Lead** card, shaped like
+the Orchestrator card, and the workers: those that need the human first, as plain rows, then the
+**Working** shelf (queued workers included), then a folded **Done** lane. Done holds handed-back,
+landed and dropped workers, and read-only **Old side chat** transcripts (decision 23). A worker
+row is a feature row: its label, then its status glyph and word with its age, and the amber dot
+when it needs the human. Its purpose is the row's hover text. A row moves only when its status
+changes. Going back changes only the sidebar; the chat in front stays. The approved designs are
+the design pages `workers-drill`, `workers-chat` and `workers-handback`.
 
 **Workers start from the lead's offer.** After the grill, the lead's plan lists each worker with
 its label, purpose and kind. A "with you" worker is taste work the human iterates on. An "on its
@@ -128,7 +133,7 @@ tools are listed above.
   Observed as the tool list per session kind.
 - **The feature need** (existing, feature-need). A worker entering needs you raises a need whose
   tap opens the worker. Observed as the need event and the push body.
-- **The sidebar thread order** (existing, `sidebar-threads`). Grouping and ordering by worker
+- **The worker grouping** (new, the web `workers` lib). Grouping and ordering by worker
   status. A pure function, tested directly.
 - **The design pass-through** (existing). Routing to a worker's preview, and waking a stopped
   sandbox on open. Observed as the proxied response.
