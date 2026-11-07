@@ -366,13 +366,15 @@ export function useLiveSync(): LiveStatus {
       // ready declaration, all move it while it is on screen.
       refetches.push(u.feature.rounds.invalidate())
       refetches.push(u.feature.readyDeclarations.invalidate())
-      // The chat header's session switcher: a side session opened, ended or
-      // waiting on the human (`session.*` events and the `turn` signal) has to
-      // move its row and its dot at push speed.
+      // The feature's sessions (`session.*` events and the `turn` signal).
       refetches.push(u.feature.sessions.invalidate())
       // The thread list (the sidebar's threads, the Conversations page): a
       // thread opened by `thread.new` or a launch is a `session.*` event.
       refetches.push(u.thread.list.invalidate())
+      // The feature's workers (interactive-workers): every status change, start,
+      // handback, land and drop is a `worker.*` event, and the sidebar's lanes,
+      // the worker's header and the lead's handback cards read them.
+      refetches.push(u.worker.list.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
       // the Scenario menu and the Test drive picker have no poll of their own —

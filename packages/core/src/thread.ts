@@ -516,8 +516,12 @@ export interface ThreadView {
 export interface ThreadEntry {
   id: string
   title: string
-  /** What kind of thread: the feature's main chat, a side thread, a scenario chat, a project chat. */
-  role: 'main' | 'side' | 'scenario' | 'project'
+  /**
+   * What kind of thread: the feature's main chat (its lead), a worker, an old
+   * side chat (read-only since workers replaced them), a scenario chat, a
+   * project chat.
+   */
+  role: 'main' | 'worker' | 'side' | 'scenario' | 'project'
   state: ThreadState
   /** When it was started: the sidebar's order, which an agent posting never changes. */
   createdAt: number

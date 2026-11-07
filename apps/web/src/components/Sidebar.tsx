@@ -20,6 +20,7 @@ import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { FeatureSidebar } from './workers/FeatureSidebar'
 import { useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT } from '../lib/chat-sessions'
 import {
@@ -302,45 +303,41 @@ export function Sidebar(props: SidebarProps) {
     ]
   }
 
+  // The drill-in (interactive-workers decision 24): the open feature's own page
+  // replaces the features list, until its back chevron goes up a level. Up
+  // holds only while the same thread stays in front, so opening the feature or
+  // any of its threads again (a row, the palette, a push tap, the address)
+  // comes back down. Going either way changes only the sidebar.
+  const [upFrom, setUpFrom] = useState<{ featureId: string; current: string | null } | null>(null)
+  const [motion, setMotion] = useState<'down' | 'up' | null>(null)
+  const openFeature = featureThreads ? features.find((f) => f.id === selectedFeatureId) : undefined
+  const wentUp = upFrom !== null && upFrom.featureId === selectedFeatureId && upFrom.current === featureThreads?.current
+  const drilled = !phone && featureThreads && openFeature && !wentUp ? { feature: openFeature, threads: featureThreads } : null
+  const goUp = () => {
+    setUpFrom({ featureId: selectedFeatureId ?? '', current: featureThreads?.current ?? null })
+    setMotion('up')
+  }
+
   const row = (f: FeatureListItem, nested = false) => {
     // The phone's list (phone decision 1): only shown with nothing open, so no
     // row is current, and a row is the whole door — no hover menu, no threads.
     if (phone) return <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={onSelect} actions={[]} nested={nested} />
     const open = f.id === selectedFeatureId && view === 'feature'
-    const own = open && featureThreads ? featureThreads : null
-    const ordered = own ? sidebarThreadOrder(own.threads) : []
-    // A feature with only its main chat lists nothing: the row is the chat (decision 2).
-    const list =
-      own && ordered.length > 1 ? (
-        <SidebarThreadList threads={ordered} current={own.current} onOpen={own.pick} actionsFor={threadActionsFor} />
-      ) : undefined
-    const key = own ? foldKey(own.scope) : ''
-    // With no list, the one chat's Rename and Export ride on the feature's own menu.
-    const sole = own && ordered.length === 1 && ordered[0]!.id !== UNSTARTED_CHAT ? ordered[0]! : null
-    const soleActions: FeatureAction[] = sole
-      ? [
-          { key: 'rename-chat', label: 'Rename the chat…', icon: <IconPencil />, onSelect: () => setRenaming({ threadId: sole.id, title: sole.title }) },
-          { key: 'export-chat', label: 'Export the chat as Markdown', icon: <IconDoc />, onSelect: () => threadActions.exportMarkdown(sole.id, sole.title) },
-        ]
-      : []
     return (
       <SidebarFeatureRow
         key={f.id}
         f={f}
         active={open}
-        // The open feature's row brings its main chat to the front (decision 8).
-        // One nobody has started has no thread yet, so the click is still an open of the feature.
+        // A feature row goes down to its page; the open one's also brings its lead to the front.
         onSelect={(id) => {
-          const main = own && ordered.find((t) => t.role === 'main')
-          if (main) own.pick(main.id)
+          setUpFrom(null)
+          setMotion('down')
+          const main = open && featureThreads?.threads.find((t) => t.role === 'main')
+          if (main) featureThreads?.pick(main.id)
           if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
         }}
-        actions={[...actionsFor(f), ...soleActions]}
+        actions={actionsFor(f)}
         nested={nested}
-        {...(own ? { onNewThread: own.newThread } : {})}
-        threads={list}
-        folded={fold.folded(key)}
-        onToggleThreads={() => fold.toggle(key)}
       />
     )
   }
@@ -375,6 +372,12 @@ export function Sidebar(props: SidebarProps) {
         </div>
       )}
 
+      {drilled ? (
+        <div key="page" className={cx('mt-3 flex min-h-0 flex-1 flex-col', motion === 'down' && 'animate-slide-in-right')}>
+          <FeatureSidebar feature={drilled.feature} threads={drilled.threads} onBack={goUp} threadActionsFor={threadActionsFor} />
+        </div>
+      ) : (
+      <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
       <div className={phone ? 'mt-2' : 'mt-3'}>
         {/* The project's own door (decision 20): not a feature, never in a
             lane. It says what the chat holds — the open notes (project-notes
@@ -462,6 +465,8 @@ export function Sidebar(props: SidebarProps) {
           />
         </div>
       </div>
+      </div>
+      )}
 
       {phone ? <PhoneNotificationsRow projectId={projectId} /> : <SidebarFoot {...props} />}
 

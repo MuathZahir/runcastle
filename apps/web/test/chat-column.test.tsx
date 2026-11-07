@@ -4,19 +4,19 @@ import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveScenario, FeatureNeed, ThreadEntry, ThreadEvent } from '@runcastle/core'
-import type { FeatureFull } from '../src/lib/api'
+import type { FeatureFull, WorkerListRow } from '../src/lib/api'
 import { fakeTrpc, type FakeHandlers } from './fake-trpc'
 import { full as fixture, listItem } from './fixtures'
 import { openMenu, openList } from './floating'
 
 /**
- * The feature page's chat column (chat-as-web-components decision 7) and its
- * threads in the sidebar (threads-in-the-sidebar): the sidebar lists every
- * thread of the open feature from `thread.list` under its row, finished ones
- * included, and the column shows the one in front through ThreadColumn; the
- * header names it. A drive errand brings its scenario chat to the front and
- * closing it hands the column back; the row's "+" makes a side thread and
- * selects it.
+ * The feature page's chat column (chat-as-web-components decision 7) and the
+ * feature's own sidebar page (interactive-workers decision 24): opening a
+ * feature swaps the sidebar to its page, fed by `worker.list` and the threads
+ * the page publishes, and the column shows the thread in front through
+ * ThreadColumn, a worker's with its assignment card and its header's actions.
+ * A drive errand brings its scenario chat to the front and closing it hands
+ * the column back; the page's "+" starts a worker with no assignment.
  *
  * Tier 2: row menus are portalled. The seam is the page as it assembles its
  * column and publishes its threads, beside the real sidebar, on the app's real
@@ -40,6 +40,7 @@ const { AddressSettled, useHistorySync } = await import('../src/lib/use-history-
 const { featureStatus, mainChatWorking } = await import('../src/lib/feature-ui/status-line')
 const { FeatureStatusLine } = await import('../src/components/workspace/FeatureStatusLine')
 const { SidebarFeatureRow } = await import('../src/components/SidebarParts')
+const { useFeatureWorkers, useWorkerHeader, workerInFront } = await import('../src/components/workers/WorkerChat')
 const { trpc } = await import('../src/trpc')
 
 const FAILED: DriveScenario = {
@@ -65,16 +66,55 @@ const logOf = (threadId: string): ThreadEvent[] => [
   { i: 0, at, type: 'prompt', id: `p_${threadId}`, text: `said in ${threadId}`, source: 'human' },
 ]
 
-function server({ threads = [thread('th_main', 'Feature chat', 'main')], extra = {} }: { threads?: ThreadEntry[]; extra?: FakeHandlers } = {}) {
+/** A worker as `worker.list` serves it; its thread is `thread(id, label, 'worker')`. */
+const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): WorkerListRow => ({
+  id,
+  featureId: 'feat_1',
+  label,
+  purpose: `What ${label} is for`,
+  kind: 'with-you',
+  goal: `Build ${label}`,
+  doneWhen: 'The human is happy',
+  model: 'claude-opus-5-5',
+  runtime: 'claude-code',
+  startedBy: 'lead',
+  status: 'needs-you',
+  failure: null,
+  engine: 'docker',
+  container: `rc-${id}`,
+  branch: `runcastle/worker/${id}`,
+  featureBranch: 'feature/demo',
+  previewPort: null,
+  handbackSummary: null,
+  handbackCommits: null,
+  handbackFiles: null,
+  outcome: null,
+  outcomeNote: null,
+  createdAt: at,
+  updatedAt: at,
+  previewPath: null,
+  passPort: 4514,
+  ...over,
+})
+
+function server({
+  threads = [thread('th_main', 'Feature chat', 'main')],
+  workers = [],
+  extra = {},
+}: { threads?: ThreadEntry[]; workers?: WorkerListRow[]; extra?: FakeHandlers } = {}) {
   const list = [...threads]
+  const rows = [...workers]
   return fakeTrpc({
-    'thread.list': () => list,
+    'thread.list': () => [...list],
     'thread.view': () => ({ items: [], state: 'idle', plan: [], tasks: [], commands: [], process: 'stopped', cursor: -1 }),
     'thread.events': ({ threadId }: { threadId: string }) => ({ events: logOf(threadId) }),
-    'thread.new': () => {
-      list.push(thread('th_side', 'New chat', 'side'))
-      return { threadId: 'th_side' }
+    'worker.list': () => [...rows],
+    'worker.startUnassigned': () => {
+      list.push(thread('th_new', 'New worker', 'worker'))
+      rows.push(worker('th_new', 'New worker', { kind: 'unassigned', startedBy: 'human', purpose: 'Started by you', goal: null, doneWhen: null }))
+      return { workerId: 'th_new', branch: 'runcastle/worker/th_new', previewUrl: '' }
     },
+    'worker.handBack': () => ({ ok: true }),
     'thread.send': () => ({ promptId: 'p_sent' }),
     'feature.launchSession': () => ({ sessionId: 'th_started' }),
     'feature.driveScenarios': () => ({ runnerConfigured: true, scenarios: [] }),
@@ -137,9 +177,17 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
   })
   // A feature with history: a new one starts its chat by itself (feature-chat-start.test.tsx).
   const full = { ...fixture({ id: featureId }), sessions, tickets: [], runs: worked ? [{ id: 'run_1' }] : [] } as unknown as FeatureFull
+  // The header's worker status and actions, as Workspace derives them.
+  const workerHeader = useWorkerHeader(
+    workerInFront(useFeatureWorkers(featureId), column.threads, column.inFront !== column.main ? column.inFront : null),
+  )
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
       <header data-thread-name="">{column.threads.find((t) => t.id === column.current)?.title}</header>
+      <div data-header="">
+        {workerHeader?.status}
+        {workerHeader?.actions}
+      </div>
       <div data-column="">
         <FeatureChat
           full={full}
@@ -179,180 +227,207 @@ const tick = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(
 const threadName = (): HTMLElement => document.querySelector('[data-thread-name]') as HTMLElement
 const column = (): HTMLElement => document.querySelector('[data-column]') as HTMLElement
 const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
-/** The open feature's thread list in the sidebar; null while it lists none (decision 2). */
+/** The page header's worker status and actions. */
+const header = (): HTMLElement => document.querySelector('[data-header]') as HTMLElement
+/** The open feature's own sidebar page (decision 24); null while the sidebar shows the features list. */
+const featurePage = (): HTMLElement | null => within(sidebar()).queryByRole('region', { name: 'Demo' })
+/** The scenario chats inside the Lead card. */
 const threadList = (): HTMLElement | null => within(sidebar()).queryByRole('list', { name: 'Chats' })
-/** The thread rows the sidebar lists under the open feature, by title, in order. */
 const options = (): string[] =>
   threadList() ? within(threadList()!).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
-/** A thread's row in the sidebar's list. */
 const threadRow = (title: string): HTMLElement => within(threadList()!).getByTitle(title).parentElement as HTMLElement
-const pick = (title: string): void => {
-  fireEvent.click(within(threadList()!).getByTitle(title))
-}
-/** The open feature row's "+". */
-const newThread = (): void => {
-  fireEvent.click(within(sidebar()).getByRole('button', { name: 'New chat' }))
-}
-/** An item of a thread row's "…" menu. */
+/** An item of a scenario chat row's "…" menu. */
 const threadAction = (title: string, name: string): void => {
   openMenu(within(threadRow(title)).getByRole('button', { name: 'Chat actions' }))
   fireEvent.click(screen.getByRole('menuitem', { name }))
 }
-/** The open feature row's own "…" menu, open. */
-const featureMenu = (): void => {
-  const open = sidebar().querySelector('button[aria-current="page"]')?.parentElement as HTMLElement
-  openMenu(within(open).getByRole('button', { name: 'Feature actions' }))
+/** A lane of the feature's page: its rows' labels, in order. */
+const lane = (name: 'Needs you' | 'Working' | 'Done'): string[] => {
+  const section = within(featurePage()!).queryByRole('region', { name })
+  return section ? within(section).getAllByRole('button').flatMap((b) => (b.title ? [b.title.split(' — ')[0]!] : [])) : []
 }
+/** Unfold the Done lane. */
+const openDone = (): void => {
+  fireEvent.click(within(within(featurePage()!).getByRole('region', { name: 'Done' })).getAllByRole('button')[0]!)
+}
+/** A worker's row on the feature's page, by its label. */
+const pickWorker = (label: string): void => {
+  const row = within(featurePage()!)
+    .getAllByRole('button')
+    .find((b) => b.title === label || b.title.startsWith(`${label} — `))
+  if (!row) throw new Error(`no worker row "${label}"`)
+  fireEvent.click(row)
+}
+/** The Lead card. */
+const leadCard = (): HTMLElement => within(featurePage()!).getByRole('button', { name: /^Lead/ })
 const newScenario = (): void => {
   openList(screen.getByRole('button', { name: /Blank app/ }))
   fireEvent.click(screen.getByRole('option', { name: 'New scenario' }))
 }
 
-describe('the open feature’s threads in the sidebar', () => {
-  it('lists every thread from thread.list, finished ones included, with the main chat in front', async () => {
-    const api = server({
-      threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side', { updatedAt: at - 86_400_000 })],
-    })
-    render(<Page />, { wrapper: api.Wrapper })
+describe('the open feature’s own sidebar page (interactive-workers decisions 3, 7, 23, 24)', () => {
+  const lead = thread('th_main', 'Feature chat', 'main')
+  const mixed = {
+    threads: [
+      lead,
+      thread('w_ask', 'Header', 'worker'),
+      thread('w_fail', 'Search', 'worker'),
+      thread('w_run', 'Data', 'worker'),
+      thread('w_line', 'Docs', 'worker'),
+      thread('w_back', 'Footer', 'worker'),
+      thread('th_old', 'An old side thread', 'side', { createdAt: at - 9 }),
+    ],
+    workers: [
+      worker('w_ask', 'Header', { createdAt: at + 5 }),
+      worker('w_fail', 'Search', { status: 'failed', failure: 'container stopped', createdAt: at + 4 }),
+      worker('w_run', 'Data', { status: 'working', kind: 'on-its-own', createdAt: at + 3 }),
+      worker('w_line', 'Docs', { status: 'queued', createdAt: at + 6 }),
+      worker('w_back', 'Footer', { status: 'handed-back', handbackCommits: ['a1 one', 'b2 two'], handbackFiles: ['x.ts'], createdAt: at + 2 }),
+    ],
+  }
+
+  it('opens on the feature’s page from worker.list: the Lead card, needs-you rows, the Working shelf with queued inside, Done folded', async () => {
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toEqual(['Header', 'Search']))
+    expect(within(featurePage()!).getByRole('heading', { name: 'Demo' })).toBeTruthy()
+    expect(within(featurePage()!).getByRole('button', { name: 'Back to the features' })).toBeTruthy()
+    expect(within(featurePage()!).getByRole('button', { name: 'New worker' })).toBeTruthy()
+    expect(leadCard().getAttribute('aria-current')).toBe('page')
+    // Working ones first, then the queued in line.
+    expect(lane('Working')).toEqual(['Data', 'Docs'])
+    // Folded: its count shows, its rows do not.
+    expect(lane('Done')).toEqual([])
+    openDone()
+    expect(lane('Done')).toEqual(['Footer', 'An old side thread'])
+    expect(within(featurePage()!).getByText('Old side chat')).toBeTruthy()
+    // The features list is not drawn while the page is.
+    expect(within(sidebar()).queryByRole('button', { name: 'Orchestrator' })).toBeNull()
+  })
+
+  it('goes back to the features list leaving the chat in front unchanged, and the feature’s row comes back down', async () => {
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    pickWorker('Header')
+    expect(await within(column()).findByText('said in w_ask')).toBeTruthy()
+
+    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'Back to the features' }))
+    expect(featurePage()).toBeNull()
+    expect(within(sidebar()).getByRole('region', { name: 'Needs you' })).toBeTruthy()
+    expect(within(column()).getByText('said in w_ask')).toBeTruthy()
+    expect(threadName().textContent).toBe('Header')
+
+    // The open feature's row goes down a level again, its lead in front.
+    fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0]!)
+    await waitFor(() => expect(featurePage()).not.toBeNull())
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
-    await waitFor(() => expect(options()).toEqual(['Feature chat', 'An old side thread']))
-    expect(threadName().textContent).toBe('Feature chat')
   })
 
-  it('switches the column to a picked thread', async () => {
-    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
-    render(<Page />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_main')
-    await waitFor(() => expect(options()).toHaveLength(2))
-    pick('An old side thread')
-    expect(await within(column()).findByText('said in th_old')).toBeTruthy()
-    expect(within(column()).queryByText('said in th_main')).toBeNull()
+  it('lights the amber dot on a worker that needs the human, and red on a failed one', async () => {
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    const row = (label: string) => within(featurePage()!).getAllByRole('button').find((b) => b.title.startsWith(`${label} — `))!
+    expect(row('Header').innerHTML).toContain('bg-warning')
+    expect(row('Search').innerHTML).toContain('bg-danger')
+    expect(row('Data').innerHTML).not.toContain('bg-warning')
   })
 
-  it('keeps the picked thread in the address, and a reload reopens it', async () => {
+  it('keeps a picked worker in the address, and a reload reopens it', async () => {
     window.history.replaceState(null, '', '/p/proj_1/f/login')
-    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
-    render(<Page />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_main')
-    await waitFor(() => expect(options()).toHaveLength(2))
-    pick('An old side thread')
-    await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
-    expect(window.location.pathname).toBe('/p/proj_1/f/login')
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    await waitFor(() => expect(lane('Working')).toHaveLength(2))
+    pickWorker('Data')
+    await waitFor(() => expect(window.location.search).toBe('?thread=w_run'))
 
     cleanup()
-    render(<Page />, { wrapper: server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] }).Wrapper })
-    expect(await within(column()).findByText('said in th_old')).toBeTruthy()
-    expect(threadName().textContent).toBe('An old side thread')
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    expect(await within(column()).findByText('said in w_run')).toBeTruthy()
+    expect(threadName().textContent).toBe('Data')
   })
 
-  it('ignores a ?thread= the feature does not hold, drops it from the address, and sends to its own thread', async () => {
-    window.history.replaceState(null, '', '/p/proj_1/f/login?thread=th_elsewhere')
-    const api = server()
-    render(<Page />, { wrapper: api.Wrapper })
-    expect(await within(column()).findByText('said in th_main')).toBeTruthy()
-    await waitFor(() => expect(window.location.search).toBe('?thread=th_main'))
-    expect(api.inputs('thread.events').some((i) => (i as { threadId: string }).threadId === 'th_elsewhere')).toBe(false)
-    fireEvent.change(within(column()).getByLabelText('Message'), { target: { value: 'Which feature is this?' } })
-    fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
-    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_main', text: 'Which feature is this?' }]))
-  })
-
-  it('moving to another feature leaves the open thread behind: the new page shows its own', async () => {
+  it('moving to another feature leaves the open worker behind: the new page shows its own', async () => {
     const lists: Record<string, ThreadEntry[]> = {
-      feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A side thread of A', 'side')],
+      feat_a: [thread('th_a', 'Chat of A', 'main'), thread('w_a', 'A worker of A', 'worker')],
       feat_b: [thread('th_b', 'Chat of B', 'main')],
     }
     const api = server({ extra: { 'thread.list': ({ featureId }: { featureId: string }) => lists[featureId] } })
-    /** The shell: the address follows the feature, and each feature's page is its own (keyed, as ProjectShell keys it). */
     function Shell({ slug }: { slug: string }) {
       useHistorySync({ kind: 'feature', projectId: 'proj_1', featureSlug: slug }, () => {})
       return <Page key={slug} featureId={slug} />
     }
-    window.history.replaceState(null, '', '/p/proj_1/f/feat_a')
+    window.history.replaceState(null, '', '/p/proj_1/f/feat_a?thread=w_a')
     const { rerender } = render(<Shell slug="feat_a" />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_a')
-    await waitFor(() => expect(options()).toHaveLength(2))
-    pick('A side thread of A')
-    await waitFor(() => expect(window.location.search).toBe('?thread=th_a_side'))
+    await within(column()).findByText('said in w_a')
 
     rerender(<Shell slug="feat_b" />)
     expect(await within(column()).findByText('said in th_b')).toBeTruthy()
-    expect(within(column()).queryByText('said in th_a_side')).toBeNull()
     await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b?thread=th_b'))
     expect(threadName().textContent).toBe('Chat of B')
-    // Feature B has only its main chat: the sidebar lists nothing under it (decision 2).
-    expect(threadList()).toBeNull()
   })
 
-  it('moving to another feature in the app drops ?thread= from the address at once', async () => {
-    const lists: Record<string, ThreadEntry[]> = {
-      feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A side thread of A', 'side')],
-      feat_b: [thread('th_b', 'Chat of B', 'main')],
-    }
-    const b = later<ThreadEntry[]>()
-    const api = server({ extra: { 'thread.list': ({ featureId }: { featureId: string }) => (featureId === 'feat_b' ? b.promise : lists[featureId]) } })
-    function Shell({ slug }: { slug: string }) {
-      useHistorySync({ kind: 'feature', projectId: 'proj_1', featureSlug: slug }, () => {})
-      return <Page key={slug} featureId={slug} />
-    }
-    window.history.replaceState(null, '', '/p/proj_1/f/feat_a?thread=th_a_side')
-    const { rerender } = render(<Shell slug="feat_a" />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_a_side')
-
-    rerender(<Shell slug="feat_b" />)
-    await tick()
-    expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b')
-    await act(async () => b.resolve(lists.feat_b!))
-    expect(await within(column()).findByText('said in th_b')).toBeTruthy()
-  })
-
-  it('makes a side thread with the row’s "+" and selects it', async () => {
+  it('starts an unassigned worker with the "+" and opens its chat on its assignment card', async () => {
     const api = server()
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    newThread()
-    expect(await within(column()).findByText('said in th_side')).toBeTruthy()
-    expect(api.inputs('thread.new')).toEqual([{ featureId: 'feat_1' }])
+    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'New worker' }))
+    expect(await within(column()).findByText('said in th_new')).toBeTruthy()
+    expect(api.inputs('worker.startUnassigned')).toEqual([{ featureId: 'feat_1' }])
+    expect(api.inputs('thread.new')).toEqual([])
+    const card = await within(column()).findByRole('region', { name: 'Assignment: New worker' })
+    expect(card.textContent).toContain('Started by you')
+    expect(within(column()).getByText('Sandbox · its own branch off feature/demo')).toBeTruthy()
+    expect(within(column()).queryByText(/Feature worktree/)).toBeNull()
   })
 
-  // decision 14: a new thread opens whatever else is running.
-  it('starts a side thread while the main chat works, and lists both with their names and states', async () => {
-    const api = server({ threads: [thread('th_main', 'Fix the login page', 'main', { state: 'working' })] })
-    render(<Page />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_main')
-    newThread()
-    expect(await within(column()).findByText('said in th_side')).toBeTruthy()
-
-    // The main chat first, then the newest started (decision 3).
-    await waitFor(() => expect(options()).toEqual(['Fix the login page', 'New chat']))
-    expect(threadRow('Fix the login page').querySelector('[data-progress]')).not.toBeNull()
-    expect(threadRow('New chat').textContent).toMatch(/New chat(\d+[mhd]|now)$/)
-  })
-
-  it('marks a thread waiting on the human with the amber dot', async () => {
-    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_ask', 'Asking', 'side', { state: 'waiting' })] })
-    render(<Page />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(options()).toHaveLength(2))
-    expect(within(threadRow('Asking')).getByLabelText('Waiting for you')).toBeTruthy()
-    expect(within(threadRow('Feature chat')).queryByLabelText('Waiting for you')).toBeNull()
-  })
-
-  it('folds the open feature’s threads away with its chevron, and brings them back', async () => {
-    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
-    render(<Page />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(options()).toHaveLength(2))
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Hide chats' }))
-    expect(threadList()).toBeNull()
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'Show chats' }))
-    expect(options()).toHaveLength(2)
-  })
-
-  it('renames a thread from its row’s menu through thread.rename, and the list and header show the new title', async () => {
-    const list = [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')]
+  it('shows a worker’s pinned assignment, Open preview while it has one, and Hand back, which calls worker.handBack', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     const api = server({
-      threads: list,
+      threads: mixed.threads,
+      workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001 })],
+    })
+    render(<Page />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toEqual(['Header']))
+    pickWorker('Header')
+    const card = await within(column()).findByRole('region', { name: 'Assignment: Header' })
+    expect(card.textContent).toContain('Build Header')
+    expect(card.textContent).toContain('The human is happy')
+    expect(card.textContent).toContain('Started by the lead')
+    expect(within(header()).getByRole('status').textContent).toContain('Needs you')
+
+    fireEvent.click(within(header()).getByRole('button', { name: 'Open preview' }))
+    expect(open).toHaveBeenCalledWith(`${window.location.protocol}//${window.location.hostname}:4514/__runcastle/open/worker/w_ask`, '_blank', 'noopener')
+    fireEvent.click(within(header()).getByRole('button', { name: 'Hand back' }))
+    await waitFor(() => expect(api.inputs('worker.handBack')).toEqual([{ workerId: 'w_ask' }]))
+    open.mockRestore()
+  })
+
+  it('offers no Open preview without a preview, and no Hand back once a worker has handed back', async () => {
+    render(<Page />, { wrapper: server(mixed).Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    openDone()
+    pickWorker('Footer')
+    await within(column()).findByText('said in w_back')
+    await waitFor(() => expect(within(header()).getByRole('status').textContent).toContain('Handed back'))
+    expect(within(header()).queryByRole('button', { name: 'Open preview' })).toBeNull()
+    expect(within(header()).queryByRole('button', { name: 'Hand back' })).toBeNull()
+    expect(within(column()).getByText(/Handed back to the lead · 2 commits · 1 file/)).toBeTruthy()
+  })
+
+  it('opens an old side chat as a read-only transcript: no composer, the old-side-chat note', async () => {
+    const api = server(mixed)
+    render(<Page />, { wrapper: api.Wrapper })
+    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    openDone()
+    pickWorker('An old side thread')
+    expect(await within(column()).findByText('said in th_old')).toBeTruthy()
+    expect(within(column()).getByText('Old side chat — read-only')).toBeTruthy()
+    expect(within(column()).queryByLabelText('Message')).toBeNull()
+    expect(within(header()).getByRole('status').textContent).toContain('Old side chat · read-only')
+  })
+
+  it('renames the lead’s chat from the Lead card’s menu through thread.rename', async () => {
+    const list = [lead]
+    const api = server({
       extra: {
-        // A fresh array, as a real response is: the cache sees the change.
         'thread.list': () => [...list],
         'thread.rename': ({ threadId, title }: { threadId: string; title: string }) => {
           list[0] = { ...list[0]!, id: threadId, title }
@@ -362,51 +437,27 @@ describe('the open feature’s threads in the sidebar', () => {
     })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    await waitFor(() => expect(options()).toHaveLength(2))
-    threadAction('Feature chat', 'Rename…')
+    openMenu(within(featurePage()!).getByRole('button', { name: 'Project actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const field = screen.getByRole('textbox', { name: 'Chat name' })
     fireEvent.change(field, { target: { value: 'Coupon expiry' } })
     fireEvent.submit(field.closest('form')!)
     await waitFor(() => expect(api.inputs('thread.rename')).toEqual([{ threadId: 'th_main', title: 'Coupon expiry' }]))
-    await waitFor(() => expect(options()).toEqual(['Coupon expiry', 'An old side thread']))
-    expect(threadName().textContent).toBe('Coupon expiry')
+    await waitFor(() => expect(threadName().textContent).toBe('Coupon expiry'))
   })
 
-  it('exports a feature’s only chat from the feature row’s menu as a downloaded <title>.md', async () => {
-    const api = server({ extra: { 'thread.export': () => ({ markdown: '# Feature chat\n' }) } })
-    URL.createObjectURL = vi.fn(() => 'blob:md')
-    URL.revokeObjectURL = vi.fn()
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    render(<Page />, { wrapper: api.Wrapper })
-    await within(column()).findByText('said in th_main')
-    // One chat lists nothing under the row (decision 2): its menu carries the chat's own.
-    expect(threadList()).toBeNull()
-    await waitFor(() => {
-      featureMenu()
-      expect(screen.getByRole('menuitem', { name: 'Export the chat as Markdown' })).toBeTruthy()
-    })
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Export the chat as Markdown' }))
-    await waitFor(() => expect(click).toHaveBeenCalledOnce())
-    expect(api.inputs('thread.export')).toEqual([{ threadId: 'th_main' }])
-    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('Feature chat.md')
-    click.mockRestore()
+  it('offers no Rename or Export on the Lead card while nobody has started the chat', async () => {
+    render(<Page worked />, { wrapper: server({ threads: [] }).Wrapper })
+    await waitFor(() => expect(featurePage()).not.toBeNull())
+    expect(within(featurePage()!).queryByRole('button', { name: 'Project actions' })).toBeNull()
   })
 
-  it('offers no Rename or Export for a feature chat nobody has started', async () => {
-    const api = server({ threads: [] })
-    render(<Page worked />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(within(sidebar()).getByRole('button', { name: 'New chat' })).toBeTruthy())
-    featureMenu()
-    expect(screen.queryByRole('menuitem', { name: 'Rename the chat…' })).toBeNull()
-    expect(screen.queryByRole('menuitem', { name: 'Export the chat as Markdown' })).toBeNull()
-  })
-
-  it('counts a click on the open feature’s row as opening it while its chat has no thread', async () => {
-    const api = server({ threads: [] })
+  it('counts a click on the open feature’s row, from the list, as opening it while its chat has no thread', async () => {
     const onSelect = vi.fn()
-    render(<Page worked onSelect={onSelect} />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(within(sidebar()).getByRole('button', { name: 'New chat' })).toBeTruthy())
-    fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0])
+    render(<Page worked onSelect={onSelect} />, { wrapper: server({ threads: [] }).Wrapper })
+    await waitFor(() => expect(featurePage()).not.toBeNull())
+    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'Back to the features' }))
+    fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0]!)
     expect(onSelect).toHaveBeenCalledWith('feat_1')
   })
 
@@ -422,6 +473,40 @@ describe('the open feature’s threads in the sidebar', () => {
     expect(within(column()).getByText('Plan the export')).toBeTruthy()
   })
 
+  it('ignores a ?thread= the feature does not hold, drops it from the address, and sends to its own thread', async () => {
+    window.history.replaceState(null, '', '/p/proj_1/f/login?thread=th_elsewhere')
+    const api = server()
+    render(<Page />, { wrapper: api.Wrapper })
+    expect(await within(column()).findByText('said in th_main')).toBeTruthy()
+    await waitFor(() => expect(window.location.search).toBe('?thread=th_main'))
+    expect(api.inputs('thread.events').some((i) => (i as { threadId: string }).threadId === 'th_elsewhere')).toBe(false)
+    fireEvent.change(within(column()).getByLabelText('Message'), { target: { value: 'Which feature is this?' } })
+    fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
+    await waitFor(() => expect(api.inputs('thread.send')).toEqual([{ threadId: 'th_main', text: 'Which feature is this?' }]))
+  })
+
+  it('moving to another feature in the app drops ?thread= from the address at once', async () => {
+    const lists: Record<string, ThreadEntry[]> = {
+      feat_a: [thread('th_a', 'Chat of A', 'main'), thread('w_a', 'A worker of A', 'worker')],
+      feat_b: [thread('th_b', 'Chat of B', 'main')],
+    }
+    const b = later<ThreadEntry[]>()
+    const api = server({ extra: { 'thread.list': ({ featureId }: { featureId: string }) => (featureId === 'feat_b' ? b.promise : lists[featureId]) } })
+    function Shell({ slug }: { slug: string }) {
+      useHistorySync({ kind: 'feature', projectId: 'proj_1', featureSlug: slug }, () => {})
+      return <Page key={slug} featureId={slug} />
+    }
+    window.history.replaceState(null, '', '/p/proj_1/f/feat_a?thread=w_a')
+    const { rerender } = render(<Shell slug="feat_a" />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in w_a')
+
+    rerender(<Shell slug="feat_b" />)
+    await tick()
+    expect(`${window.location.pathname}${window.location.search}`).toBe('/p/proj_1/f/feat_b')
+    await act(async () => b.resolve(lists.feat_b!))
+    expect(await within(column()).findByText('said in th_b')).toBeTruthy()
+  })
+
   // No test renders the whole feature page, so its `start` is read from source:
   // the launch holds its opening as the chat asks (feature-chat-start.test.tsx).
   it('starts the feature chat with its opening held as the chat asks', () => {
@@ -430,10 +515,11 @@ describe('the open feature’s threads in the sidebar', () => {
   })
 })
 
+
 /** A thread link, loaded or pasted, while the feature's thread list answers late (ticket 29). */
 describe('a thread’s link', () => {
   const lists: Record<string, ThreadEntry[]> = {
-    feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A side thread of A', 'side')],
+    feat_a: [thread('th_a', 'Chat of A', 'main'), thread('th_a_side', 'A worker of A', 'worker')],
     feat_b: [thread('th_b', 'Chat of B', 'main')],
   }
   const SIDE_LINK = '/p/proj_1/f/feat_a/chat?thread=th_a_side'
@@ -442,7 +528,7 @@ describe('a thread’s link', () => {
     fireEvent.keyDown(within(column()).getByLabelText('Message'), { key: 'Enter' })
   }
 
-  it('loaded fresh shows the side thread once the list answers, and a send goes to it; until then nothing can be sent', async () => {
+  it('loaded fresh shows the worker once the list answers, and a send goes to it; until then nothing can be sent', async () => {
     const a = later<ThreadEntry[]>()
     const api = server({ extra: { 'thread.list': () => a.promise } })
     window.history.replaceState(null, '', SIDE_LINK)
@@ -659,12 +745,12 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
 
 describe('a Select area crop', () => {
   it('brings the main chat to the front with the crop in its composer', async () => {
-    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'An old side thread', 'side')] })
+    const api = server({ threads: [thread('th_main', 'Feature chat', 'main'), thread('th_old', 'A worker', 'worker')], workers: [worker('th_old', 'A worker', { status: 'working' })] })
     URL.createObjectURL = vi.fn(() => 'blob:crop')
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    await waitFor(() => expect(options()).toHaveLength(2))
-    pick('An old side thread')
+    await waitFor(() => expect(lane('Working')).toEqual(['A worker']))
+    pickWorker('A worker')
     await within(column()).findByText('said in th_old')
 
     await act(async () => {

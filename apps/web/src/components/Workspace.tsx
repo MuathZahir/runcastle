@@ -17,7 +17,7 @@ import { Button,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconOrchestrator, IconPlay, IconPlus, IconX, ProgressIcon } from '../icons'
+import { IconOrchestrator, IconPlay, IconX, ProgressIcon } from '../icons'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -72,6 +72,7 @@ import { FeatureDriveView } from './review/FeatureDriveView'
 import { unsentNotes } from './review/SendToAgent'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
+import { useFeatureWorkers, useWorkerHeader, workerInFront } from './workers/WorkerChat'
 import { useStandingNotices } from './workspace/use-standing-notices'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
@@ -352,6 +353,10 @@ export function Workspace({
         },
   )
   const inFrontTitle = column.threads.find((t) => t.id === column.current)?.title
+  // A worker's chat in front: the header shows its status and actions in place of the feature's own.
+  const workerHeader = useWorkerHeader(
+    workerInFront(useFeatureWorkers(featureId), column.threads, column.inFront !== column.main ? column.inFront : null),
+  )
   // The page's root, where Reply finds the composer to put the cursor in.
   const frame = useRef<HTMLElement>(null)
   // A started, unshipped feature takes new threads: the header's "+", the
@@ -1082,7 +1087,7 @@ export function Workspace({
   }
   const paletteActions = [
     headerRow.action,
-    { label: 'New chat', kind: 'newThread' as const },
+    { label: 'New worker', kind: 'newThread' as const },
     headerRow.merge,
     driveCommand,
   ].filter((a, i, all): a is NextAction => !!a && all.findIndex((b) => b?.kind === a.kind) === i)
@@ -1177,8 +1182,19 @@ export function Workspace({
         ]}
         // With the holder first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
-        status={status && <FeatureStatusLine status={status} />}
+        status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} />}
         actions={
+          workerHeader ? (
+            <>
+              {workerHeader.actions}
+              <PanelToggle
+                open={!!shown}
+                views={tabs}
+                dot={fresh.length > 0}
+                onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
+              />
+            </>
+          ) : (
           <>
             {offline && (
               <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
@@ -1209,9 +1225,6 @@ export function Workspace({
                 )}
               </span>
             )}
-            {threadable && (
-              <IconButton label="New chat" kbd={newThreadShortcut()} icon={<IconPlus />} onClick={() => runAction('newThread')} />
-            )}
             <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
             <PanelToggle
               open={!!shown}
@@ -1220,6 +1233,7 @@ export function Workspace({
               onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
             />
           </>
+          )
         }
       />
       )}

@@ -34,9 +34,9 @@ const PROJECT_THREAD_KINDS: SessionKind[] = ['project']
 
 const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   chat: 'main',
+  // A side chat from before workers: listed, read-only (interactive-workers decision 23).
   side: 'side',
-  // Listed beside the lead as the prototype's workers were, until the worker list draws them.
-  worker: 'side',
+  worker: 'worker',
   scenario: 'scenario',
   'drive-fix': 'scenario',
   project: 'project',

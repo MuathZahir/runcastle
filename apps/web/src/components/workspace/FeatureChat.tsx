@@ -10,9 +10,11 @@ import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
+import { useFeatureWorkers, workerColumnProps, workerInFront } from '../workers/WorkerChat'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it.'
-const SIDE_HINT = 'A fresh chat on this feature, beside the feature chat. It knows the feature, its docs and its tickets.'
+/** A thread that is neither the lead's, a scenario chat nor a listed worker yet: a worker whose row is still on its way. */
+const WORKER_PENDING_HINT = 'A worker on this feature, in its own sandbox.'
 
 /**
  * The feature page's chat column (chat-as-web-components decisions 3, 7): the
@@ -71,6 +73,8 @@ export function FeatureChat({
   const isMain = inFront === main
   const isScenario = inFront !== null && inFront === scenario.sessionId
   const entry = column.threads.find((t) => t.id === column.current)
+  const worker = workerInFront(useFeatureWorkers(full.feature.id), column.threads, inFront)
+  const workerProps = worker && !isMain ? workerColumnProps(worker, full.feature.branch) : null
   const toast = useToast()
   const tabVisible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === 'visible', () => true)
   // One start at a time: a Send during the chat's own start waits on that start, and says any refusal itself.
@@ -106,14 +110,14 @@ export function FeatureChat({
       // own. The main chat keeps one through its start, so the first message
       // stays on screen while the chat it started takes its id.
       key={isMain ? 'main' : inFront}
-      label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : 'Chat'}
+      label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : workerProps ? 'Worker' : 'Chat'}
       threadId={inFront}
       {...(entry ? { runtime: entry.runtime } : {})}
       {...(isMain ? { start: startForSend, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
       draftKey={`feature:${full.feature.id}:main`}
       onOpenThread={column.pick}
-      emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : SIDE_HINT}
-      {...(isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
+      emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
+      {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
       notices={alerts}
     >
       <FeatureNoticeDeck

@@ -26,7 +26,7 @@ export const ACTION_KINDS = [
   'openPlan', // a plan to approve: open the panel's plan view
   'openDesign', // a design to approve: open the design view on the feature's design server
   'showRequest', // a permission prompt: bring the asking thread to the front
-  'newThread', // a new side thread on the feature, as the sidebar row's "+"
+  'newThread', // a new worker with no assignment, as the feature's sidebar page's "+"
 ] as const
 
 export type ActionKind = (typeof ACTION_KINDS)[number]

@@ -28,6 +28,8 @@ export type ProjectSession = RouterOutputs['project']['projectSession']
 export type ProjectConversation = RouterOutputs['project']['conversations'][number]
 /** One row of a feature's session switcher (several-sessions-per-feature decision 10). */
 export type FeatureSessionEntry = RouterOutputs['feature']['sessions'][number]
+/** One of a feature's workers, with its preview's pass-through path (interactive-workers). */
+export type WorkerListRow = RouterOutputs['worker']['list'][number]
 /** Whether what was sent to a feature's agent has reached one yet (decision 28). */
 export type LeadDelivery = RouterOutputs['notes']['delivery']
 

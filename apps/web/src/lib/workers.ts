@@ -1,4 +1,9 @@
-import type { WorkerKind as CoreWorkerKind, WorkerStatus as CoreWorkerStatus } from '@runcastle/core'
+import type {
+  ThreadEntry,
+  WorkerKind as CoreWorkerKind,
+  WorkerRow as CoreWorkerRow,
+  WorkerStatus as CoreWorkerStatus,
+} from '@runcastle/core'
 import type { StatusTone } from '../ui'
 
 /**
@@ -130,4 +135,62 @@ export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
 /** Whether a worker still takes messages: everything but the settled ones and old side chats. */
 export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'oldSideChat'>): boolean {
   return !w.oldSideChat && w.status !== 'landed' && w.status !== 'dropped'
+}
+
+// ---------------------------------------------------------------------------
+// From the wire
+// ---------------------------------------------------------------------------
+
+/** What a worker row needs to be drawn: core's `WorkerRow`, as `worker.list` serves it. */
+type WireWorker = Pick<
+  CoreWorkerRow,
+  'id' | 'label' | 'purpose' | 'kind' | 'goal' | 'doneWhen' | 'model' | 'startedBy' | 'status' | 'failure' | 'createdAt' | 'updatedAt'
+>
+
+const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
+
+/** A worker's row in its feature's sidebar page. */
+export function workerEntry(w: WireWorker): WorkerEntry {
+  return {
+    id: w.id,
+    label: w.label,
+    purpose: w.purpose,
+    status: w.status,
+    ...(w.kind !== 'unassigned' ? { kind: w.kind } : {}),
+    startedBy: STARTED_BY[w.startedBy],
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+    ...(w.status === 'failed' && w.failure ? { failure: w.failure } : {}),
+  }
+}
+
+/**
+ * A side chat from before workers (decision 23): a read-only transcript in
+ * Done. It has no status of its own; it is drawn as done.
+ */
+export function oldSideChatEntry(t: Pick<ThreadEntry, 'id' | 'title' | 'createdAt' | 'updatedAt'>): WorkerEntry {
+  return { id: t.id, label: t.title, purpose: '', status: 'handed-back', startedBy: 'you', createdAt: t.createdAt, updatedAt: t.updatedAt, oldSideChat: true }
+}
+
+/** The card pinned atop a worker's chat (decision 21). */
+export function workerAssignment(w: WireWorker): WorkerAssignment {
+  return {
+    label: w.label,
+    purpose: w.purpose,
+    kind: w.kind === 'unassigned' ? null : w.kind,
+    ...(w.goal ? { goal: w.goal } : {}),
+    ...(w.doneWhen ? { doneWhen: w.doneWhen } : {}),
+    model: w.model,
+    startedBy: STARTED_BY[w.startedBy],
+  }
+}
+
+/** Whether the human can ask a worker to hand back (decision 5): while it works or waits, not once it has, landed, dropped or failed. */
+export function workerCanHandBack(status: WorkerStatus): boolean {
+  return status === 'needs-you' || status === 'working' || status === 'queued'
+}
+
+/** The feature's sidebar page's rows: its workers, then its old side chats. */
+export function featureWorkerEntries(workers: readonly WireWorker[], threads: readonly ThreadEntry[]): WorkerEntry[] {
+  return [...workers.map(workerEntry), ...threads.filter((t) => t.role === 'side').map(oldSideChatEntry)]
 }
