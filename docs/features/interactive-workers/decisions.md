@@ -212,3 +212,14 @@ read-only transcripts marked "Old side chat": readable, not typeable. To carry o
 starts a worker with the "+" and pastes what it needs.
 **Why:** Reopening them as side chats would keep the old side-chat code alive, and converting them
 into workers is code for a handful of chats (4 in two weeks).
+
+## 24. The feature's workers live on its own drill-in sidebar page
+**Decision:** Supersedes 3's placement (its grouping by status stands). Opening a feature swaps the
+left sidebar to the feature's own page: a header with a way back to the features list, the lead,
+then its workers grouped Needs you / Working / Done. Going back changes only the sidebar; the chat
+in front stays. No right-hand rail and no worker tab in the right panel. The page looks and reads
+like the features list it replaces, with the same row shapes, shelves and lanes, and it does not
+announce other features' needs (no "1 other needs you").
+**Why:** The human compared a nested list, a right-hand rail and a drill-in page on screen: "The
+drill in is better." It keeps the left sidebar the one place to move around, gives workers its
+full width, and leaves the right side to the panel; the human did not want two right-hand columns.
