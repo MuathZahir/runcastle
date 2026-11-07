@@ -4,7 +4,7 @@ Planned without the human (a headless planning run, 2026-11-06). Every decision
 below is the lead's recommendation, accepted so the plan could be finished; each
 names the alternative it was chosen over.
 
-Check first: 6, 11
+Check first: 27
 
 ## 1. One wake rule, decided in one place, for both levels
 **Decision:** Every message runcastle sends to an agent on its parent's behalf is classed as either **wake** (a handback, or a real question the agent must answer) or **hold** (anything else). One shared function makes that call for both links that exist today: runcastle news to the orchestrator thread that holds a feature, and runcastle's messages to a feature's lead. It is written so workers can adopt it later without a second rule.
@@ -136,3 +136,8 @@ Check first: 6, 11
 **Supersedes:** 16, 17.
 **Decision:** runcastle compacts an orchestrator chat with `lead-chats-stay-small`'s mechanism, no second one: at the same quiet moments (before an idle stop, and before a turn that follows a long gap) and above the same 150k-token floor, with the same "Chat compacted" divider. After a compaction the orchestrator re-reads its record (`get_project_context` and the briefs of the features it holds) before acting. The chat keeps its features, its held lines and its history in the chat view. The 1 MB resume cap stops starting a fresh orchestrator chat, since it measures the whole transcript file rather than what the agent carries after a compaction.
 **Why:** Orchestrator chats were never compacted and carried 190k–352k tokens into every turn. One mechanism for leads and orchestrators. Cost accepted: a summary can lose a detail agreed in the chat but not written down; the briefs cover what is on record.
+
+## 27. No guidance on how agents read; no nudges in runcastle's messages
+**Supersedes:** 6, 11.
+**Decision:** The project skill gets no line about keeping short reads in the foreground, and the message a returning round wakes its lead with loses the line telling it not to fetch the round again. Skill text changes only where a decision here needs it: when a lead hands back (22), what reaches the orchestrator (23), and re-reading the record after a compaction (26).
+**Why:** The human: "I don't think we should micro manage the agents this much." The round-return nudge is the same kind of steering, dropped on the same principle.
