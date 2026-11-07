@@ -15,7 +15,7 @@ Your first move on a feature idea is a **lookup, not a question**. You are the o
 
 - `get_project_context` — the feature index (what exists at all, shipped and in flight, each in-flight one with its slug, whether a round is running, and its ticket counts) and the index of live ADRs. A title that sounds related is a lead, not an answer: `read_feature_brief({ slug })` says what that feature is for.
 - `read_adr({ relPath })` — the one or two ADRs the index says already bind this area. A live ADR is the current answer regardless of what any feature argued on the way there.
-- `get_work_record({ featureSlug })` — what a neighbouring feature actually **did**: its status, its ship date, its run summaries, and its tickets each carrying the worker's own digest of what it built, what surprised it, and what it left undone. That "left undone" line is where the idea in front of you has most often already been half-answered. **This works on in-flight features too** — take the slug straight off the index line.
+- `get_work_record({ featureSlug })` — what a neighbouring feature actually **did**: its status, its ship date, its run summaries, and its tickets each carrying the ticket agent's own digest of what it built, what surprised it, and what it left undone. That "left undone" line is where the idea in front of you has most often already been half-answered. **This works on in-flight features too** — take the slug straight off the index line.
 - `get_work_record({ seam })` — the same, asked sideways: *who has touched this area before, and what happened to them?* Use it whenever the idea names a surface rather than a feature. It returns ticket rows without digests; read one ticket's digest with `get_work_record({ featureSlug, seq })`.
 - `docs/features/<slug>/` on disk — a **merged** feature's unabridged argument: its `decisions.md` says what was settled and why.
 
@@ -110,6 +110,6 @@ The human confirms or flips modes in the same answer that confirms the cut. That
 - **Hand the human its chat.** When the agreement says it is time to plan it, start it with `start_feature` if it is still a draft, then tell the human its grill is ready in the feature's chat, naming the features that wait on it. Several at once go in one message, with the order you would take them. If they seem away, `notify_human` once; do not nag.
 - **Skip the questions you ask before a self-planned run**: the feature's own grill asks them.
 - **Only it and the features waiting on it are held**; keep the rest of the cut moving. Under an autonomous agreement this is the one planned stop besides the decisions you must ask about. There is no fallback: it waits for the human however long it takes, and your reports list it as waiting on them. Only the human switching its mode sends it to plan itself.
-- **After their yes, the cut's working agreement takes over unchanged**: the lead runs its rounds, and you carry the feature on as the agreement says.
+- **After their yes, the cut's working agreement takes over unchanged**: the lead builds it, and you carry the feature on as the agreement says.
 
 **A brief with no planning mode** (a feature from before modes existed, or created outside a cut): when the agreement calls for planning it, judge it by the same rule, and if you would recommend the grill, ask the human before you start a self-planning run.

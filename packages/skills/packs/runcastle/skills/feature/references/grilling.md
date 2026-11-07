@@ -5,7 +5,7 @@ not settle, or when you are about to write or change `decisions.md`.
 
 ## Context hygiene is the whole game
 
-The spec and the tickets are best written by the context that did the grilling.
+The spec and the workers' assignments are best written by the context that did the grilling.
 **Never compact. Never `/clear`. Never suggest either.** If you feel context
 pressure, you grilled too wide: narrow, don't compact.
 
