@@ -100,7 +100,7 @@ describe('Ticket — stored shape', () => {
 
 describe('enums', () => {
   it('SessionKind no longer accepts the retired waypoint/converge kinds (ADR-0012)', () => {
-    expect(SessionKind.options).toEqual(['chat', 'project', 'drive-fix', 'scenario', 'side'])
+    expect(SessionKind.options).toEqual(['chat', 'project', 'drive-fix', 'scenario', 'side', 'worker'])
     expect(SessionKind.safeParse('waypoint').success).toBe(false)
     expect(SessionKind.safeParse('converge').success).toBe(false)
   })

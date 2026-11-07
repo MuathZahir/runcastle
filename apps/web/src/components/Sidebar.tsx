@@ -20,6 +20,7 @@ import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { FeatureSidebar } from './workers/FeatureSidebar'
 import { useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT } from '../lib/chat-sessions'
 import {
@@ -302,45 +303,41 @@ export function Sidebar(props: SidebarProps) {
     ]
   }
 
+  // The drill-in (interactive-workers decision 24): the open feature's own page
+  // replaces the features list, until its back chevron goes up a level. Up
+  // holds only while the same thread stays in front, so opening the feature or
+  // any of its threads again (a row, the palette, a push tap, the address)
+  // comes back down. Going either way changes only the sidebar.
+  const [upFrom, setUpFrom] = useState<{ featureId: string; current: string | null } | null>(null)
+  const [motion, setMotion] = useState<'down' | 'up' | null>(null)
+  const openFeature = featureThreads ? features.find((f) => f.id === selectedFeatureId) : undefined
+  const wentUp = upFrom !== null && upFrom.featureId === selectedFeatureId && upFrom.current === featureThreads?.current
+  const drilled = !phone && featureThreads && openFeature && !wentUp ? { feature: openFeature, threads: featureThreads } : null
+  const goUp = () => {
+    setUpFrom({ featureId: selectedFeatureId ?? '', current: featureThreads?.current ?? null })
+    setMotion('up')
+  }
+
   const row = (f: FeatureListItem, nested = false) => {
     // The phone's list (phone decision 1): only shown with nothing open, so no
     // row is current, and a row is the whole door — no hover menu, no threads.
     if (phone) return <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={onSelect} actions={[]} nested={nested} />
     const open = f.id === selectedFeatureId && view === 'feature'
-    const own = open && featureThreads ? featureThreads : null
-    const ordered = own ? sidebarThreadOrder(own.threads) : []
-    // A feature with only its main chat lists nothing: the row is the chat (decision 2).
-    const list =
-      own && ordered.length > 1 ? (
-        <SidebarThreadList threads={ordered} current={own.current} onOpen={own.pick} actionsFor={threadActionsFor} />
-      ) : undefined
-    const key = own ? foldKey(own.scope) : ''
-    // With no list, the one chat's Rename and Export ride on the feature's own menu.
-    const sole = own && ordered.length === 1 && ordered[0]!.id !== UNSTARTED_CHAT ? ordered[0]! : null
-    const soleActions: FeatureAction[] = sole
-      ? [
-          { key: 'rename-chat', label: 'Rename the chat…', icon: <IconPencil />, onSelect: () => setRenaming({ threadId: sole.id, title: sole.title }) },
-          { key: 'export-chat', label: 'Export the chat as Markdown', icon: <IconDoc />, onSelect: () => threadActions.exportMarkdown(sole.id, sole.title) },
-        ]
-      : []
     return (
       <SidebarFeatureRow
         key={f.id}
         f={f}
         active={open}
-        // The open feature's row brings its main chat to the front (decision 8).
-        // One nobody has started has no thread yet, so the click is still an open of the feature.
+        // A feature row goes down to its page; the open one's also brings its lead to the front.
         onSelect={(id) => {
-          const main = own && ordered.find((t) => t.role === 'main')
-          if (main) own.pick(main.id)
+          setUpFrom(null)
+          setMotion('down')
+          const main = open && featureThreads?.threads.find((t) => t.role === 'main')
+          if (main) featureThreads?.pick(main.id)
           if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
         }}
-        actions={[...actionsFor(f), ...soleActions]}
+        actions={actionsFor(f)}
         nested={nested}
-        {...(own ? { onNewThread: own.newThread } : {})}
-        threads={list}
-        folded={fold.folded(key)}
-        onToggleThreads={() => fold.toggle(key)}
       />
     )
   }
@@ -375,93 +372,101 @@ export function Sidebar(props: SidebarProps) {
         </div>
       )}
 
-      <div className={phone ? 'mt-2' : 'mt-3'}>
-        {/* The project's own door (decision 20): not a feature, never in a
-            lane. It says what the chat holds — the open notes (project-notes
-            decisions #10) — and waits amber while the chat waits on you. */}
-        <OrchestratorCard
-          status={`${CHATS_WORDS[chats]}${notesWords}`}
-          state={chats}
-          active={view === 'project' && !phone}
-          onOpen={onSelectProject}
-          actions={[]}
-          title={ORCHESTRATOR_TITLE}
-          {...(projectThreads && !phone
-            ? {
-                onNewThread: projectThreads.newThread,
-                threads: (
-                  <SidebarThreadList
-                    label="Chats"
-                    threads={sidebarThreadOrder(projectThreads.threads)}
-                    current={projectThreads.current}
-                    onOpen={projectThreads.pick}
-                    actionsFor={orchestratorThreadActions}
-                    keep={(t) =>
-                      // An open errand's chat keeps its row, which is how it is closed.
-                      t.id === projectThreads.errand?.threadId ||
-                      threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
-                    }
-                    markFor={(t) => {
-                      const held = heldFeatures(t.id, features)
-                      return held.length > 0 ? <HoldMark features={held} /> : null
-                    }}
-                    tipFor={(t) => {
-                      const held = heldFeatures(t.id, features)
-                      return held.length > 0 ? <HoldTip features={held} /> : undefined
-                    }}
-                    {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
-                  />
-                ),
-                folded: fold.folded(orchestratorFold),
-                onToggleThreads: () => fold.toggle(orchestratorFold),
-              }
-            : {})}
-        />
-      </div>
-
-      <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
-        {list.isLoading && <FeatureRowsSkeleton />}
-        {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
-        {inbox.length + inProgress.length > 0 && (
-          <section aria-label="Needs you" className="flex flex-col gap-1">
-            {inbox.map((f) => row(f))}
-            {inProgress.map((f) => row(f))}
-          </section>
-        )}
-        {list.data && list.data.length === 0 && (
-          <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
-            No features yet. Start a chat to cut the first one.
-          </div>
-        )}
-        <WorkingShelf features={working} renderRow={row} />
-        <div className="flex flex-col divide-y divide-border-subtle">
-          {/* After live work, before the backlog (waiting-is-not-backlog
-              decision 16); open, because what is in it is wanted. */}
-          <Shelf
-            icon={<IconClock />}
-            label="Up next"
-            features={lane('upNext')}
-            renderRow={(f) => row(f)}
-            defaultOpen
-          />
-          <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
-          <Shelf
-            icon={<IconGitMerge />}
-            label="Shipped"
-            features={byLastMoved(lane('shipped'))}
-            renderRow={(f) => row(f)}
-            cap={5}
-          />
-          <Shelf
-            icon={<IconArchive />}
-            label="Archived"
-            features={byLastMoved(archived)}
-            renderRow={(f) => row(f)}
-            open={archivedOpen}
-            onOpenChange={onArchivedOpenChange}
+      {drilled ? (
+        <div key="page" className={cx('mt-3 flex min-h-0 flex-1 flex-col', motion === 'down' && 'animate-slide-in-right')}>
+          <FeatureSidebar feature={drilled.feature} threads={drilled.threads} onBack={goUp} threadActionsFor={threadActionsFor} />
+        </div>
+      ) : (
+      <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
+        <div className={phone ? 'mt-2' : 'mt-3'}>
+          {/* The project's own door (decision 20): not a feature, never in a
+              lane. It says what the chat holds — the open notes (project-notes
+              decisions #10) — and waits amber while the chat waits on you. */}
+          <OrchestratorCard
+            status={`${CHATS_WORDS[chats]}${notesWords}`}
+            state={chats}
+            active={view === 'project' && !phone}
+            onOpen={onSelectProject}
+            actions={[]}
+            title={ORCHESTRATOR_TITLE}
+            {...(projectThreads && !phone
+              ? {
+                  onNewThread: projectThreads.newThread,
+                  threads: (
+                    <SidebarThreadList
+                      label="Chats"
+                      threads={sidebarThreadOrder(projectThreads.threads)}
+                      current={projectThreads.current}
+                      onOpen={projectThreads.pick}
+                      actionsFor={orchestratorThreadActions}
+                      keep={(t) =>
+                        // An open errand's chat keeps its row, which is how it is closed.
+                        t.id === projectThreads.errand?.threadId ||
+                        threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
+                      }
+                      markFor={(t) => {
+                        const held = heldFeatures(t.id, features)
+                        return held.length > 0 ? <HoldMark features={held} /> : null
+                      }}
+                      tipFor={(t) => {
+                        const held = heldFeatures(t.id, features)
+                        return held.length > 0 ? <HoldTip features={held} /> : undefined
+                      }}
+                      {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
+                    />
+                  ),
+                  folded: fold.folded(orchestratorFold),
+                  onToggleThreads: () => fold.toggle(orchestratorFold),
+                }
+              : {})}
           />
         </div>
+  
+        <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
+          {list.isLoading && <FeatureRowsSkeleton />}
+          {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
+          {inbox.length + inProgress.length > 0 && (
+            <section aria-label="Needs you" className="flex flex-col gap-1">
+              {inbox.map((f) => row(f))}
+              {inProgress.map((f) => row(f))}
+            </section>
+          )}
+          {list.data && list.data.length === 0 && (
+            <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
+              No features yet. Start a chat to cut the first one.
+            </div>
+          )}
+          <WorkingShelf features={working} renderRow={row} />
+          <div className="flex flex-col divide-y divide-border-subtle">
+            {/* After live work, before the backlog (waiting-is-not-backlog
+                decision 16); open, because what is in it is wanted. */}
+            <Shelf
+              icon={<IconClock />}
+              label="Up next"
+              features={lane('upNext')}
+              renderRow={(f) => row(f)}
+              defaultOpen
+            />
+            <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
+            <Shelf
+              icon={<IconGitMerge />}
+              label="Shipped"
+              features={byLastMoved(lane('shipped'))}
+              renderRow={(f) => row(f)}
+              cap={5}
+            />
+            <Shelf
+              icon={<IconArchive />}
+              label="Archived"
+              features={byLastMoved(archived)}
+              renderRow={(f) => row(f)}
+              open={archivedOpen}
+              onOpenChange={onArchivedOpenChange}
+            />
+          </div>
+        </div>
       </div>
+      )}
 
       {phone ? <PhoneNotificationsRow projectId={projectId} /> : <SidebarFoot {...props} />}
 

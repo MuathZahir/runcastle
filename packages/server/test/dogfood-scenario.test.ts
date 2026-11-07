@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/sql-js'
 import { simpleGit } from 'simple-git'
 import initSqlJs from 'sql.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { features, readyDeclarations, schema, tickets } from '../src/db/schema'
+import { features, readyDeclarations, schema, sessions, tickets, workers } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx, Db } from '../src/db/types'
 import { openProject } from '../src/services/projects'
@@ -40,8 +40,8 @@ function scenarioEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   }
 }
 
-function runScenario(extra: Record<string, string>): { status: number | null; stdout: string; stderr: string } {
-  const out = spawnSync(BUN as string, [SCENARIO], {
+function runScenario(extra: Record<string, string>, scenario = SCENARIO): { status: number | null; stdout: string; stderr: string } {
+  const out = spawnSync(BUN as string, [scenario], {
     cwd: REPO_ROOT,
     env: scenarioEnv(extra),
     encoding: 'utf8',
@@ -116,6 +116,31 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
 
     const branches = await simpleGit(repoPath).branchLocal()
     expect(branches.all).toContain('feature/scenario-feature-abc123')
+  })
+
+  // `.runcastle/scenarios/workers/feature-with-workers.ts` (interactive-workers): the drive lands on its page.
+  it('seeds a feature with a lead chat, a worker in every status and an old side chat, and prints its page', async () => {
+    const out = runScenario(
+      { RUNCASTLE_DATA_DIR: dataDir, RUNCASTLE_SCENARIO_RUN: 'abc123' },
+      join('.runcastle', 'scenarios', 'workers', 'feature-with-workers.ts'),
+    )
+    expect(out.stderr).not.toMatch(/\[feature-with-workers\]/)
+    expect(out.status).toBe(0)
+    expect(out.stdout.split(/\r?\n/).filter((l) => l.startsWith('ENTRY_URL='))).toEqual([
+      `ENTRY_URL=/p/${projectId}/f/workers-feature-abc123`,
+    ])
+
+    const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
+    const feature = ctx.db.select().from(features).where(eq(features.slug, 'workers-feature-abc123')).get()
+    const rows = ctx.db.select().from(workers).where(eq(workers.featureId, feature!.id)).all()
+    expect(rows.map((w) => w.status).sort()).toEqual(
+      ['dropped', 'failed', 'handed-back', 'landed', 'needs-you', 'needs-you', 'queued', 'working', 'working'],
+    )
+    expect(rows.filter((w) => w.handbackSummary).length).toBe(3)
+    const kinds = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().map((s) => s.kind)
+    expect(kinds.filter((k) => k === 'chat')).toHaveLength(1)
+    expect(kinds.filter((k) => k === 'side')).toHaveLength(1)
+    expect(kinds.filter((k) => k === 'worker')).toHaveLength(rows.length)
   })
 
   it('exits non-zero with a readable message when the project is not registered', () => {

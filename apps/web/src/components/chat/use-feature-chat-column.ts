@@ -34,7 +34,7 @@ export interface FeatureChatColumn {
   /** The thread list's id for what is in front. */
   current: string
   pick: (id: string) => void
-  /** New thread: a side thread, brought to the front. */
+  /** The "+": a worker with no assignment, brought to the front once its sandbox is up. */
   newThread: () => void
   /** The unstarted main chat got its thread: on its first message, or (`stayOnPicked`) by itself, which moves no one off a thread they picked. */
   started: (threadId: string, opts?: { stayOnPicked?: boolean }) => void
@@ -42,9 +42,9 @@ export interface FeatureChatColumn {
 
 /**
  * The feature page's chat column (chat-as-web-components decision 7): every
- * thread of the feature — its main chat, side threads, scenario and Fix-it
- * chats, finished ones included — listed in the sidebar, one in front. An
- * errand's open, or a new thread, brings its thread to the front; closing the
+ * thread of the feature — its lead's chat, its workers, old side chats,
+ * scenario and Fix-it chats — listed in the sidebar, one in front. An
+ * errand's open, or a new worker, brings its thread to the front; closing the
  * errand hands the column back to the main chat. A Select area crop for the
  * main chat brings it to the front too.
  */
@@ -82,10 +82,13 @@ export function useFeatureChatColumn({
 
   useEffect(() => subscribeInbox(mainChatInbox(featureId), () => setPicked(null)), [featureId])
 
-  const create = trpc.thread.new.useMutation({
-    onSuccess: ({ threadId }) => {
-      setPicked(threadId)
+  // The "+" (interactive-workers decision 7): a worker with no assignment, in
+  // place of the side chat it replaces. It answers once its sandbox is up.
+  const create = trpc.worker.startUnassigned.useMutation({
+    onSuccess: ({ workerId }) => {
+      setPicked(workerId)
       void utils.thread.list.invalidate({ featureId })
+      void utils.worker.list.invalidate({ featureId })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -98,7 +101,7 @@ export function useFeatureChatColumn({
       ? [
           inFront === scenario.sessionId
             ? standIn(inFront, scenarioChatLabel(scenario.errand), 'scenario')
-            : standIn(inFront, NEW_CHAT_NAME, 'side'),
+            : standIn(inFront, NEW_CHAT_NAME, 'worker'),
         ]
       : []),
   ])

@@ -1,89 +1,36 @@
 <!-- Forked from Matt Pocock's to-tickets skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 
-# Writing tickets
+# Writing the review ticket
 
-Load this when work is worth handing to sandboxed workers and you are about to
-write, reshape or cancel tickets. Whether it is worth it is your call (SKILL.md,
-"Build it the cheapest good way"): parallel pieces, work too big for your own
-window, or long unattended work. Anything else you build yourself.
+Load this when the work is done and you are about to write the review ticket,
+or reshape or cancel it.
 
-Break the work into **tickets** — vertical slices, each cutting end-to-end
-through every layer it needs, each big enough to be worth a whole agent session
-and small enough to finish inside one — and emit them with
-`mcp__runcastle__emit_tickets`. Synthesize from `spec.md` and the conversation.
-The feature's existing tickets come as summary rows in `get_feature_context`;
-`mcp__runcastle__get_ticket({ seq })` holds one ticket's context, acceptance
-criteria and digest.
+Build work is never a ticket: it goes to workers (`./workers.md`) or you do it
+yourself. Tickets and rounds remain only for this one review, until the
+`burns-become-workers` feature retires them. Use them for nothing else.
+
+Emit the ticket with `mcp__runcastle__emit_tickets`. The feature's tickets come
+as summary rows in `get_feature_context`; `mcp__runcastle__get_ticket({ seq })`
+holds one ticket's context, acceptance criteria and digest.
 
 ## The one thing that makes a runcastle ticket different
 
-Each ticket is executed by a **single fresh agent, alone, in a sandbox, with
-a context it re-reads on every call, and NO way to ask a follow-up question.** It sees only what you put
-in the ticket plus the code already in the repo. So — *inverting* the usual
-"avoid file paths, they go stale" rule — the ticket's `context` field **must be
-concrete and self-sufficient**: name the files to touch, the existing patterns
-to copy, the type/schema shapes, the gotchas, the commands to run and verify
-with. A ticket that assumes the agent can ask "where does X live?" is a broken
-ticket. Over-specify context; under-specify nothing.
-
-**Never tell a worker to run the whole suite.** No "verify with typecheck and
-test from the repo root", no verify command to run whole, no full test run. The
-worker's prompt already holds the one check rule — the tests that cover each
-slice, and the static check once at the end — and the host runs the full gates
-once per round. Name the test files that cover the change instead.
-
-## The second thing: a ticket's cost grows with the square of its length
-
-Every call the worker makes re-reads its whole context, so a ticket that ends
-at twice the context costs about four times the tokens. Measured over two weeks
-of burns, the median ticket ended near 149k context, and the ten tickets that
-ended above 250k used **over a third of every token spent** — two of them more
-than 120M each, one a wide removal across four packages in a single ticket.
-
-A ticket also costs ~10 minutes before it does any work: its own container, a
-dependency install, and a fresh read of the spec and every file your `context`
-names. That is real, but it is minutes, and the tail above is tens of millions
-of tokens. An iteration is not a retry either (ADR-0008): a ticket that overruns
-pays the container again and a new agent re-reads everything from its last
-commit.
-
-So size a ticket to **about six acceptance criteria in one area** — one package
-or one module — with room left at the end for the tests, the self-review and
-the commits. `emit_tickets` returns a warning for any ticket over eight
-criteria (it never refuses); read its `warnings` and split that ticket before
-you dispatch. Split a ticket only when it would pass that size, never as a
-habit: an ordinary ticket keeps its size, and a split that buys nothing pays a
-container for nothing.
-
-Expect a **handful of tickets** for a feature, each worth a session. A dozen
-thin ones means you sliced by layer or by file, not by behaviour; one that
-spans several packages with ten criteria is two tickets.
-
-## 1. Draft vertical slices
-
-<vertical-slice-rules>
-- Each slice cuts a narrow but COMPLETE path through every layer it needs (schema, API, UI, tests) — vertical, NOT a horizontal slice of one layer.
-- A completed slice is demoable or verifiable on its own.
-- Each slice is worth one fresh agent session working alone and **lands well inside it** — about six criteria in one area, with room for the orientation at the front and the tests, self-review and commits at the back.
-- **Merge when a merge test holds.** Two drafts are one ticket if they touch the same files, share a type or module, or the second one's first act would be re-reading what the first just wrote. Same for the obvious siblings of one behaviour: create/edit/delete of a resource, an endpoint and the UI that calls it, code and the tests that cover it.
-- **Split only for a real reason:** (a) a genuine gate — the later work cannot be written until the earlier work's interface exists; (b) the combined work would pass about six criteria or more than one area; (c) a prefactor, which is its own slice done first ("make the change easy, then make the easy change"); (d) parallel width, under the rule below; (e) the wide-refactor sequence below.
-- **Not reasons to split:** one ticket per file, layer, endpoint or component; keeping each ticket easy; keeping diffs small; separating tests from the code they test.
-- **Parallelism pays when the halves are file-disjoint.** Tickets with no blocking edge build concurrently, each on its own temp branch, landing one at a time (ADR-0002) — so two substantial slices touching *different* files buy real wall-clock. Two touching the *same* files race to land, and the loser fails on a merge conflict: that width costs a re-burn. Overlapping files → merge.
-</vertical-slice-rules>
-
-Give each ticket its **blocking edges** — the tickets that must finish before it
-can start. The field is required: a ticket with no blockers gets an empty array.
+The ticket is executed by a **single fresh agent, alone, in a sandbox, with
+NO way to ask a follow-up question.** It sees only what you put in the ticket
+plus the code already in the repo. So the ticket's `context` field **must be
+concrete and self-sufficient**: where to look, the surface to exercise, the
+scenario to replay, the gotchas. Over-specify context; under-specify nothing.
 
 <review-ticket>
 **The review ticket.** Every feature ends with one, unless the human does not
-want it (SKILL.md, "Every feature ends with a review round"). Add **one** ticket
-with `kind: "review"`, blocked by every implementation ticket whose work it
-checks, or by nothing when you built the work yourself. It is not a slice: it is the brief for the agent that exercises the
-*integrated* work on the feature branch and reports what it finds as findings.
-Its `goal` says what to verify and its `acceptanceCriteria` are the things to
-check off, one per behaviour worth confirming — the review agent walks them in
-order. `emit_tickets` refuses a ticket *titled* like a review but carrying
-another kind: set the kind (or retitle it) and re-emit.
+want it (SKILL.md, "Every feature ends with a review round"). Add **one**
+ticket with `kind: "review"` and `blockedBy: []`. It is not a slice: it is the
+brief for the agent that exercises the *integrated* work on the feature branch
+and reports what it finds as findings. Its `goal` says what to verify and its
+`acceptanceCriteria` are the things to check off, one per behaviour worth
+confirming — the review agent walks them in order. `emit_tickets` refuses a
+ticket *titled* like a review but carrying another kind: set the kind (or
+retitle it) and re-emit.
 
 The review agent works in **exactly one of two modes**, never both — a browser
 **Drive** of the app against your acceptance criteria, or **Gates**: the
@@ -114,34 +61,6 @@ carries a prose summary of what landed, which the Review view leads with, so
 `goal` asks for the verification, not for the summary.
 </review-ticket>
 
-<parallelism-budget>
-**Budget the parallelism explicitly, before you emit.** A round runs up to
-`burnConcurrency` tickets at once (from `get_feature_context`), but a ticket
-cannot start until every ticket in its `blockedBy` has landed, so a round's
-wall-clock is set by its **critical path**: the longest chain of blocking edges.
-A chain of N tickets is N sequential sandboxes however wide the pool is.
-Measured at `burnConcurrency: 3`, three consecutive batches whose tickets each
-chained end to end came in at **1.09x, 1.16x and 1.00x** — the width was there
-and never spent.
-
-So, after slicing, **say it out loud in the session**:
-
-- the **critical path** — the longest chain of implementation tickets, named in order, and its length;
-- **how many tickets can run at once**, against this project's `burnConcurrency`;
-- whether that clears the bar: T implementation tickets at concurrency C want a chain no longer than roughly **T / C**.
-
-**When it does not clear the bar, reslice.** **A blocking edge is true only when
-the later ticket reads the earlier one's output**: a file it writes, a type or
-interface it defines, a schema it migrates, a stub it fills. "Related", "same
-area", "logical reading order" are not blocking edges — drop them. Where the
-edge is real, merge the two into one ticket, or pull the shared foundation
-forward into the blocker so everything else goes wide behind it.
-
-A review ticket is the tail by definition: measure the critical path over the
-implementation tickets and add it. Width only counts if it lands: parallel
-tickets touching the same files collide on landing.
-</parallelism-budget>
-
 <ship-a-scenario>
 **Ship a scenario when the state is hard to reach.** A scenario is a project
 command under `.runcastle/scenarios/` that seeds a state and prints the URL to
@@ -149,92 +68,44 @@ land on, so a test drive starts where the feature is instead of on a blank app.
 Read `get_feature_context`'s `scenarios` field — `{ setUp, runnerConfigured,
 scenarios, fixtures }` — before you decide anything.
 
-**When `setUp` is true**, ask of each ticket: will the person driving this have
-to build state by hand to see it — an account, a cart with an expired coupon?
+**When `setUp` is true**, ask of each piece of work: will the person driving
+this have to build state by hand to see it — an account, a cart with an expired
+coupon?
 
-- If yes, give the implementation ticket that builds that state an acceptance criterion: "Ship `.runcastle/scenarios/<group>/<name>.<ext>` that seeds <state> (reusing `_fixtures`) and prints `ENTRY_URL=<where>`". Name the fixtures it should reuse. When the change is an API call, the criterion also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
-- Name that scenario in the review ticket's `context`, if there is one, so the reviewer replays it rather than improvising the setup; and use it as the `scenario` you declare ready with.
+- If yes, the work that builds that state ships `.runcastle/scenarios/<group>/<name>.<ext>`, which seeds <state> (reusing `_fixtures`) and prints `ENTRY_URL=<where>`: a line in that worker's done-when, or yours to write. Name the fixtures it should reuse. When the change is an API call, it also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
+- Name that scenario in the review ticket's `context`, so the reviewer replays it rather than improvising the setup; and use it as the `scenario` you declare ready with.
 - Copy changes and settings toggles get none. A scenario earns its place only where reaching the state is the chore.
-- The worker writes and typechecks the scenario but cannot run it — a sandbox has no drive.
+- A worker writes and typechecks the scenario but cannot run it — a sandbox has no drive.
 
 **When `setUp` is false**, card nothing about scenarios. Tell the human once
 that ＋ New scenario in a test drive sets scenarios up for this project.
 </ship-a-scenario>
 
-<wide-refactor-exception>
-A **wide refactor** — one mechanical change (rename a column, retype a shared symbol, remove a concept) whose blast radius crosses more than one area — never lands as one ticket. Sequence it **expand → migrate → contract**, always, whether it breaks ten call sites or thousands. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each a ticket blocked by the expand, green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them all block a final integrate-and-verify ticket — green is promised only there.
-</wide-refactor-exception>
+## Build the ticket to the schema
 
-<preview-screen-block>
-When the feature has a `preview.html` and a ticket **builds a screen that appears in it as a screen block**, point that ticket at **one named screen block**, never the file. Its **context** names the path (`docs/features/<slug>/preview.html`) and the block name, and tells the worker to find the two markers, `<!-- screen:<name> -->` and `<!-- /screen:<name> -->`, and **read only the lines between them**. Say plainly that the block shows the approved look and behaviour and **is not the implementation**: build it with the project's real components and never copy the mock's markup. **Never tell a worker to read the whole file.**
+Emit an array holding one `TicketInput`:
 
-A ticket with no screen does not mention the preview.
+- **title** — `{group}: {task}`, in the domain vocabulary: `Checkout: review the coupon flow`.
+- **goal** — what to verify, from the user's/caller's perspective.
+- **context** — everything the review agent needs and cannot ask for. Be concrete.
+- **acceptanceCriteria** — `string[]`, each independently *verifiable*: a step of the walk, or a thing the gates-and-diff read can check off.
+- **seams** — `string[]`, the surface it exercises.
+- **blockedBy** — `[]`.
+- **kind** — `"review"`.
+- **model** — optional, and usually omitted. Only an id from `annotatedModels` (`get_feature_context`), where the human's note plainly fits; never invent one, or the emit fails.
 
-A **designed-screen block** holds no mock. It names a component committed in design mode and its design page. Point the ticket at that component file and that design page path, not at markup.
-</preview-screen-block>
-
-<connect-designed-screens>
-A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its design page in its `context`, and says plainly that **the look is approved**. The states on the design page's switcher are the states the wiring must reach with real data. Its job is to **connect, never restyle**:
-
-- swap the sample data for real data (queries, API calls);
-- add the behaviour the design left out;
-- change markup only where the wiring needs it.
-
-When wiring forces a visible change (a field the design lacked, say), the worker calls it out in its digest.
-</connect-designed-screens>
-
-## 2. Build each ticket to the schema
-
-Emit an array of `TicketInput`. Number them from 1 in the array in **dependency
-order (blockers first)**; `blockedBy` holds those numbers.
-
-Each ticket:
-- **title** — `{group}: {task}`, in the domain vocabulary: `Checkout: apply the coupon at payment`.
-- **goal** — the end-to-end behaviour this ticket makes work, from the user's/caller's perspective. Not a layer list.
-- **context** — everything the sandboxed agent needs and cannot ask for: file paths, patterns to follow, type/schema shapes, gotchas, how to run and verify. Be concrete.
-- **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). About six is right; past eight, `emit_tickets` warns, and the ticket should be two. Criteria are observable behaviours; ask for a test as a criterion only for a bug repro or a contract worth protecting, never for its own sake. A ticket that fixes red round gates names the failing command and test files in its `context` and has one criterion that re-runs them narrowed (never the full suite — the host runs that once per round). A review reports useless tests as low-severity observations, never defects: when the round already mints a fix ticket, fold those observations into it as one criterion (delete or rewrite the named tests), and never mint a ticket only to delete useless tests.
-- **seams** — `string[]`, the public interfaces to test at (from the spec's Seams; prefer existing, prefer the highest, prefer one).
-- **blockedBy** — `number[]`, **required**, only true gates; `[]` when there are none.
-- **kind** — `"implementation"` (the default, omit it) or `"review"`.
-- **model** — optional, and usually omitted. See below.
-
-### Assigning a model (only from the annotated roster)
-
-`get_feature_context` returns `annotatedModels`: `{ id, runtime, note }` for the
-models the human wrote a use-case note against. That list is the *entire* set
-of ids you may use.
-
-- **Empty list → never set `model`.**
-- **Non-empty → set it only where a note plainly fits the ticket.** Unset is the good default.
-- **Never invent an id**, and never write one not in `annotatedModels` — the store rejects it and the whole batch fails to emit.
-
-## 3. Self-check, then emit
-
-Check yourself, in this order:
-
-1. **Can any two of these be one ticket?** Take them pair by pair; merging changes the rest.
-2. **Would any one overrun?** Past about six criteria, or across more than one area, split it where its files stop overlapping.
-3. **Does any `context` tell the worker to run the whole suite?** Take it out.
-4. Is each survivor a demoable vertical slice, worth a session?
-5. Are the blocking edges minimal and true? State the critical path and the width against `burnConcurrency`, and reslice if the chain runs longer than roughly total / concurrency. Do independent tickets touch different files?
-6. Is every `context` self-sufficient for an agent that cannot ask?
-7. If you chose a review, is there exactly one `kind: "review"` ticket, blocked by the work it checks?
-8. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it?
+Before you emit, check: exactly one `kind: "review"` ticket; criteria that
+describe the walk, or what the diff read checks; a `context` self-sufficient
+for an agent that cannot ask; and, if `scenarios.setUp`, the scenario named.
 
 Then `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do
-NOT write ticket files.** It returns `{ stored, tickets, warnings }`, logs the timeline event
-itself, and opens the **Work** view beside the chat. Emit the **whole batch,
-fully enriched, in one call**; never emit placeholder contexts to enrich
-afterwards — a round dispatched mid-enrichment burns workers on placeholders.
-Then read `warnings`: each names a stored ticket shaped to overrun or starve
-(too many criteria, a thin or pasted context). Nothing was refused; fix the
-ticket with `update_ticket` before you dispatch.
+NOT write ticket files.** It returns `{ stored, tickets, warnings }`, logs the
+timeline event itself, and opens the **Work** view beside the chat. Emit it
+fully written, never a placeholder to fill in afterwards. Then read `warnings`:
+nothing was refused, but fix what they name with `update_ticket` before you
+dispatch.
 
-## Reshaping tickets later
-
-When something changes after tickets exist, walk the ticket list against it:
+## Reshaping it later
 
 - Stale but still needed → `update_ticket({ id, ...changed fields })` (pending or failed only).
 - No longer needed → `cancel_ticket({ id, reason })` (pending or failed only).
-- New work → `emit_tickets` again; tickets accumulate on the feature.
-- Landed work now wrong → a NEW ticket that corrects it. Never touch landed or running tickets.

@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { WorkerKind } from './schemas'
 
 /**
  * Threads (chat-as-web-components; ADR-0015). Every agent conversation is a
@@ -273,6 +274,21 @@ export const PromptDisplay = z.union([
   }),
   z.object({ summary: z.string() }),
   z.object({ orchestrator: z.array(z.object({ text: z.string(), relayed: z.boolean() })) }),
+  /** A worker handed its work back to the lead (interactive-workers decisions 4, 21): the handback card. */
+  z.object({
+    handback: z.object({
+      workerId: z.string(),
+      label: z.string(),
+      kind: WorkerKind,
+      summary: z.string(),
+      commits: z.array(z.string()),
+      files: z.array(z.string()),
+      /** The worker's thread, for the card's link. */
+      threadId: z.string(),
+    }),
+  }),
+  /** A worker failed (interactive-workers decision 16): its container died, its setup failed or its agent crashed. */
+  z.object({ workerFailed: z.object({ workerId: z.string(), label: z.string(), failure: z.string() }) }),
 ])
 export type PromptDisplay = z.infer<typeof PromptDisplay>
 
@@ -521,8 +537,12 @@ export interface ThreadView {
 export interface ThreadEntry {
   id: string
   title: string
-  /** What kind of thread: the feature's main chat, a side thread, a scenario chat, a project chat. */
-  role: 'main' | 'side' | 'scenario' | 'project'
+  /**
+   * What kind of thread: the feature's main chat (its lead), a worker, an old
+   * side chat (read-only since workers replaced them), a scenario chat, a
+   * project chat.
+   */
+  role: 'main' | 'worker' | 'side' | 'scenario' | 'project'
   state: ThreadState
   /** When it was started: the sidebar's order, which an agent posting never changes. */
   createdAt: number

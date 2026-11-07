@@ -19,13 +19,21 @@ export type Engine = 'docker' | 'podman'
 
 /** Where things live inside the sandbox. */
 export const IN = {
+  home: '/home/agent',
   origin: '/home/agent/origin.git',
   repo: '/home/agent/repo',
   state: '/home/agent/.runcastle',
   runtime: '/opt/runcastle',
   cache: '/home/agent/.cache-rc',
   claude: '/home/agent/.local/bin/claude',
+  /** A Codex worker's `CODEX_HOME`: its config, the human's setup, and its conversations' rollouts. */
+  codexHome: '/home/agent/.codex',
+  /** The Codex CLI the burn image installs on its PATH, pinned to the host's version. */
+  codex: 'codex',
 } as const
+
+/** The codex-acp mode a Codex worker opens in: Codex's auto-review (interactive-workers decision 11). */
+export const CODEX_AUTO_REVIEW_MODE = 'agent'
 
 export interface SandboxSpec {
   engine: Engine
@@ -134,6 +142,78 @@ export function adapterExecArgs(container: string, port: number, previewUrl: str
   ]
 }
 
+/**
+ * `docker exec` argv that runs codex-acp in the clone (decision 12), speaking
+ * ACP on stdio. It starts `codex app-server` against the worker's own
+ * `CODEX_HOME`, where the human's setup is copied in and the rollouts a resume
+ * reads stay; it opens every session, a resumed one too, in auto-review.
+ */
+export function codexAdapterExecArgs(container: string, port: number, previewUrl: string): string[] {
+  return [
+    'exec',
+    '-i',
+    '-w',
+    IN.repo,
+    '-e',
+    `CODEX_HOME=${IN.codexHome}`,
+    '-e',
+    `CODEX_PATH=${IN.codex}`,
+    '-e',
+    `INITIAL_AGENT_MODE=${CODEX_AUTO_REVIEW_MODE}`,
+    '-e',
+    'NO_BROWSER=1',
+    '-e',
+    `WORKER_PORT=${port}`,
+    '-e',
+    `WORKER_PREVIEW_URL=${previewUrl}`,
+    container,
+    'node',
+    `${IN.runtime}/codex-acp.mjs`,
+  ]
+}
+
+/** Where the in-sandbox relay listens for the worker's MCP server: inside the container only. */
+export const TOOLS_SOCKET = `${IN.state}/tools.sock`
+
+/** The worker's own MCP server (runcastle's tools, decision 9): the script inside the sandbox and the env it reads. */
+export function workerMcpServer(port: number, previewUrl: string): { command: string; args: string[]; env: Record<string, string> } {
+  return {
+    command: 'node',
+    args: [`${IN.runtime}/worker-mcp.cjs`],
+    env: {
+      WORKER_PORT: String(port),
+      WORKER_PREVIEW_URL: previewUrl,
+      RUNCASTLE_TOOLS_SOCKET: TOOLS_SOCKET,
+      PATH: '/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin',
+    },
+  }
+}
+
+/**
+ * `docker exec` argv for the tool relay (decision 9): a channel runcastle opens
+ * INTO the container, so the worker reaches runcastle's tools with no route out.
+ * The relay listens on {@link TOOLS_SOCKET} and carries each call over this exec's stdio.
+ */
+export function relayExecArgs(container: string): string[] {
+  return ['exec', '-i', container, 'node', `${IN.runtime}/worker-relay.cjs`]
+}
+
+/** Clear what of the human's setup an earlier start copied in ({@link SETUP_MANAGED}), keeping the sandbox's own conversations. */
+export function setupClearScript(managed: readonly string[]): string {
+  return `cd ${IN.home} && rm -rf ${managed.map(q).join(' ')} && mkdir -p .claude .codex ${IN.state}`
+}
+
+/** Merge the staged user-level MCP servers into the sandbox's own `~/.claude.json`, which also holds its conversations' state. */
+export function mcpMergeScript(): string {
+  return [
+    `node -e '`,
+    `const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));`,
+    `let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}`,
+    `c.mcpServers=s;fs.writeFileSync(f,JSON.stringify(c,null,2));fs.rmSync(process.argv[2])`,
+    `' ${IN.home}/.claude.json ${IN.state}/user-mcp.json`,
+  ].join('')
+}
+
 /** Restart the dev server the worker last started, detached, after its container starts again. */
 export function devRestartScript(port: number): string {
   return [
@@ -189,4 +269,14 @@ export function adapterEntry(): string {
 export function adapterVersion(): string {
   const req = createRequire(import.meta.url)
   return (req('@agentclientprotocol/claude-agent-acp/package.json') as { version: string }).version
+}
+
+/** codex-acp's entry on the host, the same package Codex chats run. */
+export function codexAdapterEntry(): string {
+  return createRequire(import.meta.url).resolve('@agentclientprotocol/codex-acp')
+}
+
+export function codexAdapterVersion(): string {
+  const req = createRequire(import.meta.url)
+  return (req('@agentclientprotocol/codex-acp/package.json') as { version: string }).version
 }

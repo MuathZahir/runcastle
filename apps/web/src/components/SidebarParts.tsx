@@ -1,10 +1,12 @@
 import { HelpMenu } from './HelpMenu'
 import { Fragment, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { cx, IconButton, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
+import { WORKER_STATUS_WORDS, workerGroups } from '../lib/workers'
+import type { WorkerEntry } from '../lib/workers'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
   needsMe,
@@ -18,7 +20,13 @@ import { relTime } from '../lib/format'
 import type { NotifyState } from '../lib/notifications'
 import {
   IconActivity,
+  IconAlert,
+  IconArrowLeft,
   IconArrowRight,
+  IconClock,
+  IconGitMerge,
+  IconLock,
+  IconX,
   IconBell,
   IconBellOff,
   IconChevronDown,
@@ -104,7 +112,7 @@ function rowDot(f: FeatureListItem): StatusTone | undefined {
  * Open a row's "…" menu from a right-click: a Radix dropdown opens on the
  * pointer-down, so that is what its (hover-revealed) trigger is sent.
  */
-function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
+export function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
   const trigger = e.currentTarget.querySelector<HTMLElement>('[aria-haspopup="menu"]')
   if (!trigger) return
   e.preventDefault()
@@ -226,11 +234,11 @@ function TwoLineRow({
   )
 }
 
-/** New thread: the "+" on the open feature's row and on the open Orchestrator card. */
-function NewThreadButton({ onClick }: { onClick: () => void }) {
+/** New thread: the "+" on the open feature's row ("New worker") and on the open Orchestrator card ("New chat"). */
+function NewThreadButton({ onClick, label = 'New chat' }: { onClick: () => void; label?: string }) {
   return (
     <span data-new-thread="" className="inline-flex">
-      <IconButton size="sm" label="New chat" icon={<IconPlus />} onClick={onClick} />
+      <IconButton size="sm" label={label} icon={<IconPlus />} onClick={onClick} />
     </span>
   )
 }
@@ -249,13 +257,14 @@ export function SidebarFeatureRow({
   threads,
   folded = false,
   onToggleThreads,
+  needsYou = false,
 }: {
   f: FeatureListItem
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
-  /** The open feature's "+": a new side thread. */
+  /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
   onNewThread?: () => void
   /**
    * The open feature's {@link SidebarThreadList}, once it has more than its
@@ -266,6 +275,8 @@ export function SidebarFeatureRow({
   folded?: boolean
   /** With `threads`: the chevron that folds and unfolds them. */
   onToggleThreads?: () => void
+  /** A worker waits on the human: the row's amber dot lights even when the feature's own chat does not ask (decision 3). */
+  needsYou?: boolean
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
@@ -283,7 +294,7 @@ export function SidebarFeatureRow({
         nm && (nm.kind === 'stuck' ? 'text-danger-text' : 'text-text-secondary'),
       )}
       aside={relTime(f.lastActivityAt)}
-      dot={rowDot(f)}
+      dot={rowDot(f) ?? (needsYou ? 'warning' : undefined)}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}
       flat={shown !== undefined}
@@ -371,7 +382,12 @@ function ShelfHead({
  * two-line rows as every lane; `cap` shows that many, then "Show N more".
  * Absent when empty. Folded unless `defaultOpen`; `open`/`onOpenChange` to control it.
  */
-export function Shelf({
+export function Shelf(props: Parameters<typeof ItemShelf<FeatureListItem>>[0]) {
+  return <ItemShelf<FeatureListItem> {...props} />
+}
+
+/** {@link Shelf} over any rows: a feature's Done workers, one level down. */
+export function ItemShelf<T>({
   icon,
   label,
   features,
@@ -383,8 +399,9 @@ export function Shelf({
 }: {
   icon: ReactNode
   label: string
-  features: FeatureListItem[]
-  renderRow: (f: FeatureListItem) => ReactNode
+  /** The shelf's rows: features, or a feature's done workers one level down. */
+  features: T[]
+  renderRow: (f: T) => ReactNode
   cap?: number
   defaultOpen?: boolean
   open?: boolean
@@ -426,13 +443,19 @@ export function Shelf({
  * Working: a shelf that starts open, its rows inside the bay — a card with one
  * accent light travelling its edge. Absent when no agent is at work.
  */
-export function WorkingShelf({
+export function WorkingShelf(props: Parameters<typeof ItemWorkingShelf<FeatureListItem>>[0]) {
+  return <ItemWorkingShelf<FeatureListItem> {...props} />
+}
+
+/** {@link WorkingShelf} over any rows: a feature's working workers, one level down. */
+export function ItemWorkingShelf<T extends { id: string }>({
   features,
   renderRow,
 }: {
-  features: FeatureListItem[]
+  /** The rows at work: features, or a feature's working workers one level down. */
+  features: T[]
   /** Draws one row; `nested` is true — the row sits inside the bay. */
-  renderRow: (f: FeatureListItem, nested: true) => ReactNode
+  renderRow: (f: T, nested: true) => ReactNode
 }) {
   const [open, setOpen] = useState(true)
   if (features.length === 0) return null
@@ -683,6 +706,82 @@ export function SidebarThreadList({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Workers on the feature's own sidebar page (interactive-workers decision 24)
+// ---------------------------------------------------------------------------
+
+/**
+ * A worker's 12px mark on its row's second line, where a feature row shows its
+ * progress glyph: a chat bubble waiting on you, a spinner working, a clock
+ * queued, a red alert failed, an arrow handed back, the merge glyph landed, a
+ * cross dropped, a lock for an old side chat's read-only transcript.
+ */
+export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'oldSideChat'> }) {
+  if (worker.oldSideChat) return <IconLock size={12} className="shrink-0 text-icon" />
+  switch (worker.status) {
+    case 'needs-you':
+      return <IconMessage size={12} className="shrink-0 text-icon" />
+    case 'working':
+      return <Spinner size="sm" />
+    case 'queued':
+      return <IconClock size={12} className="shrink-0 text-icon" />
+    case 'failed':
+      return <IconAlert size={12} className="shrink-0 text-danger" />
+    case 'handed-back':
+      return <IconArrowLeft size={12} className="shrink-0 text-icon" />
+    case 'landed':
+      return <IconGitMerge size={12} className="shrink-0 text-success" />
+    case 'dropped':
+      return <IconX size={12} className="shrink-0 text-icon" />
+  }
+}
+
+/**
+ * One worker on its feature's own sidebar page, drawn exactly as a feature
+ * row is one level up: its label as the title (the amber dot at its end when it
+ * needs you, red when it failed), then its mark, its status in words and its
+ * age. "Needs you" reads in the secondary grey, as a feature's need does; only
+ * the dot is amber. A failure's words are red, as a stuck feature's are. Working words shimmer, as a working feature's do; queued and done rows
+ * are quiet. Its purpose is the hover, and the assignment card's.
+ */
+export function SidebarWorkerItem({
+  worker,
+  active,
+  onSelect,
+  actions,
+  nested = false,
+}: {
+  worker: WorkerEntry
+  active: boolean
+  onSelect: (id: string) => void
+  actions: FeatureAction[]
+  nested?: boolean
+}) {
+  const w = worker
+  const words = w.oldSideChat ? 'Old side chat' : w.status === 'failed' && w.failure ? `Failed · ${w.failure}` : WORKER_STATUS_WORDS[w.status]
+  const asks = !w.oldSideChat && (w.status === 'needs-you' || w.status === 'failed')
+  const quiet = w.oldSideChat || !(asks || w.status === 'working')
+  return (
+    <TwoLineRow
+      title={w.label}
+      tooltip={w.purpose ? `${w.label} — ${w.purpose}` : w.label}
+      glyph={<WorkerMark worker={w} />}
+      words={words}
+      wordsClassName={cx(
+        !w.oldSideChat && w.status === 'working' && 'text-shimmer',
+        !w.oldSideChat && w.status === 'needs-you' && 'text-text-secondary',
+        !w.oldSideChat && w.status === 'failed' && 'text-danger-text',
+      )}
+      aside={w.updatedAt > 0 ? relTime(w.updatedAt) : undefined}
+      {...(asks ? { dot: w.status === 'failed' ? ('danger' as const) : ('warning' as const) } : {})}
+      quiet={quiet}
+      active={active}
+      nested={nested}
+      onClick={() => onSelect(w.id)}
+      actions={actions.length > 0 ? <FeatureActionsMenu actions={actions} label="Worker actions" /> : undefined}
+    />
+  )
+}
 
 // ---------------------------------------------------------------------------
 // The Orchestrator
@@ -707,7 +806,13 @@ export function OrchestratorCard({
   threads,
   folded = false,
   onToggleThreads,
+  name = 'Orchestrator',
+  tile,
 }: {
+  /** The card's name: "Orchestrator", or "Lead" on a feature's own page, one level down. */
+  name?: string
+  /** The mark in the accent tile; the Orchestrator's hub when absent. */
+  tile?: ReactNode
   /** The second line: what it holds ("Waiting for you · 2 notes"). */
   status: string
   /** Its chats' state, marked as every thread list marks it: a spinner working, the amber dot waiting. */
@@ -758,9 +863,9 @@ export function OrchestratorCard({
           aria-current={active ? 'page' : undefined}
           className={cx('flex w-full cursor-pointer items-center gap-3 py-2.5 pl-2.5 text-left', toggles ? 'pr-9' : 'pr-2.5')}
         >
-          <OrchestratorTile />
+          {tile ? <AccentTile>{tile}</AccentTile> : <OrchestratorTile />}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-md font-semibold tracking-tight text-text">Orchestrator</span>
+            <span className="truncate text-md font-semibold tracking-tight text-text">{name}</span>
             <span className="truncate text-xs text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]">
               {status}
             </span>
@@ -780,7 +885,7 @@ export function OrchestratorCard({
             )}
           >
             {onNewThread && <NewThreadButton onClick={onNewThread} />}
-            <FeatureActionsMenu actions={actions} label="Project actions" />
+            <FeatureActionsMenu actions={actions} label={name === 'Orchestrator' ? 'Project actions' : `${name} actions`} />
           </span>
         )}
         {toggles && onToggleThreads && (

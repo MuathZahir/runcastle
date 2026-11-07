@@ -78,7 +78,7 @@ import {
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers } from '../workers/service'
+import { withWorkers, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
@@ -114,6 +114,16 @@ export interface AgentProcess {
    * servers, session options and permission mode, in place of the launch's.
    */
   session?: { cwd: string; mcpServers: acp.McpServer[]; meta?: Record<string, unknown>; mode?: string }
+  /**
+   * Whether the runtime's record of a conversation is where this process runs,
+   * for a process whose disk is not the host's (a worker's sandbox): asked in
+   * place of {@link AgentHostDeps.conversationOnDisk}.
+   */
+  conversationOnDisk?: (conversationId: string) => Promise<boolean>
+  /** The permission mode the session runs in: told as it opens, and each time the agent reports a change. */
+  onMode?: (modeId: string) => void
+  /** A permission ask this process answers yes to itself, never shown to the human (a worker without auto mode, interactive-workers decision 10). */
+  allowsItself?: (req: acp.RequestPermissionRequest) => boolean
 }
 
 /** Starts the agent process a launch describes. */
@@ -139,6 +149,13 @@ export interface AgentHostDeps {
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
   /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
   backgroundWindowMs?: number
+  /**
+   * The slot a thread's turn must hold to run, under the machine's limit of
+   * agents working at once (interactive-workers decision 14): resolves, maybe
+   * later, with the slot's release, which the host calls as the turn ends.
+   * Undefined for a thread that needs none.
+   */
+  turnSlot?: (row: SessionRow) => Promise<() => void> | undefined
   /** When a feature lead is compacted at a quiet moment; {@link AUTOCOMPACT} by default. */
   autoCompact?: Partial<AutoCompactPolicy>
 }
@@ -159,6 +176,10 @@ export interface ThreadLifecycle {
   turnEnded?(row: SessionRow, source: PromptOptions['source']): void
   /** The process stopped, with who started it. */
   stopped?(row: SessionRow, reason: StopReason, startedBy: PromptOptions['source']): void
+  /** An ask of `kind` opened, and the agent waits on the human mid-turn. */
+  askOpened?(row: SessionRow, kind: Ask['kind']): void
+  /** The human answered the open ask (or the page a link ask opened finished), and the agent goes on. */
+  askAnswered?(row: SessionRow): void
 }
 
 /** codex-acp's hook-trust extension: the session's hooks, and trusting them. */
@@ -394,6 +415,16 @@ interface Turn {
   quiet?: ReturnType<typeof setTimeout>
   /** A compaction's turn, why it was sent and the context size it started from. */
   compaction?: { trigger: CompactTrigger; before?: number }
+  /** Gives back the turn's slot ({@link AgentHostDeps.turnSlot}); called once, as the turn ends or the process stops. */
+  release?: () => void
+}
+
+/** Give back a turn's slot, once. */
+function releaseSlot(turn: Turn | null | undefined): void {
+  const release = turn?.release
+  if (!turn || !release) return
+  delete turn.release
+  release()
 }
 
 interface Thread {
@@ -402,6 +433,8 @@ interface Thread {
   proc?: AgentProcess
   conn?: acp.ClientConnection
   sessionId?: string
+  /** The permission mode the session runs in, as it last reported it. */
+  modeId?: string
   steering: boolean
   /** Replaying history in `session/load`: those updates are not logged again. */
   loading: boolean
@@ -518,6 +551,7 @@ class Host implements AgentHost {
   private readonly selfTurnQuietMs: number
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   private readonly backgroundWindowMs: number
+  private readonly turnSlot: NonNullable<AgentHostDeps['turnSlot']>
   private readonly autoCompact: AutoCompactPolicy
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
@@ -536,6 +570,7 @@ class Host implements AgentHost {
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
+    this.turnSlot = deps.turnSlot ?? (() => undefined)
     this.autoCompact = { ...AUTOCOMPACT, ...deps.autoCompact }
   }
 
@@ -616,6 +651,7 @@ class Host implements AgentHost {
     }
     this.logAwaits(t.id, { type: 'ask_resolved', id: askId, lines })
     markAgentWorking(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askAnswered?.(row))
     if (instead) {
       // Neither adapter carries a message on a reject (claude-agent-acp denies with its
       // own fixed words; codex-acp's approvals have none), so what to do instead is
@@ -788,17 +824,14 @@ class Host implements AgentHost {
    * now ("Branch of …", `naming.ts`). Nothing is sent.
    */
   private branch(row: SessionRow, events: ThreadEvent[], at: number): { threadId: string } {
+    // A feature's branch would be a side chat, and side chats are retired
+    // (interactive-workers decision 7): its other conversations are workers.
+    if (row.featureId || !row.projectId) {
+      throw new GateError('a feature’s chat is not branched any more — start a worker with "+" on the feature instead')
+    }
     const prefix = events.slice(0, turnEndIndex(events, at)).filter((e) => e.type !== 'process')
     const model = row.model ? { model: { id: row.model, runtime: row.runtime ?? DEFAULT_RUNTIME } } : {}
-    const created = row.featureId
-      ? createSessionRow(this.ctx, {
-          featureId: row.featureId,
-          kind: 'side',
-          worktreePath: row.worktreePath,
-          ...model,
-          ...(row.kind === 'chat' ? { openedBeside: row.id } : row.openedBeside ? { openedBeside: row.openedBeside } : {}),
-        })
-      : createSessionRow(this.ctx, { projectId: row.projectId!, kind: 'project', worktreePath: row.worktreePath, ...model })
+    const created = createSessionRow(this.ctx, { projectId: row.projectId, kind: 'project', worktreePath: row.worktreePath, ...model })
     seedThreadLog(created.id, prefix)
     appendThreadEvent(created.id, { type: 'branched', from: threadName(row, readThreadEvents(row.id), threadAbout(this.ctx, row.featureId)) })
     const point = lastAgentMessageId(prefix)
@@ -1067,7 +1100,10 @@ class Host implements AgentHost {
       } catch (err) {
         if (!saysConversationGone(err)) throw err
         // Said gone but still on disk: the CLI failed to reopen it, and a new conversation would bury it.
-        if (this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)) {
+        const onDisk = proc.conversationOnDisk
+          ? await proc.conversationOnDisk(row.ccSessionId).catch(() => true)
+          : this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
+        if (onDisk) {
           console.error(`thread ${t.id}: conversation ${row.ccSessionId} is on disk but did not reopen`, err)
           throw new Error(NOT_REOPENED)
         }
@@ -1081,9 +1117,13 @@ class Host implements AgentHost {
       opened = created
     }
     const mode = proc.session?.mode ?? spec.sessionMode
+    t.modeId = opened.modes?.currentModeId
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
+      // Taken as set unless the agent reports another while it sets it (a mode it falls back from, `onUpdate`).
+      t.modeId = mode
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
+    if (t.modeId) proc.onMode?.(t.modeId)
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     this.noteOptions(t, opened.configOptions, true)
     const pick = this.pendingConfig.get(t.id)
@@ -1189,6 +1229,7 @@ class Host implements AgentHost {
   /** Forget the thread's process: no more events from it, no asks left waiting. */
   private detach(t: Thread): void {
     t.state = 'stopped'
+    releaseSlot(t.turn)
     if (this.threads.get(t.id) === t) this.threads.delete(t.id)
     if (t.idle) clearTimeout(t.idle)
     if (t.windowEnds) clearTimeout(t.windowEnds)
@@ -1263,6 +1304,13 @@ class Host implements AgentHost {
       turn.compaction = { trigger: item.compaction, ...(before !== undefined ? { before } : {}) }
     }
     t.turn = turn
+    // A turn over the limit of agents working at once waits here for a slot, its prompt logged.
+    const slotRow = getSessionRow(this.ctx, t.id)
+    const slot = slotRow ? this.turnSlot(slotRow) : undefined
+    if (slot) {
+      turn.release = await slot
+      if (isStopped(t) || t.turn !== turn) return releaseSlot(turn)
+    }
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
     // Taken before the agent hears the prompt, so nothing it does is in it.
@@ -1291,6 +1339,7 @@ class Host implements AgentHost {
     const files = await this.turnFiles(t, turn)
     if (isStopped(t)) return
     t.turn = null
+    releaseSlot(turn)
     this.logAwaits(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     t.turnEndedAt = Date.now()
@@ -1439,6 +1488,10 @@ class Host implements AgentHost {
     }
     const own = !t.sessionId || sessionId === t.sessionId
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
+    if (own && update.sessionUpdate === 'current_mode_update') {
+      t.modeId = update.currentModeId
+      t.proc?.onMode?.(update.currentModeId)
+    }
     for (const mapped of t.map(update, own ? undefined : sessionId)) {
       const body = mapped.type === 'compacted' ? this.compaction(t, mapped) : mapped
       // The model a session opens on is logged once it runs, after the thread's own
@@ -1503,6 +1556,7 @@ class Host implements AgentHost {
       appendThreadEvent(t.id, { type: 'ask_resolved', id: newId('ask'), lines: [UNATTENDED_LINE] })
       return option('reject_once', 'reject_always')
     }
+    if (t.proc?.allowsItself?.(req)) return option('allow_once')
     const answer = await this.openAsk(t, { kind: 'approval', id: newId('ask'), call: toolCallOf(req.toolCall) })
     if (answer === 'cancelled' || answer.kind !== 'approval') return { outcome: { outcome: 'cancelled' } }
     if (answer.choice === 'allow') return option('allow_once')
@@ -1542,6 +1596,7 @@ class Host implements AgentHost {
     if (open?.ask.kind !== 'link' || open.elicitationId !== elicitationId) return
     appendThreadEvent(t.id, { type: 'ask_resolved', id: open.ask.id, lines: [{ what: 'Done', answer: open.ask.message }] })
     markAgentWorking(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askAnswered?.(row))
     this.settleAsk(t, { kind: 'link', done: true })
   }
 
@@ -1551,9 +1606,16 @@ class Host implements AgentHost {
     this.settleAsk(t, 'cancelled')
     this.logAwaits(t.id, { type: 'ask', ask })
     markAwaitingInput(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askOpened?.(row, ask.kind))
     return new Promise((settle) => {
       t.ask = { ask, settle }
     })
+  }
+
+  /** Run an ask's lifecycle hook on the thread's row. */
+  private askHook(threadId: string, fn: (row: SessionRow) => void): void {
+    const row = getSessionRow(this.ctx, threadId)
+    if (row) this.hook(() => fn(row))
   }
 
   private settleAsk(t: Thread, answer: AskAnswer | 'cancelled'): void {
@@ -1574,7 +1636,12 @@ type GlobalWithHost = typeof globalThis & { [HOST_KEY]?: AgentHost }
 /** The process-wide host, pinned on `globalThis` so a `bun --hot` reload keeps its processes. */
 export function processAgentHost(ctx: AppCtx): AgentHost {
   const g = globalThis as GlobalWithHost
-  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx, lifecycle: threadLifecycle(ctx), transport: withWorkers(ctx, spawnAdapter) })
+  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({
+      ctx,
+      lifecycle: threadLifecycle(ctx),
+      transport: withWorkers(ctx, spawnAdapter),
+      turnSlot: workerTurnSlot(ctx),
+    })
   return g[HOST_KEY]
 }
 

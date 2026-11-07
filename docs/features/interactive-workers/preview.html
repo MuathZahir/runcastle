@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive workers preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:14px}
+.step{position:relative;padding:10px 10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);min-height:118px}
+.step .n{font:500 11px/1 var(--font-mono);color:var(--color-text-tertiary)}
+.step h3{margin-top:6px}
+.step p{margin-top:4px;color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.step.you{border-left:2px solid var(--color-warning)}
+.step.lead{border-left:2px solid var(--color-accent)}
+.legend{display:flex;gap:16px;margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px;color:var(--color-text-tertiary);font-size:12px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.kinds{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
+.kind{padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.kind p{color:var(--color-text-secondary);margin-top:4px}
+.designs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
+.build{margin-top:12px;border-top:1px solid var(--color-border-subtle)}
+.build li{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:8px 4px;border-bottom:1px solid var(--color-border-subtle)}
+.build ul{margin:0;padding:0;list-style:none}
+.build .r{font:500 11px/20px var(--font-mono);color:var(--color-text-tertiary)}
+.build .who{font-size:11px;color:var(--color-text-tertiary)}
+.build p{color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px;background:var(--color-surface-inset)}
+@media (max-width:760px){.flow,.kinds,.designs{grid-template-columns:1fr 1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Interactive workers</h1>
+  <p class="lede">The lead hands pieces of a feature to workers: sandboxed agents you can step into, iterate with, and that hand their work back to the lead. Side chats become workers.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/interactive-workers/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">One worker's life, from the lead's plan to the work on the feature branch.</p>
+  <div class="flow">
+    <div class="step lead"><span class="n">1</span><h3>The lead offers</h3><p>After the grill, its plan names each worker: label, purpose, "with you" or "on its own". <a class="pin" data-d="20">20</a> <a class="pin" data-d="5">5</a></p></div>
+    <div class="step you"><span class="n">2</span><h3>You say yes</h3><p>Your yes to the plan starts them. No Start click per worker. <a class="pin" data-d="2">2</a></p></div>
+    <div class="step"><span class="n">3</span><h3>It works</h3><p>In its own sandbox and branch, with your Claude setup, in auto mode. <a class="pin" data-d="1">1</a> <a class="pin" data-d="8">8</a> <a class="pin" data-d="11">11</a></p></div>
+    <div class="step you"><span class="n">4</span><h3>Needs you</h3><p>First pass done: it pings your desktop and phone. You step in, open its preview, iterate. <a class="pin" data-d="6">6</a> <a class="pin" data-d="15">15</a></p></div>
+    <div class="step you"><span class="n">5</span><h3>Hand back</h3><p>Your "looks good" or the Hand back button. The lead gets a short summary, never the transcript. <a class="pin" data-d="5">5</a> <a class="pin" data-d="4">4</a></p></div>
+    <div class="step lead"><span class="n">6</span><h3>The lead lands it</h3><p>Lands it on the feature branch, sends it back with a note, or drops it. <a class="pin" data-d="4">4</a> <a class="pin" data-d="19">19</a></p></div>
+  </div>
+  <div class="legend"><span><i style="background:var(--color-accent)"></i>the lead</span><span><i style="background:var(--color-warning)"></i>you</span></div>
+
+  <div class="sub">
+    <h3>Three ways a worker starts</h3>
+    <div class="kinds">
+      <div class="kind"><h3>With you</h3><p>Taste work: a screen, a component, wording. Waits for you after its first pass; hands back on your yes. <a class="pin" data-d="5">5</a></p></div>
+      <div class="kind"><h3>On its own</h3><p>Self-contained build work. Hands back when its done-when is met; asks only real questions. <a class="pin" data-d="13">13</a></p></div>
+      <div class="kind"><h3>Started by you</h3><p>The "+" in the feature's sidebar header, in place of a side chat. No assignment. <a class="pin" data-d="7">7</a> <a class="pin" data-d="23">23</a></p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The approved designs</h3>
+    <p class="hint">Real components on sample data; open them from their cards in the chat or the Design tab.</p>
+    <div class="designs">
+<!-- screen:feature-sidebar-page -->
+<div class="designed">
+  <h3>Feature's own sidebar page (drill-in)</h3>
+  <p>Header with back and "+", the Lead card, workers as feature rows, the Working shelf and a folded Done lane. States: mixed, panel open, no workers, back on the list. <a class="pin" data-d="24">24</a> <a class="pin" data-d="3">3</a></p>
+  <p class="mono">src/components/workers/FeatureSidebarPage.tsx · src/components/SidebarParts.tsx · src/lib/workers.ts · design page /preview/workers-drill.html</p>
+</div>
+<!-- /screen:feature-sidebar-page -->
+<!-- screen:worker-chat -->
+<div class="designed">
+  <h3>Worker chat</h3>
+  <p>The pinned assignment card, the header's Open preview and Hand back, and the handed-back, failed and old-side-chat states. <a class="pin" data-d="21">21</a> <a class="pin" data-d="23">23</a></p>
+  <p class="mono">src/components/workers/WorkerParts.tsx · ChatThread's head slot · design page /preview/workers-chat.html</p>
+</div>
+<!-- /screen:worker-chat -->
+<!-- screen:handback-cards -->
+<div class="designed">
+  <h3>Handback cards in the lead's chat</h3>
+  <p>Summary, commits, files changed, and what the lead did: Landed, Sent back, Dropped. Plus the failed-worker notice. <a class="pin" data-d="21">21</a> <a class="pin" data-d="16">16</a></p>
+  <p class="mono">src/components/workers/WorkerParts.tsx · design page /preview/workers-handback.html</p>
+</div>
+<!-- /screen:handback-cards -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <p class="hint">Rounds of tickets, one at a time (this machine runs one agent at once). Workers can't build themselves: they don't exist in the installed runcastle yet.</p>
+    <div class="build"><ul>
+      <li><span class="r">1</span><div><h3>Workers core</h3><p>The worker kind and record, start / message / hand back / land / send back / drop, the lead's tools, worker rows in the feature's context. The experimental setting goes.</p></div><span class="who">ticket</span></li>
+      <li><span class="r">2</span><div><h3>A worker's life</h3><p>The shared "agents working at once" limit and queue, needs-you pings, failure wakes, idle stop and wake, no ready with open workers, cleanup, previews through the pass-through.</p></div><span class="who">ticket</span></li>
+      <li><span class="r">3</span><div><h3>Inside the sandbox</h3><p>Your Claude setup and MCP servers, auto mode with its fallback, the worker's runcastle tools served from outside.</p></div><span class="who">ticket</span></li>
+      <li><span class="r">4</span><div><h3>Codex workers</h3><p>The same worker on Codex: its adapter in the sandbox, your Codex setup, auto-review, resume.</p></div><span class="who">ticket</span></li>
+      <li><span class="r">5</span><div><h3>Wire the screens</h3><p>Connect the approved designs to real data; old side chats read-only; the side-chat code removed; a scenario that seeds a feature with workers.</p></div><span class="who">ticket</span></li>
+      <li><span class="r">·</span><div><h3>The lead's instructions</h3><p>The offering rule, no more build tickets, the worker's own briefing. Written by me during the rounds.</p></div><span class="who">lead</span></li>
+      <li><span class="r">6</span><div><h3>Review round</h3><p>Drives the screens on the seeded scenario and reads the diff.</p></div><span class="who">review</span></li>
+      <li><span class="r">·</span><div><h3>Real sandboxes, by hand</h3><p>Sandboxes can't start Docker, so before ready I start real workers on this branch's server against a scratch data folder. Your checkpoint-2 drive runs the same way.</p></div><span class="who">lead</span></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Review, remaining tickets, rounds and the conflict fixer move to workers: <span class="mono">burns-become-workers</span>, next</li>
+      <li><i class="dot"></i>Bundling several pings into one, if they prove noisy</li>
+      <li><i class="dot"></i>Drive-fix (scenario) chats becoming workers</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The wake rule for news: <span class="mono">agents-are-woken-only-when-it-matters</span></li>
+      <li><i class="dot"></i>Compaction and in-reply subagents: <span class="mono">lead-chats-stay-small</span></li>
+      <li><i class="dot"></i>A machine-wide worker pool beyond the shared limit</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="box mono" style="white-space:pre;line-height:18px;font-size:11.5px">host                                       sandbox (burn image, one per worker)
+─────────────────────────────────────      ──────────────────────────────────────────
+runcastle server                           own bare copy of feature/&lt;slug&gt; → its branch
+  thread host ── docker exec -i ─────────▶  ACP adapter → Claude Code | Codex (auto mode)
+  worker tools served over that stream ◀──  hand back · dev server · read feature · show file · park
+  design pass-through ── one 127.0.0.1 port ▶ dev server (must accept outside connections)
+  landing queue ◀── fetch worker branch     your setup, read-only: CLAUDE.md, rules, skills,
+  workers table (status, handback)          agents, plugins, MCP servers + logins; no hooks
+</div>
+      <p class="hint" style="margin-top:10px">The sandbox has no route to runcastle or the host repo; everything crosses the one exec stream or the one published port. Statuses: working · queued · needs you · handed back · landed · dropped · failed. The worker kind replaces the side kind; old side rows render read-only.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+[
+"Interactive workers run in a sandbox, as a trial",
+"The human at checkpoint 1: \"Let's try the sandbox. We can test it for now.\" The prototype measured no speed reason to prefer the host; the sandbox lets a worker run with no permission prompts safely."
+],
+[
+"The human's yes to the plan, or to an offer in chat, starts the workers",
+"A Start click per worker would approve the same thing twice. Starting a worker is cheap (6–10 s plus an install) and an idle one stops its container, so the plan's yes is gate enough."
+],
+[
+"The sidebar's thread list becomes the worker list",
+"The sidebar is already the one place threads are switched (`threads-in-the-sidebar`); a second list on the feature page would be a second place to look. The human: \"It might need better UI.\""
+],
+[
+"The lead lands a handback with one tool, or sends it back, or drops it",
+"The human's picture: \"the worker hands the design back; the lead integrates\". Nothing lands unseen, and two workers' changes always have someone fitting them together."
+],
+[
+"Each assignment is \"with you\" or \"on its own\"; \"with you\" hands back only on the human's yes",
+"The human's own example mixes the two (\"taste work, each gets a worker with you; the data changes run in the background\"). Taste work must not reach the lead before the human has seen it."
+],
+[
+"A worker that needs the human pings desktop and phone",
+"A \"with you\" worker is meant to be iterated with promptly; shown only in the sidebar it would sit unseen and its container would stop on idle. The pings are runcastle's own, so a feature held by an orchestrator thread still gets them."
+],
+[
+"Side chats become unassigned workers",
+"One kind of thread instead of two, and nothing reaches the feature behind the lead's back (a side chat once changed a feature after it was declared ready, unseen by its lead). Side chats were used 4 times in two weeks, so losing the host checkout costs little."
+],
+[
+"Workers carry the human's whole Claude setup; MCP servers can be switched off per server",
+"The human: \"Shouldn't all workers have the user's setup? … most users expect that\", as Claude Code's own subagents do. Workers run with no permission prompts, so leaving a server out is the only reliable way to keep risky tools (Neon in write mode) out of reach."
+],
+[
+"A worker gets a worker-sized set of runcastle's tools, served from outside the sandbox",
+"Workers run with no permission prompts; given the lead's tools they could start rounds or declare ready behind the lead, the side-chat trouble this feature removes."
+],
+[
+"No settings page: workers ask before MCP calls, as the human's own chats do",
+"The human: \"In claude code, subagents have the exact same setup as the agents. What's the difference here.\" The only difference was that workers never asked; making MCP calls ask closes it, and a page of per-kind switches would read as managing every chat's servers."
+],
+[
+"Workers run in their provider's automatic permission mode",
+"The human asked for the providers' own auto modes. They match the human's own agent more closely than a fixed rule, and they cover MCP calls too."
+],
+[
+"This feature builds Codex workers too",
+"Side chats become workers (7), so Claude-Code-only workers would take side chats away from Codex users. Burns and chats already run Codex, the burns inside the same sandbox image."
+],
+[
+"All build work moves to workers; the review round stays until `burns-become-workers`",
+"Two background tools would make the lead pick inconsistently. Rebuilding the review (app-driving, screenshots, the Review Package) is the heart of `burns-become-workers` and would roughly double this feature. The human: \"Make sure that the next feature will retire it. I don't want old code and inconsistencies.\""
+],
+[
+"One limit for agents working at once, shared by ticket agents and workers",
+"Workers and burns load the same machine; two separate limits would be two numbers for one machine. Not counting waiting workers keeps stepping into a \"with you\" worker unblocked."
+],
+[
+"Previews go through runcastle's pass-through and wake only the sandbox",
+"The prototype's `localhost:<port>` address breaks once runcastle moves to the VPS. Looking at a design hours later should not need a throwaway message to wake the agent."
+],
+[
+"A failed worker wakes its lead once",
+"Only a handback wakes the lead otherwise, so a lead could wait forever on a worker that will never hand back."
+],
+[
+"The lead can message any worker at any time",
+"A lead correcting a running worker is the normal case, not only after a handback."
+],
+[
+"Dropping a worker removes it; a feature's workers go when it merges or is archived",
+"Each stopped worker keeps a full copy of the repo plus installed packages; nothing else would ever clean them up."
+],
+[
+"No \"ready\" while a worker works or holds unlanded work",
+"It closes the gap where a side chat changed a ready feature unseen by its lead."
+],
+[
+"The lead's rule for offering workers",
+"The human: \"I wouldn't think to create a new thread\". A loose \"prefer workers\" rule is how side chats ended up never offered."
+],
+[
+"Assignment and handback are cards",
+"Plain messages would let the assignment scroll away and a handback read like any other message in the lead's chat."
+],
+[
+"Workers are on for everyone; the experimental setting goes",
+"Side chats become workers (7); a switch would keep the old side-chat code alive for anyone who turned workers off, two code paths the human does not want."
+],
+[
+"Existing side chats become read-only transcripts",
+"Reopening them as side chats would keep the old side-chat code alive, and converting them into workers is code for a handful of chats (4 in two weeks)."
+],
+[
+"The feature's workers live on its own drill-in sidebar page",
+"The human compared a nested list, a right-hand rail and a drill-in page on screen: \"The drill in is better.\" It keeps the left sidebar the one place to move around, gives workers its full width, and leaves the right side to the panel; the human did not want two right-hand columns."
+],
+[
+"A \"+\" worker's hello is not news",
+"The human just started it and is looking at it, so a ping then is noise. Raised by the review round; the human agreed."
+]
+]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

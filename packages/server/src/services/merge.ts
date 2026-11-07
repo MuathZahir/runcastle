@@ -8,6 +8,7 @@ import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus } from './repo'
 import { startUpNextDependents } from './up-next'
+import { removeFeatureWorkers } from '../workers/service'
 
 /** What a merge click answers: landed, or the conflict and the files it stands on. */
 export interface MergeFlowResult {
@@ -65,6 +66,8 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
     }
     // Before the worktree goes: the design server runs inside it.
     await stopDesignServer(ctx, featureId, 'shipped')
+    // A shipped feature's workers go: each keeps a whole copy of the repo (interactive-workers decision 18).
+    await removeFeatureWorkers(ctx, featureId, 'merged')
     // Last, and best-effort: the merge has landed, so a worktree that will
     // not go is reported by an event, never by failing the ship.
     await retireShippedWorktree(ctx, project, feature)

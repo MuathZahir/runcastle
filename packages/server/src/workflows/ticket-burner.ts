@@ -46,6 +46,7 @@ import {
 } from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { agentSlots } from '../services/agent-slots'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
 import {
   type ExecFn,
@@ -5711,9 +5712,13 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
     },
     ticketRuntime: (ticket) => ticketCredentials(ticket).model.runtime,
     concurrency: config.burnConcurrency,
-    executeTicketRun: (c, ticket, run) => {
+    executeTicketRun: async (c, ticket, run) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
-      return isReviewTicket(ticket)
+      // A ticket agent counts toward the machine's agents working at once, so
+      // workers queue behind it (interactive-workers decision 14); it never waits.
+      const release = agentSlots(config.burnConcurrency).occupy()
+      try {
+        return await (isReviewTicket(ticket)
         ? executeReviewTicket(c, ticket, {
             config,
             token: ticketToken,
@@ -5733,7 +5738,10 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
             ensureCacheVolume,
             blocks,
             run,
-          )
+          ))
+      } finally {
+        release()
+      }
     },
   }
 }

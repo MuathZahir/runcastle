@@ -38,6 +38,7 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
+import { stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { reconcileStaleRuns, wakeInterruptedRounds } from './workflows/reconcile-runs'
@@ -194,6 +195,17 @@ export async function startServer(): Promise<void> {
     }
   })
 
+  // Worker sandboxes the last server left running: their idle stops died with it,
+  // so each is stopped now and wakes at its next message or preview. A copied
+  // database's workers are the live install's, never this server's to stop.
+  if (!isDatabaseCopy()) {
+    void stopLeftoverWorkerSandboxes(ctx)
+      .then((s) => {
+        if (s.stopped + s.removed > 0) console.log(`worker sweep: stopped ${s.stopped} sandbox(es) left running, removed ${s.removed} leftover(s)`)
+      })
+      .catch((err) => console.error('worker sweep failed', err))
+  }
+
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
   // upgrade is attempted BEFORE Hono's fetch fallthrough; every other path is
   // handled by the Hono app unchanged. `buildApp` stays a pure Hono factory so
@@ -218,14 +230,19 @@ export async function startServer(): Promise<void> {
 
   // The phone's way to a feature's design server (routes/design-pass.ts), on its
   // own port so project code never shares runcastle's API origin.
-  const designPass = serveDesignPass(config, (featureId) => {
-    try {
-      const status = designServerStatus(ctx, featureId)
-      return status.running ? status.url : undefined
-    } catch {
-      return undefined
-    }
-  })
+  const designPass = serveDesignPass(
+    config,
+    (featureId) => {
+      try {
+        const status = designServerStatus(ctx, featureId)
+        return status.running ? status.url : undefined
+      } catch {
+        return undefined
+      }
+    },
+    // A worker's preview, by worker id (interactive-workers decision 15).
+    workerPreviews(ctx),
+  )
 
   // Provider failures are represented per source in the persisted snapshot;
   // an unforeseen service-level rejection is logged, never allowed to delay boot.

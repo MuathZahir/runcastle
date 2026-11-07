@@ -2,13 +2,14 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { describe, expect, it } from 'vitest'
 import { SessionKind } from '@runcastle/core'
-import { buildMcpServer, type McpAudience } from '../src/mcp/server'
+import { buildMcpServer, toolsForAudience, type McpAudience } from '../src/mcp/server'
 
 /** Per-description caps: a tool says what it does in a sentence or two; a parameter, a phrase. */
 const TOOL_CAP = 400
 const PARAM_CAP = 120
 
-const AUDIENCES: McpAudience[] = [...SessionKind.options, 'run']
+/** Audiences runcastle's MCP serves tools to; a worker's tools are relayed into its sandbox instead. */
+const AUDIENCES: McpAudience[] = [...SessionKind.options, 'run'].filter((a) => toolsForAudience(a).length > 0)
 
 type Schema = {
   description?: string

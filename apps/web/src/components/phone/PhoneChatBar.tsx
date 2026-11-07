@@ -89,7 +89,8 @@ export function PhoneChatBar({
       {published && (
         <Sheet open={sheet === 'threads'} onClose={close} title="Chats">
           {/* First, so it never needs a scroll however long the list (phone-fixes decision 1). */}
-          <SheetRow icon={<IconPlus />} label="New chat" onClick={after(published.newThread)} />
+          {/* On a feature its threads are the lead's and its workers', so "+" is a new worker (interactive-workers decision 7). */}
+          <SheetRow icon={<IconPlus />} label={'featureId' in published.scope ? 'New worker' : 'New chat'} onClick={after(published.newThread)} />
           {threads.map((t) => (
             <SheetRow
               key={t.id}

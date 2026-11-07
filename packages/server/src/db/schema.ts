@@ -14,6 +14,7 @@ import {
   sessions,
   testNotes,
   tickets,
+  workers,
 } from '@runcastle/core'
 
 /**
@@ -38,6 +39,7 @@ export const schema = {
   projectFindings,
   projectNotes,
   readyDeclarations,
+  workers,
 }
 
 export type Schema = typeof schema
@@ -58,4 +60,5 @@ export {
   sessions,
   testNotes,
   tickets,
+  workers,
 }

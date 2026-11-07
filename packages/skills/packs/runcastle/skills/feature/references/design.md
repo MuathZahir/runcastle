@@ -5,13 +5,17 @@ something looks.
 
 You edit the real component, a dev server hot-reloads it, and the human watches
 it beside this chat in any state without test-driving the app. What they approve
-is committed and ships; tickets then cover only real data, API calls, behaviour.
+is committed and ships; the build then covers only real data, API calls, behaviour.
 
 **Offer it early.** When the feature changes how a screen looks, offer it in your
 first reply, before you talk layout in words (the first time takes a few minutes
 to install and start). Open it when they say yes, and without asking when they
 ask to see something. With no human present, follow `./planning-alone.md`
 ("Designing alone") and leave the designs waiting (section 8).
+
+Taste work you would iterate on with the human for long goes to a "with you"
+worker instead (`./workers.md`). It shows its own preview in its chat, and this
+chat stays small.
 
 ## 1. First use in a project
 
@@ -82,8 +86,8 @@ lives in the design page, never in the app's own files: deleting it leaves nothi
    menu**. **Keep the state switcher**: it is committed with the design page.
 2. Commit the component, its design page and sample data as `design: <what>`,
    with `.runcastle/design.json` if new or changed.
-3. **Never commit unapproved work.** Before a round, commit what the human
-   approved and drop the rest, so workers fork from what they saw.
+3. **Never commit unapproved work.** Before you start workers or a round, commit
+   what the human approved and drop the rest, so workers start from what they saw.
 4. **Only the human approves**: the **Approve** button in the Design tab, or the
    human naming the design in their own words. Opening is not approving, and an
    orchestrator relay never approves unless it carries the human's own words.
@@ -95,9 +99,9 @@ lives in the design page, never in the app's own files: deleting it leaves nothi
 
 ## 6. Keep to UI
 
-Design covers components, design pages and sample data. Tickets that wire the
-behaviour name the committed component and design page and do not restyle
-(`./tickets.md`); small wiring you do yourself.
+Design covers components, design pages and sample data. A worker that wires the
+behaviour is pointed at the committed component and design page and does not
+restyle (`./workers.md`); small wiring you do yourself.
 
 ## 7. Honest limits
 
@@ -117,11 +121,11 @@ they come back:
 - **They ask for changes**: iterate (section 4) and `show_design` each changed
   page again. If they ask and leave, make the change, look yourself as
   `./planning-alone.md` says, show it again, and leave it uncommitted.
-- **They say yes to round 1**: that yes does **not** approve designs. Commit
+- **They say yes to the plan**: that yes does **not** approve designs. Commit
   **only** the designs whose `state` is `approved`, saying which; name every other
-  waiting design (and which are not even `opened`) and ask before you dispatch.
-  Mark a rejected screen dropped and update the tickets that named it.
-- **The orchestrator relays "start round 1"** while designs wait: do not start;
+  waiting design (and which are not even `opened`) and ask before you start work.
+  Mark a rejected screen dropped and leave it out of the workers you start.
+- **The orchestrator relays a yes to start the work** while designs wait: do not start;
   say the designs wait for the human.
 
 "Design to approve" shows by itself, so you need no `wait_for_you` for it.

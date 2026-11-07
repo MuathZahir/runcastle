@@ -6,7 +6,7 @@ Otherwise it costs this conversation nothing.
 
 The Plan (`preview.html`) is the one page the human reads the feature by. They confirm the
 plan by looking at it, and when tired it is the only thing they read before
-they say yes to the first round. Draw it for that reader.
+they say yes to the work. Draw it for that reader.
 
 ## Show it, then get the yes
 
@@ -14,8 +14,8 @@ they say yes to the first round. Draw it for that reader.
 2. **Check it against `decisions.md`** (the self-check at the end). Fix the
    preview before anyone sees it.
 3. **Show it**: `show_plan()` posts the Plan card in the chat and opens the
-   Plan tab beside it. Tell the human what you propose — tickets and rounds, or
-   work you will do yourself — and ask for their explicit yes. Then wait for the answer.
+   Plan tab beside it. Tell the human what you propose — the workers, the work you
+   will do yourself, the review round — and ask for their explicit yes. Then wait for the answer.
 4. **A correction is a decision edit plus a redraw.** Edit the decision in
    `decisions.md` and redraw the preview in the same move, call `show_plan()`
    again, then ask them to look again.
@@ -64,6 +64,9 @@ built.
    no template**: screens, clickable prototypes, skeletons, flows, before and
    after, scenarios. Choose the form that explains *this* feature — work with no
    screen gets flows, use cases, before and after, or a clickable skeleton.
+   **It ends with who builds what**: each worker you offer by its label, one-line
+   purpose and kind ("with you" or "on its own"), what you build yourself, and
+   the review round at the end. The human's yes starts those workers.
 3. **What was decided.** Every decision in `decisions.md` by its number and
    title, with the reason available on demand (the starter's `D` list builds
    this). Where a decision is visible in the show, pin its number on that spot:
@@ -103,8 +106,8 @@ Each screen in the show is a **screen block**: the lines between two markers,
 <!-- /screen:<name> -->
 ```
 
-with `<name>` in kebab case and unique in the file. A ticket that builds that
-screen names the block, and its worker reads only those lines — so put
+with `<name>` in kebab case and unique in the file. A worker that builds that
+screen is pointed at the block and reads only those lines — so put
 everything the screen needs to be understood between the markers, and nothing
 else. Delete the starter's `example-name` block if the show has no screen.
 
@@ -121,7 +124,7 @@ The entry has **no button**: the human reaches a design from its card in the cha
 and from the Design tab, which lists every design you showed with `show_design`.
 
 Wrap the entry in a screen block, but put no markup in it. The block names the
-**committed component file and the design page path**, so the ticket that
+**committed component file and the design page path**, so the worker that
 connects the screen has something to point at. Use the starter's `.designed`
 entry:
 
@@ -165,6 +168,8 @@ minute for a small feature, a few minutes for a large one.**
   For a grilled feature, `C` is empty and no decision is marked.
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
+- The show ends with who builds what: every worker by label, purpose and kind,
+  and the review round unless the human declined it.
 - Every screen designed in design mode is a designed-screen entry that names its
   states, its committed component and design page, not a redrawn mock.
 - The file is still fully inline.

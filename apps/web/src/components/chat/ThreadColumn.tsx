@@ -56,6 +56,9 @@ export function ThreadColumn({
   startMeta,
   notices,
   tail,
+  head,
+  closed,
+  placeholder,
   label = 'Chat',
   children,
 }: {
@@ -83,6 +86,12 @@ export function ThreadColumn({
   notices?: ReactNode
   /** A line under the thread's last item (the main chat's waiting line). */
   tail?: ReactNode
+  /** What stays atop the thread while it scrolls (a worker's assignment card). */
+  head?: ReactNode
+  /** In place of the composer, for a thread that takes no messages (an old side chat, a settled worker). */
+  closed?: ReactNode
+  /** The empty composer's words. */
+  placeholder?: string
   /** The region's accessible name. */
   label?: string
   /** What sits on the foot's top edge, above the composer or an ask: the notice strip. */
@@ -115,7 +124,9 @@ export function ThreadColumn({
   const ask = view.ask
   const line = phone ? null : startMeta && !t.loading && view.items.length === 0 ? startMeta : meta
   const decline = () => ask && t.answer(ask, { kind: 'decline' })
-  const footer = ask ? (
+  const footer = closed && !ask ? (
+    closed
+  ) : ask ? (
     ask.kind === 'approval' ? (
       <ApprovalDock
         key={ask.id}
@@ -153,6 +164,7 @@ export function ThreadColumn({
       commands={view.commands}
       files={t.files}
       state={view.state}
+      {...(placeholder ? { placeholder } : {})}
       onSend={() => void t.send()}
       onStop={t.stop}
       onRecall={t.recall}
@@ -202,12 +214,14 @@ export function ThreadColumn({
         <ChatThread
           items={view.items}
           state={view.state}
-          actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
+          // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
+          {...(closed ? {} : { actions: { onEdit: t.edit, ...(onOpenThread ? { onBranch: (id: string) => void branch(id) } : {}), canUndoFiles: onRuntime === 'claude-code' } })}
           onDropImages={t.attach}
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}
           loading={t.loading}
           tail={tail}
+          {...(head ? { head } : {})}
           footer={
             <div className="flex flex-col gap-1.5">
               {children && <div className="mb-0.5 empty:hidden">{children}</div>}

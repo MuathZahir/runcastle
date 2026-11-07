@@ -534,7 +534,7 @@ export function DiffView({ lines }: { lines: DiffLine[] }) {
 }
 
 /** A path that, short of room, gives up its folders from the left and keeps the file name whole. */
-function FilePath({ path }: { path: string }) {
+export function FilePath({ path }: { path: string }) {
   const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1
   return (
     <span title={path} className="flex min-w-0 flex-1 font-mono text-xs">

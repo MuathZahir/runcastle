@@ -15,9 +15,10 @@ questions, and keep the short map it returns. Read a
 file yourself only to settle one fact the map left open.
 
 **This run plans; it does not build.** Whatever the plan says,
-never call `dispatch_round` in this run: no round starts without the human's
-yes. You write the feature's docs (`decisions.md`, `spec.md`, `preview.html`)
-and, when the work is worth handing to workers, its tickets. The one exception
+never call `dispatch_round` in this run, nor `start_worker`: nothing starts
+without the human's yes. You write the feature's docs (`decisions.md`,
+`spec.md`, `preview.html`), and the preview names the workers you would start.
+The one exception
 is designing its screens (**Designing alone**, below): for that, and only that,
 you may install dependencies and write components, design pages and sample
 data. Write no other code.
@@ -51,8 +52,7 @@ data. Write no other code.
   first.
 - **A timed-out tool is not a refused one.** A timeout is no answer, and the
   call may have landed anyway. Retry it once, checking first that it did not
-  land: before repeating `emit_tickets`, `update_ticket` or `cancel_ticket`,
-  read `list_tickets` and send only what is missing. If the retry times out
+  land. If the retry times out
   too, carry on and say so in the closing message.
 - **Check first.** Pick at most five decisions for the human to check first:
   guesses about their intent the brief did not settle, decisions that force
@@ -82,8 +82,8 @@ visual change (a colour, a label, one control) is described in the plan
 instead: it would not repay the install. A feature with no screen designs
 nothing.
 
-- **When.** Once the decisions are recorded and before the spec, so the spec,
-  the tickets and the preview can name the designed components.
+- **When.** Once the decisions are recorded and before the spec, so the spec
+  and the preview can name the designed components.
 - **How.** As `./design.md` says for an attended chat: the project's own
   install, the project's own frontend dev server, one design page per screen
   with its states on a switcher (never a design per state or variant),
@@ -124,32 +124,30 @@ nothing.
 - **In the Plan**, each designed screen is a designed-screen entry
   (`./preview.md`, Designed screens) naming its title, the states its switcher
   holds, its component file and design page, with no button.
-  A ticket that wires one follows `./tickets.md` on designed screens.
+  A worker that wires one follows `./workers.md` on designed screens.
 
 ## Straight through, then ask
 
 1. Write `spec.md` (`./spec.md`) once the decisions are recorded.
-2. Write the tickets only if the work is worth handing to workers (SKILL.md,
-   "Build it the cheapest good way"; then `./tickets.md`). Otherwise the plan
-   says you will build it yourself, and that is the usual answer for a small
-   feature.
+2. Plan the workers by the offering rule (SKILL.md, "Build it the cheapest good
+   way"): each with its label, one-line purpose and kind, in the preview. Start
+   none. With none, the plan says you will build it yourself, and that is the
+   usual answer for a small feature.
 3. Draw the preview and run its self-check (`./preview.md`).
 4. Commit the docs.
 5. Call `show_plan()` once, before the closing message.
 6. **End with one closing chat message** that covers the plan only: that it was
    made without the human, how many decisions it holds and which are to check
-   first (by number and title), whether it is tickets or work you will do
+   first (by number and title), which workers it offers and what you will do
    yourself, and anything that stopped you doing the job (a refused or failed
    tool the plan needed, and what you decided without it). Leave out the state
    of tools and connectors the plan did not need. **If you designed**, also
    name each designed screen and the states its switcher holds, the open Tweaks choices, any shared component you
    changed, and whether you saw the screens in screenshots or only checked that
    they compile, and say that only designs the human approves are committed. Close the message by asking
-   the human for their yes to start round 1 (or to start the work, if there are
-   no tickets).
-7. Call `mcp__runcastle__wait_for_you({ why: "start round 1?", kind: "plan" })`.
+   the human for their yes to start the work.
+7. Call `mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`.
    (Waiting designs raise "Design to approve" by themselves; no design-kind wait
-   is needed.) With no tickets, say "start the work?" in place of "start
-   round 1?". Write nothing after step 6's question, so the turn ends on
+   is needed.) Write nothing after step 6's question, so the turn ends on
    it, and then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.

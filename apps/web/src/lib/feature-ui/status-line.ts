@@ -141,6 +141,7 @@ export const TALKING = 'Talking with you'
 const NEED_PRIMARY: Record<NeedKind, StatusPrimary> = {
   permission: 'showRequest',
   conflict: 'resolveConflict',
+  worker: 'chat',
   answer: 'reply',
   plan: 'openPlan',
   design: 'openDesign',
@@ -159,7 +160,7 @@ function haltsAgent(need: FeatureNeed): boolean {
 }
 
 /** Needs that halt the agent where it stands, so they show even while it works. */
-const SHOWN_WHILE_WORKING: ReadonlySet<NeedKind> = new Set(['permission', 'conflict'])
+const SHOWN_WHILE_WORKING: ReadonlySet<NeedKind> = new Set(['permission', 'conflict', 'worker'])
 
 /**
  * The status line of a need: its words split at the first "·" into the label

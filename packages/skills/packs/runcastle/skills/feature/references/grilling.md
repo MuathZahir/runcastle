@@ -5,7 +5,7 @@ not settle, or when you are about to write or change `decisions.md`.
 
 ## Context hygiene is the whole game
 
-The spec and the tickets are best written by the context that did the grilling.
+The spec and the workers' assignments are best written by the context that did the grilling.
 **Never compact or `/clear` yourself:** runcastle compacts you at quiet moments,
 so what is settled must already be on disk. If you feel context pressure, narrow.
 

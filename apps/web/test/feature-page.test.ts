@@ -169,13 +169,13 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship and New chat, no Go', () => {
+  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship, no Go and no "+" (the sidebar page has it)', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Talking with you')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
-    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|New chat)"/.test(b))
+    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
     expect(buttons.length - chrome.length).toBe(1)
-    expect(header).toContain('aria-label="New chat"')
+    expect(header).not.toContain('aria-label="New chat"')
     expect(header).not.toMatch(/>Go</)
     expect(header).toContain('Merge &amp; ship')
   })
@@ -386,16 +386,14 @@ describe('the header’s need, its button and New chat', () => {
     expect(merges[0]!.className).toMatch(/\bbg-primary\b/)
   })
 
-  it('starts a side thread from the header’s "+" and from Ctrl+Shift+O, the composer included', () => {
+  it('starts a worker with no assignment from Ctrl+Shift+O, the composer included; never a side thread', () => {
     mount({})
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
-    expect(store.fired).toEqual([['thread.new', { featureId: 'f1' }]])
-
     const field = document.body.appendChild(document.createElement('textarea'))
     field.focus()
     const key = fireEvent.keyDown(field, { key: 'O', ctrlKey: true, shiftKey: true })
     expect(key).toBe(false) // the browser's own Ctrl+Shift+O is prevented
-    expect(store.fired).toHaveLength(2)
+    expect(store.fired).toEqual([['worker.startUnassigned', { featureId: 'f1' }]])
+    expect(store.touched.has('thread.new')).toBe(false)
     field.remove()
   })
 
@@ -412,11 +410,11 @@ describe('the header’s need, its button and New chat', () => {
     expect(published?.title).toBe('Demo')
     expect(published?.commands.map((c) => [c.label, c.disabled ?? null])).toEqual([
       ['Open plan', null],
-      ['New chat', null],
+      ['New worker', null],
       ['Merge & ship', null],
       ['Start test drive', 'Nothing declared ready yet'],
     ])
     act(() => published!.commands[1]!.run())
-    expect(store.fired).toEqual([['thread.new', { featureId: 'f1' }]])
+    expect(store.fired).toEqual([['worker.startUnassigned', { featureId: 'f1' }]])
   })
 })

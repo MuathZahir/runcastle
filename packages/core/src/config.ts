@@ -192,13 +192,6 @@ export const RuncastleConfig = z.preprocess(
      */
     sessionMcp: z.enum(['inherit', 'runcastleOnly']).default('inherit'),
     /**
-     * The workers spike (workers-prototype-an-agent-you-can-enter-inside-a-sandbox):
-     * lets a feature's lead start a worker, an agent thread running inside a
-     * burn sandbox with one published port. Off by default; the code may be
-     * removed after checkpoint 1.
-     */
-    experimentalWorkers: z.boolean().default(false),
-    /**
      * The usage ping: the boot update check that also counts this install as
      * active (a random install ID, the version, the platform). `on` pings, `off`
      * asks npm for the update banner instead. Unset counts as `on`: the ping is

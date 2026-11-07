@@ -39,6 +39,15 @@ export function designAddress(page: PageAddress, passPort: number, featureId: st
   return `${passOrigin(page, passPort)}${OPEN_PREFIX}${encodeURIComponent(featureId)}?path=${encodeURIComponent(path || '/')}`
 }
 
+/**
+ * A worker's preview (interactive-workers decision 15): its entry path on the
+ * pass-through (`worker.list`'s `previewPath`), on the page's own host, so it
+ * opens from the laptop, the VPS and the phone alike.
+ */
+export function workerPreviewAddress(page: PageAddress, passPort: number, previewPath: string): string {
+  return `${passOrigin(page, passPort)}${previewPath}`
+}
+
 /** The pass-through's probe, on the same host and port a design would load from. */
 export function designPingAddress(page: PageAddress, passPort: number): string {
   return `${passOrigin(page, passPort)}${PING_PATH}`
