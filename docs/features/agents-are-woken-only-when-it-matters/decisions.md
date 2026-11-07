@@ -4,7 +4,7 @@ Planned without the human (a headless planning run, 2026-11-06). Every decision
 below is the lead's recommendation, accepted so the plan could be finished; each
 names the alternative it was chosen over.
 
-Check first: 6, 11, 16
+Check first: 6, 11
 
 ## 1. One wake rule, decided in one place, for both levels
 **Decision:** Every message runcastle sends to an agent on its parent's behalf is classed as either **wake** (a handback, or a real question the agent must answer) or **hold** (anything else). One shared function makes that call for both links that exist today: runcastle news to the orchestrator thread that holds a feature, and runcastle's messages to a feature's lead. It is written so workers can adopt it later without a second rule.
@@ -131,3 +131,8 @@ Check first: 6, 11, 16
 **Supersedes:** 9.
 **Decision:** One install-wide setting on Settings' General page, "Carry on when the usage limit resets", off by default. On: every chat the limit stopped is woken once at the reset the runtime reports, turns the human's own messages started included, with runcastle's messages held during the limit riding that wake. Off: nothing wakes at the reset; runcastle's messages are still held during the limit and ride the human's next message to that chat. Whenever the limit stops a chat, that chat shows one quiet line: with the setting off, "The usage limit stopped this turn. Runcastle can carry on by itself when the limit resets.", its "carry on by itself" opening the setting; with it on, "Runcastle carries on at <time>." An unknown reset time wakes nothing.
 **Why:** The human: some would feel this uses up their weekly limit, so it is their choice; the line in the stopped chat is where they learn the setting exists.
+
+## 26. Orchestrator chats are compacted the way leads are
+**Supersedes:** 16, 17.
+**Decision:** runcastle compacts an orchestrator chat with `lead-chats-stay-small`'s mechanism, no second one: at the same quiet moments (before an idle stop, and before a turn that follows a long gap) and above the same 150k-token floor, with the same "Chat compacted" divider. After a compaction the orchestrator re-reads its record (`get_project_context` and the briefs of the features it holds) before acting. The chat keeps its features, its held lines and its history in the chat view. The 1 MB resume cap stops starting a fresh orchestrator chat, since it measures the whole transcript file rather than what the agent carries after a compaction.
+**Why:** Orchestrator chats were never compacted and carried 190k–352k tokens into every turn. One mechanism for leads and orchestrators. Cost accepted: a summary can lose a detail agreed in the chat but not written down; the briefs cover what is on record.
