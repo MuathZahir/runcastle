@@ -159,8 +159,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 <header id="what">
   <h1>Agents are woken only when it matters</h1>
-  <p class="lede">An agent gets a new turn only when work comes back to it or it is asked something. Other news waits quietly for its next turn, and news can no longer restart an oversized orchestrator chat.</p>
-  <div class="meta"><span><span data-dcount></span> decisions</span><span>planned without you</span><span>built by the lead, then one review round</span><span class="mono">docs/features/agents-are-woken-only-when-it-matters/preview.html</span></div>
+  <p class="lede">Agents tell each other things by calling a tool, not by runcastle pinging them. Machine events go only to the agent whose work they hit.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>re-scoped and grilled with you</span><span>built by the lead, then one review round</span><span class="mono">docs/features/agents-are-woken-only-when-it-matters/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
   </nav>
@@ -170,113 +170,84 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h2>The show</h2>
 
   <div class="sub">
-    <h3>A typical burst of news, before and after <a class="pin" data-d="2">2</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="13">13</a></h3>
-    <p class="hint">One feature finishes planning while the human pokes at it. Toggle to compare.</p>
+    <h3>What reaches the orchestrator, before and after <a class="pin" data-d="20">20</a> <a class="pin" data-d="23">23</a></h3>
     <div class="seg" role="group" aria-label="Before or after"><button aria-pressed="true" data-v="before">Today</button><button aria-pressed="false" data-v="after">After</button></div>
     <div class="timeline" data-view="before">
-      <div class="row"><span class="t">10:02</span><span class="box hold">the human is talking to its chat</span><span class="turn">turn · 187k</span></div>
-      <div class="row"><span class="t">10:09</span><span class="box hold">its chat went quiet</span><span class="turn">turn · 187k</span></div>
-      <div class="row"><span class="t">10:12</span><span class="box wake">waits for you: start the work?</span><span class="turn">turn · 190k</span></div>
-      <div class="row"><span class="t">10:13</span><span class="box hold">finished planning</span><span class="turn">turn · 192k · "notice is out of date"</span></div>
+      <div class="row"><span class="t">10:02</span><span class="box hold">the human is talking to its chat</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:09</span><span class="box hold">its chat went quiet</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:12</span><span class="box hold">waits for you: start the work?</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:13</span><span class="box hold">finished planning</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">17:30</span><span class="box bad">lead says "ready to merge" in its own chat</span><span class="turn">nothing</span></div>
     </div>
     <div class="timeline" data-view="after" hidden>
-      <div class="row"><span class="t">10:02</span><span class="box hold">the human is talking to its chat</span><span class="turn none">held</span></div>
-      <div class="row"><span class="t">10:09</span><span class="box hold">its chat went quiet — replaces the line above</span><span class="turn none">held</span></div>
-      <div class="row"><span class="t">10:12</span><span class="box wake">waits for you: start the work?  + the held line rides along</span><span class="turn one">one turn</span></div>
-      <div class="row"><span class="t">10:13</span><span class="box hold">finished planning — a wait already went out</span><span class="turn none">held</span></div>
+      <div class="row"><span class="t">10:02</span><span class="box hold">the human talks to a lead's chat</span><span class="turn none">nothing</span></div>
+      <div class="row"><span class="t">10:12</span><span class="box hold">lead waits for the human (the human is pinged)</span><span class="turn none">nothing</span></div>
+      <div class="row"><span class="t">17:30</span><span class="box wake">lead calls hand_back: "ready to merge"</span><span class="turn one">one turn</span></div>
     </div>
   </div>
 
   <div class="sub">
-    <h3>Which orchestrator news wakes, and which waits <a class="pin" data-d="3">3</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="14">14</a></h3>
-    <p class="hint">Wakes: work came back, or something only the orchestrator can answer. The list is fixed.</p>
-    <div class="cols">
-      <div><h3><i class="dot live"></i>Wakes</h3><ul>
-        <li><i class="dot live"></i>a lead waits for the human</li>
-        <li><i class="dot live"></i>a lead declared ready to test</li>
-        <li><i class="dot live"></i>a round failed</li>
-        <li><i class="dot live"></i>a test drive failed to start</li>
-        <li><i class="dot live"></i>the human merged a feature</li>
-        <li><i class="dot live"></i>a backlog feature started by itself, or could not</li>
-        <li><i class="dot live"></i>runcastle could not wake a lead</li>
-        <li><i class="dot live"></i>a planning run ended and nothing waits yet</li>
-      </ul></div>
-      <div><h3><i class="dot"></i>Waits for the next turn</h3><ul>
-        <li><i class="dot"></i>the human is talking to a chat / it went quiet</li>
-        <li><i class="dot"></i>the human started or stopped a drive</li>
-        <li><i class="dot"></i>the human had a feature plan itself</li>
-        <li><i class="dot"></i>a planning run ended after a wait went out</li>
-        <li><i class="dot"></i>a round finished, or a restart cut it off</li>
-        <li><i class="dot"></i>a review pass finished or failed</li>
-        <li><i class="dot"></i>another thread took the feature</li>
-        <li><i class="dot"></i>the human's own merge conflicted <a class="pin" data-d="18">18</a></li>
-      </ul></div>
-    </div>
-  </div>
-
-  <div class="sub">
-    <h3>Held news in the chat <a class="pin" data-d="12">12</a></h3>
-    <p class="hint">The only visual change: a held news block says so, in the same quiet text as its time.</p>
-<!-- screen:held-news-block -->
+    <h3>A lead hands back <a class="pin" data-d="21">21</a> <a class="pin" data-d="22">22</a></h3>
+    <p class="hint">Only while an orchestrator holds the feature: work ready, a job it was asked for done, or blocked on something the orchestrator can settle.</p>
+<!-- screen:feature-handback-card -->
     <div class="screen">
       <div class="news">
-        <div class="hd"><span class="mk">R</span>Runcastle · 6m ago<span class="held">For its next turn</span></div>
-        <div class="nr"><i class="dot ok"></i><b>Phone fixes</b><span>Round 2 finished</span></div>
-        <div class="nr"><i class="dot"></i><b>Agents are woken only when it matters</b><span>Its chat went quiet</span></div>
+        <div class="hd"><span class="mk">&larr;</span><b style="color:var(--color-text)">Phone fixes</b>&nbsp;handed back<span class="held">Open its chat</span></div>
+        <p class="hint" style="padding-left:28px">Ready to test &middot; round 2 succeeded &middot; not waiting on you</p>
+        <p style="padding-left:28px;color:var(--color-text)">Review fixes are in and the suite is green. The human said it is good to merge once the drive looks right.</p>
       </div>
     </div>
-<!-- /screen:held-news-block -->
-    <p class="hint" style="margin-top:6px">A news block that woke the orchestrator looks as it does today, with no label.</p>
+<!-- /screen:feature-handback-card -->
+    <p class="hint" style="margin-top:6px">The worker handback card from interactive-workers, with the feature's state line in place of commits and files. The orchestrator replies, merges, or does nothing.</p>
   </div>
 
   <div class="sub">
-    <h3>An oversized orchestrator chat is compacted in place <a class="pin" data-d="16">16</a> <a class="pin" data-d="17">17</a></h3>
-    <div class="flow">
-      <span class="box wake">a waking line arrives</span><span class="arrow">→</span>
-      <span class="box bad">stopped orchestrator, context over the threshold</span><span class="arrow">→</span>
-      <span class="box good">same chat compacted first, then the news</span><span class="arrow">→</span>
-      <span class="box hold">it re-reads the project and the briefs before acting</span>
-    </div>
-    <p class="hint" style="margin-top:6px">Same mechanism as lead-chats-stay-small, built here last, once that feature is on main. Holds and held lines stay put; no new chats appear. Decisions 7, 8 and 15 are replaced.</p>
-  </div>
-
-  <div class="sub">
-    <h3>News that hits the usage limit is sent again at reset <a class="pin" data-d="9">9</a></h3>
-    <div class="flow">
-      <span class="box wake">runcastle's message starts a turn</span><span class="arrow">→</span>
-      <span class="box bad">"You've hit your limit"</span><span class="arrow">→</span>
-      <span class="box hold">message held again</span><span class="arrow">→</span>
-      <span class="box good">one wake at the reset time</span>
-    </div>
-    <p class="hint" style="margin-top:6px">Once per usage window at most. A human's own message is left alone.</p>
-  </div>
-
-  <div class="sub">
-    <h3>What reaches a feature's lead <a class="pin" data-d="10">10</a> <a class="pin" data-d="11">11</a></h3>
+    <h3>The orchestrator's own three events, each wakes it <a class="pin" data-d="23">23</a></h3>
     <div class="cols">
-      <div><h3><i class="dot live"></i>Wakes</h3><ul>
-        <li><i class="dot live"></i>the human's messages, and the orchestrator's</li>
-        <li><i class="dot live"></i>Resume after a provider halt</li>
-        <li><i class="dot live"></i>a round comes back — the message is the whole handback</li>
-        <li><i class="dot live"></i>the last waiting design approved</li>
-        <li><i class="dot live"></i>Stop, while the lead's turn is running</li>
+      <div><h3><i class="dot live"></i>Still reach it</h3><ul>
+        <li><i class="dot live"></i>a drive it started failed to start</li>
+        <li><i class="dot live"></i>a backlog feature it holds started by itself, or could not</li>
+        <li><i class="dot live"></i>a lead it messaged could not be woken</li>
       </ul></div>
-      <div><h3><i class="dot"></i>Waits for the next turn</h3><ul>
-        <li><i class="dot"></i>Stop, while the lead is idle</li>
+      <div><h3><i class="dot"></i>Gone</h3><ul>
+        <li><i class="dot"></i>rounds, reviews, planning runs (the lead hands back)</li>
+        <li><i class="dot"></i>your chats, drives, merges and conflicts</li>
+        <li><i class="dot"></i>another chat taking a feature</li>
+        <li><i class="dot"></i>the "For its next turn" label</li>
       </ul></div>
     </div>
   </div>
 
   <div class="sub">
-    <h3>Background sub-agents <a class="pin" data-d="6">6</a></h3>
+    <h3>A restart: cut-off chats carry on <a class="pin" data-d="24">24</a></h3>
     <div class="flow">
-      <span class="box bad">5 background reads at boot → 5 wakes</span><span class="arrow">→</span>
-      <span class="box good">5 parallel reads in one message → 1 turn</span>
+      <span class="box bad">server restarts mid-turn</span><span class="arrow">&rarr;</span>
+      <span class="box good">each cut-off lead or orchestrator chat: "carry on where you were"</span>
     </div>
-    <p class="hint" style="margin-top:6px">A change to the orchestrator's guidance; runcastle cannot hold the runtime's own wake.</p>
+    <p class="hint" style="margin-top:6px">Not side chats, not workers, not a lead whose round message already goes.</p>
   </div>
 
-  <div class="sub" style="margin-top:20px"><p class="hint"><a class="pin" data-d="1">1</a> One shared function makes every wake-or-wait call, for the orchestrator and the leads alike, so workers can use it later.</p></div>
+  <div class="sub">
+    <h3>The usage limit: your setting, suggested where it bites <a class="pin" data-d="25">25</a></h3>
+<!-- screen:usage-limit-line -->
+    <div class="screen">
+      <div class="news">
+        <div class="hd"><span class="mk">R</span>The usage limit stopped this turn. Runcastle can <a href="#" onclick="return false" style="color:var(--color-accent-text)">carry on by itself</a> when the limit resets.</div>
+        <div class="hd"><span class="mk">R</span>With the setting on: Runcastle carries on at 8pm.</div>
+      </div>
+    </div>
+<!-- /screen:usage-limit-line -->
+    <p class="hint" style="margin-top:6px">Settings &rsaquo; General: "Carry on when the usage limit resets", off by default. On: every stopped chat is woken once at the reset.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Also <a class="pin" data-d="10">10</a> <a class="pin" data-d="26">26</a> <a class="pin" data-d="27">27</a></h3>
+    <ul style="margin:8px 0 0;padding-left:18px;color:var(--color-text-secondary)">
+      <li>Stop reaches a busy lead at its turn's end, and waits for an idle one's next message.</li>
+      <li>Orchestrator chats are compacted like leads, and re-read their record after.</li>
+      <li>No guidance on how agents read; no nudges in runcastle's messages.</li>
+    </ul>
+  </div>
 </section>
 
 <section id="decided">
@@ -289,14 +260,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h2>What is left out</h2>
   <div class="out2">
     <div><h3>Later</h3><ul>
-      <li><i class="dot"></i>Workers and their handbacks (the worker features adopt this rule)</li>
-      <li><i class="dot"></i>Keeping feature chats small → lead-chats-stay-small</li>
-      <li><i class="dot"></i>Slimmer tool results and skills → tools-and-skills-say-less</li>
+      <li><i class="dot"></i>Retiring rounds &rarr; burns-become-workers</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
-      <li><i class="dot"></i>Turning off background sub-agents in the runtime</li>
-      <li><i class="dot"></i>A tool or setting to ask for extra wakes</li>
-      <li><i class="dot"></i>A second compaction mechanism, or handing features to a fresh chat</li>
+      <li><i class="dot"></i>Workers' own handback (interactive-workers, merged)</li>
+      <li><i class="dot"></i>Lead compaction (lead-chats-stay-small, merged)</li>
+      <li><i class="dot"></i>Rules for how agents read or use sub-agents</li>
+      <li><i class="dot"></i>A way to ask for extra wakes</li>
     </ul></div>
   </div>
 </section>
@@ -305,21 +275,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-      <div class="flow">
-        <span class="box">event</span><span class="arrow">→</span>
-        <span class="box">orchestrator notifier: line + wake/hold</span><span class="arrow">→</span>
-        <span class="box">300 ms gather</span><span class="arrow">→</span>
-        <span class="box wake">any wake: one prompt (held lines ride first)</span>
-        <span class="box hold">all hold: thread host hold</span>
-      </div>
-      <ul style="margin-top:14px;padding-left:18px;color:var(--color-text-secondary)">
-        <li>Thread host: the held preface becomes an ordered list of entries on disk, each with an optional replace key; a usage-limit check on turns runcastle started, with one timed wake at the runtime's reported reset.</li>
-        <li>Orchestrator notifier: a wake/hold class per line, the dead "headless run" lines removed, and the resume-cap check before a wake to a stopped holder.</li>
-        <li>Compaction: lead-chats-stay-small's automatic triggers extended to orchestrator threads, with orchestrator keep-instructions; the launcher's 1 MB resume cap no longer starts fresh orchestrator chats.</li>
-        <li>Lead delivery: Stop held for an idle lead; the round-return message's closing line.</li>
-        <li>Web: the news block's "For its next turn" label from a held flag on the prompt display.</li>
-        <li>Skills: the project skill's foreground-reads guidance; the feature skill's round guidance.</li>
-        <li>Built by the lead in its own checkout (one connected change, one burn at a time on this project), then one review ticket. Checked by hand-starting this branch's server, since live sessions run the installed runcastle.</li>
+      <ul style="margin:0;padding-left:18px;color:var(--color-text-secondary)">
+        <li>MCP: a lead's <span class="mono">hand_back({ summary })</span>; the feature handback card is a new prompt display beside the worker one.</li>
+        <li>Orchestrator notifier: its table cut to three waking events; the keyed holds and the held-news label removed.</li>
+        <li>Boot: the reconcile hands its cut-off chats to a carry-on wake once the server listens.</li>
+        <li>Thread host: the usage-limit line with a settings link; the reset wake only with the new setting on, for every stopped turn.</li>
+        <li>Compaction: lead-chats-stay-small's triggers widened to project threads; the 1 MB cap no longer starts fresh orchestrator chats.</li>
+        <li>Skills: the lead's hand-back rule; the project skill's news paragraph and its re-read after compaction.</li>
+        <li>Workers are not available in this session's runcastle (no <span class="mono">start_worker</span>), so the lead builds it with its own sub-agents, then one review round.</li>
       </ul>
     </div>
   </details>
@@ -334,31 +297,36 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   var A = 'assumed'
   var D = [
-    ['One wake rule, decided in one place, for both levels', 'The brief asks for one rule at both levels; two lists would drift, and workers will need the same call.', A],
-    ['A held message is shown in the chat and rides the next prompt', 'Held news is not lost and costs no turn; the host already has a hold that survives restarts.', A],
-    ['Which orchestrator news lines wake, and which hold', 'Wakes are what the orchestrator must hear and can act on, plus failures nobody else raises; every held line is covered by a later wake or asks nothing. "Could not wake its lead" moved to wake after the challenge.', A],
-    ['Lines that already only reach a running thread keep that gate', 'A closed thread is doing nothing those lines could change.', A],
-    ['"Finished planning" holds when a wait already went out; the gathering window stays short', 'All 28 measured "finished planning" wakes came within minutes of a wait line for the same feature; a short window keeps real wakes prompt.', A],
-    ['Background sub-agent wakes are handled in the orchestrator’s guidance', 'That wake is the runtime’s own; runcastle cannot hold it. 49 wakes, 24M tokens, mostly boot-time reads.', A],
-    ['News never restarts an oversized orchestrator chat', 'Replaced by 16.', 'replaced'],
-    ['Held lines move with the features when a chat is cut over', 'Replaced by 16.', 'replaced'],
-    ['A runcastle-started turn that hits the usage limit is re-sent at reset', 'Five turns ended on the limit and their news waited for the human to type "continue"; holding alone would not help.', A],
-    ['What reaches a feature’s lead', 'Round return is the handback, messages are the questions. Stop wakes a busy lead (it may still be editing) and waits for an idle one.', A],
-    ['The round’s return message is the whole handback', 'Leads re-fetched what the wake already told them; saying so is cheaper than slimming it.', A],
-    ['Held news looks held in the chat', 'Without a label, a news block with no reply after it looks ignored.', A],
-    ['A newer line about what the human is doing replaces the older one', 'A long-closed thread would otherwise read a stale "busy" line and its correction.', A],
-    ['No agent or human can ask for extra wakes', 'Every held kind is covered by a later wake; a switch is machinery nobody asked for.', A],
+    ['One wake rule, decided in one place, for both levels', 'Kept for lead messages; the news-line half is replaced by 19.', 'assumed'],
+    ['A held message is shown in the chat and rides the next prompt', 'Survives for Stop and the usage limit.', 'assumed'],
+    ['Which orchestrator news lines wake, and which hold', 'Replaced by 19 and 23.', 'replaced'],
+    ['Lines that already only reach a running thread keep that gate', 'Replaced by 19.', 'replaced'],
+    ['"Finished planning" holds when a wait already went out', 'Replaced by 19.', 'replaced'],
+    ['Background sub-agent wakes are handled in the orchestrator\u2019s guidance', 'Replaced by 27.', 'replaced'],
+    ['News never restarts an oversized orchestrator chat', 'Replaced by 16, then 26.', 'replaced'],
+    ['Held lines move with the features when a chat is cut over', 'Replaced by 16, then 26.', 'replaced'],
+    ['A runcastle-started turn that hits the usage limit is re-sent at reset', 'Replaced by 25.', 'replaced'],
+    ['What reaches a feature\u2019s lead', 'You confirmed: Stop reaches a busy lead at its turn\u2019s end and waits for an idle one.'],
+    ['The round\u2019s return message is the whole handback', 'Replaced by 27.', 'replaced'],
+    ['Held news looks held in the chat', 'Nothing is held for the orchestrator any more (23), so the label goes.', 'replaced'],
+    ['A newer line about what the human is doing replaces the older one', 'Replaced by 19 and 23.', 'replaced'],
+    ['No agent or human can ask for extra wakes', 'Replaced by 19.', 'replaced'],
     ['A cut-over is visible, and the old thread points to the new one', 'Replaced by 16.', 'replaced'],
-    ['An oversized orchestrator chat is compacted in place, not handed over', 'The orchestrator asked for it: chats appearing by themselves confuse the human, and compaction fixes the context size while keeping the thread and its holds.', 'orchestrator'],
-    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'lead-chats-stay-small has its plan but no code yet; building compaction here too would make a second mechanism.', A],
-    ['A conflict from the human\u2019s own merge is held', 'After drives-never-touch-real-conversations, that line reaches the orchestrator only for a merge the human pressed, with the human holding the Resolve button: it asks nothing of the orchestrator.', A]
+    ['An oversized orchestrator chat is compacted in place, not handed over', 'Replaced by 26, your own answer.', 'replaced'],
+    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'Replaced by 26: the sibling has merged.', 'replaced'],
+    ['A conflict from the human\u2019s own merge is held', 'Replaced by 23: it no longer reaches the orchestrator at all.', 'replaced'],
+    ['Re-scoped: agents talk by tool call, not by runcastle\u2019s news lines', 'Your re-scope: pinging should not be mechanical.'],
+    ['The lead\u2019s tool is the only way the orchestrator hears from a feature', 'One deliberate channel; waiting and ready still ping you.'],
+    ['A lead hands back with hand_back({ summary }); runcastle adds a state line', 'One handback idea at every level; the state line saves a fetch.'],
+    ['When a lead hands back', 'Ready, a job the orchestrator asked for done, or blocked on something it can settle; your questions stay your ping.'],
+    ['The orchestrator gets three machine events, all about its own work', 'Its own drive, its own drafts, its own undelivered message; you struck \u201canother chat took it\u201d.'],
+    ['A chat a restart cuts off mid-turn is woken once to carry on', 'Those agents were working and nobody asked them to stop.'],
+    ['Carrying on after the usage limit is a setting, off by default', 'Some would not want their weekly limit spent; the line in the stopped chat shows the setting exists.'],
+    ['Orchestrator chats are compacted the way leads are', 'One mechanism; the orchestrator re-reads its record after.'],
+    ['No guidance on how agents read; no nudges in runcastle\u2019s messages', 'You: don\u2019t micromanage the agents. The round-return nudge goes on the same principle.']
   ]
   var C = [
-    [3, 'Keep more lines as wakes, for example "another thread took it".', 'It is the core of the feature: any line you rely on hearing at once must be on the wake side. "Could not wake its lead" moved to wake after the challenge.', 'challenged'],
-    [9, 'Hold only; your next message carries the missed news.', 'Adds a timed wake at the usage reset, new machinery you may not want.'],
-    [10, 'Hold Stop always, or wake on it always as today.', 'Changed after the challenge: a busy lead hears Stop at its turn’s end, an idle one only with your next message.', 'challenged'],
-    [12, 'No visual change at all.', 'A guess about whether you want to see which news was held.'],
-    [16, 'Hand the features to a fresh orchestrator chat (the earlier plan).', 'Changed by the orchestrator, not by you; it also waits on lead-chats-stay-small landing first.', 'orchestrator']
+    [27, 'Keep the round-return line telling a lead it holds the whole round.', 'You struck the read-guidance line; I dropped this nudge on the same principle without asking.', 'yours?']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

@@ -1,173 +1,126 @@
 # Agents are woken only when it matters
 
-> **Out of date (2026-11-06).** The human re-scoped this feature (decision 19): agents talk by tool call, and the news-line wake/hold table below is dropped. This spec is rewritten after the grill that follows `interactive-workers`' handback design.
-
 ## Problem
 
-The orchestrator (the project thread that holds features and carries them to
-merged) is started for a new turn by every `[runcastle]` news line about its
-features. Over the fortnight analysed, 57% of its context tokens went to turns
-those lines started, and half of those turns only replied "noted". Lines that
-belong together (a "waits for you" and a "finished planning" for the same
-feature) arrive tens of seconds apart and cost two turns, sometimes two messages
-to the same lead. Background sub-agents finishing wake it once each.
+The orchestrator (the project chat that holds features and carries them to
+merge) is started for a new turn by runcastle's `[runcastle]` news lines about
+everything that happens on its features. Over the fortnight analysed, 57% of its
+context tokens went to turns those lines started, and half of those turns only
+replied "noted". The human watched it get pinged about fifteen times during one
+grill. Meanwhile the one thing it needed to hear could go unsaid: a lead that
+answers "the branch is ready to merge" in its own chat tells nobody.
 
-Three failures sit on top of the waste. News restarts orchestrator chats that
-are far too large, because the size check that stops the human reopening one is
-skipped on the news path, so contexts reach 190–352k and never shrink. News
-delivered while the provider's usage limit is hit is never acted on until the
-human types "continue". And a feature's lead is woken for things that ask
-nothing of it (a Stop while it sits idle), then re-fetches what its round's
-return message already told it.
+Machine events with no agent behind them fall through the other way. A server
+restart cuts every chat off mid-turn and nothing tells them to carry on; a usage
+limit stops a turn and nothing picks it up when the limit resets. And the
+orchestrator's chat is never compacted, carrying 190k–352k tokens into every
+turn.
 
 ## Approach
 
-**One rule.** A parent agent is woken only by a **handback** (the child's work
-came back) or a **real question** it must answer. Everything else is **held**:
-logged in the chat at once, and added to the agent's next prompt, whoever sends
-it. A held message never starts a turn and is never lost. One shared function
-decides wake or hold for every runcastle message to an orchestrator or a lead,
-so workers can adopt it later unchanged.
+**Agents talk by tool call** (decisions 19–22). runcastle no longer decides which
+of its news lines reach the orchestrator. A lead tells the orchestrator by calling
+`hand_back({ summary })`, the same tool a worker hands back to its lead with
+(`interactive-workers`), one level up. The summary says what is done, what is
+left and what the lead needs, including anything the human told it directly.
+runcastle adds one line of the feature's state (ready to test or not, whether it
+waits on the human and why, the latest round) and delivers it to the orchestrator
+thread that holds the feature as a handback card, waking it once. The orchestrator
+answers by replying (`send_to_feature`), merging, or doing nothing. With no
+orchestrator holding the feature the tool is refused and says so.
 
-**Orchestrator news.** The notifier keeps its event table and gathering window
-(300 ms) and adds a wake/hold class to each line (decisions 3–5):
+The lead's skill says when to hand back, and only while an orchestrator holds the
+feature: the work is ready (declared ready, or the human said it is good to
+merge); it finished something the orchestrator asked for; or it is blocked on
+something the orchestrator can settle (a decision the cut's working agreement
+covers, a sibling clash, a dependency). A question only the human can answer
+stays the human's ping. `wait_for_you` and `declare_ready` keep pinging the human
+and showing "needs you", but send the orchestrator nothing.
 
-| Line | Class |
-|---|---|
-| lead waits for the human | wake |
-| lead declared ready | wake |
-| round failed | wake |
-| test drive failed to start | wake |
-| shipped (merged by the human) | wake |
-| draft started by itself / could not start | wake |
-| could not wake the lead | wake |
-| self-planning run ended, feature not waiting on the human | wake |
-| self-planning run ended, feature already waiting on the human | hold |
-| round finished | hold |
-| round cancelled by the human's Stop | hold |
-| round cut off by a restart | hold |
-| review / verification pass finished or failed | hold |
-| another thread took the feature | hold |
-| the human's own merge conflicted, or a conflict was resolved (decision 18) | hold |
-| human talking to a chat / chat went quiet (running holder only) | hold |
-| human started / stopped a test drive (running holder only) | hold |
-| human had a feature plan itself (running holder only) | hold |
+**Machine events go to the agent that owns the work** (decisions 23–25).
 
-A gathered batch with any waking line goes out as one prompt, carrying every
-held line ahead of it. A batch of only held lines is held. The dead
-`session.run_ended` lines (nothing emits that event any more) are removed.
+- *The orchestrator* hears only of its own work, and each wakes it: a drive it
+  started failed to start; a backlog feature it holds started by itself or could
+  not start; a lead it messaged could not be woken. Every other news line is
+  removed: rounds, reviews, planning runs, the human's chats, drives, merges and
+  their conflicts, and another chat taking a feature. Nothing is held for the
+  orchestrator, so the held-news label ("For its next turn") and the keyed
+  replacing of held lines are removed.
+- *A restart*: once the server is back, each lead or orchestrator chat that was
+  cut off mid-turn (the boot reconcile already finds them) gets one runcastle
+  message, "a server restart cut off your turn; carry on where you were", which
+  wakes it. A lead whose round was cut off is skipped (its round message already
+  goes), as are side chats and workers. A chat cut off while waiting on a
+  permission or question is woken too and asks again.
+- *The usage limit*: one install-wide setting on Settings' General page, "Carry on
+  when the usage limit resets", off by default. Whenever the limit stops a turn,
+  that chat shows one quiet line: off, "The usage limit stopped this turn.
+  Runcastle can carry on by itself when the limit resets.", with "carry on by
+  itself" opening the setting (the existing message-with-settings-link pattern);
+  on, "Runcastle carries on at <time>." While the limit is known to be hit,
+  runcastle's own messages are held rather than sent into it. With the setting on,
+  each stopped chat is woken once at the reset the runtime's usage read reports,
+  turns the human's own messages started included, and what was held rides that
+  wake; a repeat hit waits for the next reset. With it off, nothing wakes and the
+  held text rides the human's next message. An unknown reset time wakes nothing.
 
-**Held lines that answer each other** (decision 13). A held line can carry a
-replace key; a newer held line with the same key replaces the older one in what
-the agent will read. The human-activity pairs use it: "chat went quiet"
-replaces "talking to its chat", "stopped the test drive" replaces "started a
-test drive", per feature. The chat history still shows both news blocks; only
-the agent's next prompt is trimmed. This turns the thread host's held preface
-from one string into an ordered list of entries, still kept on disk beside the
-thread log.
+**Stop** (decision 10, as built). The Stop notice reaches a lead whose turn is
+running, or waiting on an ask, at that turn's end, and is held for an idle lead's
+next message.
 
-**Held news looks held** (decision 12). The prompt display for a held delivery
-is flagged, and the chat's news block shows "For its next turn" beside its time
-in the same tertiary text. No other screen changes, so nothing was designed.
+**Orchestrator chats are compacted like leads** (decision 26). The automatic
+compaction `lead-chats-stay-small` built for feature leads also applies to
+orchestrator (project) threads: the same quiet moments (before an idle stop,
+before a turn after a long gap), the same 150k-token floor, the same divider. The
+orchestrator's compaction instructions and the project skill tell it to re-read
+`get_project_context` and the briefs of the features it holds before acting. The
+launcher's 1 MB resume cap stops starting fresh orchestrator chats.
 
-**Oversized orchestrator chats are compacted in place** (decisions 16, 17).
-`lead-chats-stay-small` gives the agent host automatic compaction for feature
-leads: the existing compact path (the runtime's `/compact` as a hidden prompt),
-run above a context threshold before an idle stop and before a turn after a long
-gap, plus the runtime's own mid-turn auto-compact ceiling, invisible to feature
-state, with keep-instructions and a re-read of the record afterwards. This
-feature extends those same triggers to orchestrator threads and builds no second
-mechanism. Because the before-a-turn trigger sits in the host's turn path, a news
-wake that restarts a stopped orchestrator compacts it first, which closes the gap
-the brief found. The orchestrator's keep-instructions and the project skill say:
-after a compaction, re-read `get_project_context` and the briefs of the held
-features (each carries its cut's working agreement) before acting. The thread,
-its holds and its held lines stay where they are. The launcher's resume cap stops
-starting fresh orchestrator chats, since its 1 MB test measures the whole
-transcript file and not the context after the last compaction. If resuming a
-transcript over 1 MB proves unworkable even after compaction, a hand-over to a
-fresh chat comes back as the fallback, and the report says why.
+**No micromanaging** (decision 27). No skill guidance on how agents read, and the
+round-return message to a lead loses its "no need to fetch again" line.
 
-This part is built last, after `lead-chats-stay-small` merges to main and this
-branch takes main (decision 17).
-
-**Usage limit** (decision 9). When a turn runcastle started (news, or a message
-to a lead) ends with the provider's usage-limit reply, recognised with the same
-classifier the burner and rounds already use for provider halts, the thread host
-holds that prompt's text again and schedules one wake for the reset time the
-runtime's usage read reports. The wake is a short runcastle line saying the limit
-reset and the news it carries was not acted on; the held text rides it. No known
-reset time: the text stays held for the next prompt. A re-sent turn that hits the
-limit again waits for the next reset, so each message is tried at most once per
-usage window. The timer lives in memory; a server restart loses only the timer,
-not the held text. A human's own prompt that hits the limit is untouched.
-
-**Lead messages** (decisions 10, 11). Lead delivery takes the same wake/hold
-class. Human messages, the orchestrator's messages and relays, Resume after a
-provider halt, a round's return, and the last design approval wake. The Stop
-notice wakes only a lead whose turn is running (queued to that turn's end, as
-today) and is held for an idle lead. The round's return message keeps its
-ticket list, gates and findings; its closing line says it holds the whole round
-and that `get_ticket` is for a digest the lead needs (a failed ticket, a
-finding), not for seeing the round again. The feature skill's round guidance
-says the same.
-
-**Background sub-agents** (decision 6). The project session's skill tells the
-orchestrator to do boot-time and other short reads in the foreground, as parallel
-calls in one message, and to start a background sub-agent only for long
-independent work.
-
-**No opt-in wakes** (decision 14): there is no tool or setting to be woken by a
-held kind.
+**What survives from the first build.** The thread host's held prompts (logged
+`held`, kept on disk until the prompt carrying them is sent, kept through an edit)
+stay: Stop and the usage limit use them. The orchestrator notifier keeps its
+event subscription and gathering, with its table cut to the three events above.
+The shared wake tag stays for lead messages. Held prompts still never end a
+lead's wait on the human or show as waiting to start.
 
 ## Seams
 
-- **The orchestrator line function (existing, pure)** — today returns the line
-  for an event and a `NotifyState`; it gains the line's class. A table test over
-  every event type pins decision 3's list, including the conditional
-  self-plan line and the running-holder gate.
-- **`notifyOrchestrator` against a fake agent host (existing)** — observes, for
-  a gathered batch, whether the host got a prompt or a hold, the text and news
-  display it got.
-- **The agent host's prompt with `hold` (existing, extended)** — with the fake
-  transport: held entries ride the next prompt in order; a replace key drops the
-  older entry; a runcastle-sourced turn ending on a usage-limit reply re-holds its
-  text and wakes once at the reported reset (an injected clock), while a human
-  turn does not.
-- **`deliverToLead` (existing)** — observes that Stop to an idle lead is held,
-  Stop to a running lead is queued, and the other messages wake; the round-return
-  text's closing line.
-- **The agent host's automatic compaction (from `lead-chats-stay-small`)** —
-  the same fake-runtime tests, run for an orchestrator thread: above the
-  threshold it is compacted before an idle stop and before a turn after a long
-  gap, including a turn a news wake starts; the compaction leaves its holds and
-  held lines in place.
-- **The project launch (existing)** — opening an orchestrator thread past the
-  1 MB transcript size resumes it rather than starting a fresh chat.
-- **The news block (existing component)** — renders "For its next turn" for a
-  held delivery and nothing for a waking one.
+- **The orchestrator line function (existing, pure)** — returns a line only for
+  the three events; a table test pins that every other event gives none.
+- **The lead's `hand_back` tool (new, in the MCP server's lead tool set)** — with
+  a holder: the holder gets one runcastle prompt whose display is a feature
+  handback card carrying the summary and the state line; without one: refused.
+- **The feature handback card (existing component, new variant)** — renders the
+  feature's title, "handed back", the state line, the summary and "Open its chat".
+- **Boot reconcile (existing)** — returns the chats it found cut off mid-turn; a
+  test observes the carry-on prompt reaching each lead and orchestrator chat, and
+  none for a side chat, a worker, or a lead whose round wake goes.
+- **The agent host with the fake runtime (existing)** — usage limit: the notice
+  line in both settings; held runcastle prompts during the limit; with the setting
+  on, one wake at the reset for runcastle- and human-started turns alike; with it
+  off, none.
+- **The settings descriptor and General page (existing)** — the new setting reads,
+  writes and renders; the chat's notice opens it.
+- **The agent host's automatic compaction (existing)** — an orchestrator thread
+  above the floor is compacted at the same moments as a lead.
+- **The project launch (existing)** — an orchestrator thread over 1 MB resumes.
+- **Skill text tests (existing)** — the lead's hand-back rule, the project skill's
+  news paragraph, the re-read after compaction.
 
 ## Out of scope
 
-- Workers and handbacks themselves (`workers-prototype…`, `interactive-workers`,
-  `burns-become-workers`); this feature works on today's news lines and lead
-  deliveries, with the rule written so they adopt it.
-- Compaction of feature chats and long lead chats → `lead-chats-stay-small`.
-- Slimming runcastle's tool results and skills beyond the two guidance lines
-  above → `tools-and-skills-say-less`.
-- Turning off background sub-agents through runtime settings.
-- Any tool or setting for asking to be woken by a held kind (decision 14).
-
-- A second compaction mechanism, or handing an orchestrator's features to a
-  fresh chat, unless resuming proves unworkable (decision 16).
+- Workers' own handback, failure and messaging (`interactive-workers`, merged).
+- Compaction of feature leads (`lead-chats-stay-small`, merged).
+- Retiring rounds (`burns-become-workers`).
+- Any rule for how agents read or use sub-agents (decision 27).
+- A tool or setting to ask for extra wakes.
 
 ## Open questions
 
-- Whether Claude Code resumes a compacted conversation from its last
-  compaction regardless of the transcript file's size; checked by hand while
-  building decision 16.
-
-- Whether the background sub-agent guidance actually cuts those wakes is only
-  measurable afterwards, with the same token analysis that found them.
-- Live sessions run the globally installed runcastle, so the behaviour is
-  checked by hand-starting this branch's server, not through a normal drive.
+- Whether Claude Code resumes a compacted conversation from its last compaction
+  regardless of the transcript file's size; checked by hand while building.
+- Live sessions run the globally installed runcastle, so the behaviour is checked
+  by hand-starting this branch's server.
