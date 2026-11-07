@@ -11,6 +11,7 @@ import {
   sendBackWorker,
   startWorker,
 } from '../workers/service'
+import { provideWorkerFeatureRead } from '../workers/tools'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -795,6 +796,9 @@ export async function featureContextWithGit(
 ): Promise<FeatureContext> {
   return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId), options)
 }
+
+// A worker's `read_feature` reads the lead's same bundle (interactive-workers decision 9).
+provideWorkerFeatureRead((ctx, featureId) => featureContextWithGit(ctx, { featureId }))
 
 /**
  * A feature as the orchestrator reads it by default (`tools-and-skills-say-less`
@@ -2155,13 +2159,6 @@ export interface CreateFeatureResult {
 const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
 
 /**
- * The kinds that may park a draft: the drafting kinds, and a worker, which
- * parks through its own `park_feature` (relayed from its sandbox,
- * interactive-workers decision 9) and is never offered `create_feature` here.
- */
-const PARKING_KINDS: readonly SessionKindT[] = [...DRAFTING_KINDS, 'worker']
-
-/**
  * The project a `create_feature` call belongs to — and, on the way there, how
  * much of the door the calling session may open (draft-features decision 6).
  *
@@ -2179,7 +2176,7 @@ function createFeatureProject(
   input: { draft?: boolean },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
-  if (!PARKING_KINDS.includes(session.kind)) {
+  if (!DRAFTING_KINDS.includes(session.kind)) {
     throw new GateError(
       `a ${session.kind} session may not create features, drafts included. ` +
         'Tell the human what is worth capturing; the orchestrator is where features are made.',

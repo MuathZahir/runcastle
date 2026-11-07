@@ -3,9 +3,8 @@ import { join, posix } from 'node:path'
 import type { WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { InvalidInputError, NotFoundError } from '../errors'
-import { getSessionRow } from '../launcher/sessions'
-import { featureContextWithGit, toolCreateFeature } from '../mcp/server'
+import { GateError, InvalidInputError } from '../errors'
+import { createFeature } from '../services/features'
 import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { getFeatureRow } from '../services/repo'
 import { showFetchedFile } from '../threads/shown'
@@ -30,11 +29,25 @@ function parsed<T>(schema: z.ZodType<T>, tool: string, args: unknown): T {
   return r.data
 }
 
+type FeatureRead = (ctx: AppCtx, featureId: string) => Promise<unknown>
+
+let featureRead: FeatureRead | undefined
+
+/**
+ * Where `read_feature` reads the lead's `get_feature_context` bundle: given by
+ * the MCP server that builds it (`mcp/server.ts`) as it loads, since importing
+ * it here would pull the whole server into the web's typecheck.
+ */
+export function provideWorkerFeatureRead(read: FeatureRead): void {
+  featureRead = read
+}
+
 /** The feature as a worker reads it: the lead's whole bundle, plus a quote of the lead's latest turns. */
 export async function readFeatureForWorker(ctx: AppCtx, w: WorkerRow): Promise<unknown> {
+  if (!featureRead) throw new GateError('the feature read is not loaded: runcastle is still starting, try again in a moment')
   const feature = getFeatureRow(ctx, w.featureId)
   const { quote } = mainChatExcerpt(ctx, feature)
-  return { feature: await featureContextWithGit(ctx, { featureId: feature.id }), leadLatestTurns: quote ?? null }
+  return { feature: await featureRead(ctx, feature.id), leadLatestTurns: quote ?? null }
 }
 
 /** Show a file from the worker's sandbox in the worker's own chat: copied out by the engine, then shown as `show_file` shows. */
@@ -63,11 +76,10 @@ export async function showSandboxFile(
   }
 }
 
-/** Park a draft feature in the worker's project's backlog, as a lead's `create_feature({ draft: true })` does. */
+/** Park a draft feature in the worker's project's backlog, as a lead's `create_feature({ draft: true })` does: a row and its brief, no branch. */
 export async function parkFeatureForWorker(ctx: AppCtx, w: WorkerRow, input: { title: string; oneLiner: string; brief: string }): Promise<{ slug: string }> {
-  const session = getSessionRow(ctx, w.id)
-  if (!session) throw new NotFoundError(`no thread for worker ${w.id}`)
-  const created = await toolCreateFeature(ctx, session, { ...input, draft: true })
+  const { projectId } = getFeatureRow(ctx, w.featureId)
+  const created = await createFeature(ctx, { projectId, ...input, draft: true })
   return { slug: created.slug }
 }
 
