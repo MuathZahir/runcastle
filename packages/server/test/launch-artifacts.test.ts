@@ -1,3 +1,4 @@
+import { autoCompactWindow } from '../src/launcher/runtimes/types'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -1061,6 +1062,13 @@ describe('claudeRuntime.acpLaunch', () => {
       expect(spec.env).not.toHaveProperty('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
       expect(settingsOf(sess.id)).not.toHaveProperty('autoCompactEnabled')
     }
+  })
+
+  it('gives an orchestrator chat the same mid-turn compaction window as a lead (agents-are-woken-only-when-it-matters decision 26)', () => {
+    expect(autoCompactWindow({ kind: 'project', featureId: null })).toBe(200_000)
+    expect(autoCompactWindow({ kind: 'chat', featureId: 'feat' })).toBe(200_000)
+    expect(autoCompactWindow({ kind: 'side', featureId: 'feat' })).toBeUndefined()
+    expect(autoCompactWindow({ kind: 'qa', featureId: 'feat' })).toBeUndefined()
   })
 
   it('carries the model, the permission mode, the briefing files, prompt suggestions, file checkpoints and the background task set in the session _meta', async () => {

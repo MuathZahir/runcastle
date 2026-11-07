@@ -662,6 +662,21 @@ describe('opening a project conversation', () => {
     expect(listByProject(ctx, project.id).map((e) => e.type)).toContain('session.resumed')
   })
 
+  it('reopens a conversation whose transcript is past the 1 MB cap: runcastle compacts orchestrator chats instead (agents-are-woken-only-when-it-matters decision 26)', async () => {
+    const big = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    endWithCcId(big.sessionId, 'cc-big')
+    const dir = mkdtempSync(join(tmpdir(), 'rc-transcript-'))
+    const transcriptPath = join(dir, 'big.jsonl')
+    writeFileSync(transcriptPath, 'x'.repeat(1_100_000))
+    ctx.db.update(sessions).set({ transcriptPath }).where(eq(sessions.id, big.sessionId)).run()
+
+    const opened = await launchProjectSession(ctx, { projectId: project.id, resumeSessionId: big.sessionId }, { spawn: false })
+
+    expect(opened.sessionId).toBe(big.sessionId)
+    expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resume_capped')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
   // A thread opens whether or not an agent ever took it (chat-as-web-components decision 7).
   it('reopens a conversation that never reached the agent as its thread', async () => {
     const never = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })

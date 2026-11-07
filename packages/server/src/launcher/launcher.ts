@@ -20,7 +20,6 @@ import { chatKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor } from './r
 import { runs } from '../db/schema'
 import { GateError } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
-import { inheritHolds } from '../services/holding'
 import { rosterConfig } from '../services/model-discovery'
 import * as git from '../services/git'
 import { getFeatureRow, listRunsByFeature, projectForFeature, requireProjectById, rowToRun } from '../services/repo'
@@ -656,8 +655,10 @@ export async function createProjectThread(ctx: AppCtx, project: Project): Promis
  * from the list) to open as it is; anything else opens a new thread briefed
  * with its kickoff — `purpose: 'triage'` with the Notes card's briefing to work
  * the open notes. `fresh` is the explicit spelling of the default and wins over
- * a row id, so a "New chat" click never reopens something. Past the re-entry
- * cap, a named thread is not reopened either.
+ * a row id, so a "New chat" click never reopens something. A named thread is
+ * reopened however long its transcript has grown: runcastle compacts orchestrator
+ * chats at quiet moments, so the resume cap would measure the whole file, not
+ * what the agent carries (agents-are-woken-only-when-it-matters decision 26).
  */
 export async function launchProjectSession(
   ctx: AppCtx,
@@ -668,8 +669,7 @@ export async function launchProjectSession(
 
   const named = input.fresh || input.purpose || !input.resumeSessionId ? null : getSessionRow(ctx, input.resumeSessionId)
   const prior = named?.kind === 'project' && named.projectId === project.id ? named : null
-  const capped = applyResumeCap(ctx, prior, { projectId: project.id, kind: 'project' })
-  if (prior && !capped) {
+  if (prior) {
     emitProject(ctx, project.id, {
       type: 'session.resumed',
       message: 'reopening a project conversation',
@@ -680,19 +680,12 @@ export async function launchProjectSession(
 
   assertRuntimeReady(resolveModelEntry('project', rosterConfig(ctx), project).runtime, opts)
   const row = await createProjectThread(ctx, project)
-  if (capped && prior) inheritHolds(ctx, prior.id, row.id)
   emitProject(ctx, project.id, {
     type: 'session.launching',
     message: 'launching a new orchestrator chat',
     data: { sessionId: row.id, kind: 'project', worktreePath: row.worktreePath, branch: git.PROJECT_BRANCH, ...modelStamp(row), fresh: true },
   })
-  if (capped) {
-    emitProject(ctx, project.id, {
-      type: 'session.resume_capped',
-      message: `starting a new orchestrator chat — ${capped.detail}; the repo and the charter carry the state`,
-      data: { sessionId: row.id, kind: 'project', ...capped },
-    })
-  } else if (input.resumeSessionId && !input.fresh && !input.purpose) {
+  if (input.resumeSessionId && !input.fresh && !input.purpose) {
     emitProject(ctx, project.id, {
       type: 'session.resume_unavailable',
       message: 'that conversation is not one of this project\'s — starting a new chat instead',

@@ -365,6 +365,23 @@ export function autoCompactCommand(runtime: AgentRuntime, slug: string | undefin
   ].join(' ')
 }
 
+/**
+ * An orchestrator chat's compaction (agents-are-woken-only-when-it-matters
+ * decision 26): what to keep, and that the record — the portfolio and each held
+ * feature's brief, which carries its cut's working agreement — is re-read after.
+ */
+export function orchestratorCompactCommand(runtime: AgentRuntime): string {
+  if (runtime === 'codex') return COMPACT_COMMAND
+  return [
+    COMPACT_COMMAND,
+    'Keep in the summary: which features you hold and what each waits on;',
+    "the human's latest words, and anything agreed with them but not yet written into a brief;",
+    'what you were in the middle of.',
+    "Each cut's working agreement is in its features' briefs, so the summary need not repeat them.",
+    'After this compaction, your first move is to call the runcastle MCP tool get_project_context and read the briefs of the features you hold before acting.',
+  ].join(' ')
+}
+
 /** What a self-planning run's asks are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
 
@@ -730,6 +747,13 @@ class Host implements AgentHost {
     const on = { planned: policy.afterPlanning, idle: policy.whileIdle, resume: policy.resumeGapMs > 0 }[trigger]
     if (!on || policy.minTokens <= 0 || t.turn || t.ask || t.queue.length > queued) return null
     const row = getSessionRow(this.ctx, t.id)
+    // An orchestrator chat compacts at the same quiet moments as a lead (agents-are-woken-only-when-it-matters decision 26).
+    if (row?.kind === 'project') {
+      if (trigger === 'planned') return null
+      const used = contextUsed(readThreadEvents(t.id))
+      if (used === undefined || used <= policy.minTokens) return null
+      return compaction(orchestratorCompactCommand(row.runtime ?? DEFAULT_RUNTIME), trigger)
+    }
     if (row?.kind !== 'chat' || !row.featureId) return null
     const feature = tryGetFeature(this.ctx, row.featureId)
     if (!feature) return null

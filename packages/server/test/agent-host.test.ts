@@ -508,6 +508,38 @@ describe('automatic compaction', () => {
     expect(getSessionRow(ctx, id)!.status).toBe('ended')
   })
 
+  /** An orchestrator chat of the feature's project (agents-are-woken-only-when-it-matters decision 26). */
+  function orchestratorThread(): string {
+    const projectId = ctx.db.select({ projectId: features.projectId }).from(features).where(eq(features.id, featureId)).get()!.projectId
+    return createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' }).id
+  }
+
+  it('compacts an idle orchestrator chat above the floor before stopping it, telling it to re-read its record', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setup(compacting())
+    const id = orchestratorThread()
+    await host.prompt(id, { text: 'Cut this up' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS + 1000)
+    const events = await logUntil(id, stopped)
+    expect(compactions()).toHaveLength(1)
+    const sent = textOf(compactions()[0])
+    expect(sent).toMatch(/^\/compact Keep in the summary: which features you hold/)
+    expect(sent).toContain('call the runcastle MCP tool get_project_context and read the briefs of the features you hold')
+    expect(events.find((e) => e.type === 'compacted')).toMatchObject({ trigger: 'idle', before: BIG })
+  })
+
+  it('compacts an orchestrator chat before the turn a wake starts after a long quiet', async () => {
+    setup(compacting(), { autoCompact: { resumeGapMs: 30 } })
+    const id = orchestratorThread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 40))
+    await host.prompt(id, { text: '[runcastle] phone-fixes handed back: ready' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(3))
+    expect(prompts().map(textOf).map((t) => t.split(' ')[0])).toEqual(['First', '/compact', '[runcastle]'])
+  })
+
   it('compacts plainly on Codex', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     setup(compacting())
