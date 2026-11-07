@@ -38,9 +38,12 @@ import { type WorkerPreviews, workerPreviewPath } from '../routes/design-pass-pa
 import { phoneDesignPort } from '../services/phone-link'
 import { IDLE_STOP_MS } from '../threads/host'
 import type { WorkerPermissionMode } from './permissions'
-import { claudeSetup } from './setup-copy'
+import { codexHomeDir } from '../services/codex-auth'
+import { codexSetup } from './codex-setup'
+import { workerMcpServer } from './sandbox'
+import { type WorkerSetup, claudeSetup } from './setup-copy'
 import { workerTools } from './tools'
-import { type WorkerBrief, type WorkerSandbox, workersDir } from './worker'
+import { type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
@@ -111,6 +114,7 @@ function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
   return {
     id: w.id,
     engine: w.engine,
+    runtime: w.runtime,
     container: w.container,
     repoPath: projectForFeature(ctx, feature).repoPath,
     featureBranch: w.featureBranch,
@@ -161,18 +165,24 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
     const w = requireWorker(ctx, row.id)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
-    const model = (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model
+    const model = (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model ?? w.model
     const engine = sandboxEngine(w.engine)
-    // At every start and wake, so a change to the human's setup reaches the worker's next turn (decision 8).
-    await engine.copySetup(sb, claudeSetup(homedir()))
+    // At every start and wake, so a change to the human's setup reaches the worker's next turn (decisions 8, 12).
+    await engine.copySetup(sb, workerSetup(sb, briefOf(w), model))
     const proc = await engine.process(sb, briefOf(w), {
-      token: claudeToken(),
-      model: model ?? w.model,
+      ...(sb.runtime === 'claude-code' ? { token: claudeToken() } : {}),
+      model,
       tools: workerTools(ctx, w, sb, engine),
       onMode: (mode) => notePermissionMode(ctx, w.id, mode),
     })
     return { ...proc, conversationOnDisk: (conversationId) => engine.conversationOnDisk(sb, conversationId) }
   }
+}
+
+/** The human's setup for the worker's runtime: Claude Code's from `~`, Codex's from their Codex home with the worker's own config and briefing. */
+function workerSetup(sb: WorkerSandbox, brief: WorkerBrief, model: string): WorkerSetup {
+  if (sb.runtime === 'claude-code') return claudeSetup(homedir())
+  return codexSetup(codexHomeDir(), { model, briefing: workerBriefing(sb, brief), mcp: workerMcpServer(sb.port, sb.previewUrl) })
 }
 
 /** The permission mode each worker last said it runs in, so a mode is recorded once per change, not once per report. */
@@ -229,12 +239,7 @@ function noEngineMessage(engine: string): string {
 function workerModel(ctx: AppCtx, feature: Feature, model: string | undefined): ModelEntry {
   requireAnnotatedModels(ctx, [model])
   const roster = rosterConfig(ctx)
-  const entry = model?.trim() ? modelEntryFor(model.trim(), roster) : resolveModelEntry('chat', roster, projectForFeature(ctx, feature))
-  // Codex workers are a later ticket (decision 12); until then the prototype's limit stands.
-  if (entry.runtime !== 'claude-code') {
-    throw new GateError(`workers run on Claude Code for now, and ${entry.id} runs on ${entry.runtime} — pick a Claude Code model for the worker`)
-  }
-  return entry
+  return model?.trim() ? modelEntryFor(model.trim(), roster) : resolveModelEntry('chat', roster, projectForFeature(ctx, feature))
 }
 
 /** The short tail of a worker id its container and branch are named by. */
@@ -291,6 +296,7 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     sb = await engine.create({
       id: session.id,
       engine: engine.name,
+      runtime: model.runtime,
       container: `runcastle-worker-${short}`,
       branch: `runcastle/worker/${short}`,
       image: resolveSandboxImage(ctx.config, project),

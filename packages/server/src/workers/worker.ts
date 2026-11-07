@@ -4,17 +4,21 @@ import { dirname, join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk/unstable'
-import type { WorkerKind } from '@runcastle/core'
+import type { AgentRuntime, WorkerKind } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
+import { CODEX_SETUP_MANAGED } from './codex-setup'
 import { type WorkerPermissionMode, permissionModeOf, workerAllowsItself } from './permissions'
 import {
+  CODEX_AUTO_REVIEW_MODE,
   type Engine,
   IN,
-  TOOLS_SOCKET,
   adapterEntry,
   adapterExecArgs,
   adapterVersion,
+  codexAdapterEntry,
+  codexAdapterExecArgs,
+  codexAdapterVersion,
   containerState,
   devRestartScript,
   engineRun,
@@ -26,8 +30,9 @@ import {
   runArgs,
   setupClearScript,
   setupScript,
+  workerMcpServer,
 } from './sandbox'
-import { type ClaudeSetup, SETUP_MANAGED } from './setup-copy'
+import { SETUP_MANAGED, type WorkerSetup } from './setup-copy'
 import { type WorkerToolHandler, serveToolRelay } from './tool-relay'
 import { WORKER_MCP_SCRIPT, WORKER_RELAY_SCRIPT } from './worker-mcp-script'
 
@@ -42,6 +47,8 @@ export interface WorkerSandbox {
   /** The worker's id: its thread's session id. */
   id: string
   engine: Engine
+  /** The agent runtime inside it: Claude Code or Codex (decision 12). */
+  runtime: AgentRuntime
   container: string
   /** The host repo its branch is fetched into. */
   repoPath: string
@@ -80,14 +87,25 @@ export function previewUrlFor(port: number): string {
   return `http://localhost:${port}/`
 }
 
-/** The adapter bundled to one file plus the worker's MCP script, built once per adapter version and mounted read-only. */
-export async function ensureRuntimeDir(): Promise<string> {
-  const dir = join(workersDir(), 'runtime', adapterVersion())
-  const bundle = join(dir, 'acp.mjs')
+/** Each runtime's adapter in the runtime dir: the file it is bundled to, and the host entry it is bundled from. */
+const ADAPTER_BUNDLES: Record<AgentRuntime, { file: string; entry: () => string }> = {
+  'claude-code': { file: 'acp.mjs', entry: adapterEntry },
+  codex: { file: 'codex-acp.mjs', entry: codexAdapterEntry },
+}
+
+/**
+ * The `runtime`'s adapter bundled to one file plus the worker's MCP script,
+ * mounted read-only. The dir is named by both adapters' versions; each bundle
+ * is built once, when a worker on its runtime first needs it.
+ */
+export async function ensureRuntimeDir(runtime: AgentRuntime): Promise<string> {
+  const dir = join(workersDir(), 'runtime', `${adapterVersion()}-codex${codexAdapterVersion()}`)
+  const adapter = ADAPTER_BUNDLES[runtime]
+  const bundle = join(dir, adapter.file)
   if (!existsSync(bundle)) {
     mkdirSync(dir, { recursive: true })
     // The Bun CLI, not `Bun.build`: the web typecheck reads this file without Bun's types.
-    await execFileP(process.execPath, ['build', '--target=node', '--format=esm', `--outfile=${bundle}`, adapterEntry()], { maxBuffer: 8 * 1024 * 1024 })
+    await execFileP(process.execPath, ['build', '--target=node', '--format=esm', `--outfile=${bundle}`, adapter.entry()], { maxBuffer: 8 * 1024 * 1024 })
   }
   writeFileSync(join(dir, 'worker-mcp.cjs'), WORKER_MCP_SCRIPT)
   writeFileSync(join(dir, 'worker-relay.cjs'), WORKER_RELAY_SCRIPT)
@@ -103,6 +121,7 @@ async function git(repo: string, args: string[]): Promise<string> {
 export interface NewSandboxInput {
   id: string
   engine: Engine
+  runtime: AgentRuntime
   container: string
   branch: string
   image: string
@@ -120,6 +139,7 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
   const sb = {
     id: input.id,
     engine: input.engine,
+    runtime: input.runtime,
     container: input.container,
     repoPath: input.repoPath,
     featureBranch: input.featureBranch,
@@ -137,7 +157,7 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
     }
   }
   const t0 = performance.now()
-  const runtimeDir = await timed('runtimeBundle', () => ensureRuntimeDir())
+  const runtimeDir = await timed('runtimeBundle', () => ensureRuntimeDir(input.runtime))
   const originDir = workerOrigin(sb.id)
   await timed('originCopy', async () => {
     rmSync(originDir, { recursive: true, force: true })
@@ -207,15 +227,22 @@ export async function takeHandbackNote(sb: WorkerSandbox): Promise<HandbackNote 
 }
 
 /**
- * Whether Claude Code's transcript of `conversationId` is inside the sandbox,
- * where the worker's agent keeps it: the host disk never holds it, so the host's
- * own check would call every worker conversation gone. An id that is not a
- * plain token is never looked for.
+ * Whether the agent's record of `conversationId` is inside the sandbox, where
+ * the worker's agent keeps it: the host disk never holds it, so the host's own
+ * check would call every worker conversation gone. An id that is not a plain
+ * token is never looked for.
  */
 export async function conversationInSandbox(sb: WorkerSandbox, conversationId: string): Promise<boolean> {
   if (!/^[\w-]+$/.test(conversationId)) return false
-  const out = await execSh(sb.engine, sb.container, `ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${conversationId}.jsonl >/dev/null 2>&1 && echo yes || true`)
+  const out = await execSh(sb.engine, sb.container, conversationLookupScript(sb.runtime, conversationId))
   return out.trim() === 'yes'
+}
+
+/** The shell check that prints `yes` when the runtime's record of `conversationId` is in the sandbox: Claude Code's transcript, or Codex's rollout. */
+export function conversationLookupScript(runtime: AgentRuntime, conversationId: string): string {
+  return runtime === 'codex'
+    ? `find ${IN.codexHome}/sessions -name 'rollout-*-${conversationId}.jsonl' 2>/dev/null | grep -q . && echo yes || true`
+    : `ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${conversationId}.jsonl >/dev/null 2>&1 && echo yes || true`
 }
 
 /** Bring the worker's commits from its own bare copy into the host repo; a fetch runs none of that repo's hooks. */
@@ -224,13 +251,14 @@ export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
 }
 
 /**
- * Put the human's Claude setup into the sandbox's home (decision 8), in place
+ * Put the human's setup into the sandbox's home (decisions 8, 12), in place
  * of an earlier start's copy: staged on the host (owner-only, since it carries
- * MCP logins), copied in with the engine's `cp`, the staging removed after.
- * The sandbox's own conversations and `~/.claude.json` state stay; only its
- * `mcpServers` are replaced.
+ * logins), copied in with the engine's `cp`, the staging removed after.
+ * The sandbox's own conversations (and Claude's `~/.claude.json` state) stay;
+ * a Claude setup replaces only its `mcpServers`, a Codex one carries them in
+ * its `config.toml`.
  */
-export async function copyClaudeSetup(sb: WorkerSandbox, setup: ClaudeSetup): Promise<void> {
+export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup): Promise<void> {
   await ensureSandboxRunning(sb)
   const stage = join(workersDir(), 'setup', sb.id)
   rmSync(stage, { recursive: true, force: true })
@@ -249,13 +277,16 @@ export async function copyClaudeSetup(sb: WorkerSandbox, setup: ClaudeSetup): Pr
         }
       }
     }
-    const mcp = join(stage, '.runcastle', 'user-mcp.json')
-    mkdirSync(dirname(mcp), { recursive: true })
-    writeFileSync(mcp, JSON.stringify(setup.mcpServers), { mode: 0o600 })
-    await execSh(sb.engine, sb.container, setupClearScript(SETUP_MANAGED))
+    const claudeMcp = 'mcpServers' in setup ? setup.mcpServers : undefined
+    if (claudeMcp) {
+      const mcp = join(stage, '.runcastle', 'user-mcp.json')
+      mkdirSync(dirname(mcp), { recursive: true })
+      writeFileSync(mcp, JSON.stringify(claudeMcp), { mode: 0o600 })
+    }
+    await execSh(sb.engine, sb.container, setupClearScript([...SETUP_MANAGED, ...CODEX_SETUP_MANAGED]))
     // `-a` keeps the host owner, which is the user the sandbox runs as.
     await engineRun(sb.engine, ['cp', '-a', `${stage}/.`, `${sb.container}:${IN.home}`])
-    await execSh(sb.engine, sb.container, mcpMergeScript())
+    if (claudeMcp) await execSh(sb.engine, sb.container, mcpMergeScript())
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }
@@ -285,7 +316,7 @@ function howItHandsBack(kind: WorkerKind): string {
   }
 }
 
-/** The worker's briefing, appended to Claude Code's system prompt. */
+/** The worker's briefing: appended to Claude Code's system prompt, or after the human's instructions in a Codex worker's AGENTS.md. */
 export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
   return [
     `# You are a runcastle worker: ${brief.label}`,
@@ -308,8 +339,8 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
 
 /** What a worker's agent process is started with, beyond its sandbox and brief. */
 export interface WorkerProcessOptions {
-  /** The Claude token, passed into the exec by name. */
-  token: string
+  /** A Claude Code worker's token, passed into the exec by name; a Codex worker signs in with the login its setup copied in. */
+  token?: string
   model?: string
   /** Runcastle's answers to the worker's relayed tools (decision 9). */
   tools: WorkerToolHandler
@@ -322,11 +353,14 @@ export interface WorkerProcessOptions {
  * session reports, passed on to `onMode`, decides which asks it answers itself
  * (`workerAllowsItself`).
  */
-export function permissionHooks(onMode: (mode: WorkerPermissionMode) => void): Required<Pick<AgentProcess, 'onMode' | 'allowsItself'>> {
+export function permissionHooks(
+  onMode: (mode: WorkerPermissionMode) => void,
+  runtime: AgentRuntime = 'claude-code',
+): Required<Pick<AgentProcess, 'onMode' | 'allowsItself'>> {
   let mode: WorkerPermissionMode | undefined
   return {
     onMode: (modeId) => {
-      const next = permissionModeOf(modeId)
+      const next = permissionModeOf(modeId, runtime)
       if (!next) return
       mode = next
       onMode(next)
@@ -335,53 +369,47 @@ export function permissionHooks(onMode: (mode: WorkerPermissionMode) => void): R
   }
 }
 
+/** How a worker's adapter is started in its sandbox and its session opened, per runtime: pure, so tests pin it. */
+export interface WorkerLaunch {
+  /** The engine's `exec` argv for the adapter. */
+  execArgs: string[]
+  /** What the exec client is given beyond the server's own env: a secret passed in by name. */
+  env: Record<string, string>
+  /** The in-container processes that end with the adapter, matched by `pkill -f`. */
+  processes: string[]
+  session: NonNullable<AgentProcess['session']>
+}
+
 /**
- * The sandbox transport (decision 2): the ACP adapter runs inside the
- * container, reached over `docker exec -i` stdio, and a second exec carries the
- * tool relay. The session opens in the container's clone, with the worker's
- * own MCP server, in Claude Code's auto mode (decision 11); when the session
- * reports another mode, auto mode is unavailable and the worker answers its
- * in-sandbox permission asks itself, leaving the human's MCP servers to ask.
+ * The launch of a worker's adapter (decisions 2, 11, 12).
+ *
+ * - Claude Code: claude-agent-acp, its token by name, the briefing appended to
+ *   the system prompt, the worker's MCP server on the session, auto mode.
+ * - Codex: codex-acp over the worker's own `CODEX_HOME`, whose `config.toml`
+ *   (written with the setup copy) holds the model, auto-review, the briefing's
+ *   AGENTS.md and the worker's MCP server; the session opens in auto-review.
  */
-export async function workerProcess(sb: WorkerSandbox, brief: WorkerBrief, opts: WorkerProcessOptions): Promise<AgentProcess> {
-  await ensureSandboxRunning(sb)
-  await ensureRuntimeDir()
-  const relay = spawn(sb.engine, relayExecArgs(sb.container), { stdio: ['pipe', 'pipe', 'ignore'] })
-  relay.once('error', () => {})
-  serveToolRelay(relay.stdout, relay.stdin, opts.tools)
-  const child = spawn(sb.engine, adapterExecArgs(sb.container, sb.port, sb.previewUrl), {
-    env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: opts.token },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
-  let stderr = ''
-  child.stderr.on('data', (c: Buffer) => {
-    stderr = (stderr + c.toString('utf8')).slice(-8000)
-  })
-  const exited = new Promise<{ stderr: string }>((resolve) => {
-    child.once('exit', () => resolve({ stderr }))
-    child.once('error', (err) => resolve({ stderr: `${stderr}${err.message}` }))
-  })
+export function workerLaunch(sb: WorkerSandbox, brief: WorkerBrief, opts: Pick<WorkerProcessOptions, 'token' | 'model'>): WorkerLaunch {
+  if (sb.runtime === 'codex') {
+    return {
+      execArgs: codexAdapterExecArgs(sb.container, sb.port, sb.previewUrl),
+      env: {},
+      processes: [`${IN.runtime}/codex-acp.mjs`, `${IN.codex} app-server`],
+      session: { cwd: IN.repo, mcpServers: [], mode: CODEX_AUTO_REVIEW_MODE },
+    }
+  }
+  if (!opts.token) throw new Error('a Claude Code worker needs the Claude token')
+  const server = workerMcpServer(sb.port, sb.previewUrl)
   const mcp: acp.McpServer = {
     name: 'worker',
-    command: 'node',
-    args: [`${IN.runtime}/worker-mcp.cjs`],
-    env: [
-      { name: 'WORKER_PORT', value: String(sb.port) },
-      { name: 'WORKER_PREVIEW_URL', value: sb.previewUrl },
-      { name: 'RUNCASTLE_TOOLS_SOCKET', value: TOOLS_SOCKET },
-      { name: 'PATH', value: '/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin' },
-    ],
+    command: server.command,
+    args: server.args,
+    env: Object.entries(server.env).map(([name, value]) => ({ name, value })),
   }
   return {
-    target: acp.ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
-    exited,
-    kill: async () => {
-      child.kill('SIGTERM')
-      relay.kill('SIGTERM')
-      // Killing the exec client does not end the process inside the container.
-      await execSh(sb.engine, sb.container, `pkill -f ${IN.runtime}/acp.mjs; pkill -f ${IN.runtime}/worker-relay.cjs; true`).catch(() => {})
-    },
-    ...permissionHooks(opts.onMode),
+    execArgs: adapterExecArgs(sb.container, sb.port, sb.previewUrl),
+    env: { CLAUDE_CODE_OAUTH_TOKEN: opts.token },
+    processes: [`${IN.runtime}/acp.mjs`],
     session: {
       cwd: IN.repo,
       mcpServers: [mcp],
@@ -401,5 +429,47 @@ export async function workerProcess(sb: WorkerSandbox, brief: WorkerBrief, opts:
       // Also the copied settings' `permissions.defaultMode`; set again here for a resumed conversation that ran in another.
       mode: 'auto',
     },
+  }
+}
+
+/**
+ * The sandbox transport (decision 2): the ACP adapter runs inside the
+ * container, reached over `docker exec -i` stdio, and a second exec carries the
+ * tool relay. The session opens in the container's clone, with the worker's
+ * own MCP server, in its runtime's automatic mode (decision 11); when the
+ * session reports another mode, that mode is unavailable and the worker answers
+ * its in-sandbox permission asks itself, leaving the human's MCP servers to ask.
+ */
+export async function workerProcess(sb: WorkerSandbox, brief: WorkerBrief, opts: WorkerProcessOptions): Promise<AgentProcess> {
+  const launch = workerLaunch(sb, brief, opts)
+  await ensureSandboxRunning(sb)
+  await ensureRuntimeDir(sb.runtime)
+  const relay = spawn(sb.engine, relayExecArgs(sb.container), { stdio: ['pipe', 'pipe', 'ignore'] })
+  relay.once('error', () => {})
+  serveToolRelay(relay.stdout, relay.stdin, opts.tools)
+  const child = spawn(sb.engine, launch.execArgs, {
+    env: { ...process.env, ...launch.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  let stderr = ''
+  child.stderr.on('data', (c: Buffer) => {
+    stderr = (stderr + c.toString('utf8')).slice(-8000)
+  })
+  const exited = new Promise<{ stderr: string }>((resolve) => {
+    child.once('exit', () => resolve({ stderr }))
+    child.once('error', (err) => resolve({ stderr: `${stderr}${err.message}` }))
+  })
+  const ended = [...launch.processes, `${IN.runtime}/worker-relay.cjs`].map((p) => `pkill -f '${p}'`).join('; ')
+  return {
+    target: acp.ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
+    exited,
+    kill: async () => {
+      child.kill('SIGTERM')
+      relay.kill('SIGTERM')
+      // Killing the exec client does not end the process inside the container.
+      await execSh(sb.engine, sb.container, `${ended}; true`).catch(() => {})
+    },
+    ...permissionHooks(opts.onMode, sb.runtime),
+    session: launch.session,
   }
 }

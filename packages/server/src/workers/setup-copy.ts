@@ -29,6 +29,14 @@ export interface ClaudeSetup {
   mcpServers: Record<string, unknown>
 }
 
+/** A Codex worker's setup (`codexSetup`): its MCP servers ride its `config.toml`, one of the files. */
+export interface CodexSetup {
+  files: SetupFile[]
+}
+
+/** What of the human's setup a worker gets, for the runtime it runs on. */
+export type WorkerSetup = ClaudeSetup | CodexSetup
+
 /** What of the human's copy goes in a new start's place: cleared before each copy, so a removed skill does not linger. */
 export const SETUP_MANAGED = [
   '.claude/CLAUDE.md',

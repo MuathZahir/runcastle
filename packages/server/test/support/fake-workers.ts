@@ -5,8 +5,8 @@ import type { PromptDisplay } from '@runcastle/core'
 import type { AgentTransport } from '../../src/threads/host'
 import type { AgentHost } from '../../src/threads/types'
 import type { SandboxEngine } from '../../src/workers/engine'
-import type { ClaudeSetup } from '../../src/workers/setup-copy'
-import { type HandbackNote, type WorkerProcessOptions, type WorkerSandbox, permissionHooks } from '../../src/workers/worker'
+import type { WorkerSetup } from '../../src/workers/setup-copy'
+import { type HandbackNote, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
@@ -48,7 +48,7 @@ export type FakeEngine = SandboxEngine & {
   /** Conversation ids the sandbox holds a record of, for the reload guard. */
   conversations: Set<string>
   /** Each copy of the human's setup the engine was asked to make, oldest first. */
-  setups: { container: string; setup: ClaudeSetup }[]
+  setups: { container: string; setup: WorkerSetup }[]
   /** The files inside the fake sandbox, by container path, for `copyOut`. */
   sandboxFiles: Map<string, string | Buffer>
   /** What each agent process was started with. */
@@ -80,6 +80,7 @@ export function fakeEngine(): FakeEngine {
       return {
         id: input.id,
         engine: input.engine,
+        runtime: input.runtime,
         container: input.container,
         repoPath: input.repoPath,
         featureBranch: input.featureBranch,
@@ -118,16 +119,16 @@ export function fakeEngine(): FakeEngine {
       if (body === undefined) throw new Error(`no file ${containerPath} in the fake sandbox`)
       writeFileSync(hostPath, body)
     },
-    process: async (sb, _brief, opts) => {
+    process: async (sb, brief, opts) => {
       engine.processes.push(opts)
       if (!engine.transport) throw new Error('no agent in these tests')
       // Starting the agent wakes its sandbox first, as the real engine does.
       engine.woken.push(sb.container)
-      // The session opens in the sandbox, in auto mode, as the real engine's does.
+      // The session opens as the real engine's does: in the sandbox, in its runtime's automatic mode.
       return {
         ...(await engine.transport({} as never, {} as never)),
-        session: { cwd: '/home/agent/repo', mcpServers: [], mode: 'auto' },
-        ...permissionHooks(opts.onMode),
+        session: workerLaunch(sb, brief, opts).session,
+        ...permissionHooks(opts.onMode, sb.runtime),
       }
     },
   }

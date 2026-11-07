@@ -149,6 +149,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
   const rec = await createWorkerSandbox({
     id,
     engine: 'docker',
+    runtime: 'claude-code',
     container: `runcastle-worker-${id.slice(-10)}`,
     branch: `runcastle/worker/${id.slice(-10)}`,
     image,
