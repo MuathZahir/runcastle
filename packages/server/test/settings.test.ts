@@ -139,6 +139,12 @@ describe('settings service (#46)', () => {
     expect(view.fields.find((f) => f.key === 'devCommand')).toBeUndefined()
   })
 
+  it('reads "Carry on when the usage limit resets" as off when nothing set it (agents-are-woken-only-when-it-matters decision 25)', () => {
+    const carryOn = field(getSettings(ctx, undefined, io()), 'carryOnAfterLimit')
+    expect(carryOn.value).toBe('off')
+    expect(carryOn.source).toBe('default')
+  })
+
   it('globals: a value present in the config file reports source file', () => {
     writeFileSync(configFile, JSON.stringify({ model: 'claude-sonnet-5' }))
     const model = field(getSettings(ctx, undefined, io()), 'model')
