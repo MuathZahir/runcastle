@@ -45,15 +45,10 @@ import { type WorkerBrief, type WorkerSandbox, previewUrlFor, workersDir } from 
 
 // --- the record -----------------------------------------------------------------
 
-type WorkerDbRow = typeof workers.$inferSelect
-
-function toWorker(row: WorkerDbRow): WorkerRow {
-  return row
-}
+// The table's columns are typed by core's worker enums, so a selected row is a `WorkerRow` as it stands.
 
 export function getWorker(ctx: AppCtx, id: string): WorkerRow | undefined {
-  const row = ctx.db.select().from(workers).where(eq(workers.id, id)).get()
-  return row ? toWorker(row) : undefined
+  return ctx.db.select().from(workers).where(eq(workers.id, id)).get()
 }
 
 function requireWorker(ctx: AppCtx, id: string): WorkerRow {
@@ -64,7 +59,7 @@ function requireWorker(ctx: AppCtx, id: string): WorkerRow {
 
 /** A feature's workers, oldest first. */
 export function listWorkers(ctx: AppCtx, featureId: string): WorkerRow[] {
-  return ctx.db.select().from(workers).where(eq(workers.featureId, featureId)).orderBy(workers.createdAt).all().map(toWorker)
+  return ctx.db.select().from(workers).where(eq(workers.featureId, featureId)).orderBy(workers.createdAt).all()
 }
 
 /** A worker of `featureId`: refuses another feature's, so a lead acts only on its own workers. */
@@ -167,7 +162,7 @@ export interface StartedWorker {
 }
 
 /** The plain words a worker start says when no container engine answers (decision 22). */
-export function noEngineMessage(engine: string): string {
+function noEngineMessage(engine: string): string {
   return (
     `Workers run in a ${engine} sandbox, and ${engine} is not answering on this machine. ` +
     'Start Docker or Podman, then run `runcastle doctor` (the setup check) to see what is missing.'
@@ -491,18 +486,18 @@ export interface LeadWorker {
 
 export function leadWorkers(ctx: AppCtx, featureId: string): LeadWorker[] {
   return listWorkers(ctx, featureId).map((w) => ({
-      id: w.id,
-      label: w.label,
-      purpose: w.purpose,
-      kind: w.kind,
-      status: w.status,
-      startedBy: w.startedBy,
-      model: w.model,
-      branch: w.branch,
-      updatedAt: w.updatedAt,
-      ...(w.handbackSummary !== null
-        ? { handback: { summary: w.handbackSummary, commits: w.handbackCommits ?? [], files: w.handbackFiles ?? [] } }
-        : {}),
-      ...(w.outcome ? { outcome: { did: w.outcome, ...(w.outcomeNote ? { note: w.outcomeNote } : {}) } } : {}),
-    }))
+    id: w.id,
+    label: w.label,
+    purpose: w.purpose,
+    kind: w.kind,
+    status: w.status,
+    startedBy: w.startedBy,
+    model: w.model,
+    branch: w.branch,
+    updatedAt: w.updatedAt,
+    ...(w.handbackSummary !== null
+      ? { handback: { summary: w.handbackSummary, commits: w.handbackCommits ?? [], files: w.handbackFiles ?? [] } }
+      : {}),
+    ...(w.outcome ? { outcome: { did: w.outcome, ...(w.outcomeNote ? { note: w.outcomeNote } : {}) } } : {}),
+  }))
 }
