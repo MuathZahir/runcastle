@@ -223,3 +223,10 @@ announce other features' needs (no "1 other needs you").
 **Why:** The human compared a nested list, a right-hand rail and a drill-in page on screen: "The
 drill in is better." It keeps the left sidebar the one place to move around, gives workers its
 full width, and leaves the right side to the panel; the human did not want two right-hand columns.
+
+## 25. A "+" worker's hello is not news
+**Decision:** A worker started with "+" ends its first turn with a greeting and shows "needs you" in
+the list, but raises no feature need and pings nothing until the human has written to it; after
+that it needs the human like any worker.
+**Why:** The human just started it and is looking at it, so a ping then is noise. Raised by the
+review round; the human agreed.

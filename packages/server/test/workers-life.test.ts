@@ -18,6 +18,7 @@ import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/thre
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import {
   getWorker,
+  startUnassignedWorker,
   stopLeftoverWorkerSandboxes,
   withWorkers,
   workerPreviews,
@@ -200,6 +201,17 @@ describe('a worker that needs the human', () => {
     } finally {
       watch.stop()
     }
+  })
+
+  it('raises no need for a "+" worker that has only said hello, until the human writes to it (decision 25)', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const { workerId } = await startUnassignedWorker(ctx, feature.id)
+    await workerTurnEnded(ctx, { id: workerId })
+    expect(getWorker(ctx, workerId)?.status).toBe('needs-you')
+    expect(needOf(ctx, feature)).toBeNull()
+
+    appendThreadEvent(workerId, { type: 'prompt', id: 'p_human', text: 'Make the footer grey', source: 'human' })
+    expect(needOf(ctx, feature)).toMatchObject({ kind: 'worker', threadId: workerId })
   })
 
   it('raises a permission need when its agent waits on an approval, opening the worker', async () => {
