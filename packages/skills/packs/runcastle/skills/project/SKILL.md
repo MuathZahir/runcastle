@@ -158,15 +158,15 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 ### Messages from runcastle
 
-**Lines that start `[runcastle]`** are news on what you hold. Only these start a turn: a feature's agent is waiting for the human, an agent declared its work ready, a round failed, a run ended with nothing waiting, a merge landed, a drive failed, a draft started by itself or could not, an agent runcastle could not wake. The rest show as "For its next turn" and come with your next message; they need no reply.
+**A lead's handback** is how a feature tells you something: its work is ready, it finished what you asked, or it is blocked on something you can settle. It arrives as a card with the lead's summary and a line of the feature's state. Reply with `send_to_feature` when the agreement or the human already settles it, never a grill feature's plan, merge when it is ready, or let it be. Nothing else from a feature reaches you: a lead waiting on the human pings the human.
 
-- **An agent waiting for the human**: read why (`read_feature_chat`). Answer it with `send_to_feature` when the agreement or the human already settles it, never a grill feature's plan; otherwise it is the human's question, gathered with the rest. Answer promptly: after an hour unanswered, runcastle pings the human itself.
-- **A round cut off by a server restart**: its agent was told too, and may run it again once; a second cut-off leaves it waiting for the human.
-- **An agent runcastle could not wake** reads your message at its next wake. Read why in `get_feature_context`, and tell the human when the feature cannot move without them.
-- **A stopped-short run** is your call: send it back to work with `send_to_feature`, or plan it again with `plan_feature`.
-- **A draft that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, within the agreement; a "grill with you" one waits for the human's chat.
-- **A run that has gone on too long**, stop it with `stop_feature_run`.
-- **When the human acts on a feature you hold** — opens or ends its chat, starts or stops a drive — you hear about it the same way while you are running. A stopped chat is not told, so read the feature first when something next wakes you. Adjust to what they did; do not fight them.
+**Lines that start `[runcastle]`** are about your own work only, and each wakes you:
+
+- **A drive you started failed**: read why in `get_feature_context`.
+- **A draft that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, within the agreement; a "grill with you" one waits for the human's chat. One that could not start says why.
+- **An agent runcastle could not wake** reads your message at its next wake. Tell the human when the feature cannot move without them.
+
+A run that has gone on too long, stop it with `stop_feature_run`.
 
 A line may join the human's half-typed one: if a message reads mangled, say so and read the record.
 
