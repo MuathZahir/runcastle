@@ -240,7 +240,14 @@ export async function copyClaudeSetup(sb: WorkerSandbox, setup: ClaudeSetup): Pr
       const dest = join(stage, ...f.to.split('/'))
       mkdirSync(dirname(dest), { recursive: true })
       if (f.content !== undefined) writeFileSync(dest, f.content, { mode: 0o600 })
-      else if (f.from) cpSync(f.from, dest, { recursive: true, dereference: true })
+      else if (f.from) {
+        try {
+          cpSync(f.from, dest, { recursive: true, dereference: true })
+        } catch (err) {
+          // One unreadable skill or a dangling link must not keep the worker from starting.
+          console.error(`worker ${sb.id}: left ${f.to} out of its setup copy`, err)
+        }
+      }
     }
     const mcp = join(stage, '.runcastle', 'user-mcp.json')
     mkdirSync(dirname(mcp), { recursive: true })
