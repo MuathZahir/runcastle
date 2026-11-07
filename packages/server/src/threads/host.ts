@@ -115,6 +115,10 @@ export interface AgentProcess {
    * place of {@link AgentHostDeps.conversationOnDisk}.
    */
   conversationOnDisk?: (conversationId: string) => Promise<boolean>
+  /** The permission mode the session runs in: told as it opens, and each time the agent reports a change. */
+  onMode?: (modeId: string) => void
+  /** A permission ask this process answers yes to itself, never shown to the human (a worker without auto mode, interactive-workers decision 10). */
+  allowsItself?: (req: acp.RequestPermissionRequest) => boolean
 }
 
 /** Starts the agent process a launch describes. */
@@ -357,6 +361,8 @@ interface Thread {
   proc?: AgentProcess
   conn?: acp.ClientConnection
   sessionId?: string
+  /** The permission mode the session runs in, as it last reported it. */
+  modeId?: string
   steering: boolean
   /** Replaying history in `session/load`: those updates are not logged again. */
   loading: boolean
@@ -984,9 +990,13 @@ class Host implements AgentHost {
       opened = created
     }
     const mode = proc.session?.mode ?? spec.sessionMode
+    t.modeId = opened.modes?.currentModeId
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
+      // Taken as set unless the agent reports another while it sets it (a mode it falls back from, `onUpdate`).
+      t.modeId = mode
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
+    if (t.modeId) proc.onMode?.(t.modeId)
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
     this.noteOptions(t, opened.configOptions, true)
     const pick = this.pendingConfig.get(t.id)
@@ -1318,6 +1328,10 @@ class Host implements AgentHost {
     }
     const own = !t.sessionId || sessionId === t.sessionId
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
+    if (own && update.sessionUpdate === 'current_mode_update') {
+      t.modeId = update.currentModeId
+      t.proc?.onMode?.(update.currentModeId)
+    }
     for (const body of t.map(update, own ? undefined : sessionId)) {
       // The model a session opens on is logged once it runs, after the thread's own
       // choice is applied; the adapter's announcement while it opens is not news.
@@ -1367,6 +1381,7 @@ class Host implements AgentHost {
       appendThreadEvent(t.id, { type: 'ask_resolved', id: newId('ask'), lines: [UNATTENDED_LINE] })
       return option('reject_once', 'reject_always')
     }
+    if (t.proc?.allowsItself?.(req)) return option('allow_once')
     const answer = await this.openAsk(t, { kind: 'approval', id: newId('ask'), call: toolCallOf(req.toolCall) })
     if (answer === 'cancelled' || answer.kind !== 'approval') return { outcome: { outcome: 'cancelled' } }
     if (answer.choice === 'allow') return option('allow_once')

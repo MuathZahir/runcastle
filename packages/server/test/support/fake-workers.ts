@@ -5,7 +5,8 @@ import type { PromptDisplay } from '@runcastle/core'
 import type { AgentTransport } from '../../src/threads/host'
 import type { AgentHost } from '../../src/threads/types'
 import type { SandboxEngine } from '../../src/workers/engine'
-import type { HandbackNote, WorkerSandbox } from '../../src/workers/worker'
+import type { ClaudeSetup } from '../../src/workers/setup-copy'
+import { type HandbackNote, type WorkerProcessOptions, type WorkerSandbox, permissionHooks } from '../../src/workers/worker'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
@@ -46,6 +47,12 @@ export type FakeEngine = SandboxEngine & {
   fetched: string[]
   /** Conversation ids the sandbox holds a record of, for the reload guard. */
   conversations: Set<string>
+  /** Each copy of the human's setup the engine was asked to make, oldest first. */
+  setups: { container: string; setup: ClaudeSetup }[]
+  /** The files inside the fake sandbox, by container path, for `copyOut`. */
+  sandboxFiles: Map<string, string | Buffer>
+  /** What each agent process was started with. */
+  processes: WorkerProcessOptions[]
   /** Where the agent's process comes from; none by default. */
   transport?: AgentTransport
 }
@@ -61,6 +68,9 @@ export function fakeEngine(): FakeEngine {
     woken: [],
     fetched: [],
     conversations: new Set(),
+    setups: [],
+    sandboxFiles: new Map(),
+    processes: [],
     async available() {
       return engine.up
     },
@@ -99,11 +109,21 @@ export function fakeEngine(): FakeEngine {
       engine.fetched.push(sb.branch)
     },
     conversationOnDisk: async (_sb, conversationId) => engine.conversations.has(conversationId),
-    process: async (sb, _brief, _token, _model) => {
+    copySetup: async (sb, setup) => {
+      engine.setups.push({ container: sb.container, setup })
+    },
+    // The sandbox's files are the test's: `sandboxFiles` maps a container path to its body.
+    copyOut: async (_sb, containerPath, hostPath) => {
+      const body = engine.sandboxFiles.get(containerPath)
+      if (body === undefined) throw new Error(`no file ${containerPath} in the fake sandbox`)
+      writeFileSync(hostPath, body)
+    },
+    process: async (sb, _brief, opts) => {
+      engine.processes.push(opts)
       if (!engine.transport) throw new Error('no agent in these tests')
       // Starting the agent wakes its sandbox first, as the real engine does.
       engine.woken.push(sb.container)
-      return engine.transport({} as never, {} as never)
+      return { ...(await engine.transport({} as never, {} as never)), ...permissionHooks(opts.onMode) }
     },
   }
   return engine

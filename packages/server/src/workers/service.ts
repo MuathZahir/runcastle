@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { eq, ne } from 'drizzle-orm'
 import {
@@ -36,6 +37,9 @@ import { sandboxEngine } from './engine'
 import { type WorkerPreviews, workerPreviewPath } from '../routes/design-pass-paths'
 import { phoneDesignPort } from '../services/phone-link'
 import { IDLE_STOP_MS } from '../threads/host'
+import type { WorkerPermissionMode } from './permissions'
+import { claudeSetup } from './setup-copy'
+import { workerTools } from './tools'
 import { type WorkerBrief, type WorkerSandbox, workersDir } from './worker'
 
 /**
@@ -159,9 +163,40 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
     const model = (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model
     const engine = sandboxEngine(w.engine)
-    const proc = await engine.process(sb, briefOf(w), claudeToken(), model ?? w.model)
+    // At every start and wake, so a change to the human's setup reaches the worker's next turn (decision 8).
+    await engine.copySetup(sb, claudeSetup(homedir()))
+    const proc = await engine.process(sb, briefOf(w), {
+      token: claudeToken(),
+      model: model ?? w.model,
+      tools: workerTools(ctx, w, sb, engine),
+      onMode: (mode) => notePermissionMode(ctx, w.id, mode),
+    })
     return { ...proc, conversationOnDisk: (conversationId) => engine.conversationOnDisk(sb, conversationId) }
   }
+}
+
+/** The permission mode each worker last said it runs in, so a mode is recorded once per change, not once per report. */
+const modesSaid = new Map<string, WorkerPermissionMode>()
+
+/**
+ * Record the permission mode a worker runs in (decision 11) as a
+ * `worker.permission_mode` event on its feature's timeline, so the human sees
+ * when a worker runs without auto mode.
+ */
+export function notePermissionMode(ctx: AppCtx, id: string, mode: WorkerPermissionMode): void {
+  if (modesSaid.get(id) === mode) return
+  const w = getWorker(ctx, id)
+  if (!w) return
+  modesSaid.set(id, mode)
+  emitWorker(
+    ctx,
+    w,
+    'worker.permission_mode',
+    mode === 'auto'
+      ? `worker "${w.label}" runs in auto mode`
+      : `worker "${w.label}" runs without auto mode: free inside its sandbox, asking before any MCP call`,
+    { mode },
+  )
 }
 
 // --- starting -------------------------------------------------------------------

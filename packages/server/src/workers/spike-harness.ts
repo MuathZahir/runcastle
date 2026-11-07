@@ -20,7 +20,7 @@ import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { IN, engineRun } from './sandbox'
 import { claudeToken } from './service'
-import { type WorkerBrief, createWorkerSandbox, removeSandbox, stopSandbox, takeHandbackNote, workerOrigin, workerProcess } from './worker'
+import { type WorkerBrief, type WorkerProcessOptions, createWorkerSandbox, removeSandbox, stopSandbox, takeHandbackNote, workerOrigin, workerProcess } from './worker'
 
 const execFileP = promisify(execFile)
 const sh = async (cmd: string, cwd?: string): Promise<string> =>
@@ -157,9 +157,18 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     takenPorts: new Set(),
   })
   Object.assign(row, Object.fromEntries(Object.entries(rec.timings).map(([k, v]) => [`sb_${k}`, v])))
+  // The harness runs no runcastle: the relayed tools refuse, and the mode goes unrecorded.
+  const procOpts: WorkerProcessOptions = {
+    token,
+    ...(model ? { model } : {}),
+    tools: async (tool) => {
+      throw new Error(`the measuring harness serves no ${tool}`)
+    },
+    onMode: () => {},
+  }
   try {
     let t0 = performance.now()
-    const proc = await workerProcess(rec, brief, token, model)
+    const proc = await workerProcess(rec, brief, procOpts)
     const o = await open(proc, proc.session!)
     row.adapterInitMs = o.initMs
     row.sessionNewMs = o.openMs
@@ -190,7 +199,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     t0 = performance.now()
     // Polled from the moment of the wake, beside it: when the preview answers again.
     const devWake = untilAnswers(rec.previewUrl, 120_000)
-    const proc2 = await workerProcess(rec, brief, token, model)
+    const proc2 = await workerProcess(rec, brief, procOpts)
     row.wakeSandboxMs = Math.round(performance.now() - t0)
     const o2 = await open(proc2, proc2.session!, o.sessionId)
     row.wakeAdapterInitMs = o2.initMs
@@ -202,7 +211,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     await proc2.kill()
     // Live reattach to a running sandbox: the like-for-like twin of the handoff attach below.
     t0 = performance.now()
-    const proc2b = await workerProcess(rec, brief, token, model)
+    const proc2b = await workerProcess(rec, brief, procOpts)
     const o2b = await open(proc2b, proc2b.session!, o.sessionId)
     const t4b = await turn(o2b, TRIVIAL)
     row.liveReattachToFirstReplyMs = Math.round(performance.now() - t0 - (t4b.totalMs - (t4b.firstMs ?? t4b.totalMs)))
@@ -217,7 +226,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
     row.headlessTurnMs = Math.round(performance.now() - t0)
     const headlessId = (JSON.parse(out) as { session_id: string }).session_id
     t0 = performance.now()
-    const proc3 = await workerProcess(rec, brief, token, model)
+    const proc3 = await workerProcess(rec, brief, procOpts)
     const o3 = await open(proc3, proc3.session!, headlessId)
     row.handoffLoadMs = o3.openMs
     const t5 = await turn(o3, TRIVIAL)

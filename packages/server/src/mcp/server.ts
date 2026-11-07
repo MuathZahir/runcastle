@@ -2155,6 +2155,13 @@ export interface CreateFeatureResult {
 const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
 
 /**
+ * The kinds that may park a draft: the drafting kinds, and a worker, which
+ * parks through its own `park_feature` (relayed from its sandbox,
+ * interactive-workers decision 9) and is never offered `create_feature` here.
+ */
+const PARKING_KINDS: readonly SessionKindT[] = [...DRAFTING_KINDS, 'worker']
+
+/**
  * The project a `create_feature` call belongs to — and, on the way there, how
  * much of the door the calling session may open (draft-features decision 6).
  *
@@ -2172,7 +2179,7 @@ function createFeatureProject(
   input: { draft?: boolean },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
-  if (!DRAFTING_KINDS.includes(session.kind)) {
+  if (!PARKING_KINDS.includes(session.kind)) {
     throw new GateError(
       `a ${session.kind} session may not create features, drafts included. ` +
         'Tell the human what is worth capturing; the orchestrator is where features are made.',
@@ -2954,8 +2961,9 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
   // A `worker` session is in no list here: its tools are its own, served in its
-  // sandbox (`worker-mcp-script.ts`), and its only way to change the feature is
-  // its handback (decision 9).
+  // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
+  // into it (`workers/tools.ts`); its only way to change the feature is its
+  // handback (decision 9).
   // The lead's worker tools (decision 4): `requireLeadFeatureId`.
   start_worker: ['chat'],
   message_worker: ['chat'],

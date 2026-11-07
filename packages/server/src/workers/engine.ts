@@ -1,11 +1,15 @@
 import type { AgentProcess } from '../threads/host'
 import { type Engine, engineRun } from './sandbox'
+import type { ClaudeSetup } from './setup-copy'
 import {
   type HandbackNote,
   type NewSandboxInput,
   type WorkerBrief,
+  type WorkerProcessOptions,
   type WorkerSandbox,
   conversationInSandbox,
+  copyClaudeSetup,
+  copyOutOfSandbox,
   createWorkerSandbox,
   ensureSandboxRunning,
   fetchWorkerBranch,
@@ -39,8 +43,12 @@ export interface SandboxEngine {
   takeHandback(sb: WorkerSandbox): Promise<HandbackNote | undefined>
   /** Bring the worker branch's commits into the host repo as `refs/heads/<branch>`. */
   fetchBranch(sb: WorkerSandbox): Promise<void>
-  /** The agent process inside the sandbox, started (and the sandbox woken) if need be. */
-  process(sb: WorkerSandbox, brief: WorkerBrief, token: string, model?: string): Promise<AgentProcess>
+  /** Put the human's Claude setup into the sandbox (decision 8), waking it if need be, in place of an earlier copy. */
+  copySetup(sb: WorkerSandbox, setup: ClaudeSetup): Promise<void>
+  /** Copy one file out of the sandbox to the host (a file the worker shows). */
+  copyOut(sb: WorkerSandbox, containerPath: string, hostPath: string): Promise<void>
+  /** The agent process inside the sandbox, started (and the sandbox woken) if need be, with its tool relay. */
+  process(sb: WorkerSandbox, brief: WorkerBrief, opts: WorkerProcessOptions): Promise<AgentProcess>
 }
 
 /** The docker or podman engine. */
@@ -59,7 +67,9 @@ export function containerEngine(name: Engine): SandboxEngine {
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
     fetchBranch: (sb) => fetchWorkerBranch(sb),
-    process: (sb, brief, token, model) => workerProcess(sb, brief, token, model),
+    copySetup: (sb, setup) => copyClaudeSetup(sb, setup),
+    copyOut: (sb, containerPath, hostPath) => copyOutOfSandbox(sb, containerPath, hostPath),
+    process: (sb, brief, opts) => workerProcess(sb, brief, opts),
   }
 }
 

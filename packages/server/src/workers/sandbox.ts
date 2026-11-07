@@ -19,6 +19,7 @@ export type Engine = 'docker' | 'podman'
 
 /** Where things live inside the sandbox. */
 export const IN = {
+  home: '/home/agent',
   origin: '/home/agent/origin.git',
   repo: '/home/agent/repo',
   state: '/home/agent/.runcastle',
@@ -132,6 +133,34 @@ export function adapterExecArgs(container: string, port: number, previewUrl: str
     'node',
     `${IN.runtime}/acp.mjs`,
   ]
+}
+
+/** Where the in-sandbox relay listens for the worker's MCP server: inside the container only. */
+export const TOOLS_SOCKET = `${IN.state}/tools.sock`
+
+/**
+ * `docker exec` argv for the tool relay (decision 9): a channel runcastle opens
+ * INTO the container, so the worker reaches runcastle's tools with no route out.
+ * The relay listens on {@link TOOLS_SOCKET} and carries each call over this exec's stdio.
+ */
+export function relayExecArgs(container: string): string[] {
+  return ['exec', '-i', container, 'node', `${IN.runtime}/worker-relay.cjs`]
+}
+
+/** Clear what of the human's setup an earlier start copied in ({@link SETUP_MANAGED}), keeping the sandbox's own conversations. */
+export function setupClearScript(managed: readonly string[]): string {
+  return `cd ${IN.home} && rm -rf ${managed.map(q).join(' ')} && mkdir -p .claude ${IN.state}`
+}
+
+/** Merge the staged user-level MCP servers into the sandbox's own `~/.claude.json`, which also holds its conversations' state. */
+export function mcpMergeScript(): string {
+  return [
+    `node -e '`,
+    `const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));`,
+    `let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}`,
+    `c.mcpServers=s;fs.writeFileSync(f,JSON.stringify(c,null,2));fs.rmSync(process.argv[2])`,
+    `' ${IN.home}/.claude.json ${IN.state}/user-mcp.json`,
+  ].join('')
 }
 
 /** Restart the dev server the worker last started, detached, after its container starts again. */
