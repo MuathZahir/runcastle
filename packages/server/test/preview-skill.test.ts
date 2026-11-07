@@ -268,28 +268,22 @@ describe('the feature skill’s preview step', () => {
   })
 })
 
-describe('the tickets reference and the preview', () => {
-  const skill = (): string => read('feature', 'references', 'tickets.md')
+describe('the workers reference and the preview', () => {
+  const skill = (): string => read('feature', 'references', 'workers.md').replace(/\s+/g, ' ')
 
-  it('points a screen-building ticket at one named screen block, never the file', () => {
+  it('points a screen-building worker at one named screen block, never the file', () => {
     const text = skill()
-    const block = text.slice(text.indexOf('<preview-screen-block>'), text.indexOf('</preview-screen-block>'))
-    expect(block).toContain('point that ticket at **one named screen block**')
-    expect(block).toContain('**read only the lines between them**')
-    expect(block).toContain('**is not the implementation**')
-    expect(block).toContain('never copy the mock\'s markup')
-    expect(block).toContain('**Never tell a worker to read the whole file.**')
-    expect(block).toContain('A ticket with no screen does not mention the preview.')
-    expect(block).toContain('A **designed-screen block** holds no mock')
+    expect(text).toContain('point it at one named screen block, never the file')
+    expect(text).toContain('It reads only the lines between `<!-- screen:<name> -->` and `<!-- /screen:<name> -->`')
+    expect(text).toContain('not the implementation')
+    expect(text).toContain("it builds with the project's real components")
   })
 
-  it('tells planners to connect designed components and never restyle them', () => {
+  it('tells workers to connect designed components and never restyle them', () => {
     const text = skill()
-    const rule = text.slice(text.indexOf('<connect-designed-screens>'), text.indexOf('</connect-designed-screens>'))
-    expect(rule).toContain('names the committed component and its design page')
-    expect(rule).toContain('**the look is approved**')
-    expect(rule).toContain('**connect, never restyle**')
-    expect(rule).toContain('swap the sample data for real data')
-    expect(rule).toContain('calls it out in its digest')
+    expect(text).toContain('name the component and its design page, and say the look is approved')
+    expect(text).toContain('connect, never restyle')
+    expect(text).toContain('real data in place of the sample')
+    expect(text).toContain("The states on the design page's switcher are the states it must reach")
   })
 })

@@ -24,6 +24,7 @@ import {
   runs,
   sessions,
   tickets,
+  workers,
 } from '../db/schema'
 import { GateError, InvalidInputError } from '../errors'
 import {
@@ -65,6 +66,7 @@ import {
   updateTicket,
 } from './tickets'
 import { cancelRun, startRun } from '../workflows/runner'
+import { removeFeatureWorkers, workersHoldingReady } from '../workers/service'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
@@ -498,10 +500,10 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
  * is docked to the drive, not the feature, so it is never the feature's session.
  */
 function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
-  // A side session's turns are its own errand, and a scenario chat is docked to
+  // A side session's and a worker's turns are their own errands, and a scenario chat is docked to
   // the drive: the feature's line speaks for the main chat
   // (several-sessions-per-feature decision 12).
-  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side' && s.kind !== 'scenario')
+  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side' && s.kind !== 'worker' && s.kind !== 'scenario')
   const session = open.find((s) => s.status === 'live') ?? open[0]
   // `activeSessionsForFeature` never returns an ended row; the check is what
   // narrows the status to the two this reports, without a cast.
@@ -731,6 +733,7 @@ export function declareReady(
   if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
   const scenario = input.scenario.trim()
   if (!scenario) throw new InvalidInputError('a ready declaration needs a scenario')
+  refuseWhileWorkersOpen(ctx, featureId)
 
   const lastRound = latestBurn(ctx, featureId)
   const declaration = ctx.db
@@ -754,6 +757,20 @@ export function declareReady(
     data: { declarationId: declaration.id, runId: declaration.runId, scenario, warnings },
   })
   return { declaration, warnings }
+}
+
+/**
+ * No "ready" while a worker works or holds work that has not landed
+ * (interactive-workers decision 19): the refusal names each and what to do.
+ */
+function refuseWhileWorkersOpen(ctx: AppCtx, featureId: string): void {
+  const open = workersHoldingReady(ctx, featureId)
+  if (!open.length) return
+  const named = open.map((w) => `"${w.label}" (${w.id}, ${w.status})`).join(', ')
+  throw new GateError(
+    `not ready while workers are open: ${named}. Land or drop each handed-back worker, ` +
+      'and wait for (or drop) the ones still working, then declare ready again.',
+  )
 }
 
 /**
@@ -947,6 +964,8 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
     message: `feature ${feature.slug} archived`,
     data: { from: feature.status },
   })
+  // Each stopped worker keeps a whole copy of the repo; nothing else would clean it up (decision 18).
+  await removeFeatureWorkers(ctx, featureId, 'archived')
   await retireArchivedWorktree(ctx, projectForFeature(ctx, feature), feature)
   return { ...feature, status: 'archived' }
 }
@@ -1010,8 +1029,10 @@ export async function deleteFeature(
     if (run.status === 'running') await cancelRun(run.id)
   }
 
-  // (2) End the live sessions (the same PTY-killing teardown Archive uses).
+  // (2) End the live sessions (the same PTY-killing teardown Archive uses), and
+  // remove the workers' containers and branches (interactive-workers decision 18).
   endLiveSessions(ctx, featureId)
+  await removeFeatureWorkers(ctx, featureId)
 
   // (3) Stop a test drive of THIS feature — it holds the main checkout on the
   // feature branch, which would block the branch delete (a drive of another
@@ -1078,6 +1099,7 @@ function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
     .run()
   ctx.db.delete(tickets).where(eq(tickets.featureId, featureId)).run()
   ctx.db.delete(sessions).where(eq(sessions.featureId, featureId)).run()
+  ctx.db.delete(workers).where(eq(workers.featureId, featureId)).run()
   ctx.db.delete(runs).where(eq(runs.featureId, featureId)).run()
   ctx.db.delete(events).where(eq(events.featureId, featureId)).run()
   ctx.db.delete(features).where(eq(features.id, featureId)).run()

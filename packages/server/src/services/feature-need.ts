@@ -6,12 +6,14 @@ import {
   LeadWakeFailedData,
   type NeedFacts,
   featureNeed,
+  lastHumanAt,
   unresolvedMergeConflict,
 } from '@runcastle/core'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { events, readyDeclarations } from '../db/schema'
+import { events, readyDeclarations, workers } from '../db/schema'
 import { leadState, NO_LEAD, openAskOf, type LeadState } from '../threads/read'
+import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { designsWaiting } from './designs'
 import { getProjectById, hasActiveRun } from './repo'
 import { latestBurn } from './runs'
@@ -147,7 +149,34 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     wakeQueuedAt: timeline.wakeQueuedAt,
     designsWaiting: designs.count,
     oldestDesignWaitingSince: designs.since,
+    workerNeedsYou: workerNeedsYou(ctx, feature.id),
   }
+}
+
+/**
+ * The worker that came to need the human last: one showing "needs you" or one
+ * that failed (interactive-workers decisions 6, 16). The newest, so each worker
+ * entering the need is news to the watcher, and one leaving it is not.
+ */
+function workerNeedsYou(ctx: AppCtx, featureId: string): NeedFacts['workerNeedsYou'] {
+  const w = ctx.db
+    .select({ id: workers.id, label: workers.label, updatedAt: workers.updatedAt, status: workers.status, kind: workers.kind })
+    .from(workers)
+    .where(and(eq(workers.featureId, featureId), inArray(workers.status, ['needs-you', 'failed'])))
+    .orderBy(desc(workers.updatedAt))
+    .all()
+    .find((row) => !justGreeted(row))
+  return w ? { label: w.label, threadId: w.id, since: w.updatedAt } : null
+}
+
+/**
+ * A "+" worker that has only said hello: the human started it a moment ago and
+ * is looking at it, so its first "needs you" is no news (interactive-workers
+ * decision 25). Once they have written to it, it needs them like any worker.
+ */
+function justGreeted(w: { id: string; status: string; kind: string }): boolean {
+  if (w.kind !== 'unassigned' || w.status !== 'needs-you') return false
+  return !hasThreadLog(w.id) || lastHumanAt(readThreadEvents(w.id)) === undefined
 }
 
 /**

@@ -5,7 +5,6 @@ import {
   launchDriveFixSession,
   launchScenarioSession,
   launchSession,
-  launchSideSession,
 } from '../../launcher/launcher'
 import { listFeatureSessions } from '../../services/conversations'
 import { setDependencies, setUpNext } from '../../services/dependencies'
@@ -99,21 +98,10 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
 
-  // New side session, or reopen an ended one by its row id
-  // (several-sessions-per-feature): a conversation beside the main chat, never
-  // refused for what the main chat is doing. Its own door rather than a `kind`
-  // on launchSession, whose chat path is the main chat's alone.
-  openSideSession: publicProcedure
-    .input(z.object({ featureId: z.string(), reopenSessionId: z.string().optional() }))
-    .mutation(async ({ ctx, input }) => {
-      const { sessionId } = await launchSideSession(ctx, input)
-      return { sessionId }
-    }),
-
-  // The chat header's session switcher (decision 10): the main chat, its side
-  // sessions one per conversation, and a live scenario chat. An ended side
-  // session's transcript reads through `project.conversationTranscript`, which
-  // takes any session row and drops the side kickoff by kind.
+  // The feature's sessions (decision 10): the main chat and a live scenario
+  // chat. Side chats are retired (interactive-workers decision 7); the old ones
+  // are read-only threads in `thread.list`, and a feature's other conversations
+  // are its workers (`worker.list`).
   sessions: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => listFeatureSessions(ctx, input.featureId)),

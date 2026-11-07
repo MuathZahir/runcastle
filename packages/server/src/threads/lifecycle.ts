@@ -8,7 +8,7 @@ import { emitForSession } from '../services/events'
 import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { isWorkerThread, workerStopped, workerTurnEnded } from '../workers/service'
+import { getWorker, isWorkerThread, workerAskAnswered, workerAskOpened, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
 import type { ThreadLifecycle } from './host'
 
 /**
@@ -31,7 +31,10 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
   return {
     opening: (row) => resumeHeader(ctx, row),
 
-    briefing: (row) => kickoffFor(ctx, row),
+    briefing: (row) => {
+      const worker = row.kind === 'worker' ? getWorker(ctx, row.id) : undefined
+      return worker ? workerKickoff(ctx, worker) : kickoffFor(ctx, row)
+    },
 
     started(row, source) {
       if (row.featureId && (row.kind === 'chat' || row.kind === 'side')) startDocsWatch(ctx, getFeatureRow(ctx, row.featureId))
@@ -64,6 +67,15 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
         message: `${row.kind} thread's agent stopped (${reason})`,
         data: { sessionId: row.id, kind: row.kind, reason, startedBy },
       })
+    },
+
+    // A worker halted on an ask reads "needs you" until it is answered.
+    askOpened(row, kind) {
+      if (row.kind === 'worker') workerAskOpened(ctx, row.id, kind)
+    },
+
+    askAnswered(row) {
+      if (row.kind === 'worker') workerAskAnswered(ctx, row.id)
     },
   }
 }

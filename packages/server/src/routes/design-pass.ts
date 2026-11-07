@@ -2,6 +2,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from 'bun'
 import type { RuncastleConfig } from '@runcastle/core'
 import { SERVE_HOSTNAME, SERVE_IDLE_TIMEOUT_SECONDS } from '../config'
 import { phoneDesignPort } from '../services/phone-link'
+import { DESIGN_OPEN_PREFIX, WORKER_OPEN_SEGMENT, type WorkerPreviews } from './design-pass-paths'
 
 /**
  * The design pass-through (runcastle-on-your-phone, decision 5): the phone's
@@ -17,13 +18,13 @@ import { phoneDesignPort } from '../services/phone-link'
  * `GET /__runcastle/open/<featureId>?path=/x` sets it and redirects to `/x`, so
  * the page and everything it loads afterwards — scripts, styles, the hot-reload
  * WebSocket — carry it. Staying on its own port keeps project code on a
- * different origin from runcastle's API.
+ * different origin from runcastle's API. A worker's preview is reached the
+ * same way, by worker id (`/__runcastle/open/worker/<workerId>`).
  */
 
 /** The cookie naming the feature whose design server this listener forwards to. */
 export const DESIGN_COOKIE = 'runcastle_design'
-/** The entry path's prefix; the feature id follows it. */
-export const DESIGN_OPEN_PREFIX = '/__runcastle/open/'
+export { DESIGN_OPEN_PREFIX, type WorkerPreviews } from './design-pass-paths'
 
 /**
  * The page's reachability probe (decisions 23, 26): a browser on another
@@ -35,6 +36,9 @@ export const DESIGN_PING_PATH = '/__runcastle/ping'
 
 /** The URL a feature's running design server printed, or undefined when none runs. */
 export type DesignLookup = (featureId: string) => string | undefined
+
+/** What the cookie's value starts with when it names a worker's preview. */
+const WORKER_COOKIE_PREFIX = 'worker:'
 
 /** Headers that belong to one connection and never cross a proxy (RFC 9110 §7.6.1). */
 const HOP_BY_HOP = [
@@ -88,10 +92,17 @@ function page(status: number, title: string, body: string): Response {
 const notRunning = () =>
   page(503, 'The design server is not running', 'Go back and open Design again to start it, or ask the chat to show you a design.')
 
-/** The design server's URL for this request's cookie, or undefined when none runs. */
-function targetFor(req: Request, lookup: DesignLookup): URL | undefined {
-  const featureId = cookieFeature(req)
-  const printed = featureId ? lookup(featureId) : undefined
+/** The worker this request's cookie names, if it names one. */
+function cookieWorker(req: Request): string | undefined {
+  const named = cookieFeature(req)
+  return named?.startsWith(WORKER_COOKIE_PREFIX) ? named.slice(WORKER_COOKIE_PREFIX.length) || undefined : undefined
+}
+
+/** The design server's (or worker preview's) URL for this request's cookie, or undefined when none runs. */
+function targetFor(req: Request, lookup: DesignLookup, workers?: WorkerPreviews): URL | undefined {
+  const named = cookieFeature(req)
+  const workerId = cookieWorker(req)
+  const printed = workerId ? workers?.url(workerId) : named ? lookup(named) : undefined
   if (!printed) return undefined
   try {
     return new URL(printed)
@@ -100,22 +111,25 @@ function targetFor(req: Request, lookup: DesignLookup): URL | undefined {
   }
 }
 
-/** The entry path: remember the feature in a cookie, then go to the page asked for. */
+/** The entry path: remember the feature (or the worker) in a cookie, then go to the page asked for. */
 function open(url: URL): Response {
-  let featureId = ''
+  let named = ''
   try {
-    featureId = decodeURIComponent(url.pathname.slice(DESIGN_OPEN_PREFIX.length))
+    named = decodeURIComponent(url.pathname.slice(DESIGN_OPEN_PREFIX.length))
   } catch {
     // a malformed escape names no feature
   }
+  const workerId = named.startsWith(WORKER_OPEN_SEGMENT) ? named.slice(WORKER_OPEN_SEGMENT.length) : undefined
+  const id = workerId ?? named
   const path = url.searchParams.get('path') ?? '/'
-  if (!featureId || featureId.includes('/')) return page(404, 'No such design', 'This link names no feature.')
+  if (!id || id.includes('/')) return page(404, 'No such design', 'This link names no feature.')
   if (!isLocalPath(path)) return page(400, 'Not a page of this design', 'The link points somewhere else, so it is not followed.')
+  const value = workerId ? `${WORKER_COOKIE_PREFIX}${workerId}` : id
   return new Response(null, {
     status: 302,
     headers: {
       location: path,
-      'set-cookie': `${DESIGN_COOKIE}=${encodeURIComponent(featureId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+      'set-cookie': `${DESIGN_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
       'cache-control': 'no-store',
     },
   })
@@ -140,9 +154,10 @@ function rewriteOrigins(headers: Headers, target: URL): void {
  * The listener's HTTP side, a function of the request and the lookup alone so
  * tests drive it against a stub server without binding this port. The entry
  * path sets the cookie; every other request is forwarded to the cookie's
- * design server and its response streamed back unbuffered.
+ * design server and its response streamed back unbuffered. A worker's
+ * preview first wakes the worker's sandbox, should it have stopped.
  */
-export async function designPassFetch(req: Request, lookup: DesignLookup): Promise<Response> {
+export async function designPassFetch(req: Request, lookup: DesignLookup, workers?: WorkerPreviews): Promise<Response> {
   const url = new URL(req.url)
   if (url.pathname === DESIGN_PING_PATH) {
     return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' } })
@@ -150,7 +165,15 @@ export async function designPassFetch(req: Request, lookup: DesignLookup): Promi
   if (url.pathname.startsWith(DESIGN_OPEN_PREFIX)) {
     return req.method === 'GET' ? open(url) : page(405, 'Not allowed', 'Open the design with a link.')
   }
-  const target = targetFor(req, lookup)
+  const workerId = cookieWorker(req)
+  if (workerId && workers) {
+    try {
+      await workers.wake(workerId)
+    } catch {
+      return page(503, 'The worker’s sandbox would not start', 'Open the worker’s chat to see what went wrong.')
+    }
+  }
+  const target = targetFor(req, lookup, workers)
   if (!target) return notRunning()
 
   const headers = withoutHopByHop(req.headers)
@@ -250,8 +273,8 @@ function isWebSocketUpgrade(req: Request): boolean {
 }
 
 /** Upgrade a WebSocket bound for the cookie's design server; a response when it cannot be. */
-function upgrade(req: Request, server: Server<PassSocketData>, lookup: DesignLookup): Response | undefined {
-  const target = targetFor(req, lookup)
+function upgrade(req: Request, server: Server<PassSocketData>, lookup: DesignLookup, workers?: WorkerPreviews): Response | undefined {
+  const target = targetFor(req, lookup, workers)
   if (!target) return notRunning()
   const url = new URL(req.url)
   const ws = new URL(`${url.pathname}${url.search}`, target)
@@ -274,7 +297,7 @@ function upgrade(req: Request, server: Server<PassSocketData>, lookup: DesignLoo
  * and skipped — the phone's Design screen is the only thing that needs it, and
  * it must never stop runcastle booting.
  */
-export function serveDesignPass(config: RuncastleConfig, lookup: DesignLookup): Server<PassSocketData> | null {
+export function serveDesignPass(config: RuncastleConfig, lookup: DesignLookup, workers?: WorkerPreviews): Server<PassSocketData> | null {
   const port = phoneDesignPort(config)
   try {
     return Bun.serve<PassSocketData>({
@@ -283,9 +306,9 @@ export function serveDesignPass(config: RuncastleConfig, lookup: DesignLookup): 
       idleTimeout: SERVE_IDLE_TIMEOUT_SECONDS,
       fetch(req, server) {
         if (isWebSocketUpgrade(req) && !new URL(req.url).pathname.startsWith(DESIGN_OPEN_PREFIX)) {
-          return upgrade(req, server, lookup)
+          return upgrade(req, server, lookup, workers)
         }
-        return designPassFetch(req, lookup)
+        return designPassFetch(req, lookup, workers)
       },
       websocket: designPassWebSocket,
     })

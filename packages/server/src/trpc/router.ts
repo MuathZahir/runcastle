@@ -15,6 +15,7 @@ import { systemRouter } from './routers/system'
 import { testNotesRouter } from './routers/test-notes'
 import { threadRouter } from './routers/thread'
 import { ticketRouter } from './routers/ticket'
+import { workerRouter } from './routers/worker'
 
 /**
  * The app router (SPEC §4). apps/web builds against exactly this shape via
@@ -37,6 +38,7 @@ export const appRouter = router({
   thread: threadRouter,
   phoneLink: phoneLinkRouter,
   push: pushRouter,
+  worker: workerRouter,
 })
 
 export type AppRouter = typeof appRouter

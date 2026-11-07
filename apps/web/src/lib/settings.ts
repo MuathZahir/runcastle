@@ -345,13 +345,13 @@ const FIELD_META: Record<string, FieldMeta> = {
     searchTerms: ['usage', 'ping', 'telemetry', 'tracking', 'analytics', 'privacy'],
   },
   burnConcurrency: {
-    label: 'Concurrency',
+    label: 'Agents working at once',
     tooltip:
-      'Tickets a round works in parallel (1–8). Each is a full worker with its own container, sizing its install and test workers from the whole core count — lower it if suites die under load.',
+      'Agents mid-turn at once across the machine (1–8): ticket agents and workers together. Each has its own container, sizing its install and test workers from the whole core count — lower it if suites die under load. A worker over the limit waits, queued, and starts by itself; one waiting for you or stopped counts for nothing.',
     control: 'number',
     page: 'burns',
     group: 'width',
-    unit: 'tickets at once',
+    unit: 'ticket agents and workers at once',
   },
   burnMaxIterations: {
     label: 'Iterations per attempt',

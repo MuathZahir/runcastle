@@ -169,29 +169,61 @@ export function showFile(
   input: { path: string; caption?: string | undefined },
 ): { shown: true; name: string; as: ShownAs } {
   const { full, real, size } = showableFile(ctx, session, input.path, 'show_file')
+  const inWorktree = isInside(resolve(session.worktreePath), full)
+  return logShown(ctx, session.id, {
+    real,
+    name: basename(full),
+    path: inWorktree ? relative(session.worktreePath, full).replaceAll('\\', '/') : full,
+    size,
+    caption: input.caption,
+  })
+}
 
-  const name = basename(full)
+/**
+ * Show a file runcastle itself fetched from where the session's agent runs (a
+ * worker's sandbox, interactive-workers decision 9): `file` is runcastle's own
+ * copy on the host, `path` the name the agent knows it by. Only the size cap
+ * applies: the places check guards the host's disk, and this copy is runcastle's.
+ */
+export function showFetchedFile(
+  ctx: AppCtx,
+  sessionId: string,
+  input: { file: string; path: string; caption?: string | undefined },
+): { shown: true; name: string; as: ShownAs } {
+  const size = statSync(input.file).size
+  if (size > SHOWN_MAX_BYTES) {
+    throw new GateError(`${input.path} is ${Math.ceil(size / 1_000_000)} MB, and show_file takes at most 100 MB`)
+  }
+  return logShown(ctx, sessionId, { real: input.file, name: basename(input.path), path: input.path, size, caption: input.caption })
+}
+
+/** Copy a checked file beside the thread's log and log it as shown. */
+function logShown(
+  ctx: AppCtx,
+  sessionId: string,
+  input: { real: string; name: string; path: string; size: number; caption?: string | undefined },
+): { shown: true; name: string; as: ShownAs } {
+  const { real, name, size } = input
   const ext = storedExt(name)
   const as = sortFile(ext, readHead(real))
   const file = `${newId('file')}.${ext}`
-  const dir = join(sessionDir(session.id), 'shown')
+  const dir = join(sessionDir(sessionId), 'shown')
   mkdirSync(dir, { recursive: true })
   copyFileSync(real, join(dir, file))
 
-  const inWorktree = isInside(resolve(session.worktreePath), full)
   const caption = input.caption?.replace(/\s+/g, ' ').trim()
   const shown: ShownFile = {
     id: file.slice(0, -ext.length - 1),
-    src: shownUrl(session.id, file),
+    src: shownUrl(sessionId, file),
     name,
-    path: inWorktree ? relative(session.worktreePath, full).replaceAll('\\', '/') : full,
+    path: input.path,
     size,
     as,
     ...(caption ? { caption } : {}),
   }
   // A conversation from before logs reads back from its transcript until it has one.
-  seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'file_shown', file: shown })
+  seedFromTranscript(ctx, sessionId)
+  appendThreadEvent(sessionId, { type: 'file_shown', file: shown })
   return { shown: true, name, as }
 }
 

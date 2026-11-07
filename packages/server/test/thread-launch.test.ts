@@ -157,21 +157,24 @@ describe('the feature’s main chat keeps one row', () => {
 })
 
 describe('each conversation kind’s ACP launch', () => {
-  it('runs a feature chat and a side thread without approvals, briefed as the lead and as a side session', async () => {
+  it('runs a feature chat without approvals, briefed as the lead', async () => {
     const f = await feature()
     const main = await chat(f.id)
-    const side = (await caller().thread.new({ featureId: f.id })).threadId
 
-    for (const id of [main, side]) {
-      const spec = await acpLaunchOf(ctx, id)
-      expect(spec.sessionMode).toBe('bypassPermissions')
-      const options = (spec.sessionMeta.claudeCode as { options: { extraArgs: Record<string, string> } }).options
-      expect(Object.keys(options.extraArgs)).toEqual(
-        expect.arrayContaining(['settings', 'mcp-config', 'plugin-dir', 'append-system-prompt-file']),
-      )
-    }
+    const spec = await acpLaunchOf(ctx, main)
+    expect(spec.sessionMode).toBe('bypassPermissions')
+    const options = (spec.sessionMeta.claudeCode as { options: { extraArgs: Record<string, string> } }).options
+    expect(Object.keys(options.extraArgs)).toEqual(
+      expect.arrayContaining(['settings', 'mcp-config', 'plugin-dir', 'append-system-prompt-file']),
+    )
     expect(await briefOf(ctx, main)).toContain("You are this feature's **lead**")
-    expect(await briefOf(ctx, side)).toContain('You are a **side session**')
+  })
+
+  // interactive-workers decisions 7, 23: an old side chat is a read-only transcript.
+  it('starts no agent in an old side chat', async () => {
+    const f = await feature()
+    const side = createSessionRow(ctx, { kind: 'side', featureId: f.id, worktreePath: worktreeDir(project.id, f.slug) })
+    await expect(acpLaunchInput(ctx, side)).rejects.toThrow(/old side chat/)
   })
 
   it('runs the orchestrator in its own worktree without approvals', async () => {
@@ -255,17 +258,25 @@ describe('Codex hook trust', () => {
 })
 
 describe('thread.new', () => {
-  it('opens a side thread on a feature with nothing said and nothing started', async () => {
+  // interactive-workers decision 7: a feature's new threads are workers, started by worker.startUnassigned.
+  it('opens no side thread on a feature', async () => {
     const fake = fakeHost()
     const f = await feature()
     const main = await chat(f.id)
 
-    const { threadId } = await caller().thread.new({ featureId: f.id })
+    await expect(caller().thread.new({ featureId: f.id })).rejects.toThrow(/start a worker/)
 
-    expect(getSessionRow(ctx, threadId)).toMatchObject({ kind: 'side', featureId: f.id, openedBeside: main })
-    expect(promptsOf(threadId)).toEqual([])
+    expect((await caller().thread.list({ featureId: f.id })).map((t) => t.id)).toEqual([main])
     expect(fake.processes).toEqual([])
-    expect((await caller().thread.list({ featureId: f.id })).map((t) => t.id)).toContain(threadId)
+  })
+
+  it('takes no message in an old side chat, and logs none', async () => {
+    fakeHost()
+    const f = await feature()
+    const side = createSessionRow(ctx, { kind: 'side', featureId: f.id, worktreePath: worktreeDir(project.id, f.slug) }).id
+
+    await expect(caller().thread.send({ threadId: side, text: 'still there?' })).rejects.toThrow(/read-only transcript/)
+    expect(promptsOf(side)).toEqual([])
   })
 
   it('opens a fresh orchestrator chat in the project’s worktree, with nothing started', async () => {
@@ -297,10 +308,7 @@ describe('thread.new', () => {
     const fake = fakeHost({ model: { id: 'gpt-5.6-terra', label: '5.6 Terra' } })
     vi.spyOn(codexRuntime, 'checkReady').mockReturnValue({ ok: true })
     const f = await feature()
-    const threads = [
-      (await caller().thread.new({ projectId: project.id })).threadId,
-      (await caller().thread.new({ featureId: f.id })).threadId,
-    ]
+    const threads = [(await caller().thread.new({ projectId: project.id })).threadId]
 
     for (const threadId of threads) {
       expect(getSessionRow(ctx, threadId)).toMatchObject({ runtime: 'codex', model: 'gpt-5.6-terra' })
@@ -325,21 +333,15 @@ describe('thread.new', () => {
 
   it('briefs an empty thread before the human’s first words, and only the first time', async () => {
     fakeHost()
-    const f = await feature()
-    const side = (await caller().thread.new({ featureId: f.id })).threadId
     const orchestrator = (await caller().thread.new({ projectId: project.id })).threadId
 
-    await caller().thread.send({ threadId: side, text: 'what is decision 4?' })
     await caller().thread.send({ threadId: orchestrator, text: 'plan the audit' })
-    await caller().thread.send({ threadId: side, text: 'and 5?' })
+    await caller().thread.send({ threadId: orchestrator, text: 'and the export?' })
 
-    const sideSaid = promptsOf(side)
-    expect(sideSaid.map((p) => p.source)).toEqual(['runcastle', 'human', 'human'])
-    expect(sideSaid[0].text).toContain('[runcastle] Proceed as a side session')
-    expect(sideSaid.slice(1).map((p) => p.text)).toEqual(['what is decision 4?', 'and 5?'])
     const projectSaid = promptsOf(orchestrator)
-    expect(projectSaid.map((p) => p.source)).toEqual(['runcastle', 'human'])
+    expect(projectSaid.map((p) => p.source)).toEqual(['runcastle', 'human', 'human'])
     expect(projectSaid[0].text).toMatch(/\/runcastle:/)
+    expect(projectSaid.slice(1).map((p) => p.text)).toEqual(['plan the audit', 'and the export?'])
   })
 
   it('sends an empty thread’s briefing and the human’s first words as one prompt in one turn', async () => {
@@ -352,27 +354,6 @@ describe('thread.new', () => {
     const [briefing] = promptsOf(threadId)
     expect(sentPrompts(fake)).toEqual([`${briefing.text}\n\nHello`])
     expect(readThreadEvents(threadId).filter((e) => e.type === 'turn_started')).toHaveLength(1)
-  })
-
-  // decision 12: a held opening and the ask are one prompt, so the opening says the ask follows rather than to wait for it.
-  it('tells a side thread the human’s message follows its opening, and names it by that message', async () => {
-    const fake = fakeHost({
-      turn: async (t) => {
-        await t.update({ sessionUpdate: 'session_info_update', title: 'Review probe side session' })
-        await t.say('Decision 4 keeps five things from the terminal.')
-      },
-    })
-    const f = await feature()
-    const side = (await caller().thread.new({ featureId: f.id })).threadId
-
-    await caller().thread.send({ threadId: side, text: 'what is decision 4?' })
-
-    await vi.waitFor(() => expect(readThreadEvents(side).some((e) => e.type === 'turn_ended')).toBe(true))
-    const [sent] = sentPrompts(fake)
-    expect(sent).toMatch(/^\[runcastle\] Proceed as a side session/)
-    expect(sent.endsWith("The human's message follows.\n\nwhat is decision 4?")).toBe(true)
-    expect(sent).not.toContain("Wait for the human's ask")
-    expect((await caller().thread.list({ featureId: f.id })).find((t) => t.id === side)?.title).toBe('what is decision 4?')
   })
 
   it('ends every held opening by saying the human’s message follows', async () => {
@@ -443,7 +424,7 @@ describe('boot reconciliation', () => {
 })
 
 describe('permission posture by kind and runtime', () => {
-  const modeOf = async (kind: 'chat' | 'side', runtime: AgentRuntime) => {
+  const modeOf = async (kind: 'chat', runtime: AgentRuntime) => {
     const f = await feature()
     const id = runtime === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5'
     const row = createSessionRow(ctx, {
@@ -457,9 +438,7 @@ describe('permission posture by kind and runtime', () => {
 
   it.each([
     ['chat', 'claude-code', 'bypassPermissions'],
-    ['side', 'claude-code', 'bypassPermissions'],
     ['chat', 'codex', 'bypassPermissions'], // danger-full-access, approvals never
-    ['side', 'codex', 'bypassPermissions'],
   ] as const)('%s on %s launches with %s', async (kind, runtime, mode) => {
     expect(await modeOf(kind, runtime)).toBe(mode)
   })

@@ -1,18 +1,17 @@
-# Running rounds
+# Running the review round
 
-Load this when you are about to dispatch a round, or you have just been woken by
-one coming back.
+Load this when you are about to dispatch the review round, or you have just
+been woken by it coming back.
 
-A round is how workers build: each gets one ticket, a clean sandbox and the full
-brief, and works on its own branch that lands on the feature branch. You
-dispatch it, you are woken when it comes back, you check what it did, and you
-plan the next move.
+A round now runs only the review ticket: one review agent, a clean sandbox, the
+feature branch as it stands. Build work goes to workers (`./workers.md`), never
+to a round.
 
-Start the first round only after the human's explicit yes in chat, and ask again
-before any round the agreed plan did not settle (SKILL.md, "The human's yes").
-If designs wait uncommitted in the worktree, the human's yes commits only the
-ones they approved, and you name and ask about the rest; an orchestrator relay
-never approves (`./design.md`, section 8).
+The human's yes to the plan covers the review round when the plan says it is
+coming; otherwise ask first (SKILL.md, "The human's yes"). If designs wait
+uncommitted in the worktree, the human's yes commits only the ones they
+approved, and you name and ask about the rest; an orchestrator relay never
+approves (`./design.md`, section 8).
 
 ## What you run on
 
@@ -23,66 +22,35 @@ never approves (`./design.md`, section 8).
 - `driveActive` — the human is test-driving this feature right now.
 - `stopped` — the human pressed Stop and has not replied since.
 - `waitingReason` — why the feature is waiting on the human, if it is.
-- `burnConcurrency` — how many workers the project runs at once.
 
-## Plan a round
+## Dispatch it
 
-1. **Write the tickets** with `emit_tickets`, or reshape pending ones with
-   `update_ticket` / `cancel_ticket`, following `./tickets.md`. Then **dispatch**
-   with `dispatch_round({ seqs })`, naming exactly the pending tickets this round
-   covers. Tickets you do not name wait for a later round. A ticket may stay
-   blocked by tickets that landed or were cancelled in an earlier round: those
-   count as satisfied. A blocker that is still pending or failed must be named
-   in the same round.
-2. **Every worker task names its deliverable and how it is checked.** A worker
-   with no stated check reports success on its own terms. Say what is built and
-   what proves it: a test where one is worth writing, the command that passes, the screen
-   that shows it.
-3. **Keep the round to `burnConcurrency` workers or fewer.** A soft cap: workers
-   past it only queue, and a wider round has more to reconcile when it returns.
-4. **Contract first when the work spans layers.** When workers on different
-   layers must agree on a shape — types, an API, a schema — make one ticket land
-   that contract in code and make the others `blockedBy` it in the same round.
-   **Contracts live in code, never in a doc**: workers trust the code.
-5. **UI work names the design references.** A ticket that touches UI tells its
-   worker which design docs to follow — the project's own design system docs and
-   any design references in this feature's docs — and asks it to plan the
-   screen, build it, then critique it against those docs with screenshots.
+1. **Land or drop every worker first**, so the review sees the whole feature.
+2. **Write the review ticket** with `emit_tickets`, following `./tickets.md`.
+3. **Dispatch** with `dispatch_round({ seqs })`, naming the review ticket.
 
-Workers do not talk to each other or to you. They report through their digests,
-their ticket status and their commits. A worker that finds the contract wrong
-stops and says so in its digest; reconciling it is your job, between rounds.
+## When it comes back
 
-## When a round comes back
+You are woken with the round's outcome, the ticket's status, the verify-gate
+result, the review findings and where the digest is.
 
-You are woken with the round's outcome, each ticket's status, the verify-gate
-result, any review findings and where the digests are. That message is the
-whole round: do not fetch the feature again to see it.
-
-1. **Trust the record over the prose.** Ticket status, the gates and the commits
-   are what happened; a digest is a worker's account of it. Read a digest with
-   `get_ticket({ seq })` where you need its detail (a failed ticket, a finding to
-   fix), and where the two disagree, believe the record.
-2. **Reconcile.** Did a worker report the contract wrong, or change something
-   another relied on? Did a decision turn out wrong? Fix the contract in code,
-   amend `decisions.md` and `spec.md` when what was decided changed, and update
-   the pending tickets. A contract reported wrong is a reason to re-plan.
-3. **Handle review findings.** Read `reviewEvidence` (the latest review's
+1. **Trust the record over the prose.** The ticket's status, the gates and the
+   findings are what happened; the digest is the review agent's account of it.
+   Read it with `get_ticket({ seq })`, and where the two disagree, believe the
+   record.
+2. **Handle the findings.** Read `reviewEvidence` (the latest review's
    DIGEST.md, screenshots and walkthrough) before planning more work. A finding
-   stays open until you resolve it: fix it in a round (emit the fix ticket with
-   `originFindingId` and the finding closes when that ticket lands) or yourself
-   (`resolve_finding`), or dismiss it and say why. A review reports useless
-   tests as low-severity observations, never defects: when the round you are
-   planning already mints a fix ticket, fold them into it (one acceptance
-   criterion: delete or rewrite the named tests), so they go at no extra sandbox
-   cost. Never mint a ticket only to delete useless tests.
-4. **Decide the next move**:
-   - small leftovers → fix them yourself;
-   - more work, or a failed ticket to retry → plan the next round;
-   - a question only the human can answer → call `wait_for_you({ why })` (kind `"plan"` when it is a yes to start the next round), then ask it as the last thing in the turn;
+   stays open until you resolve it: fix it yourself or with a worker, then
+   `resolve_finding`; or dismiss it and say why. A review reports useless tests
+   as low-severity observations, never defects: delete or rewrite the named
+   tests yourself, with the other fixes.
+3. **Decide the next move**:
+   - small fixes → do them yourself;
+   - a larger fix → a worker (`./workers.md`);
+   - a failed review → dispatch it again, or fix what stopped it;
+   - a question only the human can answer → call `wait_for_you({ why })`, then ask it as the last thing in the turn;
    - the feature does what the plan says → run the checks and declare ready (SKILL.md, "Ready for the human").
 
-A failed round is just what came back. Re-plan, retry or fix it yourself.
 `declare_ready` warns when the last round had failures; pass that on.
 
 ## While and after the human drives
@@ -96,8 +64,5 @@ new scenario.
 
 `dispatch_round` is refused, with the reason, for a draft or shipped feature,
 while a round is already running, while the human is driving this feature, and
-after the human pressed Stop until they have replied. It is also refused when a
-ticket you name is blocked by a ticket outside the round that is still pending
-or failed (or does not exist): the refusal lists each such edge, and the fix is
-to name that blocker in the round too. `stop_round` stops the running round;
-work that already landed stays.
+after the human pressed Stop until they have replied. `stop_round` stops the
+running round; work that already landed stays.

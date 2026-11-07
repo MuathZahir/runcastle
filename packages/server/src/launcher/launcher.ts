@@ -16,7 +16,7 @@ import { DEFAULT_RUNTIME, newId, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
-import { chatKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor, sideKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
@@ -257,7 +257,7 @@ export function heldOpening(line: string): string {
  * tagged as runcastle's, as their launchers tag them.
  */
 export function kickoffFor(ctx: AppCtx, row: SessionRow, opts: { held?: boolean } = {}): string {
-  const line = openingLine(ctx, row, opts.held === true)
+  const line = openingLine(ctx, row)
   return opts.held ? heldOpening(line) : line
 }
 
@@ -266,8 +266,6 @@ export function openingSummary(row: SessionRow, selfPlan = false): string | unde
   switch (row.kind) {
     case 'chat':
       return selfPlan ? 'Started this chat to plan the feature by itself' : 'Started this chat'
-    case 'side':
-      return 'Started this side chat'
     case 'project':
       return 'Started this orchestrator chat'
     case 'drive-fix':
@@ -277,13 +275,11 @@ export function openingSummary(row: SessionRow, selfPlan = false): string | unde
   }
 }
 
-function openingLine(ctx: AppCtx, row: SessionRow, held: boolean): string {
+function openingLine(ctx: AppCtx, row: SessionRow): string {
   const runtime = row.runtime ?? DEFAULT_RUNTIME
   switch (row.kind) {
     case 'chat':
       return tagRuncastlePrompt(chatKickoffHeader(ctx, getFeatureRow(ctx, row.featureId as string), runtime))
-    case 'side':
-      return tagRuncastlePrompt(sideKickoff(ctx, getFeatureRow(ctx, row.featureId as string), row.id, runtime, held))
     default:
       return kickoffLineFor(row.kind, undefined, runtime)
   }
@@ -351,7 +347,7 @@ async function openMainChat(
     )
   }
   if (input.kind === 'side') {
-    throw new GateError('a side session is opened by New side session, beside the main chat.')
+    throw new GateError('side chats are retired: start a worker with "+" on the feature instead.')
   }
   if (input.kind !== 'chat') throw new GateError(`a ${input.kind} conversation is opened from its project`)
   // Messages reach the lead as prompts into its chat now (`deliverToLead`); no run carries them.
@@ -446,92 +442,6 @@ function newChatRow(
     worktreePath,
     model,
   })
-}
-
-export interface LaunchSideSessionInput {
-  featureId: string
-  /** A `side` row of this feature to reopen. Absent opens a new one. */
-  reopenSessionId?: string
-}
-
-/**
- * A new side session's opening prompt: its role (`sideKickoffFor`) followed by
- * the same feature-state header the chat kickoff carries. The one place a side
- * session's first message is composed, so what it is told about the main chat
- * grows here. `held`: the form that rides ahead of the human's first message.
- */
-export function sideKickoff(
-  ctx: AppCtx,
-  feature: Feature,
-  sessionId: string,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-  held = false,
-): string {
-  return mainChatContext(
-    ctx,
-    feature,
-    sessionId,
-    chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', held ? sideKickoffFor(true) : undefined, runtime)),
-  )
-}
-
-/**
- * A new side thread's row (several-sessions-per-feature): beside the feature's
- * main chat, on the chat's model step and talk worktree, recording the main
- * chat it was opened beside. Nothing is said until its first prompt.
- */
-export async function createSideThread(ctx: AppCtx, feature: Feature): Promise<SessionRow> {
-  requireNotDraft(feature)
-  const project = projectForFeature(ctx, feature)
-  const model = resolveModelEntry('chat', rosterConfig(ctx), project)
-  const worktreePath = await ensureFeatureWorktree(ctx, project, feature)
-  const mainChat = newestThread(ctx, { featureId: feature.id }, 'chat')
-  const row = createSessionRow(ctx, {
-    featureId: feature.id,
-    kind: 'side',
-    worktreePath,
-    model,
-    ...(mainChat ? { openedBeside: mainChat.id } : {}),
-  })
-  emit(ctx, feature.id, {
-    type: 'session.side_opened',
-    message: 'side session opened beside the main chat',
-    data: { sessionId: row.id, openedBeside: mainChat?.id ?? null, reopened: false },
-  })
-  return row
-}
-
-/**
- * Open a side session (backs `feature.openSideSession`): an extra conversation
- * on the feature beside its main chat. A reopen is the side thread itself —
- * it opens as it is, and its next prompt picks its conversation back up. A new
- * one is briefed with {@link sideKickoff} as its first prompt.
- */
-export async function launchSideSession(
-  ctx: AppCtx,
-  input: LaunchSideSessionInput,
-  opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
-  const feature = getFeatureRow(ctx, input.featureId)
-  requireNotDraft(feature)
-
-  if (input.reopenSessionId) {
-    const reopen = getSessionRow(ctx, input.reopenSessionId)
-    if (reopen?.kind !== 'side' || reopen.featureId !== feature.id) {
-      throw new GateError(`no side session ${input.reopenSessionId} on ${feature.slug} to reopen`)
-    }
-    return { sessionId: reopen.id, resumed: underway(reopen) }
-  }
-
-  assertRuntimeReady(resolveModelEntry('chat', rosterConfig(ctx), projectForFeature(ctx, feature)).runtime, opts)
-  const row = await createSideThread(ctx, feature)
-  emit(ctx, feature.id, {
-    type: 'session.launching',
-    message: 'launching a new side session',
-    data: { sessionId: row.id, kind: 'side', worktreePath: row.worktreePath, ...modelStamp(row) },
-  })
-  await sayToThread(ctx, row, kickoffFor(ctx, row), 'opening side chat with its briefing', opts, openingSummary(row))
-  return { sessionId: row.id, resumed: false }
 }
 
 /**

@@ -1,0 +1,1 @@
+ALTER TABLE `workers` ADD `dev_server` integer DEFAULT false NOT NULL;

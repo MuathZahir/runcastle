@@ -23,6 +23,7 @@ function facts(over: Partial<NeedFacts> = {}): NeedFacts {
     wakeQueuedAt: null,
     designsWaiting: 0,
     oldestDesignWaitingSince: null,
+    workerNeedsYou: null,
     ...over,
   }
 }
@@ -51,6 +52,18 @@ describe('featureNeed', () => {
 
   it('reads a standing merge conflict', () => {
     expect(featureNeed(facts({ conflictSince: 6_000 }), NOW)).toMatchObject({ kind: 'conflict', words: 'Merge conflict', since: 6_000 })
+  })
+
+  it('names a worker that needs the human, opening its thread, even while the lead works and on a held feature', () => {
+    const worker = { label: 'Header', threadId: 'sess_w', since: 8_000 }
+    expect(featureNeed(facts({ workerNeedsYou: worker, agentWorking: true, held: true, waiting: waiting('which model?') }), NOW)).toEqual({
+      kind: 'worker',
+      words: 'Header needs you',
+      why: 'Header',
+      since: 8_000,
+      threadId: 'sess_w',
+      held: false,
+    })
   })
 
   it('reads a waiting reason with no kind, or kind answer, as an answer with the reason', () => {

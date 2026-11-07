@@ -167,7 +167,7 @@ describe('Settings → Workers', () => {
     open()
 
     const units: [string, string][] = [
-      ['Concurrency', 'tickets at once · default on this machine: 3'],
+      ['Agents working at once', 'ticket agents and workers at once · default on this machine: 3'],
       ['Iterations per attempt', 'turns'],
       ['Attempts per ticket', 'attempts'],
       ['Conflict resolver passes', 'passes before asking you'],
@@ -187,7 +187,7 @@ describe('Settings → Workers', () => {
   it('shows this machine’s default concurrency as a ghost, not as a value', () => {
     open()
 
-    const width = screen.getByLabelText('Concurrency') as HTMLInputElement
+    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
     expect(width.value).toBe('')
     expect(width.getAttribute('placeholder')).toBe('3')
 
@@ -215,7 +215,7 @@ describe('Settings → Workers', () => {
 
     expect(screen.getByText('Sandcastle image')).toBeTruthy()
     expect(screen.queryByText('Container runtime')).toBeNull()
-    expect(screen.queryByLabelText('Concurrency')).toBeNull()
+    expect(screen.queryByLabelText('Agents working at once')).toBeNull()
     expect(screen.queryByText('Width & retries')).toBeNull()
   })
 

@@ -19,7 +19,7 @@ export interface SidebarThreads {
   /** The thread in front; null when none is (the Conversations page). */
   current: string | null
   pick: (threadId: string) => void
-  /** New thread: a side thread on a feature, a new chat on the project. */
+  /** New thread: a worker with no assignment on a feature, a new chat on the project. */
   newThread: () => void
   /** The drive's scenario chat while its errand is open: its row's menu closes it. */
   errand?: { threadId: string; close: () => void }
