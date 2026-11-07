@@ -226,6 +226,8 @@ export interface UsageLimit {
   percent: number
   /** When it resets, said for a person: "3:40 pm", "Thu 9:00 am". */
   resets: string
+  /** When it resets, ms since the epoch; absent when the runtime did not say. */
+  resetsAt?: number
 }
 
 /** The usage popover's numbers: the account's limits and which plan it is on. */
@@ -287,6 +289,19 @@ export const PromptDisplay = z.union([
       threadId: z.string(),
     }),
   }),
+  /**
+   * A feature's lead handed back to the orchestrator that holds it
+   * (agents-are-woken-only-when-it-matters decision 21): the lead's summary and
+   * one line of the feature's state runcastle adds.
+   */
+  z.object({
+    featureHandback: z.object({
+      featureId: z.string(),
+      title: z.string(),
+      summary: z.string(),
+      state: z.string(),
+    }),
+  }),
   /** A worker failed (interactive-workers decision 16): its container died, its setup failed or its agent crashed. */
   z.object({ workerFailed: z.object({ workerId: z.string(), label: z.string(), failure: z.string() }) }),
 ])
@@ -315,6 +330,11 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     hidden: z.boolean().optional(),
     /** What the human reads of a runcastle prompt; the agent never gets it. */
     display: PromptDisplay.optional(),
+    /**
+     * Held for the agent's next prompt (`PromptOptions.hold`): it started no turn
+     * and answers nothing, so it neither waits for an agent nor ends a reply.
+     */
+    held: z.boolean().optional(),
     /** A compaction runcastle sent, and why: its turn is no reply and moves nothing the human waits on. */
     compaction: CompactTrigger.optional(),
   }),
@@ -422,7 +442,12 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
-  z.object({ type: z.literal('notice'), text: z.string() }),
+  z.object({
+    type: z.literal('notice'),
+    text: z.string(),
+    /** A phrase of `text` that opens a setting (the usage limit's "carry on by itself"). */
+    setting: z.object({ page: z.string(), field: z.string(), phrase: z.string() }).optional(),
+  }),
   /**
    * Runcastle's own words reached the agent's conversation without being a
    * message in the thread: an opening that rode with a prompt (a resumed main
@@ -463,6 +488,8 @@ export type ThreadItem =
       from?: 'runcastle'
       /** What the human reads of a runcastle line, in place of its text. */
       display?: PromptDisplay
+      /** Held for the agent's next turn: it woke nobody, so no answer follows it. */
+      held?: boolean
       /** When the line arrived; carried with `display`, for a news block's "6m ago". */
       at?: number
     }
@@ -506,7 +533,7 @@ export type ThreadItem =
   /** Something went wrong: a failed turn, an agent that would not start. */
   | { kind: 'error'; id: string; message: string }
   /** A quiet line the thread says about itself. */
-  | { kind: 'notice'; id: string; text: string }
+  | { kind: 'notice'; id: string; text: string; setting?: { page: string; field: string; phrase: string } }
 
 /** Where a thread is, which is all the human is told about its process. */
 export type ThreadState = 'working' | 'waiting' | 'idle'
@@ -677,6 +704,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   let lastMessage: string | undefined
   for (const e of outsideCompactions(liveEvents(events))) {
     if (e.type === 'prompt') {
+      // A held line rides the next prompt: it answers nothing the agent said.
+      if (e.held) continue
       answering = !e.hidden
       replied = false
     } else if (e.type === 'turn_started') {
@@ -1037,8 +1066,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           ...(e.steered ? { steered: true } : {}),
           ...(e.source === 'runcastle' ? { from: 'runcastle' as const } : {}),
           ...(e.display ? { display: e.display, at: e.at } : {}),
+          ...(e.held ? { held: true } : {}),
         }
-        if (view.process !== 'running' && !e.steered) {
+        if (view.process !== 'running' && !e.steered && !e.held) {
           // Only the latest prompt waits visibly: a held opening's next prompt takes its place.
           if (startingPrompt) delete startingPrompt.starting
           item.starting = true
@@ -1212,7 +1242,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'notice':
-        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text })
+        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text, ...(e.setting ? { setting: e.setting } : {}) })
         break
       case 'file_shown': {
         const open = turn as Turn | null

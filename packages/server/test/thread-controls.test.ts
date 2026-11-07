@@ -730,6 +730,18 @@ describe('edit and rewind', () => {
     expect(rewindFiles).not.toHaveBeenCalled()
   })
 
+  it('keeps held news through an edit, and says it with the edited message', async () => {
+    setup()
+    answerWithIds()
+    const id = chat()
+    const [, second] = await converse(id, 'first', 'second')
+    await host.prompt(id, { text: '[runcastle] News' }, { source: 'runcastle', hold: true })
+    await caller.thread.edit({ threadId: id, promptId: second, text: 'second, better' })
+    await logUntil(id, turnsEnded(3))
+    const sent = received('session/prompt').map((p) => (p as { prompt: { text?: string }[] }).prompt[0]?.text)
+    expect(sent.at(-1)).toBe('[runcastle] News\n\nsecond, better')
+  })
+
   it('undoes the file changes since the message first, on Claude', async () => {
     setup()
     answerWithIds()

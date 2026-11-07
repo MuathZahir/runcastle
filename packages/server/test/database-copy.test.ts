@@ -198,7 +198,7 @@ describe('background messages on a copy', () => {
     const holder = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
     markSessionEnded(ctx, holder.id)
     const f = seedFeature(ctx, projectId, { slug: 'held-copy', heldBy: holder.id })
-    const event = emit(ctx, f.id, { type: 'feature.ready_declared', message: 'ready' })
+    const event = emit(ctx, f.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'core' } })
 
     notifyOrchestrator(ctx, event.id)
     await new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))

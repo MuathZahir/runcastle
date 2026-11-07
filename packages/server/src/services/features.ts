@@ -56,7 +56,7 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { leadState, NO_LEAD } from '../threads/read'
+import { leadState, NO_LEAD, type LeadState } from '../threads/read'
 import {
   getTicket,
   isPendingTicket,
@@ -644,6 +644,11 @@ export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId
   return { runId: run.id, confirmed }
 }
 
+/** A lead mid-turn, or whose turn waits on the human's answer: it hears Stop at that turn's end (decision 10). */
+function busyLead(lead: LeadState): boolean {
+  return lead.working || lead.asking
+}
+
 /**
  * The human's Stop (decision 23): stop the running round if there is one, set
  * the stopped mark so nothing new is dispatched until the human replies, and
@@ -673,6 +678,8 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
       `[runcastle] The human pressed Stop${stopped ? ' — the running round was cancelled; landed work stays' : ''}. ` +
       'Dispatch nothing until the human replies.',
     source: 'runcastle',
+    // A lead mid-turn must hear it before its next step; an idle one has nothing to stop (decision 10).
+    reason: busyLead(leadState(ctx, featureId)) ? 'question' : 'news',
   })
   return updated
 }

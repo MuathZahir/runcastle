@@ -27,6 +27,7 @@ describe('chat contract', () => {
       'emit_tickets',
       'get_feature_context',
       'get_ticket',
+      'hand_back',
       'land_worker',
       'list_tickets',
       'message_worker',

@@ -200,6 +200,13 @@ export const RuncastleConfig = z.preprocess(
      */
     usageSignal: z.enum(['on', 'off']).optional(),
     /**
+     * Carry on when the usage limit resets (agents-are-woken-only-when-it-matters
+     * decision 25): `on` wakes every chat the provider's usage limit stopped once,
+     * at the reset the runtime reports. `off` by default, so nobody's weekly
+     * limit is spent without their say.
+     */
+    carryOnAfterLimit: z.enum(['on', 'off']).default('off'),
+    /**
      * Machine-wide Docker image name for the sandcastle burner sandbox (B3 /
      * SPEC §8) — the fallback under a project's own `sandboxImage`, which beats
      * it (see {@link resolveSandboxImage} for the full order). When neither is

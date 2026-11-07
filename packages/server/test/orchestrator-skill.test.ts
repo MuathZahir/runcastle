@@ -238,8 +238,10 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**Take a feature with `take_feature` only when the human, in this conversation, asked for this action on this feature**')
     expect(text).toContain('a working agreement and your own judgement included')
     expect(text).toContain('`[runcastle]`')
-    expect(text).toContain("a feature's agent is waiting for the human")
-    expect(text).toContain('an agent declared its work ready')
+    // A feature speaks by its lead's handback; runcastle's lines are the orchestrator's own work (agents-are-woken-only-when-it-matters 21, 23).
+    expect(text).toContain("**A lead's handback** is how a feature tells you something")
+    expect(text).toContain('are about your own work only')
+    expect(text).not.toContain('For its next turn')
     expect(text).not.toContain('Since you were last live')
     expect(text).toContain("**The app shows holders only on each feature's timeline**")
   })

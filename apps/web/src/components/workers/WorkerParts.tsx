@@ -341,6 +341,46 @@ export function HandbackCard({ handback, onOpenWorker }: { handback: Handback; o
 }
 
 /**
+ * A feature's lead handing back to the orchestrator, in the orchestrator's chat
+ * (agents-are-woken-only-when-it-matters decision 21): the worker handback card's
+ * look, with the feature's state line where a worker's commits and files go, and
+ * a way to the feature's chat.
+ */
+export function FeatureHandbackCard({
+  title,
+  state,
+  summary,
+  onOpenFeature,
+}: {
+  title: string
+  /** One line of the feature's state runcastle added: ready or not, what it waits on, its latest round. */
+  state: string
+  summary: string
+  onOpenFeature: () => void
+}) {
+  return (
+    <article aria-label={`Handback from ${title}`} className={cx(WELL, 'flex flex-col overflow-hidden animate-rise-in')}>
+      <header className="flex min-w-0 items-center gap-2.5 px-4 pt-3">
+        <span className="inline-flex size-4 shrink-0 items-center justify-center text-icon">
+          <IconArrowLeft size={14} />
+        </span>
+        <span className="min-w-0 truncate text-sm text-text-secondary">
+          <span className="font-medium text-text">{title}</span> handed back
+        </span>
+        <span className="flex-1" />
+        <Button size="sm" variant="ghost" icon={<IconMessage />} onClick={onOpenFeature} className="-mr-2">
+          Open its chat
+        </Button>
+      </header>
+      <p className="m-0 pl-[42px] pr-4 text-xs text-text-tertiary">{state}</p>
+      <div className="px-4 pt-2.5 pb-3.5 pl-[42px]">
+        <Markdown source={summary} size="sm" tone="primary" />
+      </div>
+    </article>
+  )
+}
+
+/**
  * A worker that failed, in the lead's chat (decision 16): one line, the way
  * a failure reads in a thread, with the way to the worker's chat.
  */

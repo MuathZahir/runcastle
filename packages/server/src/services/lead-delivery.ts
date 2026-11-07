@@ -19,6 +19,7 @@ import { getRunRow } from './repo'
 import { listByFeature as listFindings } from './review-findings'
 import { listRounds, runClaimedTicketIds } from './runs'
 import { listByIds } from './tickets'
+import { wakes, type WakeReason } from './wake-rule'
 
 /**
  * The one way anything reaches a feature's lead (`the-feature-lead-runs-rounds`
@@ -41,6 +42,12 @@ export interface LeadMessage {
   /** What the human reads in place of the text when this message goes out alone (a worker's handback card). */
   display?: PromptDisplay
   /**
+   * The wake rule's tag (`wake-rule.ts`; `agents-are-woken-only-when-it-matters`
+   * decision 10): news is held for the lead's next prompt instead of starting a
+   * turn. A message is a question unless its sender says otherwise.
+   */
+  reason?: WakeReason
+  /**
    * A wake no click asked for (a round's end, a restart's cut-off round). On a
    * copied database (a test drive) it reaches only a lead whose conversation
    * began there; otherwise it is dropped, not held
@@ -53,6 +60,7 @@ export interface LeadMessage {
 interface HeldLine {
   text: string
   orchestrator?: { text: string; relayed: boolean }
+  reason: WakeReason
   display?: PromptDisplay
 }
 
@@ -65,7 +73,8 @@ interface HeldLine {
  *
  * A delivery that fails to reach the thread (the runtime cannot run, the chat
  * cannot be opened) keeps its message: it goes ahead of the next one, and
- * `lead.wake_failed` says why meanwhile.
+ * `lead.wake_failed` says why meanwhile. News (`reason: 'news'`) is held in the
+ * chat for the lead's next prompt and wakes nothing.
  */
 export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMessage): Promise<void> {
   if (msg.background && !mayStartInBackground(newestThread(ctx, { featureId: feature.id }, 'chat'))) {
@@ -79,7 +88,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
   const lines: HeldLine[] = [
     ...(held.get(feature.id) ?? []),
-    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator, display: msg.display },
+    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator, display: msg.display, reason: msg.reason ?? 'question' },
   ]
   // The human reads the orchestrator's words only when every line going out is one,
   // and a line's own display only when it goes out alone.
@@ -88,17 +97,19 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     said.length === lines.length ? { orchestrator: said } : lines.length === 1 ? lines[0]?.display : undefined
   try {
     const threadId = await leadThread(ctx, feature)
+    // Held only when every line going out is news: a kept handback still wakes the lead.
+    const hold = !lines.some((l) => wakes(l.reason))
     await agentHost(ctx).prompt(
       threadId,
       { text: lines.map((l) => l.text).join('\n\n') },
-      { source: 'runcastle', ...(display ? { display } : {}) },
+      { source: 'runcastle', ...(hold ? { hold: true } : {}), ...(display ? { display } : {}) },
     )
     held.delete(feature.id)
     failures.delete(feature.id)
     emit(ctx, feature.id, {
       type: 'lead.message_queued',
       message: `message sent to the agent's chat (${msg.source})`,
-      data: { source: msg.source, sessionId: threadId, route: 'prompt', text: msg.text },
+      data: { source: msg.source, sessionId: threadId, route: hold ? 'held' : 'prompt', text: msg.text },
     })
   } catch (err) {
     held.set(feature.id, lines)
@@ -107,6 +118,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     failures.set(feature.id, { reason, at, since: failures.get(feature.id)?.since ?? at })
     const data: LeadWakeFailedData & LeadMessage = { exitCode: null, tail: reason, messages: lines.length, ...msg }
     delete data.orchestrator
+    delete data.reason
     delete data.display
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
   }

@@ -83,6 +83,7 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 
 ## Situations
 
+- **An orchestrator holds this feature** — it hears from you only through `hand_back({ summary })`. Call it when the work is ready (you declared ready, or the human said it is good to merge), when you finished something it asked you for, or when you are blocked on something it can settle (a decision its working agreement covers, a clash with a sibling feature, a dependency). The summary says what is done, what is left, what you need, and anything the human told you directly: it never reads this chat. A question only the human can answer is no handback: `wait_for_you` pings them.
 - **An orchestrator relay** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's. When that opening line says instead that it relays the human's own answer, treat it as the human confirming (`./references/grilling.md`). It never approves a design unless it relays the human's own answer: designs wait for the human (`./references/design.md`, section 8).
 - **A merge conflict to resolve** — whoever sends it, first check it still stands (`git merge-base --is-ancestor <base> HEAD`). If the base is already in, say so in one line and stop: no checks, no review. Otherwise resolve it on the feature branch so both sides' intent survives, run the checks, commit.
 - **A worker's handback, or a failed worker** — `./references/workers.md`.
