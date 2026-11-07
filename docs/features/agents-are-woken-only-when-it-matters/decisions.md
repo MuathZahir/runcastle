@@ -4,7 +4,7 @@ Planned without the human (a headless planning run, 2026-11-06). Every decision
 below is the lead's recommendation, accepted so the plan could be finished; each
 names the alternative it was chosen over.
 
-Check first: 3, 9, 10, 12, 16
+Check first: 6, 11, 16
 
 ## 1. One wake rule, decided in one place, for both levels
 **Decision:** Every message runcastle sends to an agent on its parent's behalf is classed as either **wake** (a handback, or a real question the agent must answer) or **hold** (anything else). One shared function makes that call for both links that exist today: runcastle news to the orchestrator thread that holds a feature, and runcastle's messages to a feature's lead. It is written so workers can adopt it later without a second rule.
@@ -57,8 +57,6 @@ Check first: 3, 9, 10, 12, 16
 ## 10. What reaches a feature's lead
 **Decision:** A lead is woken by: the human's messages (including the orchestrator's messages and relays, and Resume after a provider halt), a round coming back, and the human approving the last waiting design (it answers the lead's design wait and asks it to commit them). The notice that the human pressed Stop reaches a lead whose turn is running at the end of that turn, as today, and holds for an idle lead: it rides the human's next message.
 **Why:** The round's return is the handback; human and orchestrator messages are the questions. An idle lead has nothing to stop, and the server already refuses a dispatch after Stop, so waking it only to acknowledge is a wasted turn. A busy lead may still be editing and committing, and must hear Stop before its next step.
-**Assumed.** Alternative: hold Stop always.
-**Challenged:** Stop first held always; the challenger pointed out that a lead mid-turn would keep editing and committing until the human's next message. Accepted: it holds only for an idle lead.
 
 ## 11. The round's return message is the whole handback
 **Decision:** The message a returning round wakes its lead with keeps its ticket list, gate result and findings, and its closing line tells the lead it holds everything about the round: read a ticket's digest with `get_ticket` only where it needs the detail (a failed ticket, a finding to fix), with no `get_feature_context` call to see the round again. The lead's round guidance says the same.
