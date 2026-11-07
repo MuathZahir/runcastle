@@ -264,7 +264,7 @@ export function SidebarFeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
-  /** The open feature's "+": a new side thread. */
+  /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
   onNewThread?: () => void
   /**
    * The open feature's {@link SidebarThreadList}, once it has more than its

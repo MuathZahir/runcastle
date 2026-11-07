@@ -603,7 +603,7 @@ describe('ThreadColumn', () => {
 
   it('sends edit and branch for the message they are on, and says nothing while they are refused', async () => {
     const api = server(HISTORY)
-    render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
+    render(<ThreadColumn threadId="th1" onOpenThread={() => {}} />, { wrapper: api.Wrapper })
     await screen.findByText('Lined up — it had its own margin.')
     fireEvent.click(screen.getAllByRole('button', { name: 'Branch into a new chat from here' })[1])
     fireEvent.click(screen.getByRole('button', { name: 'Edit and rewind to here' }))

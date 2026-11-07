@@ -378,93 +378,93 @@ export function Sidebar(props: SidebarProps) {
         </div>
       ) : (
       <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
-      <div className={phone ? 'mt-2' : 'mt-3'}>
-        {/* The project's own door (decision 20): not a feature, never in a
-            lane. It says what the chat holds — the open notes (project-notes
-            decisions #10) — and waits amber while the chat waits on you. */}
-        <OrchestratorCard
-          status={`${CHATS_WORDS[chats]}${notesWords}`}
-          state={chats}
-          active={view === 'project' && !phone}
-          onOpen={onSelectProject}
-          actions={[]}
-          title={ORCHESTRATOR_TITLE}
-          {...(projectThreads && !phone
-            ? {
-                onNewThread: projectThreads.newThread,
-                threads: (
-                  <SidebarThreadList
-                    label="Chats"
-                    threads={sidebarThreadOrder(projectThreads.threads)}
-                    current={projectThreads.current}
-                    onOpen={projectThreads.pick}
-                    actionsFor={orchestratorThreadActions}
-                    keep={(t) =>
-                      // An open errand's chat keeps its row, which is how it is closed.
-                      t.id === projectThreads.errand?.threadId ||
-                      threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
-                    }
-                    markFor={(t) => {
-                      const held = heldFeatures(t.id, features)
-                      return held.length > 0 ? <HoldMark features={held} /> : null
-                    }}
-                    tipFor={(t) => {
-                      const held = heldFeatures(t.id, features)
-                      return held.length > 0 ? <HoldTip features={held} /> : undefined
-                    }}
-                    {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
-                  />
-                ),
-                folded: fold.folded(orchestratorFold),
-                onToggleThreads: () => fold.toggle(orchestratorFold),
-              }
-            : {})}
-        />
-      </div>
-
-      <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
-        {list.isLoading && <FeatureRowsSkeleton />}
-        {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
-        {inbox.length + inProgress.length > 0 && (
-          <section aria-label="Needs you" className="flex flex-col gap-1">
-            {inbox.map((f) => row(f))}
-            {inProgress.map((f) => row(f))}
-          </section>
-        )}
-        {list.data && list.data.length === 0 && (
-          <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
-            No features yet. Start a chat to cut the first one.
-          </div>
-        )}
-        <WorkingShelf features={working} renderRow={row} />
-        <div className="flex flex-col divide-y divide-border-subtle">
-          {/* After live work, before the backlog (waiting-is-not-backlog
-              decision 16); open, because what is in it is wanted. */}
-          <Shelf
-            icon={<IconClock />}
-            label="Up next"
-            features={lane('upNext')}
-            renderRow={(f) => row(f)}
-            defaultOpen
-          />
-          <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
-          <Shelf
-            icon={<IconGitMerge />}
-            label="Shipped"
-            features={byLastMoved(lane('shipped'))}
-            renderRow={(f) => row(f)}
-            cap={5}
-          />
-          <Shelf
-            icon={<IconArchive />}
-            label="Archived"
-            features={byLastMoved(archived)}
-            renderRow={(f) => row(f)}
-            open={archivedOpen}
-            onOpenChange={onArchivedOpenChange}
+        <div className={phone ? 'mt-2' : 'mt-3'}>
+          {/* The project's own door (decision 20): not a feature, never in a
+              lane. It says what the chat holds — the open notes (project-notes
+              decisions #10) — and waits amber while the chat waits on you. */}
+          <OrchestratorCard
+            status={`${CHATS_WORDS[chats]}${notesWords}`}
+            state={chats}
+            active={view === 'project' && !phone}
+            onOpen={onSelectProject}
+            actions={[]}
+            title={ORCHESTRATOR_TITLE}
+            {...(projectThreads && !phone
+              ? {
+                  onNewThread: projectThreads.newThread,
+                  threads: (
+                    <SidebarThreadList
+                      label="Chats"
+                      threads={sidebarThreadOrder(projectThreads.threads)}
+                      current={projectThreads.current}
+                      onOpen={projectThreads.pick}
+                      actionsFor={orchestratorThreadActions}
+                      keep={(t) =>
+                        // An open errand's chat keeps its row, which is how it is closed.
+                        t.id === projectThreads.errand?.threadId ||
+                        threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
+                      }
+                      markFor={(t) => {
+                        const held = heldFeatures(t.id, features)
+                        return held.length > 0 ? <HoldMark features={held} /> : null
+                      }}
+                      tipFor={(t) => {
+                        const held = heldFeatures(t.id, features)
+                        return held.length > 0 ? <HoldTip features={held} /> : undefined
+                      }}
+                      {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
+                    />
+                  ),
+                  folded: fold.folded(orchestratorFold),
+                  onToggleThreads: () => fold.toggle(orchestratorFold),
+                }
+              : {})}
           />
         </div>
-      </div>
+  
+        <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
+          {list.isLoading && <FeatureRowsSkeleton />}
+          {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
+          {inbox.length + inProgress.length > 0 && (
+            <section aria-label="Needs you" className="flex flex-col gap-1">
+              {inbox.map((f) => row(f))}
+              {inProgress.map((f) => row(f))}
+            </section>
+          )}
+          {list.data && list.data.length === 0 && (
+            <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
+              No features yet. Start a chat to cut the first one.
+            </div>
+          )}
+          <WorkingShelf features={working} renderRow={row} />
+          <div className="flex flex-col divide-y divide-border-subtle">
+            {/* After live work, before the backlog (waiting-is-not-backlog
+                decision 16); open, because what is in it is wanted. */}
+            <Shelf
+              icon={<IconClock />}
+              label="Up next"
+              features={lane('upNext')}
+              renderRow={(f) => row(f)}
+              defaultOpen
+            />
+            <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
+            <Shelf
+              icon={<IconGitMerge />}
+              label="Shipped"
+              features={byLastMoved(lane('shipped'))}
+              renderRow={(f) => row(f)}
+              cap={5}
+            />
+            <Shelf
+              icon={<IconArchive />}
+              label="Archived"
+              features={byLastMoved(archived)}
+              renderRow={(f) => row(f)}
+              open={archivedOpen}
+              onOpenChange={onArchivedOpenChange}
+            />
+          </div>
+        </div>
       </div>
       )}
 

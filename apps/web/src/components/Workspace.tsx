@@ -359,10 +359,11 @@ export function Workspace({
   )
   // The page's root, where Reply finds the composer to put the cursor in.
   const frame = useRef<HTMLElement>(null)
-  // A started, unshipped feature takes new threads: the header's "+", the
-  // palette's entry and Ctrl+Shift+O (decision 7). The shortcut works from
-  // anywhere on the page, the composer included, so it listens in the capture
-  // phase, before any field can keep the key to itself.
+  // A started, unshipped feature takes new workers with no assignment: the
+  // sidebar page's "+", the palette's entry and Ctrl+Shift+O (interactive-workers
+  // decision 7). The shortcut works from anywhere on the page, the composer
+  // included, so it listens in the capture phase, before any field can keep
+  // the key to itself.
   const threadable = q.data?.feature.status === 'active'
   const newThread = column.newThread
   useEffect(() => {
@@ -769,7 +770,7 @@ export function Workspace({
         break
       // An answer is needed: the main chat in front, the cursor in its message box.
       case 'reply':
-        // A question asked in a side thread is answered there, not in the main chat.
+        // A question asked in a worker's chat is answered there, not in the lead's.
         bringForward(full.need?.kind === 'answer' && full.need.threadId ? full.need.threadId : (column.main ?? column.current))
         requestAnimationFrame(() =>
           frame.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(),
@@ -1195,44 +1196,44 @@ export function Workspace({
               />
             </>
           ) : (
-          <>
-            {offline && (
-              <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
-                Offline, retrying
-              </StatusLabel>
-            )}
-            {(headerRow.action || headerRow.merge) && (
-              <span className="mr-1 flex gap-1.5">
-                {/* Stop is the drive page's, and said over the chat; from here the
-                    one step is back to the drive (decision 13). */}
-                {headerRow.action?.kind === 'testDriveStop' && views.includes('drive') ? (
-                  <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' })}>
-                    Back to the drive
-                  </Button>
-                ) : (
-                  headerRow.action && (
-                    <HeaderAction
-                      action={headerRow.action}
-                      busy={actionsBusy}
-                      onAction={runAction}
-                      split={testDriveSplit}
-                    />
-                  )
-                )}
-                {/* Always in reach on an unshipped feature (decision 6), quiet beside the need's own. */}
-                {headerRow.merge && (
-                  <HeaderAction action={headerRow.merge} busy={actionsBusy} onAction={runAction} quiet />
-                )}
-              </span>
-            )}
-            <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
-            <PanelToggle
-              open={!!shown}
-              views={tabs}
-              dot={fresh.length > 0}
-              onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
-            />
-          </>
+            <>
+              {offline && (
+                <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
+                  Offline, retrying
+                </StatusLabel>
+              )}
+              {(headerRow.action || headerRow.merge) && (
+                <span className="mr-1 flex gap-1.5">
+                  {/* Stop is the drive page's, and said over the chat; from here the
+                      one step is back to the drive (decision 13). */}
+                  {headerRow.action?.kind === 'testDriveStop' && views.includes('drive') ? (
+                    <Button size="sm" variant="primary" icon={<IconPlay />} onClick={() => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' })}>
+                      Back to the drive
+                    </Button>
+                  ) : (
+                    headerRow.action && (
+                      <HeaderAction
+                        action={headerRow.action}
+                        busy={actionsBusy}
+                        onAction={runAction}
+                        split={testDriveSplit}
+                      />
+                    )
+                  )}
+                  {/* Always in reach on an unshipped feature (decision 6), quiet beside the need's own. */}
+                  {headerRow.merge && (
+                    <HeaderAction action={headerRow.merge} busy={actionsBusy} onAction={runAction} quiet />
+                  )}
+                </span>
+              )}
+              <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
+              <PanelToggle
+                open={!!shown}
+                views={tabs}
+                dot={fresh.length > 0}
+                onToggle={() => panel.dispatch({ type: 'toggle', views: tabs })}
+              />
+            </>
           )
         }
       />

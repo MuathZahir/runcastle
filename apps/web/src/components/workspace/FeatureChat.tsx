@@ -19,7 +19,7 @@ const WORKER_PENDING_HINT = 'A worker on this feature, in its own sandbox.'
 
 /**
  * The feature page's chat column (chat-as-web-components decisions 3, 7): the
- * thread in front — the main chat, a side thread or a scenario chat — through
+ * thread in front — the lead's chat, a worker's, an old side chat or a scenario chat — through
  * `ThreadColumn`. Opening a thread launches nothing, with one exception: a new
  * feature's main chat starts itself the first time the human can see it, so its
  * agent speaks first ({@link startsItself}). Any other main chat nobody has
