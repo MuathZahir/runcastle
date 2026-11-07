@@ -85,9 +85,10 @@ export function fakeEngine(): FakeEngine {
       engine.woken.push(sb.container)
       return true
     },
+    // Like the real one, removing what is already gone is no error.
     remove: async (sb: WorkerSandbox) => {
       engine.removed.push(sb.container)
-      git(sb.repoPath, 'branch', '-D', sb.branch)
+      if (git(sb.repoPath, 'branch', '--list', sb.branch)) git(sb.repoPath, 'branch', '-D', sb.branch)
     },
     takeHandback: async (sb) => {
       const note = engine.handbacks.get(sb.id)
