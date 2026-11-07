@@ -55,9 +55,6 @@ const CONFIG_KEPT = [
 /** The worker's own server; the human's of the same name, or runcastle's (unreachable from the sandbox), are left out. */
 const OWN_SERVERS = ['worker', 'runcastle']
 
-/** How a Codex worker's permission asks are reviewed: Codex's auto-review, or the human when it is unavailable (decision 11). */
-export type CodexReviewer = 'auto_review' | 'user'
-
 export interface CodexWorkerConfig {
   /** One of the human's annotated Codex models. */
   model: string
@@ -65,7 +62,6 @@ export interface CodexWorkerConfig {
   briefing: string
   /** The worker's own MCP server, as `workerMcpServer` describes it. */
   mcp: { command: string; args: string[]; env: Record<string, string> }
-  reviewer?: CodexReviewer
 }
 
 const toml = (v: string): string => JSON.stringify(v)
@@ -111,8 +107,10 @@ export function workerCodexConfig(humanConfig: string, worker: CodexWorkerConfig
     `model = ${toml(worker.model)}`,
     ...keys,
     // Auto-review (decision 11): Codex asks only for what its reviewer finds risky, and the reviewer answers.
+    // codex-acp sends its session mode's approvals with every turn, so a session that reports another mode
+    // (`workspace-write`: on-request, the human as reviewer) is the fallback, recorded as the worker's mode.
     'approval_policy = "on-request"',
-    `approvals_reviewer = ${toml(worker.reviewer ?? 'auto_review')}`,
+    'approvals_reviewer = "auto_review"',
     'sandbox_mode = "workspace-write"',
     'check_for_update_on_startup = false',
     // No keyring in the sandbox: the MCP logins copied in are the file store's.

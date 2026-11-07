@@ -6,7 +6,7 @@ import type { AgentTransport } from '../../src/threads/host'
 import type { AgentHost } from '../../src/threads/types'
 import type { SandboxEngine } from '../../src/workers/engine'
 import type { WorkerSetup } from '../../src/workers/setup-copy'
-import { type HandbackNote, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
+import { type HandbackNote, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
@@ -53,6 +53,8 @@ export type FakeEngine = SandboxEngine & {
   sandboxFiles: Map<string, string | Buffer>
   /** What each agent process was started with. */
   processes: WorkerProcessOptions[]
+  /** How the real engine would have started each one: its exec argv and session (`workerLaunch`). */
+  launches: WorkerLaunch[]
   /** Where the agent's process comes from; none by default. */
   transport?: AgentTransport
 }
@@ -71,6 +73,7 @@ export function fakeEngine(): FakeEngine {
     setups: [],
     sandboxFiles: new Map(),
     processes: [],
+    launches: [],
     async available() {
       return engine.up
     },
@@ -121,13 +124,15 @@ export function fakeEngine(): FakeEngine {
     },
     process: async (sb, brief, opts) => {
       engine.processes.push(opts)
+      const launch = workerLaunch(sb, brief, opts)
+      engine.launches.push(launch)
       if (!engine.transport) throw new Error('no agent in these tests')
       // Starting the agent wakes its sandbox first, as the real engine does.
       engine.woken.push(sb.container)
       // The session opens as the real engine's does: in the sandbox, in its runtime's automatic mode.
       return {
         ...(await engine.transport({} as never, {} as never)),
-        session: workerLaunch(sb, brief, opts).session,
+        session: launch.session,
         ...permissionHooks(opts.onMode, sb.runtime),
       }
     },

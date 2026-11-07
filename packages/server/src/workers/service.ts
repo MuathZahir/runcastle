@@ -165,7 +165,8 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
     const w = requireWorker(ctx, row.id)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
-    const model = (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model ?? w.model
+    const launched = sb.runtime === 'claude-code' ? (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model : undefined
+    const model = launched ?? w.model
     const engine = sandboxEngine(w.engine)
     // At every start and wake, so a change to the human's setup reaches the worker's next turn (decisions 8, 12).
     await engine.copySetup(sb, workerSetup(sb, briefOf(w), model))
