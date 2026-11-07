@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { eq, ne } from 'drizzle-orm'
 import {
+  type Ask,
   type Feature,
   type ModelEntry,
   type PromptDisplay,
@@ -41,7 +42,7 @@ import type { WorkerPermissionMode } from './permissions'
 import { codexHomeDir } from '../services/codex-auth'
 import { codexSetup } from './codex-setup'
 import { workerMcpServer } from './sandbox'
-import { type WorkerSetup, claudeSetup } from './setup-copy'
+import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
 import { type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
@@ -168,8 +169,11 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
     const launched = sb.runtime === 'claude-code' ? (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model : undefined
     const model = launched ?? w.model
     const engine = sandboxEngine(w.engine)
-    // At every start and wake, so a change to the human's setup reaches the worker's next turn (decisions 8, 12).
-    await engine.copySetup(sb, workerSetup(sb, briefOf(w), model))
+    // At its first start, then at a start or wake after the human's setup changed, so a change reaches the
+    // worker's next turn (decisions 8, 12) and an unchanged wake skips hundreds of MB of copying.
+    const setup = workerSetup(sb, briefOf(w), model)
+    const fingerprint = setupFingerprint(setup)
+    if ((await engine.setupFingerprint(sb)) !== fingerprint) await engine.copySetup(sb, setup, fingerprint)
     const proc = await engine.process(sb, briefOf(w), {
       ...(sb.runtime === 'claude-code' ? { token: claudeToken() } : {}),
       model,
@@ -440,6 +444,24 @@ async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
   return release
 }
 
+/**
+ * A permission or question ask opened on a worker's thread: its agent halts
+ * mid-turn on the human, so the worker needs them until it is answered. The
+ * feature's need already pings for the ask itself (interactive-workers decision
+ * 10); this only makes the worker's own row say so. An MCP server's form or link
+ * is the agent's own errand, as it is for the feature's need.
+ */
+export function workerAskOpened(ctx: AppCtx, id: string, kind: Ask['kind']): void {
+  if (kind !== 'approval' && kind !== 'question') return
+  const w = getWorker(ctx, id)
+  if (w?.status === 'working') setStatus(ctx, w, 'needs-you')
+}
+
+/** The human answered a worker's open ask: it is working again. */
+export function workerAskAnswered(ctx: AppCtx, id: string): void {
+  workerPrompted(ctx, id)
+}
+
 /** The human typed to a worker: a worker waiting on them is working again. */
 export function workerPrompted(ctx: AppCtx, id: string): void {
   const w = getWorker(ctx, id)
@@ -628,6 +650,43 @@ const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'ne
 /** The feature's workers still at work or holding work that has not landed. */
 export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[] {
   return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status))
+}
+
+/**
+ * Server boot: the idle stops that would have stopped worker sandboxes lived in
+ * the last server's memory, so every sandbox it left running (an agent's, or one
+ * woken only for its preview) would run on forever. Each worker's running
+ * container is stopped, to wake at its next message or preview as usual; one of
+ * a landed or dropped worker, which should be gone, is removed. Only this data
+ * dir's workers are touched, never another install's containers on the same
+ * engine, and none whose agent still runs (a `bun --hot` reload keeps them).
+ */
+export async function stopLeftoverWorkerSandboxes(ctx: AppCtx): Promise<{ stopped: number; removed: number }> {
+  const done = { stopped: 0, removed: 0 }
+  const rows = ctx.db.select().from(workers).all().filter((w) => w.container)
+  const host = agentHost(ctx)
+  const containersOf = new Map<string, Promise<Map<string, boolean>>>()
+  for (const w of rows) {
+    const engine = sandboxEngine(w.engine)
+    if (!containersOf.has(w.engine)) containersOf.set(w.engine, engine.containers().catch(() => new Map<string, boolean>()))
+    const running = (await containersOf.get(w.engine)!).get(w.container!)
+    if (running === undefined || host.isRunning(w.id)) continue
+    try {
+      const sb = sandboxOf(ctx, w)
+      if (!sb) continue
+      const terminal = w.status === 'landed' || w.status === 'dropped'
+      if (!terminal && !running) continue
+      if (terminal) await engine.remove(sb)
+      else await engine.stop(sb)
+      done[terminal ? 'removed' : 'stopped']++
+      if (!tryGetFeature(ctx, w.featureId)) continue
+      if (terminal) emitWorker(ctx, w, 'worker.sandbox_removed', `worker "${w.label}" leftover sandbox removed at server start`)
+      else emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (server restart)`, { reason: 'restart' })
+    } catch (err) {
+      console.error(`worker ${w.id}: leftover sandbox`, err)
+    }
+  }
+  return done
 }
 
 // --- the preview ----------------------------------------------------------------

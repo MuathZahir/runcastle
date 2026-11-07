@@ -45,12 +45,16 @@ export type FakeEngine = SandboxEngine & {
   devServers: Set<string>
   removed: string[]
   stopped: string[]
+  /** The containers the engine holds, by name: true while one runs. */
+  held: Map<string, boolean>
   woken: string[]
   fetched: string[]
   /** Conversation ids the sandbox holds a record of, for the reload guard. */
   conversations: Set<string>
   /** Each copy of the human's setup the engine was asked to make, oldest first. */
   setups: { container: string; setup: WorkerSetup }[]
+  /** The fingerprint each sandbox holds of its last setup copy, by container. */
+  fingerprints: Map<string, string>
   /** The files inside the fake sandbox, by container path, for `copyOut`. */
   sandboxFiles: Map<string, string | Buffer>
   /** What each agent process was started with. */
@@ -70,10 +74,12 @@ export function fakeEngine(): FakeEngine {
     devServers: new Set(),
     removed: [],
     stopped: [],
+    held: new Map(),
     woken: [],
     fetched: [],
     conversations: new Set(),
     setups: [],
+    fingerprints: new Map(),
     sandboxFiles: new Map(),
     processes: [],
     launches: [],
@@ -83,6 +89,7 @@ export function fakeEngine(): FakeEngine {
     // The worker branch stands in the host repo as a fetch would leave it.
     create: async (input) => {
       git(input.repoPath, 'branch', input.branch, input.featureBranch)
+      engine.held.set(input.container, true)
       return {
         id: input.id,
         engine: input.engine,
@@ -97,14 +104,18 @@ export function fakeEngine(): FakeEngine {
     },
     stop: async (sb) => {
       engine.stopped.push(sb.container)
+      if (engine.held.has(sb.container)) engine.held.set(sb.container, false)
     },
     wake: async (sb) => {
       engine.woken.push(sb.container)
+      if (engine.held.has(sb.container)) engine.held.set(sb.container, true)
       return true
     },
+    containers: async () => new Map(engine.held),
     // Like the real one, removing what is already gone is no error.
     remove: async (sb: WorkerSandbox) => {
       engine.removed.push(sb.container)
+      engine.held.delete(sb.container)
       if (git(sb.repoPath, 'branch', '--list', sb.branch)) git(sb.repoPath, 'branch', '-D', sb.branch)
     },
     takeHandback: async (sb) => {
@@ -117,9 +128,11 @@ export function fakeEngine(): FakeEngine {
       engine.fetched.push(sb.branch)
     },
     conversationOnDisk: async (_sb, conversationId) => engine.conversations.has(conversationId),
-    copySetup: async (sb, setup) => {
+    copySetup: async (sb, setup, fingerprint) => {
       engine.setups.push({ container: sb.container, setup })
+      engine.fingerprints.set(sb.container, fingerprint)
     },
+    setupFingerprint: async (sb) => engine.fingerprints.get(sb.container),
     // The sandbox's files are the test's: `sandboxFiles` maps a container path to its body.
     copyOut: async (_sb, containerPath, hostPath) => {
       const body = engine.sandboxFiles.get(containerPath)
@@ -133,6 +146,7 @@ export function fakeEngine(): FakeEngine {
       if (!engine.transport) throw new Error('no agent in these tests')
       // Starting the agent wakes its sandbox first, as the real engine does.
       engine.woken.push(sb.container)
+      if (engine.held.has(sb.container)) engine.held.set(sb.container, true)
       // The session opens as the real engine's does: in the sandbox, in its runtime's automatic mode.
       return {
         ...(await engine.transport({} as never, {} as never)),

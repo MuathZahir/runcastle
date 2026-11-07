@@ -16,7 +16,15 @@ import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { getWorker, withWorkers, workerPreviews, workerStopped, workerTurnEnded, workerTurnSlot } from '../src/workers/service'
+import {
+  getWorker,
+  stopLeftoverWorkerSandboxes,
+  withWorkers,
+  workerPreviews,
+  workerStopped,
+  workerTurnEnded,
+  workerTurnSlot,
+} from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -208,6 +216,43 @@ describe('a worker that needs the human', () => {
   })
 })
 
+describe('a worker waiting on an ask', () => {
+  it('reads needs-you while the ask is open and working once it is answered, with the one permission ping', async () => {
+    let finish!: () => void
+    const asked = createFakeAcp({
+      mode: 'auto',
+      turn: async (t) => {
+        await t.permission({ toolCallId: 'p1', title: 'git push origin HEAD', kind: 'execute' })
+        await new Promise<void>((resolve) => (finish = resolve))
+        await t.say('Pushed.')
+      },
+    })
+    const host = realHost(asked)
+    const watch = startNeedWatch(ctx)
+    const pings = () => listAfter(ctx, feature.id, 0).filter((e) => e.type === FEATURE_NEEDS_YOU).map((e) => e.data)
+    const id = await startWorker()
+    try {
+      await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
+      expect(status(id)).toBe('needs-you')
+      await until(() => pings().length === 1)
+      expect(pings()[0]).toMatchObject({ kind: 'permission' })
+
+      await host.answer(id, foldThread(readThreadEvents(id)).ask!.id, { kind: 'approval', choice: 'allow' })
+      expect(status(id)).toBe('working')
+      await new Promise((r) => setTimeout(r, 120))
+      // The worker leaving and the ask closing together are no news.
+      expect(pings()).toHaveLength(1)
+
+      finish()
+      await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
+      await until(() => status(id) === 'needs-you')
+    } finally {
+      watch.stop()
+      await host.stop(id, 'archived')
+    }
+  })
+})
+
 describe('a failed worker', () => {
   it('is marked failed with what failed, and wakes its lead exactly once', async () => {
     const host = fakeHost()
@@ -262,6 +307,45 @@ describe('idle stop and wake', () => {
     expect(foldThread(readThreadEvents(id)).items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('would not reopen') })
     expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
     await host.stopAll('shutdown')
+  })
+})
+
+describe('a server restart', () => {
+  it('stops every worker sandbox the last server left running and removes a gone worker’s leftover, touching nothing else', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const running = await startWorker('Header')
+    const asleep = await startWorker('Footer')
+    const gone = await startWorker('Sidebar')
+    const containerOf = (id: string) => getWorker(ctx, id)!.container!
+    engine.held.set(containerOf(asleep), false)
+    await toolDropWorker(ctx, leadSession(), { workerId: gone })
+    // A container the drop did not get, and another install's worker on the same engine.
+    engine.held.set(containerOf(gone), true)
+    engine.held.set('runcastle-worker-elsewhere', true)
+    engine.stopped.length = 0
+    engine.removed.length = 0
+
+    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 1, removed: 1 })
+    expect(engine.stopped).toEqual([containerOf(running)])
+    expect(engine.removed).toEqual([containerOf(gone)])
+    expect(engine.held.get('runcastle-worker-elsewhere')).toBe(true)
+    expect(getWorker(ctx, running)?.status).toBe('working')
+    const swept = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'worker.stopped' || e.type === 'worker.sandbox_removed')
+    expect(swept.map((e) => [e.type, (e.data as { workerId: string }).workerId])).toEqual([
+      ['worker.stopped', running],
+      ['worker.sandbox_removed', gone],
+    ])
+
+    // A second boot finds nothing left to do.
+    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 0, removed: 0 })
+  })
+
+  it('leaves a sandbox whose agent still runs (a hot reload kept it)', async () => {
+    const host = fakeHost()
+    setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
+    const id = await startWorker()
+    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 0, removed: 0 })
+    expect(engine.held.get(getWorker(ctx, id)!.container!)).toBe(true)
   })
 })
 

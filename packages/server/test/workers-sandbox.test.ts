@@ -1,5 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +14,7 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { getWorker, withWorkers, workerTurnSlot } from '../src/workers/service'
-import { claudeSetup } from '../src/workers/setup-copy'
+import { SETUP_MANAGED, claudeSetup, setupFingerprint } from '../src/workers/setup-copy'
 import { serveToolRelay } from '../src/workers/tool-relay'
 import { WORKER_MCP_SCRIPT, WORKER_RELAY_SCRIPT } from '../src/workers/worker-mcp-script'
 import { useDataDir } from './helpers/data-dir'
@@ -156,7 +156,7 @@ describe("the human's setup in the sandbox", () => {
     })
   })
 
-  it('is copied in at the start and again at every wake, before the agent starts', async () => {
+  it('is copied in at the start, skipped at a wake while it is unchanged, and copied again once it changed', async () => {
     fakeUserHome(userHome)
     const host = fakeHost()
     setAgentHostForTests(host.host)
@@ -169,11 +169,44 @@ describe("the human's setup in the sandbox", () => {
     await transport({} as never, row)
     await transport({} as never, row)
     const container = getWorker(ctx, workerId)!.container
-    expect(engine.setups).toEqual([
-      { container, setup: claudeSetup(userHome) },
-      { container, setup: claudeSetup(userHome) },
-    ])
-    expect(engine.processes).toHaveLength(2)
+    expect(engine.setups).toEqual([{ container, setup: claudeSetup(userHome) }])
+
+    // A new skill reaches the worker at its next wake (decision 8).
+    put(join(userHome, '.claude', 'skills', 'ship', 'SKILL.md'), 'ship\n')
+    await transport({} as never, row)
+    expect(engine.setups).toHaveLength(2)
+    expect(engine.setups[1]).toEqual({ container, setup: claudeSetup(userHome) })
+    expect(engine.processes).toHaveLength(3)
+  })
+
+  it('fingerprints a setup by its paths, sizes and times, so any change to it is seen', () => {
+    fakeUserHome(userHome)
+    const before = setupFingerprint(claudeSetup(userHome))
+    expect(setupFingerprint(claudeSetup(userHome))).toBe(before)
+    const skill = join(userHome, '.claude', 'skills', 'grill', 'SKILL.md')
+    writeFileSync(skill, 'grill harder\n')
+    const edited = setupFingerprint(claudeSetup(userHome))
+    expect(edited).not.toBe(before)
+    utimesSync(skill, new Date(2020, 0, 1), new Date(2020, 0, 1))
+    expect(setupFingerprint(claudeSetup(userHome))).not.toBe(edited)
+    // Claude Code's own bookkeeping, written as it runs, is no change to the setup.
+    const synced = join(userHome, '.claude', 'skills', 'synced', 'account')
+    put(join(synced, 'docx', 'SKILL.md'), 'docx\n')
+    put(join(synced, 'manifest.json'), { round: 1 })
+    const settled = setupFingerprint(claudeSetup(userHome))
+    put(join(userHome, '.claude', 'plugins', 'cache', 'acme', 'design', '1.0.0', '.in_use', '4243'), 'pid')
+    put(join(synced, 'manifest.json'), { round: 2, skills: ['docx'] })
+    put(join(synced, '.last-complete-round'), 'later')
+    expect(setupFingerprint(claudeSetup(userHome))).toBe(settled)
+    // What runcastle writes counts by its content: the human's MCP servers here.
+    put(join(userHome, '.claude.json'), { mcpServers: {} })
+    expect(setupFingerprint(claudeSetup(userHome))).not.toBe(settled)
+  })
+
+  it('never clears the plugin marketplaces Claude Code cloned in the sandbox', () => {
+    expect(SETUP_MANAGED).toContain('.claude/plugins/cache')
+    const clone = '.claude/plugins/marketplaces/acme/.claude-plugin/marketplace.json'
+    expect(SETUP_MANAGED.filter((managed) => clone === managed || clone.startsWith(`${managed}/`))).toEqual([])
   })
 })
 
@@ -249,7 +282,8 @@ describe('the permission mode', () => {
     expect(answers).toEqual([{ outcome: { outcome: 'selected', optionId: expect.stringMatching(/allow/) } }])
     expect(asks(id)[0]).toMatchObject({ ask: { kind: 'approval', call: { title: 'mcp__neon__run_sql' } } })
     expect(modeEvents()).toEqual(['fallback'])
-    expect(getWorker(ctx, id)?.status).toBe('working')
+    // Halted on the human's answer, the worker reads as needing them.
+    expect(getWorker(ctx, id)?.status).toBe('needs-you')
     await host.stopAll('shutdown')
   })
 })

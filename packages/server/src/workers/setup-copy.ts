@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { isAbsolute, join, relative } from 'node:path'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { IN } from './sandbox'
 
 /**
- * The human's Claude Code setup, as a worker's sandbox gets it at every start
- * and wake (interactive-workers decision 8): global CLAUDE.md, rules, skills,
+ * The human's Claude Code setup, as a worker's sandbox gets it at its start and
+ * at a wake after it changed (interactive-workers decision 8): global CLAUDE.md, rules, skills,
  * agents and commands, the enabled plugins, the model and effort settings, the
  * permission rules, and the MCP servers with their logins. Never hooks (they
  * run host-path scripts), the status line, `env`, history, sessions or project
@@ -37,14 +38,20 @@ export interface CodexSetup {
 /** What of the human's setup a worker gets, for the runtime it runs on. */
 export type WorkerSetup = ClaudeSetup | CodexSetup
 
-/** What of the human's copy goes in a new start's place: cleared before each copy, so a removed skill does not linger. */
+/**
+ * What of the human's copy goes in a new copy's place: cleared before each copy, so a removed skill does not linger.
+ * The plugins' marketplaces are not: Claude Code clones each one inside the sandbox the first time, and the clone
+ * stays across wakes and later copies rather than being fetched from GitHub again at every start.
+ */
 export const SETUP_MANAGED = [
   '.claude/CLAUDE.md',
   '.claude/rules',
   '.claude/skills',
   '.claude/agents',
   '.claude/commands',
-  '.claude/plugins',
+  '.claude/plugins/cache',
+  '.claude/plugins/installed_plugins.json',
+  '.claude/plugins/known_marketplaces.json',
   '.claude/settings.json',
   '.claude/.credentials.json',
 ] as const
@@ -159,4 +166,64 @@ function enabledPlugins(home: string, enabled: Record<string, unknown>): SetupFi
     files.push({ to: '.claude/plugins/known_marketplaces.json', content: rehome(usedOnly) })
   }
   return files
+}
+
+/**
+ * A cheap fingerprint of a setup: what runcastle writes, and the path, size and
+ * modified time of every host file it copies (never their contents, which run
+ * to hundreds of MB). A wake whose fingerprint matches the sandbox's last copy
+ * skips the copy; a change to any of it copies again (decision 8). Folders
+ * count by the names in them, not their times, and Claude Code's own
+ * bookkeeping ({@link isHostBookkeeping}) not at all: both change all day
+ * on a machine where Claude Code runs, while the setup stays as it was.
+ */
+export function setupFingerprint(setup: WorkerSetup): string {
+  const hash = createHash('sha256')
+  for (const f of setup.files) {
+    hash.update(`${f.to}\0`)
+    if (f.content !== undefined) hash.update(`=${f.content}\0`)
+    else if (f.from) statTree(f.from, hash)
+  }
+  if ('mcpServers' in setup) hash.update(`mcp=${JSON.stringify(setup.mcpServers)}`)
+  return hash.digest('hex')
+}
+
+/**
+ * What Claude Code writes into the setup's folders as it runs, not part of the
+ * setup: a plugin's `.in_use` markers (one per running process, never copied
+ * either), and the round marker and manifest of the skills it syncs, rewritten
+ * at every sync round.
+ */
+function isHostBookkeeping(path: string): boolean {
+  const name = basename(path)
+  if (name === '.in_use') return true
+  // Synced skills sit in `skills/synced/<account>/`, the round marker and manifest beside them.
+  return basename(dirname(dirname(path))) === 'synced' && (name === '.last-complete-round' || name === 'manifest.json')
+}
+
+/** Each file under `path` with its size and modified time, links followed as the copy follows them. */
+function statTree(path: string, hash: ReturnType<typeof createHash>, depth = 0): void {
+  let st: ReturnType<typeof statSync>
+  try {
+    st = statSync(path)
+  } catch {
+    hash.update(`${path}:missing\0`)
+    return
+  }
+  if (!st.isDirectory()) {
+    hash.update(`${path}:${st.size}:${st.mtimeMs}\0`)
+    return
+  }
+  hash.update(`${path}/\0`)
+  if (depth > 32) return
+  let names: string[]
+  try {
+    names = readdirSync(path).sort()
+  } catch {
+    return
+  }
+  for (const name of names) {
+    const child = join(path, name)
+    if (!isHostBookkeeping(child)) statTree(child, hash, depth + 1)
+  }
 }

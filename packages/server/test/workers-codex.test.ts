@@ -310,8 +310,8 @@ describe('a Codex worker after an idle stop', () => {
     expect(fake.last().received[1]).toMatchObject({ method: 'session/load', params: { sessionId: conversation, cwd: '/home/agent/repo' } })
     expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
     expect(engine.launches.map((l) => l.execArgs.at(-1))).toEqual(['/opt/runcastle/codex-acp.mjs', '/opt/runcastle/codex-acp.mjs'])
-    // The setup is copied again at the wake, leaving the rollouts in the sandbox's CODEX_HOME.
-    expect(engine.setups).toHaveLength(2)
+    // The setup is unchanged, so the wake copies nothing; the rollouts stay in the sandbox's CODEX_HOME.
+    expect(engine.setups).toHaveLength(1)
     await host.stopAll('shutdown')
   })
 

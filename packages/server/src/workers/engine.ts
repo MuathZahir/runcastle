@@ -8,6 +8,7 @@ import {
   type WorkerProcessOptions,
   type WorkerSandbox,
   conversationInSandbox,
+  copiedSetupFingerprint,
   copyWorkerSetup,
   copyOutOfSandbox,
   createWorkerSandbox,
@@ -15,6 +16,7 @@ import {
   fetchWorkerBranch,
   removeSandbox,
   stopSandbox,
+  workerContainers,
   takeHandbackNote,
   devServerRecorded,
   workerProcess,
@@ -38,6 +40,8 @@ export interface SandboxEngine {
   wake(sb: WorkerSandbox): Promise<boolean>
   /** Whether the agent's own record of `conversationId` is inside the sandbox: the reload guard looks there, not on the host. */
   conversationOnDisk(sb: WorkerSandbox, conversationId: string): Promise<boolean>
+  /** Every worker container the engine holds, stopped ones too, by name: true when it runs. */
+  containers(): Promise<Map<string, boolean>>
   /** Remove the container, the worker branch on the host and its bare copy. */
   remove(sb: WorkerSandbox): Promise<void>
   /** The handback the worker wrote since the last one taken, if any. */
@@ -46,8 +50,10 @@ export interface SandboxEngine {
   devServerStarted(sb: WorkerSandbox): Promise<boolean>
   /** Bring the worker branch's commits into the host repo as `refs/heads/<branch>`. */
   fetchBranch(sb: WorkerSandbox): Promise<void>
-  /** Put the human's setup for its runtime into the sandbox (decisions 8, 12), waking it if need be, in place of an earlier copy. */
-  copySetup(sb: WorkerSandbox, setup: WorkerSetup): Promise<void>
+  /** Put the human's setup for its runtime into the sandbox (decisions 8, 12), waking it if need be, in place of an earlier copy, and record its fingerprint there. */
+  copySetup(sb: WorkerSandbox, setup: WorkerSetup, fingerprint: string): Promise<void>
+  /** The fingerprint of the setup last copied into the sandbox (waking it if need be); undefined when none finished. */
+  setupFingerprint(sb: WorkerSandbox): Promise<string | undefined>
   /** Copy one file out of the sandbox to the host (a file the worker shows). */
   copyOut(sb: WorkerSandbox, containerPath: string, hostPath: string): Promise<void>
   /** The agent process inside the sandbox, started (and the sandbox woken) if need be, with its tool relay. */
@@ -67,11 +73,13 @@ export function containerEngine(name: Engine): SandboxEngine {
     stop: (sb) => stopSandbox(sb),
     wake: async (sb) => (await ensureSandboxRunning(sb)) > 0,
     conversationOnDisk: (sb, conversationId) => conversationInSandbox(sb, conversationId),
+    containers: () => workerContainers(name),
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
     devServerStarted: (sb) => devServerRecorded(sb),
     fetchBranch: (sb) => fetchWorkerBranch(sb),
-    copySetup: (sb, setup) => copyWorkerSetup(sb, setup),
+    copySetup: (sb, setup, fingerprint) => copyWorkerSetup(sb, setup, fingerprint),
+    setupFingerprint: (sb) => copiedSetupFingerprint(sb),
     copyOut: (sb, containerPath, hostPath) => copyOutOfSandbox(sb, containerPath, hostPath),
     process: (sb, brief, opts) => workerProcess(sb, brief, opts),
   }

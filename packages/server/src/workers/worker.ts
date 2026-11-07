@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk/unstable'
@@ -206,6 +206,17 @@ export async function stopSandbox(sb: WorkerSandbox): Promise<void> {
   await engineRun(sb.engine, ['stop', '-t', '5', sb.container]).catch(() => {})
 }
 
+/** Every worker container on the engine, stopped ones too, by name: true when it runs. */
+export async function workerContainers(engine: Engine): Promise<Map<string, boolean>> {
+  const out = await engineRun(engine, ['ps', '-a', '--filter', 'name=runcastle-worker-', '--format', '{{.Names}}\t{{.State}}'])
+  const found = new Map<string, boolean>()
+  for (const line of out.split('\n')) {
+    const [name, state] = line.trim().split('\t')
+    if (name) found.set(name, state === 'running')
+  }
+  return found
+}
+
 /** Remove the sandbox, the worker branch on the host and its bare copy (decision 18). */
 export async function removeSandbox(sb: WorkerSandbox): Promise<void> {
   await engineRun(sb.engine, ['rm', '-f', sb.container]).catch(() => {})
@@ -265,9 +276,10 @@ export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
  * logins), copied in with the engine's `cp`, the staging removed after.
  * The sandbox's own conversations (and Claude's `~/.claude.json` state) stay;
  * a Claude setup replaces only its `mcpServers`, a Codex one carries them in
- * its `config.toml`.
+ * its `config.toml`. The fingerprint is written last, so a copy cut off midway
+ * is made again at the next start.
  */
-export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup): Promise<void> {
+export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup, fingerprint: string): Promise<void> {
   await ensureSandboxRunning(sb)
   const stage = join(workersDir(), 'setup', sb.id)
   rmSync(stage, { recursive: true, force: true })
@@ -279,7 +291,8 @@ export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup): Pr
       if (f.content !== undefined) writeFileSync(dest, f.content, { mode: 0o600 })
       else if (f.from) {
         try {
-          cpSync(f.from, dest, { recursive: true, dereference: true })
+          // A plugin's `.in_use` markers name the host's processes, not the sandbox's.
+          cpSync(f.from, dest, { recursive: true, dereference: true, filter: (src) => basename(src) !== '.in_use' })
         } catch (err) {
           // One unreadable skill or a dangling link must not keep the worker from starting.
           console.error(`worker ${sb.id}: left ${f.to} out of its setup copy`, err)
@@ -292,13 +305,25 @@ export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup): Pr
       mkdirSync(dirname(mcp), { recursive: true })
       writeFileSync(mcp, JSON.stringify(claudeMcp), { mode: 0o600 })
     }
-    await execSh(sb.engine, sb.container, setupClearScript([...SETUP_MANAGED, ...CODEX_SETUP_MANAGED]))
+    await execSh(sb.engine, sb.container, setupClearScript([...SETUP_MANAGED, ...CODEX_SETUP_MANAGED, SETUP_FINGERPRINT]))
     // `-a` keeps the host owner, which is the user the sandbox runs as.
     await engineRun(sb.engine, ['cp', '-a', `${stage}/.`, `${sb.container}:${IN.home}`])
     if (claudeMcp) await execSh(sb.engine, sb.container, mcpMergeScript())
+    if (!/^[\w-]+$/.test(fingerprint)) throw new Error('a setup fingerprint is a plain token')
+    await execSh(sb.engine, sb.container, `printf '%s' ${fingerprint} > ${IN.home}/${SETUP_FINGERPRINT}`)
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }
+}
+
+/** Where, under the sandbox's home, the fingerprint of its last finished setup copy is kept. */
+const SETUP_FINGERPRINT = '.runcastle/setup-fingerprint'
+
+/** The fingerprint of the setup last copied in, read from the sandbox (woken if need be); undefined when there is none. */
+export async function copiedSetupFingerprint(sb: WorkerSandbox): Promise<string | undefined> {
+  await ensureSandboxRunning(sb)
+  const out = await execSh(sb.engine, sb.container, `cat ${IN.home}/${SETUP_FINGERPRINT} 2>/dev/null || true`)
+  return out.trim() || undefined
 }
 
 /** Copy one file out of the sandbox to `hostPath` (a file `show_file` shows). */

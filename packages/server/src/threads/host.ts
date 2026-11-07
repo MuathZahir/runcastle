@@ -176,6 +176,10 @@ export interface ThreadLifecycle {
   turnEnded?(row: SessionRow, source: PromptOptions['source']): void
   /** The process stopped, with who started it. */
   stopped?(row: SessionRow, reason: StopReason, startedBy: PromptOptions['source']): void
+  /** An ask of `kind` opened, and the agent waits on the human mid-turn. */
+  askOpened?(row: SessionRow, kind: Ask['kind']): void
+  /** The human answered the open ask (or the page a link ask opened finished), and the agent goes on. */
+  askAnswered?(row: SessionRow): void
 }
 
 /** codex-acp's hook-trust extension: the session's hooks, and trusting them. */
@@ -647,6 +651,7 @@ class Host implements AgentHost {
     }
     this.logAwaits(t.id, { type: 'ask_resolved', id: askId, lines })
     markAgentWorking(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askAnswered?.(row))
     if (instead) {
       // Neither adapter carries a message on a reject (claude-agent-acp denies with its
       // own fixed words; codex-acp's approvals have none), so what to do instead is
@@ -1591,6 +1596,7 @@ class Host implements AgentHost {
     if (open?.ask.kind !== 'link' || open.elicitationId !== elicitationId) return
     appendThreadEvent(t.id, { type: 'ask_resolved', id: open.ask.id, lines: [{ what: 'Done', answer: open.ask.message }] })
     markAgentWorking(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askAnswered?.(row))
     this.settleAsk(t, { kind: 'link', done: true })
   }
 
@@ -1600,9 +1606,16 @@ class Host implements AgentHost {
     this.settleAsk(t, 'cancelled')
     this.logAwaits(t.id, { type: 'ask', ask })
     markAwaitingInput(this.ctx, t.id)
+    this.askHook(t.id, (row) => this.lifecycle.askOpened?.(row, ask.kind))
     return new Promise((settle) => {
       t.ask = { ask, settle }
     })
+  }
+
+  /** Run an ask's lifecycle hook on the thread's row. */
+  private askHook(threadId: string, fn: (row: SessionRow) => void): void {
+    const row = getSessionRow(this.ctx, threadId)
+    if (row) this.hook(() => fn(row))
   }
 
   private settleAsk(t: Thread, answer: AskAnswer | 'cancelled'): void {
