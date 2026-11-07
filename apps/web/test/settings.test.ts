@@ -137,7 +137,7 @@ describe('describeField', () => {
 
   it('renders burnConcurrency as an editable number control with an env-lock note when locked', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 3 }))
-    expect(row.label).toBe('Concurrency')
+    expect(row.label).toBe('Agents working at once')
     expect(row.control).toBe('number')
     expect(row.value).toBe('3')
     expect(row.readOnly).toBe(false)
@@ -154,10 +154,10 @@ describe('describeField', () => {
   // beside the input, where the empty control is, not in a tooltip.
   it('says what burn concurrency defaults to on this machine while it is unset', () => {
     expect(describeField(field({ key: 'burnConcurrency', value: 1 })).unit).toBe(
-      'tickets at once · default on this machine: 1',
+      'ticket agents and workers at once · default on this machine: 1',
     )
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).unit).toBe(
-      'tickets at once · default on this machine: 3',
+      'ticket agents and workers at once · default on this machine: 3',
     )
     // …and the control stays empty over it: nobody chose this width.
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).ghostValue).toBe('3')
@@ -165,7 +165,7 @@ describe('describeField', () => {
 
   it('drops the machine-default once a width is actually set', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
-    expect(row.unit).toBe('tickets at once')
+    expect(row.unit).toBe('ticket agents and workers at once')
     expect(row.ghostValue).toBeUndefined()
     expect(row.note).toBeNull()
   })
@@ -533,7 +533,7 @@ describe('pageRows — one page per task', () => {
       'burnCpus',
     ])
     expect(rows.map((r) => r.unit)).toEqual([
-      'tickets at once',
+      'ticket agents and workers at once',
       'turns',
       'attempts',
       'passes before asking you',

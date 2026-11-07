@@ -36,7 +36,7 @@ import { sandboxEngine } from './engine'
 import { type WorkerPreviews, workerPreviewPath } from '../routes/design-pass-paths'
 import { phoneDesignPort } from '../services/phone-link'
 import { IDLE_STOP_MS } from '../threads/host'
-import { type WorkerBrief, type WorkerSandbox, previewUrlFor, workersDir } from './worker'
+import { type WorkerBrief, type WorkerSandbox, workersDir } from './worker'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
