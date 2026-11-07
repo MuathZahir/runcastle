@@ -55,6 +55,7 @@ export function ChatThread({
   onDropImages,
   footer,
   tail,
+  head,
 }: {
   items: ThreadItem[]
   state: ThreadState
@@ -69,6 +70,8 @@ export function ChatThread({
   footer: ReactNode
   /** A line under the last item, scrolling with the thread (the feature chat's waiting line). */
   tail?: ReactNode
+  /** What stays atop the conversation, above its first item (a worker's assignment card). */
+  head?: ReactNode
 }) {
   const scroller = useRef<HTMLDivElement>(null)
   const foot = useRef<HTMLDivElement>(null)
@@ -165,6 +168,7 @@ export function ChatThread({
         className="min-h-0 flex-1 overflow-y-auto px-6 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:var(--color-border-strong)_transparent]"
       >
         <div ref={content} className="mx-auto flex w-full max-w-(--content-max) flex-col pt-8" style={{ paddingBottom: footH + 56 }}>
+          {head && <div className="sticky top-3 z-1 mb-10 flex min-w-0 flex-col">{head}</div>}
           {items.length === 0 && loading ? (
             // Held back a moment: a read that answers at once shows no flash of it.
             <p role="status" className="m-0 flex animate-fade-in items-center justify-center gap-2 pt-[12vh] text-sm text-text-tertiary [animation-delay:var(--dur-3)]">

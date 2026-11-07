@@ -179,6 +179,7 @@
   --animate-dialog-in: dialogIn var(--dur-3) var(--ease-out-app) both;
   --animate-backdrop-in: backdropIn var(--dur-2) var(--ease-out-app) both;
   --animate-slide-in-right: slideInRight var(--dur-3) var(--ease-out-app) both;
+  --animate-slide-in-left: slideInLeft var(--dur-3) var(--ease-out-app) both;
   --animate-toast-in: toastIn var(--dur-3) var(--ease-out-app) both;
   --animate-breathe: breathe 2s ease-in-out infinite;
   --animate-spin: spin 0.8s linear infinite;
@@ -462,6 +463,11 @@
 @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+/* Back up a level (the sidebar's features list, returning from a feature's page). */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-12px); }
   to { opacity: 1; transform: none; }
 }
 @keyframes toastIn {
