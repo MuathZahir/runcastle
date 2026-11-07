@@ -28,7 +28,7 @@ export const NEED_SETTLE_MS = 50
 export const HELD_SWEEP_MS = 60_000
 
 /** What a feature was last seen needing. */
-type Seen = Pick<FeatureNeed, 'kind' | 'held' | 'quiet'>
+type Seen = Pick<FeatureNeed, 'kind' | 'held' | 'quiet' | 'since'>
 
 export interface NeedWatchOptions {
   /** The clock needs are read against; the hour a held need waits is measured on it. */
@@ -44,17 +44,20 @@ export interface NeedWatch {
 
 /**
  * Whether `need` is news against what was last seen: a new kind, a held need
- * come to the human, or a quiet answer the lead then asked for out loud.
+ * come to the human, a quiet answer the lead then asked for out loud, or
+ * another worker coming to need the human while one already does (its need
+ * is newer: interactive-workers decision 6 pings once per entry).
  */
 function entered(prev: Seen | undefined, need: FeatureNeed | null): need is FeatureNeed {
   if (!need) return false
   if (!prev || prev.kind !== need.kind) return true
+  if (need.kind === 'worker' && need.since > prev.since) return true
   return (prev.held && !need.held) || (!!prev.quiet && !need.quiet)
 }
 
 /** What the watcher remembers of a need. */
 function seenOf(need: FeatureNeed | null): Seen | null {
-  return need ? { kind: need.kind, held: need.held, ...(need.quiet ? { quiet: true } : {}) } : null
+  return need ? { kind: need.kind, held: need.held, since: need.since, ...(need.quiet ? { quiet: true } : {}) } : null
 }
 
 /**
@@ -90,6 +93,7 @@ export function startNeedWatch(ctx: AppCtx, opts: NeedWatchOptions = {}): NeedWa
           words: need.words,
           held: need.held,
           why: need.why ?? null,
+          ...(need.kind === 'worker' && need.threadId ? { threadId: need.threadId } : {}),
           ...(need.quiet ? { quiet: true } : {}),
         }
         emit(ctx, featureId, { type: FEATURE_NEEDS_YOU, message: `needs you · ${need.words}`, data })

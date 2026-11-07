@@ -1,8 +1,5 @@
-import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Feature, PromptDisplay } from '@runcastle/core'
+import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import {
@@ -18,13 +15,12 @@ import { listAfter } from '../src/services/events'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { setAgentHostForTests } from '../src/threads/host'
-import type { AgentHost } from '../src/threads/types'
-import { type SandboxEngine, setSandboxEngineForTests } from '../src/workers/engine'
+import { setSandboxEngineForTests } from '../src/workers/engine'
 import { getWorker, workerPrompted, workerTurnEnded } from '../src/workers/service'
-import type { HandbackNote, WorkerSandbox } from '../src/workers/worker'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
+import { commitOn, fakeEngine, fakeHost, git, initRepo } from './support/fake-workers'
 
 /**
  * Interactive workers (docs/features/interactive-workers): the worker record
@@ -33,102 +29,6 @@ import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
  * git underneath is real: a handback's commits and a land are read from a
  * real repo.
  */
-
-interface Sent {
-  threadId: string
-  text: string
-  display?: PromptDisplay
-}
-
-/** An agent host that only records what was said to which thread. */
-function fakeHost(): { host: AgentHost; sent: Sent[]; stopped: string[] } {
-  const sent: Sent[] = []
-  const stopped: string[] = []
-  const host = {
-    prompt: async (threadId: string, input: { text: string }, opts: { display?: PromptDisplay }) => {
-      sent.push({ threadId, text: input.text, ...(opts.display ? { display: opts.display } : {}) })
-      return { promptId: `p${sent.length}` }
-    },
-    stop: async (threadId: string) => {
-      stopped.push(threadId)
-    },
-    isRunning: () => false,
-  }
-  return { host: host as unknown as AgentHost, sent, stopped }
-}
-
-/** A sandbox engine with no container: handbacks are put in by the test, a removal deletes the host branch as the real one does. */
-function fakeEngine(): SandboxEngine & { up: boolean; handbacks: Map<string, HandbackNote>; removed: string[]; fetched: string[] } {
-  const handbacks = new Map<string, HandbackNote>()
-  const removed: string[] = []
-  const fetched: string[] = []
-  return {
-    name: 'docker',
-    up: true,
-    handbacks,
-    removed,
-    fetched,
-    async available() {
-      return this.up
-    },
-    // The worker branch stands in the host repo as a fetch would leave it.
-    create: async (input) => {
-      git(input.repoPath, 'branch', input.branch, input.featureBranch)
-      return {
-      id: input.id,
-      engine: input.engine,
-      container: input.container,
-      repoPath: input.repoPath,
-      featureBranch: input.featureBranch,
-      branch: input.branch,
-      port: 41001,
-      previewUrl: 'http://localhost:41001/',
-      }
-    },
-    stop: async () => {},
-    remove: async (sb: WorkerSandbox) => {
-      removed.push(sb.container)
-      git(sb.repoPath, 'branch', '-D', sb.branch)
-    },
-    takeHandback: async (sb) => {
-      const note = handbacks.get(sb.id)
-      handbacks.delete(sb.id)
-      return note
-    },
-    fetchBranch: async (sb) => {
-      fetched.push(sb.branch)
-    },
-    process: async () => {
-      throw new Error('no agent in these tests')
-    },
-  }
-}
-
-function git(repo: string, ...args: string[]): string {
-  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' })
-}
-
-/** A repo with `main` and `feature/<slug>`, nothing checked out on the feature branch. */
-function initRepo(slug: string): string {
-  const repo = tmpRepo()
-  git(repo, 'init', '-q', '-b', 'main')
-  git(repo, 'config', 'user.email', 't@t.t')
-  git(repo, 'config', 'user.name', 't')
-  writeFileSync(join(repo, 'README.md'), 'hello\n')
-  git(repo, 'add', '.')
-  git(repo, 'commit', '-q', '-m', 'initial commit')
-  git(repo, 'branch', `feature/${slug}`)
-  return repo
-}
-
-/** Commit `file` on `branch` (as the worker would, its commits then fetched to the host). */
-function commitOn(repo: string, branch: string, file: string, body: string, subject: string): void {
-  git(repo, 'checkout', '-q', '-B', branch, branch)
-  writeFileSync(join(repo, file), body)
-  git(repo, 'add', file)
-  git(repo, 'commit', '-q', '-m', subject)
-  git(repo, 'checkout', '-q', 'main')
-}
 
 let ctx: AppCtx
 let home: string

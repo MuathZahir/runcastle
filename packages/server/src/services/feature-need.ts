@@ -10,7 +10,7 @@ import {
 } from '@runcastle/core'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { events, readyDeclarations } from '../db/schema'
+import { events, readyDeclarations, workers } from '../db/schema'
 import { leadState, NO_LEAD, openAskOf, type LeadState } from '../threads/read'
 import { designsWaiting } from './designs'
 import { getProjectById, hasActiveRun } from './repo'
@@ -147,7 +147,24 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     wakeQueuedAt: timeline.wakeQueuedAt,
     designsWaiting: designs.count,
     oldestDesignWaitingSince: designs.since,
+    workerNeedsYou: workerNeedsYou(ctx, feature.id),
   }
+}
+
+/**
+ * The worker that came to need the human last: one showing "needs you" or one
+ * that failed (interactive-workers decisions 6, 16). The newest, so each worker
+ * entering the need is news to the watcher, and one leaving it is not.
+ */
+function workerNeedsYou(ctx: AppCtx, featureId: string): NeedFacts['workerNeedsYou'] {
+  const w = ctx.db
+    .select({ id: workers.id, label: workers.label, updatedAt: workers.updatedAt })
+    .from(workers)
+    .where(and(eq(workers.featureId, featureId), inArray(workers.status, ['needs-you', 'failed'])))
+    .orderBy(desc(workers.updatedAt))
+    .limit(1)
+    .get()
+  return w ? { label: w.label, threadId: w.id, since: w.updatedAt } : null
 }
 
 /**

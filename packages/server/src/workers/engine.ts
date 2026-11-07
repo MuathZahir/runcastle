@@ -5,7 +5,9 @@ import {
   type NewSandboxInput,
   type WorkerBrief,
   type WorkerSandbox,
+  conversationInSandbox,
   createWorkerSandbox,
+  ensureSandboxRunning,
   fetchWorkerBranch,
   removeSandbox,
   stopSandbox,
@@ -27,6 +29,10 @@ export interface SandboxEngine {
   create(input: NewSandboxInput): Promise<WorkerSandbox>
   /** Stop the container, keeping its filesystem (an idle stop). */
   stop(sb: WorkerSandbox): Promise<void>
+  /** Start a stopped container and its dev server, but not its agent (a preview opened, decision 15); true when it was stopped. */
+  wake(sb: WorkerSandbox): Promise<boolean>
+  /** Whether the agent's own record of `conversationId` is inside the sandbox: the reload guard looks there, not on the host. */
+  conversationOnDisk(sb: WorkerSandbox, conversationId: string): Promise<boolean>
   /** Remove the container, the worker branch on the host and its bare copy. */
   remove(sb: WorkerSandbox): Promise<void>
   /** The handback the worker wrote since the last one taken, if any. */
@@ -48,6 +54,8 @@ export function containerEngine(name: Engine): SandboxEngine {
       ),
     create: (input) => createWorkerSandbox(input),
     stop: (sb) => stopSandbox(sb),
+    wake: async (sb) => (await ensureSandboxRunning(sb)) > 0,
+    conversationOnDisk: (sb, conversationId) => conversationInSandbox(sb, conversationId),
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
     fetchBranch: (sb) => fetchWorkerBranch(sb),

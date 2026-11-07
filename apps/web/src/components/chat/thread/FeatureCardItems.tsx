@@ -65,6 +65,8 @@ export function RuncastleDisplay({
   if ('summary' in display) return <RuncastleNote summary={display.summary} agentText={agentText} />
   // A plain note until the approved handback card is drawn (interactive-workers decision 21).
   if ('handback' in display) return <RuncastleNote summary={`Worker "${display.handback.label}" handed back`} agentText={agentText} />
+  // Likewise until the approved failed card is drawn (decision 16).
+  if ('workerFailed' in display) return <RuncastleNote summary={`Worker "${display.workerFailed.label}" failed`} agentText={agentText} />
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {display.orchestrator.map((message, i) => (

@@ -1,4 +1,4 @@
-import { FEATURE_NEEDS_YOU, type EventRow, type NeedsYouData, needPings } from '@runcastle/core'
+import { FEATURE_NEEDS_YOU, type EventRow, type Feature, type NeedsYouData, needPings } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { subscribeLive } from './bus'
 import { emit, getEventRow } from './events'
@@ -29,6 +29,8 @@ export function needPushBody(need: NeedsYouData): string {
       return sentence(`Waiting for your permission to run ${why}`)
     case 'conflict':
       return 'A merge stopped on a conflict.'
+    case 'worker':
+      return sentence(`${why} needs you`)
     case 'answer':
       return why ? sentence(`Needs your answer: ${why}`) : 'Needs your answer.'
     case 'plan':
@@ -45,6 +47,15 @@ export function needPushBody(need: NeedsYouData): string {
 }
 
 /**
+ * Where a need's tap lands: the feature's chat, and for a worker's need that
+ * worker's thread, named the way the web addresses an open thread (`?thread=`).
+ */
+function needUrl(feature: Pick<Feature, 'projectId' | 'slug'>, need: NeedsYouData): string {
+  const chat = path('p', feature.projectId, 'f', feature.slug, 'chat')
+  return need.kind === 'worker' && need.threadId ? `${chat}?${new URLSearchParams({ thread: need.threadId })}` : chat
+}
+
+/**
  * Push `event` to every phone when it is a need that pings; null when it is not
  * one. No phone subscribed sends nothing, quietly. A push that reached a phone
  * leaves one timeline line, as `notify_human`'s does.
@@ -58,7 +69,7 @@ export async function pushNeed(ctx: AppCtx, event: EventRow, send?: PushSender):
     {
       title: feature.title,
       body: needPushBody(event.data),
-      url: path('p', feature.projectId, 'f', feature.slug, 'chat'),
+      url: needUrl(feature, event.data),
     },
     send,
   )

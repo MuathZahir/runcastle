@@ -10,7 +10,7 @@ import type { FeatureStatus } from './schemas'
  */
 
 /** The needs, most pressing first (decision 17): the order {@link featureNeed} picks in. */
-export const NEED_KINDS = ['permission', 'conflict', 'answer', 'plan', 'design', 'stopped', 'test', 'merge'] as const
+export const NEED_KINDS = ['permission', 'conflict', 'worker', 'answer', 'plan', 'design', 'stopped', 'test', 'merge'] as const
 export type NeedKind = (typeof NEED_KINDS)[number]
 
 /**
@@ -79,6 +79,11 @@ export interface NeedFacts {
   designsWaiting: number
   /** When the oldest of them was last shown; null when none waits. */
   oldestDesignWaitingSince: number | null
+  /**
+   * The worker that most recently came to need the human, by showing "needs
+   * you" or by failing (interactive-workers decisions 6, 16); `since` is when.
+   */
+  workerNeedsYou: { label: string; threadId: string; since: number } | null
 }
 
 /** The one thing a feature waits on the human for. */
@@ -116,6 +121,8 @@ function wordsOf(need: Bare): string {
       return `Needs permission · ${need.why}`
     case 'conflict':
       return 'Merge conflict'
+    case 'worker':
+      return `${need.why} needs you`
     case 'answer':
       return need.why ? `Needs your answer · ${need.why}` : 'Needs your answer'
     case 'plan':
@@ -173,6 +180,10 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       ? { kind: 'permission', why: facts.openAsk.title, since: facts.openAsk.since, threadId: facts.openAsk.threadId }
       : null,
     () => facts.conflictSince !== null ? { kind: 'conflict', since: facts.conflictSince } : null,
+    // A worker waits on the human whatever its lead is doing, so this counts while the lead works.
+    () => facts.workerNeedsYou
+      ? { kind: 'worker', why: facts.workerNeedsYou.label, since: facts.workerNeedsYou.since, threadId: facts.workerNeedsYou.threadId }
+      : null,
     () => {
       if (facts.openAsk?.kind === 'question') {
         const why = waitingKind === 'answer' ? waiting!.reason : facts.openAsk.title
@@ -220,8 +231,8 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
 /**
  * The one need a feature shows, or null when it waits on nobody (decisions 1,
  * 17, 18). Only a started feature can need anything. While a round runs or the
- * lead is mid-turn, only an open ask (it halts the agent where it stands) or a
- * standing merge conflict counts.
+ * lead is mid-turn, only an open ask (it halts the agent where it stands), a
+ * standing merge conflict or a worker that needs the human counts.
  * A held need reads "With the orchestrator · …" until it has waited
  * {@link HELD_NEED_GRACE_MS}; a permission prompt and a design are never held.
  */
@@ -249,6 +260,8 @@ export interface NeedsYouData {
   words: string
   held: boolean
   why: string | null
+  /** The worker's thread a `worker` need opens (interactive-workers decision 6). */
+  threadId?: string
   /** A bare reply's answer ({@link FeatureNeed.quiet}): news, but no ping. */
   quiet?: true
 }

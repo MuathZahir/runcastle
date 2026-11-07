@@ -198,6 +198,18 @@ export async function takeHandbackNote(sb: WorkerSandbox): Promise<HandbackNote 
   return JSON.parse(raw) as HandbackNote
 }
 
+/**
+ * Whether Claude Code's transcript of `conversationId` is inside the sandbox,
+ * where the worker's agent keeps it: the host disk never holds it, so the host's
+ * own check would call every worker conversation gone. An id that is not a
+ * plain token is never looked for.
+ */
+export async function conversationInSandbox(sb: WorkerSandbox, conversationId: string): Promise<boolean> {
+  if (!/^[\w-]+$/.test(conversationId)) return false
+  const out = await execSh(sb.engine, sb.container, `ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${conversationId}.jsonl >/dev/null 2>&1 && echo yes || true`)
+  return out.trim() === 'yes'
+}
+
 /** Bring the worker's commits from its own bare copy into the host repo; a fetch runs none of that repo's hooks. */
 export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
   await git(sb.repoPath, ['fetch', '-q', workerOrigin(sb.id), `+refs/heads/${sb.branch}:refs/heads/${sb.branch}`])

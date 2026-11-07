@@ -73,7 +73,7 @@ import {
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers } from '../workers/service'
+import { withWorkers, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
@@ -109,6 +109,12 @@ export interface AgentProcess {
    * servers, session options and permission mode, in place of the launch's.
    */
   session?: { cwd: string; mcpServers: acp.McpServer[]; meta?: Record<string, unknown>; mode?: string }
+  /**
+   * Whether the runtime's record of a conversation is where this process runs,
+   * for a process whose disk is not the host's (a worker's sandbox): asked in
+   * place of {@link AgentHostDeps.conversationOnDisk}.
+   */
+  conversationOnDisk?: (conversationId: string) => Promise<boolean>
 }
 
 /** Starts the agent process a launch describes. */
@@ -134,6 +140,13 @@ export interface AgentHostDeps {
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
   /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
   backgroundWindowMs?: number
+  /**
+   * The slot a thread's turn must hold to run, under the machine's limit of
+   * agents working at once (interactive-workers decision 14): resolves, maybe
+   * later, with the slot's release, which the host calls as the turn ends.
+   * Undefined for a thread that needs none.
+   */
+  turnSlot?: (row: SessionRow) => Promise<() => void> | undefined
 }
 
 /**
@@ -326,6 +339,16 @@ interface Turn {
   self?: boolean
   /** A self-started turn on a runtime with no end signal ends when this fires. */
   quiet?: ReturnType<typeof setTimeout>
+  /** Gives back the turn's slot ({@link AgentHostDeps.turnSlot}); called once, as the turn ends or the process stops. */
+  release?: () => void
+}
+
+/** Give back a turn's slot, once. */
+function releaseSlot(turn: Turn | null | undefined): void {
+  const release = turn?.release
+  if (!turn || !release) return
+  delete turn.release
+  release()
 }
 
 interface Thread {
@@ -443,6 +466,7 @@ class Host implements AgentHost {
   private readonly selfTurnQuietMs: number
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   private readonly backgroundWindowMs: number
+  private readonly turnSlot: NonNullable<AgentHostDeps['turnSlot']>
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
@@ -460,6 +484,7 @@ class Host implements AgentHost {
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
+    this.turnSlot = deps.turnSlot ?? (() => undefined)
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
@@ -942,7 +967,10 @@ class Host implements AgentHost {
       } catch (err) {
         if (!saysConversationGone(err)) throw err
         // Said gone but still on disk: the CLI failed to reopen it, and a new conversation would bury it.
-        if (this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)) {
+        const onDisk = proc.conversationOnDisk
+          ? await proc.conversationOnDisk(row.ccSessionId).catch(() => true)
+          : this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
+        if (onDisk) {
           console.error(`thread ${t.id}: conversation ${row.ccSessionId} is on disk but did not reopen`, err)
           throw new Error(NOT_REOPENED)
         }
@@ -1062,6 +1090,7 @@ class Host implements AgentHost {
   /** Forget the thread's process: no more events from it, no asks left waiting. */
   private detach(t: Thread): void {
     t.state = 'stopped'
+    releaseSlot(t.turn)
     if (this.threads.get(t.id) === t) this.threads.delete(t.id)
     if (t.idle) clearTimeout(t.idle)
     if (t.windowEnds) clearTimeout(t.windowEnds)
@@ -1127,6 +1156,13 @@ class Host implements AgentHost {
     if (t.idle) clearTimeout(t.idle)
     const turn = this.newTurn(t)
     t.turn = turn
+    // A turn over the limit of agents working at once waits here for a slot, its prompt logged.
+    const slotRow = getSessionRow(this.ctx, t.id)
+    const slot = slotRow ? this.turnSlot(slotRow) : undefined
+    if (slot) {
+      turn.release = await slot
+      if (isStopped(t) || t.turn !== turn) return releaseSlot(turn)
+    }
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
     // Taken before the agent hears the prompt, so nothing it does is in it.
@@ -1155,6 +1191,7 @@ class Host implements AgentHost {
     const files = await this.turnFiles(t, turn)
     if (isStopped(t)) return
     t.turn = null
+    releaseSlot(turn)
     this.logAwaits(t.id, { ...end, ...(files.length ? { files } : {}) })
     markAwaitingInput(this.ctx, t.id)
     t.turnEndedAt = Date.now()
@@ -1401,7 +1438,12 @@ type GlobalWithHost = typeof globalThis & { [HOST_KEY]?: AgentHost }
 /** The process-wide host, pinned on `globalThis` so a `bun --hot` reload keeps its processes. */
 export function processAgentHost(ctx: AppCtx): AgentHost {
   const g = globalThis as GlobalWithHost
-  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({ ctx, lifecycle: threadLifecycle(ctx), transport: withWorkers(ctx, spawnAdapter) })
+  if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({
+      ctx,
+      lifecycle: threadLifecycle(ctx),
+      transport: withWorkers(ctx, spawnAdapter),
+      turnSlot: workerTurnSlot(ctx),
+    })
   return g[HOST_KEY]
 }
 

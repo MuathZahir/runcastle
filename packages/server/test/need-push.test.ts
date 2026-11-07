@@ -59,6 +59,21 @@ describe('runcastle’s own phone pings', () => {
     expect(sentLines(f.id)).toHaveLength(1)
   })
 
+  it('names the worker that needs the human, and the tap opens that worker’s thread', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'export-csv', title: 'Export CSV' })
+    addPushSubscription(ctx, phone('a'))
+    const { sent, send } = fakeSender()
+    const worker: NeedsYouData = { kind: 'worker', words: 'Header needs you', held: false, why: 'Header', threadId: 'sess_w1' }
+
+    await pushNeed(ctx, needEvent(f.id, worker), send)
+
+    expect(sent[0]?.message).toEqual({
+      title: 'Export CSV',
+      body: 'Header needs you.',
+      url: `/p/${projectId}/f/export-csv/chat?thread=sess_w1`,
+    })
+  })
+
   it('names the need in one sentence', async () => {
     const f = seedFeature(ctx, projectId)
     addPushSubscription(ctx, phone('a'))

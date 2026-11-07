@@ -38,6 +38,7 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
+import { workerPreviews } from './workers/service'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { reconcileStaleRuns, wakeInterruptedRounds } from './workflows/reconcile-runs'
@@ -218,14 +219,19 @@ export async function startServer(): Promise<void> {
 
   // The phone's way to a feature's design server (routes/design-pass.ts), on its
   // own port so project code never shares runcastle's API origin.
-  const designPass = serveDesignPass(config, (featureId) => {
-    try {
-      const status = designServerStatus(ctx, featureId)
-      return status.running ? status.url : undefined
-    } catch {
-      return undefined
-    }
-  })
+  const designPass = serveDesignPass(
+    config,
+    (featureId) => {
+      try {
+        const status = designServerStatus(ctx, featureId)
+        return status.running ? status.url : undefined
+      } catch {
+        return undefined
+      }
+    },
+    // A worker's preview, by worker id (interactive-workers decision 15).
+    workerPreviews(ctx),
+  )
 
   // Provider failures are represented per source in the persisted snapshot;
   // an unforeseen service-level rejection is logged, never allowed to delay boot.

@@ -20,6 +20,7 @@ import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
 import { createSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
+import { agentSlots } from '../services/agent-slots'
 import { emit } from '../services/events'
 import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
@@ -30,8 +31,11 @@ import { getFeatureRow, projectForFeature, tryGetFeature } from '../services/rep
 import { requireAnnotatedModels } from '../services/tickets'
 import type { AgentTransport } from '../threads/host'
 import type { StopReason } from '../threads/types'
-import { agentHost } from '../threads/types'
+import { agentHost, readThreadEvents } from '../threads/types'
 import { sandboxEngine } from './engine'
+import { type WorkerPreviews, workerPreviewPath } from '../routes/design-pass-paths'
+import { phoneDesignPort } from '../services/phone-link'
+import { IDLE_STOP_MS } from '../threads/host'
 import { type WorkerBrief, type WorkerSandbox, previewUrlFor, workersDir } from './worker'
 
 /**
@@ -108,8 +112,19 @@ function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
     featureBranch: w.featureBranch,
     branch: w.branch,
     port: w.previewPort,
-    previewUrl: previewUrlFor(w.previewPort),
+    previewUrl: humanPreviewUrl(ctx, w.id),
   }
+}
+
+/**
+ * Where the human opens a worker's preview (decision 15): through runcastle's
+ * design pass-through, never the sandbox's own port, so the address works
+ * wherever runcastle runs. The web puts the listener's origin as the page
+ * sees it in front of {@link workerPreviewPath}; a worker's agent is told this
+ * whole address, as the machine runcastle runs on sees it.
+ */
+function humanPreviewUrl(ctx: AppCtx, workerId: string): string {
+  return `http://localhost:${phoneDesignPort(ctx.config)}${workerPreviewPath(workerId)}`
 }
 
 function briefOf(w: WorkerRow): WorkerBrief {
@@ -130,15 +145,22 @@ export function claudeToken(): string {
   throw new Error('no CLAUDE_CODE_OAUTH_TOKEN: run `claude setup-token` and put it in the data dir .env')
 }
 
-/** Route a worker's thread to its sandbox; every other thread to `base`. */
+/**
+ * Route a worker's thread to its sandbox, woken if it was stopped; every other
+ * thread to `base`. Whether a conversation is still on record is asked inside
+ * the sandbox, so a reload that fails there is never taken for a conversation
+ * gone, and never silently replaced by a new one.
+ */
 export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
-  return (spec, row) => {
+  return async (spec, row) => {
     if (row.kind !== 'worker') return base(spec, row)
     const w = requireWorker(ctx, row.id)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
     const model = (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model
-    return sandboxEngine(w.engine).process(sb, briefOf(w), claudeToken(), model ?? w.model)
+    const engine = sandboxEngine(w.engine)
+    const proc = await engine.process(sb, briefOf(w), claudeToken(), model ?? w.model)
+    return { ...proc, conversationOnDisk: (conversationId) => engine.conversationOnDisk(sb, conversationId) }
   }
 }
 
@@ -253,10 +275,10 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     kind: input.kind,
     startedBy: input.startedBy,
     branch: sb.branch,
-    previewUrl: sb.previewUrl,
+    previewUrl: humanPreviewUrl(ctx, session.id),
   })
   await agentHost(ctx).prompt(session.id, { text: workerKickoff(ctx, started) }, { source: 'runcastle' })
-  return { workerId: session.id, branch: sb.branch, previewUrl: sb.previewUrl }
+  return { workerId: session.id, branch: sb.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
 }
 
 /** Ports any worker holds, stopped ones included; a failed one never got its sandbox. */
@@ -352,21 +374,77 @@ function handbackText(w: WorkerRow, commits: string[], files: string[]): string 
   ].join('\n')
 }
 
+/**
+ * The slot a worker's turn holds under the machine's limit of agents working
+ * at once (decision 14), for the agent host's `turnSlot`: none for any other
+ * thread. A worker that has to wait is `queued` until its slot comes, then
+ * working again; one waiting on the human or stopped holds none, since only a
+ * running turn asks.
+ */
+export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => void> | undefined {
+  return (row) => (row.kind === 'worker' ? takeWorkerSlot(ctx, row.id) : undefined)
+}
+
+async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
+  const slots = agentSlots(ctx.config.burnConcurrency)
+  const now = slots.tryTake()
+  if (now) return now
+  const w = getWorker(ctx, id)
+  if (w && (w.status === 'working' || w.status === 'needs-you')) setStatus(ctx, w, 'queued')
+  const release = await slots.take()
+  const after = getWorker(ctx, id)
+  if (after?.status === 'queued') setStatus(ctx, after, 'working')
+  return release
+}
+
 /** The human typed to a worker: a worker waiting on them is working again. */
 export function workerPrompted(ctx: AppCtx, id: string): void {
   const w = getWorker(ctx, id)
   if (w?.status === 'needs-you') setStatus(ctx, w, 'working')
 }
 
-/** A worker's process stopped: an idle or archive stop stops its sandbox too. */
+/**
+ * A worker's process stopped: an idle or archive stop stops its sandbox too; a
+ * crash (its container died, its sandbox would not wake, its agent exited)
+ * fails it (decision 16).
+ */
 export async function workerStopped(ctx: AppCtx, row: Pick<SessionRow, 'id'>, reason: StopReason): Promise<void> {
   const w = getWorker(ctx, row.id)
   if (!w) return
+  if (reason === 'crashed') return failWorker(ctx, w, crashFailure(w.id))
   if (reason !== 'idle' && reason !== 'archived') return
   const sb = sandboxOf(ctx, w)
   if (!sb || w.status === 'dropped') return
   await sandboxEngine(w.engine).stop(sb)
   if (tryGetFeature(ctx, w.featureId)) emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (${reason})`, { reason })
+}
+
+/** What the thread's log says stopped its agent, or a plain word when it says nothing. */
+function crashFailure(threadId: string): string {
+  const stop = readThreadEvents(threadId).findLast((e) => e.type === 'process' && e.state === 'stopped')
+  const error = stop?.type === 'process' ? stop.error : undefined
+  return error?.trim() || 'its agent stopped unexpectedly'
+}
+
+/**
+ * Mark a worker failed and wake its lead once with what failed (decision 16),
+ * so a lead never waits on a worker that will not hand back. A worker that is
+ * already failed, dropped or landed is left as it is.
+ */
+async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string): Promise<void> {
+  if (w.status === 'failed' || w.status === 'dropped' || w.status === 'landed') return
+  const short = failure.slice(0, 2000)
+  const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
+  emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
+  const feature = tryGetFeature(ctx, w.featureId)
+  if (!feature) return
+  await deliverToLead(ctx, feature, {
+    text:
+      `Worker "${w.label}" failed (worker ${w.id}): ${short}\n\n` +
+      `Next: start it again with start_worker, drop_worker({ workerId: "${w.id}" }), or do the job yourself.`,
+    source: 'runcastle',
+    display: { workerFailed: { workerId: w.id, label: w.label, failure: short } },
+  })
 }
 
 // --- the lead's and the human's moves -------------------------------------------
@@ -384,8 +462,9 @@ function requireOpen(w: WorkerRow): void {
 export async function messageWorker(ctx: AppCtx, id: string, text: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
   requireOpen(w)
-  await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
+  // Working before the prompt goes: a turn that must wait for a slot then reads `queued` over it.
   const next = w.status === 'needs-you' ? setStatus(ctx, w, 'working') : w
+  await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
   emitWorker(ctx, next, 'worker.messaged', `message sent to worker "${w.label}"`, { text })
   return { ok: true }
 }
@@ -454,17 +533,131 @@ export async function sendBackWorker(ctx: AppCtx, id: string, note: string): Pro
   return { ok: true }
 }
 
-/** Drop a worker (decision 18): its process stops, its container and branch go. */
+/**
+ * Drop a worker (decision 18): its process stops, its container and branch go.
+ * Idempotent: dropping a dropped worker removes whatever of its sandbox is
+ * left and says nothing new.
+ */
 export async function dropWorker(ctx: AppCtx, id: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
-  if (w.status === 'dropped') return { ok: true }
   if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed; there is nothing to drop`)
-  const dropped = updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null })
+  await retireWorker(ctx, w)
+  return { ok: true }
+}
+
+/** Stop a worker's process, remove its sandbox and branch, and mark it dropped unless it landed. */
+async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  const drops = w.status !== 'dropped' && w.status !== 'landed'
+  const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   await agentHost(ctx).stop(w.id, 'archived')
   const sb = sandboxOf(ctx, w)
   if (sb) await sandboxEngine(w.engine).remove(sb)
-  emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
-  return { ok: true }
+  if (drops) emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
+}
+
+/**
+ * The feature merged, was archived or is being deleted (decision 18): every
+ * worker's process, container and branch go, and the open ones are marked
+ * dropped. Each is tried even when another's removal fails. After a merge or
+ * an archive, which have already happened, a failure is an event; a delete
+ * (`after` absent) throws the first one, so the delete stops and can be retried.
+ */
+export async function removeFeatureWorkers(ctx: AppCtx, featureId: string, after?: 'merged' | 'archived'): Promise<void> {
+  let first: unknown
+  for (const w of listWorkers(ctx, featureId)) {
+    try {
+      await retireWorker(ctx, w)
+    } catch (err) {
+      first ??= err
+      if (after) {
+        emitWorker(ctx, w, 'worker.remove_failed', `worker "${w.label}" could not be removed after the feature ${after}`, {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+  if (first !== undefined && !after) throw first
+}
+
+/** The statuses that keep a feature from being ready: at work, or holding work not landed (decision 19). */
+const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'handed-back'])
+
+/** The feature's workers still at work or holding work that has not landed. */
+export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[] {
+  return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status))
+}
+
+// --- the preview ----------------------------------------------------------------
+
+/** How long a preview's sandbox is taken as running before a request checks again. */
+const PREVIEW_RECHECK_MS = 15_000
+
+interface PreviewWake {
+  /** The check (and start, if it was stopped) made at `at`; true when it had to start it. */
+  checked: Promise<boolean>
+  at: number
+  /** Stops the sandbox once the preview has gone unopened for the idle time, should no agent run in it. */
+  idle?: ReturnType<typeof setTimeout>
+}
+
+const previewWakes = new Map<string, PreviewWake>()
+
+/** A worker whose sandbox may serve a preview: started, and neither dropped nor failed. */
+function previewSandbox(ctx: AppCtx, id: string): { w: WorkerRow; sb: WorkerSandbox } | undefined {
+  const w = getWorker(ctx, id)
+  if (!w || w.status === 'dropped' || w.status === 'failed') return undefined
+  const sb = sandboxOf(ctx, w)
+  return sb ? { w, sb } : undefined
+}
+
+/**
+ * A worker's previews as the design pass-through reaches them (decision 15):
+ * its published port on the host's loopback, and a wake that starts a stopped
+ * sandbox and its dev server but never its agent. A sandbox woken for a
+ * preview stops again once the preview goes unopened for the idle time, unless
+ * its agent has started meanwhile, whose own idle stop then stops it.
+ */
+export function workerPreviews(ctx: AppCtx, idleMs = IDLE_STOP_MS): WorkerPreviews {
+  return {
+    url(id) {
+      const found = previewSandbox(ctx, id)
+      return found ? `http://127.0.0.1:${found.sb.port}/` : undefined
+    },
+    async wake(id) {
+      const found = previewSandbox(ctx, id)
+      if (!found) return
+      const { w, sb } = found
+      const engine = sandboxEngine(w.engine)
+      let wake = previewWakes.get(id)
+      if (!wake || Date.now() - wake.at > PREVIEW_RECHECK_MS) {
+        const checked = engine.wake(sb).then((started) => {
+          if (started) emitWorker(ctx, w, 'worker.preview_woken', `worker "${w.label}" sandbox started for its preview`)
+          return started
+        })
+        wake = { checked, at: Date.now(), ...(wake?.idle ? { idle: wake.idle } : {}) }
+        previewWakes.set(id, wake)
+      }
+      try {
+        await wake.checked
+      } catch (err) {
+        previewWakes.delete(id)
+        throw err
+      }
+      if (wake.idle) clearTimeout(wake.idle)
+      wake.idle = setTimeout(() => void stopIdlePreview(ctx, id), idleMs)
+      wake.idle.unref?.()
+    },
+  }
+}
+
+/** The preview went unopened for the idle time: stop its sandbox, unless the worker's agent runs in it. */
+async function stopIdlePreview(ctx: AppCtx, id: string): Promise<void> {
+  previewWakes.delete(id)
+  if (agentHost(ctx).isRunning(id)) return
+  const found = previewSandbox(ctx, id)
+  if (!found) return
+  await sandboxEngine(found.w.engine).stop(found.sb).catch(() => {})
+  emitWorker(ctx, found.w, 'worker.stopped', `worker "${found.w.label}" sandbox stopped (preview idle)`, { reason: 'idle' })
 }
 
 // --- reads ----------------------------------------------------------------------

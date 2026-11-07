@@ -287,6 +287,8 @@ export const PromptDisplay = z.union([
       threadId: z.string(),
     }),
   }),
+  /** A worker failed (interactive-workers decision 16): its container died, its setup failed or its agent crashed. */
+  z.object({ workerFailed: z.object({ workerId: z.string(), label: z.string(), failure: z.string() }) }),
 ])
 export type PromptDisplay = z.infer<typeof PromptDisplay>
 
