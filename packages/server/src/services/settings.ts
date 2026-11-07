@@ -152,6 +152,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.enum(['on', 'off']),
     parseEnv: idEnv,
   },
+  // Read by the thread host when the usage limit stops a turn and again when the
+  // reset comes, so no restart is needed (agents-are-woken-only-when-it-matters decision 25).
+  {
+    key: 'carryOnAfterLimit',
+    configKey: 'carryOnAfterLimit',
+    envVar: 'RUNCASTLE_CARRY_ON_AFTER_LIMIT',
+    restartRequired: false,
+    valueSchema: z.enum(['on', 'off']),
+    parseEnv: idEnv,
+  },
   {
     key: 'burnConcurrency',
     configKey: 'burnConcurrency',

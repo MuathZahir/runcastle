@@ -60,7 +60,7 @@ import {
   type ConfigChoice,
 } from './controls'
 import { claudeTranscriptOnDisk, readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
-import { claudeUsageReport, codexUsageReport, limitLiftsAt } from './usage'
+import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from './usage'
 import {
   backgroundAgents,
   backgroundTasks,
@@ -283,12 +283,14 @@ export const AUTOCOMPACT: AutoCompactPolicy = {
  */
 export const SELF_TURN_QUIET_MS = 30_000
 
-/** How long after a usage limit's reported reset runcastle sends what the limit stopped (decision 9). */
+/** How long after a usage limit's reported reset a stopped chat is woken (agents-are-woken-only-when-it-matters decision 25). */
 export const USAGE_RESET_GRACE_MS = 60_000
 
-/** What wakes a thread once the usage limit that stopped runcastle's message has reset; the held text rides ahead of it. */
-export const USAGE_RESET_LINE =
-  '[runcastle] The usage limit has reset. The message above reached you while it was hit and was not acted on: act on it now.'
+/** What wakes a chat the usage limit stopped, once it has reset; what was held rides ahead of it. */
+export const USAGE_RESET_LINE = '[runcastle] The usage limit has reset. Carry on where you were.'
+
+/** The setting a usage-limit notice offers (decision 25). */
+const CARRY_ON_SETTING = { page: 'general', field: 'carryOnAfterLimit', phrase: 'carry on by itself' } as const
 
 /** How long a runtime's usage read answers every thread before the account is asked again. */
 const USAGE_FRESH_MS = 60_000
@@ -605,11 +607,12 @@ class Host implements AgentHost {
     seedFromTranscript(this.ctx, threadId)
     if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display)
     // While the account is over its usage limit, runcastle's own messages wait
-    // for the reset instead of starting turns that fail (decision 9).
+    // instead of starting turns that fail: for the reset when the human chose to
+    // carry on then, else for their next message (decision 25).
     const until = this.limitedUntil.get(row.runtime ?? DEFAULT_RUNTIME)
     if (opts.source === 'runcastle' && until !== undefined && until > Date.now()) {
       const held = this.hold(threadId, input.text, opts.source, opts.display)
-      this.armResetWake(threadId, until)
+      if (this.carriesOnAfterLimit()) this.armResetWake(threadId, until)
       return held
     }
     const change = this.configChange(threadId, opts)
@@ -1348,25 +1351,41 @@ class Host implements AgentHost {
     item.heldIds = undefined
   }
 
+  /** Whether the human chose to have stopped chats carry on when the usage limit resets (decision 25). */
+  private carriesOnAfterLimit(): boolean {
+    return this.ctx.config.carryOnAfterLimit === 'on'
+  }
+
   /**
-   * A message of runcastle's whose turn ended on the account's usage limit
-   * (decision 9): keep what the agent was given for its next prompt, and wake
-   * the thread once the limit resets, when the runtime says when. A human's own
-   * message is theirs to send again.
+   * A turn the account's usage limit stopped (agents-are-woken-only-when-it-matters
+   * decision 25). What runcastle said is kept for the next prompt, first, without
+   * a reset line it carried; for the human's own turn, only what rode ahead of
+   * their words. The chat says so: with the setting on and a reset time known it
+   * is woken once at the reset; otherwise its line offers the setting.
    */
-  private async heldByLimit(t: Thread, item: Queued): Promise<void> {
-    const first = item.blocks[0]
-    const said = first?.type === 'text' ? first.text : item.text
-    // It was said first, so it goes first; a reset wake it carried is said again by the next one.
-    this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, true)
-    const runtime = this.runtimeOf(t.id)
+  private async stoppedByLimit(t: Thread, item: Queued): Promise<void> {
+    if (item.source === 'runcastle') {
+      const first = item.blocks[0]
+      const said = first?.type === 'text' ? first.text : item.text
+      this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, true)
+    } else if (item.ahead !== undefined) {
+      this.keepHeld(t.id, item.ahead, true)
+    }
     const at = limitLiftsAt((await this.usage(t.id)).limits, Date.now())
-    if (at === undefined) {
-      appendThreadEvent(t.id, { type: 'notice', text: 'The usage limit stopped this. Runcastle sends it again with the next message.' })
+    if (at !== undefined) this.limitedUntil.set(this.runtimeOf(t.id), at)
+    if (!this.carriesOnAfterLimit()) {
+      appendThreadEvent(t.id, {
+        type: 'notice',
+        text: `The usage limit stopped this turn. Runcastle can ${CARRY_ON_SETTING.phrase} when the limit resets.`,
+        setting: CARRY_ON_SETTING,
+      })
       return
     }
-    this.limitedUntil.set(runtime, at)
-    appendThreadEvent(t.id, { type: 'notice', text: 'The usage limit stopped this. Runcastle sends it again when the limit resets.' })
+    if (at === undefined) {
+      appendThreadEvent(t.id, { type: 'notice', text: 'The usage limit stopped this turn. Runcastle could not tell when it resets, so it carries on with your next message.' })
+      return
+    }
+    appendThreadEvent(t.id, { type: 'notice', text: `The usage limit stopped this turn. Runcastle carries on at ${formatResets(new Date(at))}.` })
     this.armResetWake(t.id, at)
   }
 
@@ -1389,6 +1408,8 @@ class Host implements AgentHost {
       this.resetWakes.delete(threadId)
       const runtime = this.runtimeOf(threadId)
       if ((this.limitedUntil.get(runtime) ?? 0) <= Date.now()) this.limitedUntil.delete(runtime)
+      // Turned off meanwhile: what is held waits for the human's next message.
+      if (!this.carriesOnAfterLimit()) return
       this.prompt(threadId, { text: USAGE_RESET_LINE }, { source: 'runcastle' }).catch((err) =>
         console.error('usage reset wake failed', err),
       )
@@ -1456,9 +1477,7 @@ class Host implements AgentHost {
       end = { type: 'turn_ended', reason: 'error', error: errorText(err) }
     }
     if (end.reason === 'error' && !item.hidden && isUsageLimitText(end.error ?? '')) {
-      // The human's own words are theirs to send again; what rode ahead of them is kept.
-      if (item.source === 'runcastle') void this.heldByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
-      else if (item.ahead !== undefined) this.keepHeld(t.id, item.ahead)
+      void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
     }
     if (t.state === 'stopped') return
     const files = await this.turnFiles(t, turn)

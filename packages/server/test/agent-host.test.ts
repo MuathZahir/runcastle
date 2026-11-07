@@ -1280,9 +1280,13 @@ describe('a thread always shows what is happening', () => {
   })
 })
 
-describe('held prompts and the usage limit (agents-are-woken-only-when-it-matters decisions 2, 9, 13)', () => {
+describe('held prompts and the usage limit (agents-are-woken-only-when-it-matters decisions 2, 25)', () => {
   const texts = () => prompts().map((p) => p.prompt[0]?.text)
   const LIMIT = "You've hit your 5-hour limit · resets 8pm (Europe/Berlin)"
+  const notices = (id: string) => readThreadEvents(id).filter((e): e is Extract<ThreadEvent, { type: 'notice' }> => e.type === 'notice')
+  const carryOn = (on: boolean) => {
+    ctx.config.carryOnAfterLimit = on ? 'on' : 'off'
+  }
 
   /** A Claude usage read whose 5-hour window is used up and resets at `at`. */
   const spentUntil = (at: number) => async () => ({ rate_limits: { five_hour: { utilization: 100, resets_at: new Date(at).toISOString() } } })
@@ -1301,34 +1305,63 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     }
   }
 
-  it('marks held prompts, says them in order ahead of the next one, and lets a keyed one replace its own', async () => {
+  it('marks held prompts and says them in order ahead of the next one', async () => {
     setup()
     const id = thread()
-    await host.prompt(id, { text: 'talking' }, { source: 'runcastle', hold: true, holdKey: 'chat' })
+    await host.prompt(id, { text: 'talking' }, { source: 'runcastle', hold: true })
     await host.prompt(id, { text: 'round finished' }, { source: 'runcastle', hold: true })
-    await host.prompt(id, { text: 'quiet' }, { source: 'runcastle', hold: true, holdKey: 'chat' })
     expect(fake.processes).toHaveLength(0)
     await host.prompt(id, { text: 'Hello' }, { source: 'human' })
     const events = await logUntil(id, turnsEnded(1))
-    expect(texts()).toEqual(['round finished\n\nquiet\n\nHello'])
-    expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([true, true, true, false])
+    expect(texts()).toEqual(['talking\n\nround finished\n\nHello'])
+    expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([true, true, false])
     const view = foldThread(events)
-    expect(view.items.filter((i) => i.kind === 'user' && i.held)).toHaveLength(3)
+    expect(view.items.filter((i) => i.kind === 'user' && i.held)).toHaveLength(2)
     expect(view.items.some((i) => i.kind === 'user' && i.held && i.starting)).toBe(false)
   })
 
-  it('keeps runcastle’s message the limit stopped, holds what comes meanwhile, and sends both once the limit resets', async () => {
+  it('with the setting off, offers it in the stopped chat and wakes nothing; what was held rides the next message', async () => {
+    carryOn(false)
+    setup(limited(), { readUsage: spentUntil(Date.now() + 200), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice'))
+    expect(notices(id)[0]).toMatchObject({
+      text: 'The usage limit stopped this turn. Runcastle can carry on by itself when the limit resets.',
+      setting: { page: 'general', field: 'carryOnAfterLimit', phrase: 'carry on by itself' },
+    })
+    await host.prompt(id, { text: 'More news' }, { source: 'runcastle' })
+    await new Promise((r) => setTimeout(r, 500))
+    expect(texts()).toEqual(['News'])
+
+    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2))
+    expect(texts()[1]).toBe('News\n\nMore news\n\nHi')
+  })
+
+  it('with the setting on, keeps runcastle’s message, holds what comes meanwhile, and wakes once at the reset with both', async () => {
+    carryOn(true)
     const at = Date.now() + 400
     setup(limited(), { readUsage: spentUntil(at), usageResetGraceMs: 0 })
     const id = thread()
     await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
-    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.includes('when the limit resets')))
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.startsWith('The usage limit stopped this turn. Runcastle carries on at ')))
     await host.prompt(id, { text: 'More news' }, { source: 'runcastle' })
     expect(texts()).toEqual(['News'])
 
     const events = await logUntil(id, turnsEnded(2), 5000)
-    expect(texts()[1]).toMatch(/^News\n\nMore news\n\n\[runcastle\] The usage limit has reset\./)
+    expect(texts()[1]).toBe('News\n\nMore news\n\n[runcastle] The usage limit has reset. Carry on where you were.')
     expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([false, true, false])
+  })
+
+  it('with the setting on, wakes a turn the human’s own message started too, keeping what rode ahead of it', async () => {
+    carryOn(true)
+    setup(limited(), { readUsage: spentUntil(Date.now() + 300), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'Held news' }, { source: 'runcastle', hold: true })
+    await host.prompt(id, { text: 'Build it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(texts()).toEqual(['Held news\n\nBuild it', 'Held news\n\n[runcastle] The usage limit has reset. Carry on where you were.'])
   })
 
   /** A script whose first turn waits for `release`. */
@@ -1380,43 +1413,35 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     expect(texts()).toEqual(['Start', 'News\n\nA', 'B'])
   })
 
-  it('says what the limit stopped first, ahead of what was held after it, with one reset line however often it is hit', async () => {
+  it('says what the limit stopped first, ahead of what was held after it, with no reset line left over however often it is hit', async () => {
+    carryOn(true)
     const at = Date.now() + 300
     setup(limited(2), { readUsage: spentUntil(at), usageResetGraceMs: 0 })
     const id = thread()
     await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
     await logUntil(id, (e) => e.some((x) => x.type === 'notice'))
     await host.prompt(id, { text: 'Later' }, { source: 'runcastle', hold: true })
-    // The reset wake hits the limit again, and is held for the next reset.
+    // The reset wake hits the limit again; the reset time is past now, so nothing more wakes.
     await logUntil(id, turnsEnded(2), 5000)
     await logUntil(id, (e) => e.filter((x) => x.type === 'notice').length >= 2)
     await host.prompt(id, { text: 'Hi' }, { source: 'human' })
     await logUntil(id, turnsEnded(3), 5000)
     const last = texts().at(-1) ?? ''
-    expect(last.startsWith('News\n\nLater\n\nHi')).toBe(true)
-    expect(last.split('The usage limit has reset').length - 1).toBe(0)
+    expect(last).toBe('News\n\nLater\n\nHi')
   })
 
-  it('wakes no archived thread at the reset', async () => {
-    setup(limited(), { readUsage: spentUntil(Date.now() + 200), usageResetGraceMs: 0 })
-    const id = thread()
-    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
-    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.includes('when the limit resets')))
-    await host.stop(id, 'archived')
-    await new Promise((r) => setTimeout(r, 500))
-    expect(texts()).toEqual(['News'])
-    expect(host.isRunning(id)).toBe(false)
-  })
-
-  it('leaves a human’s own message to them, but keeps what rode ahead of it', async () => {
-    setup(limited(), { readUsage: spentUntil(Date.now() + 60_000), usageResetGraceMs: 0 })
-    const id = thread()
-    await host.prompt(id, { text: 'Held news' }, { source: 'runcastle', hold: true })
-    await host.prompt(id, { text: 'Hi' }, { source: 'human' })
-    await logUntil(id, turnsEnded(1))
-    await host.prompt(id, { text: 'Again' }, { source: 'human' })
-    await logUntil(id, turnsEnded(2))
-    expect(texts()).toEqual(['Held news\n\nHi', 'Held news\n\nAgain'])
-    expect(readThreadEvents(id).some((e) => e.type === 'notice')).toBe(false)
+  it('wakes no archived thread at the reset, and none once the setting is turned off', async () => {
+    carryOn(true)
+    setup(limited(2), { readUsage: spentUntil(Date.now() + 300), usageResetGraceMs: 0 })
+    const archived = thread()
+    const turnedOff = thread()
+    await host.prompt(archived, { text: 'News' }, { source: 'runcastle' })
+    await host.prompt(turnedOff, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(archived, (e) => e.some((x) => x.type === 'notice'))
+    await logUntil(turnedOff, (e) => e.some((x) => x.type === 'notice'))
+    await host.stop(archived, 'archived')
+    carryOn(false)
+    await new Promise((r) => setTimeout(r, 600))
+    expect(texts()).toEqual(['News', 'News'])
   })
 })

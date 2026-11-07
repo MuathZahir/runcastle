@@ -442,7 +442,12 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
-  z.object({ type: z.literal('notice'), text: z.string() }),
+  z.object({
+    type: z.literal('notice'),
+    text: z.string(),
+    /** A phrase of `text` that opens a setting (the usage limit's "carry on by itself"). */
+    setting: z.object({ page: z.string(), field: z.string(), phrase: z.string() }).optional(),
+  }),
   /**
    * Runcastle's own words reached the agent's conversation without being a
    * message in the thread: an opening that rode with a prompt (a resumed main
@@ -528,7 +533,7 @@ export type ThreadItem =
   /** Something went wrong: a failed turn, an agent that would not start. */
   | { kind: 'error'; id: string; message: string }
   /** A quiet line the thread says about itself. */
-  | { kind: 'notice'; id: string; text: string }
+  | { kind: 'notice'; id: string; text: string; setting?: { page: string; field: string; phrase: string } }
 
 /** Where a thread is, which is all the human is told about its process. */
 export type ThreadState = 'working' | 'waiting' | 'idle'
@@ -1237,7 +1242,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'notice':
-        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text })
+        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text, ...(e.setting ? { setting: e.setting } : {}) })
         break
       case 'file_shown': {
         const open = turn as Turn | null

@@ -5,6 +5,7 @@ import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { FeatureLinksContext, type FeatureLinks } from '../src/components/chat/thread/FeatureCardItems'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadItem } from '../src/lib/chat-thread'
+import { OpenSettingsProvider } from '../src/components/settings/MessageWithSettingsLink'
 import { listItem, need } from './fixtures'
 
 /**
@@ -160,5 +161,32 @@ describe("runcastle's lines in a thread", () => {
     expect(screen.getByText('Yes, ship it.')).toBeTruthy()
     expect(screen.getByText('Your answer, relayed by the orchestrator')).toBeTruthy()
     expect(screen.queryByText(/not the human/)).toBeNull()
+  })
+})
+
+describe('a notice that offers a setting (agents-are-woken-only-when-it-matters decision 25)', () => {
+  const notice: ThreadItem = {
+    kind: 'notice',
+    id: 'notice:1',
+    text: 'The usage limit stopped this turn. Runcastle can carry on by itself when the limit resets.',
+    setting: { page: 'general', field: 'carryOnAfterLimit', phrase: 'carry on by itself' },
+  }
+
+  it('opens the setting from its phrase', () => {
+    const open = vi.fn()
+    render(
+      <OpenSettingsProvider open={open}>
+        <ChatThread items={[notice]} state="idle" footer={null} />
+      </OpenSettingsProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'carry on by itself' }))
+    expect(open).toHaveBeenCalledWith({ page: 'general', field: 'carryOnAfterLimit' })
+    expect(screen.getByText(/The usage limit stopped this turn\. Runcastle can/)).toBeTruthy()
+  })
+
+  it('reads as plain text where settings cannot open', () => {
+    render(<ChatThread items={[notice]} state="idle" footer={null} />)
+    expect(screen.queryByRole('button', { name: 'carry on by itself' })).toBeNull()
+    expect(screen.getByText(notice.kind === 'notice' ? notice.text : '')).toBeTruthy()
   })
 })
