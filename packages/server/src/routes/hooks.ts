@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
+import { COMPACT_TEXT, DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
@@ -185,13 +185,19 @@ function handleSessionStart(
   }
 
   const session = getSessionRow(ctx, sessionId)
+  // After a compaction the agent holds only its own summary: it re-reads the
+  // record before acting on it (lead-chats-stay-small decision 15).
+  const context = sessionStartContext(ctx, feature, session)
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: sessionStartContext(ctx, feature, session),
+      additionalContext: source === 'compact' ? `${AFTER_COMPACTION}\n${context}` : context,
     },
   }
 }
+
+/** What a feature session's start context opens with when the start is a compaction's. */
+export const AFTER_COMPACTION = 'Your context was just compacted. Before acting on the summary, call get_feature_context.'
 
 /**
  * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
@@ -374,11 +380,14 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  * "Stopping"). A prompt without runcastle's tag is one the human typed — into
  * the thread's composer, which sends it as it was written — so it stamps the
  * feature's last-human-message mark. A payload with no prompt text says
- * nothing about who wrote it, so it stamps nothing.
+ * nothing about who wrote it, so it stamps nothing. Nor does the compaction
+ * command: runcastle sends it, and stamping it would clear what the feature
+ * waits on (lead-chats-stay-small decision 14).
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
+  if (prompt === undefined || isRuncastlePrompt(prompt) || COMPACT_TEXT.test(prompt.trimStart())) return
+  markHumanMessage(ctx, feature.id, { typed: true })
 }
 
 async function handleSessionEnd(

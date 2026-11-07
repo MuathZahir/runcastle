@@ -292,6 +292,15 @@ export const PromptDisplay = z.union([
 ])
 export type PromptDisplay = z.infer<typeof PromptDisplay>
 
+/**
+ * Why runcastle compacted a chat (lead-chats-stay-small decisions 6, 11): after
+ * a self-planning run (`planned`), before stopping an idle lead (`idle`), before
+ * a turn after a long gap (`resume`), or the human's Compact now (`manual`). A
+ * compaction with none is the runtime's own, inside a long turn.
+ */
+export const CompactTrigger = z.enum(['planned', 'idle', 'resume', 'manual'])
+export type CompactTrigger = z.infer<typeof CompactTrigger>
+
 export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A prompt sent to the agent: the human's, or runcastle's own (a kickoff, a wake, an orchestrator line). */
   z.object({
@@ -306,6 +315,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     hidden: z.boolean().optional(),
     /** What the human reads of a runcastle prompt; the agent never gets it. */
     display: PromptDisplay.optional(),
+    /** A compaction runcastle sent, and why: its turn is no reply and moves nothing the human waits on. */
+    compaction: CompactTrigger.optional(),
   }),
   /** The agent process: starting on a prompt, running, stopped (idle, shutdown, crash). */
   z.object({
@@ -371,7 +382,12 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     picked: z.boolean().optional(),
   }),
   z.object({ type: z.literal('commands'), commands: z.array(SlashCommand) }),
-  z.object({ type: z.literal('compacted') }),
+  /**
+   * The conversation was compacted. `trigger`: the compaction runcastle sent;
+   * absent, the runtime compacted on its own mid-turn (or an older log).
+   * `before`: the context size it compacted, when known.
+   */
+  z.object({ type: z.literal('compacted'), trigger: CompactTrigger.optional(), before: z.number().nonnegative().optional() }),
   /** The thread's name: the runtime's generated title, or with `renamed` the human's rename, which wins over every other name. */
   z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional() }),
   /** The thread branched off another thread, then called `from`; shows nothing, and names it "Branch of …" until the human writes in it. */
@@ -479,7 +495,12 @@ export type ThreadItem =
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
   | { kind: 'stopped'; id: string }
-  | { kind: 'compacted'; id: string }
+  /**
+   * The conversation was compacted. `trigger` says why runcastle did it (an
+   * older log's Compact now reads `manual`); absent, the runtime did it in a
+   * long turn. `before`/`after`: the context size either side, when known.
+   */
+  | { kind: 'compacted'; id: string; trigger?: CompactTrigger; before?: number; after?: number }
   /** The model changed between two messages; `effort` when that changed with it. */
   | { kind: 'model'; id: string; model: string; effort?: Effort }
   /** Something went wrong: a failed turn, an agent that would not start. */
@@ -554,6 +575,59 @@ export function liveEvents(events: readonly ThreadEvent[]): ThreadEvent[] {
   return events.filter((e, j) => !superseded.has(j) && e.type !== 'rewound')
 }
 
+/** The runtime's compaction command, as a prompt starts with it (`/compact`, or `/compact <instructions>`). */
+export const COMPACT_TEXT = /^\/compact(\s|$)/
+
+/**
+ * A compaction runcastle sent: why, or `manual` for an older log's hidden
+ * `/compact` (Compact now, before prompts said why); undefined for any other prompt.
+ */
+export function compactionOf(e: ThreadEvent | ThreadEventBody): CompactTrigger | undefined {
+  if (e.type !== 'prompt') return undefined
+  if (e.compaction) return e.compaction
+  return e.hidden && COMPACT_TEXT.test(e.text) ? 'manual' : undefined
+}
+
+/**
+ * The log with every compaction runcastle sent taken out: its prompt and its
+ * turn, up to the turn's end or the process stopping (lead-chats-stay-small
+ * decision 14). What the human waits on reads the rest, so a compaction at a
+ * quiet moment neither answers the lead's reply nor makes a new one. A message
+ * sent while it ran stays: it is the human's own.
+ */
+export function outsideCompactions(events: readonly ThreadEvent[]): ThreadEvent[] {
+  let inside = false
+  return events.filter((e) => {
+    if (compactionOf(e)) {
+      inside = true
+      return false
+    }
+    if (!inside) return true
+    if (e.type === 'turn_ended') {
+      inside = false
+      return false
+    }
+    if (e.type === 'process' && e.state === 'stopped') {
+      inside = false
+      return true
+    }
+    return e.type === 'prompt'
+  })
+}
+
+/**
+ * How full the context is now, from the last usage report; undefined when none
+ * came, or a compaction came after it (the size it reported is gone).
+ */
+export function contextUsed(events: readonly ThreadEvent[]): number | undefined {
+  for (let j = events.length - 1; j >= 0; j--) {
+    const e = events[j]
+    if (e.type === 'usage') return e.context.used
+    if (e.type === 'compacted' || e.type === 'rewound') return undefined
+  }
+  return undefined
+}
+
 /**
  * How long after its turn ended a thread's background work keeps it reading as
  * working (threads-open-fast decision 2). Nothing reported tells a test run the
@@ -583,6 +657,8 @@ export type ThreadActivity =
  * was sent and nothing has been sent since — whoever sent that message, a wake
  * included, and whether or not its process is still up. A turn the human stopped
  * is no reply, nor is one a stopped process cut off, nor one a hidden command ran.
+ * A compaction runcastle sent is not there at all ({@link outsideCompactions}):
+ * the lead's reply before it still waits on the human after it.
  *
  * A reply with background work still running is not waiting yet
  * (threads-open-fast decisions 1 to 3), unless it ends on a question, the work is
@@ -599,7 +675,7 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   let endedAt = 0
   let lastSaid = ''
   let lastMessage: string | undefined
-  for (const e of liveEvents(events)) {
+  for (const e of outsideCompactions(liveEvents(events))) {
     if (e.type === 'prompt') {
       answering = !e.hidden
       replied = false
@@ -755,7 +831,8 @@ function markOlderCards(items: ThreadItem[]): void {
  *   starts another. Work that starts after a file still lands above it.
  * - A model divider appears only when the model changes after one was set; a
  *   compaction shows once however many times it is reported before the next
- *   prompt; a usage report without a cost keeps the last one, and a restarted
+ *   prompt, with why runcastle sent it and the context size before it (the
+ *   last report, unless it says) and after it (the next report in its turn); a usage report without a cost keeps the last one, and a restarted
  *   process's cost adds to what the processes before it spent.
  * - The plan shows only while the thread is not idle; a suggestion clears on
  *   the next prompt.
@@ -780,6 +857,11 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
   let compactedSincePrompt = false
+  /** The compaction runcastle sent whose turn is open: why it was sent, for a `compacted` that does not say (an older log's). */
+  let compactionSent: CompactTrigger | undefined
+  /** The context size last reported, and the divider waiting for the next report to say the size after it. */
+  let lastUsed: number | undefined
+  let compactedItem: Extract<ThreadItem, { kind: 'compacted' }> | undefined
   /** The model in force before the divider now last in the items, so a quick run of picks folds into one. */
   let modelBeforeDivider: ThreadView['model'] = undefined
   /** The adapter reports cost per process: what earlier processes spent, and the current one's last report. */
@@ -941,6 +1023,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     switch (e.type) {
       case 'prompt': {
         compactedSincePrompt = false
+        compactionSent = compactionOf(e) ?? compactionSent
         if (e.hidden) {
           // No message to show; what the command's turn does still folds as a turn.
           if (turn) splitTurn(e)
@@ -984,6 +1067,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           if (e.error && !items.some((x) => x.id === `error:${e.i}`)) items.push({ kind: 'error', id: `error:${e.i}`, message: e.error })
           ask = undefined
           view.tasks = []
+          compactionSent = undefined
+          compactedItem = undefined
         }
         break
       case 'turn_started':
@@ -996,6 +1081,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       case 'turn_ended':
         closeTurn(e, e.reason, e.files, e.error)
+        compactionSent = undefined
+        // The size after a compaction is its own turn's next report; a later turn's is not.
+        compactedItem = undefined
         break
       case 'agent_text': {
         const t = openTurn(e)
@@ -1091,6 +1179,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         }
         const costUsd = processCost !== undefined ? carriedCost + processCost : undefined
         view.context = { ...e.context, ...(costUsd !== undefined ? { costUsd } : {}) }
+        if (compactedItem) compactedItem.after = e.context.used
+        compactedItem = undefined
+        lastUsed = e.context.used
         break
       }
       case 'model': {
@@ -1110,10 +1201,16 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'commands':
         view.commands = e.commands
         break
-      case 'compacted':
-        if (!compactedSincePrompt) items.push({ kind: 'compacted', id: `compacted:${e.i}` })
+      case 'compacted': {
+        if (!compactedSincePrompt) {
+          const trigger = e.trigger ?? compactionSent
+          const before = e.before ?? lastUsed
+          compactedItem = { kind: 'compacted', id: `compacted:${e.i}`, ...(trigger ? { trigger } : {}), ...(before !== undefined ? { before } : {}) }
+          items.push(compactedItem)
+        }
         compactedSincePrompt = true
         break
+      }
       case 'notice':
         items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text })
         break

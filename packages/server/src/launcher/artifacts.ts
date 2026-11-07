@@ -19,6 +19,7 @@ import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
+import { autoCompactWindow } from './runtimes/types'
 import {
   ENTRY_SKILLS,
   FEATURE_SKILL,
@@ -755,6 +756,13 @@ interface CommandHook {
 }
 
 export interface SessionSettings {
+  /**
+   * A feature lead's compaction, on whatever the human's own settings say
+   * (lead-chats-stay-small decision 16): their `autoCompactEnabled: false`
+   * would otherwise switch off the 200k ceiling. This file reaches Claude Code
+   * as `--settings`, which outranks user settings, and only for this session.
+   */
+  autoCompactEnabled?: true
   permissions: { allow: string[]; deny: string[] }
   hooks: {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
@@ -1156,13 +1164,16 @@ export async function writeSessionArtifacts(
   writeFileSync(
     settingsPath,
     JSON.stringify(
-      renderSettings(
-        hookClientPath(),
-        session.kind,
-        pluginDir,
-        session.purpose,
-        session.kind === 'chat' && session.featureId ? designCropsDir(session.featureId) : undefined,
-      ),
+      {
+        ...(autoCompactWindow(session) ? { autoCompactEnabled: true } : {}),
+        ...renderSettings(
+          hookClientPath(),
+          session.kind,
+          pluginDir,
+          session.purpose,
+          session.kind === 'chat' && session.featureId ? designCropsDir(session.featureId) : undefined,
+        ),
+      } satisfies SessionSettings,
       null,
       2,
     ),

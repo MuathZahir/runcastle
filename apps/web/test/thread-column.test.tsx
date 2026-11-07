@@ -62,6 +62,47 @@ describe('ThreadColumn', () => {
     expect(await screen.findByText('Lined up — it had its own margin.')).toBeTruthy()
   })
 
+  // lead-chats-stay-small decision 11
+  it('says why and how much a compaction shrank the chat, and an older or manual one as it always has', async () => {
+    const usage = (i: number, used: number): ThreadEvent => ({ i, at, type: 'usage', context: { used, size: 1_000_000 } })
+    const hidden = (i: number, id: string, extra: Partial<Extract<ThreadEvent, { type: 'prompt' }>> = {}): ThreadEvent => ({
+      i, at, type: 'prompt', id, text: '/compact', source: 'runcastle', hidden: true, ...extra,
+    })
+    const turn = (i: number, ...body: ThreadEvent[]): ThreadEvent[] => [
+      { i, at, type: 'turn_started' },
+      ...body,
+      { i: i + body.length + 1, at, type: 'turn_ended', reason: 'end_turn' },
+    ]
+    const log: ThreadEvent[] = [
+      ...HISTORY,
+      usage(4, 231_000),
+      hidden(5, 'c1', { compaction: 'planned' }),
+      ...turn(6, { i: 7, at, type: 'compacted', trigger: 'planned', before: 231_000 }, usage(8, 64_000)),
+      hidden(10, 'c2'),
+      ...turn(11, { i: 12, at, type: 'compacted' }),
+      prompt(14, 'p2', 'Build it'),
+      ...turn(15, usage(16, 200_400), { i: 17, at, type: 'compacted' }),
+      usage(19, 70_000),
+      hidden(20, 'c3', { compaction: 'idle' }),
+      ...turn(21, { i: 22, at, type: 'compacted', trigger: 'idle', before: 70_000 }),
+      hidden(24, 'c4', { compaction: 'resume' }),
+      ...turn(25, { i: 26, at, type: 'compacted', trigger: 'resume' }),
+    ]
+    render(<ThreadColumn threadId="th1" />, { wrapper: server(log).Wrapper })
+    expect(await screen.findByText('Chat compacted automatically after planning · 231k → 64k')).toBeTruthy()
+    expect(screen.getByText('Chat compacted — earlier turns are summarised for the agent · 64k')).toBeTruthy()
+    expect(screen.getByText('Chat compacted automatically during a long turn · 200k')).toBeTruthy()
+    expect(screen.getByText('Chat compacted automatically while idle · 70k')).toBeTruthy()
+    // No size in the event: the last report before it stands in.
+    expect(screen.getByText('Chat compacted automatically before resuming · 70k')).toBeTruthy()
+  })
+
+  it('renders a bare compaction in an older log as it always has', async () => {
+    const log: ThreadEvent[] = [...HISTORY, { i: 4, at, type: 'prompt', id: 'c1', text: '/compact', source: 'runcastle', hidden: true }, { i: 5, at, type: 'compacted' }]
+    render(<ThreadColumn threadId="th1" />, { wrapper: server(log).Wrapper })
+    expect(await screen.findByText('Chat compacted — earlier turns are summarised for the agent')).toBeTruthy()
+  })
+
   it('shows a thread with history loading, never as an empty new thread, until its first read answers', async () => {
     let release = () => undefined as void
     const answered = new Promise<void>((resolve) => (release = resolve))

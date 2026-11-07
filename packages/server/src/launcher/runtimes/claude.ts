@@ -8,6 +8,7 @@ import { kickoffLinesFor } from './skills'
 import {
   assertHeadlessKickoff,
   assertKickoffArgv,
+  autoCompactWindow,
   type AcpLaunchSpec,
   type AgentRuntimeAdapter,
   type BackgroundSession,
@@ -26,6 +27,17 @@ import {
  * dir, so a per-session one would force a re-login on every spawn, fire the
  * first-run onboarding in the terminal, and orphan the human's real state.
  */
+
+/**
+ * A feature lead's auto-compact window (lead-chats-stay-small decision 8):
+ * Claude Code compacts a long turn at 200k rather than running on to its
+ * model's whole window. The env var outranks every settings file, and reaches
+ * only the processes runcastle spawns.
+ */
+function leadCompactEnv(input: RuntimeLaunchInput): Record<string, string> {
+  const window = autoCompactWindow(input.session)
+  return window ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(window) } : {}
+}
 
 /**
  * The `claude` argv AFTER the program name (UI-SPEC §5.3). The embedded PTY
@@ -258,6 +270,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         // setting) so it holds however the per-session --settings merge, and it
         // reaches only the processes runcastle spawns, never the human's config.
         CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+        ...leadCompactEnv(input),
       },
       envScrub: CC_NESTING_ENV,
     }
@@ -287,6 +300,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         // As in writeArtifacts: no agent view, so nothing moves the conversation
         // under CC's background supervisor.
         CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
+        ...leadCompactEnv(input),
       },
       envScrub: CC_NESTING_ENV,
       sessionMeta: {

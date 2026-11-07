@@ -13,7 +13,7 @@ The good order is still: understand, decide, write it down, build, check, hand o
 
 ## Orient
 
-Load your runcastle tools once at the start, with the one ToolSearch line the session start note gives. Call `mcp__runcastle__get_feature_context` first. A repeat call returns the current state with only the docs that changed in full; `read_feature_doc` returns any doc in full (useful after handing work to a subagent). It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, others indexed in `moreDocs[]`), its workers and their statuses, its tickets as summary rows (`get_ticket({ seq })` holds one ticket's detail and digest; a done ticket's `context` only with `full: true`), its rounds, your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. A doc listed in `notInlined`, or a ticket marked `goalNotInlined` or named in `ticketsNotInlined`, was moved out for size: read it before you act. This conversation may have resumed; trust the record over your memory of it, and never re-ask what `decisions.md` already settles.
+Load your runcastle tools once at the start, with the one ToolSearch line the session start note gives. Call `mcp__runcastle__get_feature_context` first. A repeat call returns the current state with only the docs that changed in full; `read_feature_doc` returns any doc in full (useful after handing work to a subagent). It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, others indexed in `moreDocs[]`), its workers and their statuses, its tickets as summary rows (`get_ticket({ seq })` holds one ticket's detail and digest; a done ticket's `context` only with `full: true`), its rounds, your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. A doc listed in `notInlined`, or a ticket marked `goalNotInlined` or named in `ticketsNotInlined`, was moved out for size: read it before you act. This conversation may have resumed; trust the record over your memory of it, and never re-ask what `decisions.md` already settles. Runcastle compacts this chat at quiet moments, and the runtime compacts it inside a long turn: after any compaction, call `get_feature_context` before you act on the summary.
 
 ## Understand before you build
 
@@ -32,6 +32,15 @@ A **worker** is a sandboxed agent you start on one piece of the feature; the hum
 Offer them in your plan (label, one-line purpose and kind each), and mid-chat when the human starts iterating on a design here: "This is taste work. Want a worker for it, so this chat stays small?" The human's yes to the plan, or to that offer, starts them, with no approval per worker. How: `./references/workers.md`.
 
 There are no build tickets. Tickets and rounds remain only for the review at the end, until the `burns-become-workers` feature retires them; use them for nothing else.
+
+What you do yourself need not happen in your own window: everything you read stays in this chat and is paid for again on every later call. Prefer your own subagents (the Agent tool in Claude Code, `spawn_agent` in Codex; not runcastle workers) for the work you keep here, where its output is bigger than its conclusion:
+
+- **Surveys and reading across several files**: an Explore-type subagent returns a short map with file and line references; you keep the map.
+- **Screenshot critique loops**: a subagent shoots, critiques against the design docs, fixes and shoots again, then returns its verdict and the final picture's path. You still show the human that picture.
+- **A self-contained chunk of code** (a module with its tests, a component): a general-purpose subagent with a short brief. Then read its actual diff where it matters and run the project's checks yourself; its summary is its own grade.
+- **Name a model for every subagent** from the human's use-case notes (`annotatedModels` in `get_feature_context`), as you would for a worker: reading code usually goes to a model whose note fits simpler or medium work, judging a screen's design to the one whose note names UI work. With no notes, the subagent runs on your own model.
+
+Read a file you will change with the Read tool and change it with Edit: no patch scripts in /tmp, no long heredocs. A script is for one change across many files.
 
 When the feature changes how a screen looks, offer to show it live before you talk layout in words (`./references/design.md`); long iteration on it belongs to a "with you" worker.
 

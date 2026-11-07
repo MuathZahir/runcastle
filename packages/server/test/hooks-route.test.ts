@@ -158,6 +158,26 @@ describe('hooks route', () => {
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
   })
 
+  /** lead-chats-stay-small decision 15: after a compaction the agent re-reads the record before acting on its summary. */
+  it('opens a compacted session’s start context with the re-read, and no other start’s', async () => {
+    const app = mount()
+    const start = (source: string) =>
+      post(app, 'session-start', { sessionId, payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source } })
+    const resumed = (await start('resume')).json.hookSpecificOutput.additionalContext as string
+    expect(resumed.startsWith('[runcastle] ')).toBe(true)
+    const compacted = (await start('compact')).json.hookSpecificOutput.additionalContext as string
+    expect(compacted).toBe(`Your context was just compacted. Before acting on the summary, call get_feature_context.\n${resumed}`)
+  })
+
+  /** lead-chats-stay-small decision 14: runcastle's compaction command is no human message, so the feature's waiting reason stays. */
+  it('does not count the compaction command as the human writing to the lead', async () => {
+    ctx.db.update(features).set({ waitingReason: 'plan to approve', waitingKind: 'plan' }).where(eq(features.id, featureId)).run()
+    await post(mount(), 'user-prompt', { sessionId, payload: { hook_event_name: 'UserPromptSubmit', prompt: '/compact Keep in the summary: what you wait on.' } })
+    const row = ctx.db.select().from(features).where(eq(features.id, featureId)).get()!
+    expect(row.waitingReason).toBe('plan to approve')
+    expect(listAfter(ctx, featureId, 0).some((e) => e.type === 'lead.human_message')).toBe(false)
+  })
+
   /**
    * REGRESSION (lap-2 drive): one SessionStart that timed out client-side left
    * the chat with no conversation id, so the headless wake could not resume it
