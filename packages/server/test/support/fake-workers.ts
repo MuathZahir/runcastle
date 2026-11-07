@@ -123,7 +123,12 @@ export function fakeEngine(): FakeEngine {
       if (!engine.transport) throw new Error('no agent in these tests')
       // Starting the agent wakes its sandbox first, as the real engine does.
       engine.woken.push(sb.container)
-      return { ...(await engine.transport({} as never, {} as never)), ...permissionHooks(opts.onMode) }
+      // The session opens in the sandbox, in auto mode, as the real engine's does.
+      return {
+        ...(await engine.transport({} as never, {} as never)),
+        session: { cwd: '/home/agent/repo', mcpServers: [], mode: 'auto' },
+        ...permissionHooks(opts.onMode),
+      }
     },
   }
   return engine

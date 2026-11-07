@@ -19,8 +19,9 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 
-const STATE = '/home/agent/.runcastle'
-const REPO = '/home/agent/repo'
+// Overridable only so a test can run the script outside a sandbox.
+const STATE = process.env.RUNCASTLE_WORKER_STATE || '/home/agent/.runcastle'
+const REPO = process.env.RUNCASTLE_WORKER_REPO || '/home/agent/repo'
 const PORT = Number(process.env.WORKER_PORT || 0)
 const PREVIEW = process.env.WORKER_PREVIEW_URL || ''
 const SOCKET = process.env.RUNCASTLE_TOOLS_SOCKET || STATE + '/tools.sock'
