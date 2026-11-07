@@ -91,7 +91,7 @@ over `docker exec -i` / `podman exec -i`, resumes after an idle stop, and runs i
 automatic permission mode: Claude Code's auto mode, Codex's auto-review. If that mode isn't
 available, the worker is free inside its sandbox and asks before any MCP call (decisions 10, 11).
 
-**The human's setup** goes in at start and wake as a read-only copy (decision 8):
+**The human's setup** goes in at start, and again at a wake only when it changed since the last copy, as a read-only copy (decision 8):
 - Claude Code: global CLAUDE.md, rules, skills, agents, enabled plugins, model and effort
   settings, and MCP servers (user-level, plugin-provided, the repo's own) with their logins.
 - Codex: the equivalents (its instructions file, skills, config, MCP servers).
@@ -155,8 +155,7 @@ tools are listed above.
 
 ## Open questions
 
-- Whether Claude Code's auto mode is available with the token workers run on (`CLAUDE_CODE_OAUTH_TOKEN`).
-  The fallback in decision 10 covers a no.
+- Answered by the hands-on run: Claude Code's auto mode is available with the token workers run on, and workers run in it.
 - The exact way runcastle serves the worker's runcastle tools from outside the sandbox: an MCP
   server inside the container that relays over the held `docker exec` stream, or ACP's
   client-provided MCP. Decided when built. Either way the sandbox gains no route out.
