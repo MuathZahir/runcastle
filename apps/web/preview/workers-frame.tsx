@@ -121,8 +121,7 @@ export function FrameSidebar({
         onSelect={onSelectFeature ?? noop}
         actions={rowActions}
         nested={nested}
-        {...(isOpen && onNewWorker ? { onNewThread: onNewWorker, newThreadLabel: 'New worker' } : {})}
-        threadsName="workers"
+        {...(isOpen && onNewWorker ? { onNewThread: onNewWorker } : {})}
         {...(isOpen && threads ? { threads, folded, onToggleThreads: () => setFolded((v) => !v) } : {})}
         needsYou={isOpen && needing(workers) > 0}
       />

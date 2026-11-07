@@ -257,8 +257,6 @@ export function SidebarFeatureRow({
   threads,
   folded = false,
   onToggleThreads,
-  newThreadLabel,
-  threadsName = 'chats',
   needsYou = false,
 }: {
   f: FeatureListItem
@@ -277,10 +275,6 @@ export function SidebarFeatureRow({
   folded?: boolean
   /** With `threads`: the chevron that folds and unfolds them. */
   onToggleThreads?: () => void
-  /** The "+"'s name: "New worker" once a feature's threads are its workers (interactive-workers decision 7). */
-  newThreadLabel?: string
-  /** What the fold chevron folds, in its tooltip: "chats", or "workers". */
-  threadsName?: string
   /** A worker waits on the human: the row's amber dot lights even when the feature's own chat does not ask (decision 3). */
   needsYou?: boolean
 }) {
@@ -309,14 +303,14 @@ export function SidebarFeatureRow({
       actions={
         onNewThread || menu ? (
           <>
-            {onNewThread && <NewThreadButton onClick={onNewThread} {...(newThreadLabel ? { label: newThreadLabel } : {})} />}
+            {onNewThread && <NewThreadButton onClick={onNewThread} />}
             {menu}
           </>
         ) : undefined
       }
       toggle={
         threads !== undefined && onToggleThreads ? (
-          <FoldToggle folded={folded} onToggle={onToggleThreads} what={threadsName} />
+          <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
         ) : undefined
       }
     />
