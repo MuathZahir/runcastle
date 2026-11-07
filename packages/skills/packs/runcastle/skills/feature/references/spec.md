@@ -20,7 +20,7 @@ settled.
    Prefer *existing* seams to new ones; use the *highest* seam possible; the
    fewer across the codebase, the better — the ideal is one. If new seams are
    needed, propose them at the highest point you can. They flow straight into
-   the tickets and the tests, so get them right here.
+   the workers' assignments and the tests, so get them right here.
 
 3. **Write `docs/features/<slug>/spec.md`** with exactly these sections:
 

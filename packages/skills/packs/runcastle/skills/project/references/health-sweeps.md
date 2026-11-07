@@ -30,7 +30,7 @@ short list of findings the human can route.
 ## What to do with the findings
 
 Route **every** finding through §2 — a new feature, a small change, a change to
-a feature in flight, more rounds, or nothing. Say which, and why.
+a feature in flight, more work, or nothing. Say which, and why.
 
 The ones the human wants now become features on the spot. The
 ones they don't want **are stored nowhere.** A sweep is idempotent: the codebase

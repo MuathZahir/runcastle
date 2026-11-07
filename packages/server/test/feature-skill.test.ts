@@ -43,10 +43,23 @@ describe('the feature skill', () => {
     expect(skill()).toContain('nothing has to be unlocked')
   })
 
-  it("asks for the human's explicit yes before the first round, and again for an unsettled one", () => {
-    const text = skill()
+  it("asks for the human's explicit yes before any work, and again for an unsettled round or worker", () => {
+    const text = flat(skill())
     expect(text).toContain("get the human's **explicit yes in chat**")
-    expect(text).toContain('Ask again before any round the agreed plan did not settle.')
+    expect(text).toContain('Ask again before any round or worker the agreed plan did not settle.')
+    expect(text).toContain('That yes does not approve designs')
+  })
+
+  it('hands build work to workers by a firm offering rule, with no build tickets', () => {
+    const text = flat(skill())
+    expect(text).toContain('## Build it the cheapest good way')
+    expect(text).toContain('**Taste work**')
+    expect(text).toContain('**"with you"** worker')
+    expect(text).toContain('**"on its own"** worker')
+    expect(text).toContain('**Small jobs** you do yourself')
+    expect(text).toContain('There are no build tickets.')
+    expect(text).toContain('Tickets and rounds remain only for the review at the end')
+    expect(text).toContain('The human\'s yes to the plan, or to that offer, starts them, with no approval per worker.')
   })
 
   it('ends every feature with a review round unless the human declines, and always runs the checks before ready', () => {
@@ -68,7 +81,7 @@ describe('the feature skill', () => {
   })
 
   it('links every reference file it carries', () => {
-    for (const ref of ['grilling', 'spec', 'tickets', 'rounds', 'planning-alone', 'preview', 'design']) {
+    for (const ref of ['grilling', 'spec', 'tickets', 'rounds', 'workers', 'planning-alone', 'preview', 'design']) {
       expect(skill()).toContain(`./references/${ref}.md`)
     }
     expect(skill()).toContain('./references/preview-starter.html')
@@ -88,43 +101,52 @@ describe('the feature skill', () => {
   })
 })
 
-describe('the feature skill, running rounds', () => {
-  const text = (): string => read('references', 'rounds.md')
+describe('the feature skill, running the review round', () => {
+  const text = (): string => flat(read('references', 'rounds.md'))
 
-  it('plans a round: named deliverables and checks, a soft cap, contract first', () => {
+  it('runs only the review ticket, after every worker is landed or dropped', () => {
+    expect(text()).toContain('A round now runs only the review ticket')
+    expect(text()).toContain('Build work goes to workers')
+    expect(text()).toContain('**Land or drop every worker first**')
     expect(text()).toContain('`dispatch_round({ seqs })`')
-    expect(text()).toContain('**Every worker task names its deliverable and how it is checked.**')
-    expect(text()).toContain('`burnConcurrency` workers or fewer')
-    expect(text()).toContain('**Contract first when the work spans layers.**')
-    expect(text()).toContain('**Contracts live in code, never in a doc**')
   })
 
   it('trusts the record when a round returns, and never dispatches under a drive', () => {
     expect(text()).toContain('**Trust the record over the prose.**')
-    expect(text()).toContain('A contract reported wrong is a reason to re-plan')
     expect(text()).toContain('Never dispatch while the feature is being driven')
-    expect(text()).toContain('**UI work names the design references.**')
   })
 })
 
-describe('the feature skill, writing tickets', () => {
+describe('the feature skill, workers', () => {
+  const text = (): string => flat(read('references', 'workers.md'))
+
+  it('starts workers only on the human\'s yes, with a label, purpose and kind', () => {
+    expect(text()).toContain('Start workers on the human\'s yes to the plan, or to an offer in chat.')
+    expect(text()).toContain('`start_worker({ label, purpose, kind, goal, doneWhen, model? })`')
+    expect(text()).toContain('`"with-you"` for taste work, `"on-its-own"` for build work')
+    expect(text()).toContain('Never invent an id.')
+  })
+
+  it('writes concrete assignments: a stated check, named tests, design references, one area each', () => {
+    expect(text()).toContain('**State the check.**')
+    expect(text()).toContain('never the whole suite')
+    expect(text()).toContain('**UI work names its design references**')
+    expect(text()).toContain('**One area each.**')
+    expect(text()).toContain('Pieces that run side by side should touch different files')
+  })
+
+  it('lands, sends back or drops a handback, and trusts the commits over the summary', () => {
+    expect(text()).toContain('Trust the commits over the summary.')
+    expect(text()).toContain('`land_worker({ workerId })`')
+    expect(text()).toContain('`send_back_worker({ workerId, note })`')
+    expect(text()).toContain('`drop_worker({ workerId })`')
+    expect(text()).toContain('`message_worker({ workerId, text })`')
+    expect(text()).toContain('Never ask a worker for its transcript')
+  })
+})
+
+describe('the feature skill, writing the review ticket', () => {
   const text = (): string => read('references', 'tickets.md')
-
-  it('budgets the batch parallelism and reslices below the bar', () => {
-    expect(text()).toContain('<parallelism-budget>')
-    expect(text()).toContain('critical path')
-    expect(text()).toContain('T / C')
-    expect(text()).toContain('**When it does not clear the bar, reslice.**')
-  })
-
-  // cheaper-burns decisions 1, 3 and 4: size by criteria and area, wide
-  // removals always in three steps, no whole-suite checks in a context.
-  it('sizes tickets small and keeps whole-suite checks out of contexts', () => {
-    expect(text()).toContain('about six acceptance criteria in one area')
-    expect(text()).toContain('**Never tell a worker to run the whole suite.**')
-    expect(text()).toContain('**expand → migrate → contract**, always')
-    expect(text()).not.toContain('triples it')
-  })
 
   it('has a review ticket, when there is one, say what to walk', () => {
     expect(text()).toContain('**Say what to walk, never which mode.**')
@@ -152,9 +174,17 @@ describe('the feature skill, planning with no human present', () => {
   })
 
   it("ends by asking for the human's yes with wait_for_you", () => {
-    const close = text().slice(text().indexOf('## Straight through, then ask'))
-    expect(close).toContain("asking\n   the human for their yes to start round 1")
-    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start round 1?", kind: "plan" })`')
+    const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
+    expect(close).toContain('asking the human for their yes to start the work')
+    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`')
+  })
+
+  it('plans the workers it would offer and starts none', () => {
+    expect(flat(text())).toContain('nor `start_worker`: nothing starts without the human\'s yes')
+    const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
+    expect(close).toContain('Plan the workers by the offering rule')
+    expect(close).toContain('Start none.')
+    expect(close).toContain('which workers it offers and what you will do yourself')
   })
 
   it('designs the screens it adds or reshapes, and leaves them for the human (designs-wait-for-you)', () => {
@@ -172,7 +202,7 @@ describe('the feature skill, planning with no human present', () => {
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain('Call `show_plan()` once, before the closing message')
     expect(close).toContain('only designs the human approves are committed')
-    expect(close).toContain('With no tickets, say "start the work?"')
+    expect(flat(close)).toContain('name each designed screen and the states its switcher holds')
   })
 
   it('makes one design per screen, its states on a switcher inside it (one-design-per-screen)', () => {
@@ -183,7 +213,7 @@ describe('the feature skill, planning with no human present', () => {
     expect(design).toContain('?state=<name>')
     expect(design).toContain('never once per state')
     expect(design).toContain('Keep the state switcher')
-    expect(flat(read('references', 'tickets.md'))).toContain("states on the design page's switcher")
+    expect(flat(read('references', 'workers.md'))).toContain("states on the design page's switcher")
     expect(flat(read('references', 'preview.md'))).toContain('the states its switcher holds')
     expect(flat(read('references', 'preview-starter.html'))).toContain('<p>States:')
   })
@@ -192,7 +222,7 @@ describe('the feature skill, planning with no human present', () => {
     const design = read('references', 'design.md')
     expect(design).toContain('**Only the human approves**')
     expect(design).toContain('`set_design_state({ path, state: \'approved\' })`')
-    expect(design).toContain('**They say yes to round 1**: that yes does **not** approve designs')
+    expect(design).toContain('**They say yes to the plan**: that yes does **not** approve designs')
     expect(design).not.toContain('also approves every design')
     expect(read('SKILL.md')).toContain('It never approves a design')
   })
