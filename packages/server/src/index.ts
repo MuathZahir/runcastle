@@ -1,5 +1,5 @@
 import { trpcServer } from '@hono/trpc-server'
-import { REVIEWS_BASE } from '@runcastle/core'
+import { REVIEWS_BASE, type SessionRow } from '@runcastle/core'
 import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { compress } from 'hono/compress'
@@ -13,7 +13,7 @@ import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
-import { reconcileStaleSessions } from './launcher/reconcile'
+import { reconcileStaleSessions, wakeCutOffChats } from './launcher/reconcile'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -150,7 +150,8 @@ export async function startServer(): Promise<void> {
   // Boot reconciliation: sessions left `launching`/`live` by a previous server
   // process are dead by definition (the PTY registry is in-memory) — end them
   // so the live-session guard recovers. Sessions with a PTY still alive in the registry (`bun --hot` reload) are skipped.
-  const reconciled = reconcileStaleSessions(ctx)
+  const cutOffChats: SessionRow[] = []
+  const reconciled = reconcileStaleSessions(ctx, cutOffChats)
   if (reconciled.length > 0) {
     console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)
   }
@@ -264,6 +265,8 @@ export async function startServer(): Promise<void> {
   // Rounds the restart cut off wake their lead and tell their holder (decision
   // 10) — now, with the server listening for the woken agent and the notifier up.
   void wakeInterruptedRounds(ctx, staleRuns)
+  // …and chats it cut off mid-turn without a round carry on (agents-are-woken-only-when-it-matters decision 24).
+  void wakeCutOffChats(ctx, cutOffChats, staleRuns)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at
