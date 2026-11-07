@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
+import type { PromptDisplay, WorkerRow } from '@runcastle/core'
 import type { ThreadItem } from '../../../lib/chat-thread'
+import { HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
@@ -27,6 +29,74 @@ function useLiveFeature(): { find: (featureId: string) => FeatureListItem | null
     find: (featureId) => links?.features.find((f) => f.id === featureId) ?? null,
     open: (featureId) => links?.openFeature(featureId),
   }
+}
+
+/**
+ * What a worker's handback and failure cards in the lead's chat read and open
+ * (interactive-workers decisions 4, 16, 21): the feature's workers, for what the
+ * lead did with each handback, and the page's way of bringing a worker's chat to
+ * the front. The feature's chat column provides it; without it the cards still
+ * draw, with no outcome line and a link that does nothing.
+ */
+export interface WorkerLinks {
+  workers: readonly WorkerRow[]
+  openWorker: (workerId: string) => void
+}
+
+export const WorkerLinksContext = createContext<WorkerLinks | null>(null)
+
+type HandbackDisplay = Extract<PromptDisplay, { handback: unknown }>['handback']
+
+/**
+ * What the lead did with a handback, read off its worker's row. The row holds
+ * only the latest handback's outcome, so an earlier handback of the same worker
+ * (its summary is no longer the row's) shows none rather than a later one's.
+ */
+export function handbackOutcome(handback: Pick<HandbackDisplay, 'summary'>, row: WorkerRow | undefined): HandbackOutcome | undefined {
+  if (!row || row.handbackSummary !== handback.summary) return undefined
+  switch (row.outcome) {
+    case 'landed':
+      return { kind: 'landed', into: row.featureBranch }
+    case 'sent-back':
+      return { kind: 'sent-back', note: row.outcomeNote ?? '' }
+    case 'dropped':
+      return { kind: 'dropped' }
+    default:
+      return undefined
+  }
+}
+
+/** A worker's handback, as the approved card with the lead's outcome beneath it. */
+function HandbackItem({ handback }: { handback: HandbackDisplay }) {
+  const links = useContext(WorkerLinksContext)
+  const outcome = handbackOutcome(handback, links?.workers.find((w) => w.id === handback.workerId))
+  return (
+    <HandbackCard
+      handback={{
+        workerId: handback.threadId,
+        workerLabel: handback.label,
+        kind: handback.kind === 'unassigned' ? null : handback.kind,
+        summary: handback.summary,
+        commits: handback.commits.length,
+        files: handback.files.map((path) => ({ path })),
+        ...(outcome ? { outcome } : {}),
+      }}
+      onOpenWorker={(id) => links?.openWorker(id)}
+    />
+  )
+}
+
+/** A worker that failed, as the approved one-line notice. */
+function WorkerFailedItem({ failed }: { failed: Extract<PromptDisplay, { workerFailed: unknown }>['workerFailed'] }) {
+  const links = useContext(WorkerLinksContext)
+  return (
+    <WorkerFailedCard
+      workerId={failed.workerId}
+      workerLabel={failed.label}
+      reason={failed.failure}
+      onOpenWorker={(id) => links?.openWorker(id)}
+    />
+  )
 }
 
 /** A turn's features card, its rows read against the live feature list. */
@@ -63,10 +133,8 @@ export function RuncastleDisplay({
     )
   }
   if ('summary' in display) return <RuncastleNote summary={display.summary} agentText={agentText} />
-  // A plain note until the approved handback card is drawn (interactive-workers decision 21).
-  if ('handback' in display) return <RuncastleNote summary={`Worker "${display.handback.label}" handed back`} agentText={agentText} />
-  // Likewise until the approved failed card is drawn (decision 16).
-  if ('workerFailed' in display) return <RuncastleNote summary={`Worker "${display.workerFailed.label}" failed`} agentText={agentText} />
+  if ('handback' in display) return <HandbackItem handback={display.handback} />
+  if ('workerFailed' in display) return <WorkerFailedItem failed={display.workerFailed} />
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {display.orchestrator.map((message, i) => (

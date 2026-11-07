@@ -218,16 +218,25 @@ export interface Handback {
   /** The worker's own words, which carry any direction the human gave it. */
   summary: string
   commits: number
-  files: FileChange[]
+  /** The files it changed; the line counts only where they are known (a handback records paths). */
+  files: HandbackFile[]
   /** Absent while the lead has not acted on it yet. */
   outcome?: HandbackOutcome
 }
 
+/** A file a handback changed: its path, and its line counts when they are known. */
+export type HandbackFile = Pick<FileChange, 'path'> & Partial<Pick<FileChange, 'added' | 'removed'>>
+
+/** The delta of files whose counts are all known; absent otherwise, rather than a false "+0 −0". */
+function knownDelta(files: readonly HandbackFile[]): { added: number; removed: number } | null {
+  if (!files.every((f) => f.added !== undefined && f.removed !== undefined)) return null
+  return { added: files.reduce((n, f) => n + (f.added ?? 0), 0), removed: files.reduce((n, f) => n + (f.removed ?? 0), 0) }
+}
+
 /** The files a handback changed, folded to one line that opens to each path. */
-function HandbackFiles({ files }: { files: FileChange[] }) {
+function HandbackFiles({ files }: { files: HandbackFile[] }) {
   const [open, setOpen] = useState(false)
-  const added = files.reduce((n, f) => n + f.added, 0)
-  const removed = files.reduce((n, f) => n + f.removed, 0)
+  const total = knownDelta(files)
   return (
     <div className="flex flex-col border-t border-border-subtle">
       <button
@@ -244,7 +253,7 @@ function HandbackFiles({ files }: { files: FileChange[] }) {
         <span>
           {files.length} {files.length === 1 ? 'file' : 'files'} changed
         </span>
-        <Delta added={added} removed={removed} />
+        {total && <Delta added={total.added} removed={total.removed} />}
       </button>
       {open && (
         <ul className="m-0 flex list-none flex-col px-2 pb-2 animate-fade-in">
@@ -252,7 +261,7 @@ function HandbackFiles({ files }: { files: FileChange[] }) {
             <li key={f.path} className="flex h-7 min-w-0 items-center gap-2 px-2">
               <IconDoc size={14} className="shrink-0 text-icon" />
               <FilePath path={f.path} />
-              <Delta added={f.added} removed={f.removed} />
+              {f.added !== undefined && f.removed !== undefined && <Delta added={f.added} removed={f.removed} />}
             </li>
           ))}
         </ul>
