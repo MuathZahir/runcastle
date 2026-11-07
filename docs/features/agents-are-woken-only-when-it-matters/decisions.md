@@ -111,3 +111,7 @@ Check first: 3, 9, 10, 12, 16
 ## 20. The lead's tool is the only way the orchestrator hears from a feature
 **Decision:** runcastle sends the orchestrator no automatic line when a lead waits for the human (`wait_for_you`) or declares ready (`declare_ready`). Those still ping the human and show "needs you" as before. The lead tells the orchestrator by calling its handback tool when the orchestrator should act ("ready to merge", "I need a decision the human hasn't given"); its skill says when.
 **Why:** One deliberate channel, as the human asked, and no hearing the same thing twice. A lead that forgets the tool still leaves the human pinged, so nothing stalls unseen.
+
+## 21. A lead hands back with `hand_back({ summary })`; runcastle adds a state line
+**Decision:** A lead gets the same `hand_back({ summary })` a worker has. The summary says what is done, what is left and what the lead needs, including anything the human told it directly. runcastle adds one line of the feature's state (ready to test or not, whether it waits on the human and why, the latest round) and shows it as a handback card in the holding orchestrator's chat, waking it once. The orchestrator answers by replying (`send_to_feature`), merging, or doing nothing. With no orchestrator holding the feature, the tool is refused and says so.
+**Why:** One handback idea at every level, as the re-scope asks; the state line keeps the summary short and saves the orchestrator a fetch.
