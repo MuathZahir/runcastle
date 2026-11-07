@@ -401,6 +401,7 @@ export const workers = sqliteTable(
     branch: text('branch'),
     featureBranch: text('feature_branch').notNull(),
     previewPort: integer('preview_port'),
+    devServer: integer('dev_server', { mode: 'boolean' }).notNull().default(false),
     handbackSummary: text('handback_summary'),
     handbackCommits: text('handback_commits', { mode: 'json' }).$type<string[]>(),
     handbackFiles: text('handback_files', { mode: 'json' }).$type<string[]>(),

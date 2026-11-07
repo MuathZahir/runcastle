@@ -214,6 +214,15 @@ export async function removeSandbox(sb: WorkerSandbox): Promise<void> {
 }
 
 /** The handback the worker wrote since the last one taken, removed as it is read so one handback wakes the lead once. */
+/** Whether the worker has started a dev server: its start_dev_server tool records the command. */
+export async function devServerRecorded(sb: WorkerSandbox): Promise<boolean> {
+  try {
+    return (await execSh(sb.engine, sb.container, `[ -f ${IN.state}/dev.json ] && echo yes || true`)).trim() === 'yes'
+  } catch {
+    return false
+  }
+}
+
 export async function takeHandbackNote(sb: WorkerSandbox): Promise<HandbackNote | undefined> {
   const file = `${IN.state}/handback.json`
   let raw: string

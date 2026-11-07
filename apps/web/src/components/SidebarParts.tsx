@@ -885,7 +885,7 @@ export function OrchestratorCard({
             )}
           >
             {onNewThread && <NewThreadButton onClick={onNewThread} />}
-            <FeatureActionsMenu actions={actions} label="Project actions" />
+            <FeatureActionsMenu actions={actions} label={name === 'Orchestrator' ? 'Project actions' : `${name} actions`} />
           </span>
         )}
         {toggles && onToggleThreads && (

@@ -75,7 +75,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'ticket',
     term: 'Ticket',
     group: 'work',
-    definition: 'One piece of the plan, small enough for a single worker to build alone.',
+    definition: 'The review a feature ends with, run in a round. Build work goes to workers.',
   },
   {
     id: 'backlog',
@@ -93,21 +93,21 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'round',
     term: 'Round',
     group: 'building',
-    definition: 'A batch of tickets that workers build while you are away, after you say yes. Their work lands on the feature’s branch.',
+    definition: 'A run of tickets in containers while you are away. Today a feature uses one, for its review at the end.',
     onceCalled: ['burn', 'AFK burn', 'run', 'lap'],
   },
   {
     id: 'worker',
     term: 'Worker',
     group: 'building',
-    definition: 'An agent in a container that builds one ticket on its own. It needs Docker or Podman, and your agent’s sign-in.',
+    definition: 'An agent the lead hands one piece of a feature to, in its own container and branch. You can open it, talk to it, and it hands its work back to the lead. It needs Docker or Podman.',
     onceCalled: ['burner', 'lane', 'AFK agent'],
   },
   {
     id: 'review-round',
     term: 'Review round',
     group: 'building',
-    definition: 'A feature’s last round: a worker runs the app, checks the work against the plan and reports what it finds.',
+    definition: 'A feature’s last round: an agent runs the app, checks the work against the plan and reports what it finds.',
   },
   {
     id: 'review-package',

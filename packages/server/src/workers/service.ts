@@ -269,7 +269,7 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     model,
     ...(mainChat ? { openedBeside: mainChat.id } : {}),
   })
-  setSessionTitle(ctx, session.id, `Worker: ${input.label}`)
+  setSessionTitle(ctx, session.id, input.label)
   const now = Date.now()
   ctx.db
     .insert(workers)
@@ -375,6 +375,7 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>):
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
   const note = sb ? await engine.takeHandback(sb) : undefined
+  if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
   if (!note || !sb) {
     if (w.status === 'working') setStatus(ctx, w, 'needs-you')
     return

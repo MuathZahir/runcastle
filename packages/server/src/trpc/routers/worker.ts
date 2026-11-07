@@ -22,7 +22,7 @@ export const workerRouter = router({
     .query(({ ctx, input }): (WorkerRow & { previewPath: string | null; passPort: number })[] =>
       listWorkers(ctx, input.featureId).map((w) => ({
         ...w,
-        previewPath: w.previewPort !== null ? workerPreviewPath(w.id) : null,
+        previewPath: w.previewPort !== null && w.devServer ? workerPreviewPath(w.id) : null,
         passPort: phoneDesignPort(ctx.config),
       })),
     ),

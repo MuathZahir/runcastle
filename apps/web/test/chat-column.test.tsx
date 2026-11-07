@@ -85,6 +85,7 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   branch: `runcastle/worker/${id}`,
   featureBranch: 'feature/demo',
   previewPort: null,
+  devServer: false,
   handbackSummary: null,
   handbackCommits: null,
   handbackFiles: null,
@@ -259,7 +260,7 @@ const pickWorker = (label: string): void => {
   fireEvent.click(row)
 }
 /** The Lead card. */
-const leadCard = (): HTMLElement => within(featurePage()!).getByRole('button', { name: /^Lead/ })
+const leadCard = (): HTMLElement => within(featurePage()!).getByRole('button', { name: /^Lead(?! actions)/ })
 const newScenario = (): void => {
   openList(screen.getByRole('button', { name: /Blank app/ }))
   fireEvent.click(screen.getByRole('option', { name: 'New scenario' }))
@@ -382,7 +383,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     const api = server({
       threads: mixed.threads,
-      workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001 })],
+      workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001, devServer: true })],
     })
     render(<Page />, { wrapper: api.Wrapper })
     await waitFor(() => expect(lane('Needs you')).toEqual(['Header']))
@@ -437,7 +438,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    openMenu(within(featurePage()!).getByRole('button', { name: 'Project actions' }))
+    openMenu(within(featurePage()!).getByRole('button', { name: 'Lead actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const field = screen.getByRole('textbox', { name: 'Chat name' })
     fireEvent.change(field, { target: { value: 'Coupon expiry' } })
@@ -449,7 +450,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
   it('offers no Rename or Export on the Lead card while nobody has started the chat', async () => {
     render(<Page worked />, { wrapper: server({ threads: [] }).Wrapper })
     await waitFor(() => expect(featurePage()).not.toBeNull())
-    expect(within(featurePage()!).queryByRole('button', { name: 'Project actions' })).toBeNull()
+    expect(within(featurePage()!).queryByRole('button', { name: 'Lead actions' })).toBeNull()
   })
 
   it('counts a click on the open feature’s row, from the list, as opening it while its chat has no thread', async () => {

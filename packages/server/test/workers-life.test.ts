@@ -355,10 +355,13 @@ describe('the preview through the design pass-through', () => {
     expect(workerPreviews(ctx).url(id)).toBeUndefined()
   })
 
-  it('is on worker.list as the pass-through path', async () => {
+  it('is on worker.list as the pass-through path once the worker has started its dev server', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()
-    const [row] = await createCallerFactory(appRouter)(ctx).worker.list({ featureId: feature.id })
-    expect(row).toMatchObject({ id, previewPath: `/__runcastle/open/worker/${encodeURIComponent(id)}`, passPort: ctx.config.serverPort + 2 })
+    const list = () => createCallerFactory(appRouter)(ctx).worker.list({ featureId: feature.id })
+    expect((await list())[0]).toMatchObject({ id, previewPath: null })
+    engine.devServers.add(id)
+    await workerTurnEnded(ctx, { id })
+    expect((await list())[0]).toMatchObject({ id, previewPath: `/__runcastle/open/worker/${encodeURIComponent(id)}`, passPort: ctx.config.serverPort + 2 })
   })
 })

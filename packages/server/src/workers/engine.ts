@@ -16,6 +16,7 @@ import {
   removeSandbox,
   stopSandbox,
   takeHandbackNote,
+  devServerRecorded,
   workerProcess,
 } from './worker'
 
@@ -41,6 +42,8 @@ export interface SandboxEngine {
   remove(sb: WorkerSandbox): Promise<void>
   /** The handback the worker wrote since the last one taken, if any. */
   takeHandback(sb: WorkerSandbox): Promise<HandbackNote | undefined>
+  /** Whether the worker has started its dev server (so its preview can answer). */
+  devServerStarted(sb: WorkerSandbox): Promise<boolean>
   /** Bring the worker branch's commits into the host repo as `refs/heads/<branch>`. */
   fetchBranch(sb: WorkerSandbox): Promise<void>
   /** Put the human's setup for its runtime into the sandbox (decisions 8, 12), waking it if need be, in place of an earlier copy. */
@@ -66,6 +69,7 @@ export function containerEngine(name: Engine): SandboxEngine {
     conversationOnDisk: (sb, conversationId) => conversationInSandbox(sb, conversationId),
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
+    devServerStarted: (sb) => devServerRecorded(sb),
     fetchBranch: (sb) => fetchWorkerBranch(sb),
     copySetup: (sb, setup) => copyWorkerSetup(sb, setup),
     copyOut: (sb, containerPath, hostPath) => copyOutOfSandbox(sb, containerPath, hostPath),

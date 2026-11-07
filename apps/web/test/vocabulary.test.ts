@@ -12,9 +12,9 @@ import {
  */
 
 describe('the explainers', () => {
-  it('says who builds a round and where its work lands', () => {
-    expect(BURN_EXPLAINER).toContain('workers build')
-    expect(BURN_EXPLAINER).toContain('feature’s branch')
+  it('says what a round runs and what it is for now', () => {
+    expect(BURN_EXPLAINER).toContain('tickets in containers')
+    expect(BURN_EXPLAINER).toContain('review')
   })
 
   // The surfaces that show these have not launched anything, so they cannot

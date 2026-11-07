@@ -1054,6 +1054,8 @@ export const WorkerRow = z.object({
   branch: z.string().nullable(),
   featureBranch: z.string(),
   previewPort: z.number().int().nullable(),
+  /** Whether the worker has started its dev server: "Open preview" shows only then. */
+  devServer: z.boolean(),
   handbackSummary: z.string().nullable(),
   /** The worker branch's commits at its latest handback, `<short sha> <subject>`, oldest first. */
   handbackCommits: z.array(z.string()).nullable(),

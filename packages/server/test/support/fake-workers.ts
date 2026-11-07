@@ -41,6 +41,8 @@ export function fakeHost(): { host: AgentHost; sent: Sent[]; stopped: string[] }
 export type FakeEngine = SandboxEngine & {
   up: boolean
   handbacks: Map<string, HandbackNote>
+  /** Worker ids whose agent has started a dev server, as the in-sandbox tool records it. */
+  devServers: Set<string>
   removed: string[]
   stopped: string[]
   woken: string[]
@@ -65,6 +67,7 @@ export function fakeEngine(): FakeEngine {
     name: 'docker',
     up: true,
     handbacks: new Map(),
+    devServers: new Set(),
     removed: [],
     stopped: [],
     woken: [],
@@ -109,6 +112,7 @@ export function fakeEngine(): FakeEngine {
       engine.handbacks.delete(sb.id)
       return note
     },
+    devServerStarted: async (sb) => engine.devServers.has(sb.id),
     fetchBranch: async (sb) => {
       engine.fetched.push(sb.branch)
     },

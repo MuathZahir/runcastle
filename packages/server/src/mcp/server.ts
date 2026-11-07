@@ -3838,11 +3838,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start a worker',
         description:
-          'Start a worker on the human’s yes (to your plan, or to your offer in chat): an agent in its own sandbox, on ' +
-          'its own branch cut from this feature branch, with one assignment. `with-you` is taste work the human iterates ' +
-          'on; it hands back once they are happy. `on-its-own` runs in the background and hands back when done. Its ' +
-          'handback (summary, commits, files) reaches you as a message; nothing lands until you call land_worker. ' +
-          'Returns once its sandbox is ready.',
+          'Start a worker on the human’s yes: an agent in its own sandbox and branch off this feature branch, with ' +
+          'one assignment. `with-you` is taste work the human iterates on and hands back once they are happy; ' +
+          '`on-its-own` hands back when done. Its handback reaches you as a message; nothing lands until you call ' +
+          'land_worker.',
         inputSchema: {
           label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Header".'),
           purpose: z.string().min(1).max(160).describe('One line on what it does, shown under its label.'),

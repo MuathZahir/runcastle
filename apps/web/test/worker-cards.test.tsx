@@ -32,6 +32,7 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   branch: null,
   featureBranch: 'feature/sidebar-refresh',
   previewPort: null,
+  devServer: false,
   handbackSummary: 'Tightened the header; **the human** wanted the chevron on the left.',
   handbackCommits: ['a1b2c3d Header layout', 'd4e5f6a Chevron'],
   handbackFiles: ['src/Header.tsx', 'src/Header.test.tsx', 'src/theme.css'],

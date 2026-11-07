@@ -442,6 +442,13 @@
       "when": 1794056502684,
       "tag": "0062_workers",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1794062397258,
+      "tag": "0063_worker_dev_server",
+      "breakpoints": true
     }
   ]
 }
