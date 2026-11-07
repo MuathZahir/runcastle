@@ -8,7 +8,7 @@ import { emitForSession } from '../services/events'
 import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { isWorkerThread, workerStopped, workerTurnEnded } from '../workers/service'
+import { getWorker, isWorkerThread, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
 import type { ThreadLifecycle } from './host'
 
 /**
@@ -31,7 +31,10 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
   return {
     opening: (row) => resumeHeader(ctx, row),
 
-    briefing: (row) => kickoffFor(ctx, row),
+    briefing: (row) => {
+      const worker = row.kind === 'worker' ? getWorker(ctx, row.id) : undefined
+      return worker ? workerKickoff(ctx, worker) : kickoffFor(ctx, row)
+    },
 
     started(row, source) {
       if (row.featureId && (row.kind === 'chat' || row.kind === 'side')) startDocsWatch(ctx, getFeatureRow(ctx, row.featureId))

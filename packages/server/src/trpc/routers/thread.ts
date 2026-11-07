@@ -20,6 +20,7 @@ import { hasThreadLog } from '../../threads/log'
 import { threadModels } from '../../threads/model-catalog'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
 import { agentHost, appendThreadEvent } from '../../threads/types'
+import { workerPrompted } from '../../workers/service'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -87,11 +88,13 @@ export const threadRouter = router({
           { source: 'runcastle', hold: true, ...(summary ? { display: { summary } } : {}) },
         )
       }
-      return agentHost(ctx).prompt(
+      const sent = await agentHost(ctx).prompt(
         id,
         { text, ...(images ? { images } : {}) },
         { source: 'human', ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) },
       )
+      if (row.kind === 'worker') workerPrompted(ctx, id)
+      return sent
     }),
 
   /** Stop the running turn (Stop, Esc). */

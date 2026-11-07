@@ -49,6 +49,8 @@ const STEP: Record<SessionRow['kind'], ModelStep> = {
   chat: 'chat',
   // A side thread is the main chat's sibling, on its step.
   side: 'chat',
+  // A worker records its model; a row without one runs on the chat's step, as the lead does.
+  worker: 'chat',
   // Host-side drive work, on the drive chats' step (`prepare`).
   scenario: 'prepare',
   'drive-fix': 'prepare',
@@ -111,6 +113,10 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
         permissionMode: 'bypassPermissions',
       }
     }
+    case 'worker':
+      // Its process runs in its sandbox (`withWorkers`), which says where its
+      // session opens and briefs it; only the model is read from this launch.
+      return { ...base, feature: getFeatureRow(ctx, row.featureId as string), permissionMode: 'bypassPermissions' }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)
       return {

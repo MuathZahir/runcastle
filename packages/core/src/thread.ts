@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { WorkerKind } from './schemas'
 
 /**
  * Threads (chat-as-web-components; ADR-0015). Every agent conversation is a
@@ -273,6 +274,19 @@ export const PromptDisplay = z.union([
   }),
   z.object({ summary: z.string() }),
   z.object({ orchestrator: z.array(z.object({ text: z.string(), relayed: z.boolean() })) }),
+  /** A worker handed its work back to the lead (interactive-workers decisions 4, 21): the handback card. */
+  z.object({
+    handback: z.object({
+      workerId: z.string(),
+      label: z.string(),
+      kind: WorkerKind,
+      summary: z.string(),
+      commits: z.array(z.string()),
+      files: z.array(z.string()),
+      /** The worker's thread, for the card's link. */
+      threadId: z.string(),
+    }),
+  }),
 ])
 export type PromptDisplay = z.infer<typeof PromptDisplay>
 

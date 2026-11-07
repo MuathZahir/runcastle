@@ -18,6 +18,11 @@ import type {
   ProjectNoteStatus,
   TicketKind,
   TicketStatus,
+  WorkerEngine,
+  WorkerKind,
+  WorkerOutcome,
+  WorkerStartedBy,
+  WorkerStatus,
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
 import type { TokenBreakdown } from './usage'
@@ -371,6 +376,41 @@ export const sessions = sqliteTable('sessions', {
    */
   openedBeside: text('opened_beside'),
 })
+
+/**
+ * Interactive workers (docs/features/interactive-workers): one row per worker,
+ * keyed by its thread's session id (`kind = 'worker'`). Mirrors `WorkerRow`.
+ */
+export const workers = sqliteTable(
+  'workers',
+  {
+    id: text('id').primaryKey(),
+    featureId: text('feature_id').notNull(),
+    label: text('label').notNull(),
+    purpose: text('purpose').notNull(),
+    kind: text('kind').notNull().$type<WorkerKind>(),
+    goal: text('goal'),
+    doneWhen: text('done_when'),
+    model: text('model').notNull(),
+    runtime: text('runtime').notNull().$type<AgentRuntime>(),
+    startedBy: text('started_by').notNull().$type<WorkerStartedBy>(),
+    status: text('status').notNull().$type<WorkerStatus>(),
+    failure: text('failure'),
+    engine: text('engine').notNull().$type<WorkerEngine>(),
+    container: text('container'),
+    branch: text('branch'),
+    featureBranch: text('feature_branch').notNull(),
+    previewPort: integer('preview_port'),
+    handbackSummary: text('handback_summary'),
+    handbackCommits: text('handback_commits', { mode: 'json' }).$type<string[]>(),
+    handbackFiles: text('handback_files', { mode: 'json' }).$type<string[]>(),
+    outcome: text('outcome').$type<WorkerOutcome>(),
+    outcomeNote: text('outcome_note'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('workers_feature').on(t.featureId)],
+)
 
 export const tickets = sqliteTable('tickets', {
   id: text('id').primaryKey(),

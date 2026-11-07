@@ -1,11 +1,12 @@
+import type { WorkerKind as CoreWorkerKind, WorkerStatus as CoreWorkerStatus } from '@runcastle/core'
 import type { StatusTone } from '../ui'
 
 /**
  * Interactive workers as the web draws them (docs/features/interactive-workers).
  * A feature's lead hands work to workers: sandboxed threads, each with a label,
  * a one-line purpose, a kind and a status. These are the view shapes the
- * sidebar's worker list and a worker's chat read; the wire shapes will live in
- * core once the server serves them.
+ * sidebar's worker list and a worker's chat read; the wire shape is core's
+ * `WorkerRow`, and the status and kind here are its own.
  */
 
 /**
@@ -13,10 +14,14 @@ import type { StatusTone } from '../ui'
  * slot, waiting on the human, handed back to the lead, landed on the feature
  * branch, failed, or dropped.
  */
-export type WorkerStatus = 'working' | 'queued' | 'needs-you' | 'handed-back' | 'landed' | 'failed' | 'dropped'
+export type WorkerStatus = CoreWorkerStatus
 
-/** Taste work the human iterates on, or work that runs in the background (decision 5). */
-export type WorkerKind = 'with-you' | 'on-its-own'
+/**
+ * Taste work the human iterates on, or work that runs in the background
+ * (decision 5). A worker the human started with "+" has none: core's
+ * `unassigned` is drawn as no kind.
+ */
+export type WorkerKind = Exclude<CoreWorkerKind, 'unassigned'>
 
 /** One worker, as a row of the open feature's worker list. */
 export interface WorkerEntry {

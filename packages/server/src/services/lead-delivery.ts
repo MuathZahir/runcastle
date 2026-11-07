@@ -1,4 +1,11 @@
-import { type Feature, LEAD_WAKE_FAILED, type LeadWakeFailedData, type ReviewGateRun, type SessionRow } from '@runcastle/core'
+import {
+  type Feature,
+  LEAD_WAKE_FAILED,
+  type LeadWakeFailedData,
+  type PromptDisplay,
+  type ReviewGateRun,
+  type SessionRow,
+} from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { launchSession } from '../launcher/launcher'
 import { newestThread } from '../launcher/sessions'
@@ -31,6 +38,8 @@ export interface LeadMessage {
    * agent: what the feature's chat shows the human in place of the marked text.
    */
   orchestrator?: { text: string; relayed: boolean }
+  /** What the human reads in place of the text when this message goes out alone (a worker's handback card). */
+  display?: PromptDisplay
   /**
    * A wake no click asked for (a round's end, a restart's cut-off round). On a
    * copied database (a test drive) it reaches only a lead whose conversation
@@ -44,6 +53,7 @@ export interface LeadMessage {
 interface HeldLine {
   text: string
   orchestrator?: { text: string; relayed: boolean }
+  display?: PromptDisplay
 }
 
 /**
@@ -69,11 +79,13 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
   const lines: HeldLine[] = [
     ...(held.get(feature.id) ?? []),
-    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator },
+    { text: tagRuncastlePrompt(msg.text), orchestrator: msg.orchestrator, display: msg.display },
   ]
-  // The human reads the orchestrator's words only when every line going out is one.
+  // The human reads the orchestrator's words only when every line going out is one,
+  // and a line's own display only when it goes out alone.
   const said = lines.flatMap((l) => (l.orchestrator ? [l.orchestrator] : []))
-  const display = said.length === lines.length ? { orchestrator: said } : undefined
+  const display: PromptDisplay | undefined =
+    said.length === lines.length ? { orchestrator: said } : lines.length === 1 ? lines[0]?.display : undefined
   try {
     const threadId = await leadThread(ctx, feature)
     await agentHost(ctx).prompt(
@@ -95,6 +107,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     failures.set(feature.id, { reason, at, since: failures.get(feature.id)?.since ?? at })
     const data: LeadWakeFailedData & LeadMessage = { exitCode: null, tail: reason, messages: lines.length, ...msg }
     delete data.orchestrator
+    delete data.display
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
   }
 }

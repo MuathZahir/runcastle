@@ -67,6 +67,7 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
     case 'drive-fix':
     case 'scenario':
     case 'side':
+    case 'worker':
     case undefined:
       return []
   }
@@ -181,6 +182,9 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
     // No skill: the side role is the briefing (see sideKickoffFor); the launcher
     // composes it with the feature state (`sideKickoff`).
     side: sideKickoffFor(),
+    // No skill: a worker's assignment and how it works ride its appended system
+    // prompt (`workerBriefing`); its first prompt is `workerKickoff`.
+    worker: 'Proceed with your task: your assignment and how you hand back are in your system prompt.',
   }
 }
 

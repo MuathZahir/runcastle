@@ -45,7 +45,11 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * worktree with the main chat's write rules. A kind of its own so every lookup
  * keyed on `chat` — resume, the lead, the Chat door — keeps finding only the
  * main chat; it may do anything the main chat does except run rounds, and it
- * never takes the feature's one-terminal slot.
+ * never takes the feature's one-terminal slot. Retired by interactive-workers:
+ * no new rows are made of it, and old ones stay readable (decision 23).
+ * `worker` = an interactive worker (interactive-workers): a thread owned by one
+ * feature whose agent runs inside its own sandbox, on its own branch, recorded
+ * by a `workers` row keyed by this session's id ({@link WorkerRow}).
  */
 export const SessionKind = z.enum([
   'chat',
@@ -53,6 +57,7 @@ export const SessionKind = z.enum([
   'drive-fix',
   'scenario',
   'side',
+  'worker',
 ])
 export type SessionKind = z.infer<typeof SessionKind>
 
@@ -991,3 +996,73 @@ export function unresolvedMergeConflict(events: readonly Pick<EventRow, 'type' |
   }
   return conflict
 }
+
+// --- interactive workers (docs/features/interactive-workers) -------------------
+
+/**
+ * What a worker was handed (decision 5): taste work the human iterates on
+ * (`with-you`), self-contained work that runs in the background (`on-its-own`),
+ * or a worker the human started with "+" and no assignment (`unassigned`,
+ * decision 7).
+ */
+export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned'])
+export type WorkerKind = z.infer<typeof WorkerKind>
+
+/**
+ * Where a worker is (spec, "Statuses"): at a turn, in line for a slot, waiting
+ * on the human, handed back to its lead, landed on the feature branch, dropped,
+ * or failed.
+ */
+export const WorkerStatus = z.enum(['working', 'queued', 'needs-you', 'handed-back', 'landed', 'dropped', 'failed'])
+export type WorkerStatus = z.infer<typeof WorkerStatus>
+
+/** What the lead did with a worker's latest handback (decision 4). */
+export const WorkerOutcome = z.enum(['landed', 'sent-back', 'dropped'])
+export type WorkerOutcome = z.infer<typeof WorkerOutcome>
+
+/** Who started a worker: the lead from its plan or chat, or the human with "+". */
+export const WorkerStartedBy = z.enum(['lead', 'human'])
+export type WorkerStartedBy = z.infer<typeof WorkerStartedBy>
+
+/** The container engine a worker's sandbox runs on. */
+export const WorkerEngine = z.enum(['docker', 'podman'])
+export type WorkerEngine = z.infer<typeof WorkerEngine>
+
+/**
+ * One worker (the `workers` table): its id is its thread's session id. The
+ * sandbox fields (`container`, `branch`, `previewPort`) are null until its
+ * sandbox is up; the handback fields hold the latest handback, and `outcome`
+ * what the lead did with it.
+ */
+export const WorkerRow = z.object({
+  id: z.string(),
+  featureId: z.string(),
+  label: z.string(),
+  purpose: z.string(),
+  kind: WorkerKind,
+  goal: z.string().nullable(),
+  doneWhen: z.string().nullable(),
+  model: z.string(),
+  runtime: AgentRuntime,
+  startedBy: WorkerStartedBy,
+  status: WorkerStatus,
+  /** What failed, in a few words, while `status` is `failed`. */
+  failure: z.string().nullable(),
+  engine: WorkerEngine,
+  container: z.string().nullable(),
+  /** The worker's own branch, cut from `featureBranch`. */
+  branch: z.string().nullable(),
+  featureBranch: z.string(),
+  previewPort: z.number().int().nullable(),
+  handbackSummary: z.string().nullable(),
+  /** The worker branch's commits at its latest handback, `<short sha> <subject>`, oldest first. */
+  handbackCommits: z.array(z.string()).nullable(),
+  /** The files the worker branch changed at its latest handback. */
+  handbackFiles: z.array(z.string()).nullable(),
+  outcome: WorkerOutcome.nullable(),
+  /** The lead's note when it sent the work back. */
+  outcomeNote: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type WorkerRow = z.infer<typeof WorkerRow>

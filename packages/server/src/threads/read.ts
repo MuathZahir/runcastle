@@ -29,12 +29,14 @@ import { agentHost } from './types'
  */
 
 /** The conversation kinds a feature's thread list holds, and the project's. */
-const FEATURE_THREAD_KINDS: SessionKind[] = ['chat', 'side', 'scenario', 'drive-fix']
+const FEATURE_THREAD_KINDS: SessionKind[] = ['chat', 'side', 'worker', 'scenario', 'drive-fix']
 const PROJECT_THREAD_KINDS: SessionKind[] = ['project']
 
 const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   chat: 'main',
   side: 'side',
+  // Listed beside the lead as the prototype's workers were, until the worker list draws them.
+  worker: 'side',
   scenario: 'scenario',
   'drive-fix': 'scenario',
   project: 'project',

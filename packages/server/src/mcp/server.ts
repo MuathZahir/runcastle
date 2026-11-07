@@ -1,6 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { loadConfig } from '@runcastle/core/config-load'
-import { startWorker } from '../workers/service'
+import {
+  type LandWorkerResult,
+  type LeadWorker,
+  type StartedWorker,
+  dropWorker,
+  landWorker,
+  leadWorkers,
+  messageWorker,
+  requireFeatureWorker,
+  sendBackWorker,
+  startWorker,
+} from '../workers/service'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -466,6 +476,12 @@ export interface FeatureContext {
    */
   designs: LeadDesign[]
   /**
+   * The feature's workers (interactive-workers), oldest first: each one's
+   * status, its latest handback and what the lead did with it. Message, land,
+   * send back or drop one by its `id`.
+   */
+  workers: LeadWorker[]
+  /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
    * (decisions.md #7). Absent on a feature that has never run a round, which is the
@@ -700,6 +716,7 @@ export function featureContext(
     reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
     reviewShots: reviewShots(ctx, feature.id),
     designs: leadDesigns(ctx, feature.id),
+    workers: leadWorkers(ctx, feature.id),
   }
   const toDo = { openDefects, findings }
   let rows = allTickets.map(ticketRow)
@@ -1142,10 +1159,44 @@ function requireLeadFeatureId(session: SessionRow): string {
         'declare ready. Tell the human to ask the main chat.',
     )
   }
+  if (session.kind === 'worker') {
+    throw new GateError("a worker cannot use its lead's tools: its only way to change the feature is its handback (hand_back)")
+  }
   if (session.kind !== 'chat') {
     throw new GateError(`only the feature's chat leads its rounds — a ${session.kind} session cannot`)
   }
   return featureId
+}
+
+// --- the lead's workers (interactive-workers) ---------------------------------
+
+export async function toolStartWorker(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { label: string; purpose: string; kind: 'with-you' | 'on-its-own'; goal: string; doneWhen: string; model?: string },
+): Promise<StartedWorker> {
+  const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  return startWorker(ctx, feature, { ...input, startedBy: 'lead' })
+}
+
+export async function toolMessageWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; text: string }): Promise<{ ok: true }> {
+  const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  return messageWorker(ctx, worker.id, input.text)
+}
+
+export async function toolLandWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string }): Promise<LandWorkerResult> {
+  const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  return landWorker(ctx, worker.id)
+}
+
+export async function toolSendBackWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; note: string }): Promise<{ ok: true }> {
+  const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  return sendBackWorker(ctx, worker.id, input.note)
+}
+
+export async function toolDropWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string }): Promise<{ ok: true }> {
+  const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  return dropWorker(ctx, worker.id)
 }
 
 export function toolDispatchRound(
@@ -2851,7 +2902,7 @@ const PROJECT_READ_NOTE =
  */
 export type McpAudience = SessionKindT | 'run'
 
-/** Every kind whose session belongs to a FEATURE (the complement of the project kinds). */
+/** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['project']
@@ -2859,9 +2910,10 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
 /**
  * `scenario` is in neither list: its scope follows its drive (feature or
  * project), so it is offered only the tools that work at either scope plus its
- * own two.
+ * own two. `worker` is in neither either: a worker gets none of the lead's tools
+ * (interactive-workers decision 9).
  */
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'run']
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'run']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
@@ -2901,7 +2953,15 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
+  // A `worker` session is in no list here: its tools are its own, served in its
+  // sandbox (`worker-mcp-script.ts`), and its only way to change the feature is
+  // its handback (decision 9).
+  // The lead's worker tools (decision 4): `requireLeadFeatureId`.
   start_worker: ['chat'],
+  message_worker: ['chat'],
+  land_worker: ['chat'],
+  send_back_worker: ['chat'],
+  drop_worker: ['chat'],
   // Refused at call time on a feature another thread holds (`toolNotifyHuman`).
   notify_human: ['chat', 'project'],
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
@@ -2965,18 +3025,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
  * so, which is a worse failure than an over-long list; the call-time guards
  * still refuse anything the caller may not do.
  */
-/** The workers spike's tools: registered only with `experimentalWorkers` on. */
-const WORKER_TOOLS = new Set(['start_worker'])
-
-/** Whether the workers spike is on; read per build, since the MCP server is built per request. */
-function workersFlagOn(): boolean {
-  try {
-    return loadConfig().experimentalWorkers === true
-  } catch {
-    return false
-  }
-}
-
 function registeredFor(tool: string, audience: McpAudience | undefined): boolean {
   if (audience === undefined) return true
   if (!ALL_AUDIENCES.includes(audience)) return true
@@ -2986,7 +3034,6 @@ function registeredFor(tool: string, audience: McpAudience | undefined): boolean
 /** The tool names a given audience is offered — the assertion tests read. */
 export function toolsForAudience(audience: McpAudience | undefined): string[] {
   return Object.keys(TOOL_AUDIENCES)
-    .filter((tool) => !WORKER_TOOLS.has(tool) || workersFlagOn())
     .filter((tool) => registeredFor(tool, audience))
     .sort()
 }
@@ -3779,33 +3826,106 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  // The workers spike (decision 4; the name is provisional). Registered only with experimentalWorkers on.
-  if (wants('start_worker') && workersFlagOn()) {
+  // The lead's workers (interactive-workers decisions 2, 4, 5, 17; names provisional).
+  if (wants('start_worker')) {
     server.registerTool(
       'start_worker',
       {
-        title: 'Start a worker (experimental)',
+        title: 'Start a worker',
         description:
-          'Start a worker: an agent in its own sandbox container, on its own branch cut from this feature branch, ' +
-          'with one assignment. The human can open it from the feature chat list and type to it; it publishes one port ' +
-          'for its dev server. When done it hands back a summary and its commits, which reach you as a message; its ' +
-          'commits stay on its branch until you merge them. Returns once its sandbox is ready.',
+          'Start a worker on the human’s yes (to your plan, or to your offer in chat): an agent in its own sandbox, on ' +
+          'its own branch cut from this feature branch, with one assignment. `with-you` is taste work the human iterates ' +
+          'on; it hands back once they are happy. `on-its-own` runs in the background and hands back when done. Its ' +
+          'handback (summary, commits, files) reaches you as a message; nothing lands until you call land_worker. ' +
+          'Returns once its sandbox is ready.',
         inputSchema: {
-          label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Settings page layout".'),
+          label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Header".'),
+          purpose: z.string().min(1).max(160).describe('One line on what it does, shown under its label.'),
+          kind: z.enum(['with-you', 'on-its-own']).describe('`with-you` (taste work, with the human) or `on-its-own`.'),
           goal: z.string().min(1).describe('What the worker should do.'),
           doneWhen: z.string().min(1).describe('How the worker knows it is done.'),
+          model: z
+            .string()
+            .optional()
+            .describe('An id from get_feature_context’s annotatedModels; omit for the feature chat’s model.'),
         },
       },
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        if (!rs.session.featureId) return ok({ error: 'start_worker needs a feature session' })
-        const feature = getFeatureRow(rs.ctx, rs.session.featureId)
-        try {
-          return ok(await startWorker(rs.ctx, feature, args))
-        } catch (err) {
-          return ok({ error: err instanceof Error ? err.message : String(err) })
-        }
+        return ok(await toolStartWorker(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('message_worker')) {
+    server.registerTool(
+      'message_worker',
+      {
+        title: 'Message a worker',
+        description: 'Send one of your workers a message, at any time. One sent while it works waits for the end of its turn.',
+        inputSchema: {
+          workerId: z.string().min(1).describe('The worker’s id, from get_feature_context’s workers.'),
+          text: z.string().min(1).describe('What to tell it.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolMessageWorker(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('land_worker')) {
+    server.registerTool(
+      'land_worker',
+      {
+        title: 'Land a worker’s handback',
+        description:
+          'Land a handed-back worker’s branch on the feature branch, through the landing queue. Then run the project’s ' +
+          'checks yourself. On a conflict nothing lands: resolve it and call this again.',
+        inputSchema: { workerId: z.string().min(1).describe('The worker’s id.') },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolLandWorker(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('send_back_worker')) {
+    server.registerTool(
+      'send_back_worker',
+      {
+        title: 'Send a worker’s work back',
+        description: 'Send a handed-back worker’s work back with what to change; it works again and hands back again.',
+        inputSchema: {
+          workerId: z.string().min(1).describe('The worker’s id.'),
+          note: z.string().min(1).describe('What to change.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolSendBackWorker(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('drop_worker')) {
+    server.registerTool(
+      'drop_worker',
+      {
+        title: 'Drop a worker',
+        description: 'Drop a worker and throw its work away: its sandbox and branch are removed. Nothing of it lands.',
+        inputSchema: { workerId: z.string().min(1).describe('The worker’s id.') },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolDropWorker(rs.ctx, rs.session, args))
       },
     )
   }
