@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
-import { chatKickoffFor, selfPlanKickoffFor, sideKickoffFor } from '../src/launcher/runtimes/skills'
+import { chatKickoffFor, selfPlanKickoffFor } from '../src/launcher/runtimes/skills'
 import { kickoffLineFor } from '../src/launcher/sessions'
 import { promptMatchesKickoff } from '../src/services/conversations'
 
@@ -82,12 +82,6 @@ describe('kickoff registry + override', () => {
       // A fresh conversation's line is unchanged.
       expect(chatKickoffFor(runtime)).not.toContain('unless')
     }
-  })
-
-  it('keeps a side session off rounds, with no word of Go', () => {
-    const line = sideKickoffFor()
-    expect(line).toContain('except run rounds')
-    expect(line).not.toMatch(/\bGo\b|lead/)
   })
 })
 

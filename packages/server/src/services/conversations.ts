@@ -263,14 +263,14 @@ function conversationTitle(ctx: AppCtx, earliest: SessionRow): string {
 }
 
 /** The kinds a feature's session switcher lists. */
-export type FeatureSessionKind = Extract<SessionKind, 'chat' | 'side' | 'scenario'>
+export type FeatureSessionKind = Extract<SessionKind, 'chat' | 'scenario'>
 
 /** One row of a feature's session switcher (several-sessions-per-feature decision 10). */
 export interface FeatureSession {
   /** The latest session row — what a terminal attaches to and Reopen resumes. */
   id: string
   kind: FeatureSessionKind
-  /** A side session's derived name ({@link UNTITLED} until the human types); the kind's name otherwise. */
+  /** The kind's name. */
   title: string
   status: SessionStatus
   /** The waiting dot (decision 12): the agent finished a turn and waits on the human. */
@@ -282,30 +282,21 @@ export interface FeatureSession {
 }
 
 /**
- * A feature's sessions, in the switcher's order: the main chat, then its side
- * sessions — live before ended, newest first within each — then the scenario
- * chat docked beside a drive of this feature, while it is up.
+ * A feature's sessions: the main chat, then the scenario chat docked beside a
+ * drive of this feature, while it is up. Side chats are retired
+ * (interactive-workers decision 7): the old ones read back as read-only
+ * threads in `thread.list`, not here.
  *
  * The main chat is the feature's newest `chat` row, listed whatever its state:
  * it is the feature's one conversation, there to start even before the CLI has
- * picked it up. Side sessions are conversations, not launches: reopening one
- * resumes it into another row of the same `ccSessionId`, so they are grouped
- * and named exactly as {@link listProjectConversations} groups and names the
- * project's — and, as there, a row the CLI never picked up is not listed yet.
+ * picked it up.
  */
 export function listFeatureSessions(ctx: AppCtx, featureId: string): FeatureSession[] {
-  const rows = featureSessions(ctx, featureId, ['chat', 'side', 'scenario'])
+  const rows = featureSessions(ctx, featureId, ['chat', 'scenario'])
   const main = rows.find((row) => row.kind === 'chat')
-  const sides = groupByConversation(rows.filter((row) => row.kind === 'side')).map((group) => {
-    const [latest] = group
-    const earliest = group[group.length - 1]
-    return entryFor('side', latest, conversationTitle(ctx, earliest), group)
-  })
   const scenario = rows.find((row) => row.kind === 'scenario' && row.status !== 'ended')
   return [
     ...(main ? [entryFor('chat', main, 'Main chat', [main])] : []),
-    ...sides.filter((side) => side.status !== 'ended'),
-    ...sides.filter((side) => side.status === 'ended'),
     ...(scenario ? [entryFor('scenario', scenario, 'Scenario chat', [scenario])] : []),
   ]
 }

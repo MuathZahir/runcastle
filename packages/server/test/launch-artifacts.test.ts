@@ -477,7 +477,7 @@ describe('renderSystemPrompt', () => {
    * from each other and from the schema.
    */
   it('carries no MCP tool cheat-sheet in any renderer', () => {
-    const prompts = [renderSystemPrompt(feature(), 'chat'), renderSystemPrompt(feature(), 'side')]
+    const prompts = [renderSystemPrompt(feature(), 'chat')]
     for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
   })
 
@@ -487,17 +487,6 @@ describe('renderSystemPrompt', () => {
     for (const [, purpose, headless] of CHAT_LAUNCHES) {
       const p = renderSystemPrompt(feature(), 'chat', purpose as SessionPurpose | undefined, undefined, headless)
       expect(p).not.toMatch(/waypoint|converge|map\.md/i)
-    }
-  })
-
-  it('briefs a side session with the main chat as lead, no phase and no Go', () => {
-    for (const state of STATES) {
-      const p = renderSystemPrompt(feature(state), 'side')
-      expect(p).toContain('(side session)')
-      expect(p).toContain('except run rounds')
-      expect(p).toContain('You may change code in this checkout')
-      expect(p).not.toMatch(/phase/i)
-      expect(p).not.toMatch(/\bGo\b|runcastle:design/)
     }
   })
 })

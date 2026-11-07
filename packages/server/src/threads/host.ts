@@ -701,17 +701,14 @@ class Host implements AgentHost {
    * now ("Branch of …", `naming.ts`). Nothing is sent.
    */
   private branch(row: SessionRow, events: ThreadEvent[], at: number): { threadId: string } {
+    // A feature's branch would be a side chat, and side chats are retired
+    // (interactive-workers decision 7): its other conversations are workers.
+    if (row.featureId || !row.projectId) {
+      throw new GateError('a feature’s chat is not branched any more — start a worker with "+" on the feature instead')
+    }
     const prefix = events.slice(0, turnEndIndex(events, at)).filter((e) => e.type !== 'process')
     const model = row.model ? { model: { id: row.model, runtime: row.runtime ?? DEFAULT_RUNTIME } } : {}
-    const created = row.featureId
-      ? createSessionRow(this.ctx, {
-          featureId: row.featureId,
-          kind: 'side',
-          worktreePath: row.worktreePath,
-          ...model,
-          ...(row.kind === 'chat' ? { openedBeside: row.id } : row.openedBeside ? { openedBeside: row.openedBeside } : {}),
-        })
-      : createSessionRow(this.ctx, { projectId: row.projectId!, kind: 'project', worktreePath: row.worktreePath, ...model })
+    const created = createSessionRow(this.ctx, { projectId: row.projectId, kind: 'project', worktreePath: row.worktreePath, ...model })
     seedThreadLog(created.id, prefix)
     appendThreadEvent(created.id, { type: 'branched', from: threadName(row, readThreadEvents(row.id), threadAbout(this.ctx, row.featureId)) })
     const point = lastAgentMessageId(prefix)

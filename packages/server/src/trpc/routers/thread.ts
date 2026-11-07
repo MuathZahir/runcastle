@@ -10,7 +10,9 @@ import {
   type UsageReport,
 } from '@runcastle/core'
 import * as z from 'zod'
-import { createProjectThread, createSideThread, kickoffFor, openingSummary } from '../../launcher/launcher'
+import { createProjectThread, kickoffFor, openingSummary } from '../../launcher/launcher'
+import { GateError } from '../../errors'
+import { OLD_SIDE_CHAT_READ_ONLY } from '../../threads/launch'
 import { setSessionTitle } from '../../launcher/sessions'
 import { rosterConfig } from '../../services/model-discovery'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../../services/repo'
@@ -78,6 +80,7 @@ export const threadRouter = router({
     .mutation(async ({ ctx, input }): Promise<{ promptId: string }> => {
       const { threadId: id, text, images, model, effort, fast } = input
       const row = threadRow(ctx, id)
+      if (row.kind === 'side') throw new GateError(OLD_SIDE_CHAT_READ_ONLY)
       // A thread opened empty (New thread) is briefed ahead of the human's first
       // words, in the same prompt, so the agent answers once (decision 12).
       if (!row.ccSessionId && !hasThreadLog(id)) {
@@ -113,12 +116,16 @@ export const threadRouter = router({
       return { ok: true }
     }),
 
-  /** New thread: a side thread on a feature, a fresh chat on a project. Nothing starts until its first message. */
+  /**
+   * New thread: a fresh chat on a project. Nothing starts until its first
+   * message. A feature's new threads are workers (`worker.startUnassigned`,
+   * interactive-workers decision 7); side chats are retired.
+   */
   new: publicProcedure.input(scope).mutation(async ({ ctx, input }): Promise<{ threadId: string }> => {
-    const row =
-      'featureId' in input
-        ? await createSideThread(ctx, getFeatureRow(ctx, input.featureId))
-        : await createProjectThread(ctx, requireProjectById(ctx, input.projectId))
+    if ('featureId' in input) {
+      throw new GateError('a feature takes no side chats any more — start a worker with "+" on the feature instead')
+    }
+    const row = await createProjectThread(ctx, requireProjectById(ctx, input.projectId))
     return { threadId: row.id }
   }),
 
@@ -166,7 +173,7 @@ export const threadRouter = router({
       return host.prompt(input.threadId, { text: input.text }, { source: 'human' })
     }),
 
-  /** A new side thread carrying the conversation up to (and including) the turn of `promptId`. */
+  /** A new project chat carrying the conversation up to (and including) the turn of `promptId`; a feature's chat is not branched (its other conversations are workers). */
   branch: publicProcedure.input(threadId.extend({ promptId: z.string() })).mutation(({ ctx, input }): Promise<{ threadId: string }> => {
     threadRow(ctx, input.threadId)
     return agentHost(ctx).fork(input.threadId, input.promptId, { into: 'new' })

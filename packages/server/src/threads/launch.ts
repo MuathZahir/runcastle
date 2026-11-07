@@ -78,6 +78,15 @@ function hostSidePosture(runtime: string): { permissionMode?: string } {
 }
 
 /**
+ * Why an old side chat takes no message and starts no agent (interactive-workers
+ * decisions 7, 23): workers replaced side chats, and the ones made before stay
+ * as read-only transcripts.
+ */
+export const OLD_SIDE_CHAT_READ_ONLY =
+  'this is an old side chat, kept as a read-only transcript since workers replaced side chats — ' +
+  'to carry it on, start a worker with "+" on the feature and paste what it needs'
+
+/**
  * What the thread's runtime is handed: the row's kind's brief, as each of
  * today's launchers wrote it, and the kind's permission posture (which
  * `acpLaunch` turns into the session mode).
@@ -96,8 +105,9 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
     model: row.model ?? resolvedThreadModel(ctx, row).id,
   }
   switch (row.kind) {
-    case 'chat':
-    case 'side': {
+    case 'side':
+      throw new GateError(OLD_SIDE_CHAT_READ_ONLY)
+    case 'chat': {
       const feature = getFeatureRow(ctx, row.featureId as string)
       return {
         ...base,

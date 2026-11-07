@@ -194,7 +194,6 @@ export function renderSystemPrompt(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   headless = false,
 ): string {
-  if (kind === 'side') return renderSidePrompt(feature)
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const errand = purposeLine(purpose, runtime)
   // A self-planning run has nobody to answer it by definition, however it was launched.
@@ -277,52 +276,6 @@ export function renderQaPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'qa')}\` skill and answer what the human asks.`,
-    '',
-  ].join('\n')
-}
-
-/**
- * A side session's brief (several-sessions-per-feature decisions 3, 5 and 15):
- * an extra conversation beside the main chat, in the same talk worktree, with
- * the main chat's write rules and every one of its tools except the round loop.
- * The role is stated here, in the kickoff (`sideKickoffFor`) and in the per-turn
- * hook label, so it holds even where one of them is read weakly (decision 3's
- * challenge).
- */
-export function renderSidePrompt(feature: Feature): string {
-  const docs = featureDocsRel(feature.slug)
-  return [
-    `# runcastle — ${feature.title} (side session)`,
-    '',
-    feature.oneLiner,
-    '',
-    `You are a **side session** of feature \`${feature.slug}\`, opened beside its main chat. The`,
-    "main chat is the feature's lead; you are not it and you do not carry on its task. You",
-    'started fresh: the feature state in your opening prompt, the docs and',
-    '`get_feature_context` are how you learn what is going on.',
-    '',
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    '',
-    '## Knowledge (versioned in the target repo)',
-    `Feature docs live at \`${docs}/\` — brief, decisions, spec.`,
-    '',
-    '## Rules',
-    '- **You may do anything the main chat does except run rounds.** Read, write the spec and',
-    '  decisions, emit and edit tickets, resolve findings, park drafts — but the main chat',
-    '  alone dispatches, stops and declares ready.',
-    '- **The folder is shared with the main chat.** Stage only your own files',
-    '  (`git add <paths>`, never `git add -A` or `git add .`).',
-    '- **You may change code in this checkout**, and install dependencies here to typecheck',
-    "  and test it; verify with the project's own checks before you commit. Your commits",
-    "  land the way the main chat's do. Use a conventional `feat(scope): …` subject; never",
-    '  reword a `ticket(<seq>): …` or `runcastle: …` commit.',
-    '- The runcastle skill pack\'s session-entry skills belong to other kinds of session and are',
-    '  denied to you by settings; the code-review skill remains yours to reach.',
-    '',
-    '## Your task',
-    "Wait for the human's ask, then do it. Do not act before they say what they want.",
     '',
   ].join('\n')
 }

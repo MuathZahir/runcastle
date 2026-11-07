@@ -214,7 +214,8 @@ export function ThreadColumn({
         <ChatThread
           items={view.items}
           state={view.state}
-          actions={{ onEdit: t.edit, onBranch: (id) => void branch(id), canUndoFiles: onRuntime === 'claude-code' }}
+          // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
+          {...(closed ? {} : { actions: { onEdit: t.edit, ...(onOpenThread ? { onBranch: (id: string) => void branch(id) } : {}), canUndoFiles: onRuntime === 'claude-code' } })}
           onDropImages={t.attach}
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}

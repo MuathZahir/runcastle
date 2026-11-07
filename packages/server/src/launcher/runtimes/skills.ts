@@ -73,27 +73,6 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
   }
 }
 
-/**
- * A side session's opening (several-sessions-per-feature decisions 3 and 15):
- * what it is, its one limit, the shared folder, and to wait for the human. No
- * skill — the role is the whole briefing, and the side session's first move is
- * the human's ask. The fixed first sentence is what `promptMatchesKickoff`
- * recognises, so it must stay ahead of anything feature-specific.
- *
- * `held` is the form that rides ahead of the human's first message in one
- * prompt (decision 12): the ask is already there, so there is nothing to wait for.
- */
-export function sideKickoffFor(held = false): string {
-  return (
-    'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
-    'chat, and you do not carry on the main chat\'s task. You may do anything the main chat does — ' +
-    'read, write the spec and decisions, emit and edit tickets, resolve findings, park drafts, ' +
-    'edit code — except run rounds: the main chat alone dispatches, stops and declares ready. ' +
-    'The folder is shared with the main chat, so stage only your own files (`git add <paths>`, ' +
-    `never \`-A\`).${held ? '' : " Wait for the human's ask."}`
-  )
-}
-
 /** The pack's one skill for a feature's chat — its lead from the first message. */
 export const FEATURE_SKILL = 'feature'
 
@@ -179,9 +158,12 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
       'Proceed with your task: the drive you are writing a scenario for is in your system prompt. ' +
       'If it carries no description or failure, first ask me what state I want to land in; ' +
       'otherwise write (or fix) the scenario, commit it, and land me with run_scenario.',
-    // No skill: the side role is the briefing (see sideKickoffFor); the launcher
-    // composes it with the feature state (`sideKickoff`).
-    side: sideKickoffFor(),
+    // Side chats are retired (interactive-workers decision 7) and nothing sends
+    // this any more; its first sentence stays so an old side chat's transcript
+    // still recognises its opening (`promptMatchesKickoff`) and reads without it.
+    side:
+      'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
+      "chat, and you do not carry on the main chat's task.",
     // No skill: a worker's assignment and how it works ride its appended system
     // prompt (`workerBriefing`); its first prompt is `workerKickoff`.
     worker: 'Proceed with your task: your assignment and how you hand back are in your system prompt.',

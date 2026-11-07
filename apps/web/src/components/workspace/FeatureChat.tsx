@@ -119,7 +119,6 @@ export function FeatureChat({
         {...(entry ? { runtime: entry.runtime } : {})}
         {...(isMain ? { start: startForSend, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
         draftKey={`feature:${full.feature.id}:main`}
-        onOpenThread={column.pick}
         emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
         {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
         notices={alerts}

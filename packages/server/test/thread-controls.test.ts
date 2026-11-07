@@ -858,10 +858,10 @@ describe('edit and rewind', () => {
 })
 
 describe('branch', () => {
-  it('starts a side thread with the conversation through that turn, forked there when it is first sent to', async () => {
+  it('starts a new chat with the conversation through that turn, forked there when it is first sent to', async () => {
     setup()
     answerWithIds()
-    const id = chat()
+    const id = chat({ kind: 'project' })
     const [first] = await converse(id, 'first', 'second')
     const { threadId: branched } = await caller.thread.branch({ threadId: id, promptId: first })
     expect(branched).not.toBe(id)
@@ -870,11 +870,10 @@ describe('branch', () => {
     const copied = readThreadEvents(branched)
     expect(copied.map((e) => e.i)).toEqual(copied.map((_, n) => n))
     expect(said(branched)).toEqual(['user:first', 'agent:answer 1'])
-    const row = getSessionRow(ctx, branched)!
-    expect(row).toMatchObject({ kind: 'side', featureId, worktreePath: '/wt', openedBeside: id })
-    const named = async (thread: string) => (await caller.thread.list({ featureId })).find((t) => t.id === thread)
+    expect(getSessionRow(ctx, branched)).toMatchObject({ kind: 'project', projectId })
+    const named = async (thread: string) => (await caller.thread.list({ projectId })).find((t) => t.id === thread)
     // Named as a branch of its parent until the human writes in it.
-    expect(await named(branched)).toMatchObject({ role: 'side', title: 'Branch of first' })
+    expect(await named(branched)).toMatchObject({ role: 'project', title: 'Branch of first' })
 
     await caller.thread.send({ threadId: branched, text: 'onwards' })
     await logUntil(branched, turnsEnded(2))
@@ -885,6 +884,16 @@ describe('branch', () => {
     expect(await named(id)).toMatchObject({ title: 'first' })
     // The thread it came from is as it was.
     expect(said(id)).toEqual(['user:first', 'agent:answer 1', 'user:second', 'agent:answer 2'])
+  })
+
+  // interactive-workers decision 7: a feature's branch would be a side chat, and those are retired.
+  it('refuses to branch a feature’s chat, and makes no thread', async () => {
+    setup()
+    answerWithIds()
+    const id = chat()
+    const [first] = await converse(id, 'first')
+    await expect(caller.thread.branch({ threadId: id, promptId: first })).rejects.toThrow(/start a worker/)
+    expect((await caller.thread.list({ featureId })).map((t) => t.id)).toEqual([id])
   })
 
   it('branches an orchestrator chat into a new orchestrator chat', async () => {
