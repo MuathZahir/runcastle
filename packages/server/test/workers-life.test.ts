@@ -193,6 +193,19 @@ describe('a worker that needs the human', () => {
       watch.stop()
     }
   })
+
+  it('raises a permission need when its agent waits on an approval, opening the worker', async () => {
+    // In auto mode, what the checker or the human's own ask rules still ask is the human's to answer.
+    const asked = createFakeAcp({
+      mode: 'auto',
+      turn: async (t) => void (await t.permission({ toolCallId: 'p1', title: 'git push --force origin HEAD:main', kind: 'execute' })),
+    })
+    const host = realHost(asked)
+    const id = await startWorker()
+    await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
+    expect(needOf(ctx, feature)).toMatchObject({ kind: 'permission', threadId: id })
+    await host.stop(id, 'archived')
+  })
 })
 
 describe('a failed worker', () => {

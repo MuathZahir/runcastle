@@ -240,8 +240,10 @@ export interface OpenAsk {
 }
 
 /**
- * The open approval or question ask in any of the feature's main and side
- * threads, an approval first (a permission prompt halts its agent mid-turn).
+ * The open approval or question ask in any of the feature's main, side and
+ * worker threads, an approval first (a permission prompt halts its agent
+ * mid-turn). A worker waiting on one needs the human like any other need
+ * (interactive-workers decision 10).
  * Read from each thread's log, folded as the chat folds it; only a thread whose
  * process runs can hold one open, since no ask outlives its process. Forms and
  * links an MCP server asks are the agent's own errand, not a need.
@@ -249,7 +251,7 @@ export interface OpenAsk {
 export function openAskOf(ctx: AppCtx, featureId: string): OpenAsk | null {
   const host = agentHost(ctx)
   let found: OpenAsk | null = null
-  for (const row of featureSessions(ctx, featureId, ['chat', 'side'])) {
+  for (const row of featureSessions(ctx, featureId, ['chat', 'side', 'worker'])) {
     if (!host.isRunning(row.id) || !hasThreadLog(row.id)) continue
     const { view, events } = foldedLog(row.id)
     const ask = view.ask
