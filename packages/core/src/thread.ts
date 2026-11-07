@@ -289,6 +289,19 @@ export const PromptDisplay = z.union([
       threadId: z.string(),
     }),
   }),
+  /**
+   * A feature's lead handed back to the orchestrator that holds it
+   * (agents-are-woken-only-when-it-matters decision 21): the lead's summary and
+   * one line of the feature's state runcastle adds.
+   */
+  z.object({
+    featureHandback: z.object({
+      featureId: z.string(),
+      title: z.string(),
+      summary: z.string(),
+      state: z.string(),
+    }),
+  }),
   /** A worker failed (interactive-workers decision 16): its container died, its setup failed or its agent crashed. */
   z.object({ workerFailed: z.object({ workerId: z.string(), label: z.string(), failure: z.string() }) }),
 ])

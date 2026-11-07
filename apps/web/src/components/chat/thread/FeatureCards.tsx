@@ -345,7 +345,6 @@ export function NewsBlock({
   showState = () => true,
   framed = false,
   linked = true,
-  held = false,
 }: {
   rows: readonly NewsRow[]
   /** "2m ago", "10:42". */
@@ -357,8 +356,6 @@ export function NewsBlock({
   framed?: boolean
   /** As the features card's: false where the chat reads no feature list. */
   linked?: boolean
-  /** It woke nobody: held for the agent's next turn, so no answer follows it. */
-  held?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -370,12 +367,6 @@ export function NewsBlock({
           <>
             <span aria-hidden>·</span>
             <span className="shrink-0">{when}</span>
-          </>
-        )}
-        {held && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="shrink-0">For its next turn</span>
           </>
         )}
         <span className="flex-1" />

@@ -197,9 +197,8 @@ export function composeRoundWake(ctx: AppCtx, featureId: string, runId: string):
           ...findings.map((f) => `- [${f.severity} ${f.kind}] ${f.title} — ${f.location} (${f.status})`),
         ]
       : []),
-    'This is the whole round: no need to fetch it again. Read a ticket’s digest with get_ticket({ seq }) ' +
-      'only where you need its detail (a failed ticket, a finding to fix), then fix it yourself, dispatch ' +
-      'the next round, ask the human, or declare ready.',
+    'Read each ticket’s digest with get_ticket({ seq }), then fix it yourself, dispatch the next ' +
+      'round, ask the human, or declare ready.',
   ]
   return lines.join('\n')
 }

@@ -111,20 +111,20 @@ describe("runcastle's lines in a thread", () => {
     } as ThreadItem
     render(thread([item], links()))
     expect(screen.getByText('6m ago')).toBeTruthy()
-    expect(screen.queryByText('For its next turn')).toBeNull()
   })
 
-  it('says news was held for the next turn when it woke nobody', () => {
-    const item = {
-      ...runcastle('[runcastle] f2-slug round finished.', {
-        news: [{ featureId: 'f2', title: 'Offline sync', events: [{ tone: 'done', words: 'Round 2 finished' }] }],
-      }),
-      at: Date.now() - 6 * 60_000,
-      held: true,
-    } as ThreadItem
-    render(thread([item], links()))
-    expect(screen.getByText('6m ago')).toBeTruthy()
-    expect(screen.getByText('For its next turn')).toBeTruthy()
+  it("draws a lead's handback as a card with its feature's state, opening the feature (agents-are-woken-only-when-it-matters decision 21)", () => {
+    const item = runcastle('[runcastle] f2-slug handed back:\nReady to merge.', {
+      featureHandback: { featureId: 'f2', title: 'Old title', summary: 'Review fixes are in; **ready to merge**.', state: 'Ready to test · round 2 succeeded' },
+    })
+    const l = links()
+    render(thread([item], l))
+    const card = screen.getByRole('article', { name: 'Handback from Offline sync' })
+    expect(card.textContent).toContain('Ready to test · round 2 succeeded')
+    expect(card.textContent).toContain('ready to merge')
+    expect(screen.queryByText(/f2-slug/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open its chat' }))
+    expect(l.openFeature).toHaveBeenCalledWith('f2')
   })
 
   it('draws a kickoff with a summary as one Runcastle line', () => {

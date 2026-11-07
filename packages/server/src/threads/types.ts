@@ -36,12 +36,6 @@ export interface PromptOptions {
    * chat's opening held for the human's first message, decision 12).
    */
   hold?: boolean
-  /**
-   * With `hold`: a newer held prompt with the same key replaces this one in what
-   * the agent reads next (a "went quiet" line replacing its "is talking" line).
-   * The log keeps both.
-   */
-  holdKey?: string
   /** What the human reads of this prompt in place of its text (runcastle's own); logged beside it, never sent to the agent. */
   display?: PromptDisplay
   /** The model, effort and fast mode for this message, when they differ from the thread's. */

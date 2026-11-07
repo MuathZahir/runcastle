@@ -99,6 +99,7 @@ import {
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { claimHold, holderName, holderOf, requireHold } from '../services/holding'
+import { handBackToOrchestrator } from '../services/lead-handback'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -1226,6 +1227,11 @@ export function toolDeclareReady(
   const featureId = requireLeadFeatureId(session)
   const { warnings } = declareReady(ctx, featureId, input)
   return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason, warnings }
+}
+
+/** A lead hands back to the orchestrator that holds its feature (agents-are-woken-only-when-it-matters decisions 20–22). */
+export async function toolHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): Promise<{ deliveredTo: string; state: string }> {
+  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary)
 }
 
 export function toolWaitForYou(
@@ -2957,6 +2963,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
+  hand_back: ['chat'],
   // A `worker` session is in no list here: its tools are its own, served in its
   // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
   // into it (`workers/tools.ts`); its only way to change the feature is its
@@ -3951,6 +3958,31 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolWaitForYou(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('hand_back')) {
+    server.registerTool(
+      'hand_back',
+      {
+        title: 'Hand back to the orchestrator',
+        description:
+          'Tell the orchestrator that holds this feature something it should act on, as a worker hands back to you: ' +
+          'the work is ready, you finished what it asked, or you are blocked on something it can settle. Not for a ' +
+          'question only the human can answer. Wakes it once with your summary and a line of the feature’s state. ' +
+          'Refused when no orchestrator holds the feature.',
+        inputSchema: {
+          summary: z
+            .string()
+            .min(1)
+            .describe('What is done, what is left, what you need, and anything the human told you directly: the orchestrator never reads your chat.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolHandBack(rs.ctx, rs.session, args))
       },
     )
   }

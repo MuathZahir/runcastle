@@ -212,13 +212,12 @@ const AUTH_STATUS_METHOD = '_auth/status_update'
  * - `preface`: said to the agent ahead of the next prompt's words, when the
  *   conversation could not be forked where the thread now stands.
  * - `held`: prompts held for the next one (`PromptOptions.hold`), said after the
- *   preface and before the next prompt's words, oldest first. One with a `key`
- *   replaces the held one with the same key.
+ *   preface and before the next prompt's words, oldest first.
  */
 interface PendingFork {
   open?: { from: string; messageId: string } | 'fresh'
   preface?: string
-  held?: { id: string; text: string; key?: string }[]
+  held?: { id: string; text: string }[]
 }
 
 const pendingForkPath = (threadId: string): string => join(sessionDir(threadId), 'fork.json')
@@ -604,12 +603,12 @@ class Host implements AgentHost {
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
     seedFromTranscript(this.ctx, threadId)
-    if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display, opts.holdKey)
+    if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display)
     // While the account is over its usage limit, runcastle's own messages wait
     // for the reset instead of starting turns that fail (decision 9).
     const until = this.limitedUntil.get(row.runtime ?? DEFAULT_RUNTIME)
     if (opts.source === 'runcastle' && until !== undefined && until > Date.now()) {
-      const held = this.hold(threadId, input.text, opts.source, opts.display, opts.holdKey)
+      const held = this.hold(threadId, input.text, opts.source, opts.display)
       this.armResetWake(threadId, until)
       return held
     }
@@ -1321,20 +1320,20 @@ class Host implements AgentHost {
     publishLive({ kind: 'turn', sessionId: threadId })
   }
 
-  /** Log a held prompt and keep its text, on disk, ahead of the thread's next prompt; a `key` replaces the held one with the same key. */
-  private hold(threadId: string, text: string, source: PromptOptions['source'], display?: PromptDisplay, key?: string): { promptId: string } {
+  /** Log a held prompt and keep its text, on disk, ahead of the thread's next prompt. */
+  private hold(threadId: string, text: string, source: PromptOptions['source'], display?: PromptDisplay): { promptId: string } {
     const item: Queued = { id: newId('prompt'), text, blocks: [], source, ...(display ? { display } : {}), held: true, logged: false }
     this.logPrompt(threadId, item)
-    this.keepHeld(threadId, text, key)
+    this.keepHeld(threadId, text)
     return { promptId: item.id }
   }
 
   /** Add `text` to what the thread's next prompt carries ahead of its words. */
-  private keepHeld(threadId: string, text: string, key?: string, first = false): void {
+  private keepHeld(threadId: string, text: string, first = false): void {
     if (text === '') return
     const pending = readPendingFork(threadId)
-    const held = (pending.held ?? []).filter((h) => key === undefined || h.key !== key)
-    const entry = { id: newId('held'), text, ...(key !== undefined ? { key } : {}) }
+    const held = pending.held ?? []
+    const entry = { id: newId('held'), text }
     writePendingFork(threadId, { ...pending, held: first ? [entry, ...held] : [...held, entry] })
   }
 
@@ -1359,7 +1358,7 @@ class Host implements AgentHost {
     const first = item.blocks[0]
     const said = first?.type === 'text' ? first.text : item.text
     // It was said first, so it goes first; a reset wake it carried is said again by the next one.
-    this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, undefined, true)
+    this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, true)
     const runtime = this.runtimeOf(t.id)
     const at = limitLiftsAt((await this.usage(t.id)).limits, Date.now())
     if (at === undefined) {
