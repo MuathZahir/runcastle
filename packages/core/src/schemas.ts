@@ -1064,6 +1064,8 @@ export const WorkerRow = z.object({
   outcome: WorkerOutcome.nullable(),
   /** The lead's note when it sent the work back. */
   outcomeNote: z.string().nullable(),
+  /** Tokens the worker spent, read from its kept conversation file when it was retired; null until counted. */
+  tokens: z.number().int().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })

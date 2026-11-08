@@ -10,7 +10,7 @@ import {
   burnCacheVolumeSize,
   getBurnSlotAllocator,
   removeBurnCacheVolume,
-} from '../../workflows/burn-cache'
+} from '../../workers/burn-cache'
 import { runcastleVersion } from '../../version'
 import { publicProcedure, router } from '../context'
 

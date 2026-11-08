@@ -27,7 +27,7 @@ import {
   ensureBurnCacheVolume,
   getBurnSlotAllocator,
   slotRepoPath,
-} from './burn-cache'
+} from '../workers/burn-cache'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import {
   ISOLATED_REPO_PATH,

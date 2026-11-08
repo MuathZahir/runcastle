@@ -8,7 +8,7 @@ import { killProcessTree } from '../pty/kill-tree'
 import { containHostProcess } from '../util/contain-host'
 import { failureCause } from '../util/failure-line'
 import { resolveSpawnTarget } from '../util/resolve-executable'
-import { resolveBurnUser } from '../workflows/burn-user'
+import { resolveBurnUser } from '../workers/burn-user'
 import { resolveHostAgentVersions } from './agent-cli-versions'
 import {
   type BuildableProject,

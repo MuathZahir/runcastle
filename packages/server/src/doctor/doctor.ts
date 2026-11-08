@@ -56,14 +56,14 @@ import {
   burnCacheVolumeName,
   checkBurnCacheAccess,
   inspectBurnCacheVolume,
-} from '../workflows/burn-cache'
+} from '../workers/burn-cache'
 import {
   type BurnUser,
   burnUserSpec,
   resolveBurnUser,
   ROOT_BURN_REFUSED,
   runningAsRoot,
-} from '../workflows/burn-user'
+} from '../workers/burn-user'
 import type { TokenCheck } from './token-check'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */

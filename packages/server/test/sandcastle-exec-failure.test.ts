@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { formatExecFailureMessage } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
-import { buildGuardInstallCommand } from '../src/workflows/burn-guard'
+import { buildGuardInstallCommand } from '../src/workers/burn-guard'
 
 /**
  * The second half of the `patches/@ai-hero%2Fsandcastle@0.12.0.patch` contract

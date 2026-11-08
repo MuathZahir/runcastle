@@ -16,7 +16,7 @@ import {
   projectDockerfilePath,
   projectImageTag,
 } from '../src/services/sandbox-image'
-import { burnImageNeed, ensureBurnImage } from '../src/workflows/burn-image'
+import { burnImageNeed, ensureBurnImage } from '../src/workers/burn-image'
 import { burnRun } from '../src/workflows/ticket-burner'
 
 const burnUser = { uid: 1000, gid: 1000, gidSource: 'default' as const }

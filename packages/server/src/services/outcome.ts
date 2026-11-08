@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Feature, Project, ReviewFinding, TestNote, Ticket } from '@runcastle/core'
+import type { Feature, Project, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 import { emit } from './events'
@@ -8,6 +8,7 @@ import * as git from './git'
 import { listByFeature as listFindings } from './review-findings'
 import { listByFeature as listNotes } from './test-notes'
 import { listByFeature as listTickets } from './tickets'
+import { keepFeatureConversations, listWorkers } from '../workers/service'
 
 export interface OutcomeArtifact {
   ticketId: string
@@ -21,6 +22,8 @@ export interface OutcomeArtifact {
 export interface OutcomeInput {
   feature: Feature
   tickets: Ticket[]
+  /** The feature's workers, each with the tokens read from its kept conversation. */
+  workers?: WorkerRow[]
   findings: ReviewFinding[]
   notes: TestNote[]
   artifacts: OutcomeArtifact[]
@@ -47,7 +50,7 @@ function noteResolution(note: TestNote): string {
 
 /** Pure synthesis of the permanent shipped record. */
 export function composeOutcomeDoc(input: OutcomeInput): string {
-  const { feature, tickets, findings, notes, artifacts, shippedAt, delta } = input
+  const { feature, tickets, workers = [], findings, notes, artifacts, shippedAt, delta } = input
   const blocks = [
     `# Outcome — ${feature.title}`,
     feature.oneLiner,
@@ -80,6 +83,15 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
     ? notes.map((note) => `- ${note.text} — ${noteResolution(note)}`).join('\n')
     : '- No human notes')
 
+  if (workers.length) {
+    blocks.push(
+      '## Workers',
+      workers
+        .map((w) => `- ${w.label} (${w.kind}) — ${w.outcome ?? w.status} · ${w.tokens === null ? 'tokens not counted' : `${w.tokens} tokens`}`)
+        .join('\n'),
+    )
+  }
+
   const substantive = tickets.filter((ticket) => ticket.digest && digestHasSubstance(ticket.digest))
   if (substantive.length) {
     blocks.push(
@@ -105,8 +117,9 @@ export async function promoteOutcomeDoc(
         candidate.completedAt !== null && candidate.completedAt > ticket.completedAt!,
       ).length,
     }))
+    await keepFeatureConversations(ctx, feature.id)
     const doc = composeOutcomeDoc({
-      feature, tickets, findings: listFindings(ctx, feature.id), notes: listNotes(ctx, feature.id), artifacts,
+      feature, tickets, workers: listWorkers(ctx, feature.id), findings: listFindings(ctx, feature.id), notes: listNotes(ctx, feature.id), artifacts,
       shippedAt: Date.now(), delta: { commits: delta.commits ?? 0, files: delta.files ?? 0 },
     })
     await git.onBranch(project.repoPath, target, async () => {

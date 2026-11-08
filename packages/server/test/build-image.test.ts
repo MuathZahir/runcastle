@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BUILD_IMAGE_USAGE, runBuildImage } from '../src/bin/build-image'
 import type { ExecFn } from '../src/doctor/doctor'
 import type { BuildStepCall } from '../src/services/image-build'
-import { ROOT_BURN_REFUSED } from '../src/workflows/burn-user'
+import { ROOT_BURN_REFUSED } from '../src/workers/burn-user'
 
 const exec: ExecFn = async () => ({ ok: true, code: 0, stdout: '', stderr: '' })
 const config = { sandbox: 'docker' as const }

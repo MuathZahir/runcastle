@@ -4,7 +4,7 @@ import type { AppCtx } from '../src/db/types'
 import { listByProject } from '../src/services/events'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { getBurnSlotAllocator } from '../src/workflows/burn-cache'
+import { getBurnSlotAllocator } from '../src/workers/burn-cache'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 

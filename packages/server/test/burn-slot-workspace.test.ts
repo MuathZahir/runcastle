@@ -16,7 +16,7 @@ import {
   slotDirPath,
   slotRepoPath,
   slotStampPath,
-} from '../src/workflows/burn-cache'
+} from '../src/workers/burn-cache'
 import {
   type CacheMount,
   SANDBOX_WORKSPACE_PATH,

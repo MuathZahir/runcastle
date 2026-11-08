@@ -14,7 +14,7 @@ import {
   ensureBurnCacheVolume,
   removeBurnCacheVolume,
   slotRepoPath,
-} from './burn-cache'
+} from '../workers/burn-cache'
 import {
   type PackageManager,
   SANDBOX_WORKSPACE_PATH,

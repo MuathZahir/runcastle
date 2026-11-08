@@ -9,7 +9,7 @@ import {
   type RuncastleConfig,
 } from '@runcastle/core'
 import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
-import { type BurnUser, resolveBurnUser } from '../workflows/burn-user'
+import { type BurnUser, resolveBurnUser } from '../workers/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
 import type { Runtime } from './setup'
 

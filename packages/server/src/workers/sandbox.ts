@@ -13,6 +13,9 @@ import { promisify } from 'node:util'
  * The argv builders are pure, so tests pin them; the runners shell out.
  */
 
+import { BURN_CACHE_MOUNT } from './burn-cache'
+import { GUARD_INSTALL_PATHS, renderGuardScript, renderGuardSettings } from './burn-guard'
+
 const run = promisify(execFile)
 
 export type Engine = 'docker' | 'podman'
@@ -24,7 +27,6 @@ export const IN = {
   repo: '/home/agent/repo',
   state: '/home/agent/.runcastle',
   runtime: '/opt/runcastle',
-  cache: '/home/agent/.cache-rc',
   claude: '/home/agent/.local/bin/claude',
   /** A Codex worker's `CODEX_HOME`: its config, the human's setup, and its conversations' rollouts. */
   codexHome: '/home/agent/.codex',
@@ -50,6 +52,10 @@ export interface SandboxSpec {
   runtimeDir: string
   uid: number
   gid: number
+  /** The project's burn cache volume and the env pointing the package manager's store at it; absent with `burnCache: 'off'`. */
+  cache?: { volume: string; env: Record<string, string> }
+  /** `--cpus` for the container (`burnCpus`, ADR-0008); absent leaves it unbounded. */
+  cpus?: number
 }
 
 export function runArgs(s: SandboxSpec): string[] {
@@ -60,18 +66,15 @@ export function runArgs(s: SandboxSpec): string[] {
     s.container,
     '--user',
     `${s.uid}:${s.gid}`,
+    ...(s.cpus !== undefined ? ['--cpus', String(s.cpus)] : []),
     '-p',
     `127.0.0.1:${s.port}:${s.port}`,
     '-v',
     `${s.originDir}:${IN.origin}`,
     '-v',
     `${s.runtimeDir}:${IN.runtime}:ro`,
-    '-v',
-    `runcastle-worker-cache:${IN.cache}`,
-    '-e',
-    `BUN_INSTALL_CACHE_DIR=${IN.cache}/bun`,
-    '-e',
-    `npm_config_cache=${IN.cache}/npm`,
+    ...(s.cache ? ['-v', `${s.cache.volume}:${BURN_CACHE_MOUNT}`] : []),
+    ...Object.entries(s.cache?.env ?? {}).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
     '-w',
     '/home/agent',
     s.image,
@@ -117,6 +120,44 @@ export function installScript(): string {
     'elif [ -f package-lock.json ]; then npm ci',
     'fi',
   ].join('\n')
+}
+
+/** The project's own setup command (config `setupCommand`), run in the clone after the install. */
+export function projectSetupScript(command: string): string {
+  return `cd ${IN.repo} && ${command}`
+}
+
+/**
+ * The cache dirs the package manager's store env names, made before the install:
+ * the volume is owned by the worker user, but its subdirectories are the first
+ * worker's to create.
+ */
+export function cacheDirsScript(dirs: readonly string[]): string {
+  return `mkdir -p ${dirs.map(q).join(' ')}`
+}
+
+/**
+ * Install runcastle's repeated-test-suite guard in a Claude Code sandbox: the
+ * script, and a PreToolUse hook merged into the sandbox's own `settings.json`
+ * (the copied setup's other settings stay; the human's hooks never come over).
+ * Written after the setup copy, which clears `settings.json`.
+ */
+export function guardInstallScript(): string {
+  const paths = GUARD_INSTALL_PATHS['claude-code']
+  const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64')
+  return [
+    `mkdir -p "$HOME/.claude/hooks"`,
+    `printf %s '${b64(renderGuardScript())}' | base64 -d > "${paths.script}"`,
+    `chmod +x "${paths.script}"`,
+    `printf %s '${b64(JSON.stringify(renderGuardSettings('claude-code')))}' | base64 -d > ${IN.state}/guard-settings.json`,
+    [
+      `node -e '`,
+      `const fs=require("fs");const f=process.argv[1];const g=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));`,
+      `let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}`,
+      `c.hooks=g.hooks;fs.writeFileSync(f,JSON.stringify(c,null,2));fs.rmSync(process.argv[2])`,
+      `' ${IN.home}/.claude/settings.json ${IN.state}/guard-settings.json`,
+    ].join(''),
+  ].join(' && ')
 }
 
 /** `docker exec` argv that runs the ACP adapter in the clone, speaking ACP on stdio. Secrets ride env by name only. */

@@ -4,7 +4,7 @@ import type { DoctorReport, ProbeResult, ProbeStatus } from '../src/doctor/docto
 import type { MachineFacts, SetupCommand } from '../src/setup/plan'
 import { AGENT_QUESTION } from '../src/setup/runner'
 import { createStepRunner } from '../src/setup/system'
-import { ROOT_BURN_REFUSED } from '../src/workflows/burn-user'
+import { ROOT_BURN_REFUSED } from '../src/workers/burn-user'
 
 function probe(id: string, status: ProbeStatus, detail = ''): ProbeResult {
   return { id, label: id, tier: 1, status, severity: 'error', detail }

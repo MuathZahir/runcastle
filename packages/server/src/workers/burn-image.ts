@@ -77,6 +77,9 @@ const NEED_WORDS: Record<ImageBuildNeed, string> = {
   'dockerfile-changed': "the repo's Dockerfile has changed",
 }
 
+/** What the image build reads of a run: the burn's context, or a worker start's stand-in for it. */
+export type BurnImageCtx = Pick<WorkflowCtx, 'runId' | 'project' | 'emitEvent' | 'signal' | 'projectImage'>
+
 export interface EnsureBurnImageDeps {
   config: Pick<RuncastleConfig, 'sandbox' | 'sandboxImage'>
   /** Uncached: an answer from before the build must not stand in for one after it. */
@@ -92,7 +95,7 @@ export interface EnsureBurnImageDeps {
  * the runner records as a cancelled run.
  */
 export async function ensureBurnImage(
-  ctx: WorkflowCtx,
+  ctx: BurnImageCtx,
   deps: EnsureBurnImageDeps,
 ): Promise<BurnImageOutcome> {
   const { config, exec } = deps

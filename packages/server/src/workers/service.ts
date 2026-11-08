@@ -13,16 +13,19 @@ import {
   type WorkerStartedBy,
   type WorkerStatus,
   isUsageLimitText,
+  type Project,
   modelEntryFor,
+  resolveBurnCacheMode,
   resolveModelEntry,
+  resolvePreparedSettings,
   resolveSandboxImage,
 } from '@runcastle/core'
-import { envPath } from '@runcastle/core/paths'
+import { envPath, sessionDir } from '@runcastle/core/paths'
 import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
-import { createSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
+import { createSessionRow, getSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
 import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { emit, listAfter } from '../services/events'
@@ -36,6 +39,12 @@ import { requireAnnotatedModels } from '../services/tickets'
 import type { AgentTransport, StallBounds, TurnEnding } from '../threads/host'
 import type { StopReason } from '../threads/types'
 import { agentHost, readThreadEvents } from '../threads/types'
+import { isOverwritable } from '../services/findings'
+import { adoptProjectImage, releaseProjectImage } from '../services/project-image'
+import { readTranscriptUsage } from '../services/usage'
+import { detectPackageManager, readRepoToolchain } from '../workflows/ticket-burner'
+import { burnCacheDirectories, burnCacheEnv, burnCacheVolumeName } from './burn-cache'
+import type { BurnImageCtx } from './burn-image'
 import { sandboxEngine } from './engine'
 import { type WorkerPreviews, workerPreviewPath } from '../routes/design-pass-paths'
 import { phoneDesignPort } from '../services/phone-link'
@@ -46,7 +55,7 @@ import { codexSetup } from './codex-setup'
 import { workerMcpServer } from './sandbox'
 import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
-import { type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
+import { type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
@@ -174,8 +183,10 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
     // At its first start, then at a start or wake after the human's setup changed, so a change reaches the
     // worker's next turn (decisions 8, 12) and an unchanged wake skips hundreds of MB of copying.
     const setup = workerSetup(sb, briefOf(w), model)
-    const fingerprint = setupFingerprint(setup)
-    if ((await engine.setupFingerprint(sb)) !== fingerprint) await engine.copySetup(sb, setup, fingerprint)
+    // Runcastle's test-suite guard rides every copy for Claude Code workers (decision 13); the setting is in the fingerprint, so flipping it re-copies.
+    const guard = sb.runtime === 'claude-code' && ctx.config.burnGuard
+    const fingerprint = `${setupFingerprint(setup)}${guard ? '-guard' : ''}`
+    if ((await engine.setupFingerprint(sb)) !== fingerprint) await engine.copySetup(sb, setup, fingerprint, { guard })
     const proc = await engine.process(sb, briefOf(w), {
       ...(sb.runtime === 'claude-code' ? { token: claudeToken() } : {}),
       model,
@@ -300,16 +311,20 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   const short = shortId(session.id)
   let sb: WorkerSandbox
   try {
+    // The image first: a build that fails fails this start like a setup failure (decision 11).
+    await engine.prepare({ image: imageBuildCtx(ctx, feature, session.id), config: ctx.config })
     sb = await engine.create({
       id: session.id,
       engine: engine.name,
       runtime: model.runtime,
       container: `runcastle-worker-${short}`,
       branch: `runcastle/worker/${short}`,
-      image: resolveSandboxImage(ctx.config, project),
+      // Read again: the build may have adopted a new project image.
+      image: resolveSandboxImage(ctx.config, projectForFeature(ctx, feature)),
       repoPath: project.repoPath,
       featureBranch: feature.branch,
       takenPorts: takenPorts(ctx),
+      ...sandboxSetup(ctx, project),
     })
   } catch (err) {
     const failure = err instanceof Error ? err.message : String(err)
@@ -327,6 +342,49 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   })
   await agentHost(ctx).prompt(session.id, { text: workerKickoff(ctx, started) }, { source: 'runcastle' })
   return { workerId: session.id, branch: sb.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
+}
+
+/** The image build's view of a worker start: events on the feature's timeline, the project as the build leaves it, no way to stop it. */
+function imageBuildCtx(ctx: AppCtx, feature: Feature, runId: string): BurnImageCtx {
+  const read = (): Project => projectForFeature(ctx, feature)
+  return {
+    runId,
+    get project() {
+      return read()
+    },
+    emitEvent: (e) => emit(ctx, feature.id, { type: e.type, message: e.message, ...(e.data !== undefined ? { data: e.data } : {}) }),
+    signal: new AbortController().signal,
+    projectImage: {
+      overwritable: () => isOverwritable(ctx, read().id, 'sandboxImage'),
+      adopt: (tag) => adoptProjectImage(ctx, read().id, tag),
+      release: () => releaseProjectImage(ctx, read().id),
+    },
+  }
+}
+
+/**
+ * What a worker's sandbox is set up with beyond the image (decisions 11, 18): the
+ * project's burn cache with its package manager's store (never pnpm's, which
+ * cannot hardlink out of a volume the clone is not on: ADR-0004), the CPU cap,
+ * and the project's own setup command, run after the install.
+ */
+function sandboxSetup(ctx: AppCtx, project: Project): Pick<NewSandboxInput, 'cache' | 'cpus' | 'setupCommand'> {
+  const pm = detectPackageManager(readRepoToolchain(project.repoPath))
+  const setupCommand = resolvePreparedSettings(ctx.config, project).setupCommand
+  const cached = resolveBurnCacheMode(ctx.config) === 'volume'
+  return {
+    ...(cached
+      ? {
+          cache: {
+            volume: burnCacheVolumeName(project.id),
+            env: pm && pm !== 'pnpm' ? burnCacheEnv(pm) : {},
+            dirs: burnCacheDirectories(pm && pm !== 'pnpm' ? pm : undefined),
+          },
+        }
+      : {}),
+    ...(ctx.config.burnCpus !== undefined ? { cpus: ctx.config.burnCpus } : {}),
+    ...(setupCommand ? { setupCommand } : {}),
+  }
 }
 
 /** Ports any worker holds, stopped ones included; a failed one never got its sandbox. */
@@ -796,8 +854,46 @@ async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   await agentHost(ctx).stop(w.id, 'archived')
   const sb = sandboxOf(ctx, w)
-  if (sb) await sandboxEngine(w.engine).remove(sb)
+  if (sb) {
+    await keepConversation(ctx, w)
+    await sandboxEngine(w.engine).remove(sb)
+  }
   if (drops) emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
+}
+
+/** Where a worker's own copy of its agent's conversation file is kept: beside its thread log. */
+export function keptConversationPath(workerId: string): string {
+  return join(sessionDir(workerId), 'agent-conversation.jsonl')
+}
+
+/**
+ * Keep the agent's own conversation file (Claude's session file, Codex's
+ * rollout) beside the worker's thread log, and record the tokens read from it
+ * on the worker row (decision 12). Best-effort: a file that cannot be found or
+ * copied is an event, never a reason to keep a sandbox from being removed.
+ */
+export async function keepConversation(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  try {
+    const sb = sandboxOf(ctx, w)
+    const conversationId = getSessionRow(ctx, w.id)?.ccSessionId
+    if (!sb || !conversationId) return
+    const engine = sandboxEngine(w.engine)
+    const inside = await engine.conversationPath(sb, conversationId)
+    if (!inside) return
+    const kept = keptConversationPath(w.id)
+    await engine.copyOut(sb, inside, kept)
+    const usage = readTranscriptUsage(kept, w.runtime)
+    if (usage) updateWorker(ctx, w.id, { tokens: usage.total })
+  } catch (err) {
+    emitWorker(ctx, w, 'worker.conversation_unkept', `worker "${w.label}": its conversation file could not be kept`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+/** Keep every worker's conversation of a feature, so a record written before its sandboxes go (the outcome) carries their tokens. */
+export async function keepFeatureConversations(ctx: AppCtx, featureId: string): Promise<void> {
+  for (const w of listWorkers(ctx, featureId)) if (w.container && w.status !== 'dropped') await keepConversation(ctx, w)
 }
 
 /**

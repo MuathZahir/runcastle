@@ -38,6 +38,7 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   handbackFiles: ['src/Header.tsx', 'src/Header.test.tsx', 'src/theme.css'],
   outcome: null,
   outcomeNote: null,
+  tokens: null,
   createdAt: 1,
   updatedAt: 2,
   ...over,

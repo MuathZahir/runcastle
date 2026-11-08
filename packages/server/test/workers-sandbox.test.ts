@@ -169,13 +169,13 @@ describe("the human's setup in the sandbox", () => {
     await transport({} as never, row)
     await transport({} as never, row)
     const container = getWorker(ctx, workerId)!.container
-    expect(engine.setups).toEqual([{ container, setup: claudeSetup(userHome) }])
+    expect(engine.setups).toEqual([{ container, setup: claudeSetup(userHome), guard: true }])
 
     // A new skill reaches the worker at its next wake (decision 8).
     put(join(userHome, '.claude', 'skills', 'ship', 'SKILL.md'), 'ship\n')
     await transport({} as never, row)
     expect(engine.setups).toHaveLength(2)
-    expect(engine.setups[1]).toEqual({ container, setup: claudeSetup(userHome) })
+    expect(engine.setups[1]).toEqual({ container, setup: claudeSetup(userHome), guard: true })
     expect(engine.processes).toHaveLength(3)
   })
 

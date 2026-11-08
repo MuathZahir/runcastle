@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GUARD_RULES, buildGuardInstallCommand } from '../src/workflows/burn-guard'
+import { GUARD_RULES, buildGuardInstallCommand } from '../src/workers/burn-guard'
 import { postCommitHookBody } from './helpers/setup-hook'
 import {
   CODEX_HOST_MOUNT_PATH,

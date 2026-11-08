@@ -18,8 +18,8 @@ import {
   imageUidMismatchMessage,
   parseImageUser,
 } from '../src/services/sandbox-image'
-import { BURN_CACHE_VOLUME_LABEL } from '../src/workflows/burn-cache'
-import { type BurnUser, resolveBurnUser, runningAsRoot } from '../src/workflows/burn-user'
+import { BURN_CACHE_VOLUME_LABEL } from '../src/workers/burn-cache'
+import { type BurnUser, resolveBurnUser, runningAsRoot } from '../src/workers/burn-user'
 import {
   burnCacheDeniedMessage,
   buildSandboxOptions,

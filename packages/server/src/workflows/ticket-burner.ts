@@ -104,15 +104,15 @@ import type {
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
 import { failureCause } from '../util/failure-line'
-import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
-import { type BurnImageOutcome, ensureBurnImage } from './burn-image'
+import { GUARD_RULES, buildGuardInstallCommand } from '../workers/burn-guard'
+import { type BurnImageOutcome, ensureBurnImage } from '../workers/burn-image'
 import {
   type LastCommandRecord,
   buildInterruptedCommandNotes,
   trackLastCommand,
   withInterruptedCommandNotes,
 } from './interrupted-command'
-import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
+import type { BurnCacheEngine, SlotAllocator } from '../workers/burn-cache'
 import {
   BURN_CACHE_MOUNT,
   burnCacheDirectories,
@@ -124,14 +124,14 @@ import {
   slotDirPath,
   slotRepoPath,
   slotStampPath,
-} from './burn-cache'
+} from '../workers/burn-cache'
 import {
   type BurnUser,
   burnUserSpec,
   resolveBurnUser,
   ROOT_BURN_REFUSED,
   runningAsRoot,
-} from './burn-user'
+} from '../workers/burn-user'
 // The other execution kind. Imported for its one entry point only — everything
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.

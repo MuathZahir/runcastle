@@ -407,6 +407,8 @@ export const workers = sqliteTable(
     handbackFiles: text('handback_files', { mode: 'json' }).$type<string[]>(),
     outcome: text('outcome').$type<WorkerOutcome>(),
     outcomeNote: text('outcome_note'),
+    /** Tokens the worker spent, summed over its kept conversation file when it was retired; null until counted. */
+    tokens: integer('tokens'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

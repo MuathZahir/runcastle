@@ -91,6 +91,7 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   handbackFiles: null,
   outcome: null,
   outcomeNote: null,
+  tokens: null,
   createdAt: at,
   updatedAt: at,
   previewPath: null,
