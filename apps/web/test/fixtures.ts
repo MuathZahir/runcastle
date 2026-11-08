@@ -34,6 +34,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
       cancelled: 0,
     },
     workersWorking: over.workersWorking ?? 0,
+    workerProgress: over.workerProgress ?? { counted: 0, landed: 0 },
     liveSession: over.liveSession ?? null,
     leadAwaitsHuman: over.leadAwaitsHuman ?? false,
     leadInBackground: over.leadInBackground ?? false,

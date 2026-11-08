@@ -28,6 +28,7 @@ import {
   sortForSidebar,
   testDriveFigure,
   landedShare,
+  buildShare,
   ticketShare,
   triage,
   triageOf,
@@ -998,6 +999,25 @@ describe('ticketShare and progressState — the progress glyph', () => {
     const counts = { total: 5, pending: 1, burning: 0, done: 3, failed: 0, cancelled: 1 }
     expect(ticketShare(listItem({ ticketCounts: counts }))).toBe(0.75)
     expect(ticketShare(listItem())).toBe(0)
+  })
+
+  it('counts landed build workers for a feature built with workers (burns-become-workers review)', () => {
+    expect(ticketShare(listItem({ workerProgress: { counted: 4, landed: 3 } }))).toBe(0.75)
+    const counts = { total: 2, pending: 0, burning: 0, done: 2, failed: 0, cancelled: 0 }
+    expect(ticketShare(listItem({ ticketCounts: counts, workerProgress: { counted: 2, landed: 0 } }))).toBe(0.5)
+  })
+
+  it('buildShare reads the same share from tickets and worker rows, leaving out reviews, "+" workers and dropped ones', () => {
+    const workers = [
+      { kind: 'on-its-own', status: 'landed' },
+      { kind: 'with-you', status: 'working' },
+      { kind: 'on-its-own', status: 'dropped' },
+      { kind: 'review', status: 'handed-back' },
+      { kind: null, status: 'needs-you' },
+    ]
+    expect(buildShare([], workers)).toBe(0.5)
+    expect(buildShare([{ status: 'done' }, { status: 'cancelled' }], [])).toBe(1)
+    expect(buildShare([], [])).toBe(0)
   })
 
   it('is a draft ring for a draft, a check once shipped, and the pie otherwise', () => {

@@ -178,6 +178,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.number().positive().max(256),
     parseEnv: (raw) => Number(raw),
   },
+  // Read by the worker service each time it copies a Claude Code worker's setup
+  // in, so a change applies at the worker's next start or wake (burns-become-workers decision 18).
+  {
+    key: 'burnGuard',
+    configKey: 'burnGuard',
+    envVar: 'RUNCASTLE_BURN_GUARD',
+    restartRequired: false,
+    valueSchema: z.boolean(),
+    parseEnv: (raw) => raw !== '0' && raw !== 'false',
+  },
   // The three prepared burn fields. Each keeps its global config twin (an
   // operator who set one machine-wide keeps it as the inherited fallback) and
   // gains a per-project override, because every one of them describes a REPO,

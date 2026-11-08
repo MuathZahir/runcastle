@@ -99,6 +99,7 @@ const field = (over: Partial<SettingField>): SettingField =>
 const burnFields: SettingField[] = [
   field({ key: 'burnConcurrency', value: 3, source: 'default' }),
   field({ key: 'burnCpus', value: null, source: 'default' }),
+  field({ key: 'burnGuard', value: true, source: 'default' }),
 ]
 
 const probe = (over: Record<string, unknown>) => ({
@@ -156,7 +157,7 @@ describe('Settings → Sandboxes', () => {
     open()
 
     expect(screen.getByText('Prerequisites for unattended workers')).toBeTruthy()
-    expect(screen.getByText('Workers at once')).toBeTruthy()
+    expect(screen.getByText('Workers', { selector: 'h2,h3,legend,div,span' })).toBeTruthy()
     expect(screen.getByText('Container runtime')).toBeTruthy()
   })
 
@@ -172,6 +173,10 @@ describe('Settings → Sandboxes', () => {
       expect(input.type).toBe('number')
       expect(screen.getByText(unit)).toBeTruthy()
     }
+    // The repeated-test-suite guard's switch lives here too (burns-become-workers review).
+    const guard = screen.getByLabelText('Stop repeated full test runs')
+    expect(guard.getAttribute('role')).toBe('switch')
+    expect(guard.getAttribute('aria-checked')).toBe('true')
     for (const gone of ['Iterations per attempt', 'Attempts per ticket', 'Conflict resolver passes', 'Sandbox']) {
       expect(screen.queryByLabelText(gone)).toBeNull()
     }

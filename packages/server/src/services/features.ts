@@ -57,7 +57,7 @@ import { endSession } from '../pty/end-session'
 import { leadState, NO_LEAD } from '../threads/read'
 import { agentHost } from '../threads/types'
 import { listByFeature, ticketStatusCounts } from './tickets'
-import { removeFeatureWorkers, stopFeatureWorkers, workersHoldingReady, workersWorkingByFeature } from '../workers/service'
+import { removeFeatureWorkers, stopFeatureWorkers, workerProgressByFeature, workersHoldingReady, workersWorkingByFeature } from '../workers/service'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
@@ -90,6 +90,8 @@ export interface FeatureListItem extends Feature {
   ticketCounts: TicketCounts
   /** How many of its workers are working or queued right now. */
   workersWorking: number
+  /** Its build workers (with you, on its own) not dropped, and how many landed: the progress pie of a feature built with workers. */
+  workerProgress: { counted: number; landed: number }
   /**
    * The feature's open session, or null when it has none — an ended session
    * clears this entirely, because a conversation nobody is in is not a claim on
@@ -452,6 +454,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const problems = upNextProblems(ctx, projectId)
   const ticketStatuses = ticketStatusCounts(ctx, projectId)
   const working = workersWorkingByFeature(ctx, projectId)
+  const workerShares = workerProgressByFeature(ctx, projectId)
   const needEvents = needEventsByProject(ctx, projectId)
   const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
 
@@ -472,6 +475,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       ...feature,
       ticketCounts: counts,
       workersWorking: working.get(feature.id) ?? 0,
+      workerProgress: workerShares.get(feature.id) ?? { counted: 0, landed: 0 },
       liveSession: liveSessionOf(ctx, feature.id),
       leadAwaitsHuman: lead.awaitsHuman,
       leadInBackground: lead.inBackground,

@@ -116,6 +116,30 @@ export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<str
   return new Map(rows.map((r) => [r.featureId, r.n]))
 }
 
+/**
+ * Each feature's build workers for its progress pie: those that carry its work
+ * (with you, on its own), not dropped, and how many of them landed. The Review
+ * worker and "+" workers carry no share of the build.
+ */
+export function workerProgressByFeature(ctx: AppCtx, projectId: string): Map<string, { counted: number; landed: number }> {
+  const rows = ctx.db
+    .select({ featureId: workers.featureId, status: workers.status, n: count() })
+    .from(workers)
+    .innerJoin(features, eq(features.id, workers.featureId))
+    .where(and(eq(features.projectId, projectId), inArray(workers.kind, ['with-you', 'on-its-own'])))
+    .groupBy(workers.featureId, workers.status)
+    .all()
+  const out = new Map<string, { counted: number; landed: number }>()
+  for (const r of rows) {
+    if (r.status === 'dropped') continue
+    const p = out.get(r.featureId) ?? { counted: 0, landed: 0 }
+    p.counted += r.n
+    if (r.status === 'landed') p.landed += r.n
+    out.set(r.featureId, p)
+  }
+  return out
+}
+
 /** A worker of `featureId`: refuses another feature's, so a lead acts only on its own workers. */
 export function requireFeatureWorker(ctx: AppCtx, featureId: string, id: string): WorkerRow {
   const w = getWorker(ctx, id)

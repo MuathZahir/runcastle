@@ -27,6 +27,22 @@ export function landedShare(tickets: readonly { status: string }[]): number {
   return counted.filter((ticket) => ticket.status === 'done').length / counted.length
 }
 
+/**
+ * A feature's build progress, 0..1: its done tickets (frozen history) and
+ * landed build workers (with you, on its own) over every ticket not cancelled
+ * and every build worker not dropped — the same share the sidebar pie shows.
+ */
+export function buildShare(
+  tickets: readonly { status: string }[],
+  workers: readonly { kind?: string | null; status: string }[],
+): number {
+  const builds = workers.filter((w) => (w.kind === 'with-you' || w.kind === 'on-its-own') && w.status !== 'dropped')
+  const counted = tickets.filter((ticket) => ticket.status !== 'cancelled')
+  const total = counted.length + builds.length
+  if (total === 0) return 0
+  return (counted.filter((ticket) => ticket.status === 'done').length + builds.filter((w) => w.status === 'landed').length) / total
+}
+
 /** "1 of 1 ticket done", "2 of 3 tickets done" — pluralised on the total. */
 export function ticketCountText({ done, total }: { done: number; total: number }): string {
   return `${done} of ${total} ${total === 1 ? 'ticket' : 'tickets'} done`

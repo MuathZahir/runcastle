@@ -40,7 +40,7 @@ import {
   shippedAt,
   specDocPath,
   stampedReview,
-  landedShare,
+  buildShare,
   unresolvedMergeConflict,
   upNextBasesDiffer,
   verificationState,
@@ -1160,7 +1160,7 @@ export function Workspace({
             icon: (
               <ProgressIcon
                 state={isDraft ? 'draft' : shipped ? 'shipped' : 'active'}
-                progress={landedShare(full.tickets)}
+                progress={buildShare(full.tickets, workers)}
                 size={14}
                 label=""
               />

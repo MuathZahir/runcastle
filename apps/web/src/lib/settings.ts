@@ -42,6 +42,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   carryOnAfterLimit: 'RUNCASTLE_CARRY_ON_AFTER_LIMIT',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnCpus: 'RUNCASTLE_BURN_CPUS',
+  burnGuard: 'RUNCASTLE_BURN_GUARD',
   setupCommand: 'RUNCASTLE_SETUP_COMMAND',
   verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
   knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
@@ -356,6 +357,15 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'width',
     placeholder: 'unlimited',
     unit: 'cores · e.g. 4 on a 12-thread box at width 3',
+  },
+  burnGuard: {
+    label: 'Stop repeated full test runs',
+    tooltip:
+      "Inside a Claude Code worker's sandbox, refuse a second run of the whole test suite or the project's verify commands: the worker runs the tests for what it touched, and the lead runs the full checks. Off lets workers rerun the full suite as often as they like. Applies at a worker's next start or wake.",
+    control: 'switch',
+    page: 'sandboxes',
+    group: 'width',
+    searchTerms: ['guard', 'test', 'suite', 'verify', 'repeat', 'tokens'],
   },
   // The five keys with a global twin render ONCE, on "This project", where a
   // source chip says whether the value came from here or from the global

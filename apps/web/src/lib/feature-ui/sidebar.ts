@@ -52,13 +52,14 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
 }
 
 /**
- * The feature's ticket progress as a share, 0..1: done over every ticket not
- * cancelled — all of the feature's tickets, which simply accumulate. 0 with none.
+ * The feature's build progress as a share, 0..1: its done tickets (frozen
+ * history) and landed build workers over every ticket not cancelled and every
+ * build worker not dropped. 0 with neither.
  */
-export function ticketShare(f: FeatureListItem): number {
+export function ticketShare(f: Pick<FeatureListItem, 'ticketCounts' | 'workerProgress'>): number {
   const { total, done, cancelled } = f.ticketCounts
-  const counted = total - cancelled
-  return counted > 0 ? done / counted : 0
+  const counted = total - cancelled + f.workerProgress.counted
+  return counted > 0 ? (done + f.workerProgress.landed) / counted : 0
 }
 
 /** The state a feature's `ProgressIcon` wears: draft ring, shipped check, else the pie. */

@@ -33,7 +33,7 @@ export function SandboxesPage({ globals, projectId, filter, highlightField }: Se
         </SettingSection>
       )}
       <SettingGroup
-        title="Workers at once"
+        title="Workers"
         rows={pageRows(globals.data, 'sandboxes')}
         filter={filter}
         highlightField={highlightField}
