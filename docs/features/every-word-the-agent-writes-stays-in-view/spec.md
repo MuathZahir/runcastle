@@ -86,7 +86,9 @@ whether it is its turn's last words (no later `agent` item before the next
 `user` item), and `AgentMessage` shows Branch, the model and the turn's total
 time only then; its Copy there takes every `agent` item of the turn, joined by
 a blank line. The turn's total comes from the fold: on `turn_ended` the turn's
-last `agent` item gets the turn's seconds. The
+last `agent` item gets the turn's seconds, unless the turn has no time to tell
+(an old chat read back from its transcript, all one moment), which carries none.
+The Markdown export names a thinking-only run "Thought for …", as the chat does. The
 designed screens below show all three states; their look is in the design
 page, not repeated here.
 
