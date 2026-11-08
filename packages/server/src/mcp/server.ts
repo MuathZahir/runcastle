@@ -1349,7 +1349,7 @@ const reviewScenarioDenial = (action: ReviewScenarioDenial['action'], deniedReas
 })
 
 /** `review_drive({ action: 'capture' })`: the picture kept, or why it was not. */
-export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; scenario?: string } | ReviewScenarioDenial
+export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; path: string; scenario?: string } | ReviewScenarioDenial
 
 /**
  * Keep a picture of what the review agent's browser shows, with what it shows
@@ -1377,14 +1377,17 @@ export async function toolReviewCapture(
     return reviewScenarioDenial('capture', `This pass has its ${SAW_MAX_SHOTS} screenshots, the most one pass keeps. Carry on without more.`)
   }
   const image = `shot-${taken + 1}.png`
-  const result = await capture(passId, reviewShotPath(passId, image))
+  const path = reviewShotPath(passId, image)
+  const result = await capture(passId, path)
   if (!result.ok) return reviewScenarioDenial('capture', result.reason)
   const scenario = input.outside
     ? undefined
     : entries.findLast((entry) => entry.kind === 'scenario' && entry.ok)
   const file = scenario?.kind === 'scenario' ? scenario.file : undefined
   appendSaw(passId, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
-  return { ok: true, action: 'capture', caption, ...(file ? { scenario: file } : {}) }
+  // The path goes back so the reviewer can open the picture once before its
+  // verdict: a verdict never rests on a picture nobody looked at.
+  return { ok: true, action: 'capture', caption, path, ...(file ? { scenario: file } : {}) }
 }
 
 /**

@@ -306,9 +306,18 @@ export function hostReviewBriefing(w: Pick<WorkerRow, 'label' | 'featureBranch'>
   ].join('\n')
 }
 
-/** What a drive review's agent process runs with beyond its session: the browser session its screenshots are taken from. */
+/**
+ * What a drive review's agent process runs with beyond its session: the browser
+ * session its screenshots are taken from, and nothing else of agent-browser's.
+ *
+ * Any other agent-browser setting here would differ from the server's own calls
+ * on the same session (the capture, the recorder's stop and close), and
+ * agent-browser 0.41 relaunches a session whose launch settings differ: an idle
+ * timeout set only here made every capture shoot a fresh blank page and cut the
+ * walkthrough short. The daemon's own idle default (1h) is what both sides use.
+ */
 export function hostReviewEnv(workerId: string): Record<string, string> {
-  return { AGENT_BROWSER_SESSION: `review-${workerId}`, AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000' }
+  return { AGENT_BROWSER_SESSION: `review-${workerId}` }
 }
 
 // --- its findings -----------------------------------------------------------------

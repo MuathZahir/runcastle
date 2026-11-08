@@ -13,7 +13,8 @@ import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { type DriveTaken, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
+import { type DriveTaken, hostReviewEnv, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
+import { captureReviewShot } from '../src/services/review-capture'
 import {
   dropDriveWaitsForTests,
   dropWorker,
@@ -160,6 +161,27 @@ function reviewer(work: (w: WorkerRow) => Promise<void> | void): FakeAcp {
 }
 
 const leadPackages = () => promptsOf(lead).filter((p) => p.display && 'reviewPackage' in p.display)
+
+describe("a drive review's browser and the server's captures", () => {
+  // agent-browser relaunches a session whose launch settings differ, so a setting
+  // the reviewer's process carries and the server's calls do not makes every
+  // capture a fresh blank page (the blank shots of this feature's first review).
+  it('share one browser config: the reviewer gets only its session name, which the capture passes as --session', async () => {
+    expect(hostReviewEnv('wkr_1')).toEqual({ AGENT_BROWSER_SESSION: 'review-wkr_1' })
+    const calls: string[][] = []
+    const res = await captureReviewShot('wkr_1', '/tmp/shot.png', {
+      findBrowser: () => 'agent-browser',
+      listSessions: async () => '→ review-wkr_1',
+      run: async (_bin, args) => {
+        calls.push([...args])
+        return true
+      },
+      fileExists: () => true,
+    })
+    expect(res).toEqual({ ok: true })
+    expect(calls).toEqual([['--session', 'review-wkr_1', 'screenshot', '/tmp/shot.png']])
+  })
+})
 
 describe('a drive review', () => {
   it('waits queued for the drive slot, runs on the host in the checkout, and gives the slot back at handback with its Review Package', async () => {

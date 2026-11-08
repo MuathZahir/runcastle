@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Feature, PreparedKey, Project, SessionRow } from '@runcastle/core'
 import { SAW_MAX_SHOTS } from '@runcastle/core'
+import { reviewShotPath } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -572,6 +573,8 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
         ok: true,
         action: 'capture',
         caption: 'The page',
+        // The reviewer opens it before its verdict (burns-become-workers review).
+        path: reviewShotPath(session.id, 'shot-1.png'),
         scenario: ping,
       })
       await toolReviewCapture(ctx, { session }, { caption: 'Settings', outside: true }, shoot)
