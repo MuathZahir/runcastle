@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents are woken only when it matters — preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:6px 10px;background:var(--color-surface-raised);font-size:12px;line-height:16px}
+.box.wake{border-left:2px solid var(--color-accent)}
+.box.hold{border-left:2px solid var(--color-text-disabled);color:var(--color-text-secondary)}
+.box.bad{border-left:2px solid var(--color-danger)}
+.box.good{border-left:2px solid var(--color-success)}
+.arrow{color:var(--color-text-tertiary)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px 32px;margin-top:12px}
+.cols h3{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.cols ul{margin:0;padding:0;list-style:none}
+.cols li{display:flex;align-items:center;gap:10px;min-height:26px;color:var(--color-text-secondary)}
+.timeline{display:grid;gap:6px;margin-top:12px}
+.row{display:grid;grid-template-columns:64px 1fr 230px;align-items:center;gap:10px}
+.row .t{color:var(--color-text-tertiary);font:12px var(--font-mono)}
+.turn{justify-self:start;font-size:11px;padding:1px 6px;border-radius:var(--radius-sm);background:var(--color-danger-subtle);color:var(--color-danger)}
+.turn.one{background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.turn.none{background:var(--color-surface-inset);color:var(--color-text-tertiary)}
+[hidden]{display:none!important}
+/* the news block mock, in the app's own chat styling */
+.news{padding:12px 14px;display:grid;gap:8px;background:var(--color-surface)}
+.news .hd{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-tertiary)}
+.news .mk{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-sm);background:var(--color-accent-subtle);color:var(--color-accent-text);font-size:11px}
+.news .nr{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius-md);background:var(--color-fill-card)}
+.news .nr b{font-weight:500}
+.news .nr span{color:var(--color-text-secondary)}
+.news .held{margin-left:auto;color:var(--color-text-tertiary);font-size:12px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<header id="what">
+  <h1>Agents are woken only when it matters</h1>
+  <p class="lede">Agents tell each other things by calling a tool, not by runcastle pinging them. Machine events go only to the agent whose work they hit.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>re-scoped and grilled with you</span><span>built by the lead, then one review round</span><span class="mono">docs/features/agents-are-woken-only-when-it-matters/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>What reaches the orchestrator, before and after <a class="pin" data-d="20">20</a> <a class="pin" data-d="23">23</a></h3>
+    <div class="seg" role="group" aria-label="Before or after"><button aria-pressed="true" data-v="before">Today</button><button aria-pressed="false" data-v="after">After</button></div>
+    <div class="timeline" data-view="before">
+      <div class="row"><span class="t">10:02</span><span class="box hold">the human is talking to its chat</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:09</span><span class="box hold">its chat went quiet</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:12</span><span class="box hold">waits for you: start the work?</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">10:13</span><span class="box hold">finished planning</span><span class="turn">turn</span></div>
+      <div class="row"><span class="t">17:30</span><span class="box bad">lead says "ready to merge" in its own chat</span><span class="turn">nothing</span></div>
+    </div>
+    <div class="timeline" data-view="after" hidden>
+      <div class="row"><span class="t">10:02</span><span class="box hold">the human talks to a lead's chat</span><span class="turn none">nothing</span></div>
+      <div class="row"><span class="t">10:12</span><span class="box hold">lead waits for the human (the human is pinged)</span><span class="turn none">nothing</span></div>
+      <div class="row"><span class="t">17:30</span><span class="box wake">lead calls hand_back: "ready to merge"</span><span class="turn one">one turn</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>A lead hands back <a class="pin" data-d="21">21</a> <a class="pin" data-d="22">22</a></h3>
+    <p class="hint">Only while an orchestrator holds the feature: work ready, a job it was asked for done, or blocked on something the orchestrator can settle.</p>
+<!-- screen:feature-handback-card -->
+    <div class="screen">
+      <div class="news">
+        <div class="hd"><span class="mk">&larr;</span><b style="color:var(--color-text)">Phone fixes</b>&nbsp;handed back<span class="held">Open its chat</span></div>
+        <p class="hint" style="padding-left:28px">Ready to test &middot; round 2 succeeded &middot; not waiting on you</p>
+        <p style="padding-left:28px;color:var(--color-text)">Review fixes are in and the suite is green. The human said it is good to merge once the drive looks right.</p>
+      </div>
+    </div>
+<!-- /screen:feature-handback-card -->
+    <p class="hint" style="margin-top:6px">The worker handback card from interactive-workers, with the feature's state line in place of commits and files. The orchestrator replies, merges, or does nothing.</p>
+  </div>
+
+  <div class="sub">
+    <h3>The orchestrator's own three events, each wakes it <a class="pin" data-d="23">23</a></h3>
+    <div class="cols">
+      <div><h3><i class="dot live"></i>Still reach it</h3><ul>
+        <li><i class="dot live"></i>a drive it started failed to start</li>
+        <li><i class="dot live"></i>a backlog feature it holds started by itself, or could not</li>
+        <li><i class="dot live"></i>a lead it messaged could not be woken</li>
+      </ul></div>
+      <div><h3><i class="dot"></i>Gone</h3><ul>
+        <li><i class="dot"></i>rounds, reviews, planning runs (the lead hands back)</li>
+        <li><i class="dot"></i>your chats, drives, merges and conflicts</li>
+        <li><i class="dot"></i>another chat taking a feature</li>
+        <li><i class="dot"></i>the "For its next turn" label</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>A restart: cut-off chats carry on <a class="pin" data-d="24">24</a></h3>
+    <div class="flow">
+      <span class="box bad">server restarts mid-turn</span><span class="arrow">&rarr;</span>
+      <span class="box good">each cut-off lead or orchestrator chat: "carry on where you were"</span>
+    </div>
+    <p class="hint" style="margin-top:6px">Not side chats, not workers, not a lead whose round message already goes.</p>
+  </div>
+
+  <div class="sub">
+    <h3>The usage limit: your setting, suggested where it bites <a class="pin" data-d="25">25</a></h3>
+<!-- screen:usage-limit-line -->
+    <div class="screen">
+      <div class="news">
+        <div class="hd"><span class="mk">R</span>The usage limit stopped this turn. Runcastle can <a href="#" onclick="return false" style="color:var(--color-accent-text)">carry on by itself</a> when the limit resets.</div>
+        <div class="hd"><span class="mk">R</span>With the setting on: Runcastle carries on at 8pm.</div>
+      </div>
+    </div>
+<!-- /screen:usage-limit-line -->
+    <p class="hint" style="margin-top:6px">Settings &rsaquo; General: "Carry on when the usage limit resets", off by default. On: every stopped chat is woken once at the reset.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Also <a class="pin" data-d="10">10</a> <a class="pin" data-d="26">26</a> <a class="pin" data-d="27">27</a></h3>
+    <ul style="margin:8px 0 0;padding-left:18px;color:var(--color-text-secondary)">
+      <li>Stop reaches a busy lead at its turn's end, and waits for an idle one's next message.</li>
+      <li>Orchestrator chats are compacted like leads, and re-read their record after.</li>
+      <li>No guidance on how agents read; no nudges in runcastle's messages.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Retiring rounds &rarr; burns-become-workers</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Workers' own handback (interactive-workers, merged)</li>
+      <li><i class="dot"></i>Lead compaction (lead-chats-stay-small, merged)</li>
+      <li><i class="dot"></i>Rules for how agents read or use sub-agents</li>
+      <li><i class="dot"></i>A way to ask for extra wakes</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <ul style="margin:0;padding-left:18px;color:var(--color-text-secondary)">
+        <li>MCP: a lead's <span class="mono">hand_back({ summary })</span>; the feature handback card is a new prompt display beside the worker one.</li>
+        <li>Orchestrator notifier: its table cut to three waking events; the keyed holds and the held-news label removed.</li>
+        <li>Boot: the reconcile hands its cut-off chats to a carry-on wake once the server listens.</li>
+        <li>Thread host: the usage-limit line with a settings link; the reset wake only with the new setting on, for every stopped turn.</li>
+        <li>Compaction: lead-chats-stay-small's triggers widened to project threads; the 1 MB cap no longer starts fresh orchestrator chats.</li>
+        <li>Skills: the lead's hand-back rule; the project skill's news paragraph and its re-read after compaction.</li>
+        <li>Workers are not available in this session's runcastle (no <span class="mono">start_worker</span>), so the lead builds it with its own sub-agents, then one review round.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  var A = 'assumed'
+  var D = [
+    ['One wake rule, decided in one place, for both levels', 'Replaced by 19: agents talk by tool call.', 'replaced'],
+    ['A held message is shown in the chat and rides the next prompt', 'Replaced by 19; held prompts remain only for Stop (10) and the usage limit (25).', 'replaced'],
+    ['Which orchestrator news lines wake, and which hold', 'Replaced by 19 and 23.', 'replaced'],
+    ['Lines that already only reach a running thread keep that gate', 'Replaced by 19.', 'replaced'],
+    ['"Finished planning" holds when a wait already went out', 'Replaced by 19.', 'replaced'],
+    ['Background sub-agent wakes are handled in the orchestrator\u2019s guidance', 'Replaced by 27.', 'replaced'],
+    ['News never restarts an oversized orchestrator chat', 'Replaced by 16, then 26.', 'replaced'],
+    ['Held lines move with the features when a chat is cut over', 'Replaced by 16, then 26.', 'replaced'],
+    ['A runcastle-started turn that hits the usage limit is re-sent at reset', 'Replaced by 25.', 'replaced'],
+    ['What reaches a feature\u2019s lead', 'You confirmed: Stop reaches a busy lead at its turn\u2019s end and waits for an idle one.'],
+    ['The round\u2019s return message is the whole handback', 'Replaced by 27.', 'replaced'],
+    ['Held news looks held in the chat', 'Nothing is held for the orchestrator any more (23), so the label goes.', 'replaced'],
+    ['A newer line about what the human is doing replaces the older one', 'Replaced by 19 and 23.', 'replaced'],
+    ['No agent or human can ask for extra wakes', 'Replaced by 19.', 'replaced'],
+    ['A cut-over is visible, and the old thread points to the new one', 'Replaced by 16.', 'replaced'],
+    ['An oversized orchestrator chat is compacted in place, not handed over', 'Replaced by 26, your own answer.', 'replaced'],
+    ['The orchestrator compaction is built last, on the sibling\u2019s code', 'Replaced by 26: the sibling has merged.', 'replaced'],
+    ['A conflict from the human\u2019s own merge is held', 'Replaced by 23: it no longer reaches the orchestrator at all.', 'replaced'],
+    ['Re-scoped: agents talk by tool call, not by runcastle\u2019s news lines', 'Your re-scope: pinging should not be mechanical.'],
+    ['The lead\u2019s tool is the only way the orchestrator hears from a feature', 'One deliberate channel; waiting and ready still ping you.'],
+    ['A lead hands back with hand_back({ summary }); runcastle adds a state line', 'One handback idea at every level; the state line saves a fetch.'],
+    ['When a lead hands back', 'Ready, a job the orchestrator asked for done, or blocked on something it can settle; your questions stay your ping.'],
+    ['The orchestrator gets three machine events, all about its own work', 'Its own drive, its own drafts, its own undelivered message; you struck \u201canother chat took it\u201d.'],
+    ['A chat a restart cuts off mid-turn is woken once to carry on', 'Those agents were working and nobody asked them to stop.'],
+    ['Carrying on after the usage limit is a setting, off by default', 'Some would not want their weekly limit spent; the line in the stopped chat shows the setting exists.'],
+    ['Orchestrator chats are compacted the way leads are', 'One mechanism; the orchestrator re-reads its record after.'],
+    ['No guidance on how agents read; no nudges in runcastle\u2019s messages', 'You: don\u2019t micromanage the agents. The round-return nudge goes on the same principle.']
+  ]
+  var C = [
+    [27, 'Keep the round-return line telling a lead it holds the whole round.', 'You struck the read-guidance line; I dropped this nudge on the same principle without asking.', 'yours?']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('.seg button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+      $$('.timeline').forEach(function (t) { t.hidden = t.dataset.view !== b.dataset.v })
+    })
+  })
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

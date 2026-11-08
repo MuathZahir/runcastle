@@ -52,7 +52,8 @@ export function formatResets(at: Date, now: Date = new Date()): string {
 
 function limit(label: string, percent: number | undefined, resets: Date | undefined): UsageLimit[] {
   if (percent === undefined) return []
-  return [{ label, percent: clampPercent(percent), resets: resets ? formatResets(resets) : '' }]
+  const at = resets && !Number.isNaN(resets.getTime()) ? resets.getTime() : undefined
+  return [{ label, percent: clampPercent(percent), resets: resets ? formatResets(resets) : '', ...(at !== undefined ? { resetsAt: at } : {}) }]
 }
 
 /** "ChatGPT Pro" from the pushed auth status, else from a bare plan type. */
@@ -152,4 +153,17 @@ export function claudeUsageReport(raw: unknown): UsageReport {
     return subscription ? `Claude ${titleCase(subscription)}` : undefined
   })
   return { limits, ...(plan ? { plan } : {}) }
+}
+
+/**
+ * When the account's usage limit lifts (`agents-are-woken-only-when-it-matters`
+ * decision 9): the latest reset among the limits used up, since every one must
+ * lift; else, when none reads as used up (a stale read), the soonest reset
+ * ahead. Undefined when no limit says when it resets.
+ */
+export function limitLiftsAt(limits: readonly UsageLimit[], now: number): number | undefined {
+  const ahead = limits.flatMap((l) => (l.resetsAt !== undefined && l.resetsAt > now ? [{ at: l.resetsAt, spent: l.percent >= 100 }] : []))
+  const spent = ahead.filter((l) => l.spent).map((l) => l.at)
+  if (spent.length > 0) return Math.max(...spent)
+  return ahead.length > 0 ? Math.min(...ahead.map((l) => l.at)) : undefined
 }

@@ -199,6 +199,10 @@ function handleSessionStart(
 /** What a feature session's start context opens with when the start is a compaction's. */
 export const AFTER_COMPACTION = 'Your context was just compacted. Before acting on the summary, call get_feature_context.'
 
+/** What an orchestrator chat's start context opens with after a compaction (agents-are-woken-only-when-it-matters decision 26). */
+export const ORCHESTRATOR_AFTER_COMPACTION =
+  "Your context was just compacted. Before acting on the summary, call get_project_context and read the briefs of the features you hold: each carries its cut's working agreement."
+
 /**
  * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
  * `session_id` and `transcript_path` too, so it backs up `SessionStart`: a
@@ -257,7 +261,10 @@ async function handleProjectScopedSessionStart(
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: await projectScopedStartContext(ctx, session),
+      additionalContext:
+        source === 'compact' && session.kind === 'project'
+          ? `${ORCHESTRATOR_AFTER_COMPACTION}\n${await projectScopedStartContext(ctx, session)}`
+          : await projectScopedStartContext(ctx, session),
     },
   }
 }

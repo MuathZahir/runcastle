@@ -1,8 +1,9 @@
-import { foldThread, type SessionRow } from '@runcastle/core'
+import { foldThread, type Run, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
+import { mayStartInBackground } from '../services/database-copy'
 import { emitForSession } from '../services/events'
-import { rowToSession } from '../services/repo'
+import { rowToSession, tryGetFeature } from '../services/repo'
 import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent, readThreadEvents } from '../threads/types'
 import { markSessionEnded } from './sessions'
@@ -21,8 +22,11 @@ import { markSessionEnded } from './sessions'
  *
  * `bun --hot` safety: the agent host survives hot reloads on `globalThis`, so a
  * thread whose process is genuinely still running is skipped.
+ *
+ * Every thread whose log it closes that way is added to `cutOff`, for
+ * {@link wakeCutOffChats} once the server listens.
  */
-export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
+export function reconcileStaleSessions(ctx: AppCtx, cutOff: SessionRow[] = []): SessionRow[] {
   const host = agentHost(ctx)
   const rows = ctx.db.select().from(sessions).all().map(rowToSession)
 
@@ -31,6 +35,7 @@ export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
     if (host.isRunning(session.id)) continue
     if (hasThreadLog(session.id) && foldThread(readThreadEvents(session.id)).state !== 'idle') {
       appendThreadEvent(session.id, { type: 'process', state: 'stopped', restarted: true })
+      cutOff.push(session)
     }
     if (session.status !== 'launching' && session.status !== 'live') continue
     markSessionEnded(ctx, session.id)
@@ -45,4 +50,48 @@ export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
     reconciled.push(session)
   }
   return reconciled
+}
+
+/** What a chat a restart cut off mid-turn is told (agents-are-woken-only-when-it-matters decision 24). */
+export const RESTART_CARRY_ON = '[runcastle] A server restart cut off your turn. Carry on where you were.'
+
+/** The event a carry-on wake leaves on the chat's timeline. */
+export const RESTART_CARRY_ON_EVENT = 'session.restart_carry_on'
+
+/**
+ * Whether a chat a restart cut off is told to carry on: a feature's lead
+ * (its main chat, not a headless or self-planning run) or an orchestrator chat.
+ * Side chats and workers are not (a worker's lead hears when it fails), nor a
+ * lead whose round was cut off (its round message already goes), nor a lead of
+ * a feature that has shipped or been archived.
+ */
+function carriesOn(ctx: AppCtx, row: SessionRow, roundCutOff: ReadonlySet<string>): boolean {
+  if (row.kind === 'project') return true
+  if (row.kind !== 'chat' || !row.featureId || row.headless || row.purpose === 'self-plan') return false
+  if (roundCutOff.has(row.featureId)) return false
+  const feature = tryGetFeature(ctx, row.featureId)
+  return !!feature && feature.status !== 'shipped' && feature.status !== 'archived'
+}
+
+/**
+ * Wake each chat a restart cut off mid-turn, once, to carry on (decision 24).
+ * Called once the server listens, since a woken agent reaches runcastle's MCP
+ * server. On a copied database (a test drive) it starts no chat the drive has
+ * not started. Best effort: nothing here throws.
+ */
+export async function wakeCutOffChats(ctx: AppCtx, cutOff: readonly SessionRow[], staleRuns: readonly Run[]): Promise<void> {
+  const roundCutOff = new Set(staleRuns.filter((r) => r.workflow === 'ticket-burner').map((r) => r.featureId))
+  for (const row of cutOff) {
+    try {
+      if (!carriesOn(ctx, row, roundCutOff) || !mayStartInBackground(row)) continue
+      await agentHost(ctx).prompt(row.id, { text: RESTART_CARRY_ON }, { source: 'runcastle', display: { summary: 'A restart cut off this turn: carrying on' } })
+      emitForSession(ctx, row, {
+        type: RESTART_CARRY_ON_EVENT,
+        message: 'told to carry on after a server restart cut off its turn',
+        data: { sessionId: row.id },
+      })
+    } catch (err) {
+      console.error('could not wake a chat the restart cut off', err)
+    }
+  }
 }

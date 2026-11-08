@@ -40,6 +40,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
   usageSignal: 'RUNCASTLE_USAGE_SIGNAL',
+  carryOnAfterLimit: 'RUNCASTLE_CARRY_ON_AFTER_LIMIT',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnMaxIterations: 'RUNCASTLE_BURN_MAX_ITERATIONS',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
@@ -343,6 +344,16 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'server',
     switchValues: { on: 'on', off: 'off' },
     searchTerms: ['usage', 'ping', 'telemetry', 'tracking', 'analytics', 'privacy'],
+  },
+  carryOnAfterLimit: {
+    label: 'Carry on when the usage limit resets',
+    tooltip:
+      'When your usage limit stops a chat mid-turn, wake it once at the reset to carry on, turns you started included. Off, nothing wakes at the reset: what runcastle had to say waits for your next message. On spends the new window without asking.',
+    control: 'switch',
+    page: 'general',
+    group: 'sessions',
+    switchValues: { on: 'on', off: 'off' },
+    searchTerms: ['usage', 'limit', 'reset', 'continue', 'carry on', 'resume', 'weekly'],
   },
   burnConcurrency: {
     label: 'Agents working at once',

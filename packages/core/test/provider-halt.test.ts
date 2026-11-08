@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyProviderHalt, isProviderHaltReason, providerHaltReason } from '../src/provider-halt'
+import { classifyProviderHalt, isProviderHaltReason, isUsageLimitText, providerHaltReason } from '../src/provider-halt'
 
 // Local wall-clock dates, so the expected times read the same in every timezone.
 const NOW = new Date(2026, 10, 2, 9, 0)
@@ -61,5 +61,20 @@ describe('the provider halt reasons', () => {
     for (const r of ['stopped', 'run halted: no agent binary', null]) {
       expect(isProviderHaltReason(r)).toBe(false)
     }
+  })
+})
+
+describe('isUsageLimitText', () => {
+  it('knows the account usage limit as the runtimes word it, and nothing else', () => {
+    expect(isUsageLimitText("Internal error: You've hit your 5-hour limit · resets 8pm (Europe/Berlin)")).toBe(true)
+    expect(isUsageLimitText("You've hit your weekly limit")).toBe(true)
+    expect(isUsageLimitText('Claude AI usage limit reached|1793903839')).toBe(true)
+    expect(isUsageLimitText('rate limit exceeded (429), retrying')).toBe(false)
+    expect(isUsageLimitText('insufficient_quota')).toBe(false)
+    expect(isUsageLimitText('Internal error: connection reset')).toBe(false)
+  })
+
+  it('is one of the usage halts a round reads too', () => {
+    expect(classifyProviderHalt("run halted: You've hit your 5-hour limit · resets 8pm", NOW)).toEqual({ kind: 'usage', resets: '8pm' })
   })
 })

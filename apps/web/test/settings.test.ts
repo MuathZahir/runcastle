@@ -114,6 +114,11 @@ describe('describeField', () => {
     expect(mcp.optionLabels.runcastleOnly).not.toBe('runcastleOnly')
   })
 
+  it('shows "Carry on when the usage limit resets" off at its default, on only when set on', () => {
+    expect(describeField(field({ key: 'carryOnAfterLimit', value: 'off' })).value).toBe('false')
+    expect(describeField(field({ key: 'carryOnAfterLimit', value: 'on' })).value).toBe('true')
+  })
+
   it('labels every option a select offers', () => {
     for (const key of ['sandbox', 'sessionMcp']) {
       const row = describeField(field({ key, value: '' }))

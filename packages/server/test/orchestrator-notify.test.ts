@@ -1,11 +1,11 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { EventRow, Feature, Project, SessionRow } from '@runcastle/core'
+import type { EventRow, Feature, Project } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive, setSessionTitle } from '../src/launcher/sessions'
+import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { emit, emitProject, runAsActor } from '../src/services/events'
 import {
   ORCHESTRATOR_GATHER_MS,
@@ -13,7 +13,6 @@ import {
   startOrchestratorNotifier,
   type NotifyState,
 } from '../src/services/orchestrator-notify'
-import { takeHold } from '../src/services/holding'
 import { openProject } from '../src/services/projects'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import type { AgentHost } from '../src/threads/types'
@@ -24,9 +23,9 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * What a thread hears (`whole-cuts-plan-themselves` decisions 11, 13;
- * `threads-hold-features`): a `[runcastle]` line per thing that ended on a feature
- * it holds, or per human act on one.
+ * What a thread hears from runcastle (`agents-are-woken-only-when-it-matters`
+ * decisions 19, 23): only machine events about its own work, each waking it.
+ * Everything else comes from a lead's `hand_back`.
  */
 
 function event(type: string, data?: Record<string, unknown>, extra: Partial<EventRow> = {}): EventRow {
@@ -42,258 +41,77 @@ function event(type: string, data?: Record<string, unknown>, extra: Partial<Even
   }
 }
 
-const held: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: true } }
-const unheld: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: null, holderRunning: false } }
-const chat = { kind: 'chat', purpose: undefined, headless: false } as const
+const held: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread' } }
+const unheld: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: null } }
+const byOrchestrator = { actor: 'orchestrator' }
 
-describe('orchestratorLineFor — end events', () => {
-  const cases: [string, EventRow, NotifyState, string][] = [
+describe('orchestratorLineFor — the orchestrator’s own work', () => {
+  const cases: [string, EventRow, string][] = [
     [
-      'a self-planning run that finished',
-      event('session.self_plan_ended', { complete: true }),
-      held,
-      '[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).',
+      'a drive it started failing to start',
+      event('testdrive.dev_failed', byOrchestrator, { message: 'dev server failed to start: boom' }),
+      '[runcastle] export-csv the drive you started failed: dev server failed to start: boom. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
-      'an agent waiting for the human',
-      event('feature.waiting', { why: 'start round 1?' }),
-      held,
-      '[runcastle] export-csv waits for you: start round 1?. Read what it asked with read_feature_chat({ slug: "export-csv" }).',
-    ],
-    [
-      'an agent declaring ready',
-      event('feature.ready_declared', { scenario: 'empty-cart' }),
-      held,
-      '[runcastle] export-csv declared ready to test (drive: empty-cart). Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'an agent runcastle could not wake',
-      event('lead.wake_failed', { exitCode: 1, tail: '', messages: 1 }, { message: 'could not resume the agent headless' }),
-      held,
-      '[runcastle] export-csv could not wake its agent, so messages sent to it have not reached it yet (could not resume the agent headless). Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a self-planning run that stopped short',
-      event('session.self_plan_ended', { complete: false }),
-      held,
-      '[runcastle] export-csv stopped before the plan was complete. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a relay run that finished',
-      event('session.run_ended', { complete: true }),
-      held,
-      '[runcastle] export-csv headless run finished. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a round that succeeded',
-      event('run.finished', { status: 'succeeded', summary: '3/3 tickets done' }),
-      held,
-      '[runcastle] export-csv round finished (3/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
-    ],
-    [
-      'a round that failed',
-      event('run.finished', { status: 'failed', summary: '2/3 tickets done' }),
-      held,
-      '[runcastle] export-csv round failed (2/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
-    ],
-    [
-      'a round a server restart cut off',
-      event('run.reconciled', { workflow: 'ticket-burner', landedTickets: 1, pendingTickets: 2 }),
-      held,
-      '[runcastle] export-csv round interrupted by a server restart (1 landed, 2 pending). Read it with list_tickets({ slug: "export-csv" }).',
-    ],
-    [
-      'a review pass that finished',
-      event('ticket.done'),
-      { ...held, ticket: { seq: 4, kind: 'review', passKind: 'review' } },
-      '[runcastle] export-csv review pass (ticket 4) finished. Read it with list_tickets({ slug: "export-csv" }).',
-    ],
-    [
-      'a verification pass that failed',
-      event('ticket.failed'),
-      { ...held, ticket: { seq: 5, kind: 'review', passKind: 'verification' } },
-      '[runcastle] export-csv verification pass (ticket 5) failed. Read it with list_tickets({ slug: "export-csv" }).',
-    ],
-    [
-      'a merge that landed',
-      event('feature.shipped', undefined, { message: 'merged to main' }),
-      held,
-      '[runcastle] export-csv merged to main: shipped. Backlog features waiting on it may start now. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a merge that conflicted',
-      event('merge.conflict', { files: ['a.ts', 'b.ts'] }),
-      held,
-      `[runcastle] export-csv merge conflicted in 2 file(s) when the human merged it by hand. The human has the Resolve button on the feature: leave the conflict to them unless they ask you. Read it with get_feature_context({ slug: "export-csv" }).`,
-    ],
-    [
-      'a conflict that was resolved',
-      event('merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/export-csv' }, { message: 'merge conflict resolved — main is in feature/export-csv' }),
-      held,
-      '[runcastle] export-csv merge conflict resolved (main is in feature/export-csv). Nothing to relay. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a drive that failed',
-      event('testdrive.dev_failed', undefined, { message: 'dev server failed to start: ENOENT' }),
-      held,
-      '[runcastle] export-csv drive failed: dev server failed to start: ENOENT. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-  ]
-
-  it.each(cases)('%s', (_name, e, state, line) => {
-    expect(orchestratorLineFor(e, state)).toBe(line)
-  })
-
-  const answeredByMerge = (e: EventRow) => e.type === 'feature.shipped' || e.type === 'merge.conflict'
-
-  it.each(cases.filter(([, e]) => !answeredByMerge(e)))(
-    '%s is forwarded even when the orchestrator caused it',
-    (_name, e, state, line) => {
-      const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
-      expect(orchestratorLineFor(stamped, state)).toBe(line)
-    },
-  )
-
-  it.each(cases.filter(([, e]) => answeredByMerge(e)))(
-    '%s says nothing when its own merge_feature call caused it',
-    (_name, e, state) => {
-      const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
-      expect(orchestratorLineFor(stamped, state)).toBeNull()
-    },
-  )
-
-  it.each(cases)('%s says nothing on a feature it does not follow', (_name, e, state) => {
-    expect(orchestratorLineFor(e, { ...state, ...unheld })).toBeNull()
-  })
-
-  it('keeps every line one short line', () => {
-    const long = event('run.finished', { status: 'failed', summary: `x\n${'y'.repeat(500)}` })
-    const line = orchestratorLineFor(long, held) as string
-    expect(line).not.toContain('\n')
-    expect(line.length).toBeLessThan(200)
-  })
-
-  it('says nothing when a landing merge retires its conflict: the shipped line says it', () => {
-    expect(orchestratorLineFor(event('merge.resolved', undefined, { message: 'conflict retired by the merge' }), held)).toBeNull()
-  })
-
-  it('wakes a stopped holder for an ending', () => {
-    const stopped: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: false } }
-    expect(orchestratorLineFor(event('merge.conflict', { files: [] }), stopped)).toContain('merge conflicted')
-  })
-
-  it('tells the holder when its draft started by itself, or could not', () => {
-    expect(orchestratorLineFor(event('feature.started', { autoStartedBy: 'core' }), held)).toBe(
+      'a draft it holds starting by itself',
+      event('feature.started', { autoStartedBy: 'core' }),
       '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its brief says grill with you: then hand the human its chat.',
-    )
-    expect(orchestratorLineFor(event('feature.started', {}), held)).toBeNull()
-    for (const type of ['feature.autostart.skipped', 'feature.autostart.failed']) {
-      expect(orchestratorLineFor(event(type, undefined, { message: "couldn't start by itself: boom" }), held)).toBe(
-        `[runcastle] export-csv couldn't start by itself: boom. Read it with get_feature_context({ slug: "export-csv" }).`,
-      )
-    }
-  })
-
-  it('ignores implementation tickets finishing', () => {
-    const e = event('ticket.done')
-    expect(orchestratorLineFor(e, { ...held, ticket: { seq: 1, kind: 'implementation', passKind: 'review' } })).toBeNull()
-  })
-
-  it('says nothing of a restart cutting off a run that is not a round', () => {
-    expect(orchestratorLineFor(event('run.reconciled', { workflow: 'design-pass' }), held)).toBeNull()
-  })
-})
-
-describe('orchestratorLineFor — act events', () => {
-  const cases: [string, EventRow, NotifyState, string][] = [
-    [
-      'the human’s message starting a chat',
-      event('session.process_started', { sessionId: 's', source: 'human' }),
-      { ...held, session: chat },
-      '[runcastle] export-csv the human is talking to its chat thread; it is busy until that conversation goes quiet.',
     ],
     [
-      'the human clicking Plan it yourself',
-      event('session.launching', { sessionId: 's', purpose: 'self-plan' }),
-      { ...held, session: { ...chat, purpose: 'self-plan' } },
-      '[runcastle] export-csv the human had it plan itself. Wait for the run to end.',
+      'a draft it holds not starting',
+      event('feature.autostart.failed', undefined, { message: "couldn't start by itself: boom" }),
+      `[runcastle] export-csv couldn't start by itself: boom. Read it with get_feature_context({ slug: "export-csv" }).`,
     ],
     [
-      'the human’s conversation going quiet',
-      event('session.process_stopped', { sessionId: 's', reason: 'idle', startedBy: 'human' }),
-      { ...held, session: chat },
-      `[runcastle] export-csv the human's chat conversation on it went quiet; it is free again. Read it with get_feature_context({ slug: "export-csv" }).`,
-    ],
-    [
-      'a test drive starting',
-      event('testdrive.started', { purpose: 'test' }),
-      held,
-      '[runcastle] export-csv the human started a test drive of it.',
-    ],
-    [
-      'a test drive stopping',
-      event('testdrive.stopped', { purpose: 'test' }),
-      held,
-      '[runcastle] export-csv the human stopped the test drive of it. Read it with get_feature_context({ slug: "export-csv" }).',
+      'its message not reaching a lead',
+      event('lead.wake_failed', byOrchestrator, { message: 'could not reach the agent’s chat: no runtime' }),
+      '[runcastle] export-csv could not wake its agent, so your message has not reached it yet (could not reach the agent’s chat: no runtime). Read it with get_feature_context({ slug: "export-csv" }).',
     ],
   ]
 
-  it.each(cases)('%s', (_name, e, state, line) => {
-    expect(orchestratorLineFor(e, state)).toBe(line)
+  it.each(cases)('%s', (_name, e, line) => {
+    expect(orchestratorLineFor(e, held)).toBe(line)
   })
 
-  it.each(cases)('%s is not repeated when the orchestrator did it', (_name, e, state) => {
-    const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
-    expect(orchestratorLineFor(stamped, state)).toBeNull()
+  it.each(cases)('%s says nothing on a feature it does not hold', (_name, e) => {
+    expect(orchestratorLineFor(e, unheld)).toBeNull()
   })
 
-  it.each(cases)('%s says nothing on a feature it does not follow', (_name, e, state) => {
-    expect(orchestratorLineFor(e, { ...state, ...unheld })).toBeNull()
+  it('says nothing of a drive or a failed wake the orchestrator did not cause', () => {
+    expect(orchestratorLineFor(event('testdrive.dev_failed', undefined, { message: 'boom' }), held)).toBeNull()
+    expect(orchestratorLineFor(event('lead.wake_failed', undefined, { message: 'boom' }), held)).toBeNull()
   })
 
-  it('does not reach a holder whose process is stopped', () => {
-    const stopped: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: 'thread', holderRunning: false } }
-    expect(orchestratorLineFor(event('testdrive.started'), stopped)).toBeNull()
-  })
-
-  it('says nothing of a thread runcastle started, a side thread, or a self-planning run’s stop', () => {
-    const started = (source: string) => event('session.process_started', { sessionId: 's', source })
-    const stopped = (startedBy: string) => event('session.process_stopped', { sessionId: 's', startedBy })
-    expect(orchestratorLineFor(started('runcastle'), { ...held, session: chat })).toBeNull()
-    expect(orchestratorLineFor(stopped('runcastle'), { ...held, session: chat })).toBeNull()
-    expect(orchestratorLineFor(started('human'), { ...held, session: { ...chat, kind: 'side' } })).toBeNull()
-    // A self-planning run's end is its own END event.
-    expect(orchestratorLineFor(stopped('human'), { ...held, session: { ...chat, purpose: 'self-plan' } })).toBeNull()
-    expect(orchestratorLineFor(event('session.launching', { sessionId: 's' }), { ...held, session: chat })).toBeNull()
-  })
-
-  it('says nothing for a cleared waiting reason or the ready reason the ready line covers', () => {
-    expect(orchestratorLineFor(event('feature.waiting', { why: null }), held)).toBeNull()
-    expect(orchestratorLineFor(event('feature.waiting', { why: 'ready to test' }), held)).toBeNull()
-  })
-
-  it('no line speaks of laps, burns or Go', () => {
-    const all = [
-      event('session.self_plan_ended', { complete: true }),
-      event('run.finished', { status: 'failed' }),
-      event('feature.waiting', { why: 'stuck' }),
-      event('feature.ready_declared', { scenario: 's' }),
-      event('burn.started'),
-      event('burn.restarted'),
-    ]
-    for (const e of all) expect(orchestratorLineFor(e, held) ?? '').not.toMatch(/\b(lap|burn|go)\b/i)
-    expect(orchestratorLineFor(event('burn.started'), held)).toBeNull()
-  })
-
-  it('leaves the review agent’s drive alone', () => {
-    expect(orchestratorLineFor(event('testdrive.started', { purpose: 'review' }), held)).toBeNull()
+  it('says nothing of a draft that was started by hand', () => {
+    expect(orchestratorLineFor(event('feature.started', {}), held)).toBeNull()
   })
 })
 
-describe('orchestratorLineFor — project-level events', () => {
-  it('says nothing for any project event: there is no mode to turn off, so no stop line', () => {
-    const setting = event('settings.updated', { key: 'orchestrator', scope: 'project', value: false }, { featureId: undefined })
-    expect(orchestratorLineFor(setting, {})).toBeNull()
+describe('orchestratorLineFor — what no longer reaches it (decisions 19, 20, 23)', () => {
+  const gone: [string, EventRow][] = [
+    ['a lead waiting for the human', event('feature.waiting', { why: 'start round 1?' })],
+    ['a lead declaring ready', event('feature.ready_declared', { scenario: 'x' })],
+    ['a planning run ending', event('session.self_plan_ended', { complete: true })],
+    ['a round finishing', event('run.finished', { status: 'succeeded' })],
+    ['a round failing', event('run.finished', { status: 'failed' })],
+    ['a round cut off by a restart', event('run.reconciled', { workflow: 'ticket-burner' })],
+    ['a review pass finishing', event('ticket.done')],
+    ['the human merging', event('feature.shipped')],
+    ['a merge conflicting', event('merge.conflict', { files: [] })],
+    ['a conflict resolved', event('merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/x' })],
+    ['a drive the human started failing', event('testdrive.dev_failed')],
+    ['another chat taking the feature', event('feature.taken', { from: 'thread', name: 'Phone cut' })],
+    ['the human talking to a chat', event('session.process_started', { sessionId: 's', source: 'human' })],
+    ['the human’s chat going quiet', event('session.process_stopped', { sessionId: 's', startedBy: 'human' })],
+    ['the human starting a drive', event('testdrive.started')],
+    ['the human having it plan itself', event('session.launching', { sessionId: 's', purpose: 'self-plan' })],
+  ]
+
+  it.each(gone)('%s says nothing', (_name, e) => {
+    expect(orchestratorLineFor(e, held)).toBeNull()
+  })
+
+  it('says nothing for any project event', () => {
     expect(orchestratorLineFor(event('project.renamed', undefined, { featureId: undefined }), {})).toBeNull()
   })
 })
@@ -364,133 +182,58 @@ describe('the notifier', () => {
 
   const settle = () => new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))
 
-  it('says a held feature’s end event into its holder, starting it', async () => {
+  it('says its own work’s event into the holder, starting it', async () => {
     const id = projectSession()
+    markSessionEnded(ctx, id)
     const feature = heldFeature(id, 'export-csv')
 
-    emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
+    emit(ctx, feature.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'core' } })
 
-    expect(await promptLines(id, 1)).toEqual([
-      ['[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).'],
-    ])
-    expect(host.isRunning(id)).toBe(true)
+    const [lines] = await promptLines(id, 1)
+    expect(lines[0]).toMatch(/^\[runcastle\] export-csv started by itself because core shipped/)
+    expect(promptsOf(id)[0]).toMatchObject({ display: { news: [{ featureId: feature.id, events: [{ words: 'Started by itself after core shipped' }] }] } })
+    await vi.waitFor(() => expect(host.isRunning(id)).toBe(true))
   })
 
-  it('logs a batch’s news for the human, one entry per feature, in plain words', async () => {
-    const id = projectSession()
-    const csv = heldFeature(id, 'export-csv', { title: 'Export CSV' })
-    const other = heldFeature(id, 'other', { title: 'Other thing' })
-
-    emit(ctx, csv.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
-    emit(ctx, other.id, { type: 'feature.ready_declared', message: 'ready' })
-    emit(ctx, csv.id, { type: 'run.finished', message: 'run failed', data: { status: 'failed', summary: 'boom' } })
-
-    await promptLines(id, 1)
-    const [prompt] = promptsOf(id)
-    expect(prompt.display).toEqual({
-      news: [
-        { featureId: csv.id, title: 'Export CSV', events: [{ tone: 'done', words: 'Finished planning' }, { tone: 'failed', words: 'Round failed: boom' }] },
-        { featureId: other.id, title: 'Other thing', events: [{ tone: 'needsYou', words: 'Ready to test' }] },
-      ],
-    })
-    expect(JSON.stringify(prompt.display)).not.toMatch(/export-csv|Read it with|get_feature_context/)
-    expect(prompt.text).toContain('Read it with get_feature_context')
-  })
-
-  it('says two events ending together as one prompt with two separate lines', async () => {
+  it('says two of its events ending together as one prompt with two lines', async () => {
     const id = projectSession()
     const feature = heldFeature(id, 'snake-core')
 
-    emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
-    emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '5/5 tickets done' } })
+    runAsActor('orchestrator', () => {
+      emit(ctx, feature.id, { type: 'lead.wake_failed', message: 'no runtime' })
+      emit(ctx, feature.id, { type: 'testdrive.dev_failed', message: 'boom' })
+    })
 
-    expect(await promptLines(id, 1)).toEqual([
-      [
-        '[runcastle] snake-core finished planning. Read it with get_feature_context({ slug: "snake-core" }).',
-        '[runcastle] snake-core round finished (5/5 tickets done). Read it with list_tickets({ slug: "snake-core" }).',
-      ],
-    ])
+    expect((await promptLines(id, 1))[0]).toHaveLength(2)
   })
 
-  it('stays quiet about a feature nobody holds, and about acts and merges the holder took itself', async () => {
+  it('stays quiet about everything else, and about a feature nobody holds', async () => {
     const id = projectSession()
-    const human = seedFeature(ctx, projectId, { slug: 'human-one' })
     const mine = heldFeature(id, 'mine')
+    const nobodys = seedFeature(ctx, projectId, { slug: 'nobodys' })
 
-    emit(ctx, human.id, { type: 'feature.shipped', message: 'merged to main' })
-    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'burn.started', message: 'burning' }))
-    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' }))
-    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } }))
-
-    await settle()
-    expect(promptsOf(id)).toEqual([])
-  })
-
-  it('tells the holder and not a newer chat, even when the holder’s process has stopped', async () => {
-    const holder = projectSession()
-    markSessionEnded(ctx, holder)
-    const newest = projectSession()
-    const feature = heldFeature(holder)
-
-    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
-
-    expect(await promptLines(holder, 1)).toHaveLength(1)
-    expect(promptsOf(newest)).toEqual([])
-  })
-
-  it('says nothing more once a feature has shipped', async () => {
-    const id = projectSession()
-    const done = heldFeature(id, 'done', { status: 'shipped' })
-
-    emit(ctx, done.id, { type: 'testdrive.dev_failed', message: 'boom' })
+    emit(ctx, mine.id, { type: 'feature.ready_declared', message: 'ready' })
+    emit(ctx, mine.id, { type: 'run.finished', message: 'x', data: { status: 'failed' } })
+    emit(ctx, mine.id, { type: 'feature.waiting', message: 'x', data: { why: 'start round 1?' } })
+    emit(ctx, nobodys.id, { type: 'feature.started', message: 'x', data: { autoStartedBy: 'core' } })
+    emitProject(ctx, projectId, { type: 'project.renamed', message: 'x' })
 
     await settle()
     expect(promptsOf(id)).toEqual([])
   })
 
-  it('still says when the drafts waiting on a shipped feature could not start', async () => {
+  it('says nothing more once a feature has shipped, except that its drafts could not start', async () => {
     const id = projectSession()
     const done = heldFeature(id, 'done', { status: 'shipped' })
+
+    runAsActor('orchestrator', () => emit(ctx, done.id, { type: 'testdrive.dev_failed', message: 'boom' }))
+    await settle()
+    expect(promptsOf(id)).toEqual([])
 
     emit(ctx, done.id, { type: 'feature.autostart.failed', message: "couldn't start up-next dependents: boom" })
-
     expect(await promptLines(id, 1)).toEqual([
       [`[runcastle] done couldn't start up-next dependents: boom. Read it with get_feature_context({ slug: "done" }).`],
     ])
-  })
-
-  it('tells a running holder about the human’s acts, and does not wake a stopped one for them', async () => {
-    const stopped = projectSession()
-    const running = projectSession()
-    const quiet = heldFeature(stopped, 'quiet')
-    const busy = heldFeature(running, 'busy')
-    emit(ctx, busy.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
-    await promptLines(running, 1)
-
-    emit(ctx, busy.id, { type: 'testdrive.started', message: 'x' })
-    emit(ctx, quiet.id, { type: 'testdrive.started', message: 'x' })
-
-    expect((await promptLines(running, 2))[1]).toEqual(['[runcastle] busy the human started a test drive of it.'])
-    await settle()
-    expect(promptsOf(stopped)).toEqual([])
-    expect(host.isRunning(stopped)).toBe(false)
-  })
-
-  it('tells the thread that lost a feature, starting it, and sends the news on to the new holder', async () => {
-    const old = projectSession()
-    const taker = projectSession()
-    setSessionTitle(ctx, taker, 'Phone cut')
-    const feature = heldFeature(old, 'export-csv')
-
-    takeHold(ctx, getSessionRow(ctx, taker) as SessionRow, feature)
-    expect((await promptLines(old, 1))[0]).toEqual([
-      '[runcastle] export-csv was taken by the thread "Phone cut", so you will hear nothing more about it and it is no longer yours to act on.',
-    ])
-    expect(promptsOf(taker)).toEqual([])
-
-    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
-    expect(await promptLines(taker, 1)).toHaveLength(1)
-    expect(promptsOf(old)).toHaveLength(1)
   })
 
   it('never lets a failure reach the service that emitted', () => {
@@ -499,6 +242,6 @@ describe('the notifier', () => {
     const feature = heldFeature(id)
     ctx.db.delete(sessions).run()
 
-    expect(() => emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })).not.toThrow()
+    expect(() => emit(ctx, feature.id, { type: 'feature.started', message: 'x', data: { autoStartedBy: 'core' } })).not.toThrow()
   })
 })

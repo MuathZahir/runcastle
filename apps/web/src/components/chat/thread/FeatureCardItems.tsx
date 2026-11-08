@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { PromptDisplay, WorkerRow } from '@runcastle/core'
 import type { ThreadItem } from '../../../lib/chat-thread'
-import { HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
+import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
@@ -135,6 +135,10 @@ export function RuncastleDisplay({
   if ('summary' in display) return <RuncastleNote summary={display.summary} agentText={agentText} />
   if ('handback' in display) return <HandbackItem handback={display.handback} />
   if ('workerFailed' in display) return <WorkerFailedItem failed={display.workerFailed} />
+  if ('featureHandback' in display) {
+    const h = display.featureHandback
+    return <FeatureHandbackCard title={find(h.featureId)?.title ?? h.title} state={h.state} summary={h.summary} onOpenFeature={() => open(h.featureId)} />
+  }
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {display.orchestrator.map((message, i) => (

@@ -257,8 +257,9 @@ describe('threads hold features', () => {
     })
   })
 
-  describe('a chat too long to reopen', () => {
-    it('hands everything it held to the thread replacing it, and the briefing lists them', async () => {
+  describe('a long chat', () => {
+    // Orchestrator chats are compacted, not replaced (agents-are-woken-only-when-it-matters decision 26).
+    it('reopens past the 1 MB cap and keeps everything it held', async () => {
       const old = thread('Old')
       const feature = seedFeature(ctx, projectId, { slug: 'mine', heldBy: old.id })
       seedFeature(ctx, projectId, { slug: 'done', status: 'shipped', heldBy: old.id })
@@ -269,10 +270,9 @@ describe('threads hold features', () => {
 
       const { sessionId } = await launchProjectSession(ctx, { projectId, resumeSessionId: old.id }, { spawn: false })
 
-      expect(sessionId).not.toBe(old.id)
-      expect(holderOfSlug(feature)).toBe(sessionId)
-      const inherited = listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.held')
-      expect(inherited?.data).toMatchObject({ threadId: sessionId, inheritedFrom: old.id })
+      expect(sessionId).toBe(old.id)
+      expect(holderOfSlug(feature)).toBe(old.id)
+      expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'feature.held')).toBe(false)
     })
 
     it('moves nothing it did not hold', () => {

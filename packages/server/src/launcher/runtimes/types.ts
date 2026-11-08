@@ -75,9 +75,14 @@ export function assertHeadlessKickoff(headless: boolean | undefined, line: strin
  */
 export const AUTOCOMPACT_WINDOW_TOKENS = envInt('RUNCASTLE_AUTOCOMPACT_WINDOW', 200_000)
 
-/** The auto-compact window a session launches with: a feature lead's (its main chat), and nobody else's. */
+/**
+ * The auto-compact window a session launches with: a feature lead's (its main
+ * chat) and an orchestrator chat's (agents-are-woken-only-when-it-matters
+ * decision 26), and nobody else's.
+ */
 export function autoCompactWindow(session: Pick<SessionRow, 'kind' | 'featureId'>): number | undefined {
-  return session.kind === 'chat' && session.featureId && AUTOCOMPACT_WINDOW_TOKENS > 0 ? AUTOCOMPACT_WINDOW_TOKENS : undefined
+  const compacts = (session.kind === 'chat' && !!session.featureId) || session.kind === 'project'
+  return compacts && AUTOCOMPACT_WINDOW_TOKENS > 0 ? AUTOCOMPACT_WINDOW_TOKENS : undefined
 }
 
 /** Keep comfortably below Windows' 32,767-character command-line ceiling. */

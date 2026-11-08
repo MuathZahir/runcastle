@@ -6,7 +6,6 @@ import { releaseTalkWorktreeAfterRun } from '../services/chat-branch'
 import { emit, listAfter } from '../services/events'
 import { cleanupTempBranches } from '../services/git'
 import { deliverToLead } from '../services/lead-delivery'
-import { notifyOrchestrator } from '../services/orchestrator-notify'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
 import { listRounds } from '../services/runs'
 import { listByFeature, sweepOrphanedBurning } from '../services/tickets'
@@ -156,21 +155,18 @@ export function composeInterruptedWake(ctx: AppCtx, run: Run): string | null {
 
 /**
  * Tell whoever is responsible about the rounds {@link reconcileStaleRuns} cut
- * off (decision 10): the lead hears it as it hears a round's end, and the
- * holder gets its news line. Called once the server listens and the holders'
- * notifier runs, since a woken agent reaches runcastle's MCP server and the
- * `run.reconciled` events were emitted before anyone was listening. Best
+ * off (decision 10): the lead hears it as it hears a round's end, and only the
+ * lead (agents-are-woken-only-when-it-matters decision 23). Called once the
+ * server listens, since a woken agent reaches runcastle's MCP server. Best
  * effort: a failed wake reads "Stopped" on its own, and nothing here throws.
  */
 export async function wakeInterruptedRounds(ctx: AppCtx, reconciled: Run[]): Promise<void> {
   for (const run of reconciled) {
     if (run.workflow !== 'ticket-burner') continue
     try {
-      const event = listAfter(ctx, run.featureId).find((e) => e.type === RECONCILED && e.runId === run.id)
-      if (event) notifyOrchestrator(ctx, event.id)
       const feature = tryGetFeature(ctx, run.featureId)
       const text = composeInterruptedWake(ctx, run)
-      if (feature && text) await deliverToLead(ctx, feature, { text, source: 'runcastle', background: true })
+      if (feature && text) await deliverToLead(ctx, feature, { text, source: 'runcastle', reason: 'handback', background: true })
     } catch (err) {
       console.error('could not wake the lead of an interrupted round', err)
     }

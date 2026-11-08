@@ -8,6 +8,7 @@ import {
   contextUsed,
   DEFAULT_RUNTIME,
   foldThread,
+  isUsageLimitText,
   lastPickedModel,
   liveEvents,
   modelRoster,
@@ -59,7 +60,7 @@ import {
   type ConfigChoice,
 } from './controls'
 import { claudeTranscriptOnDisk, readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
-import { claudeUsageReport, codexUsageReport } from './usage'
+import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from './usage'
 import {
   backgroundAgents,
   backgroundTasks,
@@ -147,6 +148,8 @@ export interface AgentHostDeps {
   selfTurnQuietMs?: number
   /** Whether the runtime's own record of a conversation is known to be on disk; see `side-channels.ts`. */
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
+  /** How long after a usage limit's reset runcastle's stopped message goes again; {@link USAGE_RESET_GRACE_MS} by default. */
+  usageResetGraceMs?: number
   /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
   backgroundWindowMs?: number
   /**
@@ -207,12 +210,14 @@ const AUTH_STATUS_METHOD = '_auth/status_update'
  * - `open`: instead of loading the row's conversation, fork `from` at the agent
  *   message `messageId`, or (`fresh`) start a new conversation.
  * - `preface`: said to the agent ahead of the next prompt's words, when the
- *   conversation could not be forked where the thread now stands, or when a
- *   prompt was held for the next one (`PromptOptions.hold`).
+ *   conversation could not be forked where the thread now stands.
+ * - `held`: prompts held for the next one (`PromptOptions.hold`), said after the
+ *   preface and before the next prompt's words, oldest first.
  */
 interface PendingFork {
   open?: { from: string; messageId: string } | 'fresh'
   preface?: string
+  held?: { id: string; text: string }[]
 }
 
 const pendingForkPath = (threadId: string): string => join(sessionDir(threadId), 'fork.json')
@@ -227,7 +232,7 @@ function readPendingFork(threadId: string): PendingFork {
 
 function writePendingFork(threadId: string, fork: PendingFork): void {
   const path = pendingForkPath(threadId)
-  if (!fork.open && fork.preface === undefined) {
+  if (!fork.open && fork.preface === undefined && !fork.held?.length) {
     if (existsSync(path)) rmSync(path)
     return
   }
@@ -277,6 +282,15 @@ export const AUTOCOMPACT: AutoCompactPolicy = {
  * signal for its end. Claude's own signal is its session going idle.
  */
 export const SELF_TURN_QUIET_MS = 30_000
+
+/** How long after a usage limit's reported reset a stopped chat is woken (agents-are-woken-only-when-it-matters decision 25). */
+export const USAGE_RESET_GRACE_MS = 60_000
+
+/** What wakes a chat the usage limit stopped, once it has reset; what was held rides ahead of it. */
+export const USAGE_RESET_LINE = '[runcastle] The usage limit has reset. Carry on where you were.'
+
+/** The setting a usage-limit notice offers (decision 25). */
+const CARRY_ON_SETTING = { page: 'general', field: 'carryOnAfterLimit', phrase: 'carry on by itself' } as const
 
 /** How long a runtime's usage read answers every thread before the account is asked again. */
 const USAGE_FRESH_MS = 60_000
@@ -351,6 +365,23 @@ export function autoCompactCommand(runtime: AgentRuntime, slug: string | undefin
   ].join(' ')
 }
 
+/**
+ * An orchestrator chat's compaction (agents-are-woken-only-when-it-matters
+ * decision 26): what to keep, and that the record — the portfolio and each held
+ * feature's brief, which carries its cut's working agreement — is re-read after.
+ */
+export function orchestratorCompactCommand(runtime: AgentRuntime): string {
+  if (runtime === 'codex') return COMPACT_COMMAND
+  return [
+    COMPACT_COMMAND,
+    'Keep in the summary: which features you hold and what each waits on;',
+    "the human's latest words, and anything agreed with them but not yet written into a brief;",
+    'what you were in the middle of.',
+    "Each cut's working agreement is in its features' briefs, so the summary need not repeat them.",
+    'After this compaction, your first move is to call the runcastle MCP tool get_project_context and read the briefs of the features you hold before acting.',
+  ].join(' ')
+}
+
 /** What a self-planning run's asks are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
 
@@ -392,6 +423,12 @@ interface Queued {
   hidden?: boolean
   /** What the human reads of a runcastle prompt; logged with it. */
   display?: PromptDisplay
+  /** Held for the next prompt (`PromptOptions.hold`): logged, never sent by itself. */
+  held?: boolean
+  /** What rode ahead of its words (a preface, held prompts), kept again if the usage limit stops the turn. */
+  ahead?: string
+  /** The held prompts it carries: taken off disk only once it is sent, so a queue a stop drops loses none. */
+  heldIds?: string[]
   /** Already in the log (a human's words show at once); runcastle's are logged when sent. */
   logged: boolean
   /** A compaction, and why it was sent: its turn moves nothing the feature waits on. */
@@ -551,6 +588,7 @@ class Host implements AgentHost {
   private readonly selfTurnQuietMs: number
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   private readonly backgroundWindowMs: number
+  private readonly usageResetGraceMs: number
   private readonly turnSlot: NonNullable<AgentHostDeps['turnSlot']>
   private readonly autoCompact: AutoCompactPolicy
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
@@ -558,6 +596,12 @@ class Host implements AgentHost {
   /** Each runtime's last usage report, and the account its adapter last pushed. */
   private readonly usageReports = new Map<AgentRuntime, { report: UsageReport; at: number }>()
   private readonly authStatus = new Map<AgentRuntime, unknown>()
+  /** Until when each runtime's account is known to be over its usage limit (decision 9). */
+  private readonly limitedUntil = new Map<AgentRuntime, number>()
+  /** Held prompts a queued prompt already carries, per thread, so the next one does not carry them twice. */
+  private readonly claimedHeld = new Map<string, Set<string>>()
+  /** Each thread's one wake for when the usage limit resets. */
+  private readonly resetWakes = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(deps: AgentHostDeps) {
     this.ctx = deps.ctx
@@ -570,6 +614,7 @@ class Host implements AgentHost {
     this.selfTurnQuietMs = deps.selfTurnQuietMs ?? SELF_TURN_QUIET_MS
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
+    this.usageResetGraceMs = deps.usageResetGraceMs ?? USAGE_RESET_GRACE_MS
     this.turnSlot = deps.turnSlot ?? (() => undefined)
     this.autoCompact = { ...AUTOCOMPACT, ...deps.autoCompact }
   }
@@ -578,21 +623,36 @@ class Host implements AgentHost {
     const row = this.row(threadId)
     seedFromTranscript(this.ctx, threadId)
     if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display)
+    // While the account is over its usage limit, runcastle's own messages wait
+    // instead of starting turns that fail: for the reset when the human chose to
+    // carry on then, else for their next message (decision 25).
+    const until = this.limitedUntil.get(row.runtime ?? DEFAULT_RUNTIME)
+    if (opts.source === 'runcastle' && until !== undefined && until > Date.now()) {
+      const held = this.hold(threadId, input.text, opts.source, opts.display)
+      if (this.carriesOnAfterLimit()) this.armResetWake(threadId, until)
+      return held
+    }
     const change = this.configChange(threadId, opts)
     if (change) await this.setConfig(threadId, change)
     const images = (input.images ?? []).map((image) => saveThreadImage(threadId, image))
     const pending = readPendingFork(threadId)
+    const claimed = this.claimedHeld.get(threadId) ?? new Set<string>()
+    const carried = (pending.held ?? []).filter((h) => !claimed.has(h.id))
+    const ahead = [...(pending.preface !== undefined ? [pending.preface] : []), ...carried.map((h) => h.text)]
     if (pending.preface !== undefined) writePendingFork(threadId, { ...pending, preface: undefined })
+    if (carried.length > 0) this.claimedHeld.set(threadId, new Set([...claimed, ...carried.map((h) => h.id)]))
     const item: Queued = {
       id: newId('prompt'),
       text: input.text,
       ...(images.length ? { images } : {}),
       blocks: [
-        { type: 'text', text: pending.preface !== undefined ? `${pending.preface}\n\n${input.text}` : input.text },
+        { type: 'text', text: ahead.length > 0 ? `${ahead.join('\n\n')}\n\n${input.text}` : input.text },
         ...(input.images ?? []).map((image): acp.ContentBlock => ({ type: 'image', data: image.data, mimeType: image.mimeType })),
       ],
       source: opts.source,
       ...(opts.display ? { display: opts.display } : {}),
+      ...(ahead.length > 0 ? { ahead: ahead.join('\n\n') } : {}),
+      ...(carried.length > 0 ? { heldIds: carried.map((h) => h.id) } : {}),
       logged: false,
     }
     const t = this.threads.get(threadId)
@@ -687,6 +747,13 @@ class Host implements AgentHost {
     const on = { planned: policy.afterPlanning, idle: policy.whileIdle, resume: policy.resumeGapMs > 0 }[trigger]
     if (!on || policy.minTokens <= 0 || t.turn || t.ask || t.queue.length > queued) return null
     const row = getSessionRow(this.ctx, t.id)
+    // An orchestrator chat compacts at the same quiet moments as a lead (agents-are-woken-only-when-it-matters decision 26).
+    if (row?.kind === 'project') {
+      if (trigger === 'planned') return null
+      const used = contextUsed(readThreadEvents(t.id))
+      if (used === undefined || used <= policy.minTokens) return null
+      return compaction(orchestratorCompactCommand(row.runtime ?? DEFAULT_RUNTIME), trigger)
+    }
     if (row?.kind !== 'chat' || !row.featureId) return null
     const feature = tryGetFeature(this.ctx, row.featureId)
     if (!feature) return null
@@ -718,6 +785,8 @@ class Host implements AgentHost {
   }
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
+    // An archived thread is done with: nothing wakes it at a usage reset.
+    if (reason === 'archived') this.dropResetWake(threadId)
     const t = this.threads.get(threadId)
     if (!t) return
     const turn = t.turn
@@ -741,6 +810,8 @@ class Host implements AgentHost {
   }
 
   async stopAll(reason: StopReason): Promise<void> {
+    for (const timer of this.resetWakes.values()) clearTimeout(timer)
+    this.resetWakes.clear()
     await Promise.all([...this.threads.keys()].map((id) => this.stop(id, reason)))
   }
 
@@ -810,7 +881,11 @@ class Host implements AgentHost {
     } else {
       // The next start opens the forked conversation; a running process would keep the old one.
       if (t) await this.stop(threadId, 'idle')
-      writePendingFork(threadId, { open: point && point !== 'unknown' && row.ccSessionId ? { from: row.ccSessionId, messageId: point } : 'fresh' })
+      // Held news is still news after the edit: it stays for the next prompt.
+      writePendingFork(threadId, {
+        held: readPendingFork(threadId).held,
+        open: point && point !== 'unknown' && row.ccSessionId ? { from: row.ccSessionId, messageId: point } : 'fresh',
+      })
     }
     appendThreadEvent(threadId, { type: 'rewound', toPromptId: atPromptId })
     if (leftInPlace.length) appendThreadEvent(threadId, { type: 'notice', text: `${NOT_UNDONE} ${leftInPlace.join(', ')}` })
@@ -1229,6 +1304,8 @@ class Host implements AgentHost {
   /** Forget the thread's process: no more events from it, no asks left waiting. */
   private detach(t: Thread): void {
     t.state = 'stopped'
+    // A queue the stop drops never said what it carried: it goes with the next prompt.
+    this.claimedHeld.delete(t.id)
     releaseSlot(t.turn)
     if (this.threads.get(t.id) === t) this.threads.delete(t.id)
     if (t.idle) clearTimeout(t.idle)
@@ -1249,6 +1326,7 @@ class Host implements AgentHost {
       ...(steered ? { steered: true } : {}),
       ...(item.hidden ? { hidden: true } : {}),
       ...(item.display ? { display: item.display } : {}),
+      ...(item.held ? { held: true } : {}),
       ...(item.compaction ? { compaction: item.compaction } : {}),
     })
     item.logged = true
@@ -1269,13 +1347,99 @@ class Host implements AgentHost {
     publishLive({ kind: 'turn', sessionId: threadId })
   }
 
-  /** Log a held prompt and keep its text, on disk, as the preface of the thread's next prompt. */
+  /** Log a held prompt and keep its text, on disk, ahead of the thread's next prompt. */
   private hold(threadId: string, text: string, source: PromptOptions['source'], display?: PromptDisplay): { promptId: string } {
-    const item: Queued = { id: newId('prompt'), text, blocks: [], source, ...(display ? { display } : {}), logged: false }
+    const item: Queued = { id: newId('prompt'), text, blocks: [], source, ...(display ? { display } : {}), held: true, logged: false }
     this.logPrompt(threadId, item)
-    const pending = readPendingFork(threadId)
-    writePendingFork(threadId, { ...pending, preface: pending.preface !== undefined ? `${pending.preface}\n\n${text}` : text })
+    this.keepHeld(threadId, text)
     return { promptId: item.id }
+  }
+
+  /** Add `text` to what the thread's next prompt carries ahead of its words. */
+  private keepHeld(threadId: string, text: string, first = false): void {
+    if (text === '') return
+    const pending = readPendingFork(threadId)
+    const held = pending.held ?? []
+    const entry = { id: newId('held'), text }
+    writePendingFork(threadId, { ...pending, held: first ? [entry, ...held] : [...held, entry] })
+  }
+
+  /** The prompt is going to the agent: what it carries is said, so it leaves the disk. */
+  private takeHeld(threadId: string, item: Queued): void {
+    if (!item.heldIds?.length) return
+    const sent = new Set(item.heldIds)
+    const pending = readPendingFork(threadId)
+    writePendingFork(threadId, { ...pending, held: (pending.held ?? []).filter((h) => !sent.has(h.id)) })
+    const claimed = this.claimedHeld.get(threadId)
+    for (const id of sent) claimed?.delete(id)
+    item.heldIds = undefined
+  }
+
+  /** Whether the human chose to have stopped chats carry on when the usage limit resets (decision 25). */
+  private carriesOnAfterLimit(): boolean {
+    return this.ctx.config.carryOnAfterLimit === 'on'
+  }
+
+  /**
+   * A turn the account's usage limit stopped (agents-are-woken-only-when-it-matters
+   * decision 25). What runcastle said is kept for the next prompt, first, without
+   * a reset line it carried; for the human's own turn, only what rode ahead of
+   * their words. The chat says so: with the setting on and a reset time known it
+   * is woken once at the reset; otherwise its line offers the setting.
+   */
+  private async stoppedByLimit(t: Thread, item: Queued): Promise<void> {
+    if (item.source === 'runcastle') {
+      const first = item.blocks[0]
+      const said = first?.type === 'text' ? first.text : item.text
+      this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, true)
+    } else if (item.ahead !== undefined) {
+      this.keepHeld(t.id, item.ahead, true)
+    }
+    const at = limitLiftsAt((await this.usage(t.id)).limits, Date.now())
+    if (at !== undefined) this.limitedUntil.set(this.runtimeOf(t.id), at)
+    if (!this.carriesOnAfterLimit()) {
+      appendThreadEvent(t.id, {
+        type: 'notice',
+        text: `The usage limit stopped this turn. Runcastle can ${CARRY_ON_SETTING.phrase} when the limit resets.`,
+        setting: CARRY_ON_SETTING,
+      })
+      return
+    }
+    if (at === undefined) {
+      appendThreadEvent(t.id, { type: 'notice', text: 'The usage limit stopped this turn. Runcastle could not tell when it resets, so it carries on with your next message.' })
+      return
+    }
+    appendThreadEvent(t.id, { type: 'notice', text: `The usage limit stopped this turn. Runcastle carries on at ${formatResets(new Date(at))}.` })
+    this.armResetWake(t.id, at)
+  }
+
+  /** The runtime a thread runs on. */
+  private runtimeOf(threadId: string): AgentRuntime {
+    return getSessionRow(this.ctx, threadId)?.runtime ?? DEFAULT_RUNTIME
+  }
+
+  /** Forget a thread's reset wake, if it has one. */
+  private dropResetWake(threadId: string): void {
+    const timer = this.resetWakes.get(threadId)
+    if (timer) clearTimeout(timer)
+    this.resetWakes.delete(threadId)
+  }
+
+  /** Wake the thread once, a little after `at`; what it holds rides the wake. One per thread. */
+  private armResetWake(threadId: string, at: number): void {
+    if (this.resetWakes.has(threadId)) return
+    const timer = setTimeout(() => {
+      this.resetWakes.delete(threadId)
+      const runtime = this.runtimeOf(threadId)
+      if ((this.limitedUntil.get(runtime) ?? 0) <= Date.now()) this.limitedUntil.delete(runtime)
+      // Turned off meanwhile: what is held waits for the human's next message.
+      if (!this.carriesOnAfterLimit()) return
+      this.prompt(threadId, { text: USAGE_RESET_LINE }, { source: 'runcastle' }).catch((err) =>
+        console.error('usage reset wake failed', err),
+      )
+    }, Math.max(0, at - Date.now()) + this.usageResetGraceMs)
+    timer.unref?.()
+    this.resetWakes.set(threadId, timer)
   }
 
   private enqueue(t: Thread, item: Queued): void {
@@ -1297,6 +1461,7 @@ class Host implements AgentHost {
   }
 
   private async runTurn(t: Thread, item: Queued): Promise<void> {
+    this.takeHeld(t.id, item)
     if (t.idle) clearTimeout(t.idle)
     const turn = this.newTurn(t)
     if (item.compaction) {
@@ -1334,6 +1499,9 @@ class Host implements AgentHost {
       // A stopped process's own event closes the turn.
       if (t.state === 'stopped') return
       end = { type: 'turn_ended', reason: 'error', error: errorText(err) }
+    }
+    if (end.reason === 'error' && !item.hidden && isUsageLimitText(end.error ?? '')) {
+      void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
     }
     if (t.state === 'stopped') return
     const files = await this.turnFiles(t, turn)
@@ -1434,6 +1602,7 @@ class Host implements AgentHost {
 
   /** Steer a human prompt into the running turn; when the turn has just ended, it is the next prompt. */
   private async steer(t: Thread, item: Queued): Promise<void> {
+    this.takeHeld(t.id, item)
     try {
       const res = await t.conn!.agent.request<{ outcome?: string }>(STEER_METHOD, {
         sessionId: t.sessionId,

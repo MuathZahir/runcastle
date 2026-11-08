@@ -25,6 +25,8 @@ import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
 import { k } from './ComposerParts'
 import { ChangesCard, WorkBlock } from './Work'
+import { SettingsLink } from '../../settings/MessageWithSettingsLink'
+import type { SettingsPage } from '../../../lib/settings'
 
 /** What a message's hover actions ask of the thread. */
 export interface MessageActions {
@@ -303,8 +305,25 @@ function Item({
     case 'error':
       return <ThreadError>{item.message}</ThreadError>
     case 'notice':
-      return <Divider>{item.text}</Divider>
+      return <Divider>{item.setting ? <NoticeWithSetting text={item.text} setting={item.setting} /> : item.text}</Divider>
   }
+}
+
+/**
+ * A notice whose phrase opens a setting (agents-are-woken-only-when-it-matters
+ * decision 25: the usage limit's "carry on by itself"); plain text when the
+ * phrase is not in it.
+ */
+function NoticeWithSetting({ text, setting }: { text: string; setting: { page: string; field: string; phrase: string } }) {
+  const at = text.indexOf(setting.phrase)
+  if (at < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, at)}
+      <SettingsLink location={{ page: setting.page as SettingsPage, field: setting.field }}>{setting.phrase}</SettingsLink>
+      {text.slice(at + setting.phrase.length)}
+    </>
+  )
 }
 
 /** Why runcastle compacted a chat by itself, as the divider says it (lead-chats-stay-small decision 11). */

@@ -120,6 +120,13 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(s).toContain('no patch scripts in /tmp, no long heredocs. A script is for one change across many files.')
   })
 
+  it('tells the orchestrator only by hand_back, and only for what it can act on (agents-are-woken-only-when-it-matters 20–22)', () => {
+    const text = flat(skill())
+    expect(text).toContain('it hears from you only through `hand_back({ summary })`')
+    expect(text).toContain('when you are blocked on something it can settle')
+    expect(text).toContain('A question only the human can answer is no handback')
+  })
+
   it('re-reads the feature state after any compaction', () => {
     expect(flat(skill())).toContain('after any compaction, call `get_feature_context` before you act on the summary')
   })

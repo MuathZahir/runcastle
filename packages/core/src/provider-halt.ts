@@ -25,7 +25,10 @@ export const PROVIDER_HALT_CLEARED = 'The provider halt is cleared — pick up w
 // billing details") reads as the limit it is reported as; the same Resume
 // follows either way. The auth list mirrors the burner's run-fatal credential
 // patterns (ticket-burner.ts).
-const USAGE = /usage limit|rate limit|quota|\blimit reached\b/i
+/** The account's usage limit itself: Claude Code's "You've hit your 5-hour limit", a runtime's "usage limit reached". */
+const USAGE_LIMIT = /\bhit your\b[^.\n]*\blimit\b|usage limit|\blimit reached\b/i
+/** Any usage halt: the limit, or a rate limit or quota a round stopped on. */
+const USAGE = new RegExp(`${USAGE_LIMIT.source}|rate limit|quota`, 'i')
 const BILLING = /credit balance|billing/i
 const AUTH =
   /authentication|unauthorized|invalid[ _](?:api[ _]key|x-api-key)|oauth token|setup-token|ACCOUNT_PERMISSION_DENIED/i
@@ -59,6 +62,15 @@ export function classifyProviderHalt(headline: string, now: Date = new Date()): 
   if (BILLING.test(headline)) return { kind: 'billing' }
   if (AUTH.test(headline)) return { kind: 'auth' }
   return null
+}
+
+/**
+ * Whether an agent's turn ended on the account's usage limit: Claude Code's
+ * "You've hit your 5-hour limit · resets 8pm", or a runtime's "usage limit
+ * reached". A plain rate limit (a 429 worth retrying) is not one.
+ */
+export function isUsageLimitText(text: string): boolean {
+  return USAGE_LIMIT.test(text)
 }
 
 /** The waiting reason a provider halt sets on its feature. */
