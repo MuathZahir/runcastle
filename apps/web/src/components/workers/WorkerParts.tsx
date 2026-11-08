@@ -51,7 +51,7 @@ export function WorkerStatusLine({
 }: {
   status: WorkerStatus
   oldSideChat?: boolean
-  /** A few words after the status: what failed, how many wait ahead. */
+  /** A few words after the status: what failed, why a queued worker is held. */
   why?: string
 }) {
   return (

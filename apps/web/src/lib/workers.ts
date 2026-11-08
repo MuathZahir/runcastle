@@ -48,6 +48,8 @@ export interface WorkerEntry {
   oldSideChat?: boolean
   /** What failed, in a few words, while `status` is failed (decision 16). */
   failure?: string
+  /** Why it waits, while `status` is queued behind an account error's hold (burns-become-workers decision 21). */
+  heldBy?: string
 }
 
 /** What a worker was asked to do: the card pinned atop its chat (decision 21). */
@@ -126,6 +128,17 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
   dropped: 'neutral',
 }
 
+/**
+ * The few words after a worker's status, in its row and its chat's status
+ * line: what failed, or why a queued worker is held (decision 21) — "Queued ·
+ * held: <reason>". Undefined when its status says it all.
+ */
+export function workerStatusWhy(w: { status: WorkerStatus; failure?: string | null; heldBy?: string | null }): string | undefined {
+  if (w.status === 'failed' && w.failure) return w.failure
+  if (w.status === 'queued' && w.heldBy) return `held: ${w.heldBy}`
+  return undefined
+}
+
 /** The kind in words, on the assignment card. */
 export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
   'with-you': 'With you',
@@ -142,11 +155,11 @@ export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'oldSideChat'>): bo
 // From the wire
 // ---------------------------------------------------------------------------
 
-/** What a worker row needs to be drawn: core's `WorkerRow`, as `worker.list` serves it. */
+/** What a worker row needs to be drawn: core's `WorkerRow`, as `worker.list` serves it, with the queue hold it may wait behind. */
 type WireWorker = Pick<
   CoreWorkerRow,
   'id' | 'label' | 'purpose' | 'kind' | 'goal' | 'doneWhen' | 'model' | 'startedBy' | 'status' | 'failure' | 'createdAt' | 'updatedAt'
->
+> & { heldBy?: string | null }
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
@@ -162,6 +175,7 @@ export function workerEntry(w: WireWorker): WorkerEntry {
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
     ...(w.status === 'failed' && w.failure ? { failure: w.failure } : {}),
+    ...(w.status === 'queued' && w.heldBy ? { heldBy: w.heldBy } : {}),
   }
 }
 

@@ -5,7 +5,7 @@ import { workerPreviewAddress } from '../../lib/design-address'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { useThreadActions } from '../../lib/use-thread'
-import { workerAssignment, workerCanHandBack } from '../../lib/workers'
+import { workerAssignment, workerCanHandBack, workerStatusWhy } from '../../lib/workers'
 import { trpc } from '../../trpc'
 import { IconAlert, IconBranch, IconDoc, IconGitMerge, IconX } from '../../icons'
 import { copyText } from '../workspace/copy-text'
@@ -119,8 +119,9 @@ export function useWorkerHeader(w: WorkerInFront): { status: ReactNode; actions:
   ]
   const previewPath = row.previewPath
   const previews = previewPath !== null && !settled && row.status !== 'failed'
+  const why = workerStatusWhy(row)
   return {
-    status: <WorkerStatusLine status={row.status} {...(row.status === 'failed' && row.failure ? { why: row.failure } : {})} />,
+    status: <WorkerStatusLine status={row.status} {...(why ? { why } : {})} />,
     actions: (
       <WorkerHeaderActions
         {...(previews ? { onOpenPreview: () => window.open(workerPreviewAddress(window.location, row.passPort, previewPath), '_blank', 'noopener') } : {})}

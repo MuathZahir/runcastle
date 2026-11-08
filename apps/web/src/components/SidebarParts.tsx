@@ -5,7 +5,7 @@ import { cx, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { WORKER_STATUS_WORDS, workerGroups } from '../lib/workers'
+import { WORKER_STATUS_WORDS, workerGroups, workerStatusWhy } from '../lib/workers'
 import type { WorkerEntry } from '../lib/workers'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
@@ -758,7 +758,8 @@ export function SidebarWorkerItem({
   nested?: boolean
 }) {
   const w = worker
-  const words = w.oldSideChat ? 'Old side chat' : w.status === 'failed' && w.failure ? `Failed · ${w.failure}` : WORKER_STATUS_WORDS[w.status]
+  const why = workerStatusWhy(w)
+  const words = w.oldSideChat ? 'Old side chat' : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
   const asks = !w.oldSideChat && (w.status === 'needs-you' || w.status === 'failed')
   const quiet = w.oldSideChat || !(asks || w.status === 'working')
   return (
