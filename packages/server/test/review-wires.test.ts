@@ -33,7 +33,7 @@ import { listByFeature as listTickets } from '../src/services/tickets'
 import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { withholdDrive } from '../src/workflows/review-ticket'
+import { withholdDrive } from '../src/services/drive-host'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
 

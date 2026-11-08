@@ -154,7 +154,7 @@ describe('deliverToLead', () => {
 
     const [first, second] = sentToAgent()
     expect(first.startsWith('[runcastle] Round 1 returned\n\n')).toBe(true)
-    expect(first).toContain('Feature status: Talking with you;')
+    expect(first).toContain('Feature status: Talking with you.')
     expect(second).toBe('[runcastle] Round 2 returned')
     // The log shows what was said, not the header the agent was handed with it.
     expect(promptsOf(id)[0].text).toBe('[runcastle] Round 1 returned')

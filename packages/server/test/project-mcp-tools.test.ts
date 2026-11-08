@@ -16,9 +16,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import mcpApp, {
   FEATURE_INDEX_SHIPPED_CAP,
   buildMcpServer,
-  toolCancelTicket,
   toolCreateFeature,
-  toolEmitTickets,
   toolGetFeatureContext,
   toolGetProjectContext,
   toolGetWorkRecord,
@@ -28,7 +26,6 @@ import mcpApp, {
   toolRecordEvent,
   toolTriageProjectNote,
   toolUpdateProjectNote,
-  toolUpdateTicket,
 } from '../src/mcp/server'
 import { MCP_READ_CEILING_CHARS, serializedLength } from '../src/mcp/read-ceiling'
 import { emit, listByProject } from '../src/services/events'
@@ -106,9 +103,6 @@ describe('project-session MCP tools', () => {
   it('refuses every pipeline tool with a message naming the project scope', () => {
     const calls: [string, () => unknown][] = [
       ['get_feature_context', () => toolGetFeatureContext(ctx, session)],
-      ['emit_tickets', () => toolEmitTickets(ctx, session, { tickets: [] })],
-      ['update_ticket', () => toolUpdateTicket(ctx, session, { id: 'tick_x', title: 't' })],
-      ['cancel_ticket', () => toolCancelTicket(ctx, session, { id: 'tick_x' })],
     ]
 
     for (const [name, call] of calls) {

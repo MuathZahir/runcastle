@@ -13,11 +13,18 @@ import { getTicket } from '../../src/services/tickets'
  */
 
 /** Insert a batch of ticket rows for a feature, seq continuing after any existing ones. */
-export function storeTickets(ctx: AppCtx, featureId: string, inputs: TicketInput[]): Ticket[] {
+export function storeTickets(
+  ctx: AppCtx,
+  featureId: string,
+  inputs: TicketInput[],
+  options: { blockedByAreGlobal?: boolean } = {},
+): Ticket[] {
   if (inputs.length === 0) return []
   const existing = ctx.db.select({ seq: tickets.seq }).from(tickets).where(eq(tickets.featureId, featureId)).all()
   const startSeq = existing.reduce((max, r) => Math.max(max, r.seq), 0) + 1
-  const resolved = resolveBatchBlocking(inputs, { startSeq })
+  const resolved = options.blockedByAreGlobal
+    ? inputs.map((input, index) => ({ seq: startSeq + index, blockedBy: input.blockedBy }))
+    : resolveBatchBlocking(inputs, { startSeq })
   const rows = inputs.map((t, i) => ({
     id: newId('tkt'),
     featureId,

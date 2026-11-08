@@ -1,4 +1,4 @@
-import type { WorkflowCtx, WorkflowDef } from '@runcastle/core'
+
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -6,46 +6,21 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, { featureContext, toolsForAudience } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
-import { getFeatureRow, getRunRow } from '../src/services/repo'
-import { storeTickets } from './helpers/tickets'
-import { workflowRegistry } from '../src/workflows/registry'
+import { getFeatureRow } from '../src/services/repo'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
- * The lead's MCP surface (`the-feature-lead-runs-rounds`), called over the real
- * `/mcp` route as a feature chat calls it: dispatch_round, stop_round,
- * declare_ready, wait_for_you, and the round fields of get_feature_context.
+ * The lead's MCP surface, called over the real `/mcp` route as a feature chat
+ * calls it: declare_ready, wait_for_you, show_panel. The ticket and round tools
+ * are gone (burns-become-workers); the lead delegates to workers.
  */
-
-const landingBurner: WorkflowDef = {
-  id: 'ticket-burner',
-  async run(wctx: WorkflowCtx) {
-    for (const t of wctx.tickets) {
-      if (t.status === 'pending') wctx.updateTicket(t.id, { status: 'done', commits: ['abc'] })
-    }
-    return { status: 'succeeded', summary: 'all landed' }
-  },
-}
-
-function ticketInput(title: string) {
-  return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
-}
-
-async function waitFor(fn: () => boolean, tries = 200): Promise<void> {
-  for (let i = 0; i < tries; i++) {
-    if (fn()) return
-    await new Promise((r) => setTimeout(r, 5))
-  }
-  throw new Error('waitFor timed out')
-}
 
 describe('the lead’s MCP tools', () => {
   let ctx: AppCtx
   let app: Hono
   let featureId: string
   let sessionId: string
-  let original: WorkflowDef | undefined
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
@@ -57,15 +32,9 @@ describe('the lead’s MCP tools', () => {
     setRuntimeCtx(ctx)
     app = new Hono()
     app.route('/mcp', mcpApp)
-    original = workflowRegistry.get('ticket-burner')
-    workflowRegistry.set('ticket-burner', landingBurner)
   })
 
-  afterEach(() => {
-    clearRuntimeCtx()
-    if (original) workflowRegistry.set('ticket-burner', original)
-    else workflowRegistry.delete('ticket-burner')
-  })
+  afterEach(() => clearRuntimeCtx())
 
   /** The tool's answer, unwrapped from the JSON-RPC envelope, with its error flag. */
   async function call(name: string, args: Record<string, unknown>): Promise<{ isError: boolean; text: string }> {
@@ -83,8 +52,8 @@ describe('the lead’s MCP tools', () => {
     return { isError: !!envelope.result.isError, text: envelope.result.content[0].text }
   }
 
-  it('offers the four lead tools to the feature chat only', () => {
-    for (const tool of ['dispatch_round', 'stop_round', 'declare_ready', 'wait_for_you']) {
+  it('offers the lead tools to the feature chat only, and no ticket or round tool to anyone', () => {
+    for (const tool of ['declare_ready', 'wait_for_you']) {
       expect(toolsForAudience('chat')).toContain(tool)
       expect(toolsForAudience('drive-fix')).not.toContain(tool)
       expect(toolsForAudience('project')).not.toContain(tool)
@@ -110,56 +79,13 @@ describe('the lead’s MCP tools', () => {
     return Object.keys(tool?.inputSchema.properties ?? {})
   }
 
-  it('dispatch_round refuses a pending blocker outside the round, as a tool error', async () => {
-    const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
-    const [b] = storeTickets(ctx, featureId, [{ ...ticketInput('b'), blockedBy: [a.seq] }], { blockedByAreGlobal: true })
-
-    const out = await call('dispatch_round', { seqs: [b.seq] })
-
-    expect(out.isError).toBe(true)
-    expect(out.text).toMatch(/not in this round/)
-  })
-
-  it('dispatch_round starts a round over the named tickets with no Go, which the context then reports', async () => {
-    const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-
-    const out = await call('dispatch_round', { seqs: [a.seq] })
-    expect(out.isError).toBe(false)
-    const { runId } = JSON.parse(out.text) as { runId: string }
-    await waitFor(() => getRunRow(ctx, runId).status !== 'running' && listAfter(ctx, featureId, 0).some((e) => e.type === 'round.gates'))
-
-    const context = featureContext(ctx, { featureId })
-    expect(context).not.toHaveProperty('autonomy')
-    expect(context.driveActive).toBe(false)
-    expect(context.stopped).toBe(false)
-    expect(context.waitingReason).toBeNull()
-    expect(context.latestReady).toBeNull()
-    expect(context.rounds).toEqual([
-      expect.objectContaining({ round: 1, runId, status: 'succeeded', ticketSeqs: [a.seq], landed: [a.seq], gates: null }),
-    ])
-    expect(context.tickets.find((row) => row.seq === b.seq)?.status).toBe('pending')
-    // Tokens are recorded, never shown (decision 25) — not even to the lead.
-    expect(JSON.stringify(context)).not.toMatch(/"tokens"/)
-  })
-
   it('declare_ready takes only a scenario, needs no Go, and puts the feature under Needs you', async () => {
     expect(await inputProperties('declare_ready')).toEqual(['scenario'])
     const out = await call('declare_ready', { scenario: 'Checkout' })
     expect(out.isError).toBe(false)
-    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'ready to test', warnings: [] })
+    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'ready to test' })
     expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active', waitingReason: 'ready to test' })
     expect(featureContext(ctx, { featureId }).latestReady).toMatchObject({ scenario: 'Checkout' })
-  })
-
-  it('emit_tickets opens the human’s panel on Work after storing', async () => {
-    const out = await call('emit_tickets', { tickets: [ticketInput('a')] })
-    expect(out.isError).toBe(false)
-    const events = listAfter(ctx, featureId, 0)
-    const stored = events.findIndex((e) => e.type === 'tickets.stored')
-    const shown = events.findIndex((e) => e.type === 'panel.show')
-    expect(stored).toBeGreaterThanOrEqual(0)
-    expect(shown).toBeGreaterThan(stored)
-    expect(events[shown].data).toEqual({ view: 'work' })
   })
 
   it('show_panel accepts its four views and refuses the plan and a design, naming the tools that show them', async () => {
@@ -197,9 +123,4 @@ describe('the lead’s MCP tools', () => {
     expect((await call('wait_for_you', { why: 'x', kind: 'later' })).isError).toBe(true)
   })
 
-  it('stop_round refuses when nothing is running', async () => {
-    const out = await call('stop_round', {})
-    expect(out.isError).toBe(true)
-    expect(out.text).toMatch(/no round is running/)
-  })
 })

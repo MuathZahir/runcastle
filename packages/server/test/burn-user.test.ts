@@ -20,23 +20,8 @@ import {
 } from '../src/services/sandbox-image'
 import { BURN_CACHE_VOLUME_LABEL } from '../src/workers/burn-cache'
 import { type BurnUser, resolveBurnUser, runningAsRoot } from '../src/workers/burn-user'
-import {
-  burnCacheDeniedMessage,
-  buildSandboxOptions,
-  classifyTicketRunError,
-  errorHeadline,
-  imageUidRefusalMessage,
-  leadWithCause,
-  setupFailureCause,
-} from '../src/workflows/ticket-burner'
 
 const VPS_USER: BurnUser = { uid: 1001, gid: 1001, gidSource: 'account' }
-
-/** The real failure from the VPS: the setup chain, then what actually went wrong. */
-const SETUP_FAILURE = [
-  `Command failed (exit 1): mkdir -p "$HOME/.claude/hooks" "$HOME/.claude" && printf %s '…' | base64 -d > "$HOME/.claude/hooks/burn-guard.sh" && git config --global --add safe.directory '*' && mkdir -p /home/agent/cache/slots/1`,
-  `mkdir: cannot create directory '/home/agent/cache/slots': Permission denied`,
-].join('\n')
 
 describe('resolveBurnUser', () => {
   it('is the host UID and the account primary group on Docker', () => {
@@ -70,78 +55,6 @@ describe('resolveBurnUser', () => {
     expect(runningAsRoot({ uid: 0 })).toBe(true)
     expect(runningAsRoot({ uid: 1001 })).toBe(false)
     expect(runningAsRoot({})).toBe(false)
-  })
-})
-
-describe('buildSandboxOptions', () => {
-  it('passes the worker user to the container, so sandcastle does not read the process', () => {
-    const options = buildSandboxOptions({}, null, [], {}, undefined, VPS_USER)
-    expect(options).toMatchObject({ containerUid: 1001, containerGid: 1001 })
-  })
-
-  it('passes none when no worker user is given, which is how podman keeps its default', () => {
-    expect(buildSandboxOptions({}, null)).not.toHaveProperty('containerUid')
-  })
-})
-
-describe('a failed setup step leads with its cause', () => {
-  it('finds the real cause below the command', () => {
-    expect(setupFailureCause(SETUP_FAILURE)).toBe(
-      `mkdir: cannot create directory '/home/agent/cache/slots': Permission denied`,
-    )
-    expect(errorHeadline(SETUP_FAILURE)).toBe(setupFailureCause(SETUP_FAILURE))
-  })
-
-  it('takes the last failing line: tools report the root problem last', () => {
-    const message = 'Command failed (exit 1): bun install\nwarn: deprecated\nerror: first\nfatal: root cause\ndone'
-    expect(setupFailureCause(message)).toBe('fatal: root cause')
-  })
-
-  it('falls back to the last line of output, and to nothing with no output', () => {
-    expect(setupFailureCause('Command failed (exit 1): make\nstep one\nstep two')).toBe('step two')
-    expect(setupFailureCause('Command failed (exit 1): make')).toBeUndefined()
-  })
-
-  // The ticket row renders `error.split('\n')[0]`, so the first line is the fix.
-  it('puts the cause on the first line and loses nothing', () => {
-    const led = leadWithCause(SETUP_FAILURE)
-    expect(led.split('\n')[0]).toContain('Permission denied')
-    expect(led).toContain(SETUP_FAILURE)
-    expect(errorHeadline(led)).toBe(led.split('\n')[0])
-  })
-
-  it('leaves every other failure as it was', () => {
-    expect(leadWithCause('agent made no commits')).toBe('agent made no commits')
-    expect(errorHeadline('Preparing worktree\nfatal: Filename too long')).toBe(
-      'fatal: Filename too long',
-    )
-  })
-
-  it('says a cache refusal in plain words, naming the volume and the user', () => {
-    const message = burnCacheDeniedMessage(SETUP_FAILURE, 'runcastle-proj_x', VPS_USER)
-    expect(errorHeadline(message ?? '')).toBe(
-      'Worker cache volume runcastle-proj_x is not writable by worker user 1001:1001. Clear the worker cache in Settings → Workers, then start the round again.',
-    )
-    expect(message).toContain(SETUP_FAILURE)
-  })
-
-  it('does not call another path’s refusal a cache problem', () => {
-    const other = 'Command failed (exit 1): /home/agent/cache/x.sh\n/opt/tool: Permission denied'
-    expect(burnCacheDeniedMessage(other, 'v', VPS_USER)).toBeUndefined()
-  })
-
-  // The volume is a machine fact, not an account fact: it must not read as auth.
-  it('does not mistake a cache refusal for a credential problem', () => {
-    expect(classifyTicketRunError(new Error(SETUP_FAILURE), 'claude-code')).not.toBe('run-fatal')
-  })
-
-  it('rewrites sandcastle’s UID refusal, which names a command nobody has', () => {
-    const refusal =
-      "UID mismatch: image 'sandcastle:runcastle' was built with UID 1000, but the expected UID is 1001. Rebuild the image with 'sandcastle docker build-image'"
-    expect(imageUidRefusalMessage(refusal, null)).toBe(
-      'Image sandcastle:runcastle was built for UID 1000, but workers on this machine run as UID 1001. Rebuild it from Settings → Workers, or run `runcastle build-image`.',
-    )
-    expect(imageUidRefusalMessage('some other error', null)).toBeUndefined()
   })
 })
 
@@ -190,7 +103,7 @@ describe('the image’s user', () => {
 
   it('never sends a custom image to the Rebuild button that refuses it', () => {
     expect(imageUidMismatch('1000:1000', VPS_USER)).toBe(1000)
-    expect(imageUidMismatchMessage('mine', 1000, 1001, true)).toContain('Settings → Workers')
+    expect(imageUidMismatchMessage('mine', 1000, 1001, true)).toContain('Settings → Sandboxes')
     const custom = imageUidMismatchMessage('mine', 1000, 1001, false)
     expect(custom).not.toContain('Settings')
     expect(custom).toContain('wherever it was made')

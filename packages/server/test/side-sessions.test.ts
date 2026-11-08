@@ -12,7 +12,7 @@ import { evaluateInstallGuard } from '../src/launcher/install-guard'
 import { launchSession, type LaunchSessionInput } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, kickoffLineFor, markSessionEnded, markSessionLive, newestThread } from '../src/launcher/sessions'
-import { toolDispatchRound, toolsForAudience } from '../src/mcp/server'
+import { toolDeclareReady, toolsForAudience } from '../src/mcp/server'
 import hooksApp from '../src/routes/hooks'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
@@ -193,21 +193,21 @@ describe('what a side session could write', () => {
 })
 
 describe('the tools a side session had', () => {
-  it('every chat tool but the four round tools', () => {
+  it('every chat tool but the lead’s own', () => {
     const side = toolsForAudience('side')
-    for (const tool of ['get_feature_context', 'read_feature_doc', 'list_tickets', 'emit_tickets', 'resolve_finding', 'record_event']) {
+    for (const tool of ['get_feature_context', 'read_feature_doc', 'resolve_finding', 'record_event']) {
       expect(side).toContain(tool)
     }
-    for (const tool of ['dispatch_round', 'stop_round', 'declare_ready', 'wait_for_you']) {
+    for (const tool of ['start_worker', 'declare_ready', 'wait_for_you']) {
       expect(side).not.toContain(tool)
       expect(toolsForAudience('chat')).toContain(tool)
     }
   })
 
-  it('is refused a round at call time, pointed at the main chat', async () => {
+  it('is refused a lead tool at call time, pointed at the main chat', async () => {
     const f = seedFeature(ctx, project.id, { slug: 'no-rounds' })
     const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' })
-    expect(() => toolDispatchRound(ctx, side, { seqs: [1] })).toThrow(/main chat/)
+    expect(() => toolDeclareReady(ctx, side, { scenario: 'x' })).toThrow(/main chat/)
   })
 })
 

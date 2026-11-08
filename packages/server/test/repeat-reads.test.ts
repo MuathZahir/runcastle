@@ -147,11 +147,8 @@ describe('repeat feature reads', () => {
       'waitingKind',
       'heldBy',
       'humanTypedAt',
-      'roundRunning',
-      'ticketCounts',
+      'workerCounts',
       'latestReady',
-      'reviewVerdict',
-      'reviewVerdictReason',
       'openFindings',
       'designs',
       'baseBranch',
@@ -160,9 +157,7 @@ describe('repeat feature reads', () => {
     ])
     expect(view).toMatchObject({
       slug: 'coupons',
-      roundRunning: false,
-      ticketCounts: { pending: 1, burning: 0, done: 1, failed: 1, cancelled: 0 },
-      reviewVerdict: null,
+      workerCounts: {},
       openFindings: 0,
       designs: [],
       docs: [
@@ -174,7 +169,6 @@ describe('repeat feature reads', () => {
     expect(JSON.stringify(view)).not.toContain('coupons expire')
 
     const full = await call(asOrchestrator, 'get_feature_context', { slug: 'coupons', full: true })
-    expect(full.tickets).toHaveLength(3)
     expect(full.docs).toEqual([
       { relPath: 'brief.md', content: '# Brief\n\ncoupons expire' },
       { relPath: 'decisions.md', content: '# Decisions\n\n1. hourly' },

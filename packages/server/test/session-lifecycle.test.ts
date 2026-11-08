@@ -132,22 +132,6 @@ describe('one main chat thread — threads and runs', () => {
     return f
   }
 
-  it('an ACTIVE branch-claiming run no longer refuses a terminal — it parks the worktree instead', async () => {
-    // The post-mortem's worst hour was a live burn with nothing to talk to
-    // (one-chat-per-feature decision 2). The run holds `feature/<slug>`, so the
-    // session works on a chat temp branch beside it.
-    const f = await feature('busy')
-    seedRunningRun(ctx, f.id, 'ticket-burner')
-
-    const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
-    cleanup.push(sessionDir(sessionId))
-
-    const head = (
-      await simpleGit(worktreeDir(projectId, f.slug)).revparse(['--abbrev-ref', 'HEAD'])
-    ).trim()
-    expect(head.startsWith('runcastle/chat/')).toBe(true)
-  })
-
   it('keeps exactly one main chat thread: a second Chat click lands in it', async () => {
     const f = await feature('sneaky')
     const first = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })

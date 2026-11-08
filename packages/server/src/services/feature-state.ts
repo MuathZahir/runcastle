@@ -1,6 +1,7 @@
 import type { Feature } from '@runcastle/core'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { listRounds } from './runs'
+import { workers } from '../db/schema'
 
 /**
  * The status words a feature's chats are told each turn, at session start and in
@@ -10,8 +11,13 @@ import { listRounds } from './runs'
  */
 export function featureStateLine(ctx: AppCtx, feature: Feature): string {
   if (feature.status === 'shipped') return 'Merged'
-  const running = listRounds(ctx, feature.id).find((round) => round.status === 'running')
-  if (running) return `Working · Round ${running.round}`
+  const atWork =
+    ctx.db
+      .select({ n: count() })
+      .from(workers)
+      .where(and(eq(workers.featureId, feature.id), inArray(workers.status, ['working', 'queued'])))
+      .get()?.n ?? 0
+  if (atWork > 0) return `Working · ${atWork} worker${atWork === 1 ? '' : 's'} at work`
   if (feature.waitingReason) return `Waiting for you · ${feature.waitingReason}`
   return 'Talking with you'
 }

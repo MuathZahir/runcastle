@@ -114,15 +114,6 @@ describe('system.burnCache.status', () => {
     expect(status.sizeBytes).toBeNull()
   })
 
-  it('reports mode off and asks the engine nothing when the sandbox has no volumes', async () => {
-    const config = RuncastleConfig.parse({ sandbox: 'noSandbox' })
-
-    const status = await callerFor(config).system.burnCache.status({ projectId })
-
-    expect(status).toEqual({ mode: 'off', engine: null, volumeName, sizeBytes: null })
-    expect(spawnCalls).toEqual([])
-  })
-
   it('reports mode off when the operator turned the cache off on a docker sandbox', async () => {
     const config = RuncastleConfig.parse({ sandbox: 'docker', burnCache: 'off' })
 
@@ -164,15 +155,6 @@ describe('system.burnCache.clear', () => {
     })
     expect(spawnCalls).toEqual([])
     expect(listByProject(ctx, projectId).map((e) => e.type)).not.toContain('burn-cache.cleared')
-  })
-
-  it('rejects without an engine to run when the sandbox has no volumes', async () => {
-    const config = RuncastleConfig.parse({ sandbox: 'noSandbox' })
-
-    await expect(callerFor(config).system.burnCache.clear({ projectId })).rejects.toMatchObject({
-      code: 'BAD_REQUEST',
-    })
-    expect(spawnCalls).toEqual([])
   })
 
   // The engine failing (no such volume, daemon down) must surface as the engine's

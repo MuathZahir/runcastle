@@ -1,4 +1,4 @@
-import type { FixProgress, ReviewFinding, ReviewFindingInput, Ticket, TicketInput, WorkerRow } from '@runcastle/core'
+import type { ReviewFinding, ReviewFindingInput, Ticket, WorkerRow } from '@runcastle/core'
 import { ReviewFinding as ReviewFindingSchema, newId } from '@runcastle/core'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -7,7 +7,6 @@ import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { listByFeature as listTickets } from './tickets'
 
-export const AUTO_FIX_CAP = 8
 type FindingRow = typeof reviewFindings.$inferSelect
 
 function rowToFinding(row: FindingRow): ReviewFinding {
@@ -28,28 +27,6 @@ export function listByFeature(ctx: AppCtx, featureId: string): ReviewFinding[] {
     .orderBy(asc(reviewFindings.createdAt), asc(reviewFindings.id))
     .all()
     .map(rowToFinding)
-}
-
-export function buildFixTicket(
-  finding: Pick<ReviewFinding, 'id' | 'title' | 'location' | 'citation' | 'detail' | 'reproStep'>,
-): TicketInput {
-  return {
-    title: finding.title,
-    goal: `Fix: ${finding.title}`,
-    context: [
-      `Location: ${finding.location}`,
-      `Citation: ${finding.citation}`,
-      `Detail: ${finding.detail}`,
-      `Repro step: ${finding.reproStep}`,
-    ].join('\n\n'),
-    acceptanceCriteria: [
-      `The repro step no longer reproduces / the cited criterion holds: ${finding.reproStep}`,
-    ],
-    seams: [],
-    blockedBy: [],
-    kind: 'implementation',
-    originFindingId: finding.id,
-  }
 }
 
 /**
@@ -195,48 +172,6 @@ function updateStatus(ctx: AppCtx, findingId: string, patch: StatusPatch): Revie
   })
   return getFinding(ctx, findingId)
 }
-
-export function markFixing(ctx: AppCtx, findingId: string): ReviewFinding {
-  return updateStatus(ctx, findingId, {
-    status: 'fixing',
-    openReason: null,
-    failureReason: null,
-  })
-}
-
-export function markFixed(ctx: AppCtx, findingId: string): ReviewFinding {
-  return updateStatus(ctx, findingId, {
-    status: 'fixed',
-    openReason: null,
-    failureReason: null,
-    resolvedBy: 'fix-ticket',
-  })
-}
-
-export function markFailed(ctx: AppCtx, findingId: string, reason?: string): ReviewFinding {
-  return updateStatus(ctx, findingId, {
-    status: 'failed',
-    openReason: 'fix-failed',
-    failureReason: reason ?? null,
-  })
-}
-
-/**
- * Drive a finding through its fix ticket's lifecycle. The burn knows a ticket
- * status and a finding id and nothing else about findings, so the mapping from
- * one to the other lives here rather than in the scheduler.
- */
-export function markFixProgress(
-  ctx: AppCtx,
-  findingId: string,
-  progress: FixProgress,
-  reason?: string,
-): ReviewFinding {
-  if (progress === 'fixing') return markFixing(ctx, findingId)
-  if (progress === 'fixed') return markFixed(ctx, findingId)
-  return markFailed(ctx, findingId, reason)
-}
-
 export function dismiss(ctx: AppCtx, findingId: string): ReviewFinding {
   return updateStatus(ctx, findingId, {
     status: 'dismissed',
@@ -390,41 +325,4 @@ export function dismissAsAgent(
     resolvedBy: 'session',
     resolutionNote: reason,
   })
-}
-
-/**
- * Vet the finding ids a batch of tickets links to BEFORE anything is stored, so
- * one bad id fails the whole batch rather than leaving half of it linked — the
- * same all-or-nothing the model-id check gives `storeTickets`.
- *
- * Duplicates are refused: a finding holds one `fixTicketId`, so a second ticket
- * naming it would silently overwrite the first link and leave that ticket
- * answering for nothing.
- */
-export function requireLinkableFindings(
-  ctx: AppCtx,
-  featureId: string,
-  findingIds: readonly string[],
-): void {
-  if (new Set(findingIds).size !== findingIds.length) {
-    throw new InvalidInputError('two tickets in this batch link to the same finding')
-  }
-  for (const findingId of findingIds) requireDispositionable(ctx, featureId, findingId)
-}
-
-/**
- * Link a defect to the ticket emitted to answer it: stamp the fix ticket and
- * flip the finding to `fixing`. Nothing else happens here — the shipped burner
- * lifecycle (`markFixProgress`) drives the finding to `fixed`/`failed` when
- * that ticket lands, exactly as it does for an in-run fix.
- */
-export function linkFixTicket(
-  ctx: AppCtx,
-  featureId: string,
-  findingId: string,
-  fixTicketId: string,
-): ReviewFinding {
-  requireDispositionable(ctx, featureId, findingId)
-  ctx.db.update(reviewFindings).set({ fixTicketId }).where(eq(reviewFindings.id, findingId)).run()
-  return markFixing(ctx, findingId)
 }

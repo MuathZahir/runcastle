@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { Feature, SessionRow, WorkflowDef } from '@runcastle/core'
+import type { Feature, SessionRow } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -29,8 +29,6 @@ import {
   buildMcpServer,
   featureContext,
   projectFeatureReader,
-  toolGetTicket,
-  toolListTickets,
   toolReadFeatureDoc,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
@@ -46,8 +44,6 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
-import { storeTickets } from './helpers/tickets'
-import { workflowRegistry } from '../src/workflows/registry'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
@@ -59,24 +55,6 @@ import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
  * refusals through, and refuses through the one shared gate.
  */
 
-const stubBurner: WorkflowDef = {
-  id: 'ticket-burner',
-  async run() {
-    return { status: 'succeeded', summary: 'stub' }
-  },
-}
-
-function ticketInput(title: string, kind?: 'review') {
-  return {
-    title,
-    goal: 'g',
-    context: 'c',
-    acceptanceCriteria: ['a'],
-    seams: ['s'],
-    blockedBy: [],
-    ...(kind ? { kind } : {}),
-  }
-}
 
 describe('the orchestrator’s acting tools', () => {
   let ctx: AppCtx
@@ -84,7 +62,6 @@ describe('the orchestrator’s acting tools', () => {
   let g: SimpleGit
   let projectId: string
   let restoreDataDir: () => void
-  let originalBurner: WorkflowDef | undefined
   const cleanup: string[] = []
 
   beforeEach(async () => {
@@ -102,14 +79,10 @@ describe('the orchestrator’s acting tools', () => {
     await g.commit('initial commit')
     projectId = (await openProject(ctx, repoPath)).id
     setRuntimeCtx(ctx)
-    originalBurner = workflowRegistry.get('ticket-burner')
-    workflowRegistry.set('ticket-burner', stubBurner)
   })
 
   afterEach(() => {
     __resetTestDriveState()
-    if (originalBurner) workflowRegistry.set('ticket-burner', originalBurner)
-    else workflowRegistry.delete('ticket-burner')
     clearRuntimeCtx()
     for (const d of cleanup.splice(0)) rmSync(d, { recursive: true, force: true })
     restoreDataDir()
@@ -411,12 +384,9 @@ describe('the orchestrator’s acting tools', () => {
       const f = await started('readable')
       seedFeature(ctx, projectId, { slug: 'humans' })
       const session = orchestrator()
-      const [ticket] = storeTickets(ctx, f.id, [ticketInput('Read me')])
 
       const reader = projectFeatureReader(ctx, session, 'readable')
       expect(featureContext(ctx, reader).feature.slug).toBe('readable')
-      expect(toolListTickets(ctx, reader, {}).tickets.map((t) => t.title)).toEqual(['Read me'])
-      expect(toolGetTicket(ctx, reader, { seq: ticket.seq }).title).toBe('Read me')
       const project = projectForFeature(ctx, f)
       await ensureTalkWorktree(project, f)
       const briefPath = featureDocPath(project, f, 'brief.md')
@@ -438,7 +408,7 @@ describe('the orchestrator’s acting tools', () => {
       await client.close()
       return Object.fromEntries(
         tools
-          .filter((t) => ['get_feature_context', 'read_feature_doc', 'list_tickets', 'get_ticket'].includes(t.name))
+          .filter((t) => ['get_feature_context', 'read_feature_doc'].includes(t.name))
           .map((t) => [t.name, t.inputSchema as { properties?: Record<string, unknown>; required?: string[] }]),
       )
     }
@@ -446,13 +416,12 @@ describe('the orchestrator’s acting tools', () => {
     it('take a required slug from an orchestrator, and none from a feature session', async () => {
       const project = await readSchemas('project')
       const chat = await readSchemas('chat')
-      for (const name of ['get_feature_context', 'read_feature_doc', 'list_tickets', 'get_ticket']) {
+      for (const name of ['get_feature_context', 'read_feature_doc']) {
         expect(project[name]?.required, name).toContain('slug')
         expect(Object.keys(chat[name]?.properties ?? {}), name).not.toContain('slug')
       }
       expect(Object.keys(chat.get_feature_context?.properties ?? {})).toEqual(['full'])
       expect(chat.read_feature_doc?.required).toEqual(['relPath'])
-      expect(chat.get_ticket?.required).toEqual(['seq'])
     })
   })
 })

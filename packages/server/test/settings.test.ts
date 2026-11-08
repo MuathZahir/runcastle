@@ -477,7 +477,7 @@ describe('settings service (#46)', () => {
 
   it('sandbox override accepts the three-way choice and rejects anything else', () => {
     const project = seedProject(ctx)
-    for (const choice of ['docker', 'podman', 'noSandbox']) {
+    for (const choice of ['docker', 'podman']) {
       updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: choice }, io())
       expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe(choice)
     }

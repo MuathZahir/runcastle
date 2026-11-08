@@ -17,7 +17,6 @@ import {
   projectImageTag,
 } from '../src/services/sandbox-image'
 import { burnImageNeed, ensureBurnImage } from '../src/workers/burn-image'
-import { burnRun } from '../src/workflows/ticket-burner'
 
 const burnUser = { uid: 1000, gid: 1000, gidSource: 'default' as const }
 const projectTag = projectImageTag('proj_1')
@@ -153,13 +152,6 @@ describe('ensureBurnImage', () => {
     expect(types(events).at(-1)).toBe('burn.image_built')
     expect(events[0]).toMatchObject({ data: { image: DEFAULT_SANDBOX_IMAGE, need: 'missing' } })
     expect(events[0]?.message).toContain(join(dataDir, 'logs', 'image-build-run_1.log'))
-  })
-
-  it('never builds in a noSandbox run', async () => {
-    const { ctx } = makeCtx()
-    const engine = fakeEngine({})
-    await ensureBurnImage(ctx, { config: { sandbox: 'noSandbox' }, ...engine, burnUser })
-    expect(engine.commands).toEqual([])
   })
 
   it('leaves a custom image to today’s path, however missing it is', async () => {
@@ -336,68 +328,5 @@ describe('ensureBurnImage', () => {
     const free = tryImageBuildSlot()
     expect(free).not.toBeNull()
     free?.()
-  })
-})
-
-describe('burnRun — the image step', () => {
-  const ticket = {
-    id: 'tkt_1',
-    seq: 1,
-    title: 'one',
-    status: 'pending',
-    kind: 'implement',
-    blockedBy: [],
-  } as unknown as Ticket
-
-  function run(ensureImage: () => Promise<{ status: 'ready' } | { status: 'failed'; summary: string }>) {
-    const order: string[] = []
-    const ctx = {
-      runId: 'run_1',
-      project: { id: 'proj_1', repoPath: tmpdir(), sandboxImage: null },
-      feature: { id: 'f', slug: 's', branch: 'feature/s' },
-      tickets: [{ ...ticket }],
-      emitEvent: () => {},
-      updateTicket: () => {},
-      signal: new AbortController().signal,
-    } as unknown as WorkflowCtx
-    const exec: ExecFn = async (_command, args) => {
-      order.push(args[0] === 'run' ? 'probe' : 'engine')
-      return answered()
-    }
-    return {
-      order,
-      result: burnRun(ctx, {
-        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', burnConcurrency: 1 } as RuncastleConfig,
-        runtime: 'claude-code',
-        hasAuthToken: true,
-        runningAsRoot: false,
-        burnUser,
-        exec,
-        concurrency: 1,
-        ensureImage: async () => {
-          order.push('image')
-          return ensureImage()
-        },
-        executeTicketRun: async () => {
-          order.push('ticket')
-          return { status: 'done', commits: ['a'] }
-        },
-      }),
-    }
-  }
-
-  it('builds after the engine check and before the probe', async () => {
-    const { order, result } = run(async () => ({ status: 'ready' }))
-    await result
-    expect(order.indexOf('image')).toBeGreaterThan(order.indexOf('engine'))
-    expect(order.indexOf('probe')).toBeGreaterThan(order.indexOf('image'))
-    expect(order.at(-1)).toBe('ticket')
-  })
-
-  it('starts no ticket after a failed build, and says so in the summary', async () => {
-    const { order, result } = run(async () => ({ status: 'failed', summary: 'no space left — did not build' }))
-    expect(await result).toEqual({ status: 'failed', summary: 'no space left — did not build' })
-    expect(order).not.toContain('probe')
-    expect(order).not.toContain('ticket')
   })
 })

@@ -22,14 +22,9 @@ import mcpApp, {
   featureScenarios,
   resolveFeatureReader,
   resolveSession,
-  toolCancelTicket,
-  toolEmitTickets,
   toolGetFeatureContext,
-  toolGetTicket,
-  toolListTickets,
   toolReadFeatureDoc,
   toolRecordEvent,
-  toolUpdateTicket,
   toolsForAudience,
 } from '../src/mcp/server'
 import { emit, listAfter } from '../src/services/events'
@@ -72,227 +67,10 @@ describe('mcp tools', () => {
   afterEach(() => clearRuntimeCtx())
 
   /**
-   * A round as the runner records one: the `runs` row plus the `run.started`
-   * event naming the lanes it opened with. That event is what makes a ticket
-   * claimed before the run has said anything else about it.
-   */
-  function startBurn(
-    runId: string,
-    lanes: Ticket[],
-    run: { status: RunStatus; endedAt?: number },
-  ): void {
-    ctx.db
-      .insert(runs)
-      .values({
-        id: runId,
-        featureId,
-        workflow: 'ticket-burner',
-        status: run.status,
-        startedAt: 20,
-        endedAt: run.endedAt ?? null,
-      })
-      .run()
-    emit(ctx, featureId, {
-      type: 'run.started',
-      message: 'run started (ticket-burner)',
-      runId,
-      data: { workflow: 'ticket-burner', ticketIds: lanes.map((lane) => lane.id) },
-    })
-  }
-
-  it('emit_tickets validates + stores the batch and reports each ticket’s assigned seq', () => {
-    const out = toolEmitTickets(ctx, session, {
-      tickets: [ticket('one'), ticket('two', [1])],
-    })
-    expect(out.stored).toBe(2)
-    // `seq` is assigned by the store and is the number blockedBy + the UI speak
-    // in — returning bare ids made the emitter re-read the feature to learn it.
-    expect(out.tickets).toEqual([
-      { id: expect.any(String), seq: 1, title: 'one' },
-      { id: expect.any(String), seq: 2, title: 'two' },
-    ])
-
-    const stored = listByFeature(ctx, featureId)
-    expect(stored.map((t) => t.title)).toEqual(['one', 'two'])
-    expect(stored[1].blockedBy).toEqual([1]) // batch position 1 -> global seq 1
-
-    // exactly ONE store event for the UI timeline (the tool no longer double-logs
-    // a redundant `tickets.emitted` alongside the service's `tickets.stored`)
-    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
-    expect(types).toContain('tickets.stored')
-    expect(types.filter((t) => t === 'tickets.stored' || t === 'tickets.emitted')).toEqual([
-      'tickets.stored',
-    ])
-  })
-
-  it('emit_tickets stores an oversized ticket and warns about it by seq', () => {
-    const big = { ...ticket('big'), acceptanceCriteria: Array.from({ length: 9 }, (_, i) => `c${i}`) }
-    const out = toolEmitTickets(ctx, session, { tickets: [big] })
-    expect(out.stored).toBe(1)
-    expect(out.warnings.some((w) => w.includes('#1') && w.includes('9 acceptance criteria'))).toBe(true)
-  })
-
-  it('emit_tickets carries each ticket kind through, defaulting to implementation', () => {
-    // The registered tool hands its handler the PARSED batch, so parse here the
-    // same way — that is what applies the `implementation` default for the
-    // ticket that omits a kind.
-    const batch = z.array(TicketInputSchema).parse([
-      ticket('build it'),
-      { ...ticket('verify it', [1]), kind: 'review' },
-    ])
-    toolEmitTickets(ctx, session, { tickets: batch })
-
-    const stored = listByFeature(ctx, featureId)
-    expect(stored.map((t) => [t.title, t.kind])).toEqual([
-      ['build it', 'implementation'],
-      ['verify it', 'review'],
-    ])
-  })
-
-  it('emit_tickets refuses a Review-titled ticket that is not kind: review', () => {
-    // The incident shape: a review-shaped ticket emitted with the `kind` field
-    // dropped, defaulted to `implementation`, and containerized into a sandbox
-    // with no app to drive. Caught at authoring time, while the session that
-    // wrote it can still fix and re-emit.
-    const batch = z
-      .array(TicketInputSchema)
-      .parse([ticket('build it'), ticket('Review: drive the flow end to end', [1])])
-
-    expect(() => toolEmitTickets(ctx, session, { tickets: batch })).toThrow(GateError)
-    expect(() => toolEmitTickets(ctx, session, { tickets: batch })).toThrow(
-      /kind: "review".*retitle/s,
-    )
-    // the WHOLE batch is refused — nothing was stored, not even the good ticket
-    expect(listByFeature(ctx, featureId)).toEqual([])
-  })
-
-  it('emit_tickets refuses the bare "Review " title form too, and never coerces the kind', () => {
-    expect(() =>
-      toolEmitTickets(ctx, session, { tickets: [ticket('review the integrated change')] }),
-    ).toThrow(GateError)
-
-    // Correctly kinded, the same title stores untouched: refusal is the only
-    // move — the session stays the author of its own tickets.
-    const out = toolEmitTickets(ctx, session, {
-      tickets: [{ ...ticket('Review the integrated change'), kind: 'review' }],
-    })
-    expect(out.stored).toBe(1)
-    expect(listByFeature(ctx, featureId).map((t) => t.kind)).toEqual(['review'])
-  })
-
-  it('emit_tickets leaves an ordinary title alone whatever its kind', () => {
-    // Only the review-shaped TITLE is the heuristic's business: "Reviewer
-    // dashboard" is not a review ticket, and a batch with no review ticket at
-    // all is G3's business, not this check's.
-    const out = toolEmitTickets(ctx, session, {
-      tickets: [ticket('Reviewer dashboard'), ticket('previewing a draft')],
-    })
-    expect(out.stored).toBe(2)
-  })
-
-  it('emit_tickets rejects an out-of-range blockedBy position', () => {
-    expect(() => toolEmitTickets(ctx, session, { tickets: [ticket('one'), ticket('two', [9])] })).toThrow(
-      InvalidInputError,
-    )
-  })
-
-  it('update_ticket rewrites content; cancel_ticket cancels with a reason (ticket surgery)', () => {
-    const out = toolEmitTickets(ctx, session, { tickets: [ticket('stale'), ticket('obsolete')] })
-    const [staleId, obsoleteId] = out.tickets.map((t) => t.id)
-
-    // Each write answers with a receipt, never the row it just changed.
-    const updated = toolUpdateTicket(ctx, session, { id: staleId, title: 'fresh', goal: 'g2' })
-    expect(updated).toEqual({ ok: true, seq: 1, status: 'pending', changed: ['title', 'goal'] })
-    expect(getTicket(ctx, staleId)).toMatchObject({ title: 'fresh', goal: 'g2' })
-
-    const cancelled = toolCancelTicket(ctx, session, { id: obsoleteId, reason: 'decision changed' })
-    expect(cancelled).toEqual({ ok: true, seq: 2, status: 'cancelled' })
-    expect(getTicket(ctx, obsoleteId).error).toBe('decision changed')
-
-    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
-    expect(types).toContain('ticket.edited')
-    expect(types).toContain('ticket.cancelled')
-  })
-
-  it('emit_tickets stamps an annotated model and refuses one off the roster', () => {
-    ctx.config = {
-      ...ctx.config,
-      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
-    }
-    const out = toolEmitTickets(ctx, session, {
-      tickets: [{ ...ticket('refactor'), model: 'gpt-5.6-sol' }, ticket('design')],
-    })
-    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual(['gpt-5.6-sol', undefined])
-    expect(out.stored).toBe(2)
-
-    expect(() =>
-      toolEmitTickets(ctx, session, { tickets: [{ ...ticket('x'), model: 'gpt-9-imaginary' }] }),
-    ).toThrow(InvalidInputError)
-  })
-
-  /**
    * The 2026-09-24 regression: a resumed session stamped `claude-opus-5` from
    * memory while only another model was annotated. The id is curated — on the
    * roster — so the store took it; the session surfaces must not.
    */
-  it('emit_tickets refuses a curated-but-unannotated model, naming the annotated ids', () => {
-    ctx.config = {
-      ...ctx.config,
-      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
-    }
-    const emitCurated = () =>
-      toolEmitTickets(ctx, session, {
-        tickets: [ticket('fine'), { ...ticket('stale'), model: 'claude-opus-5' }],
-      })
-    expect(emitCurated).toThrow(InvalidInputError)
-    expect(emitCurated).toThrow(/"claude-opus-5".*gpt-5\.6-sol/)
-    // All-or-nothing: the good ticket in the batch was not stored either.
-    expect(listByFeature(ctx, featureId)).toEqual([])
-
-    toolEmitTickets(ctx, session, { tickets: [{ ...ticket('ok'), model: 'gpt-5.6-sol' }] })
-    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual(['gpt-5.6-sol'])
-  })
-
-  it('emit_tickets says to omit the model when nothing is annotated, and blank still clears', () => {
-    expect(() =>
-      toolEmitTickets(ctx, session, { tickets: [{ ...ticket('x'), model: 'claude-opus-5' }] }),
-    ).toThrow(/no models are annotated, so omit `model`/)
-
-    toolEmitTickets(ctx, session, { tickets: [{ ...ticket('blank'), model: '  ' }] })
-    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual([undefined])
-  })
-
-  it('update_ticket refuses a curated-but-unannotated model; the tRPC edit still takes it', async () => {
-    const [{ id }] = toolEmitTickets(ctx, session, { tickets: [ticket('one')] }).tickets
-    expect(() => toolUpdateTicket(ctx, session, { id, model: 'claude-opus-5' })).toThrow(
-      /no models are annotated/,
-    )
-    expect(getTicket(ctx, id).model).toBeUndefined()
-
-    // The human's card edit keeps the whole roster.
-    const caller = createCallerFactory(appRouter)(ctx)
-    expect((await caller.ticket.edit({ ticketId: id, model: 'claude-opus-5' })).model).toBe(
-      'claude-opus-5',
-    )
-  })
-
-  it('update_ticket reassigns and clears a ticket model, refusing an unknown id', () => {
-    ctx.config = {
-      ...ctx.config,
-      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
-    }
-    const out = toolEmitTickets(ctx, session, { tickets: [ticket('one')] })
-    const [{ id }] = out.tickets
-
-    toolUpdateTicket(ctx, session, { id, model: 'gpt-5.6-sol' })
-    expect(getTicket(ctx, id).model).toBe('gpt-5.6-sol')
-    toolUpdateTicket(ctx, session, { id, model: '' })
-    expect(getTicket(ctx, id).model).toBeUndefined()
-    expect(() => toolUpdateTicket(ctx, session, { id, model: 'gpt-9-imaginary' })).toThrow(
-      InvalidInputError,
-    )
-  })
-
   it('get_feature_context offers only the annotated roster entries, empty when none', () => {
     // Nothing annotated: the emitting session is offered no candidates at all,
     // which is what keeps today's behaviour (never assign) the default.
@@ -346,10 +124,6 @@ describe('mcp tools', () => {
       expect(toolGetFeatureContext(ctx, session).annotatedModels).toEqual([
         { id: 'gpt-next', runtime: 'codex', note: 'provider-discovered refactors' },
       ])
-      toolEmitTickets(ctx, session, {
-        tickets: [{ ...ticket('use the new model'), model: 'gpt-next' }],
-      })
-      expect(listByFeature(ctx, featureId)[0].model).toBe('gpt-next')
     } finally {
       if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
       else process.env.RUNCASTLE_DATA_DIR = previousDataDir
@@ -357,36 +131,18 @@ describe('mcp tools', () => {
     }
   })
 
-  /**
-   * The width the tickets skill budgets against. The session states the
-   * batch's critical path against this number, so serving it is what makes
-   * that rule computable rather than guessed.
-   */
-  it('get_feature_context serves the project’s burn width', () => {
-    expect(toolGetFeatureContext(ctx, session).burnConcurrency).toBe(ctx.config.burnConcurrency)
-
-    ctx.config = { ...ctx.config, burnConcurrency: 6 }
-    expect(toolGetFeatureContext(ctx, session).burnConcurrency).toBe(6)
-  })
-
-  it('update_ticket/cancel_ticket refuse a ticket from another feature', () => {
-    const otherFeature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'other' })
-    const [foreign] = storeTickets(ctx, otherFeature.id, [ticket('foreign')])
-
-    expect(() => toolUpdateTicket(ctx, session, { id: foreign.id, title: 'x' })).toThrow(GateError)
-    expect(() => toolCancelTicket(ctx, session, { id: foreign.id })).toThrow(GateError)
-  })
-
-  it('get_feature_context returns the feature, docs contents and tickets', () => {
+  it('get_feature_context returns the feature and docs contents, and no rounds, runs or ticket rows', () => {
     const docsDir = join(repoPath, 'docs', 'features', slug)
     mkdirSync(docsDir, { recursive: true })
     writeFileSync(join(docsDir, 'brief.md'), '# Brief\n\nseed', 'utf8')
     writeFileSync(join(docsDir, 'decisions.md'), '# Decisions\n\nD1', 'utf8')
-    toolEmitTickets(ctx, session, { tickets: [ticket('one')] })
+    storeTickets(ctx, featureId, [ticket('one')])
 
     const out = toolGetFeatureContext(ctx, session)
     expect(out.feature.id).toBe(featureId)
-    expect(out.tickets).toHaveLength(1)
+    for (const key of ['tickets', 'ticketsNotInlined', 'ticketsNote', 'rounds', 'latestRun', 'burnConcurrency']) {
+      expect(key in out).toBe(false)
+    }
     const byPath = Object.fromEntries(out.docs.map((d) => [d.relPath, d.content]))
     expect(byPath['brief.md']).toContain('seed')
     expect(byPath['decisions.md']).toContain('D1')
@@ -398,82 +154,6 @@ describe('mcp tools', () => {
    * in `review_findings` and in host scratch space outside the repo. One call
    * states all of it.
    */
-  it('get_feature_context states the last burn, this round’s review and the notes that still stand', () => {
-    const [landed, broke, review] = storeTickets(ctx, featureId, [
-      ticket('landed'),
-      ticket('broke'),
-      { ...ticket('review the lap'), kind: 'review' },
-    ])
-    startBurn('run_burn', [landed, broke, review], { status: 'failed', endedAt: 30 })
-    updateTicket(ctx, landed.id, { status: 'done' })
-    updateTicket(ctx, broke.id, { status: 'failed', error: 'container died\n  at burn.ts:1' })
-    updateTicket(ctx, review.id, { status: 'done' })
-    reportFinding(ctx, {
-      featureId,
-      reviewTicket: getTicket(ctx, review.id),
-      input: {
-        kind: 'defect',
-        severity: 'high',
-        title: 'Save loses edits',
-        location: 'screen: editor',
-        citation: 'spec.md: edits persist',
-        detail: 'The old value returns.',
-        reproStep: 'Edit the title, save, reload.',
-      },
-    })
-    addNote(ctx, featureId, 'the empty state flashes')
-
-    const out = toolGetFeatureContext(ctx, session)
-    // Counted over the lanes that burn HELD. The review pass is a lane like any
-    // other, so landing it lands a ticket.
-    expect(out.latestRun).toEqual({
-      status: 'failed',
-      ticketsLanded: 2,
-      ticketsFailed: 1,
-      errorHeadlines: ['container died'],
-    })
-    expect(out.reviewEvidence).toEqual(
-      expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done' }),
-    )
-    expect(out.reviewEvidence?.digestPath).toContain('DIGEST.md')
-    // The defect starts open for the lead, so it is stated once, in openDefects,
-    // and not repeated in the record of the pass.
-    expect(out.openDefects.map((defect) => defect.title)).toEqual(['Save loses edits'])
-    expect(out.findings).toEqual([])
-    // Drive notes reach the agent as a chat message (Send to agent), not here.
-    expect(out).not.toHaveProperty('testNotes')
-  })
-
-  it('get_feature_context omits latestRun entirely on a feature that has never run a round', () => {
-    const out = toolGetFeatureContext(ctx, session)
-    expect('latestRun' in out).toBe(false)
-    expect(out.reviewEvidence).toBeNull()
-    expect(out.findings).toEqual([])
-  })
-
-  it('ticket surgery refuses a ticket the live burn holds and allows one it does not', () => {
-    const [claimed, unclaimed] = storeTickets(ctx, featureId, [
-      ticket('claimed'),
-      ticket('next round'),
-    ])
-    startBurn('run_active', [claimed], { status: 'running' })
-
-    // The refusal names both the run and the ticket: a chat told only "refused"
-    // cannot tell the human which burn to wait for.
-    for (const edit of [
-      () => toolUpdateTicket(ctx, session, { id: claimed.id, title: 'nope' }),
-      () => toolCancelTicket(ctx, session, { id: claimed.id }),
-    ]) {
-      expect(edit).toThrow(GateError)
-      expect(edit).toThrow(/run_active/)
-      expect(edit).toThrow(new RegExp(`#${claimed.seq} claimed`))
-    }
-    // The point of the guard's narrowness: the chat still shapes the NEXT burn
-    // while this one runs.
-    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'edited' }).changed).toEqual(['title'])
-    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).status).toBe('cancelled')
-  })
-
   /**
    * The docs allowlist (`packages/core/src/docs.ts`). What is worth pinning is
    * both halves at once: the payload must SHRINK, and nothing may become
@@ -525,63 +205,6 @@ describe('mcp tools', () => {
    * so a payload carrying both pays twice for one set of facts — the same rule
    * `get_work_record` already applies to the run-level aggregate (decision 7).
    */
-  it('get_feature_context rows each ticket with its goal; get_ticket serves the rest', () => {
-    const [stored] = storeTickets(ctx, featureId, [ticket('build it')])
-    updateTicket(ctx, stored.id, { status: 'done', digest: 'what the burner actually did' })
-
-    const [served] = toolGetFeatureContext(ctx, session).tickets
-    expect(Object.keys(served)).toEqual([
-      'id',
-      'seq',
-      'title',
-      'status',
-      'kind',
-      'blockedBy',
-      'seams',
-      'goal',
-    ])
-    expect(served.goal).toBe('g')
-
-    // A done ticket reads without its plan: what it did and what it was meant to do.
-    const settled = toolGetTicket(ctx, { featureId, sessionId: session.id }, { seq: served.seq })
-    expect(settled).not.toHaveProperty('context')
-    expect(settled.acceptanceCriteria).toEqual(['a'])
-    expect(settled.digest).toBe('what the burner actually did')
-
-    const full = toolGetTicket(ctx, { featureId }, { seq: served.seq, full: true })
-    expect(full).toMatchObject({ context: 'c', acceptanceCriteria: ['a'], digest: 'what the burner actually did' })
-  })
-
-  it('get_ticket keeps the context of a ticket still to run or failed, and drops a cancelled one’s', () => {
-    const [pending, failed, cancelled] = storeTickets(ctx, featureId, [ticket('a'), ticket('b'), ticket('c')])
-    updateTicket(ctx, failed.id, { status: 'failed', error: 'boom' })
-    cancelTicket(ctx, cancelled.id, 'not needed')
-    expect(toolGetTicket(ctx, { featureId }, { seq: pending.seq })).toMatchObject({ context: 'c' })
-    expect(toolGetTicket(ctx, { featureId }, { seq: failed.seq })).toMatchObject({ context: 'c', error: 'boom' })
-    expect(toolGetTicket(ctx, { featureId }, { seq: cancelled.seq })).not.toHaveProperty('context')
-  })
-
-  it('get_ticket refuses a seq the feature does not have', () => {
-    storeTickets(ctx, featureId, [ticket('only one')])
-    expect(() => toolGetTicket(ctx, { featureId }, { seq: 2 })).toThrow(NotFoundError)
-  })
-
-  it('list_tickets indexes ids and seqs without the prose, and filters by status', () => {
-    const out = toolEmitTickets(ctx, session, { tickets: [ticket('one'), ticket('two')] })
-    cancelTicket(ctx, out.tickets[1].id, 'not needed')
-
-    const all = toolListTickets(ctx, { featureId, sessionId: session.id }, {})
-    expect(all.tickets.map((t) => [t.seq, t.title, t.status])).toEqual([
-      [1, 'one', 'pending'],
-      [2, 'two', 'cancelled'],
-    ])
-    // An index, not a payload: no goal/context/acceptanceCriteria in sight.
-    expect(JSON.stringify(all)).not.toContain('"goal"')
-
-    const pending = toolListTickets(ctx, { featureId }, { status: 'pending' })
-    expect(pending.tickets.map((t) => t.title)).toEqual(['one'])
-  })
-
   it('record_event drops a timeline note', () => {
     const out = toolRecordEvent(ctx, session, { type: 'decision.recorded', message: 'chose sqlite' })
     expect(out.ok).toBe(true)
@@ -627,14 +250,6 @@ describe('mcp chat write contract', () => {
   })
 
   afterEach(() => clearRuntimeCtx())
-
-  it('allows ticket writes from chat', () => {
-    const [existing] = storeTickets(ctx, featureId, [ticket('already here')])
-    expect(toolEmitTickets(ctx, qa, { tickets: [ticket('new')] }).stored).toBe(1)
-    expect(toolUpdateTicket(ctx, qa, { id: existing.id, title: 'changed' }).ok).toBe(true)
-    expect(toolCancelTicket(ctx, qa, { id: existing.id }).status).toBe('cancelled')
-    expect(listByFeature(ctx, featureId)).toHaveLength(2)
-  })
 
   it('still reads', () => {
     expect(toolGetFeatureContext(ctx, qa).feature.id).toBe(featureId)
@@ -753,10 +368,13 @@ describe('mcp tool registration by audience', () => {
   it('offers each kind only the tools its own runtime gates can let through', () => {
     const chat = toolsForAudience('chat')
     expect(chat).toContain('get_feature_context')
-    expect(chat).toContain('list_tickets')
-    for (const write of ['emit_tickets', 'update_ticket', 'cancel_ticket']) {
-      expect(chat, write).toContain(write)
+    // The ticket and round tools are gone for every audience (burns-become-workers):
+    // work is handed to workers, and get_work_record reads the frozen history.
+    const retired = ['emit_tickets', 'update_ticket', 'cancel_ticket', 'list_tickets', 'get_ticket', 'dispatch_round', 'stop_round']
+    for (const audience of [...SessionKind.options, 'run' as const, 'review' as const, undefined]) {
+      for (const tool of retired) expect(toolsForAudience(audience), `${audience}/${tool}`).not.toContain(tool)
     }
+    for (const tool of ['start_worker', 'resolve_finding', 'declare_ready']) expect(chat, tool).toContain(tool)
 
     // An orchestrator has no feature, so none of the feature surface beyond
     // the four reads it names a feature to by slug.
@@ -773,14 +391,11 @@ describe('mcp tool registration by audience', () => {
         'update_project_note',
         'get_feature_context',
         'read_feature_doc',
-        'list_tickets',
-        'get_ticket',
       ]),
     )
     // …and the project's fetch-one stays the project's.
     expect(toolsForAudience('chat')).not.toContain('read_feature_brief')
     expect(toolsForAudience('run')).not.toContain('read_feature_brief')
-    expect(project).not.toContain('emit_tickets')
     for (const tool of ['list_project_notes', 'triage_project_note', 'update_project_note']) {
       expect(toolsForAudience('scenario'), tool).not.toContain(tool)
       expect(toolsForAudience('chat'), tool).not.toContain(tool)
@@ -805,8 +420,6 @@ describe('mcp tool registration by audience', () => {
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
       'get_feature_context',
-      'get_ticket',
-      'list_tickets',
       'read_feature_doc',
       'report_finding',
       'review_drive',
@@ -954,10 +567,10 @@ describe('get_feature_context scenarios', () => {
       ],
       fixtures: ['.runcastle/scenarios/_fixtures/buyer.ts'],
     })
-    // It rides the header, ahead of the tickets and docs.
+    // It rides the header, ahead of the docs.
     const context = featureContext(ctx, { featureId: feature.id }, scenarios)
     expect(context.scenarios).toEqual(scenarios)
-    expect(Object.keys(context).indexOf('scenarios')).toBeLessThan(Object.keys(context).indexOf('tickets'))
+    expect(Object.keys(context).indexOf('scenarios')).toBeLessThan(Object.keys(context).indexOf('docs'))
   })
 
   it('is not set up without a runner, or when the base branch has no scenarios', async () => {

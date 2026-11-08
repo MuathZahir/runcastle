@@ -126,7 +126,7 @@ describe('a self-planning run', () => {
     expect(said).toContain('references/planning-alone.md')
     // The feature-state part of the chat header still follows the opening.
     // No lap in it: the round count is the human-facing number (decision 16).
-    expect(said).toContain('Feature status: Talking with you; rounds run: 0;')
+    expect(said).toContain('Feature status: Talking with you.')
     expect(said).not.toMatch(/\blap\b/i)
     expect(await briefOf(ctx, sessionId)).toContain('## No human is present')
   })

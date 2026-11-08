@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { toolGetFeatureContext, toolListTickets } from '../src/mcp/server'
+import { workers } from '../src/db/schema'
+import { toolGetFeatureContext } from '../src/mcp/server'
 import { dismiss, openDefects } from '../src/services/review-findings'
 import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
@@ -122,35 +123,25 @@ describe('get_feature_context: findings and review evidence', () => {
     expect(toolGetFeatureContext(ctx, session).openDefects).toEqual([])
   })
 
-  it('names the latest review pass’s evidence by path, and none before a pass has burned', () => {
-    const first = reviewTicket()
-    const latest = reviewTicket()
+  it('names the latest finished Review worker’s evidence by path, and none before a pass has finished', () => {
     expect(toolGetFeatureContext(ctx, session).reviewEvidence).toBeNull()
-
-    updateTicket(ctx, first.id, { status: 'done', reviewMode: 'gates', reviewVerdict: 'verified' })
-    updateTicket(ctx, latest.id, {
-      status: 'done',
-      reviewMode: 'drive',
-      reviewVerdict: 'unverified',
-      reviewVerdictReason: 'The browser could not attach.',
-    })
+    const now = Date.now()
+    const insert = (id: string, status: 'working' | 'handed-back', handbackSummary: string | null) =>
+      ctx.db
+        .insert(workers)
+        .values({ id, featureId: feature.id, label: 'Review', purpose: 'p', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, handbackSummary, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+        .run()
+    insert('wkr_running', 'working', null)
+    expect(toolGetFeatureContext(ctx, session).reviewEvidence).toBeNull()
+    insert('wkr_done', 'handed-back', 'Everything holds.')
 
     expect(toolGetFeatureContext(ctx, session).reviewEvidence).toEqual({
-      ticketId: latest.id,
-      seq: latest.seq,
-      status: 'done',
+      workerId: 'wkr_done',
+      label: 'Review',
+      status: 'handed-back',
       reviewMode: 'drive',
-      reviewVerdict: 'unverified',
-      reviewVerdictReason: 'The browser could not attach.',
-      dir: reviewDir(latest.id),
-      digestPath: join(reviewDir(latest.id), 'DIGEST.md'),
+      account: 'Everything holds.',
+      dir: reviewDir('wkr_done'),
     })
-  })
-
-  it('lists tickets without a lap', () => {
-    reviewTicket()
-    const [row] = toolListTickets(ctx, { featureId: feature.id }, {}).tickets
-    expect(row).not.toHaveProperty('lap')
-    expect(row).toMatchObject({ seq: 1, title: 'Review', kind: 'review' })
   })
 })
