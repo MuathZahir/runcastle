@@ -467,12 +467,10 @@ export type ThreadEvent = z.infer<typeof ThreadEvent>
 
 // ---- the view: what the web renders ----
 
-/** One step of a turn's work, before its final words. */
+/** One step of a run of work: what folds between two stretches of the agent's words. Never words. */
 export type WorkStep =
   | { kind: 'tools'; id: string; calls: ToolCall[] }
   | { kind: 'thought'; id: string; seconds: number; text: string }
-  /** Words the agent said between tool calls, not its final answer. */
-  | { kind: 'narration'; id: string; text: string }
   /** A subagent the turn delegated to, with its own calls. */
   | { kind: 'subagent'; id: string; title: string; status: ToolStatus; calls: ToolCall[] }
 
@@ -496,12 +494,17 @@ export type ThreadItem =
       at?: number
     }
   /**
-   * A turn's work. While the turn runs it shows step by step; once settled it
-   * folds to one line ("Worked for 3m 43s") and the final words stay in view.
+   * One run of a turn's work, between two stretches of its words. While it is
+   * the newest thing in a running turn it shows step by step (`live`); once
+   * words follow it, or the turn ends, it folds to one line with its own time
+   * ("Worked for 46s").
    */
   | { kind: 'work'; id: string; steps: WorkStep[]; seconds: number; live?: boolean }
-  /** The agent's words: the end of a turn, or a turn that was only words. */
-  | { kind: 'agent'; id: string; text: string; model?: string }
+  /**
+   * A stretch of the agent's words. A turn has one per stretch, in the order
+   * written. Its last carries the turn's whole time once the turn has ended.
+   */
+  | { kind: 'agent'; id: string; text: string; model?: string; turnSeconds?: number }
   | { kind: 'changes'; id: string; files: FileChange[] }
   /** The files a turn showed. It stays in view when the turn's work folds. */
   | { kind: 'shown'; id: string; files: ShownFile[] }
@@ -742,18 +745,26 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
 }
 
-/** One piece of a turn, in arrival order, before it is split into work and answer. */
+/**
+ * One piece of a turn, in arrival order, each with when it arrived (`at`), before
+ * the turn is laid out as words, runs of work and the items between them.
+ */
 type Segment =
-  | { kind: 'text'; id: string; text: string }
-  | { kind: 'thought'; id: string; text: string; from: number; to: number }
-  | { kind: 'tools'; id: string; calls: ToolCall[] }
-  | { kind: 'subagent'; id: string; title: string; status: ToolStatus; calls: ToolCall[] }
-  /** An ask answered or a file shown here: it shows nothing in the work, but words before it are no longer the turn's answer. */
-  | { kind: 'answered' }
+  | { kind: 'text'; id: string; text: string; at: number }
+  | { kind: 'thought'; id: string; text: string; at: number; to: number }
+  | { kind: 'tools'; id: string; calls: ToolCall[]; at: number }
+  | { kind: 'subagent'; id: string; title: string; status: ToolStatus; calls: ToolCall[]; at: number }
+  /** Something shown in the turn at this point: a card, shown files, an answered ask's line, a divider. */
+  | { kind: 'item'; item: ThreadItem; at: number }
 
 interface Turn {
   id: string
+  /** When the open part began: the turn's start, or the steered message that split it. */
   startedAt: number
+  /** When the turn itself began, for its whole time. */
+  firstStartedAt: number
+  /** Where the open part's items begin in the thread's items; -1 until it first lays out. */
+  regionStart: number
   segments: Segment[]
   /** Subagents by id, for routing their calls. A steered message's split keeps them: they run on across it. */
   subagents: Map<string, Extract<Segment, { kind: 'subagent' }>>
@@ -768,10 +779,20 @@ const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pe
 
 /**
  * Runcastle's tools that only talk to the human: calling one is no work, so it
- * does not end a turn's answer. Matched on the name after a runtime's prefix
- * (`mcp__runcastle__wait_for_you`, `runcastle.wait_for_you`).
+ * shows nothing in the turn and does not split the words around it. The ones
+ * that show something (a file, a card) show it as its own item. Matched on the
+ * name after a runtime's prefix (`mcp__runcastle__wait_for_you`,
+ * `runcastle.wait_for_you`).
  */
-export const TALK_ONLY_TOOLS = ['wait_for_you', 'declare_ready', 'notify_human', 'show_file'] as const
+export const TALK_ONLY_TOOLS = [
+  'wait_for_you',
+  'declare_ready',
+  'notify_human',
+  'show_file',
+  'show_design',
+  'show_plan',
+  'show_review_package',
+] as const
 
 const TALK_ONLY_TITLE = new RegExp(`(?:__|\\.)(?:${TALK_ONLY_TOOLS.join('|')})$`)
 
@@ -827,39 +848,39 @@ function markOlderCards(items: ThreadItem[]): void {
  * has to open.
  *
  * The rules, each decided here and nowhere else:
- * - A turn's segments arrive in order (text, thinking, tool calls, subagents).
- *   Its answer (`agent`) is every word after its last piece of real work:
- *   calls that only talk to the human ({@link TALK_ONLY_TOOLS}) do not end it,
- *   show nothing there, and the words around them read as one answer.
- *   Everything before goes into one `work` item, live while the turn runs and
- *   folded to "Worked for …" once it ends. Live or settled, the split is the
- *   same, so streaming words show as the answer until real work turns them
- *   into narration.
- * - No question folds away: words in the work that end asking something leave
- *   it, and show as one `agent` item after the work and ahead of the answer,
- *   in the order written.
+ * - A turn reads in the order it happened (every-word-the-agent-writes-stays-in-view).
+ *   Each stretch of the agent's words is one `agent` item; each run of tool
+ *   calls, thinking and subagents between two stretches is one `work` item with
+ *   its own time. Nothing the agent wrote is ever inside a `work` item. Calls
+ *   that only talk to the human ({@link TALK_ONLY_TOOLS}) show nothing and do
+ *   not split the words around them.
+ * - Words never move once shown: a run is `live` only while it is the newest
+ *   thing in a running turn; words after it settle it where it stands. A
+ *   settled turn is laid out exactly as it last was live.
+ * - A turn's last words carry its whole time once it ends (`turnSeconds`).
  * - One subagent, one card: a subagent an earlier turn showed makes no card
  *   here unless it says it is running again, and one never seen makes none
  *   from an untitled "finished". A relaunched adapter re-announces every past
  *   subagent that way as its first turn starts.
  * - A late update belongs to its row: a call or subagent from before a steered
- *   message updates where it sits, and adds nothing after the agent's words,
- *   so it cannot turn them from the answer into narration. An untitled update
- *   for a call of an earlier turn shows nothing.
+ *   message updates where it sits, and adds nothing after the agent's words.
+ *   An untitled update for a call of an earlier turn shows nothing.
  * - An ask mid-turn stays in its turn: an approval's call is the same row as
  *   the tool call it asks about (matched by id, the first title kept), and its
- *   answer's lines follow the turn's one work item, ahead of the answer.
+ *   answer's lines follow the run of work it was asked in, so the run (and an
+ *   approved call still running in it) stays live until words follow it.
  * - A prompt sent before the process ran shows `starting` until the process
  *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
  * - A thread is `working` only inside a turn a `turn_started` opened: words
  *   logged after a turn's end (with no turn around them) fold as settled.
- * - A turn's `feature_acted` events are one `features_card`, placed as a shown
- *   file is: a feature acted on twice is one row; a prompt or a new turn starts
- *   a new card. A prompt's `display` rides on its `user` item.
- * - A shown file sits after the turn's work and ahead of its final words, from
- *   the moment it is shown. Words before it are no longer the answer, as with
- *   an answered ask. A turn's files are one `shown` item, and a steered message
- *   starts another. Work that starts after a file still lands above it.
+ * - Shown files and cards (a review package, the plan, designs, the features
+ *   card) sit in the turn where they were shown. Files shown one after another,
+ *   with no words between, are one `shown` item; so are designs, and a turn's
+ *   `feature_acted` events (a feature acted on twice is one row). A group that
+ *   grows moves down past the work done since it was posted, never past words.
+ *   A prompt or a new turn starts a new group. A prompt's `display` rides on its
+ *   `user` item.
+ * - A turn's changed files are one `changes` item, after everything else in it.
  * - A model divider appears only when the model changes after one was set; a
  *   compaction shows once however many times it is reported before the next
  *   prompt, with why runcastle sent it and the context size before it (the
@@ -878,12 +899,6 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   /** Every subagent and call the thread has shown, in any turn. */
   const shownSubagents = new Set<string>()
   const shownCalls = new Set<string>()
-  let workIndex = -1
-  let answerIndex = -1
-  /** Where the open turn's questions asked mid-work sit; -1 until one shows. */
-  let askedIndex = -1
-  /** Where the open turn's `shown` item sits; -1 until it shows a file. */
-  let shownIndex = -1
   let ask: Ask | undefined
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
@@ -900,77 +915,122 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   let processCost: number | undefined
   let restartedSinceCost = false
 
-  /** Re-render the open turn's work and answer items in place. */
+  const isWords = (s: Segment): s is Extract<Segment, { kind: 'text' }> => s.kind === 'text' && !!s.text.trim()
+
+  /**
+   * Lay the open part of the turn out again, in order, in place of what it laid
+   * out last time: its words, its runs of work, and the items shown between.
+   */
   const render = (live: boolean, endedAt?: number) => {
     if (!turn) return
-    const segs = turn.segments
-    // The answer is the words after the last real work; talk-only calls among them show nothing.
-    const boundary = segs.findLastIndex((s) => s.kind !== 'text' && !talksOnly(s))
-    const isWords = (s: Segment): s is Extract<Segment, { kind: 'text' }> => s.kind === 'text' && !!s.text.trim()
-    const answerWords = segs.slice(boundary + 1).filter(isWords)
-    const work = segs.slice(0, boundary + 1)
-    const asked = work.filter((s): s is Extract<Segment, { kind: 'text' }> => isWords(s) && ENDS_ASKING.test(s.text.trimEnd()))
-    const steps: WorkStep[] = work
-      .map((s): WorkStep | null => {
+    const t: Turn = turn
+    if (t.regionStart < 0) t.regionStart = items.length
+    const model = t.model ? { model: t.model } : {}
+    const out: ThreadItem[] = []
+    const ids = new Set<string>()
+    /** An id not yet used in this part: a message id the runtime reused after a tool call gets a suffix. */
+    const unique = (id: string): string => {
+      let n = 1
+      let candidate = id
+      while (ids.has(candidate)) candidate = `${id}:${++n}`
+      ids.add(candidate)
+      return candidate
+    }
+    let words: Array<Extract<Segment, { kind: 'text' }>> = []
+    let run: Segment[] = []
+    /** Answered asks' lines met inside a run: they follow it, so an approved call keeps running in view. */
+    let after: ThreadItem[] = []
+    const flushWords = () => {
+      if (words.length) out.push({ kind: 'agent', id: unique(words[0].id), text: joinWords(words), ...model })
+      words = []
+    }
+    /** Settle the run at `until` (when what follows it began), or leave it live when `until` is undefined. */
+    const flushRun = (until: number | undefined) => {
+      if (!run.length) return
+      const steps = run.map((s): WorkStep => {
         switch (s.kind) {
-          case 'text':
-            return s.text.trim() && !asked.includes(s) ? { kind: 'narration', id: s.id, text: s.text } : null
           case 'thought':
-            return { kind: 'thought', id: s.id, text: s.text, seconds: Math.max(1, Math.round((s.to - s.from) / 1000)) }
+            return { kind: 'thought', id: s.id, text: s.text, seconds: Math.max(1, Math.round((s.to - s.at) / 1000)) }
           // The segment itself, so a late update reaches a part a split settled.
           case 'tools':
           case 'subagent':
             return s
-          case 'answered':
-            return null
+          default:
+            throw new Error('unreachable: a run holds only work')
         }
       })
-      .filter((s): s is WorkStep => s !== null)
-    const seconds = Math.max(0, Math.round(((endedAt ?? turn.startedAt) - turn.startedAt) / 1000))
-    const workItem: ThreadItem | null = steps.length ? { kind: 'work', id: `work:${turn.id}`, steps, seconds, ...(live ? { live } : {}) } : null
-    const model = turn.model ? { model: turn.model } : {}
-    const askedItem: ThreadItem | null = asked.length ? { kind: 'agent', id: `asked:${turn.id}`, text: joinWords(asked), ...model } : null
-    const answerItem: ThreadItem | null = answerWords.length ? { kind: 'agent', id: answerWords[0].id, text: joinWords(answerWords), ...model } : null
-    // Work, then the questions asked along the way, then the answer; each keeps its first-seen slot.
-    const firstAfterWork = [askedIndex, shownIndex, answerIndex].filter((n) => n >= 0)
-    workIndex = place(workIndex, workItem, firstAfterWork.length ? Math.min(...firstAfterWork) : items.length)
-    askedIndex = place(askedIndex, askedItem, answerIndex >= 0 ? answerIndex : items.length)
-    answerIndex = place(answerIndex, answerItem, items.length)
+      const seconds = until === undefined ? 0 : Math.max(0, Math.round((until - run[0].at) / 1000))
+      const first = run[0] as Exclude<Segment, { kind: 'item' }>
+      out.push({ kind: 'work', id: unique(`work:${first.id}`), steps, seconds, ...(until === undefined ? { live: true } : {}) })
+      out.push(...after)
+      run = []
+      after = []
+    }
+    for (const seg of t.segments) {
+      if (seg.kind === 'text') {
+        if (!seg.text.trim()) continue
+        flushRun(seg.at)
+        words.push(seg)
+      } else if (seg.kind === 'item' && seg.item.kind === 'answered' && run.length) {
+        after.push(seg.item)
+      } else if (seg.kind === 'item') {
+        flushWords()
+        flushRun(seg.at)
+        out.push(seg.item)
+      } else if (!talksOnly(seg)) {
+        flushWords()
+        run.push(seg)
+      }
+    }
+    flushWords()
+    flushRun(live ? undefined : (endedAt ?? t.startedAt))
+    items.splice(t.regionStart, items.length - t.regionStart, ...out)
   }
 
-  /** Put the open turn's item in its slot (inserting at `at` when it has none) or take it out; returns its new slot. */
-  const place = (slot: number, item: ThreadItem | null, at: number): number => {
-    if (item && slot >= 0) {
-      items[slot] = item
-      return slot
+  /** Show an item: in the open turn at this point, or after everything when no turn is open. */
+  const add = (item: ThreadItem, at: number) => {
+    const open = turn as Turn | null
+    if (!open) {
+      items.push(item)
+      return
     }
-    if (item) {
-      items.splice(at, 0, item)
-      shiftSlots(at, 1)
-      return at
-    }
-    if (slot >= 0) {
-      items.splice(slot, 1)
-      shiftSlots(slot + 1, -1)
-    }
-    return -1
+    open.segments.push({ kind: 'item', item, at })
+    render(true)
   }
 
-  /** Move every open slot at or past `from` by `by`, after an item went in or out ahead of it. */
-  const shiftSlots = (from: number, by: number) => {
-    if (workIndex >= from) workIndex += by
-    if (askedIndex >= from) askedIndex += by
-    if (answerIndex >= from) answerIndex += by
-    if (shownIndex >= from) shownIndex += by
+  /**
+   * The open turn's latest item of `kind` with no words written since it, for
+   * grouping what follows into it; the work done since it was posted stays above
+   * it, so the group moves down to the end. Undefined when there is none.
+   */
+  const groupWith = <K extends ThreadItem['kind']>(kind: K): Extract<ThreadItem, { kind: K }> | undefined => {
+    const open = turn as Turn | null
+    if (!open) return undefined
+    for (let n = open.segments.length - 1; n >= 0; n--) {
+      const seg = open.segments[n]
+      if (isWords(seg)) return undefined
+      if (seg.kind !== 'item') continue
+      if (seg.item.kind !== kind) return undefined
+      open.segments.splice(n, 1)
+      open.segments.push(seg)
+      return seg.item as Extract<ThreadItem, { kind: K }>
+    }
+    return undefined
   }
 
   const openTurn = (e: ThreadEvent): Turn => {
     if (!turn) {
-      turn = { id: String(e.i), startedAt: e.at, segments: [], subagents: new Map(), calls: new Map(), model: view.model?.label, started: e.type === 'turn_started' }
-      workIndex = -1
-      answerIndex = -1
-      askedIndex = -1
-      shownIndex = -1
+      turn = {
+        id: String(e.i),
+        startedAt: e.at,
+        firstStartedAt: e.at,
+        regionStart: -1,
+        segments: [],
+        subagents: new Map(),
+        calls: new Map(),
+        model: view.model?.label,
+        started: e.type === 'turn_started',
+      }
       view.turnStartedAt = e.at
     }
     return turn
@@ -978,10 +1038,15 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
 
   const closeTurn = (e: ThreadEvent, reason: TurnEnd | 'restarted', files?: FileChange[], error?: string) => {
     if (turn) {
-      for (const c of turn.calls.values()) if (c.status === 'in_progress' || c.status === 'pending') c.status = reason === 'end_turn' ? 'completed' : 'failed'
-      for (const s of turn.subagents.values()) if (s.status === 'in_progress' || s.status === 'pending') s.status = reason === 'end_turn' ? 'completed' : 'failed'
+      const t: Turn = turn
+      for (const c of t.calls.values()) if (c.status === 'in_progress' || c.status === 'pending') c.status = reason === 'end_turn' ? 'completed' : 'failed'
+      for (const s of t.subagents.values()) if (s.status === 'in_progress' || s.status === 'pending') s.status = reason === 'end_turn' ? 'completed' : 'failed'
       render(false, e.at)
+      // The turn's last words carry its whole time, beside the model they name.
+      const last = t.regionStart >= 0 ? items.slice(t.regionStart).findLast((x) => x.kind === 'agent') : undefined
+      if (last?.kind === 'agent') last.turnSeconds = Math.max(0, Math.round((e.at - t.firstStartedAt) / 1000))
     }
+    turn = null
     if (files?.length) items.push({ kind: 'changes', id: `changes:${e.i}`, files })
     if (reason === 'cancelled') items.push({ kind: 'stopped', id: `stopped:${e.i}` })
     if (reason === 'restarted') items.push({ kind: 'notice', id: `notice:${e.i}`, text: RESTART_INTERRUPTED })
@@ -995,8 +1060,6 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
             : 'The turn hit its limit and stopped.')
       items.push({ kind: 'error', id: `error:${e.i}`, message })
     }
-    turn = null
-    shownIndex = -1
     ask = undefined
     view.turnStartedAt = undefined
   }
@@ -1004,7 +1067,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   /**
    * Something the human did mid-turn (a steered message, a command) sits
    * between what the agent did before it and what it does after: settle the
-   * part before, and start a fresh work/answer pair after it in the same turn.
+   * part before, and lay out what follows after it, in the same turn.
    */
   const splitTurn = (e: ThreadEvent) => {
     if (!turn) return
@@ -1012,10 +1075,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.id = String(e.i)
     turn.startedAt = e.at
     turn.segments = []
-    workIndex = -1
-    answerIndex = -1
-    askedIndex = -1
-    shownIndex = -1
+    turn.regionStart = -1
   }
 
   /** A call first seen: under its subagent, else in the turn's run of tool calls. */
@@ -1027,19 +1087,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     else {
       const lastSeg = t.segments[t.segments.length - 1]
       if (lastSeg?.kind === 'tools') lastSeg.calls.push(call)
-      else t.segments.push({ kind: 'tools', id: `tools:${e.i}`, calls: [call] })
+      else t.segments.push({ kind: 'tools', id: `tools:${e.i}`, calls: [call], at: e.at })
     }
-  }
-
-  /** A card a turn posts (a review package, the plan, designs): placed as a shown file is, the turn's work above it, its final words below. */
-  const placeCard = (item: ThreadItem) => {
-    const open = turn as Turn | null
-    if (open) {
-      open.segments.push({ kind: 'answered' })
-      render(true)
-    }
-    items.push(item)
-    if (open) shownIndex = items.length - 1
   }
 
   const featureRow = (e: Extract<ThreadEvent, { type: 'feature_acted' }>) => ({
@@ -1076,13 +1125,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           item.starting = true
           startingPrompt = item
         }
-        // A prompt between two turns closes the open answer slot: the next words are a new turn's.
         if (turn) splitTurn(e)
-        else {
-          workIndex = -1
-          answerIndex = -1
-          askedIndex = -1
-        }
         items.push(item)
         view.suggestion = undefined
         break
@@ -1121,7 +1164,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         const t = openTurn(e)
         const lastSeg = t.segments[t.segments.length - 1]
         if (lastSeg?.kind === 'text' && lastSeg.id === e.messageId) lastSeg.text += e.text
-        else t.segments.push({ kind: 'text', id: e.messageId, text: e.text })
+        else t.segments.push({ kind: 'text', id: e.messageId, text: e.text, at: e.at })
         render(true)
         break
       }
@@ -1131,7 +1174,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         if (lastSeg?.kind === 'thought' && lastSeg.id === e.thoughtId) {
           lastSeg.text += e.text
           lastSeg.to = e.at
-        } else t.segments.push({ kind: 'thought', id: e.thoughtId, text: e.text, from: e.at, to: e.at })
+        } else t.segments.push({ kind: 'thought', id: e.thoughtId, text: e.text, at: e.at, to: e.at })
         render(true)
         break
       }
@@ -1158,7 +1201,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           const running = e.status === 'in_progress' || e.status === 'pending'
           if (!running && (shownSubagents.has(e.id) || !e.title)) break
           const t = openTurn(e)
-          const seg: Extract<Segment, { kind: 'subagent' }> = { kind: 'subagent', id: e.id, title: e.title ?? 'Subagent', status: e.status ?? 'in_progress', calls: [] }
+          const seg: Extract<Segment, { kind: 'subagent' }> = { kind: 'subagent', id: e.id, title: e.title ?? 'Subagent', status: e.status ?? 'in_progress', calls: [], at: e.at }
           shownSubagents.add(e.id)
           t.subagents.set(e.id, seg)
           t.segments.push(seg)
@@ -1186,19 +1229,15 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'ask_resolved': {
         const answered = ask?.id === e.id ? ask : undefined
         if (answered) ask = undefined
-        // An answer is part of its turn: the work stays one fold, the answer's lines follow it.
-        if (turn) {
-          const t: Turn = turn
-          if (answered?.kind === 'approval' && e.lines.some((l) => l.denied)) {
-            const call = t.calls.get(answered.call.id)
-            if (call && (call.status === 'pending' || call.status === 'in_progress')) call.status = 'failed'
-          }
-          t.segments.push({ kind: 'answered' })
-          render(true)
+        // An answer is part of its turn: its lines sit where it was answered.
+        if (turn && answered?.kind === 'approval' && e.lines.some((l) => l.denied)) {
+          const call = (turn as Turn).calls.get(answered.call.id)
+          if (call && (call.status === 'pending' || call.status === 'in_progress')) call.status = 'failed'
         }
         e.lines.forEach((l, n) =>
-          items.push({ kind: 'answered', id: `answered:${e.i}:${n}`, what: l.what, answer: l.answer, ...(l.denied ? { denied: true } : {}) }),
+          add({ kind: 'answered', id: `answered:${e.i}:${n}`, what: l.what, answer: l.answer, ...(l.denied ? { denied: true } : {}) }, e.at),
         )
+        if (turn && !e.lines.length) render(true)
         break
       }
       case 'usage': {
@@ -1219,13 +1258,20 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'model': {
         // Picks made with nothing said between them are one change: the divider
         // compares against the model before the first of them.
-        const stacked = items.at(-1)?.kind === 'model'
-        if (stacked) items.pop()
+        const open = turn as Turn | null
+        const lastSeg = open?.segments.at(-1)
+        const stacked = open ? lastSeg?.kind === 'item' && lastSeg.item.kind === 'model' : items.at(-1)?.kind === 'model'
+        if (stacked) {
+          if (open) open.segments.pop()
+          else items.pop()
+        }
         const before = stacked ? modelBeforeDivider : view.model
         if (!stacked) modelBeforeDivider = view.model
         if (before && before.id !== e.model) {
           const effortChanged = !!before.effort && !!e.effort && before.effort !== e.effort
-          items.push({ kind: 'model', id: `model:${e.i}`, model: e.label, ...(effortChanged ? { effort: e.effort } : {}) })
+          add({ kind: 'model', id: `model:${e.i}`, model: e.label, ...(effortChanged ? { effort: e.effort } : {}) }, e.at)
+        } else if (stacked && open) {
+          render(true)
         }
         view.model = { id: e.model, label: e.label, ...(e.effort ? { effort: e.effort } : {}), ...(e.fast !== undefined ? { fast: e.fast } : {}) }
         break
@@ -1238,59 +1284,50 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           const trigger = e.trigger ?? compactionSent
           const before = e.before ?? lastUsed
           compactedItem = { kind: 'compacted', id: `compacted:${e.i}`, ...(trigger ? { trigger } : {}), ...(before !== undefined ? { before } : {}) }
-          items.push(compactedItem)
+          add(compactedItem, e.at)
         }
         compactedSincePrompt = true
         break
       }
       case 'notice':
-        items.push({ kind: 'notice', id: `notice:${e.i}`, text: e.text, ...(e.setting ? { setting: e.setting } : {}) })
+        add({ kind: 'notice', id: `notice:${e.i}`, text: e.text, ...(e.setting ? { setting: e.setting } : {}) }, e.at)
         break
       case 'file_shown': {
-        const open = turn as Turn | null
-        if (open) {
-          open.segments.push({ kind: 'answered' })
+        // Files shown one after another are one group.
+        const group = groupWith('shown')
+        if (group) {
+          group.files.push(e.file)
           render(true)
-        }
-        const group = shownIndex >= 0 ? items[shownIndex] : undefined
-        if (group?.kind === 'shown') group.files.push(e.file)
-        else {
-          items.push({ kind: 'shown', id: `shown:${e.i}`, files: [e.file] })
-          if (open) shownIndex = items.length - 1
-        }
+        } else add({ kind: 'shown', id: `shown:${e.i}`, files: [e.file] }, e.at)
         break
       }
       case 'review_package':
-        placeCard({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId })
+        add({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId }, e.at)
         break
       case 'plan_shown':
-        placeCard({ kind: 'plan_card', id: `plan_card:${e.i}` })
+        add({ kind: 'plan_card', id: `plan_card:${e.i}` }, e.at)
         break
       case 'design_shown': {
         // Designs shown one after another in a turn are one group of cards, as shown files are.
-        const group = turn && shownIndex >= 0 ? items[shownIndex] : undefined
-        if (group?.kind === 'design_cards') {
-          const open = turn as Turn | null
-          open?.segments.push({ kind: 'answered' })
-          render(true)
+        const group = groupWith('design_cards')
+        if (group) {
           group.designIds.push(e.designId)
-        } else placeCard({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] })
+          render(true)
+        } else add({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] }, e.at)
         break
       }
       case 'feature_acted': {
         // Actions one after another in a turn are one card; a feature acted on twice is one row.
-        const card = turn && shownIndex >= 0 ? items[shownIndex] : undefined
-        if (card?.kind === 'features_card') {
-          const open = turn as Turn | null
-          open?.segments.push({ kind: 'answered' })
-          render(true)
+        const card = groupWith('features_card')
+        if (card) {
           const row = card.rows.find((r) => r.featureId === e.featureId)
           if (row) {
             row.actions.push(e.action)
             if (e.quote) row.quote = e.quote
             if (e.into) row.into = e.into
           } else card.rows.push(featureRow(e))
-        } else placeCard({ kind: 'features_card', id: `features_card:${e.i}`, rows: [featureRow(e)] })
+          render(true)
+        } else add({ kind: 'features_card', id: `features_card:${e.i}`, rows: [featureRow(e)] }, e.at)
         break
       }
       case 'title':

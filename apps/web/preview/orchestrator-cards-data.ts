@@ -47,7 +47,6 @@ export const ASK_CUT =
 
 export const CUT_WORK: WorkStep[] = [
   { kind: 'tools', id: 't1', calls: [call('c1', 'mcp__runcastle__get_project_context', 'read')] },
-  { kind: 'narration', id: 'n1', text: 'Nothing in flight overlaps these four. Creating them now.' },
   {
     kind: 'tools',
     id: 't2',
@@ -146,7 +145,6 @@ One question decides the rest: which model should a new chat start on, the last 
 export const RELAYED = 'The last one I picked anywhere.'
 
 export const PARK_WORK: WorkStep[] = [
-  { kind: 'narration', id: 'n2', text: 'Recording that as decision 8. Remembering a model per project is its own feature; parking it.' },
   { kind: 'tools', id: 't4', calls: [call('c10', 'mcp__runcastle__create_feature')] },
 ]
 

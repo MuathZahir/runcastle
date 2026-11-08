@@ -75,11 +75,11 @@ describe('foldThread: shown files', () => {
     expect(kinds(v.items)).toEqual(['user', 'work', 'review_package', 'agent'])
   })
 
-  it('places a plan card and a group of design cards as a review package, the work above and the final words below', () => {
+  it('places a plan card and a group of design cards where they were shown, in order with the work and the words', () => {
     const design = (designId: string): ThreadEventBody => ({ type: 'design_shown', designId })
     const v = foldThread(log(...running, tool('c1'), { type: 'plan_shown' }, tool('c2'), design('d1'), design('d2'), say('m2', 'Have a look.'), { type: 'turn_ended', reason: 'end_turn' }))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'plan_card', 'design_cards', 'agent'])
-    expect(v.items[3]).toMatchObject({ kind: 'design_cards', designIds: ['d1', 'd2'], older: [] })
+    expect(kinds(v.items)).toEqual(['user', 'work', 'plan_card', 'work', 'design_cards', 'agent'])
+    expect(v.items[4]).toMatchObject({ kind: 'design_cards', designIds: ['d1', 'd2'], older: [] })
     expect(v.items[2]).toEqual({ kind: 'plan_card', id: expect.any(String) })
   })
 
@@ -101,11 +101,12 @@ describe('foldThread: shown files', () => {
     ])
   })
 
-  it('keeps the file in view after the work folds, ahead of the final words', () => {
+  it('shows a file where it was shown: the words and work before it above, the words after it below', () => {
     const v = foldThread(log(...running, say('m1', 'Taking a look.'), tool('c1'), shown('a'), say('m2', 'Merge it?'), { type: 'turn_ended', reason: 'end_turn' }))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
-    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
-    expect(v.items[3]).toMatchObject({ text: 'Merge it?' })
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'shown', 'agent'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['tools'])
+    expect(v.items[1]).toMatchObject({ text: 'Taking a look.' })
+    expect(v.items[4]).toMatchObject({ text: 'Merge it?' })
   })
 
   it('shows at once in a running turn, and work after it stays above it in one group', () => {
@@ -116,14 +117,15 @@ describe('foldThread: shown files', () => {
     expect(work(v).steps).toMatchObject([{ kind: 'tools', calls: [{ id: 'c1' }] }, { kind: 'tools', calls: [{ id: 'c2' }] }])
   })
 
-  it('turns words said before the file into narration, not the answer', () => {
+  it('keeps words said before the file in view, above it', () => {
     const v = foldThread(log(...running, say('m1', 'Here it is.'), shown('a'), { type: 'turn_ended', reason: 'end_turn' }))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'shown'])
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'shown'])
   })
 
-  it('lands work above a file logged before its tool call', () => {
-    const v = foldThread(log(...running, shown('a'), tool('c1'), say('m1', 'Done.'), { type: 'turn_ended', reason: 'end_turn' }))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
+  it('shows nothing for the show_file call itself, logged before or after its file', () => {
+    const showFile = (id: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title: 'mcp__runcastle__show_file', status: 'completed' } })
+    const v = foldThread(log(...running, shown('a'), showFile('c1'), say('m1', 'Done.'), showFile('c2'), shown('b'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(kinds(v.items)).toEqual(['user', 'shown', 'agent', 'shown'])
   })
 
   it('starts a new group after a steered message, and in the next turn', () => {
@@ -165,33 +167,63 @@ describe('foldThread: words put to the human never fold away', () => {
     expect(kinds(v.items)).toEqual(['user', 'agent'])
   })
 
-  it('shows a question asked mid-turn after the fold, ahead of the final words', () => {
+  it('shows a question asked mid-turn where it was asked, before the work that followed it', () => {
     const v = foldThread(log(...running, say('m1', 'Which model should approvals use?'), call('c1', 'Bash'), say('m2', 'Done.'), end))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'agent', 'agent'])
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'agent'])
     expect(said(v)).toEqual(['Which model should approvals use?', 'Done.'])
     expect(work(v).steps.map((s) => s.kind)).toEqual(['tools'])
   })
 
-  it('still folds narration that asks nothing', () => {
+  it('keeps words that ask nothing in view too: no word is ever inside a fold', () => {
     const v = foldThread(log(...running, say('m1', 'Running the tests.'), call('c1', 'Bash'), say('m2', 'Done.'), end))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
-    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'agent'])
+    expect(said(v)).toEqual(['Running the tests.', 'Done.'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['tools'])
   })
 
-  it('keeps the work above a question while the turn runs on', () => {
+  it('gives each run of work between words its own fold while the turn runs on, only the newest live', () => {
     const v = foldThread(log(...running, say('m1', 'Should I keep the old route?'), call('c1', 'Bash'), say('m2', 'Meanwhile, tidying.'), call('c2', 'Edit')))
     expect(v.state).toBe('working')
-    expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
-    expect(said(v)).toEqual(['Should I keep the old route?'])
-    expect(work(v).steps.map((s) => s.kind)).toEqual(['tools', 'narration', 'tools'])
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'agent', 'work'])
+    expect(said(v)).toEqual(['Should I keep the old route?', 'Meanwhile, tidying.'])
+    expect([work(v, 0).live, work(v, 1).live]).toEqual([undefined, true])
   })
 
-  it('leaves a shown file between the work and the final words', () => {
+  it('leaves a shown file between the words before it and the words after it', () => {
     const file: ShownFile = { id: 'a', src: '/f/a.png', name: 'a.png', path: 'a.png', size: 1, as: 'image' }
     const v = foldThread(log(...running, say('m1', 'Taking a look.'), call('c1', 'mcp__runcastle__show_file'), { type: 'file_shown', file }, say('m2', 'Merge it?'), end))
-    expect(kinds(v.items)).toEqual(['user', 'work', 'shown', 'agent'])
-    expect(work(v).steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
-    expect(said(v)).toEqual(['Merge it?'])
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'shown', 'agent'])
+    expect(said(v)).toEqual(['Taking a look.', 'Merge it?'])
+  })
+
+  it('a run between words has its own time, from its first step to the words after it', () => {
+    const v = foldThread(
+      log(...running, [10_000, say('m1', 'Looking.')], [12_000, call('c1', 'Read')], [20_000, call('c2', 'Bash')], [42_000, say('m2', 'Testing.')], [43_000, call('c3', 'Bash')], [90_000, say('m3', 'Done.')], [91_000, end]),
+    )
+    expect([work(v, 0).seconds, work(v, 1).seconds]).toEqual([30, 47])
+  })
+
+  it("the turn's last words carry the turn's whole time once it ends; earlier words carry none", () => {
+    const events = log(prompt('p1'), [5_000, { type: 'turn_started' }], [6_000, say('m1', 'Looking.')], [7_000, call('c1', 'Read')], [9_000, say('m2', 'Done.')])
+    const live = foldThread(events)
+    expect(live.items.filter((x) => x.kind === 'agent').map((x) => x.kind === 'agent' && x.turnSeconds)).toEqual([undefined, undefined])
+    const settled = foldThread([...events, { i: 5, at: 65_000, type: 'turn_ended', reason: 'end_turn' }])
+    expect(settled.items.filter((x) => x.kind === 'agent').map((x) => x.kind === 'agent' && x.turnSeconds)).toEqual([undefined, 60])
+  })
+
+  it('a run that is only thinking is a run of its own between two stretches of words', () => {
+    const v = foldThread(log(...running, say('m1', 'First.'), { type: 'thought', thoughtId: 't1', text: 'Hmm.' }, say('m2', 'Second.'), end))
+    expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'agent'])
+    expect(work(v).steps.map((s) => s.kind)).toEqual(['thought'])
+  })
+
+  it('keeps every id stable while the turn streams, so what is open stays open', () => {
+    const base = [...running, say('m1', 'Look'), call('c1', 'Read'), say('m2', 'Then')]
+    const ids = (v: ReturnType<typeof foldThread>) => v.items.map((x) => x.id)
+    const a = foldThread(log(...base))
+    const b = foldThread(log(...base, { type: 'agent_text', messageId: 'm2', text: ' more' }, call('c2', 'Bash'), end))
+    expect(ids(b).slice(0, ids(a).length)).toEqual(ids(a))
+    expect(new Set(ids(b)).size).toBe(ids(b).length)
   })
 })
 
@@ -318,7 +350,7 @@ describe('foldThread', () => {
     expect(v.cursor).toBe(5)
   })
 
-  it('trailing words are the answer; words before a tool call become narration in the work', () => {
+  it('words before a tool call are their own message; the run after them settles the moment words follow it', () => {
     const events = log(
       prompt('p1'),
       { type: 'turn_started' },
@@ -328,20 +360,20 @@ describe('foldThread', () => {
       { type: 'agent_text', messageId: 'm2', text: 'Done.' },
     )
     const live = foldThread(events)
-    expect(kinds(live.items)).toEqual(['user', 'work', 'agent'])
-    const work = live.items[1] as Extract<ThreadItem, { kind: 'work' }>
-    expect(work.live).toBe(true)
-    expect(work.steps.map((s) => s.kind)).toEqual(['narration', 'tools'])
+    expect(kinds(live.items)).toEqual(['user', 'agent', 'work', 'agent'])
+    const work = live.items[2] as Extract<ThreadItem, { kind: 'work' }>
+    expect(work.live).toBeUndefined()
+    expect(work.seconds).toBe(2)
+    expect(work.steps.map((s) => s.kind)).toEqual(['tools'])
     expect(live.state).toBe('working')
 
     const settled = foldThread([...events, { i: 6, at: 223_000, type: 'turn_ended', reason: 'end_turn' }])
-    const w = settled.items[1] as Extract<ThreadItem, { kind: 'work' }>
-    expect(w.live).toBeUndefined()
-    expect(w.seconds).toBe(222)
-    expect(settled.items[2]).toMatchObject({ kind: 'agent', text: 'Done.' })
+    expect(settled.items).toEqual(live.items.map((x) => (x.kind === 'agent' && x.text === 'Done.' ? { ...x, turnSeconds: 222 } : x)))
+    expect(settled.items[1]).toMatchObject({ kind: 'agent', text: 'Let me look.' })
+    expect(settled.items[3]).toMatchObject({ kind: 'agent', text: 'Done.', turnSeconds: 222 })
   })
 
-  it('streaming words show as the answer until a tool call turns them into narration', () => {
+  it('streaming words never move: a tool call after them opens a live run below them', () => {
     const before = foldThread(log(prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'Checking' }))
     expect(kinds(before.items)).toEqual(['user', 'agent'])
     const after = foldThread(
@@ -352,7 +384,9 @@ describe('foldThread', () => {
         { type: 'tool', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'in_progress' } },
       ),
     )
-    expect(kinds(after.items)).toEqual(['user', 'work'])
+    expect(kinds(after.items)).toEqual(['user', 'agent', 'work'])
+    expect(after.items[1].id).toBe(before.items[1].id)
+    expect((after.items[2] as Extract<ThreadItem, { kind: 'work' }>).live).toBe(true)
   })
 
   it('consecutive tool calls share a step; a subagent collects its own calls', () => {
@@ -459,7 +493,7 @@ describe('foldThread', () => {
     ])
     expect(answered.state).toBe('working')
     expect(answered.ask).toBeUndefined()
-    expect(kinds(answered.items)).toEqual(['user', 'work', 'answered', 'agent'])
+    expect(kinds(answered.items)).toEqual(['user', 'agent', 'work', 'answered', 'agent'])
   })
 
   it('a turn with approvals folds as one turn: each approved command is one row that settles, and no row is blank', () => {
@@ -484,23 +518,26 @@ describe('foldThread', () => {
       ...approved(3, 'git init').slice(0, 4),
       { type: 'agent_text', messageId: 'm2', text: 'All set.' },
     )
+    // Before the words after it, the run stays live with its approved command running, its answers below it.
+    const running = foldThread(events.slice(0, -1))
+    expect(kinds(running.items)).toEqual(['user', 'agent', 'work', 'answered', 'answered', 'answered'])
+    expect((running.items[2] as Extract<ThreadItem, { kind: 'work' }>).live).toBe(true)
+
     const live = foldThread(events)
-    expect(kinds(live.items)).toEqual(['user', 'work', 'answered', 'answered', 'answered', 'agent'])
-    const running = live.items[1] as Extract<ThreadItem, { kind: 'work' }>
-    expect(running.live).toBe(true)
+    expect(kinds(live.items)).toEqual(['user', 'agent', 'work', 'answered', 'answered', 'answered', 'agent'])
 
     const settled = foldThread([...events, { i: events.length, at: 99_000, type: 'turn_ended', reason: 'end_turn' }])
-    expect(kinds(settled.items)).toEqual(['user', 'work', 'answered', 'answered', 'answered', 'agent'])
-    const work = settled.items[1] as Extract<ThreadItem, { kind: 'work' }>
+    expect(kinds(settled.items)).toEqual(['user', 'agent', 'work', 'answered', 'answered', 'answered', 'agent'])
+    const work = settled.items[2] as Extract<ThreadItem, { kind: 'work' }>
     expect(work.live).toBeUndefined()
-    expect(work.steps.map((s) => s.kind)).toEqual(['narration', 'tools', 'tools', 'tools'])
+    expect(work.steps.map((s) => s.kind)).toEqual(['tools', 'tools', 'tools'])
     const calls = work.steps.flatMap((s) => (s.kind === 'tools' ? s.calls : []))
     expect(calls.map((c) => [c.title, c.status])).toEqual([
       ['bun install', 'completed'],
       ['bun run build', 'completed'],
       ['git init', 'completed'],
     ])
-    expect(settled.items[5]).toMatchObject({ kind: 'agent', text: 'All set.' })
+    expect(settled.items[6]).toMatchObject({ kind: 'agent', text: 'All set.' })
   })
 
   it("an approval whose call never surfaced is the call's row, and its later updates keep the approval's title", () => {

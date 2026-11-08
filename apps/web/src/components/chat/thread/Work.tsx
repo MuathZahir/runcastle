@@ -16,7 +16,6 @@ import {
   IconTrash,
 } from '../../../icons'
 import { BARE_BUTTON, Spinner, cx } from '../../../ui'
-import { Markdown } from '../../Markdown'
 import { INSET, WELL } from './surfaces'
 
 const KIND_ICON: Record<ToolKind, (p: { size?: number; className?: string }) => ReactNode> = {
@@ -211,8 +210,6 @@ function Steps({ steps }: { steps: WorkStep[] }) {
             return <Calls key={s.id} calls={s.calls} />
           case 'thought':
             return <Thought key={s.id} seconds={s.seconds} text={s.text} />
-          case 'narration':
-            return <Markdown key={s.id} source={s.text} size="sm" tone="secondary" className="my-1.5" breaks />
           case 'subagent':
             return <Subagent key={s.id} title={s.title} status={s.status} calls={s.calls} />
         }
