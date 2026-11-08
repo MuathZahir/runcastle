@@ -5,7 +5,7 @@ import { cx, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { WORKER_STATUS_WORDS, workerGroups, workerStatusWhy } from '../lib/workers'
+import { OLD_CHAT_WORDS, WORKER_STATUS_WORDS, workerGroups, workerStatusWhy } from '../lib/workers'
 import type { WorkerEntry } from '../lib/workers'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
@@ -712,10 +712,10 @@ export function SidebarThreadList({
  * A worker's 12px mark on its row's second line, where a feature row shows its
  * progress glyph: a chat bubble waiting on you, a spinner working, a clock
  * queued, a red alert failed, an arrow handed back, the merge glyph landed, a
- * cross dropped, a lock for an old side chat's read-only transcript.
+ * cross dropped, a lock for an old chat's read-only transcript.
  */
-export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'oldSideChat'> }) {
-  if (worker.oldSideChat) return <IconLock size={12} className="shrink-0 text-icon" />
+export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'old'> }) {
+  if (worker.old) return <IconLock size={12} className="shrink-0 text-icon" />
   switch (worker.status) {
     case 'needs-you':
       return <IconMessage size={12} className="shrink-0 text-icon" />
@@ -757,9 +757,9 @@ export function SidebarWorkerItem({
 }) {
   const w = worker
   const why = workerStatusWhy(w)
-  const words = w.oldSideChat ? 'Old side chat' : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
-  const asks = !w.oldSideChat && (w.status === 'needs-you' || w.status === 'failed')
-  const quiet = w.oldSideChat || !(asks || w.status === 'working')
+  const words = w.old ? OLD_CHAT_WORDS[w.old] : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
+  const asks = !w.old && (w.status === 'needs-you' || w.status === 'failed')
+  const quiet = !!w.old || !(asks || w.status === 'working')
   return (
     <TwoLineRow
       title={w.label}
@@ -767,9 +767,9 @@ export function SidebarWorkerItem({
       glyph={<WorkerMark worker={w} />}
       words={words}
       wordsClassName={cx(
-        !w.oldSideChat && w.status === 'working' && 'text-shimmer',
-        !w.oldSideChat && w.status === 'needs-you' && 'text-text-secondary',
-        !w.oldSideChat && w.status === 'failed' && 'text-danger-text',
+        !w.old && w.status === 'working' && 'text-shimmer',
+        !w.old && w.status === 'needs-you' && 'text-text-secondary',
+        !w.old && w.status === 'failed' && 'text-danger-text',
       )}
       aside={w.updatedAt > 0 ? relTime(w.updatedAt) : undefined}
       {...(asks ? { dot: w.status === 'failed' ? ('danger' as const) : ('warning' as const) } : {})}

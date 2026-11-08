@@ -1,23 +1,14 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project, SessionRow } from '@runcastle/core'
-import { sessionDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { GateError } from '../src/errors'
 import { renderDriveFixPrompt } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
-import { launchDriveFixSession, launchSession } from '../src/launcher/launcher'
-import {
-  createSessionRow,
-  getSessionRow,
-  markSessionEnded,
-  markSessionLive,
-} from '../src/launcher/sessions'
+import { createSessionRow } from '../src/launcher/sessions'
 import { toolRetryDrive } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import {
   __resetTestDriveState,
@@ -29,8 +20,7 @@ import { openProject } from '../src/services/projects'
 import { getProjectById } from '../src/services/repo'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature } from './helpers/fixtures'
-import { acpLaunchOf, briefOf, promptsOf } from './support/thread-launch'
+import { seedDriveWorker, seedFeature } from './helpers/fixtures'
 
 /**
  * The drive-fix session (multi-service decision 9): the one click between a
@@ -62,168 +52,23 @@ async function initRepo(dir: string): Promise<void> {
   await g.commit('initial commit')
 }
 
-describe('launching a drive-fix session', () => {
-  let ctx: AppCtx
-  let project: Project
-  let feature: Feature
-  let restoreDataDir: () => void
+describe("a Fix-drive worker's edit guard", () => {
+  const guard = (filePath: string): ReturnType<typeof evaluateEditGuard> =>
+    evaluateEditGuard({
+      kind: 'drive-fix',
+      worktreePath: '/repo',
+      toolName: 'Write',
+      filePath,
+      featureSlug: 'drivefix',
+    })
 
-  beforeEach(async () => {
-    restoreDataDir = useDataDir(mkTmp('rc-home-'))
-    ctx = await makeTestCtx()
-    const repo = mkTmp('rc-drivefix-')
-    await initRepo(repo)
-    project = await openProject(ctx, repo)
-    feature = seedFeature(ctx, project.id, { slug: 'drivefix', title: 'Billing rewrite' })
-    await createFeatureBranch(project, feature.slug, 'main')
-  })
-
-  afterEach(() => {
-    __resetTestDriveState()
-    restoreDataDir()
-    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
-  })
-
-  /** Establish a prepared value the way `record_finding` does, and re-read the project. */
-  function record(key: 'driveSetupCommand' | 'devCommand', value: string): void {
-    recordFinding(ctx, project.id, { key, value, source: 'session' })
-    const fresh = getProjectById(ctx, project.id)
-    if (fresh) project = fresh
-  }
-
-  /** Start a drive whose setup command fails — the state a fix session is born into. */
-  async function failedDrive(): Promise<void> {
-    record('driveSetupCommand', 'echo could-not-reach-postgres && exit 3')
-    const start = await testDrive(ctx, project, feature, 'start')
-    expect(start.hookFailure?.command).toContain('exit 3')
-  }
-
-  function launched(): Promise<{ sessionId: string }> {
-    return launchDriveFixSession(ctx, { featureId: feature.id }, { spawn: false })
-  }
-
-  /**
-   * Every "Fix drive" click used to be a COLD start — `launchDriveFixSession`
-   * passed no `resumeSessionId` at all — so an agent on its third attempt
-   * re-theorised the same failure with no memory of the two fixes it had
-   * already tried.
-   */
-  it('reopens the previous drive-fix thread instead of re-theorising cold, and says the errand into it', async () => {
-    await failedDrive()
-    const first = await launched()
-    markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-fix-1' })
-    markSessionEnded(ctx, first.sessionId)
-
-    const again = await launched()
-
-    expect(again).toEqual({ sessionId: first.sessionId, resumed: true })
-    expect(getSessionRow(ctx, first.sessionId)?.ccSessionId).toBe('cc-fix-1')
-    // Every click is an errand: each says the drive-fix kickoff as runcastle's prompt.
-    expect(promptsOf(first.sessionId).map((p) => p.source)).toEqual(['runcastle', 'runcastle'])
-    expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'session.resumed')).toBe(true)
-  })
-
-  it('runs host-side in the real checkout, scoped to the feature whose drive failed', async () => {
-    await failedDrive()
-
-    const { sessionId } = await launched()
-    const session = getSessionRow(ctx, sessionId) as SessionRow
-
-    expect(session.kind).toBe('drive-fix')
-    expect(session.featureId).toBe(feature.id)
-    // No talk worktree: the environment that broke is this machine's, and the
-    // failed drive left the feature branch checked out right here.
-    expect(session.worktreePath).toBe(project.repoPath)
-  })
-
-  it('may write the drive machinery in that checkout, and nothing else', async () => {
-    await failedDrive()
-    const { sessionId } = await launched()
-    const session = getSessionRow(ctx, sessionId) as SessionRow
-
-    const guard = (filePath: string): ReturnType<typeof evaluateEditGuard> =>
-      evaluateEditGuard({
-        kind: session.kind,
-        worktreePath: session.worktreePath,
-        toolName: 'Write',
-        filePath,
-        featureSlug: feature.slug,
-      })
-
+  it('may write the drive machinery in the checkout, and nothing else', () => {
     expect(guard('.runcastle/drive-setup.sh')).toBeNull()
     expect(guard('.gitignore')).toBeNull()
     expect(guard('src/index.ts')?.reason).toContain('drive machinery')
-    // The guard is a hook, not a sentence in the briefing — it has to be
-    // registered in the settings the thread's process starts with.
-    const spec = await acpLaunchOf(ctx, sessionId)
-    const settingsPath = spec.files.find((f) => f.endsWith('settings.json')) as string
-    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { hooks: Record<string, unknown> }
-    expect(settings.hooks.PreToolUse).toBeDefined()
-  })
-
-  it('briefs the session with the failure, the delta and the drive.env keys', async () => {
-    record('driveSetupCommand', 'exit 3')
-    // A real branch delta: the fix agent's first question is what changed.
-    const g = simpleGit(project.repoPath)
-    await g.checkout('feature/drivefix')
-    writeFileSync(join(project.repoPath, 'compose.yml'), 'services: {}\n')
-    await g.add(['compose.yml'])
-    await g.commit('add a service')
-    await g.checkout('main')
-
-    await testDrive(ctx, project, feature, 'start')
-    const { sessionId } = await launched()
-    const prompt = await briefOf(ctx, sessionId)
-
-    expect(prompt).toContain('exit 3')
-    expect(prompt).toContain('compose.yml')
-    expect(prompt).toContain('feature/drivefix')
-  })
-
-  it('emits a launch event on the feature timeline', async () => {
-    await failedDrive()
-    const { sessionId } = await launched()
-
-    const launching = listAfter(ctx, feature.id, 0).find(
-      (e) => e.type === 'session.launching' && e.data?.sessionId === sessionId,
-    )
-    expect(launching?.data?.kind).toBe('drive-fix')
-    expect(launching?.message).toContain('drive-fix')
-  })
-
-  it('refuses when no drive of this feature has failed', async () => {
-    await expect(launched()).rejects.toBeInstanceOf(GateError)
-
-    // A drive that came up fine is not something to fix either.
-    record('driveSetupCommand', 'echo up')
-    expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
-    await expect(launched()).rejects.toThrow(/no failed drive/)
-  })
-
-  // One main chat thread per feature; a Fix-it thread runs beside it.
-  it('opens beside the feature’s main chat', async () => {
-    await failedDrive()
-    const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' })
-    markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
-
-    const { sessionId } = await launched()
-    expect(getSessionRow(ctx, sessionId)?.kind).toBe('drive-fix')
-  })
-
-  it('cannot start its process once the drive no longer fails', async () => {
-    await failedDrive()
-    const { sessionId } = await launched()
-    await testDrive(ctx, project, feature, 'stop')
-
-    await expect(acpLaunchOf(ctx, sessionId)).rejects.toThrow(/no failed drive/)
-  })
-
-  it('is not reachable through the ordinary talk-session door', async () => {
-    await expect(
-      launchSession(ctx, { featureId: feature.id, kind: 'drive-fix' }, { spawn: false }),
-    ).rejects.toThrow(/Fix drive/)
   })
 })
+
 
 describe('retry_drive', () => {
   let ctx: AppCtx
@@ -255,8 +100,8 @@ describe('retry_drive', () => {
     })
   }
 
-  it('is refused outside a drive-fix session, with a reason that says where drives come from', async () => {
-    await expect(toolRetryDrive(ctx, session('chat'))).rejects.toThrow(/drive-fix session/)
+  it('is refused outside the Fix-drive worker, with a reason that says where drives come from', async () => {
+    await expect(toolRetryDrive(ctx, session('chat'))).rejects.toThrow(/belongs to the Fix-drive worker/)
   })
 
   it('stops the held failed drive, starts a fresh one and reports what it saw', async () => {
@@ -269,7 +114,7 @@ describe('retry_drive', () => {
     await testDrive(ctx, project, feature, 'start')
     expect(activeDriveInfo(project.id)?.hookFailure).toBeDefined()
 
-    const retry = await toolRetryDrive(ctx, session('drive-fix'))
+    const retry = await toolRetryDrive(ctx, seedDriveWorker(ctx, { feature }, 'fix-drive', project.repoPath))
 
     expect(retry.stopped).toBe(true)
     expect(retry.ok).toBe(true)
@@ -289,7 +134,7 @@ describe('retry_drive', () => {
     })
     project = getProjectById(ctx, project.id) as Project
 
-    const retry = await toolRetryDrive(ctx, session('drive-fix'))
+    const retry = await toolRetryDrive(ctx, seedDriveWorker(ctx, { feature }, 'fix-drive', project.repoPath))
 
     expect(retry.stopped).toBe(false)
     expect(retry.ok).toBe(true)

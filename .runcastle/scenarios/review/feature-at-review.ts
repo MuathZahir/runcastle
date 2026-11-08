@@ -130,6 +130,7 @@ async function main(): Promise<void> {
       .values({
         id: review.id,
         featureId: feature.id,
+        projectId: feature.projectId,
         label: 'Review',
         purpose: 'Drives the feature for review',
         kind: 'review',

@@ -22,7 +22,7 @@ import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { FeatureSidebar } from './workers/FeatureSidebar'
 import { useThreadActions } from '../lib/use-thread'
-import { UNSTARTED_CHAT } from '../lib/chat-sessions'
+import { UNSTARTED_CHAT, standIn } from '../lib/chat-sessions'
 import {
   IconArchive,
   IconClock,
@@ -60,6 +60,7 @@ import {
   SidebarBackdrop,
   SidebarStatusLine,
   SidebarThreadList,
+  SidebarWorkerItem,
   WorkingShelf,
 } from './SidebarParts'
 import { RenameThreadDialog } from './chat/thread/RenameThreadDialog'
@@ -393,6 +394,18 @@ export function Sidebar(props: SidebarProps) {
               ? {
                   onNewThread: projectThreads.newThread,
                   threads: (
+                    <>
+                    {/* The project's own workers, a project drive's Scenarios worker, above its chats (drive-chats-become-workers decision 2). */}
+                    {projectThreads.workers?.map((w) => (
+                      <SidebarWorkerItem
+                        key={w.id}
+                        worker={w}
+                        active={w.id === projectThreads.current}
+                        onSelect={projectThreads.pick}
+                        actions={threadActionsFor(standIn(w.id, w.label, 'worker'))}
+                        nested
+                      />
+                    ))}
                     <SidebarThreadList
                       label="Chats"
                       threads={sidebarThreadOrder(projectThreads.threads)}
@@ -414,6 +427,7 @@ export function Sidebar(props: SidebarProps) {
                       }}
                       {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
                     />
+                    </>
                   ),
                   folded: fold.folded(orchestratorFold),
                   onToggleThreads: () => fold.toggle(orchestratorFold),

@@ -1,11 +1,6 @@
 import { FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
-import {
-  endSession,
-  launchDriveFixSession,
-  launchScenarioSession,
-  launchSession,
-} from '../../launcher/launcher'
+import { endSession, launchSession } from '../../launcher/launcher'
 import { listFeatureSessions } from '../../services/conversations'
 import { setDependencies, setUpNext } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
@@ -15,6 +10,7 @@ import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
 import { listRounds } from '../../services/runs'
+import { startDriveWorker } from '../../workers/drive'
 import { publicProcedure, router } from '../context'
 
 export const featureRouter = router({
@@ -91,12 +87,13 @@ export const featureRouter = router({
     .mutation(({ ctx, input: { holdOpening, ...input } }) => launchSession(ctx, input, { holdOpening })),
 
   // "Fix drive" — the one click that turns a failed drive into an agent already
-  // holding the failure (multi-service decision 9). Its own door rather than a
-  // `kind` on launchSession: the session runs in the real checkout beside the
-  // failed drive, and is refused when there is no failure to work from.
+  // holding the failure (multi-service decision 9): the feature's Fix-drive
+  // worker, started or resumed (drive-chats-become-workers decision 5). It runs
+  // in the real checkout beside the failed drive, and is refused when there is
+  // no failure to work from.
   fixDrive: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
+    .mutation(({ ctx, input }) => startDriveWorker(ctx, { kind: 'fix-drive', featureId: input.featureId })),
 
   // The feature's sessions (decision 10): the main chat and a live scenario
   // chat. Side chats are retired (interactive-workers decision 7); the old ones
@@ -203,7 +200,8 @@ export const featureRouter = router({
     .input(z.object({ projectId: z.string(), request: FilledHttpRequest }))
     .mutation(({ ctx, input }) => sendDriveCall(ctx, input.projectId, input.request)),
 
-  // ＋ New scenario / Fix it: the `scenario` session docked beside the drive.
+  // ＋ New scenario / Fix it: the drive owner's Scenarios worker, started or
+  // resumed and docked beside the drive (drive-chats-become-workers decisions 2, 5).
   openScenarioChat: publicProcedure
     .input(
       z.object({
@@ -212,7 +210,7 @@ export const featureRouter = router({
         fixFile: z.string().optional(),
       }),
     )
-    .mutation(({ ctx, input }) => launchScenarioSession(ctx, input)),
+    .mutation(({ ctx, input }) => startDriveWorker(ctx, { kind: 'scenario', ...input })),
 
   // How many commits the branch actually carries over its merge target, for the
   // review summary and the merge confirmation (findings F23). Its own query

@@ -6,7 +6,9 @@ import { IconOrchestrator } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { PageTopbar } from '../ui'
 import { backInApp } from '../lib/use-history-sync'
-import { NEW_CHAT_NAME, UNSTARTED_CHAT, scenarioChatLabel, standIn, withStandIns } from '../lib/chat-sessions'
+import { NEW_CHAT_NAME, UNSTARTED_CHAT, standIn, withStandIns } from '../lib/chat-sessions'
+import { SCENARIOS_LABEL, workerEntry } from '../lib/workers'
+import { useProjectWorkers, useWorkerHeader, workerColumnProps } from './workers/WorkerChat'
 import { useToast } from '../lib/toast'
 import { orchestratorLanding, usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { useAddressedThread, useThreadInUrl } from '../lib/use-history-sync'
@@ -104,6 +106,8 @@ export function ProjectWorkspace({
   // live signal (lib/live.ts).
   const listQ = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const listed = listQ.data ?? []
+  // The project's own workers: a project drive's Scenarios worker (drive-chats-become-workers decision 2).
+  const workers = useProjectWorkers(projectId)
   // Same key the sidebar polls: a chat holding features counts as active.
   const featuresQ = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const fallback = talk.session?.id ?? null
@@ -115,7 +119,7 @@ export function ProjectWorkspace({
   } = useAddressedThread<undefined>(
     undefined,
     listQ.data
-      ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id)
+      ? (id) => id === fallback || id === drive?.scenarioSessionId || listed.some((t) => t.id === id) || workers.some((w) => w.id === id)
       : null,
   )
   // The same key the Notes card reads, so knowing whether to offer it is free.
@@ -149,15 +153,17 @@ export function ProjectWorkspace({
   const allChats = conversations || listing
   const inView = allChats ? null : inFront
   useThreadInUrl(opening ? undefined : inView)
-  // The sidebar and the header always name what is in front, before the list has it.
+  // The project's Scenarios worker in front: its row once `worker.listProject` has it.
+  const workerRow = inFront ? workers.find((w) => w.id === inFront) : undefined
+  const workerFront = !!inFront && (!!workerRow || inFront === scenarioChat.sessionId)
+  // The sidebar and the header always name what is in front, before the list
+  // has it; a worker is listed as a worker, never as a chat.
   const threads = withStandIns(
     listed,
     inFront
-      ? [
-          inFront === scenarioChat.sessionId
-            ? standIn(inFront, scenarioChatLabel(scenarioChat.errand), 'scenario')
-            : standIn(inFront, NEW_CHAT_NAME, 'project'),
-        ]
+      ? workerFront
+        ? []
+        : [standIn(inFront, NEW_CHAT_NAME, 'project')]
       : unstarted
         ? [standIn(UNSTARTED_CHAT, NEW_CHAT_NAME, 'project')]
         : [],
@@ -270,6 +276,8 @@ export function ProjectWorkspace({
         ? ({ state: 'idle', branch: branchesQ.data?.current ?? '', holderLabel: '', devReady: false, devConfigured: true } as SlotDrive)
         : null))
   const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
+  const workerHeader = useWorkerHeader(workerRow ? { kind: 'worker', row: workerRow } : null)
+  const workerProps = workerRow ? workerColumnProps({ kind: 'worker', row: workerRow }, workerRow.featureBranch) : null
   // The Orchestrator's chats live in the sidebar, under its card
   // (threads-in-the-sidebar); its "All N conversations" is the Conversations page.
   usePublishSidebarThreads({
@@ -284,10 +292,15 @@ export function ProjectWorkspace({
     ...(scenarioChat.sessionId && scenarioChat.listed
       ? { errand: { threadId: scenarioChat.sessionId, close: scenarioChat.close } }
       : {}),
+    workers: workers.map(workerEntry),
     ...(onOpenConversations ? { allConversations: onOpenConversations } : {}),
   })
   // An unstarted project's one action is its Start button: the header names nothing more.
-  const inFrontTitle = inFront ? threads.find((t) => t.id === inFront)?.title : undefined
+  const inFrontTitle = !inFront
+    ? undefined
+    : workerFront
+      ? (workerRow?.label ?? SCENARIOS_LABEL)
+      : threads.find((t) => t.id === inFront)?.title
 
   const panelView = (view: PanelView) => {
     switch (view) {
@@ -358,8 +371,10 @@ export function ProjectWorkspace({
           ...(allChats ? [{ label: 'Chats' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
         ]}
         trail
+        {...(workerHeader ? { status: workerHeader.status } : {})}
         actions={
           <>
+            {workerHeader?.actions}
             {!unstarted && <ProjectDriveButton
               card={driveCard}
               starting={projectDrive.starting}
@@ -387,13 +402,15 @@ export function ProjectWorkspace({
               {allChats && !chatHidden && <ConversationsPage threads={listed} pending={listQ.isPending} onOpen={open} />}
               {!allChats && opening && !chatHidden && <ThreadOpening />}
               {!allChats && inFront && !chatHidden &&
-                (scenarioInFront ? (
+                (workerFront ? (
+                  // The project drive's Scenarios worker, with the worker's assignment card and foot.
                   <ThreadColumn
                     key={inFront}
-                    label="Scenario chat"
+                    label="Worker"
                     threadId={inFront}
                     onOpenThread={open}
-                    emptyHint={scenarioErrandHint(scenarioChat.errand)}
+                    {...workerProps}
+                    emptyHint={scenarioInFront ? scenarioErrandHint(scenarioChat.errand) : (workerProps?.emptyHint ?? '')}
                   />
                 ) : (
                   <ProjectChat

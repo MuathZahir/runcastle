@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FeatureFull } from '../../lib/api'
-import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, scenarioChatLabel, standIn, withStandIns } from '../../lib/chat-sessions'
+import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, standIn, withStandIns } from '../../lib/chat-sessions'
+import { SCENARIOS_LABEL } from '../../lib/workers'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { mainChatInbox, subscribeInbox } from '../../lib/composer-inbox'
 import { featureChat } from '../../lib/feature-ui'
@@ -42,10 +43,10 @@ export interface FeatureChatColumn {
 
 /**
  * The feature page's chat column (chat-as-web-components decision 7): every
- * thread of the feature — its lead's chat, its workers, old side chats,
- * scenario and Fix-it chats — listed in the sidebar, one in front. An
- * errand's open, or a new worker, brings its thread to the front; closing the
- * errand hands the column back to the main chat. A Select area crop for the
+ * thread of the feature — its lead's chat, its workers (the drive's Fix-drive
+ * and Scenarios workers among them), old side and drive chats — listed in the
+ * sidebar, one in front. A drive button, or a new worker, brings its thread to
+ * the front; closing the errand hands the column back to the main chat. A Select area crop for the
  * main chat brings it to the front too.
  */
 export function useFeatureChatColumn({
@@ -98,11 +99,7 @@ export function useFeatureChatColumn({
   const threads = withStandIns(listed, [
     standIn(main ?? UNSTARTED_CHAT, NEW_CHAT_NAME, 'main'),
     ...(inFront && inFront !== main
-      ? [
-          inFront === scenario.sessionId
-            ? standIn(inFront, scenarioChatLabel(scenario.errand), 'scenario')
-            : standIn(inFront, NEW_CHAT_NAME, 'worker'),
-        ]
+      ? [standIn(inFront, inFront === scenario.sessionId ? SCENARIOS_LABEL : NEW_CHAT_NAME, 'worker')]
       : []),
   ])
 

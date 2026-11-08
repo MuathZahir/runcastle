@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { foldThread, type ThreadEvent, type ThreadEventBody } from '@runcastle/core'
+import { foldThread, type SessionRow, type ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import {
   createSessionRow,
@@ -13,6 +13,7 @@ import {
   markSessionLive,
   setThreadPurpose,
 } from '../src/launcher/sessions'
+import { acpLaunchInput } from '../src/threads/launch'
 import threadsApp from '../src/routes/threads'
 import { subscribeLive } from '../src/services/bus'
 import { setWaiting } from '../src/services/lead-status'
@@ -159,7 +160,7 @@ describe('thread router', () => {
     const list = await caller.thread.list({ featureId })
     expect(list.map((t) => [t.id, t.role])).toEqual([
       [main, 'main'],
-      [scenario, 'scenario'],
+      [scenario, 'old-drive-chat'],
     ])
     expect(list[0]).toMatchObject({ title: 'Fix the login page', state: 'idle', runtime: 'claude-code' })
     expect(list[0]).not.toHaveProperty('readOnlyTranscript')
@@ -169,6 +170,20 @@ describe('thread router', () => {
     expect(list[1]!.createdAt).toBeLessThanOrEqual(list[0]!.createdAt)
     expect(list[0]!.createdAt).toBeLessThan(list[0]!.updatedAt + 1)
     expect(await caller.thread.list({ projectId })).toEqual([])
+  })
+
+  it('reads old drive-fix and scenario chats back as old drive chats, and takes no message for them', async () => {
+    const fix = chat('drive-fix')
+    const scenario = chat('scenario')
+    const list = await caller.thread.list({ featureId })
+    expect(list.map((t) => [t.id, t.role]).sort()).toEqual([
+      [fix, 'old-drive-chat'],
+      [scenario, 'old-drive-chat'],
+    ].sort())
+    for (const threadId of [fix, scenario]) {
+      await expect(caller.thread.send({ threadId, text: 'hi' })).rejects.toThrow(/old drive chat/)
+    }
+    await expect(acpLaunchInput(ctx, getSessionRow(ctx, fix) as SessionRow)).rejects.toThrow(/old drive chat/)
   })
 
   // decision 14: a thread is named by what it is about, never by its kind.

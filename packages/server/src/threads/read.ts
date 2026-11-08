@@ -38,8 +38,9 @@ const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   // A side chat from before workers: listed, read-only (interactive-workers decision 23).
   side: 'side',
   worker: 'worker',
-  scenario: 'scenario',
-  'drive-fix': 'scenario',
+  // The drive's chats are workers now; the ones from before stay as read-only transcripts.
+  scenario: 'old-drive-chat',
+  'drive-fix': 'old-drive-chat',
   project: 'project',
 }
 

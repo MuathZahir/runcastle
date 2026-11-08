@@ -496,8 +496,8 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
  * is docked to the drive, not the feature, so it is never the feature's session.
  */
 function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
-  // A side session's and a worker's turns are their own errands, and a scenario chat is docked to
-  // the drive: the feature's line speaks for the main chat
+  // A side session's and a worker's turns are their own errands (a drive worker is a worker):
+  // the feature's line speaks for the main chat
   // (several-sessions-per-feature decision 12).
   const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side' && s.kind !== 'worker' && s.kind !== 'scenario')
   const session = open.find((s) => s.status === 'live') ?? open[0]

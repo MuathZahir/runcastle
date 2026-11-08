@@ -87,9 +87,9 @@ describe('arriving at the Orchestrator', () => {
     expect(orchestratorLanding([], [], now)).toEqual({ kind: 'none' })
   })
 
-  it('never picks a scenario chat', () => {
+  it('never picks an old drive chat', () => {
     const threads = [
-      thread('s', { role: 'scenario', state: 'working', updatedAt: now }),
+      thread('s', { role: 'old-drive-chat', state: 'working', updatedAt: now }),
       thread('a'),
     ]
     expect(orchestratorLanding(threads, [], now)).toEqual({ kind: 'conversations' })

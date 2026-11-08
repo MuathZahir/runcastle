@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { and, count, eq, inArray, ne } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
 import {
   type Ask,
   type Feature,
@@ -14,7 +14,9 @@ import {
   type WorkerRow,
   type WorkerStartedBy,
   type WorkerStatus,
+  isDriveWorkerKind,
   isUsageLimitText,
+  workerFeatureId,
   type Project,
   modelEntryFor,
   resolveBurnCacheMode,
@@ -30,7 +32,7 @@ import { chatKickoffHeader } from '../launcher/launcher'
 import { createSessionRow, getSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
 import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
-import { emit, listAfter } from '../services/events'
+import { emit, emitProject, listAfter } from '../services/events'
 import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
 import { deliverToLead } from '../services/lead-delivery'
@@ -74,6 +76,7 @@ import {
   verifyFindings,
 } from './review'
 import { listByFeature as listFindings } from '../services/review-findings'
+import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, recordDriveTurnCommits } from './drive'
 import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
@@ -104,6 +107,16 @@ export function listWorkers(ctx: AppCtx, featureId: string): WorkerRow[] {
   return ctx.db.select().from(workers).where(eq(workers.featureId, featureId)).orderBy(workers.createdAt).all()
 }
 
+/** The project's own workers, owned by no feature (a project drive's Scenarios worker, drive-chats-become-workers decision 2), oldest first. */
+export function listProjectWorkers(ctx: AppCtx, projectId: string): WorkerRow[] {
+  return ctx.db
+    .select()
+    .from(workers)
+    .where(and(eq(workers.projectId, projectId), isNull(workers.featureId)))
+    .orderBy(workers.createdAt)
+    .all()
+}
+
 /** How many workers of each feature of the project are working or queued: what the feature list shows as at work. */
 export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<string, number> {
   const rows = ctx.db
@@ -113,7 +126,8 @@ export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<str
     .where(and(eq(features.projectId, projectId), inArray(workers.status, ['working', 'queued'])))
     .groupBy(workers.featureId)
     .all()
-  return new Map(rows.map((r) => [r.featureId, r.n]))
+  // The join keeps feature-owned rows only, so every `featureId` here is set.
+  return new Map(rows.flatMap((r) => (r.featureId ? [[r.featureId, r.n] as const] : [])))
 }
 
 /**
@@ -131,7 +145,7 @@ export function workerProgressByFeature(ctx: AppCtx, projectId: string): Map<str
     .all()
   const out = new Map<string, { counted: number; landed: number }>()
   for (const r of rows) {
-    if (r.status === 'dropped') continue
+    if (r.status === 'dropped' || !r.featureId) continue
     const p = out.get(r.featureId) ?? { counted: 0, landed: 0 }
     p.counted += r.n
     if (r.status === 'landed') p.landed += r.n
@@ -147,7 +161,7 @@ export function requireFeatureWorker(ctx: AppCtx, featureId: string, id: string)
   return w
 }
 
-function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'id' | 'createdAt'>>): WorkerRow {
+export function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'id' | 'createdAt'>>): WorkerRow {
   ctx.db
     .update(workers)
     .set({ ...patch, updatedAt: Date.now() })
@@ -156,13 +170,20 @@ function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'i
   return requireWorker(ctx, id)
 }
 
-/** Emit `type` for `w` on its feature's timeline, with its id and status. */
-function emitWorker(ctx: AppCtx, w: WorkerRow, type: string, message: string, data: Record<string, unknown> = {}): void {
-  emit(ctx, w.featureId, { type, message, data: { workerId: w.id, label: w.label, status: w.status, ...data } })
+/** Emit `type` for `w` on its feature's timeline (its project's, for a project-owned worker), with its id and status. */
+export function emitWorker(ctx: AppCtx, w: WorkerRow, type: string, message: string, data: Record<string, unknown> = {}): void {
+  const e = { type, message, data: { workerId: w.id, label: w.label, status: w.status, ...data } }
+  if (w.featureId === null) emitProject(ctx, w.projectId, e)
+  else emit(ctx, w.featureId, e)
+}
+
+/** The worker's feature, or null when it is the project's own or its feature is gone. */
+function featureOf(ctx: AppCtx, w: WorkerRow): Feature | null {
+  return w.featureId === null ? null : tryGetFeature(ctx, w.featureId)
 }
 
 /** Set a worker's status and say so (`worker.status`); a no-op when it is already there. */
-function setStatus(ctx: AppCtx, w: WorkerRow, status: WorkerStatus): WorkerRow {
+export function setStatus(ctx: AppCtx, w: WorkerRow, status: WorkerStatus): WorkerRow {
   if (w.status === status) return w
   const next = updateWorker(ctx, w.id, { status })
   emitWorker(ctx, next, 'worker.status', `worker "${w.label}" is ${status}`, { from: w.status })
@@ -177,7 +198,7 @@ export function isWorkerThread(ctx: AppCtx, id: string): boolean {
 /** The worker's sandbox, once it is up. */
 function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
   if (!w.container || !w.branch || w.previewPort === null) return null
-  const feature = getFeatureRow(ctx, w.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(w))
   return {
     id: w.id,
     engine: w.engine,
@@ -230,8 +251,8 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
   return async (spec, row) => {
     if (row.kind !== 'worker') return base(spec, row)
     const w = requireWorker(ctx, row.id)
-    // A drive review runs on the host, in the human's checkout: its launch (`acpLaunchInput`) briefs it there.
-    if (isHostReview(w)) return base(spec, row)
+    // A host worker (a drive review, a drive worker) runs on the host, in the human's checkout: its launch (`acpLaunchInput`) briefs it there.
+    if (isHostWorker(w)) return base(spec, row)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
     const launched = sb.runtime === 'claude-code' ? (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model : undefined
@@ -352,6 +373,7 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     .values({
       id: session.id,
       featureId: feature.id,
+      projectId: feature.projectId,
       label: input.label,
       purpose: input.purpose,
       kind: input.kind,
@@ -530,6 +552,7 @@ export async function startReviewWorker(ctx: AppCtx, feature: Feature, input: St
     .values({
       id: session.id,
       featureId: feature.id,
+      projectId: feature.projectId,
       label,
       purpose,
       kind: 'review',
@@ -590,7 +613,7 @@ async function driveThenPrompt(ctx: AppCtx, id: string, text: string): Promise<v
   stopDriveWait(id)
   const w = getWorker(ctx, id)
   if (!w || w.status === 'failed' || w.status === 'dropped') return forgetDriveWait(id)
-  const feature = getFeatureRow(ctx, w.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(w))
   const taken = await reviewDriveHost().take(ctx, projectForFeature(ctx, feature), feature)
   if (taken.ok) {
     forgetDriveWait(id)
@@ -641,7 +664,7 @@ async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
   if (!isHostReview(w)) return
   stopDriveWait(w.id)
   forgetDriveWait(w.id)
-  const feature = tryGetFeature(ctx, w.featureId)
+  const feature = featureOf(ctx, w)
   if (!feature) return
   await reviewDriveHost()
     .give(projectForFeature(ctx, feature), feature, w.id)
@@ -665,9 +688,9 @@ async function reviewHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): 
     outcome: null,
     outcomeNote: null,
   })
-  const findings = listFindings(ctx, w.featureId).filter((f) => f.reviewWorkerId === w.id)
+  const findings = listFindings(ctx, workerFeatureId(w)).filter((f) => f.reviewWorkerId === w.id)
   emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, { commits: 0, files: 0, findings: findings.length })
-  const feature = tryGetFeature(ctx, w.featureId)
+  const feature = featureOf(ctx, w)
   if (!feature) return
   await deliverToLead(ctx, feature, {
     text: reviewHandbackText(handed, findings),
@@ -688,7 +711,7 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
   if (w.kind !== 'unassigned') {
     return [`Start your assignment: ${w.goal ?? w.purpose}`, ...(w.doneWhen ? ['', `Done when: ${w.doneWhen}`] : [])].join('\n')
   }
-  const feature = getFeatureRow(ctx, w.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(w))
   const opening =
     'You are a worker on this feature, started by the human with no assignment. Read what follows, ' +
     'then say in a line that you are ready and wait for the human: do nothing else until they ask.'
@@ -708,20 +731,24 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
  * the human (decision 5).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
-  const w = getWorker(ctx, row.id)
+  let w = getWorker(ctx, row.id)
   if (!w) return
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
   // Held before anything here awaits: the slot this turn just gave back must not start a queued turn on the same account.
-  const held = failed?.verdict === 'account' ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
+  // A drive worker is outside the queue (drive-chats-become-workers decision 7): its account error fails it alone.
+  const held = failed?.verdict === 'account' && !isDriveWorkerKind(w.kind) ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
-  const note = sb ? await engine.takeHandback(sb) : isHostReview(w) ? takeHostHandback(w.id) : undefined
+  const note = sb ? await engine.takeHandback(sb) : isHostWorker(w) ? takeHostHandback(w.id) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
+  // What a drive worker committed on the driven branch this turn joins what it made in this drive (drive-chats-become-workers decision 3).
+  if (isDriveWorkerKind(w.kind)) w = await recordDriveTurnCommits(ctx, w)
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
+  if (note && isDriveWorkerKind(w.kind)) return driveWorkerHandedBack(ctx, w, note)
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
   if (!note || !sb) {
@@ -740,12 +767,27 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
     outcomeNote: null,
   })
   emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, { commits: commits.length, files: changes.files.length })
-  const feature = tryGetFeature(ctx, w.featureId)
+  const feature = featureOf(ctx, w)
   if (!feature) return
   const display: PromptDisplay = {
     handback: { workerId: w.id, label: w.label, kind: w.kind, summary: note.summary, commits, files: changes.files, threadId: w.id },
   }
   await deliverToLead(ctx, feature, { text: handbackText(handed, commits, changes.files), source: 'runcastle', display })
+}
+
+/**
+ * A drive worker handed back: it is Done with its summary, never landed, since
+ * its commits are already on the driven branch (drive-chats-become-workers
+ * decision 3), and its card reaches its parent without waking it (decision 4).
+ */
+async function driveWorkerHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): Promise<void> {
+  const handed = updateWorker(ctx, w.id, { status: 'handed-back', handbackSummary: note.summary, outcome: null, outcomeNote: null })
+  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, {
+    commits: handed.handbackCommits?.length ?? 0,
+    files: handed.handbackFiles?.length ?? 0,
+    branch: handed.featureBranch,
+  })
+  await deliverDriveHandback(ctx, handed)
 }
 
 /** What the lead reads of a handback: the summary, the work, and its three choices. */
@@ -859,9 +901,10 @@ function holdQueue(ctx: AppCtx, w: WorkerRow, reason: string): string {
   return `It failed on the account, so no queued worker on ${w.runtime} starts until the human next writes to a lead or a worker.`
 }
 
-/** Why a queued worker is held (decision 21), or null when it is not. */
+/** Why a queued worker is held (decision 21), or null when it is not; never a drive worker, which no hold holds. */
 export function queueHoldOf(ctx: AppCtx, w: WorkerRow): string | null {
-  return w.status === 'queued' ? (agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null) : null
+  if (w.status !== 'queued' || isDriveWorkerKind(w.kind)) return null
+  return agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null
 }
 
 /** The human sent a message to a thread: an account hold lifts (decision 21), and a worker they wrote to starts its retries over. */
@@ -876,9 +919,16 @@ export function humanWrote(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): v
  * thread. A worker that has to wait — for a free slot, or for its runtime's
  * account hold to lift — is `queued` until its slot comes, then working again;
  * one waiting on the human or stopped holds none, since only a running turn asks.
+ * A drive worker holds none either: the drive slot is its limit, and the human
+ * sits beside the drive waiting for it (drive-chats-become-workers decision 7),
+ * so it is never queued nor held by an account hold.
  */
 export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => void> | undefined {
-  return (row) => (row.kind === 'worker' ? takeWorkerSlot(ctx, row.id) : undefined)
+  return (row) => {
+    if (row.kind !== 'worker') return undefined
+    const w = getWorker(ctx, row.id)
+    return w && isDriveWorkerKind(w.kind) ? undefined : takeWorkerSlot(ctx, row.id)
+  }
 }
 
 async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
@@ -957,7 +1007,7 @@ export async function workerStopped(ctx: AppCtx, row: Pick<SessionRow, 'id'>, re
   const sb = sandboxOf(ctx, w)
   if (!sb || w.status === 'dropped') return
   await sandboxEngine(w.engine).stop(sb)
-  if (tryGetFeature(ctx, w.featureId)) emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (${reason})`, { reason })
+  if (featureOf(ctx, w)) emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (${reason})`, { reason })
 }
 
 /** What the thread's log says stopped its agent, or a plain word when it says nothing. */
@@ -979,7 +1029,7 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
-  const feature = tryGetFeature(ctx, w.featureId)
+  const feature = featureOf(ctx, w)
   if (!feature) return
   await deliverToLead(ctx, feature, {
     text:
@@ -993,6 +1043,11 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
 
 // --- the lead's and the human's moves -------------------------------------------
 
+/** Refuse the lead's moves on a drive worker: nothing of it lands, and only the human talks to it (drive-chats-become-workers decisions 3, 6). */
+function refuseDriveWorker(w: WorkerRow): void {
+  if (isDriveWorkerKind(w.kind)) throw new GateError(`worker "${w.label}" is a drive worker: ${DRIVE_WORKER_REFUSAL}.`)
+}
+
 function requireOpen(w: WorkerRow): void {
   if (w.status === 'dropped') throw new GateError(`worker "${w.label}" was dropped`)
   if (w.status === 'failed') throw new GateError(`worker "${w.label}" failed: ${w.failure ?? 'its sandbox is gone'}`)
@@ -1001,10 +1056,15 @@ function requireOpen(w: WorkerRow): void {
 /**
  * Send a worker a message (decision 17): a runcastle prompt into its thread,
  * which waits for the end of a turn that is running. A worker waiting on the
- * human is working again.
+ * human is working again. The lead's: a drive worker refuses it.
  */
 export async function messageWorker(ctx: AppCtx, id: string, text: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
+  return promptWorker(ctx, w, text)
+}
+
+async function promptWorker(ctx: AppCtx, w: WorkerRow, text: string): Promise<{ ok: true }> {
   requireOpen(w)
   // Working before the prompt goes: a turn that must wait for a slot then reads `queued` over it.
   const next = w.status === 'needs-you' ? setStatus(ctx, w, 'working') : w
@@ -1013,11 +1073,11 @@ export async function messageWorker(ctx: AppCtx, id: string, text: string): Prom
   return { ok: true }
 }
 
-/** The Hand back button (decision 5): ask the worker to write its summary and hand back. */
+/** The Hand back button (decision 5): ask the worker to write its summary and hand back. The human's, so a drive worker takes it too. */
 export function askWorkerToHandBack(ctx: AppCtx, id: string): Promise<{ ok: true }> {
-  return messageWorker(
+  return promptWorker(
     ctx,
-    id,
+    requireWorker(ctx, id),
     'The human pressed Hand back: they are done here. Commit what is left, then call hand_back with your summary — ' +
       'what you did, what is left, and every direction the human gave you in this conversation — and end your turn.',
   )
@@ -1039,11 +1099,12 @@ export const MAX_CONFLICT_SEND_BACKS = 2
  */
 export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerResult> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.kind === 'review') throw new GateError(`worker "${w.label}" is a review: it writes no code, so nothing lands. Resolve its findings instead.`)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker lands`)
   const sb = sandboxOf(ctx, w)
   if (!sb) throw new GateError(`worker "${w.label}" has no sandbox to land from`)
-  const feature = getFeatureRow(ctx, w.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(w))
   await sandboxEngine(w.engine).fetchBranch(sb)
   // Read before the merge, which deletes the branch it lands.
   const changes = await branchChangesAhead(sb.repoPath, feature.branch, sb.branch)
@@ -1093,6 +1154,7 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
 /** Send a handed-back worker's work back with a note (decision 4): the note goes to the worker, which works again. */
 export async function sendBackWorker(ctx: AppCtx, id: string, note: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker is sent back`)
   await sendBack(ctx, w, `Your lead sent your work back:\n\n${note}\n\nWork on it, then hand back again.`, note)
   return { ok: true }
@@ -1115,7 +1177,7 @@ async function sendBack(ctx: AppCtx, w: WorkerRow, text: string, note: string, d
 
 /** How many times runcastle has sent `w` back to resolve a landing conflict, read off its feature's timeline. */
 function conflictSendBacks(ctx: AppCtx, w: WorkerRow): number {
-  return listAfter(ctx, w.featureId, 0).filter((e) => {
+  return listAfter(ctx, workerFeatureId(w), 0).filter((e) => {
     const data = e.data as { workerId?: string; conflict?: boolean } | null
     return e.type === 'worker.sent_back' && data?.workerId === w.id && data.conflict === true
   }).length
@@ -1143,6 +1205,7 @@ function conflictSendBackText(featureBranch: string, files: string[], behind: st
  */
 export async function dropWorker(ctx: AppCtx, id: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed; there is nothing to drop`)
   await retireWorker(ctx, w)
   return { ok: true }
@@ -1175,7 +1238,7 @@ export function keptConversationPath(workerId: string): string {
 export async function keepConversation(ctx: AppCtx, w: WorkerRow): Promise<void> {
   try {
     const kept = keptConversationPath(w.id)
-    const read = isHostReview(w) ? keepHostConversation(ctx, w, kept) : await keepSandboxConversation(ctx, w, kept)
+    const read = isHostWorker(w) ? keepHostConversation(ctx, w, kept) : await keepSandboxConversation(ctx, w, kept)
     const usage = read ? readTranscriptUsage(read, w.runtime) : null
     if (usage) updateWorker(ctx, w.id, { tokens: usage.total })
   } catch (err) {
@@ -1198,7 +1261,7 @@ async function keepSandboxConversation(ctx: AppCtx, w: WorkerRow, kept: string):
 }
 
 /**
- * A drive review's conversation file is on the host already (it ran there):
+ * A host worker's conversation file is on the host already (it ran there):
  * the transcript its session recorded, else Claude Code's file for its
  * conversation. Copied to `kept` beside its thread log; its tokens are read
  * where it lies, with any subagent transcripts beside it.
@@ -1215,9 +1278,9 @@ function keepHostConversation(ctx: AppCtx, w: WorkerRow, kept: string): string |
   return path
 }
 
-/** Whether a worker has a conversation file to keep: a sandbox's, or a drive review's on the host. */
+/** Whether a worker has a conversation file to keep: a sandbox's, or a host worker's on the host. */
 function hasConversation(w: WorkerRow): boolean {
-  return !!w.container || isHostReview(w)
+  return !!w.container || isHostWorker(w)
 }
 
 /** Keep every worker's conversation of a feature, so a record written before its sandboxes go (the outcome) carries their tokens. */
@@ -1252,9 +1315,15 @@ export async function removeFeatureWorkers(ctx: AppCtx, featureId: string, after
 /** The statuses that keep a feature from being ready: at work, or holding work not landed (decision 19). */
 const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'handed-back'])
 
-/** The feature's workers still at work or holding work that has not landed; a review that handed back holds nothing to land. */
+/**
+ * The feature's workers still at work or holding work that has not landed; a
+ * review that handed back holds nothing to land, and a drive worker never holds
+ * ready (drive-chats-become-workers decision 6): its work is already on the branch.
+ */
 export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[] {
-  return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status) && !(w.kind === 'review' && w.status === 'handed-back'))
+  return listWorkers(ctx, featureId).filter(
+    (w) => HOLDS_READY.has(w.status) && !isDriveWorkerKind(w.kind) && !(w.kind === 'review' && w.status === 'handed-back'),
+  )
 }
 
 /**
@@ -1284,7 +1353,7 @@ export async function stopLeftoverWorkerSandboxes(ctx: AppCtx): Promise<{ stoppe
       if (terminal) await engine.remove(sb)
       else await engine.stop(sb)
       done[terminal ? 'removed' : 'stopped']++
-      if (!tryGetFeature(ctx, w.featureId)) continue
+      if (!featureOf(ctx, w)) continue
       if (terminal) emitWorker(ctx, w, 'worker.sandbox_removed', `worker "${w.label}" leftover sandbox removed at server start`)
       else emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (server restart)`, { reason: 'restart' })
     } catch (err) {

@@ -88,7 +88,7 @@ describe('after a restart', () => {
       const now = Date.now()
       ctx.db
         .insert(workers)
-        .values({ id: row.id, featureId: f.id, label: status, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: f.branch, createdAt: now, updatedAt: now })
+        .values({ id: row.id, featureId: f.id, projectId, label: status, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: f.branch, createdAt: now, updatedAt: now })
         .run()
       return thread(row)
     }

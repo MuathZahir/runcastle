@@ -7,7 +7,7 @@ import type { ScenarioErrand } from '../../lib/chat-sessions'
  * the whole panel, and the column switches to the thread an errand opens.
  *
  * The page holds this state — the column and the drive's Scenario menu are far
- * apart — and hands the drive its two calls through `ScenarioChatContext`.
+ * apart — and hands the drive its calls through `ScenarioChatContext`.
  */
 export interface ScenarioChatApi {
   /** The errand's thread. */
@@ -21,12 +21,14 @@ export interface ScenarioChatApi {
   opened: (sessionId: string) => void
   /** The human closed the errand: the column goes back to the feature chat. */
   close: () => void
+  /** Another of the drive's workers answered (the Fix-drive worker): bring its chat to the front, no errand. */
+  front: (sessionId: string) => void
 }
 
-/** The drive's way into the page's scenario chat; null where no column hosts one. */
-export const ScenarioChatContext = createContext<Pick<ScenarioChatApi, 'begin' | 'opened'> | null>(null)
+/** The drive's way into the page's chat column; null where no column hosts one. */
+export const ScenarioChatContext = createContext<Pick<ScenarioChatApi, 'begin' | 'opened' | 'front'> | null>(null)
 
-export function useScenarioChatDoor(): Pick<ScenarioChatApi, 'begin' | 'opened'> | null {
+export function useScenarioChatDoor(): Pick<ScenarioChatApi, 'begin' | 'opened' | 'front'> | null {
   return useContext(ScenarioChatContext)
 }
 
@@ -47,6 +49,7 @@ export function useScenarioChat(driveSessionId: string | undefined, onFront: (se
   front.current = onFront
 
   const begin = useCallback((next: ScenarioErrand) => setErrand(next), [])
+  const toFront = useCallback((id: string) => front.current(id), [])
   const open = useCallback((id: string) => {
     setOpened(id)
     setClosed(null)
@@ -60,8 +63,9 @@ export function useScenarioChat(driveSessionId: string | undefined, onFront: (se
       begin,
       opened: open,
       close: () => setClosed(sessionId),
+      front: toFront,
     }),
-    [sessionId, errand, closed, begin, open],
+    [sessionId, errand, closed, begin, open, toFront],
   )
 }
 

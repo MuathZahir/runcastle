@@ -424,10 +424,14 @@ export function Workspace({
   const endSession = trpc.feature.endSession.useMutation({
     onError: (e) => toast.push(e.message),
   })
-  // An agent sent at the environment a drive's setup command died in — the
-  // stage offers the same launch from inside the failure it explains.
+  // The Fix-drive worker, sent at the environment a drive's setup command died
+  // in — the stage offers the same press from inside the failure it explains.
+  // Its chat comes to the front of the column (drive-chats-become-workers decision 11).
   const fixDrive = trpc.feature.fixDrive.useMutation({
-    onSuccess: launched,
+    onSuccess: ({ sessionId }) => {
+      launched()
+      column.pick(sessionId)
+    },
     onError: (e) => toast.push(e.message),
   })
   const testDrive = trpc.feature.testDrive.useMutation({

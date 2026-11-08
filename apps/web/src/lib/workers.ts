@@ -44,12 +44,27 @@ export interface WorkerEntry {
   createdAt: number
   /** When it last moved, for "4m", "2d". */
   updatedAt: number
-  /** A side chat from before workers: a read-only transcript in Done (decision 23). */
-  oldSideChat?: boolean
+  /** A chat from before workers, side or drive: a read-only transcript in Done (decision 23; drive-chats-become-workers decision 10). */
+  old?: OldChat
   /** What failed, in a few words, while `status` is failed (decision 16). */
   failure?: string
   /** Why it waits, while `status` is queued behind an account error's hold (burns-become-workers decision 21). */
   heldBy?: string
+}
+
+/**
+ * A chat from before workers, kept as a read-only transcript: an old side chat
+ * (interactive-workers decision 23), or an old Fix-drive or scenario chat
+ * (drive-chats-become-workers decision 10).
+ */
+export type OldChat = 'side' | 'drive'
+
+/** What an old chat is called in its row and its header. */
+export const OLD_CHAT_WORDS: Record<OldChat, string> = { side: 'Old side chat', drive: 'Old drive chat' }
+
+/** The old chat a thread of this role is, if it is one. */
+export function oldChatOf(role: ThreadEntry['role']): OldChat | undefined {
+  return role === 'side' ? 'side' : role === 'old-drive-chat' ? 'drive' : undefined
 }
 
 /** What a worker was asked to do: the card pinned atop its chat (decision 21). */
@@ -94,7 +109,7 @@ const GROUP: Record<WorkerStatus, keyof WorkerGroups> = {
 export function workerGroups(workers: readonly WorkerEntry[]): WorkerGroups {
   const groups: WorkerGroups = { needsYou: [], working: [], done: [] }
   for (const w of [...workers].sort((a, b) => b.createdAt - a.createdAt)) {
-    groups[w.oldSideChat ? 'done' : GROUP[w.status]].push(w)
+    groups[w.old ? 'done' : GROUP[w.status]].push(w)
   }
   const queued = (w: WorkerEntry) => Number(w.status === 'queued')
   groups.working.sort((a, b) => queued(a) - queued(b))
@@ -103,7 +118,7 @@ export function workerGroups(workers: readonly WorkerEntry[]): WorkerGroups {
 
 /** Whether any worker waits on the human: the folded feature row's amber dot. */
 export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
-  return workers.some((w) => !w.oldSideChat && (w.status === 'needs-you' || w.status === 'failed'))
+  return workers.some((w) => !w.old && (w.status === 'needs-you' || w.status === 'failed'))
 }
 
 /** A status in words, as the chat header and the row's hover say it. */
@@ -139,16 +154,25 @@ export function workerStatusWhy(w: { status: WorkerStatus; failure?: string | nu
   return undefined
 }
 
-/** The kind in words, on the assignment card. */
+/** The Scenarios worker's name, as the server labels it: what its chat is called before its row arrives. */
+export const SCENARIOS_LABEL = 'Scenarios'
+
+/**
+ * The kind in words, on the assignment card and the handback card. A drive
+ * worker's label already says which one it is ("Fix drive", "Scenarios"), so its
+ * kind says where it works instead of repeating the label.
+ */
 export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
   'with-you': 'With you',
   'on-its-own': 'On its own',
   review: 'Review',
+  'fix-drive': 'Beside the drive',
+  scenario: 'Beside the drive',
 }
 
-/** Whether a worker still takes messages: everything but the settled ones and old side chats. */
-export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'oldSideChat'>): boolean {
-  return !w.oldSideChat && w.status !== 'landed' && w.status !== 'dropped'
+/** Whether a worker still takes messages: everything but the settled ones and old chats. */
+export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'old'>): boolean {
+  return !w.old && w.status !== 'landed' && w.status !== 'dropped'
 }
 
 // ---------------------------------------------------------------------------
@@ -180,11 +204,11 @@ export function workerEntry(w: WireWorker): WorkerEntry {
 }
 
 /**
- * A side chat from before workers (decision 23): a read-only transcript in
- * Done. It has no status of its own; it is drawn as done.
+ * A chat from before workers, side or drive: a read-only transcript in Done.
+ * It has no status of its own; it is drawn as done.
  */
-export function oldSideChatEntry(t: Pick<ThreadEntry, 'id' | 'title' | 'createdAt' | 'updatedAt'>): WorkerEntry {
-  return { id: t.id, label: t.title, purpose: '', status: 'handed-back', startedBy: 'you', createdAt: t.createdAt, updatedAt: t.updatedAt, oldSideChat: true }
+export function oldChatEntry(t: Pick<ThreadEntry, 'id' | 'title' | 'createdAt' | 'updatedAt'>, old: OldChat): WorkerEntry {
+  return { id: t.id, label: t.title, purpose: '', status: 'handed-back', startedBy: 'you', createdAt: t.createdAt, updatedAt: t.updatedAt, old }
 }
 
 /** The card pinned atop a worker's chat (decision 21). */
@@ -205,7 +229,16 @@ export function workerCanHandBack(status: WorkerStatus): boolean {
   return status === 'needs-you' || status === 'working' || status === 'queued'
 }
 
-/** The feature's sidebar page's rows: its workers, then its old side chats. */
+/**
+ * The feature's sidebar page's rows: its workers, its drive workers among them
+ * (drive-chats-become-workers decision 11), then its old side and drive chats.
+ */
 export function featureWorkerEntries(workers: readonly WireWorker[], threads: readonly ThreadEntry[]): WorkerEntry[] {
-  return [...workers.map(workerEntry), ...threads.filter((t) => t.role === 'side').map(oldSideChatEntry)]
+  return [
+    ...workers.map(workerEntry),
+    ...threads.flatMap((t) => {
+      const old = oldChatOf(t.role)
+      return old ? [oldChatEntry(t, old)] : []
+    }),
+  ]
 }

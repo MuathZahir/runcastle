@@ -287,6 +287,8 @@ export const PromptDisplay = z.union([
       files: z.array(z.string()),
       /** The worker's thread, for the card's link. */
       threadId: z.string(),
+      /** A drive worker's: the branch its commits are already on (drive-chats-become-workers decision 3). */
+      branch: z.string().optional(),
     }),
   }),
   /**
@@ -568,10 +570,10 @@ export interface ThreadEntry {
   title: string
   /**
    * What kind of thread: the feature's main chat (its lead), a worker, an old
-   * side chat (read-only since workers replaced them), a scenario chat, a
+   * side chat or old drive chat (read-only since workers replaced them), a
    * project chat.
    */
-  role: 'main' | 'worker' | 'side' | 'scenario' | 'project'
+  role: 'main' | 'worker' | 'side' | 'old-drive-chat' | 'project'
   state: ThreadState
   /** When it was started: the sidebar's order, which an agent posting never changes. */
   createdAt: number

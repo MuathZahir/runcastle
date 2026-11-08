@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadEntry } from '../src/lib/chat-thread'
-import { newestThread, scenarioChatLabel, standIn, withStandIns } from '../src/lib/chat-sessions'
+import { newestThread, standIn, withStandIns } from '../src/lib/chat-sessions'
 import { projectViewLabel, projectViews } from '../src/lib/feature-ui/panel'
 
 /**
@@ -21,7 +21,7 @@ describe('the threads a page lists', () => {
   it('takes the newest thread of a role as its main chat, and none when there is none', () => {
     const threads = [entry('old', 'main', 1), entry('side', 'side', 9), entry('new', 'main', 5)]
     expect(newestThread(threads, 'main')).toBe('new')
-    expect(newestThread(threads, 'scenario')).toBeNull()
+    expect(newestThread(threads, 'worker')).toBeNull()
   })
 
   it('names a thread the list does not hold yet, and never lists one twice', () => {
@@ -31,11 +31,6 @@ describe('the threads a page lists', () => {
       ['th_main', 'th_main'],
       ['th_new', 'New chat'],
     ])
-  })
-
-  it('names a scenario chat by its errand', () => {
-    expect(scenarioChatLabel({ kind: 'new' })).toBe('Scenario chat · New scenario')
-    expect(scenarioChatLabel({ kind: 'fix', name: 'Expired coupon' })).toBe('Scenario chat · Fix Expired coupon')
   })
 })
 

@@ -174,7 +174,7 @@ describe('the orchestrator’s gate', () => {
       'take_feature',
     ]
     expect(toolsForAudience('project')).toEqual(expect.arrayContaining(tools))
-    for (const kind of ['chat', 'drive-fix', 'review'] as const) {
+    for (const kind of ['chat', 'fix-drive-worker', 'review'] as const) {
       expect(toolsForAudience(kind).filter((t) => tools.includes(t)), kind).toEqual([])
     }
   })

@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote, ScenarioEntry, ThreadEntry } from '@runcastle/core'
-import type { ProjectSession } from '../src/lib/api'
+import type { ProjectSession, WorkerListRow } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 import { openList, openMenu } from './floating'
 
@@ -39,6 +39,8 @@ const threadExport = vi.fn((_input: unknown) => ({ markdown: '# Audit the journa
 let threads: ThreadEntry[] = []
 /** Whether `thread.list` has answered yet. */
 let threadsAnswered = true
+/** The project's own workers: a project drive's Scenarios worker. */
+let projectWorkers: WorkerListRow[] = []
 let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
   runnerConfigured: false,
   scenarios: [],
@@ -73,7 +75,12 @@ vi.mock('../src/trpc', () => {
         projectNotes: { invalidate },
         feature: { driveInfo: { invalidate }, list: { invalidate }, get: { invalidate } },
         thread: { list: { invalidate }, export: { fetch: async (input: unknown) => threadExport(input) } },
+        worker: { invalidate },
       }),
+      worker: {
+        listProject: { useQuery: () => ({ data: projectWorkers }) },
+        handBack: { useMutation: mutation },
+      },
       // The sidebar's reads, for the tests that mount it beside the page.
       useQueries: () => [],
       events: { listByProject: { useQuery: () => ({ data: undefined }) } },
@@ -243,6 +250,7 @@ beforeEach(() => {
   }
   notes = [note('already reported', 1_000)]
   threads = []
+  projectWorkers = []
 })
 afterEach(() => {
   cleanup()
@@ -528,8 +536,8 @@ describe('opening the Orchestrator', () => {
     expect(screen.queryByRole('button', { name: /Resume|Reopen/ })).toBeNull()
   })
 
-  it('never lands on a drive’s scenario chat', () => {
-    threads = [{ ...entry('sess_s', 'New scenario', 9_000), role: 'scenario' }, entry('sess_a', 'Plan the audit', 1_000)]
+  it('never lands on an old drive chat', () => {
+    threads = [{ ...entry('sess_s', 'New scenario', 9_000), role: 'old-drive-chat' }, entry('sess_a', 'Plan the audit', 1_000)]
     mount()
     expect(chatInFront()?.dataset.thread).toBe('sess_a')
   })
@@ -925,6 +933,70 @@ describe('scenarios on a project drive', () => {
 
     expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: '.runcastle/scenarios/smoke.ts' })
     expect(testDrive).not.toHaveBeenCalled()
+  })
+})
+
+describe('the project drive’s Scenarios worker (drive-chats-become-workers decision 2)', () => {
+  beforeEach(() => {
+    threads = [entry('sess_started', 'Started', Date.now())]
+    projectWorkers = [
+      {
+        id: 'sess_scn',
+        featureId: null,
+        projectId: 'proj_1',
+        label: 'Scenarios',
+        purpose: 'Writes and fixes this drive’s scenarios',
+        kind: 'scenario',
+        goal: null,
+        doneWhen: null,
+        model: 'claude-opus-5-5',
+        runtime: 'claude-code',
+        startedBy: 'human',
+        status: 'handed-back',
+        failure: null,
+        engine: 'docker',
+        container: null,
+        branch: null,
+        featureBranch: 'main',
+        previewPort: null,
+        devServer: false,
+        handbackSummary: 'Wrote the signed-out scenario.',
+        handbackCommits: ['a1b2c3d Signed-out scenario'],
+        handbackFiles: ['.runcastle/scenarios/signed-out.ts'],
+        outcome: null,
+        outcomeNote: null,
+        tokens: null,
+        reviewMode: null,
+        reviewVerify: null,
+        createdAt: 1_000,
+        updatedAt: 2_000,
+        previewPath: null,
+        passPort: 4514,
+        heldBy: null,
+      },
+    ]
+  })
+
+  it('lists with the project’s chats as a worker row with its status, and opens as a worker’s chat', () => {
+    mountWithSidebar()
+    const row = within(sidebar()).getByTitle(/^Scenarios — /)
+    expect(row.textContent).toContain('Handed back')
+    fireEvent.click(row)
+    expect(screen.getByRole('region', { name: 'Worker' }).dataset.thread).toBe('sess_scn')
+    expect(chatName()).toBe('Scenarios')
+    // Never also listed as one of the Orchestrator's chats.
+    expect(orchestratorChats()).not.toContain('Scenarios')
+  })
+
+  it('docks its chat in the column when New scenario on the project drive opens it', () => {
+    scenarios = { runnerConfigured: true, scenarios: [] }
+    slot = LIVE
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the drive' }))
+    openList(within(drivePage()!).getByRole('button', { name: /Blank app/ }))
+    fireEvent.click(screen.getByRole('option', { name: 'New scenario' }))
+    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
+    expect(screen.getByRole('region', { name: 'Worker' }).dataset.thread).toBe('sess_scn')
   })
 })
 

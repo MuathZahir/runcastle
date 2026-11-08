@@ -27,7 +27,12 @@ vi.mock('../src/trpc', () => {
         project: { projectSession: { invalidate } },
         projectNotes: { invalidate },
         thread: { list: { invalidate } },
+        worker: { invalidate },
       }),
+      worker: {
+        listProject: { useQuery: query([]) },
+        handBack: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      },
       thread: {
         list: { useQuery: query([]) },
         new: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },

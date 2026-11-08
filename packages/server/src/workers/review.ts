@@ -11,6 +11,7 @@ import {
   type RuncastleConfig,
   type WorkerRow,
   resolvePreparedSettings,
+  workerFeatureId,
 } from '@runcastle/core'
 import { reviewWalkthroughPath, sessionDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
@@ -333,7 +334,7 @@ export function reportReviewFinding(ctx: AppCtx, workerId: string, input: Review
   if (w.status !== 'working' && w.status !== 'needs-you') {
     throw new GateError(`report_finding needs a review at work, and "${w.label}" is ${w.status}`)
   }
-  return reportFinding(ctx, { featureId: w.featureId, reviewWorker: w, input })
+  return reportFinding(ctx, { featureId: workerFeatureId(w), reviewWorker: w, input })
 }
 
 // --- a host review's handback -------------------------------------------------------

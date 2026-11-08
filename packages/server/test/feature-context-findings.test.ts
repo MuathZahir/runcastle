@@ -129,7 +129,7 @@ describe('get_feature_context: findings and review evidence', () => {
     const insert = (id: string, status: 'working' | 'handed-back', handbackSummary: string | null) =>
       ctx.db
         .insert(workers)
-        .values({ id, featureId: feature.id, label: 'Review', purpose: 'p', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, handbackSummary, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+        .values({ id, featureId: feature.id, projectId: feature.projectId, label: 'Review', purpose: 'p', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, handbackSummary, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
         .run()
     insert('wkr_running', 'working', null)
     expect(toolGetFeatureContext(ctx, session).reviewEvidence).toBeNull()
