@@ -194,12 +194,30 @@ describe('a drive review', () => {
     expect(() => toolReportFinding(ctx, { session: getSessionRow(ctx, w.id)! }, defect('Late'))).toThrow(GateError)
   })
 
-  it('gives the slot back when it is dropped, and fails when the drive cannot start', async () => {
+  it('gives the slot back when it is dropped or stopped, and fails when the drive cannot start', async () => {
     realHost(reviewer(() => {}))
     const { workerId } = await toolStartReview(ctx, leadSession(), {})
     await until(() => getWorker(ctx, workerId)?.status === 'needs-you')
     await dropWorker(ctx, workerId)
     expect(drive.given).toContain(workerId)
+
+    // Stopped mid-turn, it gives the drive back too.
+    let reviewing = false
+    await host!.stopAll('shutdown')
+    realHost(
+      createFakeAcp({
+        turn: async (t) => {
+          if (!/^# Review this feature/m.test(text(t))) return
+          reviewing = true
+          await t.cancelled
+          return 'cancelled' as const
+        },
+      }),
+    )
+    const stopped = await toolStartReview(ctx, leadSession(), {})
+    await until(() => reviewing)
+    await host!.cancel(stopped.workerId)
+    await until(() => drive.given.includes(stopped.workerId))
 
     drive.answers = [{ ok: false, retriable: false, reason: 'uncommitted files: notes.txt' }]
     const second = await toolStartReview(ctx, leadSession(), {})

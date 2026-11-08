@@ -645,6 +645,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
+  // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
+  if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
   if (!note || !sb) {
     if (w.status === 'working') setStatus(ctx, w, 'needs-you')
     return

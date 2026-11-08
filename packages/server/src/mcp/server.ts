@@ -3240,8 +3240,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Drive the feature branch for review',
         description:
-          "The feature branch running on the human's checkout, to review it: `status` for its URL, scenarios, calls and " +
-          'screenshots. A refusal carries `deniedCode` and `retriable`.',
+          "The feature branch running on the human's checkout, to review it: `start`, `status` (its URL) and `stop` the drive, " +
+          'replay scenarios and calls, keep screenshots. A refusal carries `deniedCode` and `retriable`.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop', 'scenario', 'try_call', 'capture'])
