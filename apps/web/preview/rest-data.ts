@@ -175,7 +175,7 @@ export const doctorHalfDone = {
     probe('container-runtime', 'Container runtime', 'ok', 'Docker version 28.5.2, build ecc6942'),
     probe(
       'sandcastle-image',
-      'Sandcastle container image',
+      'Worker container image',
       'stale',
       'sandcastle:runcastle: Claude Code 2.1.295 in image, 2.1.314 on host, rebuild',
       { fix: 'Open Settings → Workers (Rebuild image).' },
@@ -203,7 +203,7 @@ export const doctorFresh = {
     }),
     probe('codex-auth', 'Codex login', 'error', 'not signed in', { runtime: 'codex', check: 'auth', severity: 'info' }),
     probe('container-runtime', 'Container runtime', 'error', 'docker was not found on PATH'),
-    probe('sandcastle-image', 'Sandcastle container image', 'error', 'not built'),
+    probe('sandcastle-image', 'Worker container image', 'error', 'not built'),
   ],
 } as unknown as RouterOutputs['setup']['doctor']
 

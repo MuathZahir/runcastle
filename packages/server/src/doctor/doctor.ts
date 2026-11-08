@@ -1198,7 +1198,7 @@ async function customImageDrift(
 }
 
 /** The image row's identity, shared by every verdict it can reach. */
-const IMAGE_ROW = { id: 'sandcastle-image', label: 'Sandcastle container image', tier: 2 } as const
+const IMAGE_ROW = { id: 'sandcastle-image', label: 'Worker container image', tier: 2 } as const
 
 /** The first container runtime whose CLI answers, or null when neither does. */
 async function presentRuntime(exec: ExecFn): Promise<Runtime | null> {

@@ -127,7 +127,7 @@ type ImageStatus = 'missing' | 'stale' | 'ok' | 'not-built-yet' | 'custom'
 /** Shaped like the real `sandcastle-image` probe: tier 2, AFK-only, an error. */
 const probe = (status: ImageStatus, fix?: string): Probe => ({
   id: 'sandcastle-image',
-  label: 'Sandcastle image',
+  label: 'Worker image',
   tier: 2,
   status,
   severity: status === 'custom' ? 'info' : 'error',
@@ -297,7 +297,7 @@ const readyReport = () => [
   },
   {
     id: 'sandcastle-image',
-    label: 'Sandcastle image',
+    label: 'Worker image',
     tier: 2,
     status: 'ok',
     severity: 'error',
@@ -342,7 +342,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
     open()
 
     expect(screen.getByText('Ready for unattended workers')).toBeTruthy()
-    for (const label of ['Container runtime', 'Sandcastle image', 'Claude Code token', 'Codex']) {
+    for (const label of ['Container runtime', 'Worker image', 'Claude Code token', 'Codex']) {
       expect(screen.getByText(label)).toBeTruthy()
     }
     // The kicker, the title and the paragraph that opened the old card are gone.

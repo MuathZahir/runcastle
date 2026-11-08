@@ -113,7 +113,7 @@ const doctorProbes = () => [
   probe({ id: 'container-runtime', label: 'Container runtime', detail: 'docker 28.5.2' }),
   probe({
     id: 'sandcastle-image',
-    label: 'Sandcastle image',
+    label: 'Worker image',
     detail: 'sandcastle:runcastle present',
   }),
   probe({
@@ -210,7 +210,7 @@ describe('Settings → Sandboxes', () => {
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'image' } })
 
-    expect(screen.getByText('Sandcastle image')).toBeTruthy()
+    expect(screen.getByText('Worker image')).toBeTruthy()
     expect(screen.queryByText('Container runtime')).toBeNull()
     expect(screen.queryByLabelText('Agents working at once')).toBeNull()
     expect(screen.queryByText('Workers at once')).toBeNull()

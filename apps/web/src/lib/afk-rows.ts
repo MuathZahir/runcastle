@@ -99,9 +99,10 @@ export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = ([
   },
   {
     field: 'sandcastle-image',
-    label: 'Sandcastle image',
-    reason: 'the sandcastle image needs building',
-    terms: ['Sandcastle image', 'build', 'rebuild'],
+    label: 'Worker image',
+    reason: 'the worker image needs building',
+    // 'sandcastle' stays findable: the image's tag (sandcastle:runcastle) and older notes still say it.
+    terms: ['Worker image', 'Sandcastle image', 'image', 'build', 'rebuild'],
   },
   ...AGENT_RUNTIMES.map(credentialPrerequisite),
   {
