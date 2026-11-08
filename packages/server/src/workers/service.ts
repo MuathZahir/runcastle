@@ -14,6 +14,7 @@ import {
   type WorkerRow,
   type WorkerStartedBy,
   type WorkerStatus,
+  isDriveWorkerKind,
   isUsageLimitText,
   workerFeatureId,
   type Project,
@@ -75,6 +76,7 @@ import {
   verifyFindings,
 } from './review'
 import { listByFeature as listFindings } from '../services/review-findings'
+import { DRIVE_WORKER_REFUSAL, isHostWorker } from './drive'
 import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
@@ -249,8 +251,8 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
   return async (spec, row) => {
     if (row.kind !== 'worker') return base(spec, row)
     const w = requireWorker(ctx, row.id)
-    // A drive review runs on the host, in the human's checkout: its launch (`acpLaunchInput`) briefs it there.
-    if (isHostReview(w)) return base(spec, row)
+    // A host worker (a drive review, a drive worker) runs on the host, in the human's checkout: its launch (`acpLaunchInput`) briefs it there.
+    if (isHostWorker(w)) return base(spec, row)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
     const launched = sb.runtime === 'claude-code' ? (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model : undefined
@@ -735,14 +737,16 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
   // Held before anything here awaits: the slot this turn just gave back must not start a queued turn on the same account.
-  const held = failed?.verdict === 'account' ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
+  // A drive worker is outside the queue (drive-chats-become-workers decision 7): its account error fails it alone.
+  const held = failed?.verdict === 'account' && !isDriveWorkerKind(w.kind) ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
-  const note = sb ? await engine.takeHandback(sb) : isHostReview(w) ? takeHostHandback(w.id) : undefined
+  const note = sb ? await engine.takeHandback(sb) : isHostWorker(w) ? takeHostHandback(w.id) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
+  if (note && isDriveWorkerKind(w.kind)) return driveWorkerHandedBack(ctx, w, note)
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
   if (!note || !sb) {
@@ -767,6 +771,16 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
     handback: { workerId: w.id, label: w.label, kind: w.kind, summary: note.summary, commits, files: changes.files, threadId: w.id },
   }
   await deliverToLead(ctx, feature, { text: handbackText(handed, commits, changes.files), source: 'runcastle', display })
+}
+
+/**
+ * A drive worker handed back: it is Done with its summary, and nothing waits to
+ * land (drive-chats-become-workers decision 3). Its commits on the driven
+ * branch and the lead's quiet card come with the drive's own handback.
+ */
+function driveWorkerHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): void {
+  const handed = updateWorker(ctx, w.id, { status: 'handed-back', handbackSummary: note.summary, outcome: null, outcomeNote: null })
+  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`)
 }
 
 /** What the lead reads of a handback: the summary, the work, and its three choices. */
@@ -880,9 +894,10 @@ function holdQueue(ctx: AppCtx, w: WorkerRow, reason: string): string {
   return `It failed on the account, so no queued worker on ${w.runtime} starts until the human next writes to a lead or a worker.`
 }
 
-/** Why a queued worker is held (decision 21), or null when it is not. */
+/** Why a queued worker is held (decision 21), or null when it is not; never a drive worker, which no hold holds. */
 export function queueHoldOf(ctx: AppCtx, w: WorkerRow): string | null {
-  return w.status === 'queued' ? (agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null) : null
+  if (w.status !== 'queued' || isDriveWorkerKind(w.kind)) return null
+  return agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null
 }
 
 /** The human sent a message to a thread: an account hold lifts (decision 21), and a worker they wrote to starts its retries over. */
@@ -897,9 +912,16 @@ export function humanWrote(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): v
  * thread. A worker that has to wait — for a free slot, or for its runtime's
  * account hold to lift — is `queued` until its slot comes, then working again;
  * one waiting on the human or stopped holds none, since only a running turn asks.
+ * A drive worker holds none either: the drive slot is its limit, and the human
+ * sits beside the drive waiting for it (drive-chats-become-workers decision 7),
+ * so it is never queued nor held by an account hold.
  */
 export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => void> | undefined {
-  return (row) => (row.kind === 'worker' ? takeWorkerSlot(ctx, row.id) : undefined)
+  return (row) => {
+    if (row.kind !== 'worker') return undefined
+    const w = getWorker(ctx, row.id)
+    return w && isDriveWorkerKind(w.kind) ? undefined : takeWorkerSlot(ctx, row.id)
+  }
 }
 
 async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
@@ -1014,6 +1036,11 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
 
 // --- the lead's and the human's moves -------------------------------------------
 
+/** Refuse the lead's moves on a drive worker: nothing of it lands, and only the human talks to it (drive-chats-become-workers decisions 3, 6). */
+function refuseDriveWorker(w: WorkerRow): void {
+  if (isDriveWorkerKind(w.kind)) throw new GateError(`worker "${w.label}" is a drive worker: ${DRIVE_WORKER_REFUSAL}.`)
+}
+
 function requireOpen(w: WorkerRow): void {
   if (w.status === 'dropped') throw new GateError(`worker "${w.label}" was dropped`)
   if (w.status === 'failed') throw new GateError(`worker "${w.label}" failed: ${w.failure ?? 'its sandbox is gone'}`)
@@ -1022,10 +1049,15 @@ function requireOpen(w: WorkerRow): void {
 /**
  * Send a worker a message (decision 17): a runcastle prompt into its thread,
  * which waits for the end of a turn that is running. A worker waiting on the
- * human is working again.
+ * human is working again. The lead's: a drive worker refuses it.
  */
 export async function messageWorker(ctx: AppCtx, id: string, text: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
+  return promptWorker(ctx, w, text)
+}
+
+async function promptWorker(ctx: AppCtx, w: WorkerRow, text: string): Promise<{ ok: true }> {
   requireOpen(w)
   // Working before the prompt goes: a turn that must wait for a slot then reads `queued` over it.
   const next = w.status === 'needs-you' ? setStatus(ctx, w, 'working') : w
@@ -1034,11 +1066,11 @@ export async function messageWorker(ctx: AppCtx, id: string, text: string): Prom
   return { ok: true }
 }
 
-/** The Hand back button (decision 5): ask the worker to write its summary and hand back. */
+/** The Hand back button (decision 5): ask the worker to write its summary and hand back. The human's, so a drive worker takes it too. */
 export function askWorkerToHandBack(ctx: AppCtx, id: string): Promise<{ ok: true }> {
-  return messageWorker(
+  return promptWorker(
     ctx,
-    id,
+    requireWorker(ctx, id),
     'The human pressed Hand back: they are done here. Commit what is left, then call hand_back with your summary — ' +
       'what you did, what is left, and every direction the human gave you in this conversation — and end your turn.',
   )
@@ -1060,6 +1092,7 @@ export const MAX_CONFLICT_SEND_BACKS = 2
  */
 export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerResult> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.kind === 'review') throw new GateError(`worker "${w.label}" is a review: it writes no code, so nothing lands. Resolve its findings instead.`)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker lands`)
   const sb = sandboxOf(ctx, w)
@@ -1114,6 +1147,7 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
 /** Send a handed-back worker's work back with a note (decision 4): the note goes to the worker, which works again. */
 export async function sendBackWorker(ctx: AppCtx, id: string, note: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker is sent back`)
   await sendBack(ctx, w, `Your lead sent your work back:\n\n${note}\n\nWork on it, then hand back again.`, note)
   return { ok: true }
@@ -1164,6 +1198,7 @@ function conflictSendBackText(featureBranch: string, files: string[], behind: st
  */
 export async function dropWorker(ctx: AppCtx, id: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
+  refuseDriveWorker(w)
   if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed; there is nothing to drop`)
   await retireWorker(ctx, w)
   return { ok: true }
@@ -1196,7 +1231,7 @@ export function keptConversationPath(workerId: string): string {
 export async function keepConversation(ctx: AppCtx, w: WorkerRow): Promise<void> {
   try {
     const kept = keptConversationPath(w.id)
-    const read = isHostReview(w) ? keepHostConversation(ctx, w, kept) : await keepSandboxConversation(ctx, w, kept)
+    const read = isHostWorker(w) ? keepHostConversation(ctx, w, kept) : await keepSandboxConversation(ctx, w, kept)
     const usage = read ? readTranscriptUsage(read, w.runtime) : null
     if (usage) updateWorker(ctx, w.id, { tokens: usage.total })
   } catch (err) {
@@ -1219,7 +1254,7 @@ async function keepSandboxConversation(ctx: AppCtx, w: WorkerRow, kept: string):
 }
 
 /**
- * A drive review's conversation file is on the host already (it ran there):
+ * A host worker's conversation file is on the host already (it ran there):
  * the transcript its session recorded, else Claude Code's file for its
  * conversation. Copied to `kept` beside its thread log; its tokens are read
  * where it lies, with any subagent transcripts beside it.
@@ -1236,9 +1271,9 @@ function keepHostConversation(ctx: AppCtx, w: WorkerRow, kept: string): string |
   return path
 }
 
-/** Whether a worker has a conversation file to keep: a sandbox's, or a drive review's on the host. */
+/** Whether a worker has a conversation file to keep: a sandbox's, or a host worker's on the host. */
 function hasConversation(w: WorkerRow): boolean {
-  return !!w.container || isHostReview(w)
+  return !!w.container || isHostWorker(w)
 }
 
 /** Keep every worker's conversation of a feature, so a record written before its sandboxes go (the outcome) carries their tokens. */
@@ -1273,9 +1308,15 @@ export async function removeFeatureWorkers(ctx: AppCtx, featureId: string, after
 /** The statuses that keep a feature from being ready: at work, or holding work not landed (decision 19). */
 const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'handed-back'])
 
-/** The feature's workers still at work or holding work that has not landed; a review that handed back holds nothing to land. */
+/**
+ * The feature's workers still at work or holding work that has not landed; a
+ * review that handed back holds nothing to land, and a drive worker never holds
+ * ready (drive-chats-become-workers decision 6): its work is already on the branch.
+ */
 export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[] {
-  return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status) && !(w.kind === 'review' && w.status === 'handed-back'))
+  return listWorkers(ctx, featureId).filter(
+    (w) => HOLDS_READY.has(w.status) && !isDriveWorkerKind(w.kind) && !(w.kind === 'review' && w.status === 'handed-back'),
+  )
 }
 
 /**

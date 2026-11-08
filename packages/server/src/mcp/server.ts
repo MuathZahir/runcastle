@@ -17,6 +17,7 @@ import {
 } from '../workers/service'
 import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
 import { provideWorkerFeatureRead } from '../workers/tools'
+import { driveWorkerOf } from '../workers/drive'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -781,9 +782,23 @@ function hostReviewOf(ctx: AppCtx, session: SessionRow | undefined): WorkerRow |
 export function toolReviewHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): { handedBack: true } {
   const w = hostReviewOf(ctx, session)
   if (!w) throw new GateError(`hand_back here belongs to a Review worker, and this is a ${session.kind} session.`)
-  const summary = input.summary.trim()
-  if (!summary) throw new InvalidInputError('a handback needs a summary')
-  writeHostHandback(w.id, summary)
+  return handBackOnHost(w, input.summary)
+}
+
+/**
+ * A drive worker's hand-back (drive-chats-become-workers): its summary, written
+ * where a host worker's handback is read when its turn ends.
+ */
+export function toolDriveWorkerHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): { handedBack: true } {
+  const w = driveWorkerOf(ctx, session)
+  if (!w) throw new GateError(`hand_back here belongs to a drive worker, and this is a ${session.kind} session.`)
+  return handBackOnHost(w, input.summary)
+}
+
+function handBackOnHost(w: WorkerRow, summary: string): { handedBack: true } {
+  const trimmed = summary.trim()
+  if (!trimmed) throw new InvalidInputError('a handback needs a summary')
+  writeHostHandback(w.id, trimmed)
   return { handedBack: true }
 }
 
@@ -1503,9 +1518,9 @@ export async function toolRetryDrive(
   ctx: AppCtx,
   session: SessionRow,
 ): Promise<RetryDriveResult> {
-  if (session.kind !== 'drive-fix') {
+  if (session.kind !== 'drive-fix' && driveWorkerOf(ctx, session)?.kind !== 'fix-drive') {
     throw new GateError(
-      `retrying a drive belongs to a drive-fix session, and this is a ${session.kind} session. ` +
+      `retrying a drive belongs to a drive-fix session or the Fix-drive worker, and this is a ${session.kind} session. ` +
         "It stops and restarts a test drive on the human's machine — only the session opened on " +
         'that failed drive may do that; everyone else asks the human to drive from the review panel.',
     )
@@ -1529,11 +1544,11 @@ export async function toolRetryDrive(
 
 // --- the scenario session's tools (drive-scenarios decision 8) ---------------
 
-/** Refuse anything but a `scenario` session, and resolve the project it belongs to. */
+/** Refuse anything but a `scenario` session or the Scenarios worker, and resolve the project it belongs to. */
 function requireScenarioSession(ctx: AppCtx, session: SessionRow, what: string): Project {
-  if (session.kind !== 'scenario') {
+  if (session.kind !== 'scenario' && driveWorkerOf(ctx, session)?.kind !== 'scenario') {
     throw new GateError(
-      `${what} belongs to a scenario session, and this is a ${session.kind} session. Scenarios ` +
+      `${what} belongs to a scenario session or the Scenarios worker, and this is a ${session.kind} session. Scenarios ` +
         'are written and landed from ＋ New scenario inside a running test drive.',
     )
   }
@@ -2406,9 +2421,11 @@ const PROJECT_READ_NOTE =
 /**
  * The audience a built server is for: a session kind, a drive review on the
  * host (`review`, a `worker` session whose worker is one), or `undefined` for
- * "we could not tell".
+ * "we could not tell". The drive workers (`fix-drive-worker`, `scenario-worker`,
+ * drive-chats-become-workers decision 9) are named apart from any session kind:
+ * they are `worker` sessions, told apart by their worker row.
  */
-export type McpAudience = SessionKindT | 'review'
+export type McpAudience = SessionKindT | 'review' | 'fix-drive-worker' | 'scenario-worker'
 
 /** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
@@ -2419,9 +2436,18 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
  * `scenario` is in neither list: its scope follows its drive (feature or
  * project), so it is offered only the tools that work at either scope plus its
  * own two. `worker` is in neither either: a worker gets none of the lead's tools
- * (interactive-workers decision 9).
+ * (interactive-workers decision 9). A drive worker is offered what the drive chat
+ * it replaces was, plus `hand_back`.
  */
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'review']
+const ALL_AUDIENCES: readonly McpAudience[] = [
+  ...FEATURE_KINDS,
+  ...PROJECT_KINDS,
+  'scenario',
+  'worker',
+  'review',
+  'fix-drive-worker',
+  'scenario-worker',
+]
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
@@ -2444,14 +2470,14 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Feature reads. Also reachable by a drive review, which reads ITS OWN
   // feature (a review legitimately wants the branch's context). The project
   // session reads any feature of its project by `slug` (`projectFeatureReader`).
-  get_feature_context: [...FEATURE_KINDS, 'review', 'project'],
-  read_feature_doc: [...FEATURE_KINDS, 'review', 'project'],
+  get_feature_context: [...FEATURE_KINDS, 'review', 'project', 'fix-drive-worker'],
+  read_feature_doc: [...FEATURE_KINDS, 'review', 'project', 'fix-drive-worker'],
   // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
-  // The lead's hands back to the orchestrator; a drive review's (`review`) hands back to its lead.
-  hand_back: ['chat', 'review'],
+  // The lead's hands back to the orchestrator; a host worker's (a drive review, a drive worker) hands back to its lead.
+  hand_back: ['chat', 'review', 'fix-drive-worker', 'scenario-worker'],
   // A `worker` session is in no list here: its tools are its own, served in its
   // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
   // into it (`workers/tools.ts`); its only way to change the feature is its
@@ -2473,7 +2499,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_design: ['chat'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
-  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review'],
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review', 'fix-drive-worker', 'scenario-worker'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
@@ -2490,14 +2516,14 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
   // Single-kind tools, each gated on that kind at call time.
   dry_run_drive: ['project'],
-  retry_drive: ['drive-fix'],
-  run_scenario: ['scenario'],
-  set_scenario_runner: ['scenario'],
+  retry_drive: ['drive-fix', 'fix-drive-worker'],
+  run_scenario: ['scenario', 'scenario-worker'],
+  set_scenario_runner: ['scenario', 'scenario-worker'],
   // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
   review_drive: ['review'],
   report_finding: ['review'],
   // The one tool both halves share — it emits at whatever scope the caller has.
-  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
+  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'fix-drive-worker', 'scenario-worker'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
   // orchestrator, refused at call time unless it is still live
   // (`requireOrchestratorSession`). Registered in `orchestrator-tools.ts` and
@@ -2526,6 +2552,14 @@ function registeredFor(tool: string, audience: McpAudience | undefined): boolean
   if (audience === undefined) return true
   if (!ALL_AUDIENCES.includes(audience)) return true
   return (TOOL_AUDIENCES[tool] ?? ALL_AUDIENCES).includes(audience)
+}
+
+/** The audience a session's server is built for: a host review or drive worker by its worker row, any other session by its kind. */
+export function sessionAudience(ctx: AppCtx, session: SessionRow): McpAudience {
+  if (hostReviewOf(ctx, session)) return 'review'
+  const drive = driveWorkerOf(ctx, session)
+  if (drive) return drive.kind === 'fix-drive' ? 'fix-drive-worker' : 'scenario-worker'
+  return session.kind
 }
 
 /** The tool names a given audience is offered — the assertion tests read. */
@@ -3276,6 +3310,24 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         return ok(toolReviewHandBack(rs.ctx, rs.session, args))
       },
     )
+  } else if (wants('hand_back') && (audience === 'fix-drive-worker' || audience === 'scenario-worker')) {
+    server.registerTool(
+      'hand_back',
+      {
+        title: 'Hand back to your lead',
+        description:
+          'Hand back when the human is done with what they asked: a short summary of what you changed and committed, ' +
+          'on which branch, and what is left. Your lead reads it when it next works. End your turn after.',
+        inputSchema: {
+          summary: z.string().min(1).describe('What you did, the branch your commits are on, and what is left.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolDriveWorkerHandBack(rs.ctx, rs.session, args))
+      },
+    )
   } else if (wants('hand_back')) {
     server.registerTool(
       'hand_back',
@@ -3500,7 +3552,7 @@ export async function resolveAudience(sessionId: string | undefined): Promise<Mc
   try {
     const ctx = await getRuntimeCtx()
     const session = resolveSession(ctx, sessionId)
-    return hostReviewOf(ctx, session ?? undefined) ? 'review' : session?.kind
+    return session ? sessionAudience(ctx, session) : undefined
   } catch {
     return undefined
   }

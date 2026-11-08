@@ -16,6 +16,7 @@ import { listScenarioPaths } from '../services/scenarios'
 import { clearEndedErrand } from '../services/resolved-merge'
 import { hostReviewBriefing, hostReviewEnv, isHostReview } from '../workers/review'
 import { getWorker } from '../workers/service'
+import { driveWorkerBriefing, driveWorkerOf } from '../workers/drive'
 
 /**
  * How a thread's agent is launched over ACP: its runtime's {@link AcpLaunchSpec}
@@ -63,13 +64,18 @@ function rowProject(ctx: AppCtx, row: SessionRow): Project {
   return row.featureId ? projectForFeature(ctx, getFeatureRow(ctx, row.featureId)) : requireProjectById(ctx, row.projectId as string)
 }
 
-/** The model runcastle launches a thread of the row's kind on now, as Settings (and its project) resolve it. */
+/**
+ * The model runcastle launches a thread of the row's kind on now, as Settings
+ * (and its project) resolve it. A drive worker runs on the drive chats' step,
+ * as the chats it replaces did (drive-chats-become-workers decision 9).
+ */
 export function resolvedThreadModel(ctx: AppCtx, row: SessionRow): ModelEntry {
-  return resolveModelEntry(STEP[row.kind], rosterConfig(ctx), rowProject(ctx, row))
+  const step = driveWorkerOf(ctx, row) ? 'prepare' : STEP[row.kind]
+  return resolveModelEntry(step, rosterConfig(ctx), rowProject(ctx, row))
 }
 
 /**
- * The posture of the host-side kinds (`drive-fix`, `scenario`), which
+ * The posture of the host-side kinds (`drive-fix`, `scenario`, and the host workers), which
  * work in the human's own checkout. Claude runs them without prompts and the
  * checkout guard (a pre-tool hook, which holds under bypass) refuses what the
  * prompts used to catch. Codex never asks, and passes no mode so it keeps its
@@ -126,6 +132,18 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
       }
     }
     case 'worker': {
+      // A drive worker runs on the host, in the checkout the drive switched to, under the drive chats' posture
+      // (drive-chats-become-workers decisions 1, 9); a project drive's Scenarios worker has no feature.
+      const drive = driveWorkerOf(ctx, row)
+      if (drive) {
+        return {
+          ...base,
+          worktreePath: project.repoPath,
+          ...(row.featureId ? { feature: getFeatureRow(ctx, row.featureId) } : {}),
+          hostWorker: { briefing: driveWorkerBriefing(drive), env: {} },
+          ...hostSidePosture(runtime),
+        }
+      }
       const feature = getFeatureRow(ctx, row.featureId as string)
       const w = getWorker(ctx, row.id)
       // A drive review runs here, on the host, in the checkout the review drive holds (burns-become-workers decision 3).

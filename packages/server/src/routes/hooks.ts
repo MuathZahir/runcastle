@@ -6,8 +6,9 @@ import { type EditDenial, editDenyResponse, evaluateEditGuard } from '../launche
 import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launcher/checkout-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
+import { guardKindOf } from '../workers/drive'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { toolsForAudience } from '../mcp/server'
+import { sessionAudience, toolsForAudience } from '../mcp/server'
 import { clearSentMemoryOnStart } from '../mcp/sent-memory'
 import {
   getSessionRow,
@@ -336,7 +337,7 @@ async function projectScopedStartContext(ctx: AppCtx, session: SessionRow): Prom
 
   const scope = `[runcastle] ${noun} for ${project.name} (${project.repoPath})`
   const lines = [session.kind === 'project' ? `${scope}.\n${await orchestratorPrepNote(ctx, project)}` : scope]
-  return [...lines, ...toolLoadLine(session)].join('\n')
+  return [...lines, ...toolLoadLine(ctx, session)].join('\n')
 }
 
 /**
@@ -467,10 +468,12 @@ async function handlePreToolUse(
   // the git probe — every other session keeps the pure, IO-free path it had.
   const mergeInProgress =
     session.purpose === 'resolve-conflict' ? await mergeInProgressAt(session.worktreePath) : false
+  // A drive worker is guarded as the drive chat it replaces (drive-chats-become-workers decision 9).
+  const guardKind = guardKindOf(ctx, session)
 
   const denial =
     evaluateEditGuard({
-      kind: session.kind,
+      kind: guardKind,
       purpose: session.purpose,
       mergeInProgress,
       worktreePath: session.worktreePath,
@@ -479,7 +482,7 @@ async function handlePreToolUse(
       featureSlug: feature?.slug,
     }) ??
     evaluateInstallGuard({
-      kind: session.kind,
+      kind: guardKind,
       worktreePath: session.worktreePath,
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
@@ -489,7 +492,7 @@ async function handlePreToolUse(
           : undefined,
     }) ??
     (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null) ??
-    (await checkoutGuardDenial(session, toolName, toolInput))
+    (await checkoutGuardDenial(session, guardKind, toolName, toolInput))
   return denial ? editDenyResponse(denial) : {}
 }
 
@@ -499,14 +502,15 @@ async function handlePreToolUse(
  */
 async function checkoutGuardDenial(
   session: SessionRow,
+  guardKind: SessionKind,
   toolName: string | undefined,
   toolInput: Record<string, unknown>,
 ): Promise<EditDenial | null> {
-  if (!guardsCheckout(session.kind)) return null
+  if (!guardsCheckout(guardKind)) return null
   const command = typeof toolInput.command === 'string' ? toolInput.command : undefined
   const stagedPaths = command && mentionsCommit(command) ? await stagedPathsAt(session.worktreePath) : undefined
   return evaluateCheckoutGuard({
-    kind: session.kind,
+    kind: guardKind,
     purpose: session.purpose,
     toolName,
     command,
@@ -543,7 +547,7 @@ function sessionStartContext(ctx: AppCtx, feature: Feature, session: SessionRow 
     `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     'A repeat `get_feature_context` returns only what changed; `read_feature_doc` returns any doc in full.',
-    ...toolLoadLine(session),
+    ...toolLoadLine(ctx, session),
   ].join('\n')
 }
 
@@ -552,9 +556,9 @@ function sessionStartContext(ctx: AppCtx, feature: Feature, session: SessionRow 
  * in a single ToolSearch, so it never loads them one at a time. Codex has no
  * ToolSearch, so it gets none.
  */
-function toolLoadLine(session: SessionRow | null): string[] {
+function toolLoadLine(ctx: AppCtx, session: SessionRow | null): string[] {
   if (!session || (session.runtime ?? DEFAULT_RUNTIME) !== 'claude-code') return []
-  const tools = toolsForAudience(session.kind).map((name) => `mcp__runcastle__${name}`)
+  const tools = toolsForAudience(sessionAudience(ctx, session)).map((name) => `mcp__runcastle__${name}`)
   return [`Load your runcastle tools once: ToolSearch "select:${tools.join(',')}"`]
 }
 

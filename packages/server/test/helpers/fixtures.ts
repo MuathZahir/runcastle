@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Feature, Project, SessionRow, WorkerStatus } from '@runcastle/core'
+import type { AgentRuntime, DriveWorkerKind, Feature, Project, SessionPurpose, SessionRow, WorkerStatus } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import type { AppCtx } from '../../src/db/types'
 import { features, projects, workers } from '../../src/db/schema'
@@ -87,6 +87,51 @@ export function seedHostReview(
   ctx.db
     .insert(workers)
     .values({ id: session.id, featureId: feature.id, projectId: feature.projectId, label: 'Review', purpose: 'Review the feature', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+    .run()
+  return session
+}
+
+/**
+ * A drive worker (drive-chats-become-workers) and the `worker` session that is
+ * its conversation: owned by `owner`, a feature or (a project drive's Scenarios
+ * worker) the project, in the human's checkout `worktreePath`.
+ */
+export function seedDriveWorker(
+  ctx: AppCtx,
+  owner: { feature: Feature } | { project: Project },
+  kind: DriveWorkerKind,
+  worktreePath: string,
+  opts: { status?: WorkerStatus; purpose?: SessionPurpose; runtime?: AgentRuntime } = {},
+): SessionRow {
+  const feature = 'feature' in owner ? owner.feature : undefined
+  const projectId = feature ? feature.projectId : 'project' in owner ? owner.project.id : ''
+  const runtime = opts.runtime ?? 'claude-code'
+  const session = createSessionRow(ctx, {
+    ...(feature ? { featureId: feature.id } : { projectId }),
+    kind: 'worker',
+    worktreePath,
+    model: { id: 'm', runtime },
+    ...(opts.purpose ? { purpose: opts.purpose } : {}),
+  })
+  const now = Date.now()
+  ctx.db
+    .insert(workers)
+    .values({
+      id: session.id,
+      featureId: feature?.id ?? null,
+      projectId,
+      label: kind === 'fix-drive' ? 'Fix drive' : 'Scenarios',
+      purpose: 'Started by you',
+      kind,
+      model: 'm',
+      runtime,
+      startedBy: 'human',
+      status: opts.status ?? 'working',
+      engine: 'docker',
+      featureBranch: feature?.branch ?? 'main',
+      createdAt: now,
+      updatedAt: now,
+    })
     .run()
   return session
 }
