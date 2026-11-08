@@ -226,7 +226,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
 
       const line = kickoffOf(sessionId)
       expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
-      expect(line).toContain('Feature status: Talking with you;')
+      expect(line).toContain('Feature status: Talking with you.')
       expect(line).toContain('Human: we were building the cart page')
       expect(line).toContain(transcriptPath)
     }, 30_000)

@@ -86,7 +86,7 @@ lives in the design page, never in the app's own files: deleting it leaves nothi
    menu**. **Keep the state switcher**: it is committed with the design page.
 2. Commit the component, its design page and sample data as `design: <what>`,
    with `.runcastle/design.json` if new or changed.
-3. **Never commit unapproved work.** Before you start workers or a round, commit
+3. **Never commit unapproved work.** Before you start workers or the review, commit
    what the human approved and drop the rest, so workers start from what they saw.
 4. **Only the human approves**: the **Approve** button in the Design tab, or the
    human naming the design in their own words. Opening is not approving, and an

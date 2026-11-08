@@ -13,7 +13,6 @@ import { launchSession } from '../src/launcher/launcher'
 import { listAfter } from '../src/services/events'
 import {
   archiveFeature,
-  burn,
   createFeature,
   deleteFeature,
   startDraft,
@@ -251,10 +250,6 @@ describe('draft features', () => {
 
     it('refuses archive', async () => {
       await expect(archiveFeature(ctx, draft.id)).rejects.toThrow(DRAFT_REFUSAL)
-    })
-
-    it('refuses burn', async () => {
-      await expect(burn(ctx, draft.id)).rejects.toThrow(DRAFT_REFUSAL)
     })
 
     it('refuses every session door', async () => {

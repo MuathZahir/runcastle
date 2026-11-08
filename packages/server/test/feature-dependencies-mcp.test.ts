@@ -179,7 +179,7 @@ describe('feature dependencies over MCP', () => {
 
   it('offers and allows set_feature_dependencies to the orchestrator only', async () => {
     expect(toolsForAudience('project')).toContain('set_feature_dependencies')
-    for (const kind of ['scenario', 'chat', 'drive-fix', 'run'] as const) {
+    for (const kind of ['scenario', 'chat', 'drive-fix', 'review'] as const) {
       expect(toolsForAudience(kind), kind).not.toContain('set_feature_dependencies')
     }
 

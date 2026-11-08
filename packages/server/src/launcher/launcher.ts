@@ -6,27 +6,21 @@ import type {
   MergeBranchPair,
   ModelEntry,
   Project,
-  Run,
   SessionKind,
   SessionPurpose,
   SessionRow,
 } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
 import { DEFAULT_RUNTIME, newId, resolveModelEntry } from '@runcastle/core'
-import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runtimeAdapterFor } from './runtimes'
 import { chatKickoffFor, projectTriageKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
-import { runs } from '../db/schema'
 import { GateError } from '../errors'
 import { emit, emitForSession, emitProject, emitScoped, type EmitScope } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
 import * as git from '../services/git'
-import { getFeatureRow, listRunsByFeature, projectForFeature, requireProjectById, rowToRun } from '../services/repo'
+import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { requireNotDraft } from '../services/features'
-import { listByFeature as listTicketsByFeature } from '../services/tickets'
-import { workflowClaimsFeatureBranch } from '../workflows/runner'
-import { ensureTalkWorktreeDuringDrive, ensureTalkWorktreeDuringRun } from '../services/chat-branch'
+import { ensureTalkWorktreeDuringDrive } from '../services/chat-branch'
 import { renderScenarioFollowUp } from './artifacts'
 import { mainChatContext } from '../services/main-chat-excerpt'
 import { featureStateLine } from '../services/feature-state'
@@ -97,17 +91,7 @@ export function chatKickoffHeader(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   opening: string = chatKickoffFor(runtime),
 ): string {
-  const counts = new Map<string, number>()
-  for (const ticket of listTicketsByFeature(ctx, feature.id)) {
-    counts.set(ticket.status, (counts.get(ticket.status) ?? 0) + 1)
-  }
-  const ticketSummary = [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([status, count]) => `${status} ${count}`)
-    .join(', ') || 'none'
-  const runs = listRunsByFeature(ctx, feature.id)
-  const latestRun = runs[0]
-  return `${opening} Feature status: ${featureStateLine(ctx, feature)}; rounds run: ${runs.length}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}. Call get_feature_context for the full picture.`
+  return `${opening} Feature status: ${featureStateLine(ctx, feature)}. Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {
@@ -152,35 +136,13 @@ function modelStamp(row: SessionRow): { model: string | null; runtime: AgentRunt
 }
 
 /**
- * The feature's currently-running AFK run, if any. A BRANCH-CLAIMING run (e.g.
- * ticket-burner) decides where the talk worktree stands: it holds
- * `feature/<slug>`, so the chat works on a chat temp branch beside it
- * (`one-chat-per-feature` decision 2).
- */
-function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
-  const row = ctx.db
-    .select()
-    .from(runs)
-    .where(and(eq(runs.featureId, featureId), eq(runs.status, 'running')))
-    .limit(1)
-    .get()
-  return row ? rowToRun(row) : null
-}
-
-/**
  * Ensure the talk worktree.
  *
- * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
- * temp branch instead, so a conversation that starts mid-run has somewhere of
- * its own to commit and never lands docs on a detached HEAD. While a drive of
- * the feature holds it on the main checkout, the conversation opens in the
+ * While a drive of the feature holds it on the main checkout, the conversation opens in the
  * worktree the drive detached, and what it commits lands when the drive stops.
  * Called by the launchers and again when a thread's process starts.
  */
 export async function ensureFeatureWorktree(ctx: AppCtx, project: Project, feature: Feature): Promise<string> {
-  const running = activeRunFor(ctx, feature.id)
-  const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
-  if (besideRun) return await ensureTalkWorktreeDuringRun(ctx, project, feature)
   return git.activeTestDriveFeatureId(project.id) === feature.id
     ? await ensureTalkWorktreeDuringDrive(ctx, project, feature)
     : await git.ensureTalkWorktree(project, feature, () =>

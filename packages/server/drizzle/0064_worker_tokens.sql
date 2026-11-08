@@ -1,0 +1,1 @@
+ALTER TABLE `workers` ADD `tokens` integer;

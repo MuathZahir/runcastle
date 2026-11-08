@@ -91,7 +91,7 @@ const READY = 'Changelog file per release'
 const QUESTION = 'Rounds see blockers outside the round'
 
 function openOf(f: FeatureListItem): Open {
-  const moment: Moment = f.title === QUESTION ? 'one-question' : f.activeRun || f.liveSession?.status === 'live' ? 'working' : 'idle'
+  const moment: Moment = f.title === QUESTION ? 'one-question' : f.workersWorking > 0 || f.liveSession?.status === 'live' ? 'working' : 'idle'
   return {
     title: f.title,
     words: f.title === READY ? 'Ready to test' : moment === 'working' ? 'Working' : moment === 'idle' ? 'In progress' : 'Waiting for you',

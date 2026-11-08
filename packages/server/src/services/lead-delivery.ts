@@ -3,7 +3,6 @@ import {
   LEAD_WAKE_FAILED,
   type LeadWakeFailedData,
   type PromptDisplay,
-  type ReviewGateRun,
   type SessionRow,
 } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
@@ -15,10 +14,6 @@ import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
 import { markHumanMessage } from './lead-status'
-import { getRunRow } from './repo'
-import { listByFeature as listFindings } from './review-findings'
-import { listRounds, runClaimedTicketIds } from './runs'
-import { listByIds } from './tickets'
 import { wakes, type WakeReason } from './wake-rule'
 
 /**
@@ -158,47 +153,4 @@ export function leadDeliveryState(featureId: string): LeadDeliveryState {
   return failure
     ? { waitingSince: failure.since, lastFailure: { reason: failure.reason, at: failure.at } }
     : { waitingSince: null, lastFailure: null }
-}
-
-/** One line on a round's verify gates, for the wake message. */
-function gatesLine(gates: ReviewGateRun | undefined): string {
-  if (!gates || gates.status === 'none_configured') return 'Gates: no verify commands are configured.'
-  if (gates.status === 'couldnt_run') return `Gates: could not run — ${gates.reason}`
-  const failed = gates.commands.filter((c) => c.outcome !== 'passed')
-  const reused = gates.reusedFrom
-    ? ` (not re-run: the branch had not moved since commit ${gates.commit.slice(0, 7)}, where they ran)`
-    : ''
-  if (failed.length === 0) return `Gates: all ${gates.commands.length} verify command(s) passed${reused}.`
-  return `Gates: FAILED${reused} — ${failed.map((c) => `\`${c.command}\` (${c.outcome})`).join(', ')}.`
-}
-
-/**
- * The single message a returning round wakes its lead with (decision 12): the
- * round's outcome, each ticket it held with its status, the gate result, what a
- * review in the round found, and where the digests are. The record, not prose —
- * the lead reads the digests itself.
- */
-export function composeRoundWake(ctx: AppCtx, featureId: string, runId: string): string {
-  const run = getRunRow(ctx, runId)
-  const round = listRounds(ctx, featureId).find((r) => r.runId === runId)
-  const held = listByIds(ctx, runClaimedTicketIds(ctx, runId)).sort((a, b) => a.seq - b.seq)
-  const heldIds = new Set(held.map((t) => t.id))
-  const findings = listFindings(ctx, featureId).filter((f) => heldIds.has(f.reviewTicketId))
-
-  const lines = [
-    `[runcastle] Round ${round?.round ?? '?'} returned: ${run.status}${run.summary ? ` — ${run.summary}` : ''}`,
-    ...(held.length > 0
-      ? ['Tickets:', ...held.map((t) => `- #${t.seq} ${t.title}: ${t.status}${t.error ? ` (${t.error.split(/\r?\n/, 1)[0]})` : ''}`)]
-      : ['Tickets: none']),
-    gatesLine(run.gates),
-    ...(findings.length > 0
-      ? [
-          'Review findings:',
-          ...findings.map((f) => `- [${f.severity} ${f.kind}] ${f.title} — ${f.location} (${f.status})`),
-        ]
-      : []),
-    'Read each ticket’s digest with get_ticket({ seq }), then fix it yourself, dispatch the next ' +
-      'round, ask the human, or declare ready.',
-  ]
-  return lines.join('\n')
 }

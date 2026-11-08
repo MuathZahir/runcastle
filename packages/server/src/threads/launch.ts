@@ -14,6 +14,8 @@ import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
 import { clearEndedErrand } from '../services/resolved-merge'
+import { hostReviewBriefing, hostReviewEnv, isHostReview } from '../workers/review'
+import { getWorker } from '../workers/service'
 
 /**
  * How a thread's agent is launched over ACP: its runtime's {@link AcpLaunchSpec}
@@ -123,10 +125,23 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
         permissionMode: 'bypassPermissions',
       }
     }
-    case 'worker':
+    case 'worker': {
+      const feature = getFeatureRow(ctx, row.featureId as string)
+      const w = getWorker(ctx, row.id)
+      // A drive review runs here, on the host, in the checkout the review drive holds (burns-become-workers decision 3).
+      if (w && isHostReview(w)) {
+        return {
+          ...base,
+          worktreePath: project.repoPath,
+          feature,
+          hostWorker: { briefing: hostReviewBriefing(w, project.repoPath), env: hostReviewEnv(w.id) },
+          ...hostSidePosture(runtime),
+        }
+      }
       // Its process runs in its sandbox (`withWorkers`), which says where its
       // session opens and briefs it; only the model is read from this launch.
-      return { ...base, feature: getFeatureRow(ctx, row.featureId as string), permissionMode: 'bypassPermissions' }
+      return { ...base, feature, permissionMode: 'bypassPermissions' }
+    }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)
       return {

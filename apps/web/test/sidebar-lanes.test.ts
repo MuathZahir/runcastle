@@ -18,7 +18,7 @@ const failed = listItem({
   id: 'failed',
   ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
 })
-const burning = listItem({ id: 'burning', activeRun: true })
+const burning = listItem({ id: 'burning', workersWorking: 1 })
 const building = listItem({ id: 'building' })
 const draft = listItem({ id: 'draft', status: 'draft' })
 const shipped = listItem({ id: 'shipped', status: 'shipped' })
@@ -50,7 +50,7 @@ describe('a need its orchestrator holds (decision 18)', () => {
   })
 
   it('a permission prompt during a round needs you, not Agent working', () => {
-    const f = listItem({ id: 'asks', activeRun: true, need: need('permission', 'Needs permission · Bash: git push') })
+    const f = listItem({ id: 'asks', workersWorking: 1, need: need('permission', 'Needs permission · Bash: git push') })
     expect(sidebarLanes([f]).inbox).toEqual([f])
   })
 })

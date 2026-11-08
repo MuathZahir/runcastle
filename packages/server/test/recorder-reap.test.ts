@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { reviewWalkthroughPath } from '@runcastle/core/paths'
 import { describe, expect, it, vi } from 'vitest'
-import type { RecorderReapDeps } from '../src/workflows/recorder-reap'
-import { reapRecorder, runCommand } from '../src/workflows/recorder-reap'
+import type { RecorderReapDeps } from '../src/services/recorder-reap'
+import { reapRecorder, runCommand } from '../src/services/recorder-reap'
 
 function deps(overrides: Partial<RecorderReapDeps> = {}): RecorderReapDeps {
   return {

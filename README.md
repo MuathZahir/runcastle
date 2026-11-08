@@ -446,7 +446,6 @@ bun run dev            # server (4512) + web dev server (4513)
 | `bun run typecheck` | `tsc --noEmit` across the typed packages. |
 | `bun run test` | The Vitest suite: core contracts plus server services, git, hooks, MCP, and workers. |
 | `bun run dev:tool` | Dev-only test-state surgery (see below). |
-| `bun run scripts/smoke.ts` | A scripted end-to-end run against a throwaway repo and a real host `claude`. |
 
 Read [`CLAUDE.md`](CLAUDE.md) for conventions and [`docs/SPEC.md`](docs/SPEC.md)
 for the contracts before implementing anything. Styling `apps/web`? Read

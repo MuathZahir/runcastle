@@ -44,10 +44,10 @@ const stopped = listItem({ need: need('stopped', 'Stopped · you stopped it') })
 const asked = listItem({ need: need('answer', 'Needs your answer · which retry policy?') })
 const plan = listItem({ need: need('plan', 'Plan to approve') })
 const merge = listItem({ need: need('merge', 'Ready to merge') })
-const permission = listItem({ activeRun: true, need: need('permission', 'Needs permission · Bash: git push') })
+const permission = listItem({ workersWorking: 1, need: need('permission', 'Needs permission · Bash: git push') })
 const held = listItem({ need: need('test', 'With the orchestrator · Ready to test · Checkout', { held: true }) })
 const failed = listItem({ ticketCounts: tickets(2, 1, 0, 1) })
-const building = listItem({ activeRun: true, ticketCounts: tickets(8, 3, 1) })
+const building = listItem({ workersWorking: 2, ticketCounts: tickets(8, 3, 1) })
 const midTurn = listItem({ liveSession: { status: 'live', awaitingInput: false } as never })
 const idle = listItem({ ticketCounts: tickets(6, 4) })
 
@@ -69,9 +69,9 @@ describe('featureStateWords', () => {
     expect(featureStateWords(held)).toBe('With the orchestrator · Ready to test · Checkout')
   })
 
-  it('says an agent is at work, with the tickets landed out of those not cancelled while it builds', () => {
-    expect(featureStateWords(building)).toBe('Working · 3/7')
-    expect(featureStateWords(listItem({ activeRun: true }))).toBe('Working')
+  it('says how many workers are at work, or that the lead is', () => {
+    expect(featureStateWords(building)).toBe('Working · 2 workers')
+    expect(featureStateWords(listItem({ workersWorking: 1 }))).toBe('Working · 1 worker')
     expect(featureStateWords(midTurn)).toBe('Agent working')
   })
 

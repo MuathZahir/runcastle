@@ -24,8 +24,8 @@ describe('useWorkspace — settings', () => {
 
   it('lands on the page and the row an error message pointed at', () => {
     const { result } = renderHook(() => useWorkspace('proj_1'))
-    act(() => result.current.openSettings({ page: 'burns', field: 'sandcastle-image' }))
-    expect(result.current.settings).toEqual({ page: 'burns', field: 'sandcastle-image' })
+    act(() => result.current.openSettings({ page: 'sandboxes', field: 'sandcastle-image' }))
+    expect(result.current.settings).toEqual({ page: 'sandboxes', field: 'sandcastle-image' })
   })
 
   // Only one overlay is up at a time; the palette is where most opens come from.

@@ -9,10 +9,8 @@ import { createSessionRow } from '../src/launcher/sessions'
 import {
   featureContext,
   toolGetProjectContext,
-  toolGetTicket,
   toolGetWorkRecord,
   toolListProjectNotes,
-  toolListTickets,
   toolReadFeatureBrief,
 } from '../src/mcp/server'
 import { MCP_READ_CEILING_CHARS, serializedLength } from '../src/mcp/read-ceiling'
@@ -94,47 +92,14 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       }
     })
 
-    it('moves ticket detail out whole, oldest first, when rows and to-do alone cross it', () => {
-      const context = featureContext(ctx, { featureId: seeded.feature.id })
-      const reader = { featureId: seeded.feature.id }
-      const all = toolListTickets(ctx, reader, {}).tickets
-
-      // Goals leave lowest seq first: the moved ones are a prefix of that
-      // order, and each is marked rather than silently gone.
-      const byAge = [...context.tickets].sort((a, b) => a.seq - b.seq)
-      const firstKept = byAge.findIndex((row) => row.goal !== undefined)
-      const moved = firstKept === -1 ? byAge : byAge.slice(0, firstKept)
-      expect(moved.length).toBeGreaterThan(0)
-      for (const row of moved) expect(row.goalNotInlined).toBe(true)
-      for (const row of byAge.slice(moved.length)) {
-        expect(row.goal).toBe(toolGetTicket(ctx, reader, { seq: row.seq }).goal)
-        expect(row.goalNotInlined).toBeUndefined()
-      }
-      expect(context.ticketsNote).toContain('get_ticket')
-
-      // Every ticket is a row or named as moved out, and only settled tickets
-      // ever leave — lowest seq first, with no gap.
-      const movedRows = context.ticketsNotInlined ?? []
-      expect([...context.tickets.map((r) => r.seq), ...movedRows].sort((a, b) => a - b)).toEqual(
-        all.map((t) => t.seq).sort((a, b) => a - b),
-      )
-      const settled = all.filter((t) => t.status === 'done' || t.status === 'cancelled').map((t) => t.seq)
-      expect(movedRows).toEqual(settled.slice(0, movedRows.length))
-      if (backlogged) expect(movedRows.length).toBeGreaterThan(0)
-    })
-
     it('opens with the decision-critical header', () => {
       const context = featureContext(ctx, { featureId: seeded.feature.id })
       const text = JSON.stringify(context)
       expect(text.indexOf('"annotatedModels"')).toBeGreaterThan(-1)
       expect(text.indexOf('"annotatedModels"')).toBeLessThan(2_000)
-      expect(text.indexOf('"burnConcurrency"')).toBeGreaterThan(-1)
-      expect(text.indexOf('"burnConcurrency"')).toBeLessThan(2_000)
-      // Header, then rows, then the to-do, then docs (the fixture never
-      // burned, so `latestRun` is absent).
+      // Header, then the to-do, then docs.
       expect(Object.keys(context)).toEqual([
         'feature',
-        'rounds',
         'latestReady',
         'driveActive',
         'stopped',
@@ -146,14 +111,10 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'upNext',
         'heldBy',
         'annotatedModels',
-        'burnConcurrency',
         'reviewEvidence',
         'reviewShots',
         'designs',
         'workers',
-        'tickets',
-        ...(backlogged ? ['ticketsNotInlined'] : []),
-        'ticketsNote',
         'openDefects',
         'findings',
         'docs',
@@ -162,18 +123,6 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'docsNote',
       ])
     })
-  })
-
-  it('get_ticket on the largest ticket and list_tickets fit under the ceiling', () => {
-    const seeded = seedOversizedFeature(ctx, project, { slug: 'oversized-tickets' })
-    const reader = { featureId: seeded.feature.id }
-
-    const largest = toolGetTicket(ctx, reader, { seq: seeded.largestTicketSeq })
-    expect(largest.digest).toBeDefined()
-    expect(serializedLength(largest)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
-    expect(serializedLength(toolListTickets(ctx, reader, {}))).toBeLessThanOrEqual(
-      MCP_READ_CEILING_CHARS,
-    )
   })
 
   describe('the project-scope read tools on a 120+ feature portfolio', () => {

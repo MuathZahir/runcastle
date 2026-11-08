@@ -13,7 +13,6 @@ import {
   deleteTempBranch,
   detachWorktree,
   ensureDetachedTalkWorktree,
-  ensureTalkWorktree,
   headSha,
   mergeTempBranch,
   reattachWorktree,
@@ -85,44 +84,6 @@ async function parkWorktree(ctx: AppCtx, feature: Feature, worktreePath: string)
     message: 'detached the chat worktree while the run holds the feature branch',
     data: { worktreePath },
   })
-}
-
-/**
- * Free `feature/<slug>` for a branch-claiming run by putting the talk worktree
- * on a fresh chat branch. Falls back to the old detach when the branch cannot be
- * cut (so a run is never blocked by it), and no-ops when the worktree is already
- * parked — a crashed run's leftover, which the next release still lands.
- */
-export async function parkTalkWorktreeForRun(
-  ctx: AppCtx,
-  project: Project,
-  feature: Feature,
-): Promise<void> {
-  const worktreePath = talkWorktree(project, feature)
-  if (await chatBranchInWorktree(worktreePath)) return
-  await parkWorktree(ctx, feature, worktreePath)
-}
-
-/**
- * The talk worktree for a session spawning while a branch-claiming run is live:
- * ensured as usual, then parked on a chat branch if it is not already — the case
- * where the run started before the feature had a worktree at all.
- */
-export async function ensureTalkWorktreeDuringRun(
-  ctx: AppCtx,
-  project: Project,
-  feature: Feature,
-): Promise<string> {
-  const worktreePath = await ensureTalkWorktree(project, feature, () =>
-    emit(ctx, feature.id, {
-      type: 'repo.head_healed',
-      message: 'created runcastle: initial commit so branches can be cut',
-    }),
-  )
-  if (!(await chatBranchInWorktree(worktreePath))) {
-    await parkWorktree(ctx, feature, worktreePath)
-  }
-  return worktreePath
 }
 
 /**

@@ -3,7 +3,7 @@ import type { RuncastleConfig } from '@runcastle/core'
 import type { ExecFn } from '../doctor/doctor'
 import { createSystemExec } from '../doctor/system-exec'
 import { type BuildStepRunner, prepareImageBuild, runImageBuild } from '../services/image-build'
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workflows/burn-user'
+import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
 
 export const BUILD_IMAGE_USAGE = 'usage: runcastle build-image'
 

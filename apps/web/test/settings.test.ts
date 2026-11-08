@@ -94,21 +94,11 @@ describe('describeField', () => {
     expect(row.value).toBe('4512')
   })
 
-  it('renders sandbox as a select with its options', () => {
-    const row = describeField(field({ key: 'sandbox', value: 'docker' }))
-    expect(row.control).toBe('select')
-    expect(row.options).toEqual(['docker', 'noSandbox'])
-  })
-
   /**
    * Findings F17.7 — the overlay read out config identifiers and one raw
    * camelCase key amid otherwise humanized labels.
    */
   it('reads out what a config identifier means rather than the identifier', () => {
-    const sandbox = describeField(field({ key: 'sandbox', value: 'docker' }))
-    expect(sandbox.optionLabels.noSandbox).toMatch(/no sandbox/i)
-    expect(sandbox.optionLabels.docker).toMatch(/docker/i)
-
     const mcp = describeField(field({ key: 'sessionMcp', value: 'inherit' }))
     expect(mcp.optionLabels.inherit).not.toBe('inherit')
     expect(mcp.optionLabels.runcastleOnly).not.toBe('runcastleOnly')
@@ -120,20 +110,8 @@ describe('describeField', () => {
   })
 
   it('labels every option a select offers', () => {
-    for (const key of ['sandbox', 'sessionMcp']) {
-      const row = describeField(field({ key, value: '' }))
-      for (const opt of row.options) expect(row.optionLabels[opt]).toBeTruthy()
-    }
-  })
-
-  it('gives burnMaxIterations a human label instead of printing the key', () => {
-    const row = describeField(field({ key: 'burnMaxIterations', value: 3 }))
-    expect(row.label).toBe('Iterations per attempt')
-    expect(row.control).toBe('number')
-    expect(row.tooltip).not.toBe('')
-    expect(
-      describeField(field({ key: 'burnMaxIterations', source: 'env', editable: false })).note,
-    ).toBe('Set by RUNCASTLE_BURN_MAX_ITERATIONS')
+    const row = describeField(field({ key: 'sessionMcp', value: '' }))
+    for (const opt of row.options) expect(row.optionLabels[opt]).toBeTruthy()
   })
 
   it('leaves model ids to speak for themselves', () => {
@@ -159,10 +137,10 @@ describe('describeField', () => {
   // beside the input, where the empty control is, not in a tooltip.
   it('says what burn concurrency defaults to on this machine while it is unset', () => {
     expect(describeField(field({ key: 'burnConcurrency', value: 1 })).unit).toBe(
-      'ticket agents and workers at once · default on this machine: 1',
+      'workers at once · default on this machine: 1',
     )
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).unit).toBe(
-      'ticket agents and workers at once · default on this machine: 3',
+      'workers at once · default on this machine: 3',
     )
     // …and the control stays empty over it: nobody chose this width.
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).ghostValue).toBe('3')
@@ -170,7 +148,7 @@ describe('describeField', () => {
 
   it('drops the machine-default once a width is actually set', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
-    expect(row.unit).toBe('ticket agents and workers at once')
+    expect(row.unit).toBe('workers at once')
     expect(row.ghostValue).toBeUndefined()
     expect(row.note).toBeNull()
   })
@@ -389,8 +367,8 @@ const view = (fields: Partial<SettingField>[], projectId?: string): SettingsView
 
 describe('globalRows', () => {
   it('maps every field in the global view to a row', () => {
-    const rows = globalRows(view([{ key: 'serverPort' }, { key: 'model' }, { key: 'sandbox' }]))
-    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'sandbox'])
+    const rows = globalRows(view([{ key: 'serverPort' }, { key: 'model' }, { key: 'sandboxImage' }]))
+    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'sandboxImage'])
   })
 })
 
@@ -401,13 +379,13 @@ describe('projectRows', () => {
         [
           { key: 'serverPort', scope: 'global' },
           { key: 'model', scope: 'project' },
-          { key: 'sandbox', scope: 'project' },
+          { key: 'sandboxImage', scope: 'project' },
           { key: 'devCommand', scope: 'project' },
         ],
         'proj_1',
       ),
     )
-    expect(rows.map((r) => r.key)).toEqual(['model', 'sandbox', 'devCommand'])
+    expect(rows.map((r) => r.key)).toEqual(['model', 'sandboxImage', 'devCommand'])
   })
 })
 
@@ -473,9 +451,6 @@ const globalView = (): SettingsView =>
     { key: 'sandboxImage', value: null },
     { key: 'sessionMcp', value: 'inherit' },
     { key: 'burnConcurrency', value: 3, source: 'file' },
-    { key: 'burnMaxIterations', value: 3 },
-    { key: 'burnAttempts', value: 3 },
-    { key: 'burnConflictAttempts', value: 2 },
     { key: 'burnCpus', value: null },
     { key: 'setupCommand', value: null },
     { key: 'verifyCommands', value: null },
@@ -514,13 +489,8 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
 describe('pageRows — one page per task', () => {
   it('puts the machine-wide fields on General, grouped Server then Sessions', () => {
     const rows = pageRows(globalView(), 'general')
-    expect(rows.map((r) => r.key)).toEqual([
-      'serverPort',
-      'sandbox',
-      'sandboxImage',
-      'sessionMcp',
-    ])
-    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'sessions', 'sessions'])
+    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'sandboxImage', 'sessionMcp'])
+    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'sessions'])
     expect(rows.find((r) => r.key === 'sandboxImage')?.placeholder).toBe('sandcastle:runcastle')
   })
 
@@ -528,35 +498,27 @@ describe('pageRows — one page per task', () => {
     expect(pageRows(globalView(), 'models').map((r) => r.key)).toEqual(['model'])
   })
 
-  it('puts the five worker numbers on Workers, each with the unit it counts', () => {
-    const rows = pageRows(globalView(), 'burns')
-    expect(rows.map((r) => r.key)).toEqual([
-      'burnConcurrency',
-      'burnMaxIterations',
-      'burnAttempts',
-      'burnConflictAttempts',
-      'burnCpus',
-    ])
-    expect(rows.map((r) => r.unit)).toEqual([
-      'ticket agents and workers at once',
-      'turns',
-      'attempts',
-      'passes before asking you',
-      'cores · e.g. 4 on a 12-thread box at width 3',
-    ])
-    // The one place a label alone is ambiguous, and the only short help line.
-    expect(rows.find((r) => r.key === 'burnMaxIterations')?.shortHelp).toBe(
-      'Distinct from attempts: an attempt restarts an agent that crashed.',
-    )
-    expect(rows.find((r) => r.key === 'burnAttempts')?.shortHelp).toBeUndefined()
+  it('puts the two worker numbers on Sandboxes, each with the unit it counts, and no burn retry count', () => {
+    const rows = pageRows(globalView(), 'sandboxes')
+    expect(rows.map((r) => r.key)).toEqual(['burnConcurrency', 'burnCpus'])
+    expect(rows.map((r) => r.unit)).toEqual(['workers at once', 'cores · e.g. 4 on a 12-thread box at width 3'])
     expect(rows.find((r) => r.key === 'burnCpus')?.placeholder).toBe('unlimited')
+  })
+
+  it('renders the retired sandbox on/off switch on no page', () => {
+    const retired = ['sandbox']
+    const shown = (['general', 'models', 'sandboxes'] as const).flatMap((page) => pageRows(globalView(), page).map((r) => r.key))
+    const project = pageRows(projectView(), 'project').map((r) => r.key)
+    for (const key of retired) {
+      expect(shown).not.toContain(key)
+      expect(project).not.toContain(key)
+    }
   })
 
   it('groups This project as model & sandbox, commands, then project chat', () => {
     const rows = pageRows(projectView(), 'project')
     expect(rows.map((r) => r.key)).toEqual([
       'model',
-      'sandbox',
       'sandboxImage',
       'setupCommand',
       'verifyCommands',
@@ -571,7 +533,6 @@ describe('pageRows — one page per task', () => {
       'sessionBranch',
     ])
     expect(rows.map((r) => r.group)).toEqual([
-      'model',
       'model',
       'model',
       'commands',
@@ -628,7 +589,7 @@ describe('pageRows — one page per task', () => {
   })
 
   it('gives every row a tooltip to hold the explanation the row does not print', () => {
-    for (const page of ['general', 'models', 'burns'] as const) {
+    for (const page of ['general', 'models', 'sandboxes'] as const) {
       for (const row of pageRows(globalView(), page)) expect(row.tooltip).not.toBe('')
     }
     for (const row of pageRows(projectView(), 'project')) expect(row.tooltip).not.toBe('')
@@ -1156,9 +1117,9 @@ describe('filterSettings', () => {
       page: 'general' as const,
       terms: rowSearchTerms(r),
     })),
-    ...pageRows(globalView(), 'burns').map((r) => ({
+    ...pageRows(globalView(), 'sandboxes').map((r) => ({
       id: r.key,
-      page: 'burns' as const,
+      page: 'sandboxes' as const,
       terms: rowSearchTerms(r),
     })),
     { id: 'gpt-5.6-sol', page: 'models' as const, terms: ['gpt-5.6-sol', 'Codex'] },
@@ -1167,13 +1128,13 @@ describe('filterSettings', () => {
   it('shows everything and counts nothing until someone types', () => {
     const all = filterSettings('   ', items)
     expect(all.matches.size).toBe(items.length)
-    expect(all.counts).toEqual({ general: 0, models: 0, burns: 0, project: 0 })
+    expect(all.counts).toEqual({ general: 0, models: 0, sandboxes: 0, project: 0 })
   })
 
   it('counts the hits per page so the rail can say where they are', () => {
     const { counts, matches } = filterSettings('sandbox', items)
-    expect(matches).toEqual(new Set(['sandbox', 'sandboxImage']))
-    expect(counts).toEqual({ general: 2, models: 0, burns: 0, project: 0 })
+    expect(matches).toEqual(new Set(['sandboxImage', 'burnCpus']))
+    expect(counts).toEqual({ general: 1, models: 0, sandboxes: 1, project: 0 })
   })
 
   it('matches the key and the tooltip, not just the label', () => {
@@ -1201,7 +1162,7 @@ describe('filterSettings', () => {
 describe('settingsLocationFromMessage', () => {
   it('turns the doctor’s rebuild advice into a link to the image row', () => {
     expect(settingsLocationFromMessage('Open Settings → AFK burns and click "Rebuild image".')).toEqual(
-      { page: 'burns', field: 'sandcastle-image' },
+      { page: 'sandboxes', field: 'sandcastle-image' },
     )
   })
 
@@ -1210,12 +1171,12 @@ describe('settingsLocationFromMessage', () => {
       settingsLocationFromMessage(
         'claude is not installed in image sandcastle:runcastle — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).',
       ),
-    ).toEqual({ page: 'burns', field: 'sandcastle-image' })
+    ).toEqual({ page: 'sandboxes', field: 'sandcastle-image' })
   })
 
   it('follows the page to its new name', () => {
     expect(settingsLocationFromMessage('See Settings → Burns.')).toEqual({
-      page: 'burns',
+      page: 'sandboxes',
       field: 'sandcastle-image',
     })
   })
@@ -1236,15 +1197,15 @@ describe('the words Settings reads in — rounds and workers, never burns or lap
   it('says neither "burn" nor "lap" on General, Workers or This project', () => {
     const rows = [
       ...pageRows(globalView(), 'general'),
-      ...pageRows(globalView(), 'burns'),
+      ...pageRows(globalView(), 'sandboxes'),
       ...pageRows(projectView(), 'project'),
     ]
     for (const row of rows) expect(words(row)).not.toMatch(/\bburn|\blaps?\b/i)
   })
 
-  it('says runcastle runs the Verify commands at the end of every round', () => {
+  it('says the Review worker runs the Verify commands (burns-become-workers decision 5)', () => {
     const verify = pageRows(projectView(), 'project').find((r) => r.key === 'verifyCommands')
-    expect(verify?.tooltip).toContain('runcastle runs them itself at the end of every round')
+    expect(verify?.tooltip).toContain('the Review worker runs them before the feature is ready')
     expect(verify?.tooltip).not.toContain('never runs them')
   })
 })

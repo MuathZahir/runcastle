@@ -10,13 +10,12 @@ import {
   type TokenUsage,
   sumSessionUsage,
   type UsageSplit,
-  usageOf,
   ZERO_USAGE,
 } from '@runcastle/core'
 import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
-import { events, sessions, tickets } from '../db/schema'
+import { events, sessions } from '../db/schema'
 import type { AppCtx } from '../db/types'
-import { emit, emitForSession } from './events'
+import { emitForSession } from './events'
 import { rowToSession } from './repo'
 
 type SessionSelect = typeof sessions.$inferSelect
@@ -94,31 +93,6 @@ export function readTranscriptUsage(path: string, runtime: AgentRuntime): TokenU
 /** The split a breakdown stores — the usage without its total. */
 export function breakdownOf(usage: TokenUsage): UsageSplit {
   return splitOf(usage)
-}
-
-/**
- * Add one worker run's usage to a ticket's tokens (decision 3), accumulating
- * across the ticket's iterations, attempts and rounds, and remember the agent
- * session ids it came from — the parked "Open a worker while it works" wants
- * them. Emits `ticket.tokens_counted`.
- */
-export function addTicketTokens(ctx: AppCtx, ticketId: string, usage: TokenUsage, sessionIds: string[]): void {
-  const row = ctx.db.select().from(tickets).where(eq(tickets.id, ticketId)).get()
-  if (!row) return
-  const prior = row.tokenBreakdown
-  const sum = addUsage(prior ? { ...usageOf(prior), total: row.tokens ?? 0 } : ZERO_USAGE, usage)
-  const ids = [...new Set([...(prior?.sessionIds ?? []), ...sessionIds])]
-  ctx.db
-    .update(tickets)
-    .set({ tokens: sum.total, tokenBreakdown: { ...breakdownOf(sum), ...(ids.length > 0 ? { sessionIds: ids } : {}) } })
-    .where(eq(tickets.id, ticketId))
-    .run()
-  emit(ctx, row.featureId, {
-    type: 'ticket.tokens_counted',
-    message: `ticket ${row.seq} tokens: ${sum.total}`,
-    ticketId,
-    data: { tokens: sum.total, added: usage.total },
-  })
 }
 
 /**

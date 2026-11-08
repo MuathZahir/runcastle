@@ -1,6 +1,7 @@
 # ADR-0008: Burn performance — measure the burn, bound the agent, enforce the rules
 
 - **Status:** accepted (2026-07-27)
+- **Amended by ADR-0020** (burns become workers): its agent bounds and guard now govern worker sandboxes; the per-tool timing breakdown is retired, and token counts per worker remain.
 - **Amended:** 2026-10-28 — ticket agents no longer run the verify commands
   whole; the host runs them at most once per commit (feature
   tickets-stop-repeating-checks-and-tests-earn-their-place). See "Amendment"

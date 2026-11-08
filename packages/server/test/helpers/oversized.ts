@@ -10,7 +10,8 @@ import {
   triageNotes,
 } from '../../src/services/project-notes'
 import { reportFinding } from '../../src/services/review-findings'
-import { getTicket, storeTickets, updateTicket } from '../../src/services/tickets'
+import { getTicket } from '../../src/services/tickets'
+import { storeTickets, updateTicket } from './tickets'
 import { seedFeature } from './fixtures'
 
 /**

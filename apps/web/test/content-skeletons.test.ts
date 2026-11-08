@@ -7,7 +7,7 @@ import { FeatureRowsSkeleton } from '../src/components/Sidebar'
 import { ProjectsSkeleton } from '../src/components/Shell'
 import { SettingsSkeleton } from '../src/components/settings/SettingRow'
 import { GENERAL_SKELETON } from '../src/components/settings/GeneralPage'
-import { BURNS_SKELETON } from '../src/components/settings/BurnsPage'
+import { SANDBOXES_SKELETON } from '../src/components/settings/SandboxesPage'
 import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
 import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
@@ -27,7 +27,7 @@ const SITES: Array<[string, string, string]> = [
   ['the sidebar', render(FeatureRowsSkeleton), 'Loading features…'],
   ['the first load', render(ProjectsSkeleton), 'Loading projects…'],
   ['the general settings', settings(GENERAL_SKELETON), 'Loading settings…'],
-  ['the burns settings', settings(BURNS_SKELETON), 'Loading settings…'],
+  ['the burns settings', settings(SANDBOXES_SKELETON), 'Loading settings…'],
   ['the models settings', settings(MODELS_SKELETON), 'Loading settings…'],
   ['the project settings', settings(PROJECT_SKELETON), 'Loading settings…'],
   ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
@@ -71,7 +71,7 @@ describe('the skeletons are shaped like their content', () => {
   })
 
   it('every settings page: its own groups of setting rows', () => {
-    expect(count(settings(BURNS_SKELETON), 'setting-row')).toBe(5)
+    expect(count(settings(SANDBOXES_SKELETON), 'setting-row')).toBe(5)
     expect(count(settings(MODELS_SKELETON), 'setting-row')).toBe(7)
     expect(count(settings(PROJECT_SKELETON), 'setting-row')).toBe(6)
   })

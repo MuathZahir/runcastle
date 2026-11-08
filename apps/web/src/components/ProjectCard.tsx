@@ -22,9 +22,6 @@ import { FeatureActionsMenu } from './FeatureActionsMenu'
 
 const RENAME_INPUT = `${TEXT_INPUT} h-7 w-full font-medium`
 
-/** The reason removal is refused while the project still has a run going. */
-const IN_FLIGHT_REASON = 'A round is in flight — it has to finish before this project can go.'
-
 export function ProjectCard({
   project,
   stats,
@@ -74,7 +71,6 @@ export function ProjectCard({
     return () => window.removeEventListener('keydown', onKey)
   }, [confirming])
 
-  const runsInFlight = stats.activeRuns > 0
   const submitRename = () => {
     const n = name.trim()
     if (n && n !== project.name) rename.mutate({ projectId: project.id, name: n })
@@ -113,7 +109,6 @@ export function ProjectCard({
         title={
           <span className="text-text-secondary">
             Remove <span className="font-medium text-text">{project.name}</span>? The repo on disk is untouched.
-            {runsInFlight && <span className="block text-xs text-text-tertiary">{IN_FLIGHT_REASON}</span>}
           </span>
         }
         control={
@@ -125,7 +120,7 @@ export function ProjectCard({
               size="sm"
               variant="danger"
               icon={<IconTrash />}
-              disabled={runsInFlight || close.isPending}
+              disabled={close.isPending}
               onClick={() => close.mutate({ projectId: project.id })}
             >
               {close.isPending ? 'Removing…' : 'Remove'}
@@ -156,7 +151,7 @@ export function ProjectCard({
             className="flex-nowrap"
             items={[
               stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: stats.needsYou === 1 ? 'needs you' : 'need you' },
-              stats.activeRuns > 0 && { tone: 'live', strong: stats.activeRuns, text: 'running' },
+              stats.working > 0 && { tone: 'live', strong: stats.working, text: 'running' },
               stats.total === 0
                 ? { text: 'No features yet' }
                 : { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },

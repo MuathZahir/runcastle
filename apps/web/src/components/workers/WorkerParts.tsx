@@ -15,6 +15,7 @@ import {
   IconChevronRight,
   IconDoc,
   IconExternalLink,
+  IconEye,
   IconGitMerge,
   IconLock,
   IconMessage,
@@ -50,7 +51,7 @@ export function WorkerStatusLine({
 }: {
   status: WorkerStatus
   oldSideChat?: boolean
-  /** A few words after the status: what failed, how many wait ahead. */
+  /** A few words after the status: what failed, why a queued worker is held. */
   why?: string
 }) {
   return (
@@ -98,6 +99,7 @@ export function WorkerHeaderActions({
 const KIND_ICON: Record<WorkerKind, ReactNode> = {
   'with-you': <IconUser size={14} />,
   'on-its-own': <IconActivity size={14} />,
+  review: <IconEye size={14} />,
 }
 
 /**

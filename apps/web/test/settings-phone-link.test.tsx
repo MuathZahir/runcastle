@@ -84,7 +84,7 @@ const running = (over: Partial<Status> = {}): Status => ({
 const noFilter: FilterState = {
   query: '',
   matches: new Set(),
-  counts: { general: 0, models: 0, burns: 0, project: 0 },
+  counts: { general: 0, models: 0, sandboxes: 0, project: 0 },
 }
 const show = () => render(<PhoneLinkSection projectId="proj_1" filter={noFilter} />)
 

@@ -9,9 +9,10 @@ import {
 } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { list } from '../src/services/features'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { seedFeature, seedHostReview, seedProject } from './helpers/fixtures'
 
 /**
  * improve-features-section ticket 2 — the sidebar row's relative activity stamp
@@ -42,6 +43,17 @@ describe('feature.list lastActivityAt', () => {
 
     const [item] = list(ctx, projectId)
     expect(item.lastActivityAt).toBe(1_700_000_000_000)
+  })
+
+  it('counts each feature’s workers at work: working or queued, never one that is done, failed or waiting on you', () => {
+    const busy = seedFeature(ctx, projectId, { slug: 'busy' })
+    const idle = seedFeature(ctx, projectId, { slug: 'idle' })
+    for (const status of ['working', 'queued', 'needs-you', 'handed-back', 'landed', 'failed'] as const) seedHostReview(ctx, busy, '/repo', status)
+    seedHostReview(ctx, idle, '/repo', 'dropped')
+
+    const byId = new Map(list(ctx, projectId).map((f) => [f.id, f.workersWorking]))
+    expect(byId.get(busy.id)).toBe(2)
+    expect(byId.get(idle.id)).toBe(0)
   })
 
   it('scopes activity to its own feature', () => {

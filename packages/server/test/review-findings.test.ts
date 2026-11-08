@@ -5,22 +5,19 @@ import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import {
-  buildFixTicket,
   closeAsAddressed,
   dismiss,
   dismissAsAgent,
   listByFeature,
-  markFailed,
-  markFixed,
-  markFixing,
   openDefects,
   reportFinding,
   viewByFeature,
 } from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
+import { listByFeature as listTickets } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
-import { reportWithFixTicket } from './helpers/findings'
+import { markFailed, markFixed, markFixing, reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('review findings service', () => {
@@ -50,35 +47,6 @@ describe('review findings service', () => {
     citation: 'spec.md §Save requires persistence',
     detail: 'The save action drops the edited value.',
     reproStep: 'Run bun test save.test.ts and observe the failing persistence assertion.',
-  })
-
-  it('builds the mechanical fix ticket exactly from a finding', () => {
-    expect(buildFixTicket({ id: 'finding_1', ...defect() })).toEqual({
-      title: 'Broken save',
-      goal: 'Fix: Broken save',
-      context:
-        'Location: packages/server/src/save.ts:42\n\n' +
-        'Citation: spec.md §Save requires persistence\n\n' +
-        'Detail: The save action drops the edited value.\n\n' +
-        'Repro step: Run bun test save.test.ts and observe the failing persistence assertion.',
-      acceptanceCriteria: [
-        'The repro step no longer reproduces / the cited criterion holds: Run bun test save.test.ts and observe the failing persistence assertion.',
-      ],
-      seams: [],
-      blockedBy: [],
-      kind: 'implementation',
-      originFindingId: 'finding_1',
-    })
-  })
-
-  it('stores a fix ticket through a batch that closes with no review ticket', () => {
-    // The load-bearing placement constraint of the one-review-ticket seatbelt:
-    // it lives at G3 and at the `emit_tickets` tool surface, NEVER in
-    // `storeTickets`. The internal mints — this one, and the burner's mid-run
-    // verification pass — store review-less batches by design.
-    const [fix] = storeTickets(ctx, featureId, [buildFixTicket({ id: 'finding_1', ...defect() })])
-    expect(fix.kind).toBe('implementation')
-    expect(listTickets(ctx, featureId).map((t) => t.id)).toContain(fix.id)
   })
 
   it('reports a defect as an open finding for the lead, minting no fix ticket', () => {
@@ -182,16 +150,6 @@ describe('review findings service', () => {
     markFixing(ctx, finding.id)
     updateTicket(ctx, fixTicket.id, { status })
     expect(viewByFeature(ctx, featureId).openDefects.map((row) => row.id)).toContain(finding.id)
-  })
-
-  it('marks the finding failed when an orphaned burning fix ticket is swept', () => {
-    const { finding, fixTicket } = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect() })
-    markFixing(ctx, finding.id)
-    updateTicket(ctx, fixTicket.id, { status: 'burning' })
-    sweepOrphanedBurning(ctx, featureId, 'agent vanished')
-    expect(listByFeature(ctx, featureId)[0]).toMatchObject({
-      status: 'failed', openReason: 'fix-failed', failureReason: 'agent vanished',
-    })
   })
 
   it('orders equal-time findings by id for a stable ledger', () => {

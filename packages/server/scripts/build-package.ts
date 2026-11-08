@@ -10,13 +10,13 @@
  *      resolved INTO the output (NOT `--compile`); every real dependency
  *      (simple-git, hono, drizzle, …) stays external so it installs normally —
  *      EXCEPT the patched ones listed in
- *      `BUNDLED_DEPENDENCIES` (sandcastle), which are inlined so the workspace
+ *      `BUNDLED_DEPENDENCIES` (empty today), which are inlined so the workspace
  *      patch ships with them. The output is then checked for the patch's code:
  *      a registry copy of the dep would bundle just as happily and fail on the
  *      user's first burn instead (that was v1.2.11).
  *   2. Copy the runtime-spawned / runtime-read assets as REAL files: drizzle
- *      migrations, the hook client (spawned by `bun`), the skills pack + burner
- *      prompts, the built SPA, and the sandcastle build-context template (scaffolded on demand, issue #50).
+ *      migrations, the hook client (spawned by `bun`), the skills pack and
+ *      the review assignments, the built SPA, and the sandcastle build-context template (scaffolded on demand, issue #50).
  *   3. Write the flattened manifest (see publish-manifest.ts) — public name, no
  *      `private`, no `workspace:*`.
  *
@@ -53,7 +53,7 @@ function readPkg(dir: string): PackageJson {
 /**
  * The manifest of a dependency as resolved FROM THE SERVER PACKAGE — i.e. the
  * copy the bundle will inline. Resolved through the entry module rather than
- * `<name>/package.json` because an `exports` map (sandcastle has one) refuses
+ * `<name>/package.json` because an `exports` map (some packages have one) refuses
  * the latter; the manifest is then found by walking up from the entry file.
  */
 function readDependencyPkg(name: string): PackageJson {
@@ -124,9 +124,10 @@ async function main(): Promise<void> {
   cpSync(join(SERVER_DIR, 'drizzle'), join(OUT, 'drizzle'), { recursive: true })
   // Hook client (spawned by bun): a real file.
   cpSync(join(SERVER_DIR, 'src', 'launcher', 'hook-client.ts'), join(OUT, 'hook-client.ts'))
-  // Skills pack + burner prompts (read at launch / by the burner workflow).
+  // Skills pack (read at launch).
   cpSync(join(SKILLS_DIR, 'packs'), join(OUT, 'skills', 'packs'), { recursive: true })
-  cpSync(join(SKILLS_DIR, 'burner'), join(OUT, 'skills', 'burner'), { recursive: true })
+  // The Review worker's assignments (read by workers/review.ts).
+  cpSync(join(SKILLS_DIR, 'review'), join(OUT, 'skills', 'review'), { recursive: true })
   // Built SPA (served by mountWebAppIfBuilt via RUNCASTLE_WEB_DIST).
   cpSync(join(WEB_DIR, 'dist'), join(OUT, 'web'), { recursive: true })
   // Sandcastle build-context template (scaffolded into `.sandcastle/` on demand by

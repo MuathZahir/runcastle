@@ -1,22 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import type { Feature, Project, Run, RunStatus, SessionRow } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import type { Feature, Project, SessionRow } from '@runcastle/core'
+import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runs } from '../src/db/schema'
+import { workers } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow } from '../src/launcher/sessions'
-import {
-  buildMcpServer,
-  toolAddTestNote,
-  toolReportFinding,
-  toolReviewDrive,
-} from '../src/mcp/server'
+import { buildMcpServer, toolReportFinding, toolReviewDrive } from '../src/mcp/server'
 import { usePipePty } from './helpers/pipe-pty'
 import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
@@ -27,19 +22,16 @@ import {
   testDrive,
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
-import { rowToRun } from '../src/services/repo'
-import { addNote, listByFeature as listNotes } from '../src/services/test-notes'
-import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature as listFindings } from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { withholdDrive } from '../src/workflows/review-ticket'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature } from './helpers/fixtures'
+import { seedFeature, seedHostReview } from './helpers/fixtures'
 
 /**
- * The two wires a review ticket calls (improve-workflow seams 3 and 4), tested
- * where the review agent meets them: the `review_drive` and `add_test_note` MCP
- * tools.
+ * The wires a drive review calls (burns-become-workers decision 3), tested
+ * where the Review worker on the host meets them: the `review_drive` and
+ * `report_finding` MCP tools.
  *
  * Real git and the real drive slot, the way `dry-run-drive.test.ts` does it —
  * the whole point of the review drive is that it moves the human's actual
@@ -71,12 +63,12 @@ const PTY = process.platform !== 'win32'
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-describe('the review agent wires', () => {
+describe('the drive review wires', () => {
   let ctx: AppCtx
   let repo: string
   let project: Project
   let feature: Feature
-  let run: Run
+  let review: SessionRow
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
@@ -85,9 +77,8 @@ describe('the review agent wires', () => {
     project = await openProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'reviewed' })
     await createFeatureBranch(project, feature.slug, 'main')
-    // A review ticket only ever burns inside its own run, so that run is the
-    // identity every call below arrives with.
-    run = seedRun('running')
+    // The Review worker on the host is the identity every call below arrives with.
+    review = seedHostReview(ctx, feature, repo)
   })
 
   afterEach(() => {
@@ -95,27 +86,9 @@ describe('the review agent wires', () => {
     for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
   })
 
-  function seedRun(status: RunStatus): Run {
-    const row = ctx.db
-      .insert(runs)
-      .values({
-        id: newId('run'),
-        featureId: feature.id,
-        workflow: 'ticket-burner',
-        status,
-        startedAt: Date.now(),
-      })
-      .returning()
-      .get()
-    return rowToRun(row)
-  }
-
-  /** A call arriving under the run identity — what the runner will send. */
-  function drive(
-    action: 'start' | 'status' | 'stop',
-    runId = run.id,
-  ): Promise<Awaited<ReturnType<typeof toolReviewDrive>>> {
-    return toolReviewDrive(ctx, { runId }, { action })
+  /** A call arriving from the drive review's own session. */
+  function drive(action: 'start' | 'status' | 'stop'): Promise<Awaited<ReturnType<typeof toolReviewDrive>>> {
+    return toolReviewDrive(ctx, { session: review }, { action })
   }
 
   function talkSession(): SessionRow {
@@ -134,17 +107,19 @@ describe('the review agent wires', () => {
     return listAfter(ctx, feature.id)
   }
 
-  // --- the carve-out: what a review-purpose start may and may not have -------
+  const defect = {
+    kind: 'defect',
+    severity: 'high',
+    title: 'Save loses edits',
+    location: 'screen: editor; click Save',
+    citation: 'spec.md requires edits to persist',
+    detail: 'The old value returns after saving.',
+    reproStep: 'Edit the title, click Save, and reload.',
+  } as const
 
-  it('starts on the feature branch while the run that launched it is still active', async () => {
-    // The carve-out is the review's alone: with the same run active and the
-    // slot free, the human clicking Test drive is still refused — that is the
-    // one guard a review-purpose start waives.
-    expect(await testDrive(ctx, project, feature, 'start')).toMatchObject({
-      ok: false,
-      deniedReason: 'Feature has an active run — wait for it to finish',
-    })
+  // --- the review drive -----------------------------------------------------
 
+  it('starts on the feature branch and gives the checkout back on stop', async () => {
     const start = await drive('start')
 
     expect(start).toMatchObject({ ok: true, action: 'start' })
@@ -162,30 +137,6 @@ describe('the review agent wires', () => {
     expect(activeDriveInfo(project.id)).toBeNull()
   })
 
-  it('refuses to drive a pass whose drive the host withheld, naming why', async () => {
-    const reason =
-      "Drive was unavailable: `ffmpeg` is not on this machine's PATH, so a drive cannot be recorded " +
-      '(install ffmpeg to get walkthrough videos).'
-    const reopen = withholdDrive(run.id, reason)
-    try {
-      expect(await drive('start')).toEqual({
-        ok: false,
-        action: 'start',
-        deniedReason: reason,
-        retriable: false,
-        drive: null,
-      })
-      expect(await currentBranch()).toBe('main')
-      expect(activeDriveInfo(project.id)).toBeNull()
-    } finally {
-      reopen()
-    }
-
-    // Once the pass ends the run's drive is open again.
-    expect(await drive('start')).toMatchObject({ ok: true, action: 'start' })
-    await drive('stop')
-  })
-
   it('tells the wire the UI polls that a review agent — not a human — is driving', async () => {
     await drive('start')
 
@@ -196,37 +147,14 @@ describe('the review agent wires', () => {
     expect(await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: project.id })).toBeNull()
   })
 
-  it('reports a structured finding under the burning review ticket', () => {
-    const reviewTicket = storeTickets(ctx, feature.id, [
-      {
-        title: 'Review',
-        goal: 'Review the feature',
-        context: '',
-        acceptanceCriteria: [],
-        seams: [],
-        blockedBy: [],
-        kind: 'review',
-      },
-    ])[0]
-    updateTicket(ctx, reviewTicket.id, { status: 'burning' })
+  it('reports a structured finding against the Review worker itself', () => {
+    const result = toolReportFinding(ctx, { session: review }, defect)
 
-    const result = toolReportFinding(ctx, { runId: run.id }, {
-      kind: 'defect',
-      severity: 'high',
-      title: 'Save loses edits',
-      location: 'screen: editor; click Save',
-      citation: 'spec.md requires edits to persist',
-      detail: 'The old value returns after saving.',
-      reproStep: 'Edit the title, click Save, and reload.',
-    })
-
-    // The defect is the lead's to decide on: no fix ticket is minted for it.
-    expect(result).toEqual({
-      findingId: expect.any(String),
-      fixTicketSeq: null,
-      overCap: false,
-    })
-    expect(listTickets(ctx, feature.id)).toHaveLength(1)
+    // The defect is the lead's to decide on.
+    expect(result).toEqual({ findingId: expect.any(String) })
+    expect(listFindings(ctx, feature.id)).toEqual([
+      expect.objectContaining({ id: result.findingId, reviewWorkerId: review.id, title: 'Save loses edits', status: 'open' }),
+    ])
   })
 
   it('still denies a dirty tree, and leaves the checkout where it was', async () => {
@@ -255,7 +183,7 @@ describe('the review agent wires', () => {
     await drive('start')
 
     // The human is the only one who can clear it, so they hear about it while
-    // they can still act — not from the digest half an hour later.
+    // they can still act — not from the handback half an hour later.
     const denials = events().filter((e) => e.type === 'reviewdrive.denied')
     expect(denials).toHaveLength(1)
     expect(denials[0]).toMatchObject({
@@ -264,11 +192,11 @@ describe('the review agent wires', () => {
     })
   })
 
-  it('tells a review agent that a held slot is worth waiting for, and emits nothing', async () => {
-    ctx.db.delete(runs).run()
+  it('tells a review that a held slot is worth waiting for, emits nothing, and never touches the human’s drive', async () => {
     expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+    const held = activeDriveInfo(project.id)
 
-    const start = await drive('start', seedRun('running').id)
+    const start = await drive('start')
 
     expect(start).toMatchObject({
       ok: false,
@@ -277,8 +205,10 @@ describe('the review agent wires', () => {
       retriable: true,
     })
     // Ten poll refusals would spam a permanent timeline with a fallback that is
-    // working as designed — the wait is the agent's, and it is silent.
+    // working as designed — the wait is the review's, and it is silent.
     expect(events().filter((e) => e.type === 'reviewdrive.denied')).toEqual([])
+    // Fail fast means the human's drive is exactly as it was, right now.
+    expect(activeDriveInfo(project.id)).toEqual(held)
 
     await testDrive(ctx, project, feature, 'stop')
   })
@@ -304,34 +234,14 @@ describe('the review agent wires', () => {
     await drive('stop')
   })
 
-  it('fails fast when the human holds the drive slot, and never touches their drive', async () => {
-    // No run yet — the human started their drive the ordinary way.
-    ctx.db.delete(runs).run()
-    expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
-    const held = activeDriveInfo(project.id)
-
-    const start = await drive('start', seedRun('running').id)
-
-    expect(start).toMatchObject({
-      ok: false,
-      deniedReason: 'A test drive of feature/reviewed is running — stop it first',
-    })
-    // Fail fast means the human's drive is exactly as it was, right now.
-    expect(activeDriveInfo(project.id)).toEqual(held)
-
-    await testDrive(ctx, project, feature, 'stop')
-  })
-
   it('refuses to stop or inspect a drive that is not its own', async () => {
-    ctx.db.delete(runs).run()
     await testDrive(ctx, project, feature, 'start')
-    const humanRun = seedRun('running')
 
-    expect(await drive('stop', humanRun.id)).toMatchObject({
+    expect(await drive('stop')).toMatchObject({
       ok: false,
       deniedReason: 'No review drive is in progress for this feature',
     })
-    expect(await drive('status', humanRun.id)).toMatchObject({
+    expect(await drive('status')).toMatchObject({
       ok: false,
       deniedReason: 'No review drive is in progress for this feature',
     })
@@ -384,67 +294,37 @@ describe('the review agent wires', () => {
 
   // --- who may call them ----------------------------------------------------
 
-  it('refuses an ordinary talk session, which carries no run identity', async () => {
+  it('refuses an ordinary talk session', async () => {
     const session = talkSession()
 
     await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(GateError)
-    await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(
-      /chat session/,
-    )
-    expect(() => toolAddTestNote(ctx, { session }, { text: 'nope' })).toThrow(GateError)
+    await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(/chat session/)
+    expect(() => toolReportFinding(ctx, { session }, defect)).toThrow(GateError)
 
     expect(activeDriveInfo(project.id)).toBeNull()
-    expect(listNotes(ctx, feature.id)).toEqual([])
+    expect(listFindings(ctx, feature.id)).toEqual([])
   })
 
-  it('refuses a run identity whose run has already finished', async () => {
-    const finished = seedRun('succeeded')
-
-    await expect(toolReviewDrive(ctx, { runId: finished.id }, { action: 'start' })).rejects.toThrow(
-      /no run identity/,
-    )
-    expect(() => toolAddTestNote(ctx, { runId: finished.id }, { text: 'nope' })).toThrow(GateError)
+  it('refuses a caller with no session, and a gates review, which reports over its sandbox relay', async () => {
+    await expect(toolReviewDrive(ctx, {}, { action: 'start' })).rejects.toThrow(/no session/)
+    ctx.db.update(workers).set({ reviewMode: 'gates' }).where(eq(workers.id, review.id)).run()
+    await expect(drive('start')).rejects.toThrow(GateError)
+    expect(() => toolReportFinding(ctx, { session: review }, defect)).toThrow(GateError)
     expect(activeDriveInfo(project.id)).toBeNull()
-  })
-
-  // --- the notes wire -------------------------------------------------------
-
-  it('appends an agent-attributed note to the notes and the event stream', () => {
-    const note = toolAddTestNote(ctx, { runId: run.id }, { text: 'the empty state renders twice' })
-
-    expect(note).toMatchObject({
-      author: 'agent',
-      status: 'open',
-      text: 'the empty state renders twice',
-    })
-    expect(listNotes(ctx, feature.id)).toEqual([note])
-    expect(existsSync(join(repo, 'docs', 'features', 'reviewed', 'test-notes.md'))).toBe(false)
-
-    const added = events().find((e) => e.type === 'note.added')
-    expect(added?.data).toMatchObject({ noteId: note.id, author: 'agent' })
-  })
-
-  it('keeps the human note flow alone beside an agent note', () => {
-    const human = addNote(ctx, feature.id, 'the header wraps at 400px')
-    expect(human.author).toBe('human')
-
-    const agent = toolAddTestNote(ctx, { runId: run.id }, { text: 'saving twice duplicates a row' })
-    expect(agent.author).toBe('agent')
-    expect(listNotes(ctx, feature.id).map((n) => n.author)).toEqual(['human', 'agent'])
   })
 })
 
 /**
  * The description is the only instruction a review agent reads before it acts on
  * a refusal, so it is contract, not documentation — read here the way the agent
- * reads it, off a `tools/list` from a run-audience server.
+ * reads it, off a `tools/list` from a review-audience server.
  */
 describe('the review_drive tool description', () => {
   async function reviewDriveDescription(): Promise<string> {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: 'review-wires-test', version: '1' })
     await Promise.all([
-      buildMcpServer('run').connect(serverTransport),
+      buildMcpServer('review').connect(serverTransport),
       client.connect(clientTransport),
     ])
     const tool = (await client.listTools()).tools.find((t) => t.name === 'review_drive')
@@ -455,7 +335,6 @@ describe('the review_drive tool description', () => {
   it('points at the refusal fields, leaving the wait rules to the review prompt', async () => {
     const description = await reviewDriveDescription()
 
-    // The attempt count and the final dirty tree are taught by review-ticket.md.
     expect(description).toMatch(/deniedCode/)
     expect(description).toMatch(/retriable/)
     expect(description).toMatch(/stop/)

@@ -2,6 +2,8 @@
 
 Status: accepted, 2026-10-31
 
+Amended by ADR-0020 (burns become workers): a worker start builds a missing or stale project image.
+
 ## Context
 
 "Burns never build" was decided twice. `sandbox-agent-clis-track-the-host-version`

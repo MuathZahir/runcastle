@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { projectNotes, runs } from '../src/db/schema'
+import { projectNotes, runs, workers } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -16,9 +16,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import mcpApp, {
   FEATURE_INDEX_SHIPPED_CAP,
   buildMcpServer,
-  toolCancelTicket,
   toolCreateFeature,
-  toolEmitTickets,
   toolGetFeatureContext,
   toolGetProjectContext,
   toolGetWorkRecord,
@@ -28,7 +26,6 @@ import mcpApp, {
   toolRecordEvent,
   toolTriageProjectNote,
   toolUpdateProjectNote,
-  toolUpdateTicket,
 } from '../src/mcp/server'
 import { MCP_READ_CEILING_CHARS, serializedLength } from '../src/mcp/read-ceiling'
 import { emit, listByProject } from '../src/services/events'
@@ -39,7 +36,8 @@ import {
   getNote as getProjectNote,
 } from '../src/services/project-notes'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
@@ -105,9 +103,6 @@ describe('project-session MCP tools', () => {
   it('refuses every pipeline tool with a message naming the project scope', () => {
     const calls: [string, () => unknown][] = [
       ['get_feature_context', () => toolGetFeatureContext(ctx, session)],
-      ['emit_tickets', () => toolEmitTickets(ctx, session, { tickets: [] })],
-      ['update_ticket', () => toolUpdateTicket(ctx, session, { id: 'tick_x', title: 't' })],
-      ['cancel_ticket', () => toolCancelTicket(ctx, session, { id: 'tick_x' })],
     ]
 
     for (const [name, call] of calls) {
@@ -446,10 +441,10 @@ describe('project-session MCP tools', () => {
     )
 
     // Every line is `slug — title [state]`: the in-flight state carries what the
-    // portfolio lookup is asked for (whether a round runs, ticket counts), and no line
+    // portfolio lookup is asked for (how many workers work, wait or need the human), and no line
     // carries a one-liner or a docs path — one note says where shipped docs live.
     expect(out.featureIndex).toEqual([
-      'promotion-at-merge — Promotion at merge [in flight, 2 pending]',
+      'promotion-at-merge — Promotion at merge [in flight]',
       'laps — Laps [shipped]',
     ])
     expect(out.featureIndex.join('\n')).not.toContain('must not appear')
@@ -816,6 +811,73 @@ describe('project-session MCP tools', () => {
       NotFoundError,
     )
     expect(() => toolGetWorkRecord(ctx, session, { seq: second.seq })).toThrow(InvalidInputError)
+  })
+
+  /** A worker row as a handback and a landing leave it. */
+  function seedWorker(featureId: string, over: Partial<typeof workers.$inferInsert> = {}): void {
+    const row = createSessionRow(ctx, { featureId, kind: 'worker', worktreePath: '/wt' })
+    const now = Date.now()
+    ctx.db
+      .insert(workers)
+      .values({
+        id: row.id, featureId, label: 'Add laps', purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code',
+        startedBy: 'lead', status: 'landed', engine: 'docker', featureBranch: 'feature/x', createdAt: now, updatedAt: now,
+        ...over,
+      })
+      .run()
+  }
+
+  it('returns a feature’s workers by slug, and finds a worker by a file it changed or its assignment', () => {
+    const built = seedFeature(ctx, projectId, { slug: 'built', title: 'Built' })
+    seedWorker(built.id, {
+      goal: 'count laps', doneWhen: 'the counter shows', handbackSummary: 'added the counter',
+      handbackFiles: ['packages/server/src/laps.ts'], handbackCommits: ['abc1234'], tokens: 4200,
+    })
+    const old = seedFeature(ctx, projectId, { slug: 'old', title: 'Old' })
+    storeTickets(ctx, old.id, [
+      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['laps.ts seam'], blockedBy: [] },
+    ])
+
+    const [record] = toolGetWorkRecord(ctx, session, { featureSlug: 'built' }).features
+    expect(record.tickets).toEqual([])
+    expect(record.workers).toEqual([
+      {
+        label: 'Add laps', kind: 'on-its-own', goal: 'count laps', doneWhen: 'the counter shows', status: 'landed',
+        summary: 'added the counter', filesChanged: ['packages/server/src/laps.ts'], commits: ['abc1234'], tokens: 4200,
+      },
+    ])
+    expect(toolGetWorkRecord(ctx, session, { featureSlug: 'old' }).features[0]?.workers).toBeUndefined()
+
+    const bySeam = toolGetWorkRecord(ctx, session, { seam: 'SERVER/SRC/LAPS' }).features
+    expect(bySeam.map((f) => f.slug)).toEqual(['built'])
+    expect(bySeam[0]?.workers?.[0]).not.toHaveProperty('summary')
+    expect(toolGetWorkRecord(ctx, session, { seam: 'count laps' }).features.map((f) => f.slug)).toEqual(['built'])
+    // The old ticket path is unchanged.
+    expect(toolGetWorkRecord(ctx, session, { seam: 'laps.ts seam' }).features.map((f) => f.slug)).toEqual(['old'])
+  })
+
+  it('moves worker summaries out whole when the reply would cross the ceiling', () => {
+    const built = seedFeature(ctx, projectId, { slug: 'built', title: 'Built' })
+    for (let i = 0; i < 3; i++) {
+      seedWorker(built.id, { label: `w${i}`, handbackSummary: 'x'.repeat(MCP_READ_CEILING_CHARS / 2) })
+    }
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'built' })
+    expect(serializedLength(out)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+    expect(out.features[0]?.workers?.some((w) => w.summaryNotInlined)).toBe(true)
+    expect(out.features[0]?.workers).toHaveLength(3)
+  })
+
+  it('shows an index line’s workers instead of round and ticket counts', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'busy', title: 'Busy' })
+    storeTickets(ctx, f.id, [
+      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    seedWorker(f.id, { status: 'working' })
+    seedWorker(f.id, { status: 'working' })
+    seedWorker(f.id, { status: 'needs-you' })
+    seedWorker(f.id, { status: 'landed' })
+    const out = await toolGetProjectContext(ctx, session, { full: true })
+    expect(out.featureIndex).toEqual(['busy — Busy [in flight: 2 working, 1 needs you]'])
   })
 
   it('refuses seq sent with a seam but no featureSlug over MCP, instead of running a seam search', async () => {

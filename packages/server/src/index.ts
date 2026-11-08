@@ -14,6 +14,7 @@ import { runMigrations } from './db/migrate'
 import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions, wakeCutOffChats } from './launcher/reconcile'
+import { holdUpgradeNotes } from './services/upgrade-note'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -38,10 +39,10 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
-import { stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
+import { resumeDriveReviewWaits, stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
-import { reconcileStaleRuns, wakeInterruptedRounds } from './workflows/reconcile-runs'
+import { freezeStaleRuns } from './services/runs'
 
 /**
  * Server boot (SPEC §3, owner A1). `buildApp` is a pure function of the DI
@@ -158,9 +159,9 @@ export async function startServer(): Promise<void> {
 
   // Same recovery for run rows: a crashed server leaves them `running`, which
   // would wedge the branch-claiming launcher guard forever.
-  const staleRuns = await reconcileStaleRuns(ctx)
-  if (staleRuns.length > 0) {
-    console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
+  const staleRuns = await freezeStaleRuns(ctx)
+  if (staleRuns > 0) {
+    console.log(`closed ${staleRuns} run(s) the previous server left running`)
   }
 
   // A drive the restart cut off comes back into its project's slot, so it is
@@ -262,11 +263,17 @@ export async function startServer(): Promise<void> {
   // …and push each of those the human is pinged for to their phone (decision 12).
   startNeedPush(ctx)
 
-  // Rounds the restart cut off wake their lead and tell their holder (decision
-  // 10) — now, with the server listening for the woken agent and the notifier up.
-  void wakeInterruptedRounds(ctx, staleRuns)
-  // …and chats it cut off mid-turn without a round carry on (agents-are-woken-only-when-it-matters decision 24).
-  void wakeCutOffChats(ctx, cutOffChats, staleRuns)
+  // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
+  void wakeCutOffChats(ctx, cutOffChats)
+  // …and each drive review left queued for the drive slot waits for it again: its re-ask died with the last server.
+  // A copied database's reviews are the live install's, never this server's to start.
+  if (!isDatabaseCopy()) {
+    void resumeDriveReviewWaits(ctx, new Set(cutOffChats.map((row) => row.id))).catch((err) =>
+      console.error('could not arm the drive reviews’ waits again', err),
+    )
+  }
+  // …and each lead of a feature with unfinished tickets gets one held note, riding its next message (decision 20).
+  void holdUpgradeNotes(ctx).catch((err) => console.error('could not hold the ticket upgrade notes', err))
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

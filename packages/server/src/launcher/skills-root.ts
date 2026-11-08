@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 /**
  * Skills-root resolution (issue #51, workstream G). The server reads the
- * runcastle plugin pack and the burner prompt templates from the
+ * runcastle plugin pack and the review assignments from the
  * `@runcastle/skills` package *as real files* at runtime. In a contributor
  * checkout those live at the workspace `packages/skills`; in a published install
  * they are vendored alongside the bin and `RUNCASTLE_SKILLS_DIR` points straight
@@ -20,7 +20,7 @@ export const SKILLS_MARKER = join('packs', 'runcastle')
 
 /**
  * Resolve the `@runcastle/skills` root (the dir containing `packs/` and
- * `burner/`). `RUNCASTLE_SKILLS_DIR` wins when set (validated so a bad override
+ * `review/`). `RUNCASTLE_SKILLS_DIR` wins when set (validated so a bad override
  * throws rather than failing later at launch); otherwise ascend from `fromDir`
  * to the workspace `packages/skills`. Throws — naming every location searched —
  * rather than returning a path that isn't on disk.

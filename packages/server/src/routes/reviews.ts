@@ -32,8 +32,9 @@ import { getRuntimeCtx } from '../launcher/runtime'
 import { attachScreenshot, getNote } from '../services/test-notes'
 import { attachScreenshot as attachProjectNoteScreenshot, getNote as getProjectNote } from '../services/project-notes'
 import { getFeatureRow, projectForFeature } from '../services/repo'
-import { reviewPackage } from '../services/review-package'
+import { findReviewPass, reviewPackage } from '../services/review-package'
 import { getTicket, listByFeature } from '../services/tickets'
+import { listWorkers } from '../workers/service'
 import { fileSize, fileStream, serveFile } from './media'
 
 /**
@@ -56,7 +57,8 @@ const reviews = new Hono()
 /** One review ticket's artifacts, as the listing reports them. */
 export interface ReviewTicketArtifacts {
   ticketId: string
-  seq: number
+  /** The review ticket's number; null for a Review worker's pass. */
+  seq: number | null
   passKind: 'review' | 'verification'
   // What the pass actually ran and what it verified, as the pass itself
   // recorded them. All three are null on passes that ran before a verdict was
@@ -182,9 +184,29 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
       if (b.completedAt === null) return -1
       return a.completedAt - b.completedAt || a.seq - b.seq
     })
-  // A feature with no review tickets — or no feature at all — has no artifacts.
+  // Review workers came after every review ticket, so they follow them, oldest first.
+  const fromWorkers: ReviewTicketArtifacts[] = listWorkers(ctx, c.req.param('featureId'))
+    .filter((w) => w.kind === 'review')
+    .map((w) => {
+      const hasVideo = fileSize(reviewWalkthroughPath(w.id)) !== undefined
+      return {
+        ticketId: w.id,
+        seq: null,
+        passKind: w.reviewVerify ? 'verification' : 'review',
+        reviewMode: w.reviewMode,
+        reviewVerdict: null,
+        reviewVerdictReason: null,
+        reviewedCommit: null,
+        completedAt: w.handbackSummary !== null ? w.updatedAt : null,
+        landedSince: 0,
+        hasVideo,
+        videoUrl: hasVideo ? reviewWalkthroughUrl(w.id) : null,
+        gateRun: null,
+      }
+    })
+  // A feature with no reviews — or no feature at all — has no artifacts.
   // That is a normal state (decision 8), not an error.
-  return c.json(artifacts)
+  return c.json([...artifacts, ...fromWorkers])
 })
 
 /**
@@ -198,10 +220,10 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
  */
 reviews.get(REVIEW_WALKTHROUGH_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
-  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
-  if (!ticket) return c.notFound()
+  const pass = findReviewPass(ctx, c.req.param('ticketId'))
+  if (!pass) return c.notFound()
 
-  const path = reviewWalkthroughPath(ticket.id)
+  const path = reviewWalkthroughPath(pass.id)
   const size = fileSize(path)
   if (size === undefined) return c.notFound()
 
@@ -234,10 +256,10 @@ reviews.get(REVIEW_GATE_LOG_ROUTE, async (c) => {
 /** GET /api/reviews/ticket/:ticketId/package.json — everything one pass left. */
 reviews.get(REVIEW_PACKAGE_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
-  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
-  if (!ticket) return c.notFound()
-  const feature = getFeatureRow(ctx, ticket.featureId)
-  return c.json(await reviewPackage(ctx, ticket, feature, projectForFeature(ctx, feature).repoPath))
+  const pass = findReviewPass(ctx, c.req.param('ticketId'))
+  if (!pass) return c.notFound()
+  const feature = getFeatureRow(ctx, pass.featureId)
+  return c.json(await reviewPackage(ctx, pass, feature, projectForFeature(ctx, feature).repoPath))
 })
 
 /**
@@ -250,10 +272,10 @@ reviews.get(REVIEW_SHOT_ROUTE, async (c) => {
   if (!isReviewShotName(file)) return c.json({ error: 'not a screenshot name' }, 400)
 
   const ctx = await getRuntimeCtx()
-  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
-  if (!ticket) return c.notFound()
+  const pass = findReviewPass(ctx, c.req.param('ticketId'))
+  if (!pass) return c.notFound()
 
-  const path = reviewShotPath(ticket.id, file)
+  const path = reviewShotPath(pass.id, file)
   const size = fileSize(path)
   if (size === undefined || size === 0) return c.notFound()
 

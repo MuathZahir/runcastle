@@ -1,4 +1,4 @@
-import { type EventRow, PREVIEW_FILE, type Ticket } from '@runcastle/core'
+import { type EventRow, PREVIEW_FILE } from '@runcastle/core'
 import type { PanelView } from './feature-ui/panel'
 
 /**
@@ -10,7 +10,7 @@ import type { PanelView } from './feature-ui/panel'
  */
 
 /** The collapse key: a repeat of the same kind counts up on one card. */
-export type ChatNoticeKind = 'preview' | 'spec' | 'tickets' | 'ticket-failed' | 'run' | 'review' | 'drive'
+export type ChatNoticeKind = 'preview' | 'spec' | 'history' | 'drive'
 
 /** The phase hue a notice wears (the `--color-phase-*` token), or danger. */
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
@@ -53,31 +53,23 @@ export interface StandingNotice {
 /** How long "Test drive running" stays:the human just started it, and the drive opens beside the chat. */
 export const DRIVE_NOTICE_MS = 5000
 
-/** What `noticeFor` needs to know about a ticket to recognise a review pass. */
-export type NoticeTicket = Pick<Ticket, 'id' | 'kind' | 'passKind' | 'title'>
-
-const TICKET_EVENTS = new Set(['tickets.stored', 'ticket.edited', 'ticket.cancelled'])
-
-/** `ticket 4 failed: typecheck failed` → seq 4, headline "typecheck failed". */
-const TICKET_FAILED = /^ticket (\d+) failed(?::\s*(.*))?$/s
-
-/** The burner's run headline counts: `5/6 tickets done`. */
-const TICKETS_DONE = /(\d+)\/(\d+) tickets done/
+/**
+ * The frozen ticket and round history's events (burns-become-workers decision
+ * 19): nothing emits them any more, and nothing about them can be acted on.
+ */
+const HISTORY_EVENTS = new Set(['tickets.stored', 'ticket.edited', 'ticket.cancelled', 'ticket.failed', 'run.finished'])
 
 /**
  * The notice an event raises over the chat, or `null` for every event that
  * is not worth pulling the operator out of the conversation for — each locked
  * decision, notes, worktree and chat housekeeping, and the phase
- * moves the human made themselves (Burn, Merge).
+ * moves the human made themselves (Merge).
  *
- * "Review ready" is the lap's review pass *finishing*: a `ticket.done` whose
- * ticket is a review-kind ticket on its review pass (not a verification pass).
- * `review.agentic-minted` is deliberately not it — that fires when the pass is
- * created, before any review has happened. `ticket.done` does not carry the
- * ticket's kind, so the caller passes the feature's tickets to tell a review
- * pass from an ordinary landing.
+ * An old ticket or round event reads as a plain history note that opens the
+ * History view, the event's own words its subtitle: it never offers a round
+ * to act on.
  */
-export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []): ChatNotice | null {
+export function noticeFor(event: EventRow): ChatNotice | null {
   const notice = (n: Omit<ChatNotice, 'count' | 'eventId'>): ChatNotice => ({
     ...n,
     count: 1,
@@ -110,54 +102,13 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
     })
   }
 
-  if (TICKET_EVENTS.has(event.type)) {
+  if (HISTORY_EVENTS.has(event.type)) {
     return notice({
-      kind: 'tickets',
+      kind: 'history',
       hue: 'tickets',
-      title: 'Tickets updated',
+      title: 'Ticket history',
       subtitle: event.message,
-      actionLabel: 'View tickets',
-      target: 'work',
-    })
-  }
-
-  if (event.type === 'ticket.failed') {
-    const match = TICKET_FAILED.exec(event.message)
-    return notice({
-      kind: 'ticket-failed',
-      hue: 'danger',
-      title: match ? `Ticket #${match[1]} failed` : 'Ticket failed',
-      subtitle: match?.[2]?.trim() || event.message,
-      actionLabel: 'View round',
-      target: 'work',
-    })
-  }
-
-  if (event.type === 'run.finished') {
-    const data = (event.data ?? {}) as { status?: unknown; summary?: unknown }
-    const failed = data.status !== 'succeeded'
-    const summary = typeof data.summary === 'string' ? data.summary : event.message
-    const counts = TICKETS_DONE.exec(summary)
-    return notice({
-      kind: 'run',
-      hue: failed ? 'danger' : 'building',
-      title: failed ? 'Round finished with failures' : 'Round finished',
-      subtitle: counts ? `${counts[1]} of ${counts[2]} landed` : summary,
-      actionLabel: 'View round',
-      target: 'work',
-    })
-  }
-
-  if (event.type === 'ticket.done') {
-    const ticket = tickets.find((t) => t.id === event.ticketId)
-    if (ticket?.kind !== 'review' || ticket.passKind === 'verification') return null
-    return notice({
-      kind: 'review',
-      hue: 'review',
-      title: 'Review ready',
-      subtitle: ticket.title,
-      actionLabel: 'View review',
-      // The review ticket's row carries what it found (the-feature-s-right-panel decision 15).
+      actionLabel: 'View history',
       target: 'work',
     })
   }

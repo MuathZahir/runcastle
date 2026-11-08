@@ -255,29 +255,26 @@ describe('resolveDefaultBurnConcurrency', () => {
   })
 })
 
-describe('RuncastleConfig — burn iteration + setup knobs', () => {
-  it('burnMaxIterations defaults to 3 and accepts 1..10', () => {
-    expect(RuncastleConfig.parse({}).burnMaxIterations).toBe(3)
-    expect(RuncastleConfig.parse({ burnMaxIterations: 1 }).burnMaxIterations).toBe(1)
-    expect(RuncastleConfig.parse({ burnMaxIterations: 10 }).burnMaxIterations).toBe(10)
-  })
-
-  it('rejects out-of-range and non-integer iteration counts', () => {
-    expect(RuncastleConfig.safeParse({ burnMaxIterations: 0 }).success).toBe(false)
-    expect(RuncastleConfig.safeParse({ burnMaxIterations: 11 }).success).toBe(false)
-    expect(RuncastleConfig.safeParse({ burnMaxIterations: 1.5 }).success).toBe(false)
+describe('RuncastleConfig — retired burn keys + setup knobs', () => {
+  it('still loads an old config file carrying the retired burn keys and the noSandbox switch', () => {
+    const parsed = RuncastleConfig.parse({
+      burnMaxIterations: 5,
+      burnAttempts: 2,
+      burnConflictAttempts: 1,
+      burnWorkspace: 'mounted',
+      sandbox: 'noSandbox',
+      burnConcurrency: 2,
+    })
+    expect(parsed.burnConcurrency).toBe(2)
+    expect(parsed.sandbox).toBe('docker')
+    for (const key of ['burnMaxIterations', 'burnAttempts', 'burnConflictAttempts', 'burnWorkspace']) {
+      expect(key in parsed).toBe(false)
+    }
   })
 
   it('setupCommand is optional free text, absent by default', () => {
     expect(RuncastleConfig.parse({}).setupCommand).toBeUndefined()
     expect(RuncastleConfig.parse({ setupCommand: 'make deps' }).setupCommand).toBe('make deps')
-  })
-
-  it('burnWorkspace defaults to auto and accepts only the three modes (ADR-0005)', () => {
-    expect(RuncastleConfig.parse({}).burnWorkspace).toBe('auto')
-    expect(RuncastleConfig.parse({ burnWorkspace: 'mounted' }).burnWorkspace).toBe('mounted')
-    expect(RuncastleConfig.parse({ burnWorkspace: 'isolated' }).burnWorkspace).toBe('isolated')
-    expect(RuncastleConfig.safeParse({ burnWorkspace: 'wsl' }).success).toBe(false)
   })
 
   it('burnCache defaults to volume and accepts only the two modes', () => {
@@ -354,14 +351,9 @@ describe('resolveSandboxImage — project, env, global, default', () => {
  * degrades to today's behaviour rather than failing at container-create time.
  */
 describe('resolveBurnCacheMode', () => {
-  it('keeps the configured mode on the two engines that own volumes', () => {
-    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'docker' })).toBe('volume')
-    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'podman' })).toBe('volume')
-    expect(resolveBurnCacheMode({ burnCache: 'off', sandbox: 'docker' })).toBe('off')
-  })
-
-  it('is off for noSandbox — there is no container to mount a volume into', () => {
-    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'noSandbox' })).toBe('off')
+  it('keeps the configured mode', () => {
+    expect(resolveBurnCacheMode({ burnCache: 'volume' })).toBe('volume')
+    expect(resolveBurnCacheMode({ burnCache: 'off' })).toBe('off')
   })
 })
 

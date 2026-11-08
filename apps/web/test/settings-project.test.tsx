@@ -78,11 +78,10 @@ const DRIVE_INSTRUCTIONS =
   'Drive the sample project at ./examples/demo — change anything in it.\n' +
   'To reach a deep phase, tell the session agent this is a test and to advance.'
 
-/** The twelve fields a project may set, as the scoped view reports them. */
+/** The eleven fields a project may set, as the scoped view reports them. */
 const projectFields: SettingField[] = [
   // Twins, unset: the global value is what the ghost shows.
   field({ key: 'model', value: 'claude-opus-5[1m]', source: 'file' }),
-  field({ key: 'sandbox', value: 'docker', source: 'default' }),
   // Twin, set here — and prepared, long enough ago to be stale.
   field({ key: 'setupCommand', value: 'bun install', source: 'project' }),
   field({ key: 'verifyCommands', value: 'bun run test', source: 'file' }),
@@ -142,7 +141,7 @@ describe('Settings — This project', () => {
   })
   afterEach(cleanup)
 
-  it('shows the twelve fields in three groups, with example placeholders and no retired text', () => {
+  it('shows the eleven fields in three groups, with example placeholders and no retired text', () => {
     open()
 
     for (const title of ['Model & sandbox', 'Commands', 'Orchestrator']) {
@@ -150,7 +149,6 @@ describe('Settings — This project', () => {
     }
     const labels = [
       'Model',
-      'Sandbox',
       'Setup',
       'Verify',
       'Known failing tests',
@@ -184,20 +182,12 @@ describe('Settings — This project', () => {
 
     // A text control ghosts through its placeholder…
     expect(screen.getByLabelText('Verify').getAttribute('placeholder')).toBe('bun run test')
-    // …and a select through a first row that states what it inherits, which is
-    // what the closed control reads out while nothing is picked.
-    const sandbox = screen.getByLabelText('Sandbox')
-    expect(sandbox.textContent).toBe('Use global (Docker container (isolated))')
-    fireEvent.click(sandbox)
-    expect(screen.getAllByRole('option')[0]?.textContent).toBe(
-      'Use global (Docker container (isolated))',
-    )
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    // …and a model select through what it inherits.
     expect(screen.getByLabelText('Model').closest('div')?.textContent).toContain(
       'Use global (claude-opus-5[1m])',
     )
 
-    expect(screen.getAllByText('Global').length).toBe(4)
+    expect(screen.getAllByText('Global').length).toBe(3)
     // Project-only fields have no twin, so nothing to say about where the
     // value came from.
     const devRow = screen.getByLabelText('Dev server').closest('div.border-b')
@@ -310,8 +300,8 @@ describe('Settings — This project', () => {
     const onClose = vi.fn()
     open(onClose)
 
-    const sandbox = screen.getByLabelText('Sandbox')
-    fireEvent.click(sandbox)
+    const model = screen.getByLabelText('Model')
+    fireEvent.click(model)
     // One band above the dialog's own backdrop, or it would open behind it.
     expect(screen.getByRole('listbox').className).toContain('z-[300]')
 

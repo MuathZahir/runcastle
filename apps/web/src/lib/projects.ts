@@ -125,21 +125,21 @@ export type ProjectHealth = 'attention' | 'working' | 'steady' | 'empty'
 
 export interface ProjectStats {
   total: number
-  /** Features waiting on a human (needs-me), excluding those with a live run. */
+  /** Features waiting on a human (needs-me). */
   needsYou: number
-  /** Features with a run in flight. */
-  activeRuns: number
+  /** Features with workers at work. */
+  working: number
   shipped: number
   health: ProjectHealth
 }
 
 /**
  * Aggregate a project's feature list into the numbers a home card shows.
- * Health precedence: a human-blocked feature (amber) outranks a live run, which
+ * Health precedence: a human-blocked feature (amber) outranks workers at work, which
  * outranks a steady project; a project with no features reads empty.
  */
 export function projectStats(features: FeatureListItem[]): ProjectStats {
-  const activeRuns = features.filter((f) => f.activeRun).length
+  const working = features.filter((f) => f.workersWorking > 0).length
   const needsYou = features.filter(featureNeedsYou).length
   const shipped = features.filter((f) => f.status === 'shipped').length
   const total = features.length
@@ -148,10 +148,10 @@ export function projectStats(features: FeatureListItem[]): ProjectStats {
       ? 'empty'
       : needsYou > 0
         ? 'attention'
-        : activeRuns > 0
+        : working > 0
           ? 'working'
           : 'steady'
-  return { total, needsYou, activeRuns, shipped, health }
+  return { total, needsYou, working, shipped, health }
 }
 
 /** The browser tab's title when nothing needs the human. */

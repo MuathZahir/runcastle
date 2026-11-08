@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { PromptDisplay } from '@runcastle/core'
 import type { AgentTransport } from '../../src/threads/host'
 import type { AgentHost } from '../../src/threads/types'
 import type { SandboxEngine } from '../../src/workers/engine'
+import type { PrepareInput } from '../../src/workers/prepare'
 import type { WorkerSetup } from '../../src/workers/setup-copy'
-import { type HandbackNote, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
+import { type HandbackNote, type NewSandboxInput, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
@@ -49,10 +50,22 @@ export type FakeEngine = SandboxEngine & {
   held: Map<string, boolean>
   woken: string[]
   fetched: string[]
+  /** Containers whose bare copy was given the feature branch's current tip. */
+  refreshed: string[]
   /** Conversation ids the sandbox holds a record of, for the reload guard. */
   conversations: Set<string>
   /** Each copy of the human's setup the engine was asked to make, oldest first. */
-  setups: { container: string; setup: WorkerSetup }[]
+  setups: { container: string; setup: WorkerSetup; guard: boolean }[]
+  /** What each start asked the engine to prepare (the image build, the cache volume), oldest first. */
+  prepares: PrepareInput[]
+  /** When set, the next `prepare` throws it: an image that would not build. */
+  prepareFailure?: string
+  /** What each sandbox was created with, oldest first. */
+  created: NewSandboxInput[]
+  /** The engine's calls in order, by name (`prepare`, `create`, `copyOut`, `remove`). */
+  order: string[]
+  /** Where the agent's record of a conversation id sits inside the fake sandbox; none by default. */
+  conversationPaths: Map<string, string>
   /** The fingerprint each sandbox holds of its last setup copy, by container. */
   fingerprints: Map<string, string>
   /** The files inside the fake sandbox, by container path, for `copyOut`. */
@@ -77,8 +90,13 @@ export function fakeEngine(): FakeEngine {
     held: new Map(),
     woken: [],
     fetched: [],
+    refreshed: [],
     conversations: new Set(),
     setups: [],
+    prepares: [],
+    created: [],
+    order: [],
+    conversationPaths: new Map(),
     fingerprints: new Map(),
     sandboxFiles: new Map(),
     processes: [],
@@ -86,8 +104,15 @@ export function fakeEngine(): FakeEngine {
     async available() {
       return engine.up
     },
+    prepare: async (input) => {
+      engine.order.push('prepare')
+      engine.prepares.push(input)
+      if (engine.prepareFailure) throw new Error(engine.prepareFailure)
+    },
     // The worker branch stands in the host repo as a fetch would leave it.
     create: async (input) => {
+      engine.order.push('create')
+      engine.created.push(input)
       git(input.repoPath, 'branch', input.branch, input.featureBranch)
       engine.held.set(input.container, true)
       return {
@@ -114,6 +139,7 @@ export function fakeEngine(): FakeEngine {
     containers: async () => new Map(engine.held),
     // Like the real one, removing what is already gone is no error.
     remove: async (sb: WorkerSandbox) => {
+      engine.order.push('remove')
       engine.removed.push(sb.container)
       engine.held.delete(sb.container)
       if (git(sb.repoPath, 'branch', '--list', sb.branch)) git(sb.repoPath, 'branch', '-D', sb.branch)
@@ -127,16 +153,22 @@ export function fakeEngine(): FakeEngine {
     fetchBranch: async (sb) => {
       engine.fetched.push(sb.branch)
     },
+    refreshFeatureBranch: async (sb) => {
+      engine.refreshed.push(sb.container)
+    },
+    conversationPath: async (_sb, conversationId) => engine.conversationPaths.get(conversationId),
     conversationOnDisk: async (_sb, conversationId) => engine.conversations.has(conversationId),
-    copySetup: async (sb, setup, fingerprint) => {
-      engine.setups.push({ container: sb.container, setup })
+    copySetup: async (sb, setup, fingerprint, opts) => {
+      engine.setups.push({ container: sb.container, setup, guard: opts?.guard === true })
       engine.fingerprints.set(sb.container, fingerprint)
     },
     setupFingerprint: async (sb) => engine.fingerprints.get(sb.container),
     // The sandbox's files are the test's: `sandboxFiles` maps a container path to its body.
     copyOut: async (_sb, containerPath, hostPath) => {
+      engine.order.push('copyOut')
       const body = engine.sandboxFiles.get(containerPath)
       if (body === undefined) throw new Error(`no file ${containerPath} in the fake sandbox`)
+      mkdirSync(dirname(hostPath), { recursive: true })
       writeFileSync(hostPath, body)
     },
     process: async (sb, brief, opts) => {

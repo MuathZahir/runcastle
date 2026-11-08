@@ -1,5 +1,5 @@
 # AFK worker image: Node + git + gh + jq + Claude Code CLI + Playwright(chromium) + skill-pack.
-# Generic across projects — per-project deps install at sandbox start via afk.config.json "setup".
+# Generic across projects — per-project deps install when a worker sandbox starts (its install step and the project's setup command).
 FROM node:22-bookworm
 
 # System deps: jq (verdict parsing), ffmpeg (stitches verifier screenshots into the demo GIF)

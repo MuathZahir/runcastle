@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Feature, Project } from '@runcastle/core'
+import type { Feature, Project, SessionRow, WorkerStatus } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import type { AppCtx } from '../../src/db/types'
-import { features, projects } from '../../src/db/schema'
+import { features, projects, workers } from '../../src/db/schema'
+import { createSessionRow } from '../../src/launcher/sessions'
 import { rowToFeature, rowToProject } from '../../src/services/repo'
 
 /** A fresh writable temp dir to stand in for a target repo checkout. */
@@ -68,4 +69,24 @@ export function seedFeature(
     .returning()
     .get()
   return rowToFeature(inserted)
+}
+
+/**
+ * A drive review at work on the host (burns-become-workers decision 3): a
+ * Review worker and the `worker` session that is its conversation, sharing one
+ * id. What `review_drive` and `report_finding` callers arrive as.
+ */
+export function seedHostReview(
+  ctx: AppCtx,
+  feature: Feature,
+  worktreePath: string,
+  status: WorkerStatus = 'working',
+): SessionRow {
+  const session = createSessionRow(ctx, { featureId: feature.id, kind: 'worker', worktreePath })
+  const now = Date.now()
+  ctx.db
+    .insert(workers)
+    .values({ id: session.id, featureId: feature.id, label: 'Review', purpose: 'Review the feature', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+    .run()
+  return session
 }

@@ -46,7 +46,7 @@ export type SlotStop =
   | { kind: 'project'; projectId: string }
   | { kind: 'dryRun'; projectId: string }
 
-/** A drive in this feature's way, named, with how to stop it — `null` for a live review round's. */
+/** A drive in this feature's way, named, with how to stop it — `null` for a Review worker's live drive. */
 export interface SlotBlocker {
   holderLabel: string
   cutOff: boolean
@@ -69,9 +69,9 @@ export interface SlotDriveInfo {
  * blocking drive is always named, and stoppable where the human owns it).
  * Anything but this feature's own live drive blocks it: another feature's drive,
  * a project drive, a dry run, and a drive a restart cut off — this feature's
- * own included, since nothing of it runs any more. A live review agent's drive
- * is named but not offered a stop: it ends with its round, which the human did
- * not start from here. A cut-off one has no round left behind it.
+ * own included, since nothing of it runs any more. A Review worker's live drive
+ * is named but not offered a stop: it ends when the review hands back, which the human did
+ * not start from here. A cut-off one has no review left behind it.
  */
 export function slotBlocker(
   drive: SlotDriveInfo | null | undefined,
@@ -166,7 +166,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       hue: 'review',
       title: blocker.cutOff ? `${holder} holds the drive slot` : `${holder} is running`,
       subtitle: !blocker.stop
-        ? 'it holds the drive slot until its review round ends'
+        ? 'it holds the drive slot until the review hands back'
         : blocker.cutOff
           ? 'nothing of it runs — stop it to run its stop script and free the slot'
           : 'it holds the drive slot',

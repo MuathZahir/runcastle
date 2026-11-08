@@ -19,11 +19,8 @@ import {
   activeDriveInfo,
   activeTestDriveFeatureId,
   branchCommitsAhead,
-  burnWorktreePath,
   chatBranchInWorktree,
   chatBranchName,
-  cleanupBurnWorktree,
-  cleanupTempBranches,
   commitDocs,
   createFeatureBranch,
   docsCommitMessage,
@@ -42,7 +39,6 @@ import {
   reviewCommitCount,
   startBranchInWorktree,
   testDrive,
-  ticketBranchName,
 } from '../src/services/git'
 import { InvalidInputError } from '../src/errors'
 import { useDataDir } from './helpers/data-dir'
@@ -179,6 +175,19 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 beforeEach(() => {
   __resetTestDriveState()
+})
+
+/** The temp-branch name a worker's branch has, for merge fixtures (the burn's naming, kept by workers). */
+const ticketBranchName = (slug: string, seq: number, unique: string): string =>
+  `runcastle/ticket/${slug.slice(0, 16).replace(/-+$/, '')}/${seq}-${unique}`
+
+describe('chatBranchName', () => {
+  it('truncates long slugs so worktree paths stay under Windows MAX_PATH (ADR-0003)', () => {
+    expect(chatBranchName('add-the-rest-of-the-act-2-assistant-tools-and-functionalities', 'def456')).toBe(
+      'runcastle/chat/add-the-rest-of/def456',
+    )
+    expect(chatBranchName('swp', 'bbb222')).toBe('runcastle/chat/swp/bbb222')
+  })
 })
 
 describe('makeInitialCommit', () => {
@@ -1319,131 +1328,6 @@ describe('mergeTempBranch', () => {
   })
 })
 
-describe('temp branch names', () => {
-  const longSlug = 'add-the-rest-of-the-act-2-assistant-tools-and-functionalities'
-
-  it('truncates long slugs so sandcastle worktree paths stay under Windows MAX_PATH (ADR-0003)', () => {
-    expect(ticketBranchName(longSlug, 5, 'NjflEB0m')).toBe(
-      'runcastle/ticket/add-the-rest-of/5-NjflEB0m',
-    )
-    expect(chatBranchName(longSlug, 'def456')).toBe('runcastle/chat/add-the-rest-of/def456')
-  })
-
-  it('passes short slugs through unchanged', () => {
-    expect(ticketBranchName('swp', 3, 'ccc333')).toBe('runcastle/ticket/swp/3-ccc333')
-    // no seq — the chat is one conversation, not one of N lanes
-    expect(chatBranchName('swp', 'bbb222')).toBe('runcastle/chat/swp/bbb222')
-  })
-})
-
-describe('cleanupTempBranches', () => {
-  let ctx: AppCtx
-  let project: Project
-
-  beforeEach(async () => {
-    ctx = await makeTestCtx()
-    const repo = mkTmp('rc-sweep-')
-    await initRepo(repo)
-    project = seedProject(ctx, repo)
-    await createFeatureBranch(project, 'swp', 'main')
-  })
-
-  it('deletes merged temp branches, keeps unmerged ones, never touches foreign branches', async () => {
-    const g = simpleGit(project.repoPath)
-    // merged: points at the feature branch tip (an ancestor by definition)
-    const merged = ticketBranchName('swp', 1, 'aaa111')
-    await g.raw(['branch', merged, 'feature/swp'])
-    // a merged TICKET temp branch is swept by the same pass (M2)
-    const mergedTicket = ticketBranchName('swp', 3, 'ccc333')
-    await g.raw(['branch', mergedTicket, 'feature/swp'])
-    // unmerged: one commit ahead of the feature branch
-    const unmerged = ticketBranchName('swp', 2, 'bbb222')
-    await g.raw(['branch', unmerged, 'feature/swp'])
-    const wt = join(mkTmp('rc-sweepwt-'), 'wt')
-    await g.raw(['worktree', 'add', wt, unmerged])
-    writeFileSync(join(wt, 'orphan.md'), 'never landed\n')
-    const gw = simpleGit(wt)
-    await gw.add(['orphan.md'])
-    await gw.commit('research: orphan')
-    await g.raw(['worktree', 'remove', wt, '--force'])
-    // an unmerged ticket branch (conflict leftover) must be kept too
-    const unmergedTicket = ticketBranchName('swp', 4, 'ddd444')
-    await g.raw(['branch', unmergedTicket, unmerged])
-    // a user's own branch under a similar-but-not-ours prefix must survive, and
-    // so must a leftover of the retired research workflow (ADR-0012)
-    await g.raw(['branch', 'research/user-branch', 'main'])
-    await g.raw(['branch', 'runcastle/research/swp/9-old', 'feature/swp'])
-    await g.raw(['branch', 'ticket/user-branch', 'main'])
-
-    const result = await cleanupTempBranches(project.repoPath)
-    expect(result.deleted.sort()).toEqual([merged, mergedTicket].sort())
-    expect(result.kept.sort()).toEqual([unmerged, unmergedTicket].sort())
-
-    const all = (await g.branchLocal()).all
-    expect(all).not.toContain(merged)
-    expect(all).not.toContain(mergedTicket)
-    expect(all).toContain(unmerged)
-    expect(all).toContain(unmergedTicket)
-    expect(all).toContain('research/user-branch')
-    expect(all).toContain('runcastle/research/swp/9-old')
-    expect(all).toContain('ticket/user-branch')
-  })
-
-  it('sweeps merged chat branches and preserves unlanded chat commits', async () => {
-    const g = simpleGit(project.repoPath)
-    // a chat branch whose docs commit landed — nothing left on it
-    const merged = chatBranchName('swp', 'ccc111')
-    await g.raw(['branch', merged, 'feature/swp'])
-    // a chat branch whose landing never happened (the server died mid-burn):
-    // it holds the human's notes and must survive the sweep
-    const unmerged = chatBranchName('swp', 'ddd222')
-    await g.raw(['branch', unmerged, 'feature/swp'])
-    const wt = join(mkTmp('rc-chatwt-'), 'wt')
-    await g.raw(['worktree', 'add', wt, unmerged])
-    writeFileSync(join(wt, 'note.md'), 'unlanded note\n')
-    const gw = simpleGit(wt)
-    await gw.add(['note.md'])
-    await gw.commit('runcastle: a note')
-    await g.raw(['worktree', 'remove', wt, '--force'])
-    // and a user branch under a similar prefix stays put
-    await g.raw(['branch', 'chat/user-branch', 'main'])
-
-    const result = await cleanupTempBranches(project.repoPath)
-    expect(result.deleted).toContain(merged)
-    expect(result.kept).toContain(unmerged)
-
-    const all = (await g.branchLocal()).all
-    expect(all).not.toContain(merged)
-    expect(all).toContain(unmerged)
-    expect(all).toContain('chat/user-branch')
-  })
-
-  it('maps truncated slug segments to their feature branch and still sweeps old full-slug leftovers', async () => {
-    const g = simpleGit(project.repoPath)
-    const longSlug = 'add-the-rest-of-the-act-2-assistant-tools-and-functionalities'
-    await createFeatureBranch(project, longSlug, 'main')
-    // current format (ADR-0003): segment is the truncated slug
-    const merged = ticketBranchName(longSlug, 1, 'eee555')
-    await g.raw(['branch', merged, `feature/${longSlug}`])
-    // pre-ADR-0003 leftover: full slug embedded in the branch name
-    const oldFormat = `runcastle/ticket/${longSlug}/2-fff666`
-    await g.raw(['branch', oldFormat, `feature/${longSlug}`])
-
-    const result = await cleanupTempBranches(project.repoPath)
-    expect(result.deleted.sort()).toEqual([merged, oldFormat].sort())
-    expect(result.kept).toEqual([])
-
-    const all = (await g.branchLocal()).all
-    expect(all).not.toContain(merged)
-    expect(all).not.toContain(oldFormat)
-  })
-
-  it('is a best-effort no-op on a directory that is not a git repo', async () => {
-    const notRepo = mkTmp('rc-notrepo-')
-    await expect(cleanupTempBranches(notRepo)).resolves.toEqual({ deleted: [], kept: [] })
-  })
-})
-
 /**
  * Ticket 4 / findings F23 — the review SUMMARY's commit count must come from git,
  * not from ticket rows (which are empty on any branch a human committed to), and
@@ -1747,98 +1631,5 @@ describe('mergeFeature', () => {
     expect(res.ok).toBe(true)
     expect(await currentBranch(g)).toBe('main')
     expect(existsSync(join(project.repoPath, 'feature.txt'))).toBe(true)
-  })
-})
-
-describe('burn worktree cleanup (sandcastle teardown flake)', () => {
-  let repo: string
-  let g: SimpleGit
-
-  const branch = 'runcastle/ticket/make-act-1-more/6-gX46ogOP'
-  /** No retries/sleeps in tests — the retry pacing exists for real file locks. */
-  const fast = { attempts: 1, delayMs: 0 }
-
-  async function addBurnWorktree(): Promise<string> {
-    const path = burnWorktreePath(repo, branch)
-    mkdirSync(join(repo, '.sandcastle', 'worktrees'), { recursive: true })
-    await g.raw(['worktree', 'add', '-b', branch, path, 'main'])
-    return path
-  }
-
-  async function registeredPaths(): Promise<string[]> {
-    return (await g.raw(['worktree', 'list', '--porcelain']))
-      .split('\n')
-      .filter((l) => l.startsWith('worktree '))
-      .map((l) => l.slice('worktree '.length).trim())
-  }
-
-  beforeEach(async () => {
-    repo = mkTmp('rc-burnwt-')
-    g = await initRepo(repo)
-  })
-
-  it('maps a branch to sandcastle`s worktree dir name (slashes → dashes)', () => {
-    expect(burnWorktreePath(repo, branch)).toBe(
-      join(repo, '.sandcastle', 'worktrees', 'runcastle-ticket-make-act-1-more-6-gX46ogOP'),
-    )
-  })
-
-  it('removes the worktree and deregisters it', async () => {
-    const path = await addBurnWorktree()
-    expect(existsSync(path)).toBe(true)
-
-    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
-    expect(existsSync(path)).toBe(false)
-    expect(await registeredPaths()).toHaveLength(1) // the main checkout only
-  })
-
-  it('removes one left dirty + holding untracked files (--force)', async () => {
-    const path = await addBurnWorktree()
-    writeFileSync(join(path, 'README.md'), 'edited\n')
-    mkdirSync(join(path, 'node_modules'), { recursive: true })
-    writeFileSync(join(path, 'node_modules', 'junk.js'), 'x\n')
-
-    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
-    expect(existsSync(path)).toBe(false)
-  })
-
-  it('prunes the registry entry a half-failed removal left behind', async () => {
-    // The real leftover state: git deleted enough to be useless but kept the
-    // `.git/worktrees/<name>` entry, since it only drops that once the work-tree
-    // delete succeeded. Stand in for it by deleting the dir out from under git.
-    const path = await addBurnWorktree()
-    rmTemp(path)
-    expect((await registeredPaths()).length).toBe(2)
-
-    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
-    expect(await registeredPaths()).toHaveLength(1)
-  })
-
-  it('never throws when there is nothing to clean (or no repo at all)', async () => {
-    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
-    expect(await cleanupBurnWorktree(mkTmp('rc-norepo-'), branch, fast)).toBe(true)
-  })
-
-  it('leaves the temp branch and its commits behind — chaining depends on it', async () => {
-    // Every attempt's worktree is now removed host-side (the push-only sync hook
-    // leaves it dirty, so sandcastle preserves rather than removes it). That
-    // must NOT cost the attempt its branch: `preserveChain` records it, the next
-    // attempt forks from it, and conflict resume lands it — all by ref, long
-    // after the directory is gone.
-    const path = await addBurnWorktree()
-    const wt = simpleGit(path)
-    await wt.addConfig('user.email', 'agent@runcastle.dev')
-    await wt.addConfig('user.name', 'Burn Agent')
-    writeFileSync(join(path, 'WORK.md'), 'done\n')
-    await wt.add('.')
-    await wt.commit('ticket(1): work')
-    // ...and left dirty, exactly as the push-only hook leaves it.
-    writeFileSync(join(path, 'WORK.md'), 'more\n')
-
-    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
-    expect(existsSync(path)).toBe(false)
-
-    expect((await g.branchLocal()).all).toContain(branch)
-    expect(await branchCommitsAhead(repo, 'main', branch)).toHaveLength(1)
   })
 })

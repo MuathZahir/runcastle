@@ -1,16 +1,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { newId } from '@runcastle/core'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp from '../src/mcp/server'
 import { resetSentMemoryForTests } from '../src/mcp/sent-memory'
 import hooksApp from '../src/routes/hooks'
-import { storeTickets, updateTicket } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -118,14 +116,6 @@ describe('repeat feature reads', () => {
     }
   })
 
-  it('always sends a run caller every doc whole', async () => {
-    const runId = newId('run')
-    ctx.db.insert(runs).values({ id: runId, featureId, workflow: 'ticket-burner', status: 'running', startedAt: 1 }).run()
-    for (let i = 0; i < 2; i++) {
-      expect((await docsOf({ 'X-Runcastle-Run': runId })).every((doc) => doc.content !== undefined)).toBe(true)
-    }
-  })
-
   it('gives the orchestrator a status view by default and the whole bundle with full', async () => {
     const [done, , failed] = storeTickets(ctx, featureId, [
       { title: 'a', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
@@ -147,11 +137,8 @@ describe('repeat feature reads', () => {
       'waitingKind',
       'heldBy',
       'humanTypedAt',
-      'roundRunning',
-      'ticketCounts',
+      'workerCounts',
       'latestReady',
-      'reviewVerdict',
-      'reviewVerdictReason',
       'openFindings',
       'designs',
       'baseBranch',
@@ -160,9 +147,7 @@ describe('repeat feature reads', () => {
     ])
     expect(view).toMatchObject({
       slug: 'coupons',
-      roundRunning: false,
-      ticketCounts: { pending: 1, burning: 0, done: 1, failed: 1, cancelled: 0 },
-      reviewVerdict: null,
+      workerCounts: {},
       openFindings: 0,
       designs: [],
       docs: [
@@ -174,7 +159,6 @@ describe('repeat feature reads', () => {
     expect(JSON.stringify(view)).not.toContain('coupons expire')
 
     const full = await call(asOrchestrator, 'get_feature_context', { slug: 'coupons', full: true })
-    expect(full.tickets).toHaveLength(3)
     expect(full.docs).toEqual([
       { relPath: 'brief.md', content: '# Brief\n\ncoupons expire' },
       { relPath: 'decisions.md', content: '# Decisions\n\n1. hourly' },

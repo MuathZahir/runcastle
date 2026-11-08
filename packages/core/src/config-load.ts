@@ -90,15 +90,9 @@ export function loadConfig(
   if (env.RUNCASTLE_CARRY_ON_AFTER_LIMIT) overrides.carryOnAfterLimit = env.RUNCASTLE_CARRY_ON_AFTER_LIMIT
   if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
   num('burnConcurrency', env.RUNCASTLE_BURN_CONCURRENCY)
-  num('burnMaxIterations', env.RUNCASTLE_BURN_MAX_ITERATIONS)
-  num('burnAttempts', env.RUNCASTLE_BURN_ATTEMPTS)
-  // The key that made `num` necessary: `0` is meaningful here (disable in-loop
-  // conflict resolution), so truthiness would swallow it — while the presence
-  // check it used to have let `''` land as a silent `0`.
-  num('burnConflictAttempts', env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
   num('burnCpus', env.RUNCASTLE_BURN_CPUS)
   // Kill switch for the in-sandbox PreToolUse guard. Config-file + env only
-  // (like `burnWorkspace`): a rarely-touched escape hatch, and the settings
+  // (like `burnCache`): a rarely-touched escape hatch, and the settings
   // overlay has no boolean control. Empty is unset here too — an exported-empty
   // var meant "guard on, explicitly", which is not what the operator said.
   if (env.RUNCASTLE_BURN_GUARD !== undefined && env.RUNCASTLE_BURN_GUARD !== '') {
@@ -107,9 +101,8 @@ export function loadConfig(
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
   if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
   if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES
-  if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
   // Kill switch for the persistent burn cache volume. Config-file + env only,
-  // for the same reason as `burnWorkspace`: it exists so cache-induced weirdness
+  // for the same reason: it exists so cache-induced weirdness
   // is diagnosable in one change, not so it is routinely tuned.
   if (env.RUNCASTLE_BURN_CACHE) overrides.burnCache = env.RUNCASTLE_BURN_CACHE
 

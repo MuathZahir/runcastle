@@ -4,7 +4,7 @@ import {
   drivePrerequisites,
   resetDrivePrerequisiteCache,
 } from '../src/services/drive-prerequisites'
-import type { DriveHostProbe } from '../src/workflows/review-ticket'
+import type { DriveHostProbe } from '../src/services/drive-host'
 
 /**
  * The review page's standing notice reads this before any review runs: every

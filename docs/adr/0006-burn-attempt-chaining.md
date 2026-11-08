@@ -1,6 +1,7 @@
 # ADR-0006: Burn robustness — attempt chaining, transient-error retry, per-ticket controls
 
 - **Status:** accepted (2026-07-22)
+- **Superseded by ADR-0020** (burns become workers): a transient error is retried in the same worker conversation, up to three times.
 - **Amended:** 2026-09-10 — decision 1 grows a third class, `run-fatal`: auth,
   billing, usage-limit and missing-binary errors halt the run instead of
   failing one ticket at a time (feature

@@ -233,10 +233,18 @@ describe('settings service (#46)', () => {
   // them — `burnCache` joins `burnWorkspace` and `burnGuard` on that list.
   it('keeps the config-only burn knobs out of the settings surface', () => {
     const view = getSettings(ctx, undefined, io())
-    for (const key of ['burnCache', 'burnWorkspace', 'burnGuard']) {
+    // burnGuard became a Sandboxes switch (burns-become-workers review); burnWorkspace is gone.
+    for (const key of ['burnCache', 'burnWorkspace']) {
       expect(view.fields.find((f) => f.key === key), key).toBeUndefined()
       expect(() => updateSettings(ctx, { key, value: 'off' }, io()), key).toThrow(InvalidInputError)
     }
+  })
+
+  it('serves the test-suite guard as a boolean switch that writes through', () => {
+    expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'burnGuard')?.value).toBe(true)
+    updateSettings(ctx, { key: 'burnGuard', value: false }, io())
+    expect(ctx.config.burnGuard).toBe(false)
+    expect(() => updateSettings(ctx, { key: 'burnGuard', value: 'off' }, io())).toThrow(InvalidInputError)
   })
 
   it('global write persists to the config file AND refreshes the in-memory config in place', () => {
@@ -477,7 +485,7 @@ describe('settings service (#46)', () => {
 
   it('sandbox override accepts the three-way choice and rejects anything else', () => {
     const project = seedProject(ctx)
-    for (const choice of ['docker', 'podman', 'noSandbox']) {
+    for (const choice of ['docker', 'podman']) {
       updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: choice }, io())
       expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe(choice)
     }

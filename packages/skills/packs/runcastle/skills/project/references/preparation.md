@@ -57,10 +57,10 @@ Four describe the drive loop:
 - **`driveSetupCommand`** / **`driveStopCommand`** — run on the host, in the human's checkout, before the dev pane starts and after the drive stops. They are the **invocation lines** of scripts you write and commit, not the machinery itself.
 - **`dbResetCommand`** — **not** part of the drive loop. Its only consumer is the migration-drift banner after a drive stops: when the drive branch and the branch you returned to disagree about migration files, this is offered as the one-click dev-database rebuild.
 
-Three describe the **sandbox** a ticket agent runs in. Prove them in your worktree:
+Three describe the **sandbox** a worker runs in. Prove them in your worktree:
 
 - **`setupCommand`** — what a fresh sandbox runs before the agent starts (install, plus any codegen or build step every ticket needs). Setting it *replaces* install detection, so the install command must be included explicitly.
-- **`verifyCommands`** — the exact typecheck/test/lint lines, one per line. They are the host's full gates, run once per round on the feature branch tip; ticket agents read them to learn the tools and filter names and run them narrowed. Unset, agents guess workspace filter names and run whole suites discovering the right one.
+- **`verifyCommands`** — the exact typecheck/test/lint lines, one per line. They are the full checks the lead and the Review worker run on the feature branch tip; workers read them to learn the tools and filter names and run them narrowed. Unset, agents guess workspace filter names and run whole suites discovering the right one.
 - **`knownFailures`** — what already fails on the main branch, so an agent can tell its own breakage from the repo's. Free text; a count plus the suite names is enough.
 
 The image those three run in is not a key: runcastle sets it itself. What can fall to you is authoring the Dockerfile it builds — see the sandbox image, below.
@@ -116,7 +116,7 @@ Grep the app's entry points and config for env loading and decide, for each, whi
 
 ## The sandbox image
 
-Ticket agents and workers do not run on this host; they run in a container. The image runcastle builds carries a JavaScript toolchain and the agent CLIs — Node, Bun, git, curl — and nothing beyond that, so a repo that builds with a JDK, a Python, a Go compiler or a Rust toolchain cannot run its own `setupCommand` there: the round dies on `mvn: not found`. The fix is a Dockerfile committed at **`.runcastle/sandbox/Dockerfile`**. Runcastle detects it, builds it as this project's image, and every round runs in that image from then on.
+Workers do not run on this host; they run in a container. The image runcastle builds carries a JavaScript toolchain and the agent CLIs — Node, Bun, git, curl — and nothing beyond that, so a repo that builds with a JDK, a Python, a Go compiler or a Rust toolchain cannot run its own `setupCommand` there: the round dies on `mvn: not found`. The fix is a Dockerfile committed at **`.runcastle/sandbox/Dockerfile`**. Runcastle detects it, builds it as this project's image, and every round runs in that image from then on.
 
 Read the manifests at the root and in each workspace:
 
@@ -135,7 +135,7 @@ When the project does need one, what you write:
 
 - **It starts `FROM sandcastle:runcastle`** and layers onto it. That base is what keeps the agent CLIs, git and Node present; a Dockerfile from any other base is not a runcastle sandbox.
 - **Read the stock Dockerfile before you write a single install line**, rather than assuming its distro or package manager. It is the build context runcastle scaffolds at `~/.runcastle/sandbox-build/Dockerfile` once the image has been built on this machine, and it also ships inside the installed runcastle package as `sandcastle-template/Dockerfile`. Follow its idioms. If you cannot find it, ask the human instead of guessing.
-- **The toolchain only, never the project's dependencies.** Dependencies are what `setupCommand` installs per round, from the branch's own manifests.
+- **The toolchain only, never the project's dependencies.** Dependencies are what `setupCommand` installs per worker, from the branch's own manifests.
 - **No package caches in layers.** Download caches are mounted into the sandbox from the host.
 - **Keep it minimal** — one `RUN` block where the package manager allows it, versions pinned only where the project pins them.
 

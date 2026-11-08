@@ -6,7 +6,7 @@ import {
   evaluateGuard,
   renderGuardScript,
   renderGuardSettings,
-} from '../src/workflows/burn-guard'
+} from '../src/workers/burn-guard'
 
 /**
  * `evaluateGuard` is the JS mirror of the `sh` script the sandbox actually

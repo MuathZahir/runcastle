@@ -1,9 +1,5 @@
-import { ticketTally, workTickets } from '@runcastle/core'
-import type { FindingResolvedBy, FindingStatus, TallyTicket, TicketKind } from '@runcastle/core'
+import type { FindingResolvedBy, FindingStatus, TicketKind } from '@runcastle/core'
 import type { ReviewGateRunWire } from '../reviews'
-import { gateCheckLines } from './checks'
-import { type DriveTicketFigure, testDriveFigure } from './gates'
-import { unverifiedWarning } from './internal'
 
 export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
 
@@ -26,8 +22,8 @@ interface ReviewTicketFigure {
   passKind?: 'review' | 'verification'
 }
 
-export function latestReview<T extends { seq: number; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
-  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq).at(-1)
+export function latestReview<T extends { seq: number | null; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
+  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || (a.seq ?? Infinity) - (b.seq ?? Infinity)).at(-1)
 }
 
 /**
@@ -43,7 +39,7 @@ export function latestReview<T extends { seq: number; completedAt?: number | nul
  * shows the pass would read "Not reviewed yet" above it. Having no time, it
  * ranks below every stamped pass.
  */
-export function stampedReview<T extends { ticketId: string; seq: number; completedAt?: number | null }>(
+export function stampedReview<T extends { ticketId: string; seq: number | null; completedAt?: number | null }>(
   rows: readonly T[],
   tickets: readonly { id: string; status: string }[],
 ): T | null {
@@ -188,176 +184,6 @@ export function verificationState(
   return { state: 'running' }
 }
 
-/**
- * One fact of the review/shipped status, as a property row (DESIGN.md: facts
- * are text, not boxes). `value` is the word, `sub` the quiet note after it, and
- * `tone` the dot beside it — `idle` draws no dot at all, so absence stays quiet.
- * `detail` is the longer sentence a caveat opens on (the value's tooltip).
- */
-export interface StatusProperty {
-  key: 'review' | 'drive' | 'tickets' | 'run'
-  label: string
-  value: string
-  sub?: string
-  tone: CheckTone
-  detail?: string
-}
-
-/**
- * The Review row: the stamped pass's verdict and its freshness, said together
- * (decision 3). Freshness alone is how an unverified pass used to read
- * "Reviewed · this build" while the trail below it said "Unverified".
- *
- * The stamped pass's Checks ride on the sub-note (gates-mode decision 6): only
- * that pass's, since it is the branch as it stands — an earlier pass's failure
- * the latest one fixed is history, and the trail's to tell.
- */
-function reviewProperty(input: {
-  artifact?: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
-  outcome?: TrailOutcome
-  landedSince: number
-  verification?: { state: 'running' | 'failed'; reason?: string }
-  building?: StatusBuilding
-}): StatusProperty {
-  const row = { key: 'review', label: 'Review' } as const
-  const v = input.verification
-  if (v?.state === 'running') {
-    return { ...row, value: 'Verification running', sub: 'the evidence below predates it', tone: 'warn' }
-  }
-  if (v?.state === 'failed') {
-    const reason = v.reason?.trim()
-    return { ...row, value: 'Verification could not run', ...(reason ? { sub: reason } : {}), tone: 'warn' }
-  }
-  // Amber, not quiet: on review and shipped a missing review means nothing was
-  // checked for the human, and this row is where that fact now lives (d4).
-  // While the burn runs, the review is simply still to come.
-  if (!input.artifact) return { ...row, value: 'Not reviewed yet', tone: input.building ? 'idle' : 'warn' }
-  const gateRun = input.artifact.gateRun
-  const sub = (note: string): string => (gateRun ? `${note} · ${gateCheckLines(gateRun).short}` : note)
-  const outcome = input.outcome ?? { kind: 'none' }
-  if (outcome.kind === 'unverified') return { ...row, value: 'Unverified', sub: sub('nothing verified'), tone: 'warn' }
-  if (outcome.kind === 'could-not-run') return { ...row, value: 'Could not run', sub: sub('nothing verified'), tone: 'warn' }
-  // A pass that predates the verdict columns has no verdict to claim, so it
-  // says only that it reviewed.
-  const word = outcome.kind === 'verified' ? 'Verified' : 'Reviewed'
-  if (input.landedSince === 0) {
-    const mode = outcome.kind === 'verified' && outcome.mode ? `${outcome.mode} mode · ` : ''
-    return { ...row, value: word, sub: sub(`${mode}this build`), tone: 'ok' }
-  }
-  return { ...row, value: `${word} earlier`, sub: sub(`${input.landedSince} landed since`), tone: 'warn' }
-}
-
-/**
- * The building page's Status tier (decision 9a): the burn on screen, which the
- * run header no longer states.
- */
-export interface StatusBuilding {
-  /** How long the burn has run, or ran — said beside its status. */
-  elapsed?: string
-}
-
-/**
- * The Status tier as a property list: Review · Tickets · Test drive (· Round on
- * the live page) on review and shipped, and Round · Tickets · Review while
- * building (decision 9a). Each row owns its facts (decision 4): a check that is
- * not fine turns its own row amber or red rather than feeding a separate tally.
- * Words, not glyph soup — "Verified", "Not run", "this build".
- */
-export function statusProperties(input: {
-  /** The stamped pass ({@link stampedReview}) — its Checks are the headline's. */
-  artifact?: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
-  /** What the stamped pass amounted to ({@link stampedOutcome}). */
-  outcome?: TrailOutcome
-  landedSince: number
-  tickets: readonly (TallyTicket & DriveTicketFigure)[]
-  /** The burn's status; omitted on the shipped record, where it is history. */
-  runState?: string
-  verification?: { state: 'running' | 'failed'; reason?: string }
-  /**
-   * When the branch was last test-driven (null: never), and undefined where
-   * the drive is not this list's to report.
-   */
-  drivenAt?: number | null
-  /** A drive of this feature is up right now (the live page). */
-  driving?: boolean
-  /** No recording exists — the shipped record's "not run" says why. */
-  noWalkthrough?: boolean
-  unverifiedKeys?: readonly string[]
-  shipped?: boolean
-  building?: StatusBuilding
-}): StatusProperty[] {
-  const review = reviewProperty(input)
-  const tickets = ticketsProperty(input.tickets)
-  const burn =
-    input.shipped || input.runState === undefined ? [] : [burnProperty(input.runState, input.building?.elapsed)]
-  // While building the burn is the page, so it leads, and no drive is due yet.
-  if (input.building) return [...burn, tickets, review]
-  return [review, tickets, ...driveProperty(input), ...burn]
-}
-
-/**
- * The Tickets row: the one ticket count (decision 2) — the feature's work
- * tickets, the waived ones out of the total and said on their own.
- */
-function ticketsProperty(tickets: readonly TallyTicket[]): StatusProperty {
-  const tally = ticketTally(tickets)
-  const work = workTickets(tickets)
-  const failed = work.filter((t) => t.status === 'failed').length
-  const burning = work.filter((t) => t.status === 'burning').length
-  const notes = [
-    ...(failed > 0 ? [`${failed} failed`] : []),
-    ...(burning > 0 ? [`${burning} running`] : []),
-    ...(tally.waived > 0 ? [`${tally.waived} waived`] : []),
-  ]
-  return {
-    key: 'tickets',
-    label: 'Tickets',
-    value: `${tally.landed} of ${tally.total} landed`,
-    ...(notes.length > 0 ? { sub: notes.join(' · ') } : {}),
-    tone: failed > 0 ? 'danger' : tally.waived > 0 ? 'warn' : 'idle',
-  }
-}
-
-/** The Test drive row, or none where the drive is not this list's to report. */
-function driveProperty(input: {
-  tickets: readonly DriveTicketFigure[]
-  drivenAt?: number | null
-  driving?: boolean
-  noWalkthrough?: boolean
-  unverifiedKeys?: readonly string[]
-}): StatusProperty[] {
-  if (input.driving) return [{ key: 'drive', label: 'Test drive', value: 'Running', tone: 'ok' }]
-  if (input.drivenAt === undefined) return []
-  const unverified = input.unverifiedKeys ?? []
-  const driven = testDriveFigure(input.drivenAt, input.tickets)
-  const why = input.drivenAt === null && input.noWalkthrough ? 'the review reported without driving' : undefined
-  const caveat = unverified.length > 0
-    ? `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`
-    : undefined
-  const sub = [driven.sub, why, caveat].filter(Boolean).join(' · ')
-  return [
-    {
-      key: 'drive',
-      label: 'Test drive',
-      value: driven.value,
-      ...(sub ? { sub } : {}),
-      ...(caveat ? { detail: unverifiedWarning([...unverified]) } : {}),
-      tone: caveat ? 'warn' : driven.tone,
-    },
-  ]
-}
-
-/** The Round row: the latest round's status, and while building how long it has taken. */
-function burnProperty(run: string, elapsed?: string): StatusProperty {
-  return {
-    key: 'run',
-    label: 'Round',
-    value: run === 'no run recorded' ? 'None recorded' : run.charAt(0).toUpperCase() + run.slice(1),
-    ...(elapsed ? { sub: elapsed } : {}),
-    tone: run === 'succeeded' ? 'ok' : run === 'failed' ? 'danger' : run === 'no run recorded' ? 'idle' : 'warn',
-  }
-}
-
 /** One implementation ticket's own account, as the fallback block lists it. */
 export interface FindingCounts {
   found: number
@@ -467,7 +293,8 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
 /** One review pass as the trail reads it — the artifacts feed row, narrowed. */
 export interface ReviewPassFigure {
   ticketId: string
-  seq: number
+  /** The review ticket's number; null for a Review worker's pass. */
+  seq: number | null
   passKind: 'review' | 'verification'
   /** What the pass actually ran; null on a pass that recorded no declaration. */
   reviewMode: 'drive' | 'gates' | null

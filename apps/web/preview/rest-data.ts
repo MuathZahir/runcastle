@@ -24,7 +24,7 @@ export const featuresOf = (input: unknown) => {
     ]
   if (id === 'proj_3') return []
   return [
-    listItem({ id: 'f3', title: 'Slack alerts on failed runs', activeRun: true }),
+    listItem({ id: 'f3', title: 'Slack alerts on failed runs', workersWorking: 1 }),
     listItem({ id: 'f4', title: 'Export a run as a report' }),
     listItem({ id: 'f5', title: 'Faster sidebar' }),
   ]
@@ -81,9 +81,6 @@ const shared = [
   f('serverPort', 4512, { source: 'default' }),
   f('sessionMcp', 'inherit', { source: 'default' }),
   f('burnConcurrency', 3, { source: 'default' }),
-  f('burnMaxIterations', 3, { source: 'default' }),
-  f('burnAttempts', 3, { source: 'default' }),
-  f('burnConflictAttempts', 2, { source: 'default' }),
   f('burnCpus', 8),
   f('stepModels.chat', null),
   f('stepModels.implement', 'claude-opus-5-5'),
@@ -178,7 +175,7 @@ export const doctorHalfDone = {
     probe('container-runtime', 'Container runtime', 'ok', 'Docker version 28.5.2, build ecc6942'),
     probe(
       'sandcastle-image',
-      'Sandcastle container image',
+      'Worker container image',
       'stale',
       'sandcastle:runcastle: Claude Code 2.1.295 in image, 2.1.314 on host, rebuild',
       { fix: 'Open Settings → Workers (Rebuild image).' },
@@ -206,7 +203,7 @@ export const doctorFresh = {
     }),
     probe('codex-auth', 'Codex login', 'error', 'not signed in', { runtime: 'codex', check: 'auth', severity: 'info' }),
     probe('container-runtime', 'Container runtime', 'error', 'docker was not found on PATH'),
-    probe('sandcastle-image', 'Sandcastle container image', 'error', 'not built'),
+    probe('sandcastle-image', 'Worker container image', 'error', 'not built'),
   ],
 } as unknown as RouterOutputs['setup']['doctor']
 

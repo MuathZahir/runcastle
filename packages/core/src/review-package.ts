@@ -59,9 +59,11 @@ export type PackageFinding = Pick<ReviewFinding, 'id' | 'kind' | 'severity' | 't
 
 /** Everything one review pass left, as the card and the page read it. */
 export interface ReviewPackage {
+  /** The pass's id, which its pictures and walkthrough are kept under: a Review worker's, or an older review ticket's. */
   ticketId: string
   featureId: string
-  seq: number
+  /** The review ticket's number; null for a Review worker's pass. */
+  seq: number | null
   /** The round the pass ran in, when the ticket was part of one. */
   round: number | null
   passKind: 'review' | 'verification'

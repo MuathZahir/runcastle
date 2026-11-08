@@ -240,7 +240,9 @@ export function ReviewPackagePage({ pack, walkthrough, onClose }: { pack: Review
   // On a phone the window is the whole screen (Dialog's `full`), and its buttons a thumb's size.
   const phone = useIsPhone()
   const build = packageBuild(pack)
-  const where = [pack.round !== null ? `Round ${pack.round}` : `Ticket #${pack.seq}`, build?.toLowerCase()].filter(Boolean).join(', ')
+  // A Review worker's pass has neither a round nor a ticket number: its build line says where it stands.
+  const pass = pack.round !== null ? `Round ${pack.round}` : pack.seq !== null ? `Ticket #${pack.seq}` : null
+  const where = [pass, build?.toLowerCase()].filter(Boolean).join(', ')
   return (
     <Dialog open onClose={onClose} labelledBy="package-title" size="full" className="flex h-[88dvh] flex-col overflow-hidden">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">

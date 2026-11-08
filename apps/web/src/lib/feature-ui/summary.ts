@@ -144,27 +144,30 @@ function landsRow(delta: { commits?: number; files?: number } | undefined): Chec
 }
 
 /**
- * What the burn delivered, never green over set-aside work (decision 31a). A
+ * What an old feature's tickets delivered, never green over set-aside work (decision 31a). A
  * waived ticket (decision 11) is a cancelled one: work the human deliberately
  * stopped, which is exactly what an all-green row used to hide at the last door.
+ * None for a feature built by workers: it has no tickets, and its commits are the row above.
  */
-function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow {
+function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow[] {
   const key = 'run'
   // Review tickets are the pass, not the delivery — counting one as landed work
   // is the same overcount the lap chip stopped making (decision 27a).
   const implementation = tickets.filter((ticket) => ticket.kind !== 'review')
-  if (implementation.length === 0) return { key, value: 'no tickets built', tone: 'warn' }
+  if (implementation.length === 0) return []
   const done = implementation.filter((ticket) => ticket.status === 'done').length
   const waived = implementation.filter((ticket) => ticket.status === 'cancelled').length
   const failed = implementation.filter((ticket) => ticket.status === 'failed').length
   const parts = [`${done}/${implementation.length} tickets done`]
   if (waived > 0) parts.push(`${waived} waived`)
   if (failed > 0) parts.push(`${failed} failed`)
-  return {
-    key,
-    value: parts.join(' · '),
-    tone: done === implementation.length ? 'ok' : 'warn',
-  }
+  return [
+    {
+      key,
+      value: parts.join(' · '),
+      tone: done === implementation.length ? 'ok' : 'warn',
+    },
+  ]
 }
 
 /**
@@ -225,8 +228,8 @@ export function mergeSummary(input: {
   conflict?: MergeConflictState | null
   /** Scope the spec left for a later lap ({@link deferredScope}). */
   laterLaps?: string | null
-  /** A burn is running on this feature right now (decision 7). */
-  burning?: boolean
+  /** How many of the feature's workers are working or queued right now (decision 7). */
+  workersWorking?: number
 }): MergeSummary {
   const tickets = input.tickets ?? []
   // The status row's own formula (decision 8a), so the two cannot disagree. A
@@ -244,12 +247,13 @@ export function mergeSummary(input: {
   }
 
   const warnings: string[] = []
-  // Merging mid-burn is a warning, never the third hard rule (decision 7): git
-  // takes what has landed, and the operator may want exactly those commits.
-  // What they cannot see from here is that the agents are still committing.
-  if (input.burning) {
+  // Merging while workers work is a warning, never the third hard rule
+  // (decision 7): git takes what has landed, and the operator may want exactly
+  // those commits. What they cannot see from here is that workers still build.
+  const working = input.workersWorking ?? 0
+  if (working > 0) {
     warnings.push(
-      'A round is running — work landing after this merge stays unshipped on the branch.',
+      `${noun(working, 'worker')} still at work — what lands after this merge stays unshipped on the branch.`,
     )
   }
   // Said before the click, not discovered after it: the notes are saved, but
@@ -285,7 +289,7 @@ export function mergeSummary(input: {
     conflictRow: input.conflict
       ? `⚠ A merge conflict is standing (${input.conflict.files.join(', ') || input.conflict.base}) — this merge will fail unless it’s been resolved.`
       : null,
-    rows: [landsRow(input.delta), landedRow(tickets), drive, review],
+    rows: [landsRow(input.delta), ...landedRow(tickets), drive, review],
     warnings,
     next: `Merges ${input.branch} into ${input.base ?? 'its base branch'}, writes the outcome doc, and moves the feature to Shipped.`,
   }

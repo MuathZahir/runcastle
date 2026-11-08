@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { modelRoster } from '@runcastle/core'
 import type { EventRow } from '@runcastle/core'
 import {
   activeSession,
-  burnInterruption,
   defaultBaseBranch,
   deferredScope,
   driveFailure,
@@ -11,7 +9,6 @@ import {
   findingCountsLine,
   findingOpenReason,
   headline,
-  roundAccount,
   landingFeature,
   lastTestDriveAt,
   mergeConflictKickoff,
@@ -30,11 +27,8 @@ import {
   shippedChatSessions,
   sortForSidebar,
   testDriveFigure,
-  ticketConflictKickoff,
-  ticketDurations,
-  ticketModelChip,
   landedShare,
-  ticketProgress,
+  buildShare,
   ticketShare,
   triage,
   triageOf,
@@ -123,26 +117,6 @@ describe('duplicateTitleWarning', () => {
 
   it('warns against an empty project without throwing', () => {
     expect(duplicateTitleWarning('Anything', [])).toBeNull()
-  })
-})
-
-describe('burnInterruption', () => {
-  const event = {
-    type: 'run.reconciled',
-    runId: 'r1',
-    data: { workflow: 'ticket-burner', landedTickets: 2, pendingTickets: 3 },
-  }
-
-  it('keeps the restart alert attached to the reconciled run', () => {
-    expect(burnInterruption([event], 'r1')).toEqual({
-      runId: 'r1',
-      landedTickets: 2,
-      pendingTickets: 3,
-    })
-  })
-
-  it('retires the alert once a resumed burn becomes the latest run', () => {
-    expect(burnInterruption([event], 'r2')).toBeUndefined()
   })
 })
 
@@ -407,61 +381,6 @@ describe('testDriveFigure', () => {
 })
 
 /**
- * A lane's duration is the burner's own measurement of one execution, not the
- * spread of everything the run happened to say about the ticket — and never a
- * log file's span, which covers every attempt at once.
- */
-describe('ticketDurations', () => {
-  const ev = (id: number, ts: number, type: string, ticketId?: string, data?: unknown): EventRow =>
-    ({ id, projectId: 'p', ts, type, message: type, ticketId, data }) as EventRow
-
-  it('takes the wall clock the timing event carries, not the event spread', () => {
-    // The ticket was created at the top of the run and burned much later: the
-    // spread is 2 hours, the execution was 5m 35s.
-    const events = [
-      ev(1, 0, 'ticket.created', 'tk_1'),
-      ev(2, 7_200_000, 'ticket.timing', 'tk_1', { wallMs: 335_000, calls: 0, byCategory: {} }),
-    ]
-    expect(ticketDurations(events).get('tk_1')).toBe(335_000)
-  })
-
-  it('takes the last timing event when a ticket was burned twice in one run', () => {
-    const events = [
-      ev(1, 0, 'ticket.timing', 'tk_1', { wallMs: 60_000 }),
-      ev(2, 600_000, 'ticket.timing', 'tk_1', { wallMs: 90_000 }),
-    ]
-    expect(ticketDurations(events).get('tk_1')).toBe(90_000)
-  })
-
-  it('falls back to the event spread while a lane is still burning', () => {
-    const events = [ev(1, 1_000, 'ticket.started', 'tk_1'), ev(2, 4_000, 'agent.text', 'tk_1')]
-    expect(ticketDurations(events).get('tk_1')).toBe(3_000)
-  })
-
-  it('ignores a timing event carrying no usable wall clock', () => {
-    const events = [
-      ev(1, 1_000, 'ticket.started', 'tk_1'),
-      ev(2, 4_000, 'ticket.timing', 'tk_1', { calls: 3 }),
-    ]
-    expect(ticketDurations(events).get('tk_1')).toBe(3_000)
-  })
-
-  it('reports a zero-length execution the timing event measured', () => {
-    // A review refused before its agent started: 0s is the truth, and a lane
-    // that reports nothing is a lane that falls back to guessing.
-    const events = [
-      ev(1, 0, 'ticket.created', 'tk_1'),
-      ev(2, 7_200_000, 'ticket.timing', 'tk_1', { wallMs: 0 }),
-    ]
-    expect(ticketDurations(events).get('tk_1')).toBe(0)
-  })
-
-  it('skips events with no ticket of their own', () => {
-    expect(ticketDurations([ev(1, 0, 'run.started'), ev(2, 5_000, 'run.finished')]).size).toBe(0)
-  })
-})
-
-/**
  * Ticket 2 — "Open app" is a promise that the link loads. A sniffed URL is not
  * that promise: only the server having watched it answer is.
  */
@@ -639,69 +558,6 @@ describe('reviewWalkthroughUrl', () => {
 })
 
 /**
- * Ticket 5 / decisions #8 — the review page leads with what the lap delivered, in
- * prose. The review agent ran last, holds the spec plus every implementation
- * digest and actually saw the result working, so its own digest IS the summary;
- * the burners' accounts are the fallback, and the card labels them as such.
- */
-describe('roundAccount', () => {
-  const impl = (seq: number, digest?: string) => ({
-    seq,
-    title: `ticket ${seq}`,
-    kind: 'implementation' as const,
-    ...(digest === undefined ? {} : { digest }),
-  })
-  const review = (digest?: string, seq = 9) => ({
-    seq,
-    title: 'review',
-    kind: 'review' as const,
-    ...(digest === undefined ? {} : { digest }),
-  })
-
-  it('leads with the review agent’s own prose when it wrote one', () => {
-    expect(roundAccount([impl(1, 'built the thing'), review('This lap made laps legible.')])).toEqual({
-      source: 'review',
-      prose: 'This lap made laps legible.',
-    })
-  })
-
-  it('reads the LAST review ticket, exactly as the summary row does', () => {
-    expect(roundAccount([review('lap 1'), review('lap 2')])).toEqual({
-      source: 'review',
-      prose: 'lap 2',
-    })
-  })
-
-  it('falls back to the burners’ own accounts when no review digest exists', () => {
-    expect(roundAccount([impl(1, 'ledger grouping'), impl(2, 'lap banner'), review()])).toEqual({
-      source: 'tickets',
-      entries: [
-        { seq: 1, title: 'ticket 1', digest: 'ledger grouping' },
-        { seq: 2, title: 'ticket 2', digest: 'lap banner' },
-      ],
-    })
-  })
-
-  it('treats a whitespace-only review digest as no summary at all', () => {
-    expect(roundAccount([impl(1, 'did a thing'), review('  \n ')])?.source).toBe('tickets')
-  })
-
-  it('drops tickets that wrote no digest — a done ticket without one is still done', () => {
-    const account = roundAccount([impl(1), impl(2, 'the only account')])
-    expect(account).toEqual({
-      source: 'tickets',
-      entries: [{ seq: 2, title: 'ticket 2', digest: 'the only account' }],
-    })
-  })
-
-  it('is null when nobody wrote anything — there is no summary to lead with', () => {
-    expect(roundAccount([impl(1), review()])).toBeNull()
-    expect(roundAccount([])).toBeNull()
-    expect(roundAccount()).toBeNull()
-  })
-})
-
-/**
  * Ticket 5 / decisions #7 — the fact the review page never knew. A spec written
  * as a thin lap 1 reached review, nothing on screen knew a lap 2 was planned, and
  * the human shipped half a feature by clicking the main button.
@@ -749,57 +605,12 @@ describe('mergeConflictKickoff', () => {
 })
 
 /**
- * The run lane's "Resolve in terminal" — the human escape hatch after the
- * burner's automatic resolver gave up on a ticket's landing conflict. Unlike
- * the review card's kickoff this merges the TICKET branch into the feature
- * branch (the landing that failed), and it carries the ticket's identity so the
- * agent resolves by intent rather than by guessing from the diff.
- */
-describe('ticketConflictKickoff', () => {
-  const input = {
-    seq: 3,
-    title: 'Stage founder studio drafts',
-    branch: 'runcastle/ticket/improve-user-sto/3-lWsg1vxs',
-    featureBranch: 'feature/improve-user-story',
-    files: ['a/staging.service.ts', 'b/staging.spec.ts'],
-  }
-
-  it('names the ticket, both branches, and the conflicting files', () => {
-    const line = ticketConflictKickoff(input)
-    expect(line).toContain('#3')
-    expect(line).toContain('Stage founder studio drafts')
-    expect(line).toContain('git merge runcastle/ticket/improve-user-sto/3-lWsg1vxs')
-    expect(line).toContain('feature/improve-user-story')
-    expect(line).toContain('a/staging.service.ts, b/staging.spec.ts')
-  })
-
-  it('has the agent retry the ticket itself, and names no phase or human Retry', () => {
-    const line = ticketConflictKickoff(input)
-    expect(line).toContain('dispatch_round({ seqs: [3] })')
-    expect(line).not.toMatch(/complete_phase|phase|click Retry/)
-  })
-
-  it('degrades gracefully when git reported no file list', () => {
-    expect(ticketConflictKickoff({ ...input, files: [] })).toContain('git status')
-  })
-})
-
-/**
- * Talk worktrees are docs-only and installs are blocked there, so neither resolve
- * briefing may invite a test run: they ask for dependency-free checks and hand the
- * human the test drive instead.
+ * Talk worktrees are docs-only and installs are blocked there, so the resolve
+ * briefing may not invite a test run: it asks for dependency-free checks and hands
+ * the human the test drive instead.
  */
 describe('conflict kickoffs verify without dependencies', () => {
-  const lines = [
-    mergeConflictKickoff('main', 'feature/x', ['a.ts']),
-    ticketConflictKickoff({
-      seq: 3,
-      title: 't',
-      branch: 'runcastle/ticket/x/3-abc',
-      featureBranch: 'feature/x',
-      files: ['a.ts'],
-    }),
-  ]
+  const lines = [mergeConflictKickoff('main', 'feature/x', ['a.ts'])]
 
   it('no longer asks to run the tests', () => {
     for (const line of lines) expect(line).not.toMatch(/run the tests/i)
@@ -842,7 +653,7 @@ function withSession(
 
 describe('archive derivations', () => {
   it('triageOf sorts an archived feature into the archived lane', () => {
-    expect(triageOf(listItem({ status: 'archived', activeRun: true }))).toBe('archived')
+    expect(triageOf(listItem({ status: 'archived', workersWorking: 1 }))).toBe('archived')
   })
 
   it('needsMe is null for archived features', () => {
@@ -1042,7 +853,7 @@ describe('rowChip', () => {
   })
 
   it('shows Working while a run is active, outranking the age stamp', () => {
-    const chip = rowChip(listItem({ activeRun: true, lastActivityAt: NOW - 600_000 }), NOW)
+    const chip = rowChip(listItem({ workersWorking: 1, lastActivityAt: NOW - 600_000 }), NOW)
     expect(chip.kind).toBe('working')
     expect(chip.text).toBe('Working')
   })
@@ -1168,7 +979,7 @@ describe('turn-aware feature states', () => {
   })
 
   it('lets an active run outrank the session and a stale waiting reason — the server needs nothing while a round runs', () => {
-    const f = withSession(true, { activeRun: true, waitingReason: 'stopped', need: null })
+    const f = withSession(true, { workersWorking: 1, waitingReason: 'stopped', need: null })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
   })
@@ -1183,29 +994,30 @@ describe('turn-aware feature states', () => {
   })
 })
 
-/**
- * improve-features-section ticket 2 — line 2's ticket progress. Omitted
- * entirely when the feature has no tickets: '0/0 done' is a figure about
- * nothing, and the rail has one line's width to spend.
- */
-describe('ticketProgress', () => {
-  it('reads every ticket done over every ticket not cancelled', () => {
-    const counts = { total: 9, pending: 2, burning: 0, done: 5, failed: 1, cancelled: 1 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('5/8')
-  })
-
-  it('is null when the feature has no tickets, or only cancelled ones', () => {
-    expect(ticketProgress(listItem())).toBeNull()
-    const cancelled = { total: 2, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 2 }
-    expect(ticketProgress(listItem({ ticketCounts: cancelled }))).toBeNull()
-  })
-})
-
 describe('ticketShare and progressState — the progress glyph', () => {
   it('is the share of non-cancelled tickets that are done, 0 with none', () => {
     const counts = { total: 5, pending: 1, burning: 0, done: 3, failed: 0, cancelled: 1 }
     expect(ticketShare(listItem({ ticketCounts: counts }))).toBe(0.75)
     expect(ticketShare(listItem())).toBe(0)
+  })
+
+  it('counts landed build workers for a feature built with workers (burns-become-workers review)', () => {
+    expect(ticketShare(listItem({ workerProgress: { counted: 4, landed: 3 } }))).toBe(0.75)
+    const counts = { total: 2, pending: 0, burning: 0, done: 2, failed: 0, cancelled: 0 }
+    expect(ticketShare(listItem({ ticketCounts: counts, workerProgress: { counted: 2, landed: 0 } }))).toBe(0.5)
+  })
+
+  it('buildShare reads the same share from tickets and worker rows, leaving out reviews, "+" workers and dropped ones', () => {
+    const workers = [
+      { kind: 'on-its-own', status: 'landed' },
+      { kind: 'with-you', status: 'working' },
+      { kind: 'on-its-own', status: 'dropped' },
+      { kind: 'review', status: 'handed-back' },
+      { kind: null, status: 'needs-you' },
+    ]
+    expect(buildShare([], workers)).toBe(0.5)
+    expect(buildShare([{ status: 'done' }, { status: 'cancelled' }], [])).toBe(1)
+    expect(buildShare([], [])).toBe(0)
   })
 
   it('is a draft ring for a draft, a check once shipped, and the pie otherwise', () => {
@@ -1241,7 +1053,7 @@ describe('landedShare', () => {
  * the row the eye lands on.
  */
 describe.skip('landingFeature', () => {
-  const working = listItem({ id: 'working', activeRun: true })
+  const working = listItem({ id: 'working', workersWorking: 1 })
   const needsYou = listItem({ id: 'needs' })
   const inProgress = listItem({ id: 'planning' })
   const draft = listItem({ id: 'draft', status: 'draft' })
@@ -1272,38 +1084,6 @@ describe.skip('landingFeature', () => {
 
   it('lands on the project home when the project has no features at all', () => {
     expect(landingFeature([])).toBeNull()
-  })
-})
-
-describe('ticketModelChip — what a card says about its burn model', () => {
-  const roster = modelRoster({ discovered: [], models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
-
-  it('says nothing for an unassigned ticket', () => {
-    expect(ticketModelChip({ model: undefined }, roster)).toBeNull()
-    expect(ticketModelChip({ model: '' }, roster)).toBeNull()
-  })
-
-  it('names the assigned model with the runtime it launches', () => {
-    expect(ticketModelChip({ model: 'gpt-5.6-sol' }, roster)).toEqual({
-      id: 'gpt-5.6-sol',
-      runtime: 'codex',
-      runtimeLabel: 'Codex',
-    })
-    expect(ticketModelChip({ model: 'claude-opus-5' }, roster)?.runtimeLabel).toBe('Claude Code')
-  })
-
-  it('reads the runtime an operator declared for their own entry', () => {
-    // Never inferred from the id string (decisions.md #3) — "my-proxy" says
-    // nothing about its provider; the roster entry does.
-    expect(ticketModelChip({ model: 'my-proxy' }, roster)?.runtime).toBe('codex')
-  })
-
-  it('falls back to the default runtime for an id no longer on the roster', () => {
-    expect(ticketModelChip({ model: 'retired-model' }, roster)).toEqual({
-      id: 'retired-model',
-      runtime: 'claude-code',
-      runtimeLabel: 'Claude Code',
-    })
   })
 })
 

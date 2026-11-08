@@ -13,7 +13,7 @@ import {
   type StepRunner,
 } from '../setup/runner'
 import { addInstallerDirsToPath, askKey, createStepRunner, readMachineFacts } from '../setup/system'
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workflows/burn-user'
+import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
 
 export const SETUP_USAGE = 'usage: runcastle setup [--yes] [--agent claude|codex|both]'
 

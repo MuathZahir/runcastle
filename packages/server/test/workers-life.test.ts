@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolDeclareReady, toolDropWorker, toolLandWorker, toolStartWorker } from '../src/mcp/server'
+import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker } from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { designPassFetch } from '../src/routes/design-pass'
 import { agentSlots, resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
-import { archiveFeature, deleteFeature } from '../src/services/features'
+import { archiveFeature, deleteFeature, markHumanMessage, stopFeature } from '../src/services/features'
 import { mergeFeatureFlow } from '../src/services/merge'
 import { startNeedWatch } from '../src/services/need-watch'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -170,6 +170,52 @@ describe('one limit for agents working at once', () => {
     // Stopping the worker mid-turn gives its slot back.
     await host.stop(a, 'archived')
     expect(agentSlots(ctx.config.burnConcurrency).held()).toBe(0)
+    await host.stopAll('shutdown')
+  })
+})
+
+describe("the feature's Stop (burns-become-workers decision 15)", () => {
+  beforeEach(() => {
+    ctx.config = { ...ctx.config, burnConcurrency: 1 }
+  })
+
+  it('cancels the working and the queued worker, leaves both enterable, and starts nothing until the human replies', async () => {
+    const started: string[] = []
+    const fake = createFakeAcp({
+      turn: async (t) => {
+        started.push(t.sessionId)
+        await t.cancelled
+        return 'cancelled'
+      },
+    })
+    const host = realHost(fake)
+    const a = await startWorker('Header')
+    await until(() => started.length === 1)
+    const b = await startWorker('Thread list')
+    await until(() => status(b) === 'queued')
+
+    await stopFeature(ctx, feature.id)
+
+    expect(status(a)).toBe('needs-you')
+    expect(status(b)).toBe('needs-you')
+    await until(() => agentSlots(ctx.config.burnConcurrency).held() === 0)
+    // The queued turn never reached its agent, even once the slot it waited for freed.
+    await new Promise((r) => setTimeout(r, 30))
+    expect(started).toHaveLength(1)
+    const logB = readThreadEvents(b)
+    expect(logB.some((e) => e.type === 'turn_started')).toBe(false)
+    expect(logB.find((e) => e.type === 'turn_ended')).toMatchObject({ reason: 'cancelled' })
+    // Both stay enterable: their threads and sandboxes are where they were.
+    expect(getWorker(ctx, a)?.status).not.toBe('failed')
+    expect(engine.removed).toEqual([])
+
+    await expect(startWorker('Footer')).rejects.toThrow('Stopped by the human')
+    await expect(toolMessageWorker(ctx, leadSession(), { workerId: a, text: 'go on' })).rejects.toThrow('Stopped by the human')
+
+    await new Promise((r) => setTimeout(r, 2))
+    markHumanMessage(ctx, feature.id)
+    await toolMessageWorker(ctx, leadSession(), { workerId: a, text: 'go on' })
+    await until(() => started.length === 2)
     await host.stopAll('shutdown')
   })
 })

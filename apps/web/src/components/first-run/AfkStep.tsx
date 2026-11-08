@@ -27,8 +27,8 @@ export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
     <>
       <StepHeading title="Run workers unattended?">
         {/* The step's word carries its glossary hint (ready-to-publish decision 17). */}
-        <Term id="worker">Workers</Term> run a round’s tickets in containers, unattended, and you read the result
-        when you are back. You can skip it for now, but you need it before your first round can build anything.
+        <Term id="worker">Workers</Term> run in sandboxes, unattended, and you read the result
+        when you are back. You can skip it for now, but you need it before a worker can build anything on its own.
       </StepHeading>
 
       {settingUp && (

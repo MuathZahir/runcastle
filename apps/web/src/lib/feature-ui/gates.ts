@@ -34,44 +34,6 @@ const TEST_DRIVE_OFFER =
   'for a real run.'
 
 /**
- * Kickoff line for the run lane's "Resolve in terminal" — the human escape
- * hatch when the burner's automatic resolver could not finish a ticket's
- * landing conflict. Passed as the `launchSession` override, so the revisit
- * agent (cwd = the talk worktree, checked out on the feature branch) opens on
- * the resolution with the ticket's identity, its branch, and the conflicting
- * files already in hand.
- *
- * Note the direction: the human session merges the TICKET branch into the
- * feature branch (the landing that failed), which is the opposite of what the
- * unattended resolver does in the sandbox — there is no sandbox here, and the
- * talk worktree already holds the feature branch.
- */
-export function ticketConflictKickoff(input: {
-  seq: number
-  title: string
-  branch: string
-  featureBranch: string
-  files: string[]
-}): string {
-  const list = input.files.length
-    ? input.files.join(', ')
-    : '(run git status after the merge to see them)'
-  return (
-    `Proceed with your task: RESOLVE A MERGE CONFLICT. Ticket #${input.seq} (“${input.title}”) is ` +
-    `fully implemented on branch ${input.branch}, but landing it on ${input.featureBranch} ` +
-    `conflicts on: ${list}. Your working directory IS the talk worktree, already checked out on ` +
-    `${input.featureBranch}. If \`git merge-base --is-ancestor ${input.branch} HEAD\` already ` +
-    `succeeds, the ticket is in: skip straight to the retry below. Otherwise run ` +
-    `\`git merge ${input.branch}\`, read both sides before resolving ` +
-    `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
-    `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
-    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. When the merge commit is in, ` +
-    `retry the ticket with dispatch_round({ seqs: [${input.seq}] }) so runcastle records it as ` +
-    `landed, then tell me it is in — ${TEST_DRIVE_OFFER}`
-  )
-}
-
-/**
  * What "End session & resolve" costs, said before the click (decisions #10). The
  * resolve affordance never hides now, so the one-terminal rule it used to hide
  * behind has to be explained instead — on the bar and on the conflict card, in
@@ -208,48 +170,6 @@ export function testDriveFigure(
   )
   if (landedSince) return { value: 'Taken', sub: 'not since', tone: 'warn' }
   return { value: 'Taken', tone: 'ok' }
-}
-
-/** The wall clock a `ticket.timing` event carries, if it carries a usable one. */
-function timingWallMs(data: unknown): number | undefined {
-  if (typeof data !== 'object' || data === null) return undefined
-  const ms = (data as { wallMs?: unknown }).wallMs
-  return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? ms : undefined
-}
-
-/**
- * How long each ticket's lane says it took, from the event feed alone.
- *
- * The burner emits `ticket.timing` on every exit path of both execution kinds,
- * and its `wallMs` bounds exactly one execution — so that is the figure, and the
- * last such event wins when a ticket has been burned more than once in a run.
- * The spread of a ticket's other events is only the fallback, for a lane still
- * burning: it starts at whatever the run first said about the ticket, which for
- * a ticket that waited on a blocker is minutes before its agent existed.
- *
- * Never a log file. `run()` appends to `burn-<feature>-<seq>.log` and
- * `review-<feature>-<seq>.log` across attempts, so a log's own span is every
- * attempt at once — that is how a 5m 35s review once read as 5.2 hours.
- */
-export function ticketDurations(events: readonly EventRow[]): Map<string, number> {
-  const span = new Map<string, { min: number; max: number }>()
-  const measured = new Map<string, number>()
-  for (const e of events) {
-    if (!e.ticketId) continue
-    if (e.type === 'ticket.timing') {
-      const ms = timingWallMs(e.data)
-      if (ms !== undefined) measured.set(e.ticketId, ms)
-    }
-    const s = span.get(e.ticketId)
-    if (!s) span.set(e.ticketId, { min: e.ts, max: e.ts })
-    else {
-      s.min = Math.min(s.min, e.ts)
-      s.max = Math.max(s.max, e.ts)
-    }
-  }
-  const out = new Map(measured)
-  for (const [id, s] of span) if (!out.has(id) && s.max > s.min) out.set(id, s.max - s.min)
-  return out
 }
 
 /**

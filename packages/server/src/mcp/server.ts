@@ -2,15 +2,20 @@ import { existsSync, readFileSync } from 'node:fs'
 import {
   type LandWorkerResult,
   type LeadWorker,
+  type StartedReview,
   type StartedWorker,
   dropWorker,
+  getWorker,
   landWorker,
   leadWorkers,
+  listWorkers,
   messageWorker,
   requireFeatureWorker,
   sendBackWorker,
+  startReviewWorker,
   startWorker,
 } from '../workers/service'
+import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
 import { provideWorkerFeatureRead } from '../workers/tools'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
@@ -27,26 +32,21 @@ import type {
   ReadyDeclaration,
   ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
-  RoundSummary,
   RunStatus as RunStatusT,
   ScenarioEntry,
   ScenarioFailure,
   SessionKind as SessionKindT,
   SessionRow,
-  TestNote,
-  Ticket,
-  TicketInput as TicketInputT,
   TicketStatus as TicketStatusT,
+  WorkerStatus as WorkerStatusT,
+  WorkerRow,
 } from '@runcastle/core'
 import {
   PreparedKey,
   ReviewFindingInput,
-  TicketInput,
-  TicketStatus,
   WaitingKind,
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
-  ticketShapeWarnings,
   isAgentDigestDoc,
   isProjectSessionKind,
   unstartedState,
@@ -58,27 +58,24 @@ import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../errors'
-import { RUN_HEADER } from '../launcher/artifacts'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import { showFile, showableFile } from '../threads/shown'
 import { showReviewPackage } from '../threads/review-package'
 import { reviewShots, type ReviewShots } from '../services/review-package'
 import { appendSaw, readSaw } from '../services/review-saw'
-import { captureReviewShot } from '../workflows/review-capture'
+import { captureReviewShot } from '../services/review-capture'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, landProjectBranchNow, mostRecentLiveSession } from '../launcher/sessions'
 import {
   createFeature,
   declareReady,
-  dispatchRound,
   type FeatureListItem,
   list as listFeatures,
   listReadyDeclarations,
+  requireNotStopped,
   setWaiting,
-  stopRound,
 } from '../services/features'
-import { landChatCommits } from '../services/chat-branch'
 import { humanTypedAt } from '../services/lead-status'
 import {
   blocksOf,
@@ -104,16 +101,12 @@ import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
   dismissAsAgent,
-  linkFixTicket,
   listByFeature as listReviewFindings,
   openDefects as openDefectsOf,
-  reportFinding,
-  requireLinkableFindings,
 } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
-import { type SerialQueue, createSerialQueue } from '../services/landing-queue'
 import {
   editNote as editProjectNote,
   listNotes as listProjectNotes,
@@ -124,21 +117,8 @@ import {
   getProjectById,
   listRunsByFeature,
   projectForFeature,
-  tryGetRun,
 } from '../services/repo'
-import { activeBurnClaim, latestBurn, listRounds, runClaimedTicketIds } from '../services/runs'
-import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
-import {
-  type AnnotatedModel,
-  annotatedModels,
-  cancelTicket,
-  editTicket,
-  getTicket,
-  listByFeature,
-  requireAnnotatedModels,
-  storeTickets,
-  type TicketContentPatch,
-} from '../services/tickets'
+import { type AnnotatedModel, annotatedModels, listByFeature } from '../services/tickets'
 import { sendDriveCall } from '../services/drive-call'
 import {
   SCENARIO_FILE_PLACEHOLDER,
@@ -147,7 +127,6 @@ import {
   type ScenarioRunResult,
 } from '../services/scenarios'
 import { updateSettings } from '../services/settings'
-import { withheldDriveFor } from '../workflows/review-ticket'
 import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { recordFeatureAction, registerOrchestratorTools, requireProjectFeature } from './orchestrator-tools'
@@ -161,14 +140,9 @@ import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha } from 
  * Session identity: the `X-Runcastle-Session` header set in each session's
  * `mcp.json` (forwarded by `@hono/mcp` as `requestInfo.headers`). A caller with
  * no session header falls back to the most recently created live session — a
- * convenience for a hand-run client, NOT a general rule: a caller that presents
- * an `X-Runcastle-Run` header is a burner agent with no session at all, and it
- * must never be handed somebody else's conversation. That fallback used to fire
- * for run agents, silently binding a review agent to whatever human talk session
- * happened to be live and serving it that feature's context
- * (`docs/features/improve-workflow/outcome.md:255`). `resolveSession` now
- * refuses to fall back once a run header is present, and the run-scoped read
- * tools resolve to the RUN's own feature instead (see {@link resolveFeatureReader}).
+ * convenience for a hand-run client. Every agent runcastle launches on the host
+ * carries its session header; a sandboxed worker never reaches this server at
+ * all (its tools are relayed, `workers/tools.ts`).
  *
  * A fresh `McpServer` + transport is built per request (stateless mode,
  * `enableJsonResponse`) so there is no cross-request shared transport state.
@@ -197,26 +171,12 @@ function headerSessionId(extra: HeaderCarrier): string | undefined {
   return identityHeader(extra, 'X-Runcastle-Session')
 }
 
-/**
- * Resolve the session for a tool call: header first, else the live singleton.
- *
- * `runId` is the caller's OTHER identity header, and its only job here is to
- * suppress the fallback. A caller that named a run has told us it is not a
- * conversation; handing it the newest live session would bind a burner agent to
- * an unrelated human's feature, which is exactly the mis-binding this argument
- * exists to close. A run caller with a session header too (nothing writes one
- * today) still resolves that session — it named one, so it gets that one.
- */
-export function resolveSession(
-  ctx: AppCtx,
-  sessionId: string | undefined,
-  runId?: string | undefined,
-): SessionRow | null {
+/** Resolve the session for a tool call: header first, else the live singleton. */
+export function resolveSession(ctx: AppCtx, sessionId: string | undefined): SessionRow | null {
   if (sessionId) {
     const byId = getSessionRow(ctx, sessionId)
     if (byId) return byId
   }
-  if (runId) return null
   return mostRecentLiveSession(ctx)
 }
 
@@ -255,32 +215,13 @@ function requireFeatureId(session: SessionRow): string {
 /** Who a feature READ is for: the feature to read. */
 export interface FeatureReader {
   featureId: string
-  /**
-   * The conversation reading, when the caller is one — what its sent-memory is
-   * keyed by. Absent for a worker under a run header, which always reads in full.
-   */
+  /** The conversation reading, when the caller is one — what its sent-memory is keyed by. A worker's relayed read has none and reads in full. */
   sessionId?: string
 }
 
-/**
- * The feature a read tool should serve, from whichever identity the caller has.
- *
- * The run header wins outright: a burner review agent has no session, and the
- * feature it may read is the one its RUN is burning — never one it names and
- * never one a live conversation happens to be on. A session caller resolves the
- * ordinary way, through the guard that refuses project-scoped kinds.
- */
-export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureReader {
-  if (caller.runId) {
-    const identity = requireRunIdentity(ctx, caller, 'this feature read')
-    return { featureId: identity.featureId }
-  }
-  if (!caller.session) {
-    throw new GateError(
-      'this call carries neither a session nor a live run identity — nothing to read a feature for.',
-    )
-  }
-  return { featureId: requireFeatureId(caller.session), sessionId: caller.session.id }
+/** The feature a session's read tool serves: its own, through the guard that refuses project-scoped kinds. */
+export function resolveFeatureReader(session: SessionRow): FeatureReader {
+  return { featureId: requireFeatureId(session), sessionId: session.id }
 }
 
 /**
@@ -323,32 +264,11 @@ export interface FeatureDocRef {
 }
 
 /**
- * A ticket as the WORKING context sees it: a row, with the goal.
- *
- * One lap's ticket bodies alone reached 104K chars on a real feature, far past
- * the point where Claude Code hides a reply from the agent (decisions.md #4 of
- * `mcp-read-tools-stay-within-a-context-budget`). So the context carries every
- * ticket's name, state and edges plus its `goal` — small, and the what-and-why
- * that keeps a session from working off a title alone — and `get_ticket` serves
- * the rest: context, acceptance criteria and the burner's digest.
- */
-export type FeatureContextTicketRow = Pick<
-  Ticket,
-  'id' | 'seq' | 'title' | 'status' | 'kind' | 'blockedBy' | 'model' | 'seams' | 'error'
-> & {
-  /** Absent only when moved out whole to fit the ceiling — then `goalNotInlined` says so. */
-  goal?: string
-  goalNotInlined?: true
-}
-
-/**
- * A defect in the fields a session needs to act on it — the same four
- * `buildFixTicket` serialises onto a fix ticket, minus the citation, which
- * points at the criterion the review argued from rather than at the problem,
- * plus the id every disposition verb names it by.
+ * A defect in the fields a session needs to act on it: what the review found
+ * and how to reproduce it, plus the id `resolve_finding` names it by.
  */
 export interface OpenDefect {
-  /** What a ticket's `originFindingId` and `resolve_finding`'s `findingId` take. */
+  /** What `resolve_finding`'s `findingId` takes. */
   id: string
   title: string
   location: string
@@ -356,27 +276,16 @@ export interface OpenDefect {
   reproStep: string
 }
 
-/**
- * One review pass's evidence, as PATHS rather than content. A review agent
- * works in host scratch space outside the repo ({@link reviewDir}), and
- * `get_feature_context` strips every ticket's `digest` out of its payload, so a
- * session that is not handed these paths has no channel to the review at all.
- * Nothing here is stat'ed: the paths are stated and the session reads what is there.
- */
-export interface ReviewEvidence {
-  /** The review ticket whose pass produced it — {@link reviewDir} is keyed by this. */
-  ticketId: string
-  /** The ticket's seq, which is how the human and the cards refer to it. */
-  seq: number
-  /** How the pass itself ended — the review OUTCOME, `done` or `failed`. */
-  status: TicketStatusT
+/** Where a Review worker's pass left its evidence (burns-become-workers decision 4); its account is its handback. */
+export interface WorkerReviewEvidence {
+  workerId: string
+  label: string
+  status: WorkerStatusT
   reviewMode: 'drive' | 'gates' | null
-  reviewVerdict: 'verified' | 'unverified' | null
-  reviewVerdictReason: string | null
-  /** `~/.runcastle/reviews/<ticketId>/` — `walkthrough.webm` and the pictures in `saw/`. */
+  /** Its hand-back account; null when it failed before handing back. */
+  account: string | null
+  /** `~/.runcastle/reviews/<workerId>/`: `walkthrough.webm` and the pictures in `saw/`. */
   dir: string
-  /** `<dir>/DIGEST.md` — the review agent's own account of what it found. */
-  digestPath: string
 }
 
 /** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
@@ -464,11 +373,12 @@ export interface FeatureContext {
    */
   openDefects: OpenDefect[]
   /**
-   * Where the latest review pass left its evidence on disk — the `DIGEST.md`
-   * the review agent wrote, the walkthrough beside it, and how that pass ended.
-   * Null until a review pass has burned.
+   * Where the latest review pass left its evidence on disk — its account (the
+   * Review worker's handback), the walkthrough beside it, and how that pass
+   * ended. Null until a pass has finished: the newest Review worker that
+   * handed back or failed.
    */
-  reviewEvidence: ReviewEvidence | null
+  reviewEvidence: WorkerReviewEvidence | null
   /** The pictures reviews kept, newest pass first. Empty when none took any. */
   reviewShots: ReviewShots[]
   /**
@@ -484,50 +394,24 @@ export interface FeatureContext {
    */
   workers: LeadWorker[]
   /**
-   * The feature's newest burn, however it ended — the one piece of the current
-   * state that lives on the `runs` table and reaches no session otherwise
-   * (decisions.md #7). Absent on a feature that has never run a round, which is the
-   * only thing its absence means.
-   */
-  latestRun?: {
-    status: RunStatusT
-    /** Of the tickets that burn held, how many finished `done` / `failed`. */
-    ticketsLanded: number
-    ticketsFailed: number
-    /** The first line of each failed ticket's error — the headline, not the log. */
-    errorHeadlines: string[]
-  }
-  /**
    * Every finding the latest review pass reported, resolved ones included — the
    * record of the pass, where `openDefects` is the work left. A defect already
    * stated there is not repeated here: stating each one twice would push the
    * lead's to-do past the ceiling. Empty when that pass reported nothing.
    */
   findings: ReviewFinding[]
-  tickets: FeatureContextTicketRow[]
-  /**
-   * The seqs of settled (done or cancelled) tickets whose rows were moved out
-   * whole because even goal-less rows would not fit, lowest seq first. Absent
-   * when every row fit. A ticket still to run is never moved out.
-   */
-  ticketsNotInlined?: number[]
-  /** Present whenever a goal or a row was moved out: how to fetch them. */
-  ticketsNote?: string
   /**
    * The models the operator annotated with a use-case note, and the only ones a
-   * ticket may be assigned (decisions.md #4). Notes ARE the opt-in: an operator
-   * who annotated nothing gets an empty array here, and the emitting session
-   * then never assigns a model at all — today's behaviour, unchanged.
+   * worker may be assigned. Notes ARE the opt-in: an operator who annotated
+   * nothing gets an empty array here, and the lead then never assigns a model.
    */
   annotatedModels: AnnotatedModel[]
   /**
-   * The lead's loop (`the-feature-lead-runs-rounds`): every round so far,
-   * numbered from 1; the newest ready declaration; whether a drive of this
-   * feature holds the drive slot (no round starts while it does); whether the
-   * human pressed Stop and has not replied since (no round starts either); and
-   * why the feature waits on the human, if it does.
+   * The lead's loop: the newest ready declaration; whether a drive of this
+   * feature holds the drive slot; whether the human pressed Stop and has not
+   * replied since (nothing starts either); and why the feature waits on the
+   * human, if it does.
    */
-  rounds: RoundSummary[]
   latestReady: ReadyDeclaration | null
   driveActive: boolean
   stopped: boolean
@@ -536,14 +420,6 @@ export interface FeatureContext {
   waitingKind: WaitingKind | null
   /** When the human last typed in this feature's chat; null if they never have. */
   humanTypedAt: number | null
-  /**
-   * How many tickets this project builds at once (`config.burnConcurrency`). The
-   * tickets skill budgets the batch's parallelism against it — a lap whose
-   * tickets chain end to end is one sandbox at a time however wide the pool is
-   * — and before this the emitting session had no way to read the number at
-   * all, so the budget could only ever be guessed.
-   */
-  burnConcurrency: number
   /**
    * Whether this feature can ship a scenario, and what it would build on
    * (drive-scenarios decision 13): the planner cards one only when `setUp`.
@@ -589,47 +465,11 @@ const DOCS_NOTE =
   'gone: read any of them with read_feature_doc({ relPath }). A `withheld` reason means it ' +
   'was left out on purpose; fetch it anyway if a ticket points at it.'
 
-const TICKETS_NOTE =
-  'Some ticket detail did not fit this reply and was moved out whole, never truncated. A row ' +
-  'marked goalNotInlined: true has its goal in get_ticket({ seq }). ticketsNotInlined[] names ' +
-  'the seqs of settled tickets whose rows were moved out: list_tickets indexes them and ' +
-  'get_ticket({ seq }) reads one. Fetch before acting on any of those tickets.'
-
 function notInlinedReason(relPath: string): string {
   return (
     'Not inlined: too large to fit this reply without hiding it. Read it before acting: ' +
     `read_feature_doc({ relPath: '${relPath}' }) or the file at absPath.`
   )
-}
-
-/**
- * The newest burn as a headline, or nothing at all when the feature has never
- * burned — spread into the payload, so "never run a round" is a missing key rather
- * than a run-shaped object full of zeroes.
- *
- * Counted over the tickets that run HELD rather than over the feature's ledger:
- * a lap's tickets outlive the round that ran them, and the question the chat is
- * answering ("how did the last burn go?") is about one run's lanes.
- */
-function latestBurnSummary(
-  ctx: AppCtx,
-  featureId: string,
-  tickets: Ticket[],
-): Pick<FeatureContext, 'latestRun'> {
-  const burn = latestBurn(ctx, featureId)
-  if (!burn) return {}
-  const held = new Set(runClaimedTicketIds(ctx, burn.id))
-  const burned = tickets.filter((ticket) => held.has(ticket.id))
-  return {
-    latestRun: {
-      status: burn.status,
-      ticketsLanded: burned.filter((ticket) => ticket.status === 'done').length,
-      ticketsFailed: burned.filter((ticket) => ticket.status === 'failed').length,
-      errorHeadlines: burned.flatMap((ticket) =>
-        ticket.status === 'failed' && ticket.error ? [ticket.error.split(/\r?\n/, 1)[0]] : [],
-      ),
-    },
-  }
 }
 
 /**
@@ -645,12 +485,9 @@ function latestBurnSummary(
  * doc that is actually wanted, and nothing at all for the common case.
  *
  * The whole reply stays under {@link MCP_READ_CEILING_CHARS}, past which Claude
- * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
- * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
- * `notInlined`, a half-shown doc being worse than a plainly missing one. On a
- * feature whose rows and to-do alone cross the ceiling, goals and then settled
- * tickets' rows move out whole the same way, marked `goalNotInlined` and named
- * in `ticketsNotInlined`.
+ * Code hides it from the agent. Nothing is ever truncated: a canonical doc that
+ * does not fit moves out whole to `notInlined`, a half-shown doc being worse
+ * than a plainly missing one.
  */
 export function featureContext(
   ctx: AppCtx,
@@ -659,12 +496,13 @@ export function featureContext(
   options: FeatureContextReadOptions = {},
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
-  const allTickets = listByFeature(ctx, feature.id)
   const openDefects = openDefectsOf(ctx, feature.id).map(toOpenDefect)
-  const latestReview = latestBurnedReview(allTickets)
+  const latestReviewWorker = listWorkers(ctx, feature.id)
+    .filter((w) => w.kind === 'review' && (w.handbackSummary !== null || w.status === 'failed'))
+    .at(-1)
   const stated = new Set(openDefects.map((defect) => defect.id))
   const findings = listReviewFindings(ctx, feature.id).filter(
-    (finding) => finding.reviewTicketId === latestReview?.id && !stated.has(finding.id),
+    (finding) => !!latestReviewWorker && finding.reviewWorkerId === latestReviewWorker.id && !stated.has(finding.id),
   )
   const withheldDocs = WITHHELD_FEATURE_DOCS
 
@@ -700,7 +538,6 @@ export function featureContext(
   const holder = holderOf(ctx, feature)
   const header = {
     feature,
-    rounds: listRounds(ctx, feature.id),
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
     stopped: feature.stoppedAt !== null,
@@ -712,26 +549,17 @@ export function featureContext(
     upNext: feature.upNext,
     heldBy: holder ? holderName(holder) : null,
     annotatedModels: annotatedModels(ctx),
-    burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
-    ...latestBurnSummary(ctx, feature.id, allTickets),
-    reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
+    reviewEvidence: latestReviewWorker ? workerReviewEvidenceOf(latestReviewWorker) : null,
     reviewShots: reviewShots(ctx, feature.id),
     designs: leadDesigns(ctx, feature.id),
     workers: leadWorkers(ctx, feature.id),
   }
   const toDo = { openDefects, findings }
-  let rows = allTickets.map(ticketRow)
-  const rowsNotInlined: number[] = []
   // Built in priority order, and JSON keeps that order: the header the incident
   // hid at the tail of an 80K reply now opens it (decisions.md #6).
   const assemble = (docs: FeatureContext['docs'], notInlined: NotInlinedDoc[]): FeatureContext => ({
     ...header,
-    tickets: rows,
-    ...(rowsNotInlined.length > 0 ? { ticketsNotInlined: rowsNotInlined } : {}),
-    ...(rows.length < allTickets.length || rows.some((row) => row.goalNotInlined)
-      ? { ticketsNote: TICKETS_NOTE }
-      : {}),
     ...toDo,
     docs,
     notInlined,
@@ -742,22 +570,8 @@ export function featureContext(
   const fits = (context: FeatureContext) => serializedLength(context) <= MCP_READ_CEILING_CHARS
 
   // Docs are moved out first, because they are the one part with a cheap,
-  // well-known fetch — so they only claim room the rest leaves. When even the
-  // rest does not fit with every doc out, ticket detail moves out whole next,
-  // each part behind `get_ticket`: goals, lowest seq first, then the rows of
-  // settled tickets, lowest seq first. A ticket still to run and the to-do
-  // never move.
-  for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
-    if (fits(assemble([], allDocsOut))) break
-    delete row.goal
-    row.goalNotInlined = true
-  }
-  const settled = rows.filter((row) => SETTLED.includes(row.status)).sort((a, b) => a.seq - b.seq)
-  for (const row of settled) {
-    if (fits(assemble([], allDocsOut))) break
-    rowsNotInlined.push(row.seq)
-    rows = rows.filter((kept) => kept !== row)
-  }
+  // well-known fetch — so they only claim room the rest leaves. The header and
+  // the to-do never move.
 
   // A conversation re-reading gets a stub for each doc it already holds
   // unchanged (decision 1); a run caller has no session and always reads whole.
@@ -803,7 +617,7 @@ provideWorkerFeatureRead((ctx, featureId) => featureContextWithGit(ctx, { featur
 
 /**
  * A feature as the orchestrator reads it by default (`tools-and-skills-say-less`
- * decision 2): where it is and whether it needs the orchestrator, with ticket
+ * decision 2): where it is and whether it needs the orchestrator, with worker
  * counts rather than rows and a docs index rather than bodies. `full: true`
  * gets the lead's whole bundle instead.
  */
@@ -815,13 +629,9 @@ export interface FeatureStatusView {
   waitingKind: WaitingKind | null
   heldBy: string | null
   humanTypedAt: number | null
-  /** A round (a burn) is running on the feature right now. */
-  roundRunning: boolean
-  ticketCounts: Record<TicketStatusT, number>
+  /** How many of the feature's workers are in each status; a status with none is absent. */
+  workerCounts: Partial<Record<WorkerStatusT, number>>
   latestReady: ReadyDeclaration | null
-  /** The newest burned review pass's verdict; null when no review has burned. */
-  reviewVerdict: 'verified' | 'unverified' | null
-  reviewVerdictReason: string | null
   /** Defects the feature's reviews reported that nothing has resolved yet. */
   openFindings: number
   designs: { title: string; state: DesignState }[]
@@ -833,10 +643,8 @@ export interface FeatureStatusView {
 
 export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureStatusView {
   const feature = getFeatureRow(ctx, reader.featureId)
-  const tickets = listByFeature(ctx, feature.id)
-  const ticketCounts = Object.fromEntries(TicketStatus.options.map((s) => [s, 0])) as Record<TicketStatusT, number>
-  for (const ticket of tickets) ticketCounts[ticket.status] += 1
-  const latestReview = latestBurnedReview(tickets)
+  const workerCounts: Partial<Record<WorkerStatusT, number>> = {}
+  for (const w of listWorkers(ctx, feature.id)) workerCounts[w.status] = (workerCounts[w.status] ?? 0) + 1
   const holder = holderOf(ctx, feature)
   return {
     slug: feature.slug,
@@ -846,11 +654,8 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
     waitingKind: feature.waitingKind,
     heldBy: holder ? holderName(holder) : null,
     humanTypedAt: humanTypedAt(ctx, feature.id),
-    roundRunning: listRunsByFeature(ctx, feature.id).some((run) => run.status === 'running'),
-    ticketCounts,
+    workerCounts,
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
-    reviewVerdict: latestReview?.reviewVerdict ?? null,
-    reviewVerdictReason: latestReview?.reviewVerdictReason ?? null,
     openFindings: openDefectsOf(ctx, feature.id).length,
     designs: leadDesigns(ctx, feature.id).map(({ title, state }) => ({ title, state })),
     baseBranch: feature.baseBranch ?? null,
@@ -871,48 +676,14 @@ function docContentOrEmpty(ctx: AppCtx, feature: ReturnType<typeof getFeatureRow
   }
 }
 
-function ticketRow(ticket: Ticket): FeatureContextTicketRow {
+function workerReviewEvidenceOf(w: WorkerRow): WorkerReviewEvidence {
   return {
-    id: ticket.id,
-    seq: ticket.seq,
-    title: ticket.title,
-    status: ticket.status,
-    kind: ticket.kind,
-    blockedBy: ticket.blockedBy,
-    ...(ticket.model !== undefined ? { model: ticket.model } : {}),
-    seams: ticket.seams,
-    ...(ticket.error !== undefined ? { error: ticket.error } : {}),
-    goal: ticket.goal,
-  }
-}
-
-/** A ticket nothing will run again, so its row may move out to fit the ceiling. */
-const SETTLED: readonly TicketStatusT[] = ['done', 'cancelled']
-
-/** A review pass that got far enough to leave something behind. */
-const BURNED_REVIEW: readonly TicketStatusT[] = ['done', 'failed']
-
-/**
- * The newest review pass that left evidence behind — a pass still `pending` or
- * `burning` wrote no digest, and a `cancelled` one never ran.
- */
-function latestBurnedReview(tickets: Ticket[]): Ticket | undefined {
-  return tickets
-    .filter((ticket) => ticket.kind === 'review' && BURNED_REVIEW.includes(ticket.status))
-    .sort((a, b) => b.seq - a.seq)[0]
-}
-
-function reviewEvidenceOf(ticket: Ticket): ReviewEvidence {
-  const dir = reviewDir(ticket.id)
-  return {
-    ticketId: ticket.id,
-    seq: ticket.seq,
-    status: ticket.status,
-    reviewMode: ticket.reviewMode ?? null,
-    reviewVerdict: ticket.reviewVerdict ?? null,
-    reviewVerdictReason: ticket.reviewVerdictReason ?? null,
-    dir,
-    digestPath: join(dir, 'DIGEST.md'),
+    workerId: w.id,
+    label: w.label,
+    status: w.status,
+    reviewMode: w.reviewMode,
+    account: w.handbackSummary,
+    dir: reviewDir(w.id),
   }
 }
 
@@ -947,209 +718,7 @@ export function toolReadFeatureDoc(
   return { relPath: input.relPath, content: readDoc(ctx, feature, input.relPath).content }
 }
 
-/** A ticket as an INDEX row: enough to name one and act on it, no prose. */
-export interface TicketSummary {
-  id: string
-  seq: number
-  title: string
-  status: TicketStatusT
-  kind: Ticket['kind']
-  blockedBy: number[]
-  seams: string[]
-}
-
-/**
- * This feature's tickets as an index, optionally filtered by status.
- *
- * It exists because the ONLY documented way to learn a ticket id used to be
- * `get_feature_context` — so renaming one ticket cost a session the entire
- * feature payload. `update_ticket`, `cancel_ticket` and every "which of these
- * is still pending?" question want a list of names and ids, and nothing else.
- */
-export function toolListTickets(
-  ctx: AppCtx,
-  reader: FeatureReader,
-  input: { status?: TicketStatusT },
-): { tickets: TicketSummary[] } {
-  const rows = listByFeature(ctx, reader.featureId).filter(
-    (t) => !input.status || t.status === input.status,
-  )
-  return {
-    tickets: rows.map((t) => ({
-      id: t.id,
-      seq: t.seq,
-      title: t.title,
-      status: t.status,
-      kind: t.kind,
-      blockedBy: t.blockedBy,
-      seams: t.seams,
-    })),
-  }
-}
-
-/**
- * One ticket of the reader's own feature, in full: the stored row with its
- * context, acceptance criteria and the burner's digest — everything the
- * `get_feature_context` row leaves out. Addressed by `seq`, the number the UI,
- * `blockedBy` and those rows all speak in.
- */
-export function toolGetTicket(
-  ctx: AppCtx,
-  reader: FeatureReader,
-  input: { seq: number; full?: boolean },
-): Ticket | Omit<Ticket, 'context'> {
-  const ticket = listByFeature(ctx, reader.featureId).find((t) => t.seq === input.seq)
-  if (!ticket) throw new NotFoundError(`ticket #${input.seq} not found on this feature`)
-  // A settled ticket's plan is spent (`tools-and-skills-say-less` decision 5):
-  // a reader needs what it did and what it was meant to do, not its instructions.
-  if (input.full || !SETTLED.includes(ticket.status)) return ticket
-  const { context: _plan, ...settled } = ticket
-  return settled
-}
-
-/** A stored ticket named the way the batch speaks about it: id, seq and title. */
-export interface StoredTicketRef {
-  id: string
-  seq: number
-  title: string
-}
-
-/** A title that reads as the batch's closing review ticket — `Review:` or `Review …`. */
-const REVIEW_TITLE = /^review[: ]/i
-
-/**
- * The one-review-ticket rule's authoring-time half. A ticket TITLED like the
- * batch's review but not KINDED like one is the incident shape: the `kind` field
- * silently dropped, so the ticket defaults to `implementation`, is correctly
- * containerized, and reports BLOCKED from a sandbox that by design has no app,
- * database or browser. This catches the omission while the session that wrote
- * it can still fix and re-emit.
- *
- * Refusal, never coercion — the session stays the author of its own tickets, and
- * the retitle escape hatch covers the rare ticket that really is implementation
- * work. It lives at the TOOL surface only, so the internal mints that
- * legitimately store review-less batches (per-finding fix tickets, the burner's
- * verification pass) never meet it.
- */
-function refuseMisKindedReview(inputs: TicketInputT[]): void {
-  const misKinded = inputs.find((t) => REVIEW_TITLE.test(t.title) && t.kind !== 'review')
-  if (!misKinded) return
-  throw new GateError(
-    `ticket "${misKinded.title}" is titled like a review ticket but its kind is ` +
-      `"${misKinded.kind ?? 'implementation'}" — set kind: "review" if it is the batch-closing ` +
-      'review (almost certainly), or retitle it if it genuinely is an implementation ticket. ' +
-      'Nothing was stored; fix it and re-emit the batch.',
-  )
-}
-
-export function toolEmitTickets(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { tickets: TicketInputT[] },
-): { stored: number; tickets: StoredTicketRef[]; warnings: string[] } {
-  const feature = getFeatureRow(ctx, requireFeatureId(session))
-  refuseMisKindedReview(input.tickets)
-  // A session may only assign what `get_feature_context` offered it; the store
-  // alone takes any roster id, which is the human's (tRPC) latitude, not this.
-  requireAnnotatedModels(ctx, input.tickets.map((t) => t.model))
-  // The LINK disposition: a ticket that names the defect it answers. Vetted
-  // here rather than in `storeTickets`, which is also the internal mint used by
-  // `reportFinding` and the burner's verification pass — those link findings the
-  // guard would refuse (a defect the review has only just opened), and the
-  // one-review-ticket seatbelt above sits at this surface for the same reason.
-  const linkedFindingIds = input.tickets.flatMap((t) => t.originFindingId ?? [])
-  requireLinkableFindings(ctx, feature.id, linkedFindingIds)
-  // `storeTickets` is the mutation and emits the single `tickets.stored` event
-  // (one mutation → one event). This tool used to emit an additional
-  // `tickets.emitted` note, which double-logged the same action on the timeline.
-  const stored = storeTickets(ctx, feature.id, input.tickets)
-  for (const ticket of stored) {
-    if (ticket.originFindingId) linkFixTicket(ctx, feature.id, ticket.originFindingId, ticket.id)
-  }
-  // The tickets the agent just wrote are what the human should see next, so the
-  // panel opens on Work as the agent's own act (decision 8).
-  emitPanelShow(ctx, feature.id, { view: 'work' })
-  // `seq` is the number the batch's own `blockedBy` speaks in and the number the
-  // UI shows, and it is assigned HERE, by the store. Returning bare ids meant
-  // the emitting session could not name what it had just written back to the
-  // human without a second, far larger call.
-  return {
-    stored: stored.length,
-    tickets: stored.map((t) => ({ id: t.id, seq: t.seq, title: t.title })),
-    // Advisory only (cheaper-burns decision 2): the batch is already stored, and
-    // the lead reads these to split or enrich a ticket before it dispatches.
-    warnings: ticketShapeWarnings(stored).map((w) => w.message),
-  }
-}
-
-/**
- * What a ticket write answers with (`tools-and-skills-say-less` decision 3): the
- * caller just sent the change, so the row is not echoed back.
- */
-export interface TicketReceipt {
-  ok: true
-  seq: number
-  status: TicketStatusT
-}
-
-/** {@link TicketReceipt} plus the field names the edit sent. */
-export interface TicketUpdateReceipt extends TicketReceipt {
-  changed: string[]
-}
-
-/**
- * The two refusals every ticket edit passes: the id must belong to THIS
- * session's feature, and no live burn may already hold that ticket.
- *
- * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
- * across state changes — a round starts and finishes under it — so the audience
- * table, which is built once at spawn, cannot speak for what is running now. It
- * is deliberately narrow: only the lanes the live burn holds are frozen, and
- * every other ticket stays editable mid-burn, which is how the chat shapes the
- * NEXT burn's work while this one runs.
- */
-function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
-  // Scope first, existence second: a session with no feature has no business
-  // asking about any ticket, and telling it "that id doesn't exist" would send
-  // it hunting for a better id instead of at the tools it actually has.
-  const featureId = requireFeatureId(session)
-  const ticket = getTicket(ctx, ticketId)
-  if (ticket.featureId !== featureId) {
-    throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
-  }
-  const run = activeBurnClaim(ctx, featureId, ticket.id)
-  if (run) {
-    throw new GateError(
-      `run ${run.id} has claimed ticket ${ticket.id} (#${ticket.seq} ${ticket.title}); wait for that run to finish before editing it`,
-    )
-  }
-  return ticket
-}
-
-export function toolUpdateTicket(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { id: string } & TicketContentPatch,
-): TicketUpdateReceipt {
-  requireOwnTicket(ctx, session, input.id)
-  const { id, ...patch } = input
-  requireAnnotatedModels(ctx, [patch.model])
-  const ticket = editTicket(ctx, id, patch)
-  const changed = Object.entries(patch).flatMap(([key, value]) => (value === undefined ? [] : [key]))
-  return { ok: true, seq: ticket.seq, status: ticket.status, changed }
-}
-
-export function toolCancelTicket(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { id: string; reason?: string },
-): TicketReceipt {
-  requireOwnTicket(ctx, session, input.id)
-  const ticket = cancelTicket(ctx, input.id, input.reason)
-  return { ok: true, seq: ticket.seq, status: ticket.status }
-}
-
-// --- the lead's rounds (`the-feature-lead-runs-rounds`) ------------------------
+// --- the lead's tools -------------------------------------------------------
 
 /**
  * The feature a LEAD tool acts on: the feature's own chat is its lead, and no
@@ -1181,11 +750,45 @@ export async function toolStartWorker(
   input: { label: string; purpose: string; kind: 'with-you' | 'on-its-own'; goal: string; doneWhen: string; model?: string },
 ): Promise<StartedWorker> {
   const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  requireNotStopped(feature)
   return startWorker(ctx, feature, { ...input, startedBy: 'lead' })
+}
+
+/** The lead starts the feature's Review worker (burns-become-workers decisions 3, 4): a first review, or a verify review of the given fixes. */
+export async function toolStartReview(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { mode?: 'drive' | 'gates'; verify?: { findingIds: string[]; commits: string[] }; model?: string },
+): Promise<StartedReview> {
+  const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  requireNotStopped(feature)
+  return startReviewWorker(ctx, feature, { ...input, startedBy: 'lead' })
+}
+
+/** The Review worker this session is, on the host: its own `hand_back`, `review_drive` and `report_finding` act on it alone. */
+function hostReviewOf(ctx: AppCtx, session: SessionRow | undefined): WorkerRow | undefined {
+  if (session?.kind !== 'worker') return undefined
+  const w = getWorker(ctx, session.id)
+  return w && isHostReview(w) ? w : undefined
+}
+
+/**
+ * A drive review's hand-back (burns-become-workers decision 4): its account,
+ * read when its turn ends, when runcastle gives the drive back and posts its
+ * Review Package to the lead.
+ */
+export function toolReviewHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): { handedBack: true } {
+  const w = hostReviewOf(ctx, session)
+  if (!w) throw new GateError(`hand_back here belongs to a Review worker, and this is a ${session.kind} session.`)
+  const summary = input.summary.trim()
+  if (!summary) throw new InvalidInputError('a handback needs a summary')
+  writeHostHandback(w.id, summary)
+  return { handedBack: true }
 }
 
 export async function toolMessageWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; text: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  requireNotStopped(getFeatureRow(ctx, worker.featureId))
   return messageWorker(ctx, worker.id, input.text)
 }
 
@@ -1196,6 +799,7 @@ export async function toolLandWorker(ctx: AppCtx, session: SessionRow, input: { 
 
 export async function toolSendBackWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; note: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  requireNotStopped(getFeatureRow(ctx, worker.featureId))
   return sendBackWorker(ctx, worker.id, input.note)
 }
 
@@ -1204,29 +808,14 @@ export async function toolDropWorker(ctx: AppCtx, session: SessionRow, input: { 
   return dropWorker(ctx, worker.id)
 }
 
-export function toolDispatchRound(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { seqs: number[] },
-): Promise<{ runId: string }> {
-  return dispatchRound(ctx, requireLeadFeatureId(session), input.seqs)
-}
-
-export function toolStopRound(
-  ctx: AppCtx,
-  session: SessionRow,
-): Promise<{ runId: string; confirmed: boolean }> {
-  return stopRound(ctx, requireLeadFeatureId(session))
-}
-
 export function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
   input: { scenario: string },
-): { ok: true; waitingReason: string | null; warnings: string[] } {
+): { ok: true; waitingReason: string | null } {
   const featureId = requireLeadFeatureId(session)
-  const { warnings } = declareReady(ctx, featureId, input)
-  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason, warnings }
+  declareReady(ctx, featureId, input)
+  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
 }
 
 /** A lead hands back to the orchestrator that holds its feature (agents-are-woken-only-when-it-matters decisions 20–22). */
@@ -1473,78 +1062,6 @@ export function toolRecordEvent(
   return { ok: true }
 }
 
-/**
- * Checkpoint the feature's knowledge docs into the talk worktree (SPEC §6):
- * best-effort. Any failure is a warning
- * event, never a tool error.
- *
- * While a round holds the feature branch the commit goes onto the chat's temp
- * branch, so it is landed straight away through the feature's serial landing
- * queue (`one-chat-per-feature` decision 2) — a note or a ticket edit is durable
- * on `feature/<slug>` even if the run then crashes.
- */
-async function commitDocsCheckpoint(
-  ctx: AppCtx,
-  session: SessionRow,
-  summary: string,
-): Promise<void> {
-  const feature = getFeatureRow(ctx, requireFeatureId(session))
-  const project = projectForFeature(ctx, feature)
-  const message = git.docsCommitMessage(summary, project.docsCommitPrefix)
-  try {
-    await git.commitDocs(session.worktreePath, message)
-  } catch (e) {
-    emit(ctx, feature.id, {
-      type: 'git.commit_pending',
-      message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
-      data: { message },
-    })
-    return
-  }
-  // Outside a round this is a no-op (the commit is already on the feature
-  // branch); a landing that conflicts keeps its branch and says so, and the
-  // run-end boundary tries again.
-  await landChatCommits(ctx, project, feature)
-}
-
-/**
- * One checkpoint chain per worktree: a checkpoint runs after the tool has
- * answered, so two quick writes would otherwise race for the same git index.
- * Never dropped, for the landing queue's reason — a forgotten chain hands the
- * next caller a fresh one that commits in parallel with the first.
- */
-const docsCheckpointQueues = new Map<string, SerialQueue>()
-
-/**
- * Run {@link commitDocsCheckpoint} AFTER the tool answers. The write it follows
- * is already recorded, and the checkpoint can be slow — a commit on a busy disk,
- * or, mid-burn, a landing queued behind the burner's own merges — slow enough to
- * pass the client's tool timeout and make a recorded write read as a failed one.
- * The checkpoint stays durable without the wait: it still runs, in order, and a
- * failure still lands on the timeline as `git.commit_pending`.
- */
-function checkpointDocsAfterReply(ctx: AppCtx, session: SessionRow, summary: string): void {
-  let queue = docsCheckpointQueues.get(session.worktreePath)
-  if (!queue) {
-    queue = createSerialQueue()
-    docsCheckpointQueues.set(session.worktreePath, queue)
-  }
-  void queue(() => commitDocsCheckpoint(ctx, session, summary)).catch((e: unknown) => {
-    // Nobody awaits this, so whatever escaped is said here or nowhere.
-    try {
-      emit(ctx, requireFeatureId(session), {
-        type: 'git.commit_pending',
-        message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
-        data: { summary },
-      })
-    } catch (err) {
-      // The feature was deleted while its checkpoint was queued or running.
-      // A throw here is an unhandled rejection that takes the server with it.
-      console.error(`docs checkpoint failed for session ${session.id}`, e, err)
-    }
-  })
-}
-
 // --- project-scoped tools (`project` sessions) ------------------------------
 
 /**
@@ -1765,90 +1282,44 @@ export async function toolDryRunDrive(
   return git.dryRunDrive(ctx, project, input.action)
 }
 
-// --- run identity: the review agent's two wires (improve-workflow) ----------
+// --- the review's wires: a Review worker's drive and findings -----------------
 
-/**
- * Who a RUN-scoped tool call is from. Not a conversation: a review ticket
- * burning at the tail of a run has no terminal and no session row, so it
- * identifies itself with the `X-Runcastle-Run` header naming the run it is
- * executing under, and the feature comes from that run rather than from
- * anything the agent says.
- */
-export interface RunIdentity {
-  runId: string
-  featureId: string
-}
-
-function headerRunId(extra: HeaderCarrier): string | undefined {
-  return identityHeader(extra, RUN_HEADER)
-}
-
-/**
- * The run a tool call belongs to, or null.
- *
- * A run that has already finished resolves to nothing: the header outlives the
- * burn (an agent process can survive its run being cancelled), and a stale one
- * must not be able to switch the human's checkout or write notes minutes later.
- */
-export function resolveRunIdentity(ctx: AppCtx, runId: string | undefined): RunIdentity | null {
-  if (!runId) return null
-  const run = tryGetRun(ctx, runId)
-  if (!run || run.status !== 'running') return null
-  return { runId: run.id, featureId: run.featureId }
-}
-
-/**
- * What the run-scoped tools are called with: the run header when the caller
- * carried one, and otherwise whichever session the request resolved to — kept
- * only so the refusal can name it.
- */
-export interface RunCaller {
-  runId?: string
+/** Who calls a review tool: whichever session the request resolved to, if any. */
+export interface ReviewCaller {
   session?: SessionRow
 }
 
 /**
- * The gate both review wires share, and the socket the runner plugs into: these
- * tools are reachable exactly when the caller carries a live run identity.
- *
- * Gated for the same reason `dry_run_drive` is gated to preparation. One boots
- * the app on the human's machine and the other writes into the feature's review
- * record — authority that belongs to the agent the runner launched for this
- * feature, and to no ordinary talk session, which has neither the header nor a
- * reason to want it.
+ * The drive review a `review_drive` call is for (burns-become-workers decision
+ * 3): the Review worker on the host this session is. Its pictures are kept under
+ * its own id. Gated for the same reason `dry_run_drive` is gated to preparation:
+ * it boots the app on the human's machine, authority that belongs to the review
+ * runcastle started for this feature and to no ordinary talk session.
  */
-function requireRunIdentity(ctx: AppCtx, caller: RunCaller, tool: string): RunIdentity {
-  const identity = resolveRunIdentity(ctx, caller.runId)
-  if (identity) return identity
-  const who = caller.session
-    ? `this is a ${caller.session.kind} session`
-    : 'this call carries no run identity'
+function requireReviewer(ctx: AppCtx, caller: ReviewCaller, tool: string): WorkerRow {
+  const w = hostReviewOf(ctx, caller.session)
+  if (w) return w
+  const who = caller.session ? `this is a ${caller.session.kind} session` : 'this call carries no session'
   throw new GateError(
-    `${tool} belongs to a review ticket burning under a run, and ${who}. It acts on the ` +
-      "human's machine under the run's authority — only the review agent the runner launches " +
-      'may call it.',
+    `${tool} belongs to a drive review (a Review worker on the host), and ${who}. It acts on the ` +
+      "human's machine — only the Review worker runcastle starts may call it.",
   )
 }
 
 /**
- * Boot the integrated feature branch so a review ticket can drive it
+ * Boot the integrated feature branch so a drive review can drive it
  * (improve-workflow decisions 3, 4): the server's REAL test-drive machinery,
- * started under the run's identity instead of a human's click.
+ * started under the review's identity instead of a human's click.
  *
- * The feature is the run's, never the agent's to name — a review ticket reviews
- * the branch it was burned for.
+ * The feature is the review's, never the agent's to name.
  */
 export async function toolReviewDrive(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.ReviewDriveResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
-  // A pass told Drive is closed must not drive off the record: the reason the
-  // host withheld it is the refusal, final like any missing prerequisite.
-  const withheld = withheldDriveFor(identity.runId)
-  if (withheld) return { ok: false, action: input.action, deniedReason: withheld, retriable: false, drive: null }
-  const feature = getFeatureRow(ctx, identity.featureId)
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
+  const feature = getFeatureRow(ctx, reviewer.featureId)
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
 
@@ -1878,12 +1349,7 @@ const reviewScenarioDenial = (action: ReviewScenarioDenial['action'], deniedReas
 })
 
 /** `review_drive({ action: 'capture' })`: the picture kept, or why it was not. */
-export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; scenario?: string } | ReviewScenarioDenial
-
-/** The burning review ticket on this run's feature: the pass a tool call belongs to. */
-function burningReview(ctx: AppCtx, featureId: string): Ticket | undefined {
-  return listByFeature(ctx, featureId).find((ticket) => ticket.kind === 'review' && ticket.status === 'burning')
-}
+export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; path: string; scenario?: string } | ReviewScenarioDenial
 
 /**
  * Keep a picture of what the review agent's browser shows, with what it shows
@@ -1892,36 +1358,36 @@ function burningReview(ctx: AppCtx, featureId: string): Ticket | undefined {
  */
 export async function toolReviewCapture(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { caption?: string; outside?: boolean },
   capture: typeof captureReviewShot = captureReviewShot,
 ): Promise<ReviewCaptureResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
-  const withheld = withheldDriveFor(identity.runId)
-  if (withheld) return reviewScenarioDenial('capture', withheld)
-  const featureId = identity.featureId
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
+  const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial('capture', "No review drive of this feature is running — review_drive({ action: 'start' }) first.")
   }
   const caption = input.caption?.replace(/\s+/g, ' ').trim()
   if (!caption) return reviewScenarioDenial('capture', '`capture` needs `caption`: one line saying what the picture shows.')
-  const ticket = burningReview(ctx, featureId)
-  if (!ticket) return reviewScenarioDenial('capture', 'No review pass is running on this feature.')
-  const entries = readSaw(ticket.id)
+  const passId = reviewer.id
+  const entries = readSaw(passId)
   const taken = entries.filter((entry) => entry.kind === 'shot').length
   if (taken >= SAW_MAX_SHOTS) {
     return reviewScenarioDenial('capture', `This pass has its ${SAW_MAX_SHOTS} screenshots, the most one pass keeps. Carry on without more.`)
   }
   const image = `shot-${taken + 1}.png`
-  const result = await capture(ticket.id, reviewShotPath(ticket.id, image))
+  const path = reviewShotPath(passId, image)
+  const result = await capture(passId, path)
   if (!result.ok) return reviewScenarioDenial('capture', result.reason)
   const scenario = input.outside
     ? undefined
     : entries.findLast((entry) => entry.kind === 'scenario' && entry.ok)
   const file = scenario?.kind === 'scenario' ? scenario.file : undefined
-  appendSaw(ticket.id, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
-  return { ok: true, action: 'capture', caption, ...(file ? { scenario: file } : {}) }
+  appendSaw(passId, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
+  // The path goes back so the reviewer can open the picture once before its
+  // verdict: a verdict never rests on a picture nobody looked at.
+  return { ok: true, action: 'capture', caption, path, ...(file ? { scenario: file } : {}) }
 }
 
 /**
@@ -1932,28 +1398,26 @@ export async function toolReviewCapture(
  */
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'scenario'; file?: string },
 ): Promise<ReviewScenarioResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'try_call'; file?: string },
 ): Promise<ReviewCallResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   { action, file }: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
-  const withheld = withheldDriveFor(identity.runId)
-  if (withheld) return reviewScenarioDenial(action, withheld)
-  const featureId = identity.featureId
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
+  const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial(
@@ -1966,13 +1430,13 @@ export async function toolReviewScenario(
   if (action === 'scenario') {
     const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowReview: true })
     if ('denied' in result) return { ok: false, action, deniedReason: result.denied }
-    const pass = burningReview(ctx, featureId)
+    const pass = reviewer.id
     const name = git.activeDriveInfo(projectId)?.scenario?.name ?? file
     if (!result.ok) {
-      if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
+      appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
       return { ok: false, action, failure: result.failure }
     }
-    if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
+    appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
     return { ok: true, action, entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
   }
 
@@ -1984,47 +1448,22 @@ export async function toolReviewScenario(
     return reviewScenarioDenial(action, scenario.callError ?? 'this scenario has no .http call')
   }
   const result = await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })
-  const pass = burningReview(ctx, featureId)
-  if (pass) appendSaw(pass.id, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
+  appendSaw(reviewer.id, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
   return { action, ...result }
 }
 
 /**
- * Append one review finding as a test note, attributed to the agent
- * (improve-workflow decision 2). Findings ride the channel the human's own
- * observations already use.
+ * `report_finding` from a drive review on the host: recorded against the Review
+ * worker itself (burns-become-workers decision 4). A gates review reports the
+ * same way over its sandbox's relay (`workers/tools.ts`).
  */
-export function toolAddTestNote(
-  ctx: AppCtx,
-  caller: RunCaller,
-  input: { text: string },
-): TestNote {
-  const identity = requireRunIdentity(ctx, caller, 'add_test_note')
-  return addNote(ctx, identity.featureId, input.text, 'agent')
-}
-
 export function toolReportFinding(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: ReviewFindingInputT,
-): { findingId: string; fixTicketSeq: number | null; overCap: boolean } {
-  const identity = requireRunIdentity(ctx, caller, 'report_finding')
-  const reviewTicket = listByFeature(ctx, identity.featureId).find(
-    (ticket) => ticket.kind === 'review' && ticket.status === 'burning',
-  )
-  if (!reviewTicket) {
-    throw new GateError('report_finding requires a burning review ticket on this run’s feature')
-  }
-  const result = reportFinding(ctx, {
-    featureId: identity.featureId,
-    reviewTicket,
-    input,
-  })
-  return {
-    findingId: result.finding.id,
-    fixTicketSeq: result.fixTicket?.seq ?? null,
-    overCap: result.overCap,
-  }
+): { findingId: string } {
+  const review = requireReviewer(ctx, caller, 'report_finding')
+  return { findingId: reportReviewFinding(ctx, review.id, input).finding.id }
 }
 
 /** What one `retry_drive` attempt observed, as the drive-fix agent reads it. */
@@ -2525,7 +1964,7 @@ function featureIndex(ctx: AppCtx, projectId: string, callerId: string): string[
     ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
   ]
   const names = new Map<string, string>()
-  const lines = listed.map((feature) => `${featureIndexLine(feature)}${holderMark(ctx, feature, callerId, names)}`)
+  const lines = listed.map((feature) => `${featureIndexLine(feature, workerStateOf(ctx, feature))}${holderMark(ctx, feature, callerId, names)}`)
 
   const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
   const archived = all.filter((f) => f.status === 'archived').length
@@ -2603,8 +2042,8 @@ export function toolReadAdr(
  * paragraphs and were most of the payload, and `read_feature_brief` serves one
  * on request. The per-line docs path went with it; the index note says once
  * where shipped docs live. The in-flight state keeps what the portfolio lookup
- * is asked for — whether a round runs and ticket counts, all true of the feature in
- * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
+ * is asked for — how many workers are working, queued or need the human, all true
+ * of the feature in SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
  * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
  * trail the line as slugs and marks — edges and state only, so the session can
  * tell what is startable without re-cutting already-ordered work (decision 8).
@@ -2612,7 +2051,7 @@ export function toolReadAdr(
  * dependencies ship), `up next, stuck` (needs the human) or `blocked` (backlog
  * with an open dependency); otherwise plain `draft`.
  */
-function featureIndexLine(feature: FeatureListItem): string {
+function featureIndexLine(feature: FeatureListItem, workerState = ''): string {
   const edges = feature.dependsOn.length
     ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
     : ''
@@ -2626,11 +2065,22 @@ function featureIndexLine(feature: FeatureListItem): string {
     }[unstartedState(feature, feature.dependsOn) ?? 'backlog']
     return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}`
   }
-  const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
-  const counts = feature.ticketCounts
-  if (counts.pending > 0) state.push(`${counts.pending} pending`)
-  if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
+  return `${feature.slug} — ${feature.title} [${workerState ? `in flight: ${workerState}` : 'in flight'}]${edges}`
+}
+
+/** An in-flight feature's workers for its index line: `2 working, 1 needs you`; empty when none is at work or waiting. */
+function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
+  if (feature.status !== 'active') return ''
+  const rows = listWorkers(ctx, feature.id)
+  const count = (...statuses: WorkerRow['status'][]) => rows.filter((w) => statuses.includes(w.status)).length
+  return [
+    [count('working'), 'working'],
+    [count('queued'), 'queued'],
+    [count('needs-you'), 'needs you'],
+  ]
+    .filter(([n]) => n !== 0)
+    .map(([n, label]) => `${n} ${label}`)
+    .join(', ')
 }
 
 /** ` · held by …` for an index line: a thread needs the holder before it acts, not after a refusal. */
@@ -2713,14 +2163,52 @@ export interface WorkRecordRun {
   summary?: string
 }
 
+/** One worker as history: what it was asked, how it ended and what it changed. */
+export interface WorkRecordWorker {
+  label: string
+  kind: WorkerRow['kind']
+  goal?: string
+  doneWhen?: string
+  status: WorkerRow['status']
+  /** The worker's handback summary. Moved out whole under the ceiling and the seam form. */
+  summary?: string
+  summaryNotInlined?: true
+  filesChanged: string[]
+  commits: string[]
+  tokens?: number
+}
+
 export interface WorkRecordFeature {
   slug: string
   title: string
   status: FeatureStatusT
   /** When the merge landed (`feature.shipped`); absent while unmerged. */
   shippedAt?: number
+  /** Frozen history: nothing writes runs any more (burns-become-workers decision 19). */
   runs: WorkRecordRun[]
+  /** Frozen history, as the old features left it. */
   tickets: WorkRecordTicket[]
+  /** The feature's workers; absent when it has none, and in the seq drill-down, which is a ticket's. */
+  workers?: WorkRecordWorker[]
+}
+
+function workRecordWorker(w: WorkerRow, withSummary: boolean): WorkRecordWorker {
+  return {
+    label: w.label,
+    kind: w.kind,
+    ...(w.goal !== null ? { goal: w.goal } : {}),
+    ...(w.doneWhen !== null ? { doneWhen: w.doneWhen } : {}),
+    status: w.status,
+    ...(withSummary && w.handbackSummary !== null ? { summary: w.handbackSummary } : {}),
+    filesChanged: w.handbackFiles ?? [],
+    commits: w.handbackCommits ?? [],
+    ...(w.tokens !== null ? { tokens: w.tokens } : {}),
+  }
+}
+
+/** Whether `seam` (lowercased) appears in a file the worker changed or in its assignment. */
+function workerMatchesSeam(w: WorkerRow, seam: string): boolean {
+  return [...(w.handbackFiles ?? []), w.goal ?? '', w.doneWhen ?? ''].some((s) => s.toLowerCase().includes(seam))
 }
 
 export interface WorkRecord {
@@ -2778,9 +2266,11 @@ export function toolGetWorkRecord(
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
+    let workerRows = seq === undefined ? listWorkers(ctx, feature.id) : []
     if (seam) {
       tickets = tickets.filter((t) => t.seams.some((s) => s.toLowerCase().includes(seam)))
-      if (tickets.length === 0) continue
+      workerRows = workerRows.filter((w) => workerMatchesSeam(w, seam))
+      if (tickets.length === 0 && workerRows.length === 0) continue
     }
     if (seq !== undefined) {
       tickets = tickets.filter((t) => t.seq === seq)
@@ -2808,6 +2298,7 @@ export function toolGetWorkRecord(
         ...(t.error !== undefined ? { error: t.error } : {}),
         ...(!seam && t.digest !== undefined ? { digest: t.digest } : {}),
       })),
+      ...(workerRows.length > 0 ? { workers: workerRows.map((w) => workRecordWorker(w, !seam)) } : {}),
     })
   }
   if (seq !== undefined && records.length === 0) {
@@ -2827,12 +2318,24 @@ export function toolGetWorkRecord(
     ticket.digestNotInlined = true
     record.note = WORK_RECORD_DIGESTS_NOTE
   }
+  // Worker summaries go the same way, after the digests, longest first.
+  const summaries = records
+    .flatMap((f) => f.workers ?? [])
+    .filter((w) => w.summary !== undefined)
+    .sort((a, b) => b.summary!.length - a.summary!.length)
+  for (const worker of summaries) {
+    if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
+    delete worker.summary
+    worker.summaryNotInlined = true
+    record.note = WORK_RECORD_DIGESTS_NOTE
+  }
   return record
 }
 
 const WORK_RECORD_DIGESTS_NOTE =
   'Some digests did not fit and were moved out whole, lowest seq first: each such ticket carries ' +
-  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
+  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }). Worker handback summaries ' +
+  'that did not fit carry summaryNotInlined: true; the worker is still listed, without its summary.'
 
 // --- MCP server assembly ----------------------------------------------------
 
@@ -2854,34 +2357,27 @@ function noSession(): CallToolResult {
 
 async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; session: SessionRow } | null> {
   const ctx = await getRuntimeCtx()
-  const session = resolveSession(ctx, headerSessionId(extra), headerRunId(extra))
+  const session = resolveSession(ctx, headerSessionId(extra))
   return session ? { ctx, session } : null
 }
 
 /**
- * The caller of a run-scoped tool. Unlike a session tool this never refuses for
- * want of a session — a review agent HAS no session — so the gate is the run
- * header, checked in `requireRunIdentity`; the session is resolved only when
- * there is no run header, to make the refusal name who called.
+ * The caller of a review tool. Never refuses for want of a session: the gate is
+ * `requireReviewer`, and the session (if any) is there to make its refusal
+ * name who called.
  */
-async function resolveRunCaller(extra: HeaderCarrier): Promise<{ ctx: AppCtx; caller: RunCaller }> {
-  const ctx = await getRuntimeCtx()
-  const runId = headerRunId(extra)
-  if (runId) return { ctx, caller: { runId } }
-  const session = resolveSession(ctx, headerSessionId(extra))
-  return { ctx, caller: session ? { session } : {} }
+async function resolveReviewCaller(extra: HeaderCarrier): Promise<{ ctx: AppCtx; caller: ReviewCaller }> {
+  const rs = await resolveCtxSession(extra)
+  return rs ? { ctx: rs.ctx, caller: { session: rs.session } } : { ctx: await getRuntimeCtx(), caller: {} }
 }
 
-/**
- * The caller of a feature READ, from either identity. A run header binds to the
- * run's own feature; otherwise the resolved session's.
- */
+/** The caller of a feature READ: the resolved session's own feature. */
 async function resolveReader(
   extra: HeaderCarrier,
 ): Promise<{ ctx: AppCtx; reader: FeatureReader } | null> {
-  const rc = await resolveRunCaller(extra)
-  if (!rc.caller.runId && !rc.caller.session) return null
-  return { ctx: rc.ctx, reader: resolveFeatureReader(rc.ctx, rc.caller) }
+  const rs = await resolveCtxSession(extra)
+  if (!rs) return null
+  return { ctx: rs.ctx, reader: resolveFeatureReader(rs.session) }
 }
 
 /** The caller of a feature READ from an orchestrator: the feature `slug` names. */
@@ -2907,10 +2403,11 @@ const PROJECT_READ_NOTE =
 // --- who gets which tools ---------------------------------------------------
 
 /**
- * The audience a built server is for: a session kind, a burner agent running
- * under a run (`run`), or `undefined` for "we could not tell".
+ * The audience a built server is for: a session kind, a drive review on the
+ * host (`review`, a `worker` session whose worker is one), or `undefined` for
+ * "we could not tell".
  */
-export type McpAudience = SessionKindT | 'run'
+export type McpAudience = SessionKindT | 'review'
 
 /** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
@@ -2923,12 +2420,12 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
  * own two. `worker` is in neither either: a worker gets none of the lead's tools
  * (interactive-workers decision 9).
  */
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'run']
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'review']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
- * `requireProject`, `requireRunIdentity`, the `kind !== 'project'` and
+ * `requireProject`, `requireReviewer`, the `kind !== 'project'` and
  * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
@@ -2943,33 +2440,24 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
  * definition — the two do not follow from each other.
  */
 const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
-  // Feature reads. Also reachable by a burner agent under a run header, which
-  // binds to ITS OWN feature (a review agent reviewing a branch legitimately
-  // wants that branch's context) — never to a live conversation's. The project
+  // Feature reads. Also reachable by a drive review, which reads ITS OWN
+  // feature (a review legitimately wants the branch's context). The project
   // session reads any feature of its project by `slug` (`projectFeatureReader`).
-  get_feature_context: [...FEATURE_KINDS, 'run', 'project'],
-  read_feature_doc: [...FEATURE_KINDS, 'run', 'project'],
-  list_tickets: [...FEATURE_KINDS, 'run', 'project'],
-  get_ticket: [...FEATURE_KINDS, 'run', 'project'],
-  emit_tickets: FEATURE_KINDS,
-  update_ticket: FEATURE_KINDS,
-  cancel_ticket: FEATURE_KINDS,
-  // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
-  // IS an emit, so any session that can shape a lap's work can also say what
-  // that work did to the defects it inherited.
+  get_feature_context: [...FEATURE_KINDS, 'review', 'project'],
+  read_feature_doc: [...FEATURE_KINDS, 'review', 'project'],
+  // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
-  // The lead's rounds: the feature's chat is its lead (`requireLeadFeatureId`).
-  dispatch_round: ['chat'],
-  stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
-  hand_back: ['chat'],
+  // The lead's hands back to the orchestrator; a drive review's (`review`) hands back to its lead.
+  hand_back: ['chat', 'review'],
   // A `worker` session is in no list here: its tools are its own, served in its
   // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
   // into it (`workers/tools.ts`); its only way to change the feature is its
   // handback (decision 9).
   // The lead's worker tools (decision 4): `requireLeadFeatureId`.
   start_worker: ['chat'],
+  start_review: ['chat'],
   message_worker: ['chat'],
   land_worker: ['chat'],
   send_back_worker: ['chat'],
@@ -2983,8 +2471,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_plan: ['chat'],
   show_design: ['chat'],
   set_design_state: ['chat'],
-  // Every session with a thread to show it in; a run agent has none.
-  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
+  // Every session with a thread to show it in.
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
@@ -3004,14 +2492,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],
-  // Run-scoped: `requireRunIdentity`.
-  review_drive: ['run'],
-  report_finding: ['run'],
-  // Retained for compatibility with unidentified/legacy clients, but no
-  // recognized session kind receives it; review runs use report_finding.
-  add_test_note: [],
+  // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
+  review_drive: ['review'],
+  report_finding: ['review'],
   // The one tool both halves share — it emits at whatever scope the caller has.
-  // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
   // orchestrator, refused at call time unless it is still live
@@ -3138,8 +2622,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Drive the feature branch for review',
         description:
-          "Boot the feature branch on the human's checkout under your run's identity, to review it. " +
-          'Always `stop` what you started; a refusal carries `deniedCode` and `retriable`.',
+          "The feature branch running on the human's checkout, to review it: `start`, `status` (its URL) and `stop` the drive, " +
+          'replay scenarios and calls, keep screenshots. A refusal carries `deniedCode` and `retriable`.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop', 'scenario', 'try_call', 'capture'])
@@ -3153,41 +2637,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         },
       },
       async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
+        const rc = await resolveReviewCaller(extra)
         const { action, file, caption, outside } = args
         if (action === 'capture') return ok(await toolReviewCapture(rc.ctx, rc.caller, { caption, outside }))
         if (action === 'scenario' || action === 'try_call') {
           return ok(await toolReviewScenario(rc.ctx, rc.caller, { action, file }))
         }
         return ok(await toolReviewDrive(rc.ctx, rc.caller, { action }))
-      },
-    )
-  }
-
-  if (wants('add_test_note')) {
-    server.registerTool(
-      'add_test_note',
-      {
-        title: 'Add a review note',
-        description:
-          'Record one review finding on the feature you are reviewing. It lands in the same ' +
-          'notes the human writes while test-driving — attributed to you — so it shows up in the ' +
-          'review panel. Findings are not failure: report what you saw and let the human decide. Refused ' +
-          'unless your call carries a live run identity.',
-        inputSchema: {
-          text: z
-            .string()
-            .min(1)
-            .describe(
-              'ONE finding, written as an observation the human can reproduce: what you did, ' +
-                'what happened, what you expected. Call the tool again per finding, and once ' +
-                'more at the end with a note summarising the pass.',
-            ),
-        },
-      },
-      async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
-        return ok(toolAddTestNote(rc.ctx, rc.caller, args))
       },
     )
   }
@@ -3203,7 +2659,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         inputSchema: ReviewFindingInput.shape,
       },
       async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
+        const rc = await resolveReviewCaller(extra)
         return ok(toolReportFinding(rc.ctx, rc.caller, ReviewFindingInput.parse(args)))
       },
     )
@@ -3485,8 +2941,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get work record',
         description:
-          'What features actually did, facts only: status, runs and tickets with commits, and by ' +
-          '`featureSlug` each worker’s digest. Send a `featureSlug` (with `seq` for one ticket) or a `seam`.',
+          'What features actually did, facts only: status, workers (assignment, handback summary, files changed, ' +
+          'commits, tokens), and for older features runs and tickets with commits; by ' +
+          '`featureSlug` each ticket’s digest too. Send a `featureSlug` (with `seq` for one ticket) or a `seam`.',
         inputSchema: z.union([
           z.object({
             featureSlug: z
@@ -3501,7 +2958,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             seam: z
               .string()
               .min(1)
-              .describe('A surface to ask about; matched as a case-insensitive substring of ticket seams.'),
+              .describe('A surface to ask about; matched as a case-insensitive substring of ticket seams, of the files a worker changed, or of its assignment.'),
             // Accepted only so the tool can refuse it: zod would otherwise strip a
             // `seq` sent without its featureSlug and run a plain seam search.
             seq: z.number().int().min(1).optional(),
@@ -3589,159 +3046,6 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     }
   }
 
-  if (wants('list_tickets')) {
-    const config = {
-      title: 'List tickets',
-      description:
-        'This feature’s tickets as an index with no prose; the cheap way to find a ticket’s id or seq.',
-    }
-    const status = TicketStatus.optional().describe('Only tickets in this state.')
-    if (projectReads) {
-      server.registerTool(
-        'list_tickets',
-        {
-          ...config,
-          description: config.description + PROJECT_READ_NOTE,
-          inputSchema: { slug: ReadSlug, status },
-        },
-        async ({ slug, ...args }, extra) => {
-          const r = await resolveProjectReader(extra, slug)
-          if (!r) return noSession()
-          return ok(toolListTickets(r.ctx, r.reader, args))
-        },
-      )
-    } else {
-      server.registerTool(
-        'list_tickets',
-        { ...config, inputSchema: { status } },
-        async (args, extra) => {
-          const r = await resolveReader(extra)
-          if (!r) return noSession()
-          return ok(toolListTickets(r.ctx, r.reader, args))
-        },
-      )
-    }
-  }
-
-  if (wants('get_ticket')) {
-    const config = {
-      title: 'Get a ticket',
-      description:
-        'One ticket in full, with the worker’s digest. A done or cancelled ticket leaves out ' +
-        '`context` unless `full: true`.',
-    }
-    const seq = z.number().int().min(1).describe('The ticket’s `seq`.')
-    const full = z.boolean().optional().describe('Include a settled ticket’s context.')
-    if (projectReads) {
-      server.registerTool(
-        'get_ticket',
-        {
-          ...config,
-          description: config.description + PROJECT_READ_NOTE,
-          inputSchema: { slug: ReadSlug, seq, full },
-        },
-        async ({ slug, ...args }, extra) => {
-          const r = await resolveProjectReader(extra, slug)
-          if (!r) return noSession()
-          return ok(toolGetTicket(r.ctx, r.reader, args))
-        },
-      )
-    } else {
-      server.registerTool(
-        'get_ticket',
-        { ...config, inputSchema: { seq, full } },
-        async (args, extra) => {
-          const r = await resolveReader(extra)
-          if (!r) return noSession()
-          return ok(toolGetTicket(r.ctx, r.reader, args))
-        },
-      )
-    }
-  }
-
-  if (wants('emit_tickets')) {
-    server.registerTool(
-      'emit_tickets',
-      {
-        title: 'Emit tickets',
-        description:
-          'Store the whole ticket batch in one call; `blockedBy` positions are positions in this ' +
-          'call. Returns each ticket’s id and `seq`, plus `warnings` for any ticket shaped to overrun: fix those with update_ticket before you dispatch.',
-        inputSchema: {
-          tickets: z
-            .array(TicketInput)
-            .min(1)
-            .describe('The whole batch, in the order you want them numbered.'),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolEmitTickets(rs.ctx, rs.session, args)
-        checkpointDocsAfterReply(rs.ctx, rs.session, `tickets emitted (${result.stored})`)
-        return ok(result)
-      },
-    )
-  }
-
-  if (wants('update_ticket')) {
-    server.registerTool(
-      'update_ticket',
-      {
-        title: 'Update ticket',
-        description:
-          'Rewrite any subset of a pending or failed ticket’s fields. Returns a short receipt.',
-        inputSchema: {
-          id: z.string().min(1).describe('The ticket id, from `list_tickets`.'),
-          title: z.string().optional().describe('New title.'),
-          goal: z.string().optional().describe('New goal — what the worker must achieve.'),
-          context: z.string().optional().describe('New context — what the worker needs to know first.'),
-          acceptanceCriteria: z
-            .array(z.string())
-            .optional()
-            .describe('Replaces the whole list, not appended to it.'),
-          seams: z
-            .array(z.string())
-            .optional()
-            .describe('Replaces the whole list. The surfaces this ticket touches, in free prose.'),
-          model: z
-            .string()
-            .optional()
-            .describe('An id from `get_feature_context`’s annotatedModels; "" clears the assignment.'),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolUpdateTicket(rs.ctx, rs.session, args)
-        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.seq} updated`)
-        return ok(result)
-      },
-    )
-  }
-
-  if (wants('cancel_ticket')) {
-    server.registerTool(
-      'cancel_ticket',
-      {
-        title: 'Cancel ticket',
-        description:
-          'Cancel a pending or failed ticket for good; tickets blocked by it still build.',
-        inputSchema: {
-          id: z.string().min(1).describe('The ticket id, from `list_tickets`.'),
-          reason: z.string().optional().describe('A short why, for the timeline.'),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolCancelTicket(rs.ctx, rs.session, args)
-        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.seq} cancelled`)
-        return ok(result)
-      },
-    )
-  }
-
   if (wants('resolve_finding')) {
     server.registerTool(
       'resolve_finding',
@@ -3780,52 +3084,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  if (wants('dispatch_round')) {
-    server.registerTool(
-      'dispatch_round',
-      {
-        title: 'Dispatch a round',
-        description:
-          'Start a round of sandboxed workers over exactly the pending tickets you name, once the ' +
-          'human has said yes. You are woken with the outcome; refused with a reason when a round cannot start.',
-        inputSchema: {
-          seqs: z.array(z.number().int().min(1)).min(1).describe('The seqs of the tickets this round covers.'),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        return ok(await toolDispatchRound(rs.ctx, rs.session, args))
-      },
-    )
-  }
-
-  if (wants('stop_round')) {
-    server.registerTool(
-      'stop_round',
-      {
-        title: 'Stop the running round',
-        description:
-          'Cancel the round that is running: its workers are stopped and work that already ' +
-          'landed stays on the feature branch. Refused when no round is running.',
-        inputSchema: {},
-      },
-      async (_args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        return ok(await toolStopRound(rs.ctx, rs.session))
-      },
-    )
-  }
-
   if (wants('declare_ready')) {
     server.registerTool(
       'declare_ready',
       {
         title: 'Declare the feature ready for the human',
         description:
-          'Put a test drive in front of the human and mark the feature ready to test. Returns ' +
-          '`warnings` (such as a failed last round) to relay to the human.',
+          'Put a test drive in front of the human and mark the feature ready to test. Refused ' +
+          'while a worker is working or holds work that has not landed.',
         inputSchema: {
           scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
         },
@@ -3865,6 +3131,35 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(await toolStartWorker(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('start_review')) {
+    server.registerTool(
+      'start_review',
+      {
+        title: 'Start the Review worker',
+        description:
+          'Start the feature’s Review worker once the work is done: it runs the project’s checks, drives the app when it can ' +
+          '(else reads the diff), reports findings and hands back with the Review Package. After fixing defects you judged ' +
+          'real, start one with `verify`.',
+        inputSchema: {
+          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          verify: z
+            .object({
+              findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),
+              commits: z.array(z.string().min(1)).describe('The commits that fixed them, `<sha> <subject>`.'),
+            })
+            .optional()
+            .describe('A verify review: given only these findings and fix commits.'),
+          model: z.string().optional().describe('An id from get_feature_context’s annotatedModels; omit for the feature chat’s model.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolStartReview(rs.ctx, rs.session, args))
       },
     )
   }
@@ -3962,7 +3257,25 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  if (wants('hand_back')) {
+  if (wants('hand_back') && audience === 'review') {
+    server.registerTool(
+      'hand_back',
+      {
+        title: 'Hand your review back to your lead',
+        description:
+          'Hand the review back when it is done (or cannot run): your account, its first line standing alone. Runcastle gives the ' +
+          'drive back and shows your lead your findings, pictures and walkthrough. End your turn after.',
+        inputSchema: {
+          summary: z.string().min(1).describe('Your account: one standalone first line, then a few plain sentences.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolReviewHandBack(rs.ctx, rs.session, args))
+      },
+    )
+  } else if (wants('hand_back')) {
     server.registerTool(
       'hand_back',
       {
@@ -4178,19 +3491,15 @@ mcp.use('*', async (c, next) => {
  * server is assembled, because the tool list is part of the answer.
  *
  * Deliberately total: every path that cannot say for sure returns `undefined`,
- * which registers everything. A run header means a burner agent whatever the
- * run's state (a dead run's tools all refuse, which is the correct answer to a
- * stale header); a session header that resolves gives its kind; a request with
- * no headers at all falls back to the live singleton the same way tool calls do.
+ * which registers everything. A session header that resolves gives its kind; a
+ * request with no headers at all falls back to the live singleton the same way
+ * tool calls do.
  */
-export async function resolveAudience(
-  sessionId: string | undefined,
-  runId: string | undefined,
-): Promise<McpAudience | undefined> {
-  if (runId) return 'run'
+export async function resolveAudience(sessionId: string | undefined): Promise<McpAudience | undefined> {
   try {
     const ctx = await getRuntimeCtx()
-    return resolveSession(ctx, sessionId)?.kind
+    const session = resolveSession(ctx, sessionId)
+    return hostReviewOf(ctx, session ?? undefined) ? 'review' : session?.kind
   } catch {
     return undefined
   }
@@ -4263,10 +3572,7 @@ async function readMcpBody(c: Context): Promise<unknown> {
 
 mcp.all('*', async (c) => {
   const body = await readMcpBody(c)
-  const audience = await resolveAudience(
-    c.req.header('X-Runcastle-Session'),
-    c.req.header(RUN_HEADER),
-  )
+  const audience = await resolveAudience(c.req.header('X-Runcastle-Session'))
   const server = buildMcpServer(audience)
   const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
   await server.connect(transport)

@@ -4,16 +4,15 @@ import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { toolEmitTickets, toolResolveFinding, toolsForAudience } from '../src/mcp/server'
+import { toolResolveFinding, toolsForAudience } from '../src/mcp/server'
 import {
   dismiss,
   listByFeature as listFindings,
-  markFixProgress,
-  markFixed,
 } from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature as listTickets } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
-import { reportWithFixTicket } from './helpers/findings'
+import { markFailed, markFixed, reportWithFixTicket } from './helpers/findings'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
@@ -67,7 +66,7 @@ describe('the agent resolves a review’s open defects', () => {
       },
     })
     updateTicket(ctx, fixTicket.id, { status: 'failed' })
-    markFixProgress(ctx, finding.id, 'failed', 'the burner could not land it')
+    markFailed(ctx, finding.id, 'the burner could not land it')
     return finding.id
   }
 
@@ -81,7 +80,7 @@ describe('the agent resolves a review’s open defects', () => {
         expect(toolsForAudience(kind), kind).toContain('resolve_finding')
       }
       expect(toolsForAudience('project')).not.toContain('resolve_finding')
-      expect(toolsForAudience('run')).not.toContain('resolve_finding')
+      expect(toolsForAudience('review')).not.toContain('resolve_finding')
     })
 
     it('offers addressed and dismissed, and nothing else', () => {
@@ -175,69 +174,6 @@ describe('the agent resolves a review’s open defects', () => {
       expect(() =>
         toolResolveFinding(ctx, stranger, { findingId, disposition: 'dismissed', note: 'n' }),
       ).toThrow(InvalidInputError)
-    })
-  })
-
-  describe('emit_tickets with originFindingId', () => {
-    it('stamps the fix ticket on the finding and flips it to fixing', () => {
-      const findingId = openDefect()
-
-      // The link path gets no tool of its own — it rides `emit_tickets`.
-      const { tickets } = toolEmitTickets(ctx, session, {
-        tickets: [
-          { ...ticketInput('Call the retry endpoint'), originFindingId: findingId },
-          { ...ticketInput('Review'), kind: 'review' },
-        ],
-      })
-      const fix = listTickets(ctx, feature.id).find((t) => t.seq === tickets[0].seq)
-
-      expect(findingById(findingId)).toMatchObject({ status: 'fixing', fixTicketId: fix?.id })
-    })
-
-    it('fails the whole batch on an id that is not this feature’s open defect, naming it', () => {
-      const findingId = openDefect()
-      dismiss(ctx, findingId)
-      const before = listTickets(ctx, feature.id).length
-
-      expect(() =>
-        toolEmitTickets(ctx, session, {
-          tickets: [
-            ticketInput('Unrelated work'),
-            { ...ticketInput('Call the retry endpoint'), originFindingId: findingId },
-          ],
-        }),
-      ).toThrow(new RegExp(findingId))
-      // Nothing stored: one bad id is a bad batch, the way an unknown model is.
-      expect(listTickets(ctx, feature.id)).toHaveLength(before)
-    })
-
-    it('refuses two tickets that link to the same defect', () => {
-      const findingId = openDefect()
-
-      expect(() =>
-        toolEmitTickets(ctx, session, {
-          tickets: [
-            { ...ticketInput('Fix the endpoint'), originFindingId: findingId },
-            { ...ticketInput('Fix it again'), originFindingId: findingId },
-          ],
-        }),
-      ).toThrow(InvalidInputError)
-      expect(findingById(findingId)?.status).toBe('failed')
-    })
-
-    it('closes the finding when the linked ticket lands, through the shipped burner path', () => {
-      const findingId = openDefect()
-      const { tickets } = toolEmitTickets(ctx, session, {
-        tickets: [{ ...ticketInput('Call the retry endpoint'), originFindingId: findingId }],
-      })
-      const fix = listTickets(ctx, feature.id).find((t) => t.seq === tickets[0].seq)!
-
-      // What the burner does when a fix ticket lands (`markFixProgress`), which
-      // this feature does not touch: the link is the whole of the new work.
-      updateTicket(ctx, fix.id, { status: 'done' })
-      markFixProgress(ctx, fix.originFindingId!, 'fixed')
-
-      expect(findingById(findingId)).toMatchObject({ status: 'fixed', resolvedBy: 'fix-ticket' })
     })
   })
 

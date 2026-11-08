@@ -52,7 +52,7 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
   const status = featureStatus({
     feature: review,
     need: readyToTest,
-    rounds: [{ round: 1, status: over.running ? 'running' : 'succeeded', startedAt: 10 }],
+    workersWorking: over.running ? 2 : 0,
     agentWorking: false,
     driving: over.driving ?? false,
     selfPlanning: false,
@@ -137,7 +137,7 @@ describe('the feature page header', () => {
         status: featureStatus({
           feature: review,
           need: readyToTest,
-          rounds: [],
+          workersWorking: 0,
           agentWorking: false,
           driving: false,
           selfPlanning: false,

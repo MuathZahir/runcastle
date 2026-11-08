@@ -22,7 +22,7 @@ export const ASSET_ENV = {
   migrations: 'RUNCASTLE_MIGRATIONS_DIR',
   /** The `hook-client.ts` script, spawned by `bun` inside each session. */
   hookClient: 'RUNCASTLE_HOOK_CLIENT',
-  /** The `@runcastle/skills` root (has `packs/` + `burner/`). */
+  /** The `@runcastle/skills` root (has `packs/` + `review/`). */
   skills: 'RUNCASTLE_SKILLS_DIR',
   /** The vetted `.sandcastle/` burner template dir (scaffolded for `build-image`). */
   sandcastleTemplate: 'RUNCASTLE_SANDCASTLE_TEMPLATE',

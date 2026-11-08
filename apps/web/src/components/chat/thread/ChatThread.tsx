@@ -568,7 +568,7 @@ function foldRuncastleText(text: string): { head: string; rest: boolean } {
 }
 
 /**
- * Runcastle's own message to the agent (Go, a round's end, a thread's
+ * Runcastle's own message to the agent (Go, a worker's handback, a thread's
  * briefing): one quiet line, not your bubble. A long one shows its first
  * sentence, the rest behind Show more.
  */

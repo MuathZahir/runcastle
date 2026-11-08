@@ -8,13 +8,11 @@ import { pushRouter } from './routers/push'
 import { projectRouter } from './routers/project'
 import { projectNotesRouter } from './routers/project-notes'
 import { reviewFindingsRouter } from './routers/review-findings'
-import { runRouter } from './routers/run'
 import { settingsRouter } from './routers/settings'
 import { setupRouter } from './routers/setup'
 import { systemRouter } from './routers/system'
 import { testNotesRouter } from './routers/test-notes'
 import { threadRouter } from './routers/thread'
-import { ticketRouter } from './routers/ticket'
 import { workerRouter } from './routers/worker'
 
 /**
@@ -26,8 +24,6 @@ export const appRouter = router({
   projectNotes: projectNotesRouter,
   feature: featureRouter,
   design: designRouter,
-  run: runRouter,
-  ticket: ticketRouter,
   notes: testNotesRouter,
   findings: reviewFindingsRouter,
   events: eventsRouter,

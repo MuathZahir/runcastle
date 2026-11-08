@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { PromptDisplay, WorkerRow } from '@runcastle/core'
+import { reviewPackageUrl, type PromptDisplay, type ReviewPackage, type WorkerRow } from '@runcastle/core'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RuncastleDisplay, WorkerLinksContext } from '../src/components/chat/thread/FeatureCardItems'
+import { workerWhere } from '../src/components/workers/WorkerChat'
+import { workerEntry } from '../src/lib/workers'
 
 /**
  * A worker's handback and failure in the lead's chat (interactive-workers
@@ -38,6 +41,9 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   handbackFiles: ['src/Header.tsx', 'src/Header.test.tsx', 'src/theme.css'],
   outcome: null,
   outcomeNote: null,
+  tokens: null,
+  reviewMode: null,
+  reviewVerify: null,
   createdAt: 1,
   updatedAt: 2,
   ...over,
@@ -108,6 +114,48 @@ describe('a handback in the lead’s chat', () => {
     const open = draw(handback(), [row()])
     fireEvent.click(screen.getByRole('button', { name: 'Open its chat' }))
     expect(open).toHaveBeenCalledWith('w_head')
+  })
+})
+
+describe('a Review worker’s handback in the lead’s chat (burns-become-workers decision 4)', () => {
+  it('draws its Review Package card, read by the worker’s id, in place of the handback card', async () => {
+    const pack: Partial<ReviewPackage> = {
+      ticketId: 'w_review',
+      featureId: 'feat_1',
+      seq: null,
+      round: null,
+      passKind: 'review',
+      verdict: 'Drive review: the theme persists · 0 defects',
+      account: '',
+      commitsSince: 0,
+      hasWalkthrough: false,
+      groups: [],
+      findings: [],
+      empty: 'No pictures.',
+    }
+    const fetched = vi.fn(async () => new Response(JSON.stringify(pack), { status: 200 }))
+    vi.stubGlobal('fetch', fetched)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkerLinksContext.Provider value={{ workers: [row({ id: 'w_review', kind: 'review', label: 'Review', status: 'handed-back' })], openWorker: vi.fn() }}>
+          <RuncastleDisplay display={{ reviewPackage: { workerId: 'w_review', label: 'Review' } }} agentText="[runcastle] Review worker handed back" />
+        </WorkerLinksContext.Provider>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('Drive review: the theme persists · 0 defects')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open the review package' })).toBeTruthy()
+    expect(fetched).toHaveBeenCalledWith(reviewPackageUrl('w_review'))
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('a Review worker in the feature’s worker list', () => {
+  it('is listed by its label and status, and says where it runs', () => {
+    const review = row({ id: 'w_review', kind: 'review', label: 'Review', status: 'queued', reviewMode: 'drive' })
+    expect(workerEntry(review)).toMatchObject({ label: 'Review', kind: 'review', status: 'queued' })
+    expect(workerWhere(review, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
+    expect(workerWhere({ kind: 'review', reviewMode: 'gates' }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
+    expect(workerWhere(row(), 'feature/x')).toBe('Sandbox · its own branch off feature/x')
   })
 })
 

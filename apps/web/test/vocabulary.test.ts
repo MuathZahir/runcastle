@@ -1,28 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentName,
-  BURN_EXPLAINER,
   sessionAgentName,
 } from '../src/lib/vocabulary'
-
-/**
- * The jargon sweep (finding F16). An explainer earns its place by naming the
- * mechanics the word hides — "burn" that never mentions where the commits land
- * is still jargon, just longer.
- */
-
-describe('the explainers', () => {
-  it('says what a round runs and what it is for now', () => {
-    expect(BURN_EXPLAINER).toContain('tickets in containers')
-    expect(BURN_EXPLAINER).toContain('review')
-  })
-
-  // The surfaces that show these have not launched anything, so they cannot
-  // know which runtime the session will open on (decision 11).
-  it('does not name a runtime it cannot know yet', () => {
-    expect(BURN_EXPLAINER).not.toMatch(/Claude|Codex/)
-  })
-})
 
 /**
  * Naming the correspondent (decision 11). A Codex-only human reading "Claude"

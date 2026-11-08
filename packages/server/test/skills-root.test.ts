@@ -4,11 +4,10 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 import { SKILLS_DIR_ENV, resolveSkillsRoot } from '../src/launcher/skills-root'
-import { burnerTemplatePath } from '../src/workflows/ticket-burner'
 
 /**
  * Issue #51 — a published `runcastle` ships skills as real files, so the runtime
- * must resolve the plugin pack and burner templates from the *installed*
+ * must resolve the plugin pack and review assignments from the *installed*
  * location, not only the contributor workspace. `RUNCASTLE_SKILLS_DIR` points at
  * the vendored root (mirroring `RUNCASTLE_WEB_DIST` for the SPA); with it unset,
  * resolution ascends to the workspace `packages/skills` exactly as before.
@@ -18,7 +17,7 @@ import { burnerTemplatePath } from '../src/workflows/ticket-burner'
 function fakeSkillsRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'runcastle-skills-'))
   mkdirSync(join(root, 'packs', 'runcastle'), { recursive: true })
-  mkdirSync(join(root, 'burner'), { recursive: true })
+  mkdirSync(join(root, 'review'), { recursive: true })
   return root
 }
 
@@ -58,9 +57,4 @@ describe('vendored-location resolution', () => {
     expect(resolvePluginDir()).toBe(join(root, 'packs', 'runcastle'))
   })
 
-  it('the burner template reads from RUNCASTLE_SKILLS_DIR', () => {
-    const root = fakeSkillsRoot()
-    process.env[SKILLS_DIR_ENV] = root
-    expect(burnerTemplatePath()).toBe(join(root, 'burner', 'implement-ticket.md'))
-  })
 })

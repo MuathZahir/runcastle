@@ -117,7 +117,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     envVar: 'RUNCASTLE_SANDBOX',
     projectColumn: 'sandbox',
     restartRequired: false,
-    valueSchema: z.enum(['docker', 'podman', 'noSandbox']),
+    valueSchema: z.enum(['docker', 'podman']),
     parseEnv: idEnv,
   },
   // Which image a repo's burns need is a fact about that repo — a JDK here, a
@@ -171,36 +171,22 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: (raw) => Number(raw),
   },
   {
-    key: 'burnMaxIterations',
-    configKey: 'burnMaxIterations',
-    envVar: 'RUNCASTLE_BURN_MAX_ITERATIONS',
-    restartRequired: false,
-    valueSchema: z.number().int().min(1).max(10),
-    parseEnv: (raw) => Number(raw),
-  },
-  {
-    key: 'burnAttempts',
-    configKey: 'burnAttempts',
-    envVar: 'RUNCASTLE_BURN_ATTEMPTS',
-    restartRequired: false,
-    valueSchema: z.number().int().min(1).max(5),
-    parseEnv: (raw) => Number(raw),
-  },
-  {
-    key: 'burnConflictAttempts',
-    configKey: 'burnConflictAttempts',
-    envVar: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
-    restartRequired: false,
-    valueSchema: z.number().int().min(0).max(3),
-    parseEnv: (raw) => Number(raw),
-  },
-  {
     key: 'burnCpus',
     configKey: 'burnCpus',
     envVar: 'RUNCASTLE_BURN_CPUS',
     restartRequired: false,
     valueSchema: z.number().positive().max(256),
     parseEnv: (raw) => Number(raw),
+  },
+  // Read by the worker service each time it copies a Claude Code worker's setup
+  // in, so a change applies at the worker's next start or wake (burns-become-workers decision 18).
+  {
+    key: 'burnGuard',
+    configKey: 'burnGuard',
+    envVar: 'RUNCASTLE_BURN_GUARD',
+    restartRequired: false,
+    valueSchema: z.boolean(),
+    parseEnv: (raw) => raw !== '0' && raw !== 'false',
   },
   // The three prepared burn fields. Each keeps its global config twin (an
   // operator who set one machine-wide keeps it as the inherited fallback) and

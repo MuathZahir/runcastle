@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
-import type { BurnUser } from '../src/workflows/burn-user'
+import type { BurnUser } from '../src/workers/burn-user'
 import {
   BURN_CACHE_MARKER_FILE,
   BURN_CACHE_MOUNT,
@@ -19,7 +19,7 @@ import {
   removeBurnCacheVolume,
   slotRepoPath,
   storePath,
-} from '../src/workflows/burn-cache'
+} from '../src/workers/burn-cache'
 
 /**
  * The host side of the persistent worker cache: volume lifecycle and slot

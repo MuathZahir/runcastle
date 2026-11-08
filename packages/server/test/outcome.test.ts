@@ -1,4 +1,4 @@
-import type { Feature, ReviewFinding, TestNote, Ticket } from '@runcastle/core'
+import type { Feature, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import { composeOutcomeDoc, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
 
@@ -43,6 +43,39 @@ describe('composeOutcomeDoc', () => {
     expect(doc).toContain('- Reviewed commit: abc123\n- Landed since: 0')
     expect(doc).toContain('**Broken button** — fixed')
     expect(doc).toContain('Align the title — sent to the agent')
+  })
+
+  it('writes no ticket lines for a feature built by workers, and lists its workers', () => {
+    const worker = { label: 'Add laps', kind: 'on-its-own', outcome: 'landed', status: 'landed', tokens: 900 } as unknown as WorkerRow
+    const doc = composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [worker] })
+    expect(doc).not.toContain('tickets landed')
+    expect(doc).toContain('- Add laps (on-its-own) — landed · 900 tokens')
+    expect(composeOutcomeDoc(input)).toContain('1 tickets landed')
+  })
+
+  it('records a feature reviewed by Review workers: each review’s mode and its findings with their status', () => {
+    const reviewWorker = (id: string, overrides: Partial<WorkerRow>): WorkerRow =>
+      ({ id, label: 'Review', kind: 'review', status: 'handed-back', outcome: null, tokens: null, reviewMode: 'drive', reviewVerify: null, ...overrides }) as WorkerRow
+    const first = reviewWorker('wkr_r1', {})
+    const verify = reviewWorker('wkr_r2', { label: 'Review: verify', reviewMode: 'gates', reviewVerify: { findingIds: ['finding_a'], commits: ['f00d123'] } })
+    const reported = (id: string, reviewWorkerId: string, overrides: Partial<ReviewFinding>): ReviewFinding =>
+      ({ ...finding, id, reviewTicketId: null, reviewWorkerId, fixTicketId: null, resolvedBy: null, ...overrides }) as ReviewFinding
+    const findings = [
+      reported('finding_a', first.id, { title: 'Theme resets', status: 'fixed', resolvedBy: 'session', resolutionNote: 'persisted in f00d123' }),
+      reported('finding_b', first.id, { title: 'Copy typo', kind: 'observation', severity: 'low', status: 'dismissed', resolutionNote: 'intended wording' }),
+      reported('finding_c', first.id, { title: 'Slow list', severity: 'medium', status: 'open' }),
+    ]
+
+    const doc = composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [first, verify], findings })
+
+    expect(doc).not.toContain('No completed review pass')
+    expect(doc).toContain('### Review · drive review\n\n- Outcome: handed-back')
+    expect(doc).toContain('- **Theme resets** (defect, high) — fixed: persisted in f00d123')
+    expect(doc).toContain('- **Copy typo** (observation, low) — dismissed: intended wording')
+    expect(doc).toContain('- **Slow list** (defect, medium) — open')
+    expect(doc).toContain('### Review: verify · gates review, verify\n\n- Outcome: handed-back\n- Verified fix commits: f00d123\n\n- No findings')
+    // A feature with neither a review ticket nor a Review worker still says so.
+    expect(composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [], findings: [] })).toContain('- No completed review pass')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

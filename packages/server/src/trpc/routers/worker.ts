@@ -1,6 +1,6 @@
 import type { WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
-import { askWorkerToHandBack, listWorkers, startUnassignedWorker } from '../../workers/service'
+import { askWorkerToHandBack, listWorkers, queueHoldOf, startUnassignedWorker } from '../../workers/service'
 import { workerPreviewPath } from '../../routes/design-pass-paths'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
@@ -15,15 +15,18 @@ export const workerRouter = router({
   /**
    * The feature's workers, oldest first; the web groups them by status. Each
    * carries its preview's entry path on the design pass-through (decision 15),
-   * which the web puts behind the listener's origin on `passPort`.
+   * which the web puts behind the listener's origin on `passPort`, and, for a
+   * queued worker its runtime's account hold keeps from starting, why
+   * (`heldBy`, burns-become-workers decision 21).
    */
   list: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }): (WorkerRow & { previewPath: string | null; passPort: number })[] =>
+    .query(({ ctx, input }): (WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null })[] =>
       listWorkers(ctx, input.featureId).map((w) => ({
         ...w,
         previewPath: w.previewPort !== null && w.devServer ? workerPreviewPath(w.id) : null,
         passPort: phoneDesignPort(ctx.config),
+        heldBy: queueHoldOf(ctx, w),
       })),
     ),
 

@@ -210,14 +210,14 @@ describe('the Working shelf', () => {
     data.features = [
       titled('Coupons', { need: need('test', 'Ready to test') }),
       titled('Search', {
-        activeRun: true,
+        workersWorking: 1,
         ticketCounts: { total: 7, pending: 4, burning: 0, done: 3, failed: 0, cancelled: 0 },
       }),
     ]
     rail()
     const working = screen.getByRole('region', { name: 'Working' })
     expect(titles(working)).toEqual(['Search'])
-    expect(within(working).getByText('Working · 3/7')).toBeTruthy()
+    expect(within(working).getByText('Working · 1 worker')).toBeTruthy()
     expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
   })
 

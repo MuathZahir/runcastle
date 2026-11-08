@@ -90,12 +90,8 @@ describe('mergeSummary', () => {
       )
     })
 
-    it('says outright that no ticket ever burned on this branch', () => {
-      expect(row(mergeSummary({ ...clean, tickets: [] }), 'run')).toEqual({
-        key: 'run',
-        value: 'no tickets built',
-        tone: 'warn',
-      })
+    it('has no tickets row for a feature built by workers, rather than an amber "no tickets built"', () => {
+      expect(mergeSummary({ ...clean, tickets: [] }).rows.map((r) => r.key)).not.toContain('run')
     })
 
     it('ambers the run row over waived work rather than reading 8/8 green', () => {
@@ -198,13 +194,13 @@ describe('mergeSummary', () => {
      * takes what has landed and the operator may want exactly those commits —
      * what they cannot see from the dialog is that agents are still committing.
      */
-    it('warns first of all that a live burn will land work after the merge', () => {
-      const s = mergeSummary({ ...clean, burning: true, openNotes: 1 })
+    it('warns first of all that workers at work may land work after the merge', () => {
+      const s = mergeSummary({ ...clean, workersWorking: 1, openNotes: 1 })
       expect(s.warnings[0]).toBe(
-        'A round is running — work landing after this merge stays unshipped on the branch.',
+        '1 worker still at work — what lands after this merge stays unshipped on the branch.',
       )
       expect(s.warnings).toHaveLength(2)
-      expect(mergeSummary({ ...clean, burning: false }).warnings).toEqual([])
+      expect(mergeSummary({ ...clean, workersWorking: 0 }).warnings).toEqual([])
     })
 
     /**

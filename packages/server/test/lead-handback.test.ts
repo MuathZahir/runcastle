@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { WorkerStatus } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
@@ -51,7 +52,7 @@ describe('hand_back from a lead', () => {
 
     const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Review fixes are in; ready to merge.' })
 
-    expect(result.state).toBe('Not declared ready · no rounds yet')
+    expect(result.state).toBe('Not declared ready · no workers at work')
     const [prompt] = promptsOf(holder)
     expect(prompt).toMatchObject({
       source: 'runcastle',
@@ -83,12 +84,10 @@ describe('hand_back from a lead', () => {
 })
 
 describe('the state line runcastle adds', () => {
-  const round = (n: number, status: 'running' | 'succeeded' | 'failed' | 'cancelled') =>
-    ({ round: n, runId: `r${n}`, status, ticketSeqs: [], landed: [], failed: [], gates: null, startedAt: 0, finishedAt: null }) as const
-
-  it('says ready, what it waits on, and the latest round', () => {
-    expect(handbackStateLine({ waitingReason: 'ready to test' }, [round(1, 'failed'), round(2, 'succeeded')])).toBe('Ready to test · round 2 succeeded')
-    expect(handbackStateLine({ waitingReason: 'start round 1?' }, [])).toBe('Not declared ready · waits on the human: start round 1? · no rounds yet')
-    expect(handbackStateLine({ waitingReason: null }, [round(1, 'running')])).toBe('Not declared ready · round 1 running')
+  it('says ready, what it waits on, and how many workers are at work', () => {
+    const w = (status: WorkerStatus) => ({ status })
+    expect(handbackStateLine({ waitingReason: 'ready to test' }, [w('landed'), w('handed-back')])).toBe('Ready to test · no workers at work')
+    expect(handbackStateLine({ waitingReason: 'pick a theme' }, [w('working')])).toBe('Not declared ready · waits on the human: pick a theme · 1 worker at work')
+    expect(handbackStateLine({ waitingReason: null }, [w('working'), w('queued'), w('failed')])).toBe('Not declared ready · 2 workers at work')
   })
 })

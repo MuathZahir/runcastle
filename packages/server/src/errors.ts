@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { BurnCacheBusyError } from './workflows/burn-cache'
+import { BurnCacheBusyError } from './workers/burn-cache'
 
 /**
  * Domain error types + the single tRPC mapping helper. Services throw these

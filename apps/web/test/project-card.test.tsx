@@ -43,7 +43,7 @@ const project = { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcast
 const stats = (over: Partial<ProjectStats> = {}): ProjectStats => ({
   total: 3,
   needsYou: 1,
-  activeRuns: 0,
+  working: 0,
   shipped: 0,
   health: 'attention',
   ...over,
@@ -105,7 +105,7 @@ describe('ProjectCard', () => {
   })
 
   it('leaves out the facts that are zero', () => {
-    card({ needsYou: 0, activeRuns: 0, health: 'steady' })
+    card({ needsYou: 0, working: 0, health: 'steady' })
 
     const face = screen.getByTitle('Open runcastle')
     expect(face.textContent).not.toContain('needs you')
@@ -169,18 +169,6 @@ describe('ProjectCard', () => {
     choose('Remove from list')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
-    expect(stub.closed).toEqual([])
-  })
-
-  it('refuses to remove while a run is in flight, and says why', () => {
-    card({ activeRuns: 2, health: 'working' })
-    choose('Remove from list')
-
-    const remove = screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement
-    expect(remove.disabled).toBe(true)
-    expect(document.body.textContent).toContain('A round is in flight')
-
-    fireEvent.click(remove)
     expect(stub.closed).toEqual([])
   })
 })

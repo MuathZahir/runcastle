@@ -1,13 +1,12 @@
-import type { Feature, Project, Ticket, WorkflowDef } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { Feature, Project, Ticket } from '@runcastle/core'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { markFailed, reportFinding } from '../src/services/review-findings'
-import { storeTickets, updateTicket } from '../src/services/tickets'
+import { reportFinding } from '../src/services/review-findings'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
-import { reportWithFixTicket } from './helpers/findings'
+import { markFailed, reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
@@ -15,18 +14,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * is covered at the service seam (`review-findings.test.ts`); what has to be
  * right HERE is the read model the page renders — counts that cannot disagree
  * with the list under them — and the human's Dismiss.
- *
- * A stubbed ticket-burner keeps sandcastle out of the loop: it leaves the fresh
- * tickets pending, so the feature parks at implementation and the run is
- * observable without any of the real machinery.
  */
-
-const stubBurner: WorkflowDef = {
-  id: 'ticket-burner',
-  async run() {
-    return { status: 'succeeded', summary: 'stub' }
-  },
-}
 
 describe('findings router', () => {
   let ctx: AppCtx
@@ -34,7 +22,6 @@ describe('findings router', () => {
   let project: Project
   let feature: Feature
   let reviewTicket: Ticket
-  let original: WorkflowDef | undefined
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
@@ -53,13 +40,6 @@ describe('findings router', () => {
       },
     ])[0]
     updateTicket(ctx, reviewTicket.id, { status: 'done', commits: ['abc'] })
-    original = workflowRegistry.get('ticket-burner')
-    workflowRegistry.set('ticket-burner', stubBurner)
-  })
-
-  afterEach(() => {
-    if (original) workflowRegistry.set('ticket-burner', original)
-    else workflowRegistry.delete('ticket-burner')
   })
 
   const defect = (title: string) => ({

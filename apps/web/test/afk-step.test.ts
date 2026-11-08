@@ -19,7 +19,7 @@ describe('AfkStep', () => {
     const html = render()
     expect(html).toContain('Run workers unattended?')
     // The step's word is a glossary hint, so the sentence is read as text.
-    expect(html.replace(/<[^>]+>/g, '')).toContain('Workers run a round’s tickets in containers')
+    expect(html.replace(/<[^>]+>/g, '')).toContain('Workers run in sandboxes, unattended')
     expect(html).toContain('Set up now')
     expect(html).toContain('Skip for now')
   })

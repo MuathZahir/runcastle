@@ -24,16 +24,16 @@ self-contained package under `build/`:
   plain JS with `@runcastle/core` resolved into the output (not `--compile`).
   Every real dependency (simple-git, hono, drizzle, …) stays external so it
   installs normally — the tarball's dependency tree carries no `workspace:*`.
-- **Patched dependencies are bundled in too.** A workspace `patchedDependencies`
+- **Patched dependencies are bundled in too (none today).** A workspace `patchedDependencies`
   patch never reaches a user's install, so a patched dep must either be inlined
-  (`BUNDLED_DEPENDENCIES` in `scripts/publish-manifest.ts` — sandcastle, with
+  (`BUNDLED_DEPENDENCIES` in `scripts/publish-manifest.ts`, empty today, with
   its own runtime deps folded into the manifest) or be listed as external with a
   written reason the patch is unnecessary there (`PATCHED_EXTERNAL_DEPENDENCIES`,
   empty today). The build fails on any patch with neither fate, and checks the
   emitted bundle for the patch's code so a registry copy cannot slip in
   (ADR-0011; this is how v1.2.11's burns all died).
 - **Runtime assets ship as real files.** The drizzle migrations, the hook client
-  (spawned by `bun`), the skills pack + burner prompts, and the built SPA are
+  (spawned by `bun`), the skills pack and review assignments, and the built SPA are
   copied beside the bin — they can't live
   inside a bundle because separate processes read them by path.
 - **One resolver, both layouts.** `src/launcher/asset-paths.ts` resolves every

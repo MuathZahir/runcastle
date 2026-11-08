@@ -9,7 +9,7 @@ import {
   servicePath,
 } from '../services/service-file'
 import { resolveTool } from '../util/resolve-executable'
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workflows/burn-user'
+import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
 
 export const SERVICE_USAGE = [
   'usage: runcastle service install | remove',

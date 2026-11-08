@@ -13,9 +13,8 @@ export const ACTION_KINDS = [
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
   'stopSelfPlan', // feature.endSession on the live self-planning run
-  'stopAgent', // feature.stop — the status line's Stop: the round stops, nothing dispatches until the human replies
+  'stopAgent', // feature.stop — the status line's Stop: the lead's and every working worker's turn end, nothing starts until the human replies
   'resumeProvider', // feature.resume — the status line's Resume after a provider halt: one message to the lead
-  'openBurnSettings', // opens Settings → Workers where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in

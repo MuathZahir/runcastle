@@ -206,7 +206,7 @@ describe("the lead's tools", () => {
 
   it('are offered to the feature chat alone, and a worker is offered none of the chat’s tools', () => {
     for (const tool of LEAD_WORKER_TOOLS) expect(toolsForAudience('chat')).toContain(tool)
-    for (const kind of ['side', 'drive-fix', 'scenario', 'project', 'run', 'worker'] as const) {
+    for (const kind of ['side', 'drive-fix', 'scenario', 'project', 'review', 'worker'] as const) {
       expect(toolsForAudience(kind).filter((t) => LEAD_WORKER_TOOLS.includes(t))).toEqual([])
     }
     const chat = new Set(toolsForAudience('chat'))

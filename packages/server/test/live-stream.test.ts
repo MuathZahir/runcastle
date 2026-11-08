@@ -1,8 +1,7 @@
 import { Hono } from 'hono'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import streamApp from '../src/routes/stream'
-import { appendTranscript, beginTranscript, clearAllTranscripts } from '../src/services/agent-stream'
 import { liveSubscriberCount, publishLive, subscribeLive } from '../src/services/bus'
 import { emit, emitProject } from '../src/services/events'
 import { makeTestCtx } from './helpers/db'
@@ -69,10 +68,6 @@ describe('live bus', () => {
     featureId = seedFeature(ctx, projectId).id
   })
 
-  afterEach(() => {
-    clearAllTranscripts()
-  })
-
   it('publishes a signal for every emitted event, feature- and project-scoped', () => {
     const seen: unknown[] = []
     const off = subscribeLive((s) => seen.push(s))
@@ -84,20 +79,6 @@ describe('live bus', () => {
     expect(seen).toEqual([
       { kind: 'event', projectId, featureId, eventId: e.id },
       { kind: 'event', projectId, featureId: undefined, eventId: e.id + 1 },
-    ])
-  })
-
-  it('publishes transcript signals as the agent streams', () => {
-    const seen: unknown[] = []
-    const off = subscribeLive((s) => seen.push(s))
-
-    beginTranscript('t1')
-    appendTranscript('t1', { kind: 'text', text: 'hello' })
-    off()
-
-    expect(seen).toEqual([
-      { kind: 'transcript', ticketId: 't1' },
-      { kind: 'transcript', ticketId: 't1' },
     ])
   })
 
@@ -167,8 +148,7 @@ describe('GET /api/stream', () => {
     const sse = sseReader(res)
     await sse.until((t) => t.includes('event: ready'))
 
-    beginTranscript('t1')
-    for (let i = 0; i < 200; i++) appendTranscript('t1', { kind: 'text', text: `chunk ${i}` })
+    for (let i = 0; i < 200; i++) publishLive({ kind: 'transcript', ticketId: 't1' })
 
     const text = await sse.until((t) => t.includes('event: live'))
     const frames = text.split('event: live').length - 1

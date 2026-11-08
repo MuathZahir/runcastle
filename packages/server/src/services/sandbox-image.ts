@@ -9,7 +9,7 @@ import {
   type RuncastleConfig,
 } from '@runcastle/core'
 import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
-import { type BurnUser, resolveBurnUser } from '../workflows/burn-user'
+import { type BurnUser, resolveBurnUser } from '../workers/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
 import type { Runtime } from './setup'
 
@@ -183,7 +183,7 @@ export function imageUidMismatchMessage(
 ): string {
   const found = `Image ${image} was built for UID ${imageUid}, but workers on this machine run as UID ${burnUid}.`
   return managed
-    ? `${found} Rebuild it from Settings → Workers${orBuildImageCommand(image)}.`
+    ? `${found} Rebuild it from Settings → Sandboxes${orBuildImageCommand(image)}.`
     : `${found} It is a custom image, so rebuild it wherever it was made, for UID ${burnUid}.`
 }
 

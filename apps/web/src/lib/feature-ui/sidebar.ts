@@ -23,7 +23,7 @@ export interface NeedsMe {
 export { READY_TO_TEST } from '@runcastle/core'
 
 /**
- * An open terminal whose agent is mid-turn — the HITL twin of `activeRun`.
+ * An open terminal whose agent is mid-turn — the lead's twin of `workersWorking`.
  * A terminal still launching counts: nothing has stopped for anyone yet, and so
  * does a lead that replied while its background work runs (`leadInBackground`).
  */
@@ -52,13 +52,14 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
 }
 
 /**
- * The feature's ticket progress as a share, 0..1: done over every ticket not
- * cancelled — all of the feature's tickets, which simply accumulate. 0 with none.
+ * The feature's build progress as a share, 0..1: its done tickets (frozen
+ * history) and landed build workers over every ticket not cancelled and every
+ * build worker not dropped. 0 with neither.
  */
-export function ticketShare(f: FeatureListItem): number {
+export function ticketShare(f: Pick<FeatureListItem, 'ticketCounts' | 'workerProgress'>): number {
   const { total, done, cancelled } = f.ticketCounts
-  const counted = total - cancelled
-  return counted > 0 ? done / counted : 0
+  const counted = total - cancelled + f.workerProgress.counted
+  return counted > 0 ? (done + f.workerProgress.landed) / counted : 0
 }
 
 /** The state a feature's `ProgressIcon` wears: draft ring, shipped check, else the pie. */
@@ -86,14 +87,14 @@ export interface RowChip {
  * one thing, so the four candidates are ranked: something wants me > an agent is
  * working > it shipped > nothing is happening, and here is how long for.
  *
- * "An agent is working" covers both kinds of agent — the unattended burner and
- * the one mid-turn in an open terminal — so the chip and the triage lane never
+ * "An agent is working" covers both kinds of agent — the feature's workers and
+ * its lead mid-turn — so the chip and the triage lane never
  * disagree about a feature.
  */
 export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   const nm = needsMe(f)
   if (nm) return { kind: 'needsMe', text: 'Needs you', title: nm.label, needs: nm.kind }
-  if (f.activeRun) return { kind: 'working', text: 'Working', title: 'agent working' }
+  if (f.workersWorking > 0) return { kind: 'working', text: 'Working', title: 'workers working' }
   if (agentMidTurn(f)) {
     return { kind: 'working', text: 'Working', title: 'the agent is working in the chat' }
   }
@@ -114,18 +115,6 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   }
   const text = relTime(f.lastActivityAt, now)
   return { kind: 'age', text, title: `last activity ${text === 'now' ? 'just now' : `${text} ago`}` }
-}
-
-/**
- * A feature's ticket progress as the row's words ("3/7"), or null when it has
- * no tickets: done over every ticket not cancelled, the share the glyph's pie
- * draws. A tight row writes counts as fractions (DESIGN.md §Content); null
- * rather than "0/0", because a figure about nothing is noise.
- */
-export function ticketProgress(f: FeatureListItem): string | null {
-  const { total, done, cancelled } = f.ticketCounts
-  const counted = total - cancelled
-  return counted > 0 ? `${done}/${counted}` : null
 }
 
 /** Stable sort by a rank, lowest first — ties keep their incoming order. */
@@ -210,10 +199,10 @@ export function triageOf(f: FeatureListItem): TriageKey {
   if (state === 'upNext') return 'upNext'
   if (state === 'stuck') return 'needsYou'
   if (state) return 'drafts'
-  // A need outranks a running round: a permission prompt halts it where it stands.
+  // A need outranks workers at work: a permission prompt halts the lead where it stands.
   if (needsMe(f)) return 'needsYou'
   // A need its orchestrator handles sits with the work in motion (decision 18).
-  if (f.activeRun || f.need?.held) return 'agentWorking'
+  if (f.workersWorking > 0 || f.need?.held) return 'agentWorking'
   if (agentMidTurn(f)) return 'agentWorking'
   return 'inProgress'
 }

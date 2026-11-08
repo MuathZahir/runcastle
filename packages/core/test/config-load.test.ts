@@ -41,14 +41,6 @@ describe('loadConfig — numeric env overrides', () => {
   /** Every numeric burn knob, with a value the schema accepts and its default. */
   const KNOBS = [
     { envVar: 'RUNCASTLE_BURN_CONCURRENCY', field: 'burnConcurrency', set: '4', fallback: 3 },
-    { envVar: 'RUNCASTLE_BURN_MAX_ITERATIONS', field: 'burnMaxIterations', set: '5', fallback: 3 },
-    { envVar: 'RUNCASTLE_BURN_ATTEMPTS', field: 'burnAttempts', set: '2', fallback: 3 },
-    {
-      envVar: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
-      field: 'burnConflictAttempts',
-      set: '1',
-      fallback: 2,
-    },
     { envVar: 'RUNCASTLE_BURN_CPUS', field: 'burnCpus', set: '2.5', fallback: undefined },
   ] as const
 
@@ -70,10 +62,6 @@ describe('loadConfig — numeric env overrides', () => {
       })
     })
   }
-
-  it("lets an explicit '0' through to disable the in-loop conflict resolver", () => {
-    expect(loadConfig({ RUNCASTLE_BURN_CONFLICT_ATTEMPTS: '0' }).burnConflictAttempts).toBe(0)
-  })
 
   it("rejects a '0' the schema forbids instead of silently ignoring it", () => {
     expect(() => loadConfig({ RUNCASTLE_BURN_CONCURRENCY: '0' })).toThrow()

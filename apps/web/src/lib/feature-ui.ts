@@ -4,7 +4,6 @@ export * from './feature-ui/pipeline'
 export * from './feature-ui/sidebar'
 export * from './feature-ui/gates'
 export * from './feature-ui/drive'
-export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
@@ -28,7 +27,6 @@ export type {
   UnverifiedReview,
   Freshness,
 } from './feature-ui/review'
-export * from './feature-ui/rounds'
 export * from './feature-ui/tickets'
 export * from './feature-ui/checks'
 export * from './feature-ui/summary'

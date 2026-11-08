@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burns become workers preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.col{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;background:var(--color-surface-raised)}
+.col h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:10px}
+.node{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);margin:4px 0}
+.node.dead{color:var(--color-text-disabled);text-decoration:line-through}
+.node.new{border-color:var(--color-accent)}
+.ind{margin-left:22px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.flow .node{margin:0}
+.arr{color:var(--color-text-tertiary)}
+.row{margin-top:14px}
+.tk{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--color-border-subtle)}
+.tk .n{font:500 11px/1 var(--font-mono);color:var(--color-text-tertiary)}
+@media (max-width:760px){.ba{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Burns become workers</h1>
+  <p class="lede">The review becomes a worker you can step into, workers gain the burn engine's safety nets, and tickets, rounds and the old engine are deleted. Planned on your delegation, not in a grill.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/burns-become-workers/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="sub"><h3>One kind of delegated work</h3><p class="hint">Before and after, for one feature.</p>
+  <div class="ba">
+    <div class="col"><h3>Today</h3>
+      <div class="node">Lead</div>
+      <div class="ind"><div class="node">Workers (build) &middot; enterable</div>
+      <div class="node dead">Round &rarr; review ticket (headless, chat thrown away)</div>
+      <div class="node dead">Work view, tickets, runs, burn settings</div></div>
+    </div>
+    <div class="col"><h3>After</h3>
+      <div class="node">Lead</div>
+      <div class="ind"><div class="node">Workers (build) &middot; recover by themselves <a class="pin" data-d="8">8</a><a class="pin" data-d="9">9</a><a class="pin" data-d="10">10</a></div>
+      <div class="node new">Review worker &middot; enterable, chat kept <a class="pin" data-d="3">3</a><a class="pin" data-d="12">12</a></div>
+      <div class="node new">Review Package card in the lead's chat <a class="pin" data-d="4">4</a></div>
+      <div class="node">Old tickets: read-only History <a class="pin" data-d="19">19</a></div></div>
+    </div>
+  </div></div>
+
+  <div class="sub"><h3>Where the review runs</h3><p class="hint">Chosen at start, as today. <a class="pin" data-d="3">3</a> <a class="pin" data-d="5">5</a></p>
+    <div class="flow"><span class="node">Drive review</span><span class="arr">&rarr;</span><span class="node">your checkout, holding the drive slot</span><span class="arr">&rarr;</span><span class="node">drives the app, runs checks</span><span class="arr">&rarr;</span><span class="node">gives the slot back at handback</span></div>
+    <div class="flow"><span class="node">Gates review</span><span class="arr">&rarr;</span><span class="node">a sandbox on the committed branch</span><span class="arr">&rarr;</span><span class="node">runs checks, reads the diff</span></div>
+    <div class="flow"><span class="node">Verify review</span><span class="arr">&rarr;</span><span class="node">fresh worker, only the fixed findings <a class="pin" data-d="4">4</a></span></div>
+  </div>
+
+  <div class="sub"><h3>When a worker's turn goes wrong</h3>
+    <div class="flow"><span class="node">Rate limit, overload, dropped line, stall</span><span class="arr">&rarr;</span><span class="node">"carry on" in the same chat, up to 3&times; <a class="pin" data-d="8">8</a></span><span class="arr">&rarr;</span><span class="node">failed, lead woken once</span></div>
+    <div class="flow"><span class="node">Usage limit</span><span class="arr">&rarr;</span><span class="node">your "carry on when the limit resets" setting, as every chat <a class="pin" data-d="7">7</a></span></div>
+    <div class="flow"><span class="node">Bad login, no credit</span><span class="arr">&rarr;</span><span class="node">queued workers held, lead told once, lifts on your next message <a class="pin" data-d="21">21</a></span></div>
+    <div class="flow"><span class="node">Server restart</span><span class="arr">&rarr;</span><span class="node">"carry on where you were" <a class="pin" data-d="10">10</a></span></div>
+    <div class="flow"><span class="node">Land conflicts</span><span class="arr">&rarr;</span><span class="node">"on its own": sent back to resolve, 2&times; <a class="pin" data-d="6">6</a></span><span class="arr">&rarr;</span><span class="node">then, or for "with you": the lead chooses</span></div>
+  </div>
+
+  <div class="sub"><h3>How it gets built</h3><p class="hint">Burned as tickets by the runcastle you have installed (it predates workers), one at a time, in this order.</p>
+    <div class="tk"><span class="n">7</span><span>Workers recover: retries, stalls, account hold, restart, conflict send-back</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">8</span><span>Warm sandboxes, working rules, CPU cap, guard, token counts &middot; after 7</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">9</span><span>The review runs as a Review worker &middot; after 8</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">10</span><span>Web: live Work view goes, old tickets read as History, Stop, settings renamed &middot; after 9</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">11</span><span>History: tables frozen, get_work_record over workers, upgrade note &middot; after 9</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">12</span><span>Server: delete the burn engine and every ticket and round writer &middot; after 10, 11</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">13</span><span>Review of the whole feature &middot; last</span><span class="tag">review</span></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Fix-drive and scenario chats become workers (own feature, starts when this merges)</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>A browser inside the sandbox image</li>
+      <li><i class="dot"></i>A spending cap per worker</li>
+      <li><i class="dot"></i>Other wake-rule changes</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p>Error patterns move from the burner into a pure classifier; the worker service retries on its turn-ended hook and watches turns for stalls. Boot reconcile wakes cut-off workers. Worker sandboxes call the image build, seed from the per-project cache, run the setup command, take the CPU cap and the guard hook; the conversation file is copied out before removal and tokens recorded. The review is a worker kind: a host thread in the checkout for drive reviews, a sandbox for gates; findings are re-keyed to it. Tickets, rounds and runs become frozen history read by a History view and get_work_record, whose seam lookup also matches the files workers changed. Then sandcastle, the burner, review gates, the per-tool timer and every ticket and round writer are deleted; leads with unfinished tickets get one note. ADR-0020 records the move.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["No rounds, no tickets and no burn engine are left behind", "Settled with you in interactive-workers: leave no rounds and no old code behind."],
+    ["The Fix-drive and scenario chats stay out of this feature", "They are host chats tied to your drive; their own feature starts when this merges. Your delegation."],
+    ["The review is a worker; a drive review runs in the human's checkout, a gates review in a sandbox", "Keeps everything the review does today; a gates review needs no browser, so it gets a clean sandbox.", "assumed"],
+    ["The review's handback is the Review Package; a fresh small review verifies fixes", "A fresh verify worker reads little and is not anchored on its own findings.", "assumed"],
+    ["The review runs the project's checks itself; server-run gates retire", "They were the last users of sandcastle outside the burn.", "assumed"],
+    ["A landing conflict goes back to an \"on its own\" worker by itself; the lead chooses for \"with you\"", "The worker that wrote the code knows its intent; a closed design chat is the lead's call to reopen.", "assumed"],
+    ["Workers follow the human's \"Carry on when the usage limit resets\" setting", "No second, hidden worker-only rule over your setting.", "assumed"],
+    ["Transient errors are retried in the same conversation", "Keeps what the worker knew; a too-long conversation fails at once. Challenged: last retry could be a fresh chat.", "assumed"],
+    ["A stalled turn is stopped and retried", "A hung worker shows working forever and holds a slot today.", "assumed"],
+    ["A restart tells a cut-off worker to carry on", "Today it stays working with nothing running.", "assumed"],
+    ["Workers start from the warm per-project dependency cache", "The burn engine's measured speed-up; a missing image is built, not refused.", "assumed"],
+    ["A worker's own conversation file is kept, and its tokens counted", "The brief asks for kept transcripts and countable tokens.", "assumed"],
+    ["The working rules from burns carry over to workers", "The cheaper-burns savings never reached the worker briefing.", "assumed"],
+    ["Old tickets and rounds are not kept as history", "Superseded by 19.", "superseded"],
+    ["Stop stops the lead and every working worker", "Without rounds, Stop would otherwise leave workers running.", "assumed"],
+    ["Plans list workers; nothing dispatches by itself", "Follows from decision 1.", "assumed"],
+    ["Work in flight at the upgrade is named, not carried", "Superseded by 20.", "superseded"],
+    ["Which burn settings survive", "Agents at once, CPU cap and guard stay; the attempt and iteration counts go.", "assumed"],
+    ["Old tickets, rounds and runs are kept as frozen history", "Only 113 of 170 outcome.md files carry digests; nothing writes the tables, old pages still read, get_work_record works over both. Orchestrator's change.", "assumed"],
+    ["Work in flight at the upgrade stays in the history and is named", "Nothing dropped; the lead's note still wakes nothing. Orchestrator's change.", "assumed"],
+    ["An account-level error holds the queue", "Otherwise each queued worker fails the same way and wakes its lead. Orchestrator's change.", "assumed"],
+    ["The per-tool timing breakdown retires", "Token counts per worker remain; nothing else of ADR-0008 changes. Orchestrator's change.", "assumed"]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [[3, "Every review in a sandbox, with a browser in the image", "It decides where the review touches your checkout and drive slot."], [6, "A separate conflict worker, or the lead always resolves", "It amends an interactive-workers decision you made, and adds an automatic send-back."], [8, "A fresh conversation per attempt, as burns did", "A new automatic wake; the challenger would make the last retry fresh."], [10, "Mark a cut-off worker failed and wake the lead", "A new automatic wake on restart."], [19, "Drop the tables and rely on outcome.md", "Keeps a read-only History view and the frozen tables alive, which the brief's \"no old code\" pulls against."]]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

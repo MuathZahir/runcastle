@@ -21,7 +21,7 @@ import { systemTar, walkFiles } from '../../../src/move/shell'
 import type { MoveEnv, MoveManifest, MoveSql } from '../../../src/move/types'
 import { moveIn } from '../../../src/move/unpack'
 import { ensureTalkWorktree } from '../../../src/services/git'
-import { reconcileStaleRuns } from '../../../src/workflows/reconcile-runs'
+import { freezeStaleRuns } from '../../../src/services/runs'
 
 const root = process.argv[2]
 if (!root) throw new Error('usage: roundtrip.ts <scratch dir>')
@@ -313,7 +313,7 @@ const bootDb = createDb(join(dest.dataDir, 'runcastle.db'))
 runMigrations(bootDb)
 const ctx = { db: bootDb, config: {} } as unknown as AppCtx
 const reconciled = reconcileStaleSessions(ctx).length
-await reconcileStaleRuns(ctx)
+await freezeStaleRuns(ctx)
 const rebuilt = await ensureTalkWorktree(
   { id: 'proj_a', repoPath: newRepo } as Project,
   { slug: 'idle', baseBranch: 'main', branch: 'feature/idle' } as Feature,

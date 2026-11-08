@@ -28,7 +28,7 @@ Cite the address you read — `docs/adr/0007-….md`, `docs/features/notes-inbox
 
 You may notice, and you should say:
 
-- **two in-flight features on a collision course** — this is the one you can actually check rather than guess at. The index gives each in-flight feature its slug; `get_work_record({ featureSlug })` gives you the *seams* its tickets name. Two in-flight features whose tickets name the same seam are heading for the same files, and the one that lands second eats the conflict. Name both slugs and say which should land first.
+- **two in-flight features on a collision course** — this is the one you can actually check rather than guess at. The index gives each in-flight feature its slug; `get_work_record({ featureSlug })` gives you the *seams* its tickets name (older features) and the *files changed* by its workers; `get_work_record({ seam })` matches either, or a worker's assignment. Two in-flight features whose workers changed, or whose tickets name, the same files or seam are heading for the same files, and the one that lands second eats the conflict. Name both slugs and say which should land first.
 - an ADR that looks stale, or two that disagree (`read_adr` to confirm before you say so);
 - a term used with two meanings across features;
 - docs that no longer describe the code.

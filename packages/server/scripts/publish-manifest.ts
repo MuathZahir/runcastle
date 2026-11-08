@@ -71,35 +71,14 @@ export const PUBLISHED_FILES = [
  * the registry. Each carries the regexes the built output must match — code
  * the workspace patch introduces — so a build that resolved an unpatched copy
  * (or dropped the dep from the bundle) fails at build time, not on a user's
- * first burn. Match code, never comments: the bundler may strip those.
+ * first run. Match code, never comments: the bundler may strip those.
+ *
+ * Empty since the burn engine (the only bundled, patched dependency —
+ * sandcastle) was deleted; the mechanism stays so a future patch has a legal fate.
  */
 export const BUNDLED_DEPENDENCIES: Readonly<
   Record<string, { readonly why: string; readonly markers: readonly RegExp[] }>
-> = {
-  '@ai-hero/sandcastle': {
-    why: 'patched to mount Docker/Podman named volumes, to expose the kill handles (container name, child PIDs) an aborted run has to kill by, to render a failed setup command with its stdout instead of its base64 payload, and to log file tools in burn logs (patches/@ai-hero%2Fsandcastle@0.12.0.patch); the patch only applies inside this workspace',
-    markers: [
-      // resolveUserMounts: a `{ volume }` mount is carried through, not stat'ed.
-      /if\s*\(\s*m\.volume\s*!==\s*(?:void 0|undefined)\s*\)/,
-      // formatVolumeMount: no SELinux relabel on a named volume.
-      /mount\.volume\s*!==\s*(?:void 0|undefined)/,
-      // docker sandbox: the marker survives the mount map.
-      /volume:\s*m\.volume/,
-      // docker sandbox: the container runs under the caller's name when given.
-      // Keyed on the property, not the `options` binding, which the bundler may
-      // rename to avoid a collision.
-      /\.containerName\s*\?\?/,
-      // noSandbox: every spawned child's pid is reported to the caller.
-      /\.onChildSpawn\?\.\(/,
-      // exec failure: the echoed command loses its base64 payload literals. A
-      // regex literal, which no bundler rewrites, unlike the function it is in.
-      /\[A-Za-z0-9\+\\\/=\]\{120,\}/,
-      // stream parser: file tools reach the burn log (honest-token-counts
-      // decision 10). A string literal, which no bundler rewrites.
-      /NotebookEdit:\s*"notebook_path"/,
-    ],
-  },
-}
+> = {}
 
 /**
  * Patched dependencies that stay external ANYWAY, each with the reason the

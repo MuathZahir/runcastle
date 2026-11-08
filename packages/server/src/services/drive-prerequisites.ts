@@ -5,7 +5,7 @@ import {
   type MissingDrivePiece,
   missingDrivePieces,
   probeDriveHost,
-} from '../workflows/review-ticket'
+} from './drive-host'
 
 /**
  * Whether this host can offer a review a drive, read BEFORE a review runs.

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { toolsForAudience } from '../src/mcp/server'
 import type { AppCtx } from '../src/db/types'
 import { chatKickoffHeader, launchSession } from '../src/launcher/launcher'
-import { runs } from '../src/db/schema'
+import { workers } from '../src/db/schema'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { createFeatureBranch } from '../src/services/git'
 import { useDataDir } from './helpers/data-dir'
@@ -19,17 +19,12 @@ import { acpLaunchOf, briefOf, kickoffOf } from './support/thread-launch'
 describe('chat contract', () => {
   it('registers the settled union toolset', () => {
     expect(toolsForAudience('chat').sort()).toEqual([
-      'cancel_ticket',
       'create_feature',
       'declare_ready',
-      'dispatch_round',
       'drop_worker',
-      'emit_tickets',
       'get_feature_context',
-      'get_ticket',
       'hand_back',
       'land_worker',
-      'list_tickets',
       'message_worker',
       'notify_human',
       'read_feature_doc',
@@ -43,43 +38,32 @@ describe('chat contract', () => {
       'show_plan',
       'show_review_package',
       'start_design_server',
+      'start_review',
       'start_worker',
-      'stop_round',
-      'update_ticket',
       'wait_for_you',
     ])
   })
 
-  it('tells the chat the feature status and the rounds run, never a phase or a lap', async () => {
+  it('tells the chat the feature status, never a phase, a lap or a round', async () => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id, {})
-    ctx.db.insert(runs).values({
-      id: newId('run'),
-      featureId: feature.id,
-      workflow: 'ticket-burner',
-      status: 'succeeded',
-      startedAt: 1,
-      endedAt: 2,
-    }).run()
     const line = chatKickoffHeader(ctx, feature)
-    expect(line).toContain('Feature status: Talking with you;')
-    // The lap column (3 here) no longer moves; the round count is what's told.
-    expect(line).toContain('rounds run: 1;')
-    expect(line).not.toMatch(/\blap\b|phase|review/i)
+    expect(line).toContain('Feature status: Talking with you.')
+    expect(line).not.toMatch(/\blap\b|phase|review|round/i)
     expect(line.endsWith('Call get_feature_context for the full picture.')).toBe(true)
   })
 
-  it('says "Working · Round N" in the kickoff while a round runs', async () => {
+  it('says "Working · N workers at work" in the kickoff while workers work', async () => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id)
-    ctx.db.insert(runs).values({
-      id: newId('run'),
-      featureId: feature.id,
-      workflow: 'ticket-burner',
-      status: 'running',
-      startedAt: 1,
-    }).run()
-    expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Working · Round 1;')
+    const now = Date.now()
+    for (const [i, status] of (['working', 'queued'] as const).entries()) {
+      ctx.db
+        .insert(workers)
+        .values({ id: newId('wkr'), featureId: feature.id, label: `w${i}`, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+        .run()
+    }
+    expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Working · 2 workers at work.')
   })
 
   it('says "Waiting for you · <why>" and "Merged" in the kickoff', async () => {
@@ -87,8 +71,8 @@ describe('chat contract', () => {
     const projectId = seedProject(ctx).id
     const waiting = { ...seedFeature(ctx, projectId, { slug: 'waiting' }), waitingReason: 'start round 1?' }
     const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' })
-    expect(chatKickoffHeader(ctx, waiting)).toContain('Feature status: Waiting for you · start round 1?;')
-    expect(chatKickoffHeader(ctx, shipped)).toContain('Feature status: Merged;')
+    expect(chatKickoffHeader(ctx, waiting)).toContain('Feature status: Waiting for you · start round 1?.')
+    expect(chatKickoffHeader(ctx, shipped)).toContain('Feature status: Merged.')
   })
 })
 
@@ -166,7 +150,7 @@ describe('every chat opens on the feature skill', () => {
       expect(prompt).toContain('Invoke the `/runcastle:feature` skill')
       expect(prompt).not.toMatch(/runcastle:(ideate|revisit|lead)/)
       expect(kickoff).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
-      expect(kickoff).toContain('Feature status: Talking with you;')
+      expect(kickoff).toContain('Feature status: Talking with you.')
       // every chat on a feature runs without permission prompts
       expect(launch.sessionMode).toBe('bypassPermissions')
     }

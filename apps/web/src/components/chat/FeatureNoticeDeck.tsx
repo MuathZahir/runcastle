@@ -5,7 +5,6 @@ import {
   noticeFor,
   type ChatNoticeKind,
   type ChatNoticeTarget,
-  type NoticeTicket,
   type StandingNotice,
 } from '../../lib/chat-notices'
 import { useIsPhone } from '../../lib/use-phone'
@@ -28,7 +27,6 @@ import { NoticeStrip } from './NoticeStrip'
  */
 export function FeatureNoticeDeck({
   events,
-  tickets,
   standing = [],
   active,
   onView,
@@ -36,8 +34,6 @@ export function FeatureNoticeDeck({
 }: {
   /** The feature's event log, oldest first (`useEventLog`). */
   events: readonly EventRow[]
-  /** The feature's tickets — how a `ticket.done` is recognised as a review pass. */
-  tickets: readonly NoticeTicket[]
   /** The warnings that stand above the event notices while their condition holds. */
   standing?: readonly StandingNotice[]
   /** The Chat tab is in front. */
@@ -67,10 +63,10 @@ export function FeatureNoticeDeck({
       if (event.id <= handled.current) continue
       handled.current = event.id
       if (event.ts < since) continue
-      const notice = noticeFor(event, tickets)
+      const notice = noticeFor(event)
       if (notice) dispatch({ type: 'push', notice })
     }
-  }, [active, events, tickets])
+  }, [active, events])
 
   // A card with a lifetime leaves by itself. Any change to the deck restarts
   // the countdowns, so a burst that bumps the card gives it its full time again.

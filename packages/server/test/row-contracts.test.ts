@@ -31,7 +31,8 @@ import {
   listSessionsByFeature,
 } from '../src/services/repo'
 import { listByFeature as listNotes } from '../src/services/test-notes'
-import { listByFeature as listTickets, storeTickets } from '../src/services/tickets'
+import { listByFeature as listTickets } from '../src/services/tickets'
+import { storeTickets } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 

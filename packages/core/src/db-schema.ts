@@ -16,6 +16,8 @@ import type {
   TestNoteAuthor,
   TestNoteStatus,
   ProjectNoteStatus,
+  ReviewVerify,
+  ReviewWorkerMode,
   TicketKind,
   TicketStatus,
   WorkerEngine,
@@ -407,6 +409,12 @@ export const workers = sqliteTable(
     handbackFiles: text('handback_files', { mode: 'json' }).$type<string[]>(),
     outcome: text('outcome').$type<WorkerOutcome>(),
     outcomeNote: text('outcome_note'),
+    /** Tokens the worker spent, summed over its kept conversation file when it was retired; null until counted. */
+    tokens: integer('tokens'),
+    /** A Review worker's mode, fixed at its start; null for every other kind. */
+    reviewMode: text('review_mode').$type<ReviewWorkerMode>(),
+    /** A verify review's findings and fix commits; null otherwise. */
+    reviewVerify: text('review_verify', { mode: 'json' }).$type<ReviewVerify>(),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -468,7 +476,10 @@ export const tickets = sqliteTable('tickets', {
 export const reviewFindings = sqliteTable('review_findings', {
   id: text('id').primaryKey(),
   featureId: text('feature_id').notNull(),
-  reviewTicketId: text('review_ticket_id').notNull(),
+  /** The review ticket that reported it; null for a finding a Review worker reported. */
+  reviewTicketId: text('review_ticket_id'),
+  /** The Review worker that reported it (burns-become-workers decision 4); null on a finding from a review ticket. */
+  reviewWorkerId: text('review_worker_id'),
   kind: text('kind').notNull().$type<FindingKind>(),
   severity: text('severity').notNull().$type<FindingSeverity>(),
   title: text('title').notNull(),

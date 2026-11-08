@@ -13,7 +13,7 @@ import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
 import { useFeatureWorkers, workerColumnProps, workerInFront } from '../workers/WorkerChat'
 import { WorkerLinksContext } from '../chat/thread/FeatureCardItems'
 
-const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it.'
+const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans the work and hands it to workers.'
 /** A thread that is neither the lead's, a scenario chat nor a listed worker yet: a worker whose row is still on its way. */
 const WORKER_PENDING_HINT = 'A worker on this feature, in its own sandbox.'
 
@@ -125,7 +125,6 @@ export function FeatureChat({
       >
         <FeatureNoticeDeck
           events={events}
-          tickets={full.tickets}
           standing={standing}
           active
           onView={onView}

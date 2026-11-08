@@ -87,7 +87,7 @@ function credentialPrerequisite(runtime: AgentRuntime): BurnPrerequisite {
  * longer says them, but anyone who learned them still types them, so every
  * checklist row answers to them and the search lands on the page.
  */
-const WORKERS_PAGE_ALIASES = ['burn', 'AFK', 'lane', 'unattended']
+const WORKERS_PAGE_ALIASES = ['sandbox', 'worker', 'burn', 'AFK', 'unattended']
 
 /** The checklist, in render order. */
 export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = ([
@@ -99,9 +99,10 @@ export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = ([
   },
   {
     field: 'sandcastle-image',
-    label: 'Sandcastle image',
-    reason: 'the sandcastle image needs building',
-    terms: ['Sandcastle image', 'build', 'rebuild'],
+    label: 'Worker image',
+    reason: 'the worker image needs building',
+    // 'sandcastle' stays findable: the image's tag (sandcastle:runcastle) and older notes still say it.
+    terms: ['Worker image', 'Sandcastle image', 'image', 'build', 'rebuild'],
   },
   ...AGENT_RUNTIMES.map(credentialPrerequisite),
   {

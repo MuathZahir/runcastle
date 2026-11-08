@@ -141,7 +141,7 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       reason:
         'A drive-fix session repairs one failing drive in the developer\'s own checkout, so it ' +
         `writes the drive machinery and nothing else: ${writablePaths()} — ${input.filePath} is ` +
-        'outside them. A change to the app itself belongs in a ticket, not in this session.',
+        'outside them. A change to the app itself belongs in a worker assignment, not in this session.',
     }
   }
 
@@ -156,7 +156,7 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       reason:
         'A scenario session writes scenarios and their shared code, so it may write only ' +
         `\`${SCENARIO_WRITABLE}\` — ${input.filePath} is outside it. A change to the app itself ` +
-        'belongs in a ticket; tell the human what the scenario needs.',
+        'belongs in a worker assignment; tell the human what the scenario needs.',
     }
   }
 
@@ -175,7 +175,7 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
     reason:
       `Talk sessions do not write code. This ${input.kind} session may only write this ` +
       `feature's docs under \`${docs}/\` — ${input.filePath} is outside them. The change you ` +
-      'want belongs in a ticket: capture the decision in `decisions.md`, amend `spec.md`, and ' +
+      'want belongs in a worker assignment: capture the decision in `decisions.md`, amend `spec.md`, and ' +
       'emit a ticket for the work. A worker builds it in its own sandbox.',
   }
 }

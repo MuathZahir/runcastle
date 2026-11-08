@@ -169,7 +169,7 @@ describe('SettingsDialog', () => {
     const panel = screen.getByRole('dialog')
     expect(panel.getAttribute('aria-label')).toBe('Settings')
     expect(panel.className).toContain('max-w-[940px]')
-    for (const name of ['General', 'Models', 'Workers', 'This project']) {
+    for (const name of ['General', 'Models', 'Sandboxes', 'This project']) {
       expect(screen.getByRole('button', { name })).toBeTruthy()
     }
     expect(screen.getByLabelText('Filter settings')).toBeTruthy()
@@ -189,7 +189,7 @@ describe('SettingsDialog', () => {
   it('reaches every page from every other, in place', () => {
     open()
 
-    const pages = ['General', 'Models', 'Workers', 'This project']
+    const pages = ['General', 'Models', 'Sandboxes', 'This project']
     for (const from of pages) {
       for (const to of pages) {
         fireEvent.click(screen.getByRole('button', { name: from }))
@@ -223,7 +223,7 @@ describe('SettingsDialog', () => {
     const panel = screen.getByRole('dialog')
     const bodies = new Set<Element>()
 
-    for (const page of ['General', 'Models', 'Workers', 'This project']) {
+    for (const page of ['General', 'Models', 'Sandboxes', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: page }))
 
       // One page scroller, not one per page and not a second one nested inside
@@ -250,11 +250,11 @@ describe('SettingsDialog', () => {
     expect(bodies.size).toBe(1)
   })
 
-  it('renders General as four named fields, each with its explanation beneath its label', () => {
+  it('renders General as its named fields, each with its explanation beneath its label, and no sandbox switch', () => {
     open()
 
     expect(screen.getByLabelText('Server port')).toBeTruthy()
-    expect(screen.getByLabelText('Sandbox')).toBeTruthy()
+    expect(screen.queryByLabelText('Sandbox')).toBeNull()
     expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
     expect(screen.getByLabelText('MCP servers in chats')).toBeTruthy()
 
@@ -417,17 +417,17 @@ describe('SettingsDialog', () => {
       target: { value: 'concurrency' },
     })
 
-    expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: /Sandboxes/ }).getAttribute('aria-current')).toBe(
       'page',
     )
   })
 
-  it.each(['burn', 'AFK', 'lane'])('still finds the Workers page by its older name %s', (word) => {
+  it.each(['burn', 'AFK'])('still finds the Sandboxes page by its older name %s', (word) => {
     open()
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: word } })
 
-    expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('button', { name: /Sandboxes/ }).getAttribute('aria-current')).toBe('page')
     // The checklist itself waits on the doctor, which this harness leaves loading.
   })
 
@@ -448,12 +448,12 @@ describe('SettingsDialog', () => {
   })
 
   it('opens on the page a deep link named', () => {
-    open({ page: 'burns' })
+    open({ page: 'sandboxes' })
 
-    expect(screen.getByRole('button', { name: 'Workers' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: 'Sandboxes' }).getAttribute('aria-current')).toBe(
       'page',
     )
-    expect(screen.getByRole('heading', { name: 'Workers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Sandboxes' })).toBeTruthy()
   })
 
   it('scrolls to and flashes the field a deep link named', () => {
@@ -496,7 +496,7 @@ describe('SettingsDialog', () => {
     expect(theme).toMatch(/@layer base\s*{[\s\S]*?\bbutton\s*{[\s\S]*?background:\s*none/)
 
     const retired: string[] = []
-    for (const page of ['General', 'Models', 'Workers', 'This project']) {
+    for (const page of ['General', 'Models', 'Sandboxes', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(page) }))
       for (const button of screen.getAllByRole('button')) {
         if (/(?:^| )(?:btn|chip|settings-)/.test(button.className))

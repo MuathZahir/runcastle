@@ -154,7 +154,7 @@ describe('deliverToLead', () => {
 
     const [first, second] = sentToAgent()
     expect(first.startsWith('[runcastle] Round 1 returned\n\n')).toBe(true)
-    expect(first).toContain('Feature status: Talking with you;')
+    expect(first).toContain('Feature status: Talking with you.')
     expect(second).toBe('[runcastle] Round 2 returned')
     // The log shows what was said, not the header the agent was handed with it.
     expect(promptsOf(id)[0].text).toBe('[runcastle] Round 1 returned')
@@ -245,7 +245,7 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     expect(sentToAgent()[0]).toContain('[runcastle] Round 1 returned\n\n[runcastle] The human pressed Stop')
   })
 
-  it('tells a lead whose turn waits on a permission about Stop when that turn ends', async () => {
+  it('ends a lead turn that waits on a permission, and holds Stop for the human’s reply', async () => {
     fake.script.turn = async (t) => {
       if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) {
         await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
@@ -258,7 +258,8 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
 
     await stopFeature(ctx, f.id)
 
-    expect(promptsOf(id).some((p) => p.held)).toBe(false)
+    await logUntil(id, turnsEnded(1))
+    expect(promptsOf(id).filter((p) => p.held)).toEqual([expect.objectContaining({ text: expect.stringContaining('The human pressed Stop') })])
   })
 
   it('holds Stop for an idle lead', async () => {
@@ -271,13 +272,12 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     expect(host.isRunning(id)).toBe(false)
   })
 
-  it('tells a lead mid-turn about Stop at the end of that turn', async () => {
-    let release!: () => void
-    const released = new Promise<void>((r) => {
-      release = r
-    })
+  it('ends a lead’s turn mid-way, and wakes it for nothing until the human replies (burns-become-workers decision 15)', async () => {
     fake.script.turn = async (t) => {
-      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) await released
+      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) {
+        await t.cancelled
+        return 'cancelled'
+      }
     }
     const f = feature()
     const id = chat(f.id)
@@ -285,11 +285,12 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
 
     await stopFeature(ctx, f.id)
-    release()
 
-    await logUntil(id, turnsEnded(2))
-    expect(sentToAgent()[1]).toContain('The human pressed Stop')
-    expect(promptsOf(id).some((p) => p.held)).toBe(false)
+    await logUntil(id, turnsEnded(1))
+    expect(readThreadEvents(id).findLast((e) => e.type === 'turn_ended')).toMatchObject({ reason: 'cancelled' })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(sentToAgent()).toHaveLength(1)
+    expect(promptsOf(id).filter((p) => p.held)).toEqual([expect.objectContaining({ text: expect.stringContaining('The human pressed Stop') })])
   })
 })
 

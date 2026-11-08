@@ -3,13 +3,14 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { Feature, PreparedKey, Project } from '@runcastle/core'
-import { SAW_MAX_SHOTS, newId } from '@runcastle/core'
+import type { Feature, PreparedKey, Project, SessionRow } from '@runcastle/core'
+import { SAW_MAX_SHOTS } from '@runcastle/core'
+import { reviewShotPath } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { projects, runs } from '../src/db/schema'
+import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { toolReviewCapture, toolReviewDrive, toolReviewScenario } from '../src/mcp/server'
 import { usePipePty } from './helpers/pipe-pty'
@@ -30,14 +31,13 @@ import {
 } from '../src/services/git'
 import { getProjectById } from '../src/services/repo'
 import { appendSaw, readSaw } from '../src/services/review-saw'
-import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { resolveBun } from './helpers/bun'
-import type { captureReviewShot } from '../src/workflows/review-capture'
+import type { captureReviewShot } from '../src/services/review-capture'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedHostReview, seedProject } from './helpers/fixtures'
 
 /**
  * Drive scenarios on the live drive (drive-scenarios spec, "Drive state and
@@ -497,29 +497,25 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
   })
 
   describe("over the review agent's review_drive", () => {
-    let runId: string
+    let session: SessionRow
 
     beforeEach(() => {
-      runId = ctx.db
-        .insert(runs)
-        .values({ id: newId('run'), featureId: feature.id, workflow: 'ticket-burner', status: 'running', startedAt: Date.now() })
-        .returning()
-        .get().id
+      session = seedHostReview(ctx, feature, project.repoPath)
     })
 
     const replay = (action: 'scenario' | 'try_call', file?: string) =>
-      toolReviewScenario(ctx, { runId }, { action, file })
+      toolReviewScenario(ctx, { session }, { action, file })
 
-    /** Start this run's review drive and bring its app up at a live URL. */
+    /** Start this review's drive and bring its app up at a live URL. */
     async function reviewUp(): Promise<string> {
-      expect((await toolReviewDrive(ctx, { runId }, { action: 'start' })).ok).toBe(true)
+      expect((await toolReviewDrive(ctx, { session }, { action: 'start' })).ok).toBe(true)
       const url = await serveApp()
       recordDriveUrl(ctx, project.id, feature.id, url)
       await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
       return url
     }
 
-    it("refuses both actions unless the live drive is this run's review drive", async () => {
+    it("refuses both actions unless the live drive is this review's own drive", async () => {
       const file = '.runcastle/scenarios/checkout/land.ts'
       expect(await replay('scenario', file)).toMatchObject({ ok: false, action: 'scenario', retriable: false })
       // Another feature's review drive holds the slot, up and answering.
@@ -560,7 +556,7 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       expect(types().filter((t) => t === 'testdrive.started')).toHaveLength(1)
     }, 30_000)
 
-    it('keeps what a burning review pass saw: scenarios, masked calls and pictures', async () => {
+    it('keeps what a drive review saw: scenarios, masked calls and pictures', async () => {
       await g.checkout('feature/drive')
       const ping = '.runcastle/scenarios/api/ping.ts'
       put(project.repoPath, ping, "console.log('TOKEN=tok_1'); console.log('ENTRY_URL=/')")
@@ -568,36 +564,34 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       await g.add('.')
       await g.commit('call')
       await g.checkout('main')
-      const [pass] = storeTickets(ctx, feature.id, [
-        { title: 'Review it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [], kind: 'review' },
-      ])
-      updateTicket(ctx, pass!.id, { status: 'burning' })
       await reviewUp()
       const shoot: typeof captureReviewShot = async () => ({ ok: true })
 
       await replay('scenario', ping)
       await replay('try_call', ping)
-      expect(await toolReviewCapture(ctx, { runId }, { caption: '  The  page ' }, shoot)).toEqual({
+      expect(await toolReviewCapture(ctx, { session }, { caption: '  The  page ' }, shoot)).toEqual({
         ok: true,
         action: 'capture',
         caption: 'The page',
+        // The reviewer opens it before its verdict (burns-become-workers review).
+        path: reviewShotPath(session.id, 'shot-1.png'),
         scenario: ping,
       })
-      await toolReviewCapture(ctx, { runId }, { caption: 'Settings', outside: true }, shoot)
+      await toolReviewCapture(ctx, { session }, { caption: 'Settings', outside: true }, shoot)
 
-      const entries = readSaw(pass!.id)
+      const entries = readSaw(session.id)
       expect(entries.map((e) => e.kind)).toEqual(['scenario', 'call', 'shot', 'shot'])
       expect(entries[1]).toMatchObject({ request: { headers: [['Authorization', '•••']] } })
       expect(entries[2]).toMatchObject({ image: 'shot-1.png', scenario: ping })
       expect(entries[3]).toMatchObject({ image: 'shot-2.png' })
       expect(entries[3]).not.toHaveProperty('scenario')
 
-      expect(await toolReviewCapture(ctx, { runId }, {}, shoot)).toMatchObject({
+      expect(await toolReviewCapture(ctx, { session }, {}, shoot)).toMatchObject({
         ok: false,
         deniedReason: expect.stringContaining('needs `caption`'),
       })
-      for (let i = entries.length; i < SAW_MAX_SHOTS + 2; i++) appendSaw(pass!.id, { kind: 'shot', at: i, caption: 'x', image: 'x.png' })
-      expect(await toolReviewCapture(ctx, { runId }, { caption: 'One more' }, shoot)).toMatchObject({
+      for (let i = entries.length; i < SAW_MAX_SHOTS + 2; i++) appendSaw(session.id, { kind: 'shot', at: i, caption: 'x', image: 'x.png' })
+      expect(await toolReviewCapture(ctx, { session }, { caption: 'One more' }, shoot)).toMatchObject({
         ok: false,
         deniedReason: expect.stringContaining('the most one pass keeps'),
       })

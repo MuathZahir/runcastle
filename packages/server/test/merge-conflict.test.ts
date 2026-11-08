@@ -19,7 +19,7 @@ import {
   testDrive,
 } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
-import { storeTickets, updateTicket } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'

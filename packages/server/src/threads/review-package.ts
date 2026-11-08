@@ -6,8 +6,7 @@ import { GateError } from '../errors'
 import { newestThread } from '../launcher/sessions'
 import { emit } from '../services/events'
 import { projectForFeature } from '../services/repo'
-import { reviewPackage, reviewShots } from '../services/review-package'
-import { listByFeature as listTickets } from '../services/tickets'
+import { finishedReviewPasses, reviewPackage, reviewShots } from '../services/review-package'
 import { appendThreadEvent } from './log'
 import { seedFromTranscript } from './read'
 
@@ -33,15 +32,20 @@ export async function showReviewPackage(
   ctx: AppCtx,
   session: SessionRow,
   feature: Feature,
-): Promise<{ shown: true; seq: number; screenshots: number; commitsSince: number | null }> {
-  const passes = listTickets(ctx, feature.id)
-    .filter((ticket) => ticket.kind === 'review' && (ticket.status === 'done' || ticket.status === 'failed'))
-    .sort((a, b) => b.seq - a.seq)
+): Promise<{ shown: true; seq: number | null; workerId?: string; screenshots: number; commitsSince: number | null }> {
+  const passes = finishedReviewPasses(ctx, feature.id)
   const pictured = reviewShots(ctx, feature.id)[0]
-  const pass = passes.find((ticket) => ticket.seq === pictured?.seq) ?? passes[0]
+  const pass =
+    passes.find((p) => (p.seq === null ? p.id === pictured?.workerId : p.seq === pictured?.seq)) ?? passes[0]
   if (!pass) throw new GateError(`${feature.slug} has had no review, so it has no review package.`)
   seedFromTranscript(ctx, session.id)
   appendThreadEvent(session.id, { type: 'review_package', ticketId: pass.id })
   const pack = await reviewPackage(ctx, pass, feature, projectForFeature(ctx, feature).repoPath)
-  return { shown: true, seq: pass.seq, screenshots: pictured?.shots.length ?? 0, commitsSince: pack.commitsSince }
+  return {
+    shown: true,
+    seq: pass.seq,
+    ...(pass.seq === null ? { workerId: pass.id } : {}),
+    screenshots: pictured?.shots.length ?? 0,
+    commitsSince: pack.commitsSince,
+  }
 }

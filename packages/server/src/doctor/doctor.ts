@@ -56,14 +56,14 @@ import {
   burnCacheVolumeName,
   checkBurnCacheAccess,
   inspectBurnCacheVolume,
-} from '../workflows/burn-cache'
+} from '../workers/burn-cache'
 import {
   type BurnUser,
   burnUserSpec,
   resolveBurnUser,
   ROOT_BURN_REFUSED,
   runningAsRoot,
-} from '../workflows/burn-user'
+} from '../workers/burn-user'
 import type { TokenCheck } from './token-check'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
@@ -887,7 +887,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
         detail: image.present
           ? `${tag} is built but is not this project's image yet — the next round adopts it`
           : `.runcastle/sandbox/Dockerfile is not built yet — the first round builds it, which takes a few minutes`,
-        fix: 'Nothing to do. To build ahead of the first round, open Settings → Workers (Build image).',
+        fix: 'Nothing to do. To build ahead of the first round, open Settings → Sandboxes (Build image).',
       }
     }
     // The project image's own labels, inherited through `FROM`, record the CLIs
@@ -975,7 +975,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       // Not in the way of anything: the first round builds it (decision 6).
       severity: 'info',
       detail: `${imageName} is not built yet — the first round builds it, which takes a few minutes`,
-      fix: 'Nothing to do. To build ahead of the first round, run `runcastle build-image` or open Settings → Workers (Build image).',
+      fix: 'Nothing to do. To build ahead of the first round, run `runcastle build-image` or open Settings → Sandboxes (Build image).',
     }
   }
   if (!stockVerdict.fresh) {
@@ -1198,7 +1198,7 @@ async function customImageDrift(
 }
 
 /** The image row's identity, shared by every verdict it can reach. */
-const IMAGE_ROW = { id: 'sandcastle-image', label: 'Sandcastle container image', tier: 2 } as const
+const IMAGE_ROW = { id: 'sandcastle-image', label: 'Worker container image', tier: 2 } as const
 
 /** The first container runtime whose CLI answers, or null when neither does. */
 async function presentRuntime(exec: ExecFn): Promise<Runtime | null> {
@@ -1223,7 +1223,7 @@ function staleImage(detail: string, unchecked = ''): ProbeResult {
     status: 'stale',
     severity: 'error',
     detail: `${detail} — rebuild${unchecked}`,
-    fix: 'Open Settings → Workers (Rebuild image).',
+    fix: 'Open Settings → Sandboxes (Rebuild image).',
   }
 }
 

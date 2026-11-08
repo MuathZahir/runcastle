@@ -1,6 +1,7 @@
 # ADR-0005: Burner isolated workspace — keep the agent's hot path off the bind mount
 
 - **Status:** accepted (2026-07-20)
+- **Amended by ADR-0020** (burns become workers): its isolated workspace now governs worker sandboxes.
 - **Amended:** 2026-08-28 — post-commit hook is push-only; the mounted worktree
   is removed host-side after the run (feature post-commit-sync-once)
 - **Extends:** ADR-0004 (which fixed the pnpm store mount but left the worktree

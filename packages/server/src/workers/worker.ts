@@ -8,6 +8,7 @@ import type { AgentRuntime, WorkerKind } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
+import { sandboxReviewBriefing } from './review'
 import { type WorkerPermissionMode, permissionModeOf, workerAllowsItself } from './permissions'
 import {
   CODEX_AUTO_REVIEW_MODE,
@@ -20,12 +21,15 @@ import {
   codexAdapterExecArgs,
   codexAdapterVersion,
   containerState,
+  cacheDirsScript,
   devRestartScript,
   engineRun,
+  guardInstallScript,
   execSh,
   installScript,
   mcpMergeScript,
   pickFreePort,
+  projectSetupScript,
   relayExecArgs,
   runArgs,
   setupClearScript,
@@ -127,10 +131,18 @@ export interface NewSandboxInput {
   image: string
   repoPath: string
   featureBranch: string
+  /** A branch copied into the worker's bare copy beside the feature branch: a review's base, which it diffs against. */
+  baseBranch?: string
   /** Ports other workers hold, even stopped ones: never handed out again (review finding). */
   takenPorts: ReadonlySet<number>
   /** Skip the dependency install (the harness measures it separately). */
   skipInstall?: boolean
+  /** The project's burn cache volume, its package-manager store env and the dirs to make on it; absent with `burnCache: 'off'`. */
+  cache?: { volume: string; env: Record<string, string>; dirs: string[] }
+  /** `--cpus` for the container (`burnCpus`). */
+  cpus?: number
+  /** The project's `setupCommand`, run in the clone after the install. */
+  setupCommand?: string
 }
 
 /** Create the worker's branch and sandbox: container up, clone made, dependencies installed. Times each step. */
@@ -163,6 +175,7 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
     rmSync(originDir, { recursive: true, force: true })
     await execFileP('git', ['clone', '-q', '--bare', '--no-hardlinks', '--single-branch', '--branch', input.featureBranch, input.repoPath, originDir])
     await git(originDir, ['branch', '-f', sb.branch, input.featureBranch])
+    if (input.baseBranch) await git(originDir, ['fetch', '-q', input.repoPath, `+refs/heads/${input.baseBranch}:refs/heads/${input.baseBranch}`])
   })
   const gitName = (await git(input.repoPath, ['config', 'user.name']).catch(() => 'runcastle worker')).trim()
   const gitEmail = (await git(input.repoPath, ['config', 'user.email']).catch(() => 'worker@runcastle.local')).trim()
@@ -178,14 +191,17 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
         runtimeDir,
         uid: process.getuid?.() ?? 1000,
         gid: process.getgid?.() ?? 1000,
+        ...(input.cache ? { cache: { volume: input.cache.volume, env: input.cache.env } } : {}),
+        ...(input.cpus !== undefined ? { cpus: input.cpus } : {}),
       }),
     ),
   )
-  await execSh(sb.engine, sb.container, `mkdir -p ${IN.cache} && chown -R ${process.getuid?.() ?? 1000} ${IN.cache}`, { root: true })
+  if (input.cache) await execSh(sb.engine, sb.container, cacheDirsScript(input.cache.dirs))
   await timed('clone', () =>
     execSh(sb.engine, sb.container, setupScript({ featureBranch: input.featureBranch, workerBranch: sb.branch, gitName, gitEmail })),
   )
   if (!input.skipInstall) await timed('install', () => execSh(sb.engine, sb.container, installScript()))
+  if (!input.skipInstall && input.setupCommand) await timed('setupCommand', () => execSh(sb.engine, sb.container, projectSetupScript(input.setupCommand!)))
   sb.timings.sandboxTotal = Math.round(performance.now() - t0)
   return sb
 }
@@ -265,9 +281,38 @@ export function conversationLookupScript(runtime: AgentRuntime, conversationId: 
     : `ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${conversationId}.jsonl >/dev/null 2>&1 && echo yes || true`
 }
 
+/** The shell that prints the path of the runtime's record of `conversationId` inside the sandbox, or nothing. */
+export function conversationPathScript(runtime: AgentRuntime, conversationId: string): string {
+  return runtime === 'codex'
+    ? `find ${IN.codexHome}/sessions -name 'rollout-*-${conversationId}.jsonl' 2>/dev/null | head -n 1`
+    : `ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${conversationId}.jsonl 2>/dev/null | head -n 1`
+}
+
+/**
+ * Where, inside the sandbox, the agent keeps its own record of `conversationId`
+ * (Claude's session file, Codex's rollout); undefined when there is none. An id
+ * that is not a plain token is never looked for.
+ */
+export async function conversationPathInSandbox(sb: WorkerSandbox, conversationId: string): Promise<string | undefined> {
+  if (!/^[\w-]+$/.test(conversationId)) return undefined
+  await ensureSandboxRunning(sb)
+  const out = await execSh(sb.engine, sb.container, conversationPathScript(sb.runtime, conversationId))
+  return out.trim().split('\n')[0] || undefined
+}
+
 /** Bring the worker's commits from its own bare copy into the host repo; a fetch runs none of that repo's hooks. */
 export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
   await git(sb.repoPath, ['fetch', '-q', workerOrigin(sb.id), `+refs/heads/${sb.branch}:refs/heads/${sb.branch}`])
+}
+
+/**
+ * Bring the feature branch's current tip from the host repo into the worker's
+ * bare copy, which was cloned with that branch alone and never moves by
+ * itself: a worker sent back to merge the feature branch in then reaches it
+ * with `git fetch origin` (burns-become-workers decision 6).
+ */
+export async function refreshWorkerFeatureBranch(sb: WorkerSandbox): Promise<void> {
+  await git(workerOrigin(sb.id), ['fetch', '-q', '--update-head-ok', sb.repoPath, `+refs/heads/${sb.featureBranch}:refs/heads/${sb.featureBranch}`])
 }
 
 /**
@@ -279,7 +324,7 @@ export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
  * its `config.toml`. The fingerprint is written last, so a copy cut off midway
  * is made again at the next start.
  */
-export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup, fingerprint: string): Promise<void> {
+export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup, fingerprint: string, opts: { guard?: boolean } = {}): Promise<void> {
   await ensureSandboxRunning(sb)
   const stage = join(workersDir(), 'setup', sb.id)
   rmSync(stage, { recursive: true, force: true })
@@ -309,6 +354,8 @@ export async function copyWorkerSetup(sb: WorkerSandbox, setup: WorkerSetup, fin
     // `-a` keeps the host owner, which is the user the sandbox runs as.
     await engineRun(sb.engine, ['cp', '-a', `${stage}/.`, `${sb.container}:${IN.home}`])
     if (claudeMcp) await execSh(sb.engine, sb.container, mcpMergeScript())
+    // Runcastle's own hook, written after the copy that cleared `settings.json` and before the fingerprint that vouches for it.
+    if (opts.guard && sb.runtime === 'claude-code') await execSh(sb.engine, sb.container, guardInstallScript())
     if (!/^[\w-]+$/.test(fingerprint)) throw new Error('a setup fingerprint is a plain token')
     await execSh(sb.engine, sb.container, `printf '%s' ${fingerprint} > ${IN.home}/${SETUP_FINGERPRINT}`)
   } finally {
@@ -332,8 +379,8 @@ export async function copyOutOfSandbox(sb: WorkerSandbox, containerPath: string,
   await engineRun(sb.engine, ['cp', `${sb.container}:${containerPath}`, hostPath])
 }
 
-/** What a worker of each kind does with its turn and when it hands back (decision 5). */
-function howItHandsBack(kind: WorkerKind): string {
+/** What a worker of each kind does with its turn and when it hands back (decision 5); a review's own briefing says it. */
+function howItHandsBack(kind: Exclude<WorkerKind, 'review'>): string {
   switch (kind) {
     case 'with-you':
       return (
@@ -352,6 +399,7 @@ function howItHandsBack(kind: WorkerKind): string {
 
 /** The worker's briefing: appended to Claude Code's system prompt, or after the human's instructions in a Codex worker's AGENTS.md. */
 export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
+  if (brief.kind === 'review') return sandboxReviewBriefing(brief.label, sb.branch)
   return [
     `# You are a runcastle worker: ${brief.label}`,
     '',
@@ -366,6 +414,7 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     `- To show the human a screen, call start_dev_server. Your dev server must accept connections from outside the container: listen on 0.0.0.0 (not localhost), port ${sb.port}. The human opens it at ${sb.previewUrl}.`,
     "- Runcastle's tools for you: hand_back, start_dev_server, read_feature (the feature's state, decisions and the lead's latest turns), show_file (a file or screenshot, into this chat) and park_feature (work for another feature, parked in the backlog). You have no others, and no route to runcastle.",
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
+    "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
     howItHandsBack(brief.kind),
     '- To hand back, call hand_back with a short summary: what you did, what is left, and every direction the human gave you directly in this conversation (your lead never reads it, so the summary is the only way it learns them). Then end your turn.',
   ].join('\n')
@@ -433,7 +482,7 @@ export function workerLaunch(sb: WorkerSandbox, brief: WorkerBrief, opts: Pick<W
     }
   }
   if (!opts.token) throw new Error('a Claude Code worker needs the Claude token')
-  const server = workerMcpServer(sb.port, sb.previewUrl)
+  const server = workerMcpServer(sb.port, sb.previewUrl, brief.kind === 'review')
   const mcp: acp.McpServer = {
     name: 'worker',
     command: server.command,

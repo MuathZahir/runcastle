@@ -36,16 +36,13 @@ import {
 export const FIELD_ENV_VAR: Record<string, string> = {
   serverPort: 'RUNCASTLE_SERVER_PORT',
   model: 'RUNCASTLE_MODEL',
-  sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
   usageSignal: 'RUNCASTLE_USAGE_SIGNAL',
   carryOnAfterLimit: 'RUNCASTLE_CARRY_ON_AFTER_LIMIT',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
-  burnMaxIterations: 'RUNCASTLE_BURN_MAX_ITERATIONS',
-  burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
-  burnConflictAttempts: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
   burnCpus: 'RUNCASTLE_BURN_CPUS',
+  burnGuard: 'RUNCASTLE_BURN_GUARD',
   setupCommand: 'RUNCASTLE_SETUP_COMMAND',
   verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
   knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
@@ -66,7 +63,7 @@ export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
  * not by the config file's global/project split — that split is expressed inside
  * "This project" by a source chip, never by a page.
  */
-export type SettingsPage = 'general' | 'models' | 'burns' | 'project'
+export type SettingsPage = 'general' | 'models' | 'sandboxes' | 'project'
 
 /** A section within a page. */
 export type SettingsGroup =
@@ -82,7 +79,7 @@ export type SettingsGroup =
 const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
   general: ['server', 'sessions'],
   models: ['default'],
-  burns: ['width'],
+  sandboxes: ['width'],
   project: ['model', 'commands', 'chat'],
 }
 
@@ -301,23 +298,10 @@ const FIELD_META: Record<string, FieldMeta> = {
     page: 'models',
     group: 'default',
   },
-  sandbox: {
-    label: 'Sandbox',
-    tooltip:
-      'Where chats and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
-    control: 'select',
-    page: 'general',
-    group: 'sessions',
-    options: ['docker', 'noSandbox'],
-    optionLabels: {
-      docker: 'Docker container (isolated)',
-      noSandbox: 'No sandbox — run directly on this machine',
-    },
-  },
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
+      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first worker builds if it is not there.',
     control: 'text',
     page: 'general',
     group: 'sessions',
@@ -358,49 +342,30 @@ const FIELD_META: Record<string, FieldMeta> = {
   burnConcurrency: {
     label: 'Agents working at once',
     tooltip:
-      'Agents mid-turn at once across the machine (1–8): ticket agents and workers together. Each has its own container, sizing its install and test workers from the whole core count — lower it if suites die under load. A worker over the limit waits, queued, and starts by itself; one waiting for you or stopped counts for nothing.',
+      'Workers mid-turn at once across the machine (1–8). Each has its own container, sizing its install and test workers from the whole core count — lower it if suites die under load. A worker over the limit waits, queued, and starts by itself; one waiting for you or stopped counts for nothing.',
     control: 'number',
-    page: 'burns',
+    page: 'sandboxes',
     group: 'width',
-    unit: 'ticket agents and workers at once',
-  },
-  burnMaxIterations: {
-    label: 'Iterations per attempt',
-    tooltip:
-      'Turns one healthy worker may take before it is stopped (1–10). A ticket that finishes early stops the loop itself.',
-    control: 'number',
-    page: 'burns',
-    group: 'width',
-    shortHelp: 'Distinct from attempts: an attempt restarts an agent that crashed.',
-    unit: 'turns',
-  },
-  burnAttempts: {
-    label: 'Attempts per ticket',
-    tooltip:
-      'Fresh agent attempts per ticket per round (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
-    control: 'number',
-    page: 'burns',
-    group: 'width',
-    unit: 'attempts',
-  },
-  burnConflictAttempts: {
-    label: 'Conflict resolver passes',
-    tooltip:
-      'Agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.',
-    control: 'number',
-    page: 'burns',
-    group: 'width',
-    unit: 'passes before asking you',
+    unit: 'workers at once',
   },
   burnCpus: {
     label: 'CPU limit per worker',
     tooltip:
-      'CPU ceiling per worker container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
+      'CPU ceiling per worker sandbox (--cpus). Blank leaves it unconstrained. Roughly cores ÷ agents working at once keeps parallel workers from oversubscribing the machine.',
     control: 'number',
-    page: 'burns',
+    page: 'sandboxes',
     group: 'width',
     placeholder: 'unlimited',
     unit: 'cores · e.g. 4 on a 12-thread box at width 3',
+  },
+  burnGuard: {
+    label: 'Stop repeated full test runs',
+    tooltip:
+      "Inside a Claude Code worker's sandbox, refuse a second run of the whole test suite or the project's verify commands: the worker runs the tests for what it touched, and the lead runs the full checks. Off lets workers rerun the full suite as often as they like. Applies at a worker's next start or wake.",
+    control: 'switch',
+    page: 'sandboxes',
+    group: 'width',
+    searchTerms: ['guard', 'test', 'suite', 'verify', 'repeat', 'tokens'],
   },
   // The five keys with a global twin render ONCE, on "This project", where a
   // source chip says whether the value came from here or from the global
@@ -417,7 +382,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   verifyCommands: {
     label: 'Verify',
     tooltip:
-      'The exact typecheck / test / lint commands, one per line. Every worker is told to run them, and runcastle runs them itself at the end of every round and hands the results to the agent.',
+      'The exact typecheck / test / lint commands, one per line. Every worker is told to run them, and the Review worker runs them before the feature is ready.',
     control: 'textarea',
     page: 'project',
     group: 'commands',
@@ -522,7 +487,6 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
     page: 'project',
     group: 'model',
   },
-  sandbox: { page: 'project', group: 'model' },
   sandboxImage: {
     tooltip:
       'The Docker image THIS project’s chats and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
@@ -532,13 +496,12 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
 }
 
 /**
- * The six keys a project can override that also have a global default. Only
+ * The five keys a project can override that also have a global default. Only
  * these carry a `Global` / `This project` chip; a project-only key has no twin
  * to inherit from, so a chip would be answering a question nobody asked.
  */
 const TWIN_KEYS = new Set([
   'model',
-  'sandbox',
   'sandboxImage',
   'setupCommand',
   'verifyCommands',
@@ -862,15 +825,22 @@ export function describeField(
   }
 }
 
-/** A field that renders as a row — not a per-step model, not the roster itself. */
+/**
+ * Settings the server still reports that govern nothing a human runs any more
+ * (burns-become-workers decision 18): the sandbox on/off switch. It renders
+ * nowhere.
+ */
+const RETIRED_KEYS: ReadonlySet<string> = new Set(['sandbox'])
+
+/** A field that renders as a row — not a per-step model, not the roster itself, not a retired setting. */
 function isRowKey(key: string): boolean {
-  return !isStepModelKey(key) && key !== 'models'
+  return !isStepModelKey(key) && key !== 'models' && !RETIRED_KEYS.has(key)
 }
 
 /**
  * The rows of one page, in group order.
  *
- * `general` and `burns` are machine-wide and read the GLOBAL view; `project`
+ * `general` and `sandboxes` are machine-wide and read the GLOBAL view; `project`
  * reads the project-scoped view and takes exactly the fields a project can
  * override. `models` has no rows — it renders the roster and per-step tables.
  */
@@ -921,7 +891,7 @@ export function projectRows(
   const byKey = new Map(findings.map((f) => [f.key, f]))
   const roster = rosterFromView(view)
   return view.fields
-    .filter((f) => f.scope === 'project')
+    .filter((f) => f.scope === 'project' && isRowKey(f.key))
     .map((f) => describeField(f, byKey.get(f.key), roster))
 }
 
@@ -1274,7 +1244,7 @@ export function filterSettings(
   query: string,
   items: readonly SearchableSetting[],
 ): SettingsFilter {
-  const counts: Record<SettingsPage, number> = { general: 0, models: 0, burns: 0, project: 0 }
+  const counts: Record<SettingsPage, number> = { general: 0, models: 0, sandboxes: 0, project: 0 }
   const needle = query.trim().toLowerCase()
   if (needle === '') return { counts, matches: new Set(items.map((i) => i.id)) }
 
@@ -1288,20 +1258,20 @@ export function filterSettings(
 }
 
 /**
- * The settings location an error message points at, so "Settings → Workers
+ * The settings location an error message points at, so "Settings → Sandboxes
  * (Rebuild image)" can be a link that lands on the image row instead of an
  * instruction to go looking. Both the doctor's stale-image detail and the
  * burner's missing-binary message carry that wording.
  */
 export function settingsLocationFromMessage(text: string): SettingsLocation | null {
-  return SETTINGS_POINTER.test(text) ? { page: 'burns', field: 'sandcastle-image' } : null
+  return SETTINGS_POINTER.test(text) ? { page: 'sandboxes', field: 'sandcastle-image' } : null
 }
 
 /**
- * "Settings → Workers", or either of the page's older names — a message stored
+ * "Settings → Sandboxes", or any of the page's older names — a message stored
  * before a rename still points at the same row.
  */
-const SETTINGS_POINTER = /Settings\s*→\s*(?:Workers|AFK burns|Burns)/i
+const SETTINGS_POINTER = /Settings\s*→\s*(?:Sandboxes|Workers|AFK burns|Burns)/i
 
 /** A message split around the settings pointer inside it, ready to render. */
 export interface SettingsMention {
