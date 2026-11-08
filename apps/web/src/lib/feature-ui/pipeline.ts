@@ -8,7 +8,7 @@ export const PHASE_ORDER: PipelineStage[] = ['planning', 'building', 'review', '
 
 export const PHASE_TIP: Record<PipelineStage, string> = {
   planning: 'Talk it through with the feature’s agent and say yes to its plan',
-  building: 'Rounds of workers build each ticket in a sandbox',
+  building: 'Workers build it, each in its own sandbox',
   review: 'Test-drive the branch, plan more work, or merge',
   shipped: 'Merged to main',
 }

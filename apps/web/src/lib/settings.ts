@@ -300,7 +300,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first round builds if it is not there.',
+      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first worker builds if it is not there.',
     control: 'text',
     page: 'general',
     group: 'sessions',
@@ -372,7 +372,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   verifyCommands: {
     label: 'Verify',
     tooltip:
-      'The exact typecheck / test / lint commands, one per line. Every worker is told to run them, and runcastle runs them itself at the end of every round and hands the results to the agent.',
+      'The exact typecheck / test / lint commands, one per line. Every worker is told to run them, and the Review worker runs them before the feature is ready.',
     control: 'textarea',
     page: 'project',
     group: 'commands',

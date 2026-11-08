@@ -16,7 +16,7 @@ const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
  * quiet, beside the title in the page's one header row (design-mode decision
- * 12): a dot and the line — "Talking with you", "Working · Round 3",
+ * 12): a dot and the line — "Talking with you", "Working · 2 workers at work",
  * "Plan to approve", "Needs permission · Bash: git push", "Ready to test ·
  * <scenario>" (you-always-know-what-s-waiting decision 1). It
  * replaces the stepper and the next-step sentence on the page; the header's

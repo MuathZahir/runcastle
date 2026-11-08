@@ -1206,9 +1206,9 @@ describe('the words Settings reads in — rounds and workers, never burns or lap
     for (const row of rows) expect(words(row)).not.toMatch(/\bburn|\blaps?\b/i)
   })
 
-  it('says runcastle runs the Verify commands at the end of every round', () => {
+  it('says the Review worker runs the Verify commands (burns-become-workers decision 5)', () => {
     const verify = pageRows(projectView(), 'project').find((r) => r.key === 'verifyCommands')
-    expect(verify?.tooltip).toContain('runcastle runs them itself at the end of every round')
+    expect(verify?.tooltip).toContain('the Review worker runs them before the feature is ready')
     expect(verify?.tooltip).not.toContain('never runs them')
   })
 })
