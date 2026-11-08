@@ -7,7 +7,7 @@ import type { ScenarioErrand } from '../../lib/chat-sessions'
  * the whole panel, and the column switches to the thread an errand opens.
  *
  * The page holds this state — the column and the drive's Scenario menu are far
- * apart — and hands the drive its two calls through `ScenarioChatContext`.
+ * apart — and hands the drive its calls through `ScenarioChatContext`.
  */
 export interface ScenarioChatApi {
   /** The errand's thread. */

@@ -153,6 +153,40 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     expect(kinds.filter((k) => k === 'worker')).toHaveLength(rows.length)
   })
 
+  // `.runcastle/scenarios/workers/feature-with-drive-workers.ts` (drive-chats-become-workers): the drive lands on its page.
+  it('seeds a feature with its drive workers and an old drive chat, the project’s own Scenarios worker, and prints its page', async () => {
+    const out = runScenario(
+      { RUNCASTLE_DATA_DIR: dataDir, RUNCASTLE_SCENARIO_RUN: 'abc123' },
+      join('.runcastle', 'scenarios', 'workers', 'feature-with-drive-workers.ts'),
+    )
+    expect(out.stderr).not.toMatch(/\[feature-with-drive-workers\]/)
+    expect(out.status).toBe(0)
+    expect(out.stdout.split(/\r?\n/).filter((l) => l.startsWith('ENTRY_URL='))).toEqual([
+      `ENTRY_URL=/p/${projectId}/f/drive-workers-feature-abc123`,
+    ])
+
+    const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
+    const feature = ctx.db.select().from(features).where(eq(features.slug, 'drive-workers-feature-abc123')).get()
+    const rows = ctx.db.select().from(workers).where(eq(workers.projectId, projectId)).all()
+    const owned = (w: (typeof rows)[number]) => [w.featureId === feature!.id ? 'feature' : w.featureId === null ? 'project' : 'other', w.kind, w.status, w.featureBranch]
+    expect(rows.map(owned).sort()).toEqual(
+      [
+        ['feature', 'fix-drive', 'handed-back', feature!.branch],
+        ['feature', 'on-its-own', 'working', feature!.branch],
+        ['feature', 'scenario', 'needs-you', feature!.branch],
+        ['project', 'scenario', 'handed-back', 'main'],
+      ].sort(),
+    )
+    const fix = rows.find((w) => w.kind === 'fix-drive')!
+    expect(fix.handbackFiles).toEqual(['.runcastle/drive-setup.sh'])
+    const kinds = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().map((s) => s.kind)
+    expect(kinds.filter((k) => k === 'drive-fix')).toHaveLength(1)
+    const lead = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().find((s) => s.kind === 'chat')!
+    const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8')
+    expect(leadLog).toContain('"held":true')
+    expect(leadLog).toContain(`"branch":"${feature!.branch}"`)
+  })
+
   it('exits non-zero with a readable message when the project is not registered', () => {
     const out = runScenario({ RUNCASTLE_DATA_DIR: dataDir, SCENARIO_PROJECT: 'no-such-project' })
     expect(out.status).toBe(1)

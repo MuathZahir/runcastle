@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import type { FeatureListItem } from '../../lib/api'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { workerGroups } from '../../lib/workers'

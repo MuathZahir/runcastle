@@ -1,6 +1,7 @@
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { activeSession } from './gates'
+import { OLD_CHAT_WORDS } from '../workers'
 
 // --- the Chat tab -------------------------------------------------------------
 
@@ -96,12 +97,12 @@ export function sessionKindName(
   switch (session.kind) {
     case 'chat':
       return 'Agent'
+    // The drive's chats are workers now; a row of these kinds is an old drive chat (drive-chats-become-workers decision 10).
     case 'drive-fix':
-      return 'Drive fix'
+    case 'scenario':
+      return OLD_CHAT_WORDS.drive
     case 'project':
       return 'Project'
-    case 'scenario':
-      return 'Scenario'
     case 'side':
       return 'Side chat'
     case 'worker':
