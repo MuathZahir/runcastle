@@ -27,7 +27,7 @@ export type GlossaryId =
   | 'note'
   | 'round'
   | 'worker'
-  | 'review-round'
+  | 'review'
   | 'review-package'
   | 'test-drive'
   | 'scenario'
@@ -75,7 +75,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'ticket',
     term: 'Ticket',
     group: 'work',
-    definition: 'The review a feature ends with, run in a round. Build work goes to workers.',
+    definition: 'A piece of a feature as features were split before workers. Features built that way keep theirs, read only, in History.',
   },
   {
     id: 'backlog',
@@ -93,7 +93,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'round',
     term: 'Round',
     group: 'building',
-    definition: 'A run of tickets in containers while you are away. Today a feature uses one, for its review at the end.',
+    definition: 'How features ran their tickets before workers: in containers while you were away. Features built that way keep theirs, read only, in History.',
     onceCalled: ['burn', 'AFK burn', 'run', 'lap'],
   },
   {
@@ -104,16 +104,16 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     onceCalled: ['burner', 'lane', 'AFK agent'],
   },
   {
-    id: 'review-round',
-    term: 'Review round',
+    id: 'review',
+    term: 'Review',
     group: 'building',
-    definition: 'A feature’s last round: an agent runs the app, checks the work against the plan and reports what it finds.',
+    definition: 'The worker a feature ends with: it runs the app or the project’s checks, compares the work with the plan and reports what it finds.',
   },
   {
     id: 'review-package',
     term: 'Review package',
     group: 'building',
-    definition: 'What the review round hands you: screenshots, a recorded walkthrough, the checks it ran and what it found.',
+    definition: 'What the review hands you: screenshots, a recorded walkthrough, the checks it ran and what it found.',
   },
   {
     id: 'test-drive',

@@ -362,9 +362,7 @@ export function useLiveSync(): LiveStatus {
       refetches.push(u.feature.list.invalidate())
       refetches.push(u.feature.get.invalidate())
       refetches.push(u.feature.driveInfo.invalidate())
-      // The round trail: a round that starts, lands a ticket or ends, and a
-      // ready declaration, all move it while it is on screen.
-      refetches.push(u.feature.rounds.invalidate())
+      // A ready declaration. Old rounds are frozen history: nothing moves them.
       refetches.push(u.feature.readyDeclarations.invalidate())
       // The feature's sessions (`session.*` events and the `turn` signal).
       refetches.push(u.feature.sessions.invalidate())

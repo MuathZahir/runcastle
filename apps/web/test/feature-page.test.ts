@@ -348,7 +348,7 @@ describe('the drive page', () => {
     expect(headerOf(html)).toContain('Back to the drive')
     expect(headerOf(html)).not.toContain('Stop drive')
     // Over the chat: the agent is held, and how to let it go.
-    expect(html).toContain('the agent can’t start a round')
+    expect(html).toContain('the agent can’t land its own edits')
     expect(html).toContain('>Stop drive<')
   })
 

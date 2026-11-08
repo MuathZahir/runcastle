@@ -104,7 +104,7 @@ describe('standingNotices', () => {
   it('names a live review round’s drive with no stop, and says when it ends', () => {
     const [row] = rows({ blockingDrive: { holderLabel: "the review agent's drive of feature/x", cutOff: false, stop: null } })
     expect(row.title).toBe("The review agent's drive of feature/x is running")
-    expect(row.subtitle).toContain('review round ends')
+    expect(row.subtitle).toContain('until the review hands back')
     expect(row.action).toBeUndefined()
   })
 

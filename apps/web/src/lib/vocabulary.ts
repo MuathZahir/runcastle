@@ -13,7 +13,6 @@
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
 import type { AgentRuntime } from '@runcastle/core'
-import { glossaryEntry } from './glossary'
 
 /**
  * What to call the thing on the other side of a session (decision 11).
@@ -46,13 +45,6 @@ export function agentName(runtime: AgentRuntime | null | undefined): string {
 export function sessionAgentName(session: { runtime?: AgentRuntime | null }): string {
   return agentName(session.runtime ?? DEFAULT_RUNTIME)
 }
-
-/**
- * Tickets + build bodies: the mechanics behind a round (finding F12) — who
- * builds it and where the work lands. The glossary's sentence, so the app says
- * it in one way everywhere (ready-to-publish decision 16).
- */
-export const BURN_EXPLAINER = glossaryEntry('round').definition
 
 /**
  * Status bar, on the notify toggle. It names the moment a ping fires: a feature

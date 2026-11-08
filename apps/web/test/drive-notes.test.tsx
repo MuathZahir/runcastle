@@ -352,7 +352,7 @@ describe('the line over the chat', () => {
 
   it('says the agent is held while the drive runs, with the way to let it go', () => {
     const { onStop } = line(true)
-    expect(screen.getByText(/the agent can’t start a round/)).toBeTruthy()
+    expect(screen.getByText(/the agent can’t land its own edits/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Stop drive' }))
     expect(onStop).toHaveBeenCalledTimes(1)
   })

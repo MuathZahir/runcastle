@@ -10,7 +10,7 @@ export function unsentNotes(notes: readonly TestNote[]): TestNote[] {
 
 /**
  * Stop the drive, then send (small-fixes-before-publish decisions 8, 15): the
- * lead never wakes into a drive that holds its rounds, and the notes go even
+ * lead never wakes into a drive that holds its branch, and the notes go even
  * when the stop fails — that failure shows the way a failed Stop does, from the
  * stop itself.
  */
@@ -22,4 +22,4 @@ export function stopThenSend(stop: () => Promise<unknown>, send: () => void): vo
 
 /** Said while a drive of this feature runs (`the-feature-lead-runs-rounds` decision 19). */
 export const DRIVE_HOLDS_THE_AGENT =
-  'While this drive runs, the agent can’t start a round or land its own edits.'
+  'While this drive runs, the agent can’t land its own edits.'
