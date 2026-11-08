@@ -280,13 +280,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A row click always opens the lead, even when a worker needs you', 'Your call: a click that always lands in the same place is the point of this feature.'],
     ['The phone shows no arrow', 'The phone never had the workers page; its chat title already lists every worker one tap away.', 'assumed'],
     ['A feature with no workers gets no new "+" on the list', 'The brief rules out changing how workers start; palette, Ctrl+Shift+O and the phone\'s list remain.', 'assumed'],
-    ['The open feature\'s row stays highlighted whatever chat is in front', 'The row stands for the feature; the workers page shows which of its chats.']
+    ['The open feature\'s row stays highlighted whatever chat is in front', 'The row stands for the feature; the workers page shows which of its chats.'],
+    ['The open feature\'s row menu renames and exports the lead\'s chat', 'Found while building: the Lead card was the only place for them, and it is now behind the arrow, or absent with no workers.', 'assumed']
   ]
   var C = [
     [8, 'A pill on phone rows too, with a full 44px tap target.', 'You asked for screenshots of the arrow at phone width, so you may expect one there.', 'challenged'],
     [5, 'Count everything on the workers page, or show no number.', 'A taste call; the approved design shows the live count.'],
     [3, 'Opening a worker\'s chat from a notification or link also goes down; a reload keeps the workers page.', 'The challenger wanted a reload to keep the workers page.', 'challenged'],
-    [9, 'Add "New worker" to the row\'s "…" menu.', 'Without the old click-through, a feature with no workers has no visible "+" in the sidebar.']
+    [9, 'Add "New worker" to the row\'s "…" menu.', 'Without the old click-through, a feature with no workers has no visible "+" in the sidebar.'],
+    [11, 'Leave them on the Lead card only, and show the arrow on every started feature.', 'Added while building, after the plan was agreed.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

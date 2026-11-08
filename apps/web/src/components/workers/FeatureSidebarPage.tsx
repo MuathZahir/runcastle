@@ -9,8 +9,9 @@ import { FeatureProgressIcon, ItemShelf, ItemWorkingShelf, OrchestratorCard, Sid
 
 /**
  * The drill-in sidebar (interactive-workers, the placement the human picked):
- * opening a feature swaps the left sidebar to the feature's own page, one level
- * down, built exactly as the features list is one level up:
+ * the workers arrow on a feature's row (clicking-a-feature-opens-its-lead)
+ * swaps the left sidebar to the feature's own page, one level down, built
+ * exactly as the features list is one level up:
  *
  * - the feature's header — back, its progress glyph and title, "+" (New
  *   worker) — where the project's head sits above the list;

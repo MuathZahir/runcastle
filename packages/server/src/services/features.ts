@@ -57,7 +57,7 @@ import { endSession } from '../pty/end-session'
 import { leadState, NO_LEAD } from '../threads/read'
 import { agentHost } from '../threads/types'
 import { listByFeature, ticketStatusCounts } from './tickets'
-import { removeFeatureWorkers, stopFeatureWorkers, workerProgressByFeature, workersHoldingReady, workersWorkingByFeature } from '../workers/service'
+import { removeFeatureWorkers, stopFeatureWorkers, workerProgressByFeature, workersHoldingReady, workersPageByFeature, workersWorkingByFeature } from '../workers/service'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
@@ -92,6 +92,13 @@ export interface FeatureListItem extends Feature {
   workersWorking: number
   /** Its build workers (with you, on its own) not dropped, and how many landed: the progress pie of a feature built with workers. */
   workerProgress: { counted: number; landed: number }
+  /**
+   * Its workers page, for the arrow on its sidebar row
+   * (clicking-a-feature-opens-its-lead decisions 4, 5): `inPlay` workers need
+   * the human or are at work. Null when the page would list nothing, and the
+   * row has no arrow.
+   */
+  workersPage: { inPlay: number } | null
   /**
    * The feature's open session, or null when it has none — an ended session
    * clears this entirely, because a conversation nobody is in is not a claim on
@@ -455,6 +462,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const ticketStatuses = ticketStatusCounts(ctx, projectId)
   const working = workersWorkingByFeature(ctx, projectId)
   const workerShares = workerProgressByFeature(ctx, projectId)
+  const workerPages = workersPageByFeature(ctx, projectId)
   const needEvents = needEventsByProject(ctx, projectId)
   const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
 
@@ -476,6 +484,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       ticketCounts: counts,
       workersWorking: working.get(feature.id) ?? 0,
       workerProgress: workerShares.get(feature.id) ?? { counted: 0, landed: 0 },
+      workersPage: workerPages.get(feature.id) ?? null,
       liveSession: liveSessionOf(ctx, feature.id),
       leadAwaitsHuman: lead.awaitsHuman,
       leadInBackground: lead.inBackground,

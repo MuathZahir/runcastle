@@ -56,6 +56,26 @@ describe('feature.list lastActivityAt', () => {
     expect(byId.get(idle.id)).toBe(0)
   })
 
+  it('says what each feature’s workers page holds, for its row’s arrow (clicking-a-feature-opens-its-lead decisions 4, 5)', () => {
+    const mixed = seedFeature(ctx, projectId, { slug: 'mixed' })
+    const settled = seedFeature(ctx, projectId, { slug: 'settled' })
+    const oldChat = seedFeature(ctx, projectId, { slug: 'old-chat' })
+    const leadOnly = seedFeature(ctx, projectId, { slug: 'lead-only' })
+    for (const status of ['working', 'queued', 'needs-you', 'failed', 'handed-back', 'landed', 'dropped'] as const) seedHostReview(ctx, mixed, '/repo', status)
+    for (const status of ['landed', 'dropped'] as const) seedHostReview(ctx, settled, '/repo', status)
+    createSessionRow(ctx, { featureId: oldChat.id, kind: 'side', worktreePath: '/wt' })
+    createSessionRow(ctx, { featureId: leadOnly.id, kind: 'chat', worktreePath: '/wt' })
+
+    const byId = new Map(list(ctx, projectId).map((f) => [f.id, f.workersPage]))
+    // In play: waiting on you, failed, working or queued.
+    expect(byId.get(mixed.id)).toEqual({ inPlay: 4 })
+    // Only done workers still have a page to reach them on.
+    expect(byId.get(settled.id)).toEqual({ inPlay: 0 })
+    expect(byId.get(oldChat.id)).toEqual({ inPlay: 0 })
+    // The lead alone has nothing for the page to list: no arrow.
+    expect(byId.get(leadOnly.id)).toBeNull()
+  })
+
   it('scopes activity to its own feature', () => {
     const quiet = seedFeature(ctx, projectId, { slug: 'quiet', createdAt: 5_000 })
     const busy = seedFeature(ctx, projectId, { slug: 'busy', createdAt: 5_000 })

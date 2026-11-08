@@ -3,7 +3,7 @@
 Planned without the human (a self-planning run, 2026-11-08). Decisions marked
 **Assumed.** are the planner's own pick; the human confirms or changes them.
 
-Check first: 3, 5, 8, 9
+Check first: 3, 5, 8, 9, 11
 
 ## 1. Clicking a feature's row opens its lead's chat and keeps the features list
 **Decision:** Supersedes the "opening a feature swaps the sidebar" part of interactive-workers decision 24. Clicking a feature's row in the sidebar opens the feature with its lead's chat in front, and the sidebar stays on the features list. Clicking the row of the feature already open brings its lead back to the front if a worker's chat was there.
@@ -52,3 +52,8 @@ Check first: 3, 5, 8, 9
 ## 10. The open feature's row stays highlighted whatever chat is in front
 **Decision:** On the features list, the open feature's row is highlighted whether its lead's chat or one of its workers' chats is in front. Down on the workers page, the Lead card or the worker's row is highlighted, as today.
 **Why:** The row stands for the feature, and the human needs to see which feature they are in; the workers page is where to see which of its chats.
+
+## 11. The open feature's row menu renames and exports the lead's chat
+**Decision:** The open feature's row "…" menu gains "Rename the lead's chat…" and "Export the lead's chat" above its feature actions, the same two the Lead card on the workers page offers. Nothing else changes in that menu; a chat nobody has started offers neither.
+**Why:** Found while building: the Lead card was the only place to rename or export the lead's chat. With the list kept, it is now behind the arrow, and a feature with no workers has no arrow at all, so those two would have been lost.
+**Assumed.** Alternative: leave them on the Lead card only, and show the arrow on every started feature so the card is always reachable.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
 import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar } from '../ui'
@@ -305,23 +305,42 @@ export function Sidebar(props: SidebarProps) {
   }
 
   // The drill-in (interactive-workers decision 24): the open feature's own page
-  // replaces the features list, until its back chevron goes up a level. Up
-  // holds only while the same thread stays in front, so opening the feature or
-  // any of its threads again (a row, the palette, a push tap, the address)
-  // comes back down. Going either way changes only the sidebar.
-  const [upFrom, setUpFrom] = useState<{ featureId: string; current: string | null } | null>(null)
+  // in place of the features list. Only the workers arrow on its row goes down
+  // to it (clicking-a-feature-opens-its-lead decisions 2, 3): a row click, the
+  // palette, a push tap or the address open their chat and leave the list in
+  // place. Back goes up; opening anything other than that feature forgets it.
+  // Going either way changes only the sidebar.
+  const [downTo, setDownTo] = useState<string | null>(null)
   const [motion, setMotion] = useState<'down' | 'up' | null>(null)
+  useEffect(() => {
+    if (view !== 'feature' || selectedFeatureId !== downTo) setDownTo(null)
+    // Only a move to another feature or view clears it; `downTo` changing is the arrow's own doing.
+  }, [view, selectedFeatureId])
   const openFeature = featureThreads ? features.find((f) => f.id === selectedFeatureId) : undefined
-  const wentUp = upFrom !== null && upFrom.featureId === selectedFeatureId && upFrom.current === featureThreads?.current
-  const drilled = !phone && featureThreads && openFeature && !wentUp ? { feature: openFeature, threads: featureThreads } : null
+  const drilled =
+    !phone && featureThreads && openFeature && downTo === openFeature.id ? { feature: openFeature, threads: featureThreads } : null
   const goUp = () => {
-    setUpFrom({ featureId: selectedFeatureId ?? '', current: featureThreads?.current ?? null })
+    setDownTo(null)
     setMotion('up')
+  }
+
+  // The open feature's lead chat, renamed or exported from its row's "…": with
+  // the list kept (decision 1), the Lead card on the workers page is no longer
+  // one click away, and a feature with no workers has no such page.
+  const leadChatActions = (): FeatureAction[] => {
+    const lead = featureThreads?.threads.find((t) => t.role === 'main')
+    const actions = lead ? threadActionsFor(lead) : []
+    return actions.map((a, i) => ({
+      ...a,
+      label: a.key === 'rename' ? 'Rename the lead’s chat…' : a.key === 'export' ? 'Export the lead’s chat' : a.label,
+      ...(i === actions.length - 1 ? { ruleAfter: true } : {}),
+    }))
   }
 
   const row = (f: FeatureListItem, nested = false) => {
     // The phone's list (phone decision 1): only shown with nothing open, so no
-    // row is current, and a row is the whole door — no hover menu, no threads.
+    // row is current, and a row is the whole door — no hover menu, no threads,
+    // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
     if (phone) return <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={onSelect} actions={[]} nested={nested} />
     const open = f.id === selectedFeatureId && view === 'feature'
     return (
@@ -329,16 +348,28 @@ export function Sidebar(props: SidebarProps) {
         key={f.id}
         f={f}
         active={open}
-        // A feature row goes down to its page; the open one's also brings its lead to the front.
+        // A feature row opens its lead, whatever its row says (decisions 1, 7);
+        // the open one's brings its lead back to the front.
         onSelect={(id) => {
-          setUpFrom(null)
-          setMotion('down')
           const main = open && featureThreads?.threads.find((t) => t.role === 'main')
           if (main) featureThreads?.pick(main.id)
           if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
         }}
-        actions={actionsFor(f)}
+        actions={open ? [...leadChatActions(), ...actionsFor(f)] : actionsFor(f)}
         nested={nested}
+        {...(f.workersPage
+          ? {
+              workers: {
+                live: f.workersPage.inPlay,
+                // Down to its workers page: the open feature keeps the chat in front, any other opens on its lead.
+                onOpen: () => {
+                  setDownTo(f.id)
+                  setMotion('down')
+                  if (!open) onSelect(f.id)
+                },
+              },
+            }
+          : {})}
       />
     )
   }
