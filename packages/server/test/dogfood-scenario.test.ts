@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { RuncastleConfig } from '@runcastle/core'
+import { foldThread, RuncastleConfig, type ThreadEvent } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/sql-js'
 import { simpleGit } from 'simple-git'
@@ -151,6 +151,33 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     expect(kinds.filter((k) => k === 'chat')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'side')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'worker')).toHaveLength(rows.length)
+  })
+
+  // `.runcastle/scenarios/chat/words-between-work.ts` (every-word-the-agent-writes-stays-in-view): a project chat to read.
+  it('seeds a project chat whose turns have words between their work, and prints its page', async () => {
+    const out = runScenario(
+      { RUNCASTLE_DATA_DIR: dataDir, RUNCASTLE_SCENARIO_RUN: 'abc123' },
+      join('.runcastle', 'scenarios', 'chat', 'words-between-work.ts'),
+    )
+    expect(out.stderr).not.toMatch(/\[words-between-work\]/)
+    expect(out.status).toBe(0)
+    const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
+    const chat = ctx.db.select().from(sessions).where(eq(sessions.projectId, projectId)).all().find((s) => s.kind === 'project')!
+    expect(out.stdout.split(/\r?\n/).filter((l) => l.startsWith('ENTRY_URL='))).toEqual([`ENTRY_URL=/p/${projectId}/chat?thread=${chat.id}`])
+
+    const log = readFileSync(join(dataDir, 'sessions', chat.id, 'thread.jsonl'), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as ThreadEvent)
+    const view = foldThread(log)
+    expect(view.items.map((x) => x.kind)).toEqual([
+      'user', 'work', 'agent', 'work', 'agent', 'work', 'agent', 'work', 'agent', 'shown', 'agent', 'changes',
+      'user', 'agent',
+      'user', 'agent', 'work', 'agent', 'work', 'agent', 'work', 'agent', 'work', 'agent', 'work', 'agent', 'changes',
+    ])
+    const shown = view.items.find((x) => x.kind === 'shown')
+    const file = shown?.kind === 'shown' ? shown.files[0] : undefined
+    expect(readFileSync(join(dataDir, 'sessions', chat.id, 'shown', file!.src.split('/').pop()!), 'utf8')).toContain('<svg')
   })
 
   // `.runcastle/scenarios/workers/feature-with-drive-workers.ts` (drive-chats-become-workers): the drive lands on its page.

@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every word the agent writes stays in view preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
+.ba > div > .hint{margin-bottom:8px}
+.turn{padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:22px}
+.turn .you{align-self:flex-end;max-width:85%;padding:8px 12px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-raised);font-size:13px;line-height:20px}
+.turn .fold{display:flex;align-items:center;gap:6px;color:var(--color-text-tertiary);font-size:13px;height:24px}
+.turn .fold svg{width:12px;height:12px}
+.turn .fold.live{color:var(--color-text-secondary)}
+.turn .say{color:var(--color-text)}
+.turn .hidden{color:var(--color-text-disabled);font-size:12px;font-style:italic;margin:-6px 0 0 14px;border-left:1px solid var(--color-border);padding-left:10px}
+.turn .card{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:8px 12px;font-size:13px;color:var(--color-text-secondary);background:var(--color-fill-card)}
+.turn .pic{height:46px;border-radius:var(--radius-md);background:var(--color-fill-well)}
+.designs{display:grid;gap:10px;margin-top:12px}
+.plan{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.plan .step{padding:6px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.plan .arrow{color:var(--color-text-tertiary)}
+@media (max-width:760px){.ba{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Every word the agent writes stays in view</h1>
+  <p class="lede">The chat stops hiding the agent's own words inside "Worked for". Every paragraph shows, in the order written; only tool calls and thinking fold, between the paragraphs.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/every-word-the-agent-writes-stays-in-view/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">The same turn, today and after. The grey italics on the left are words the agent wrote that you never see unless you open the fold.</p>
+  <!-- screen:before-after -->
+  <div class="ba">
+    <div>
+      <p class="hint">Today</p>
+      <div class="screen"><div class="turn">
+        <div class="you">Can notes keep their headings and code blocks in the PDF?</div>
+        <div class="fold">Worked for 2m 51s <svg class="i"><use href="#i-chev"/></svg></div>
+        <div class="hidden">The PDF flattens the note because… · Fixes in; running the full test suite. · One test failed, and the test was wrong… · Here is the sample note exported:</div>
+        <div class="card">sample-note.png</div>
+        <div class="say">Headings, code blocks and lists now come through. One thing I did not decide for you: should a long line wrap?</div>
+        <div class="card">3 changed files +70 −5</div>
+      </div></div>
+    </div>
+    <div>
+      <p class="hint">After</p>
+      <div class="screen"><div class="turn">
+        <div class="you">Can notes keep their headings and code blocks in the PDF?</div>
+        <div class="fold">Worked for 38s <svg class="i"><use href="#i-chev"/></svg> <a class="pin" data-d="3">3</a></div>
+        <div class="say">The PDF flattens the note because <span class="mono">NoteDocument</span> renders the whole body as one block… <a class="pin" data-d="1">1</a></div>
+        <div class="fold">Worked for 1m 12s <svg class="i"><use href="#i-chev"/></svg></div>
+        <div class="say">Fixes in; running the full test suite. <a class="pin" data-d="4">4</a></div>
+        <div class="fold">Worked for 46s <svg class="i"><use href="#i-chev"/></svg> <a class="pin" data-d="11">11</a></div>
+        <div class="say">One test failed, and the test was wrong rather than the code…</div>
+        <div class="fold">✦ Thought for 5s <svg class="i"><use href="#i-chev"/></svg> <a class="pin" data-d="9">9</a></div>
+        <div class="say">Here is the sample note exported:</div>
+        <div class="pic" title="the shown picture"></div><div class="hint" style="margin-top:-6px">Shown where it was shown <a class="pin" data-d="5">5</a></div>
+        <div class="say">Headings, code blocks and lists now come through. One thing I did not decide for you: should a long line wrap? <a class="pin" data-d="8">8</a> <a class="pin" data-d="10">10</a></div>
+        <div class="card">3 changed files +70 −5 <a class="pin" data-d="6">6</a></div>
+      </div></div>
+    </div>
+  </div>
+  <!-- /screen:before-after -->
+
+  <div class="sub">
+    <h3>While it runs</h3>
+    <p class="hint">The newest run of work shows open; it folds the moment words follow it, so nothing you have read ever moves. <a class="pin" data-d="2">2</a></p>
+    <div class="screen" style="max-width:520px"><div class="turn">
+      <div class="fold">Worked for 1m 12s <svg class="i"><use href="#i-chev"/></svg></div>
+      <div class="say">Fixes in; running the full test suite.</div>
+      <div class="fold live">◌ Running 2 commands <span class="mono">bun test</span></div>
+    </div></div>
+  </div>
+
+  <div class="sub">
+    <h3>Designed screens</h3>
+    <p class="hint">Real components on sample data, each with a card in the chat and in the Design tab. All three approved by the human.</p>
+    <div class="designs">
+<!-- screen:turn-settled -->
+<div class="designed">
+  <h3>A finished turn, every word in view</h3>
+  <p>Layout, folds and hover actions are the real chat components; the turn is sample data.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ChatThread.tsx, Work.tsx · design page /preview/turn-words.html?state=settled</p>
+</div>
+<!-- /screen:turn-settled -->
+<!-- screen:turn-live -->
+<div class="designed">
+  <h3>The same turn while it runs</h3>
+  <p>Earlier runs folded, the newest open with its call in flight; sample data.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ChatThread.tsx, Work.tsx · design page /preview/turn-words.html?state=live</p>
+</div>
+<!-- /screen:turn-live -->
+<!-- screen:turn-ladder -->
+<div class="designed">
+  <h3>A chatty turn: a line before every tool call</h3>
+  <p>What an agent that narrates every step looks like with nothing merged <a class="pin" data-d="12">12</a>; sample data.</p>
+  <p class="mono">apps/web/src/components/chat/thread/ChatThread.tsx, Work.tsx · design page /preview/turn-words.html?state=ladder</p>
+</div>
+<!-- /screen:turn-ladder -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>How it gets built</h3>
+    <p class="hint">Small enough to build in the lead's own chat: no worker tickets, then one review round.</p>
+    <div class="plan">
+      <span class="step">Lead builds: the fold rule, the two chat components, a seeded chat to review on</span><span class="arrow">→</span>
+      <span class="step">Typecheck and tests</span><span class="arrow">→</span>
+      <span class="step">Review round: drives real chats, Review Package with screenshots</span><span class="arrow">→</span>
+      <span class="step">You test-drive and merge</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Dropping the "write the whole answer after your last tool call" workaround from agents' notes, once this ships</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>How agents are prompted</li>
+      <li><i class="dot"></i>How thinking is shown, beyond folding with the tools</li>
+      <li><i class="dot"></i>Promoting thinking into the reply (a reply that only existed in thinking stays unseen)</li>
+      <li><i class="dot"></i>The composer, ask dock, cards and the changed-files card's own look</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+<p class="hint">One rule in one place: core's thread fold (<span class="mono">foldThread</span>), which the server and the web share.</p>
+      <div class="screen" style="padding:14px 16px;margin-top:10px">
+        <p class="mono">Today: segments → split at the LAST real tool call → [one work fold] [questions pulled out] [answer]</p>
+        <p class="mono" style="margin-top:8px">After: segments → walk in order → words · fold · words · card · words · fold … · changes card</p>
+      </div>
+      <ul style="margin:12px 0 0;padding-left:18px;color:var(--color-text-secondary)">
+        <li>Each stretch of text segments becomes one <span class="mono">agent</span> item; talk-only calls (wait_for_you, show_file…) still show nothing and do not split words.</li>
+        <li>Each run of tools, thinking and subagents becomes one <span class="mono">work</span> item with its own time; <span class="mono">live</span> only while it is the turn's last item.</li>
+        <li>The <span class="mono">asked</span> item and the <span class="mono">narration</span> step retire; item ids stay stable while a turn streams so open folds stay open.</li>
+        <li>Web: <span class="mono">WorkBlock</span> folds one run (thinking-only runs as one "Thought for"); <span class="mono">AgentMessage</span> shows Branch and the model only on a turn's last words.</li>
+        <li>A scenario seeds a project chat with a multi-stretch turn and a ladder turn, for the review and the test drive.</li>
+        <li>The chat's Copy / Save Markdown and a branched chat's preface use the same fold, so they carry every word too.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Every word the agent writes shows, in the order written', 'Decided in triage: only tools, thinking and subagents fold, so replies stop reading as cut off. Any rule telling a paragraph from a progress line would misfire.'],
+    ['Words never move once shown: a run of work folds the moment words follow it', 'Removes today\'s jump where streaming words get pulled into the fold, and keeps a long live turn short. A finished turn looks exactly like the live one did.', 'assumed'],
+    ['Each fold says its own time, and the turn says its total once', 'Each fold has its own time; the turn\'s total shows quietly beside the model name on its last words. Changed by the orchestrator, as the challenger suggested.', 'assumed'],
+    ['Words between work read as normal prose', 'A lighter style for "progress" needs the rule the human rejected, and greying by position makes mid-turn words feel second-class. Confirmed by the human.'],
+    ['Files, cards and answered asks sit where they happened', 'In order is now the rule for everything in a turn; today\'s spot only made sense with one fold.', 'assumed'],
+    ['The changed-files card stays at the turn\'s end', 'It sums up the whole turn, and the turn reports its files only when it ends.', 'assumed'],
+    ['Every chat reads the new way, old ones included', 'Chats are re-read from their stored log each time they open, so old chats get it for free.', 'assumed'],
+    ['Questions stay where they were asked', 'Pulling questions out of the fold existed only because words were hidden there.', 'assumed'],
+    ['A run that is only thinking reads "Thought for …"', 'Thinking-only gaps will be common; a fold inside a fold for one thought is noise.', 'assumed'],
+    ['Copy on every message takes the whole turn from its last words; branching sits on the last words only', 'Copying a split reply should take one click; a branch always carries the whole turn. Copy-the-whole-turn changed by the orchestrator, as the challenger suggested.', 'assumed'],
+    ['A fold\'s line says only its time', 'Keeps the turn quiet between paragraphs; what the run did is one click away. Confirmed by the human.'],
+    ['Short stretches are never merged', 'Any merge needs a rule that tells a throwaway line from a real one. The human accepted the ladder.'],
+    ['An answered ask\'s line follows the run of work it was asked in', 'Refines 5. Splitting the run at the answer would fold an approved command away while it still runs.', 'assumed']
+  ]
+  var C = [
+    [2, 'Keep every run of a running turn open until the turn ends, then fold them all.', 'It sets how a live turn reads and how much moves on screen; you may prefer to watch every step of the turn at once.'],
+    [3, 'Only each fold\'s own time, no total anywhere.', 'The orchestrator added the total on the challenger\'s advice; you have not seen it.', 'orchestrator'],
+    [10, 'Copy on the last words copies only that stretch.', 'The orchestrator chose whole-turn Copy on the challenger\'s advice; you have not seen it.', 'orchestrator']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

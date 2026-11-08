@@ -109,7 +109,7 @@ export const OPENING: ThreadItem[] = [
     kind: 'work',
     id: 'w1',
     seconds: 41 * 60 + 12,
-    steps: [{ kind: 'narration', id: 'n1', text: 'Planning the export, then designing its four screens.' }],
+    steps: [{ kind: 'tools', id: 'n1', calls: [{ id: 'n1c', kind: 'read', title: 'docs/features/export-notes-as-pdf/brief.md', status: 'completed' }] }],
   },
 ]
 

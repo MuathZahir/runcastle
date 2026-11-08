@@ -24,7 +24,7 @@ import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
 import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
 import { k } from './ComposerParts'
-import { ChangesCard, WorkBlock } from './Work'
+import { ChangesCard, WorkBlock, duration } from './Work'
 import { SettingsLink } from '../../settings/MessageWithSettingsLink'
 import type { SettingsPage } from '../../../lib/settings'
 
@@ -194,6 +194,7 @@ export function ChatThread({
                     item={item}
                     actions={actions}
                     locked={state !== 'idle'}
+                    {...(item.kind === 'agent' && lastWordsOfTurn(items, i) ? { turnWords: turnWords(items, i) } : {})}
                     {...(item.kind === 'agent' && next?.kind === 'changes' ? { changes: next.files } : {})}
                   />
                 </div>
@@ -244,12 +245,15 @@ function Item({
   actions,
   locked,
   changes,
+  turnWords,
 }: {
   item: ThreadItem
   actions?: MessageActions
   locked: boolean
   /** The changes card that follows an answer, drawn inside it. */
   changes?: FileChange[]
+  /** On a turn's last words: all of the turn's words, for its Copy; they also carry the turn's Branch, model and time. */
+  turnWords?: string
 }) {
   switch (item.kind) {
     case 'user':
@@ -265,7 +269,7 @@ function Item({
     case 'work':
       return <WorkBlock steps={item.steps} seconds={item.seconds} live={item.live} />
     case 'agent':
-      return <AgentMessage item={item} actions={actions} {...(changes ? { changes } : {})} />
+      return <AgentMessage item={item} actions={actions} {...(turnWords !== undefined ? { turnWords } : {})} {...(changes ? { changes } : {})} />
     case 'changes':
       return <ChangesCard files={item.files} />
     case 'shown':
@@ -353,6 +357,28 @@ function compactedLine(item: Extract<ThreadItem, { kind: 'compacted' }>): string
  * divider takes a turn's air above it; the rest of a turn — the work, the
  * answer, its changes, an answered ask — sits close under what it follows.
  */
+/**
+ * Whether the agent message at `at` is its turn's last words: no other agent
+ * message follows it before the next message of yours.
+ */
+function lastWordsOfTurn(items: ThreadItem[], at: number): boolean {
+  for (let n = at + 1; n < items.length; n++) {
+    if (items[n].kind === 'user') return true
+    if (items[n].kind === 'agent') return false
+  }
+  return true
+}
+
+/** Every stretch of words in the turn up to the agent message at `at`, in order, a blank line between. */
+function turnWords(items: ThreadItem[], at: number): string {
+  const said: string[] = []
+  for (let n = at; n >= 0 && items[n].kind !== 'user'; n--) {
+    const item = items[n]
+    if (item.kind === 'agent') said.unshift(item.text.trim())
+  }
+  return said.join('\n\n')
+}
+
 function opensTurn(item: ThreadItem): boolean {
   return item.kind === 'user' || item.kind === 'compacted' || item.kind === 'model' || item.kind === 'notice'
 }
@@ -509,29 +535,37 @@ function UserMessage({
 }
 
 /**
- * The agent's answer, and the changes card its turn made when there is one
- * (the-chat-looks-the-part decision 11): one block, so the hover actions hang
- * under the card rather than over it.
+ * A stretch of the agent's words, and the changes card its turn made when it
+ * is the turn's last (the-chat-looks-the-part decision 11): one block, so the
+ * hover actions hang under the card rather than over it. An earlier stretch
+ * copies itself; the turn's last words copy the whole turn's words, and only
+ * they branch and name the model and the turn's time, because a branch always
+ * carries the whole turn.
  */
 function AgentMessage({
   item,
   actions,
   changes,
+  turnWords,
 }: {
   item: Extract<ThreadItem, { kind: 'agent' }>
   actions?: MessageActions
   changes?: FileChange[]
+  /** Set on the turn's last words: every word the turn said. */
+  turnWords?: string
 }) {
+  const lastWords = turnWords !== undefined
+  const about = [lastWords ? item.model : undefined, lastWords && item.turnSeconds !== undefined ? duration(item.turnSeconds) : undefined].filter(Boolean)
   return (
     <div className="group/msg relative flex flex-col gap-3 animate-fade-in">
       <Markdown source={item.text} size="base" tone="primary" breaks />
       {changes && <ChangesCard files={changes} />}
       <Actions align="start">
-        <CopyButton text={item.text} />
-        {actions?.onBranch && (
+        <CopyButton text={turnWords ?? item.text} />
+        {lastWords && actions?.onBranch && (
           <IconButton label="Branch into a new chat from here" icon={<IconBranchFrom />} size="sm" onClick={() => actions.onBranch?.(item.id)} />
         )}
-        {item.model && <span className="self-center pl-1 text-xs text-text-tertiary">{item.model}</span>}
+        {about.length > 0 && <span className="self-center pl-1 text-xs text-text-tertiary">{about.join(' · ')}</span>}
       </Actions>
     </div>
   )

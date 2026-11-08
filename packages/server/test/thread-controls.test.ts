@@ -1063,4 +1063,38 @@ describe('files, titles, suggestions, export', () => {
       ['# Tests', '## You', `Run them\n\n![crop.png](${src})`, '## Agent', '*Worked for 0s: read 2 files, ran 1 command*', 'All green.'].join('\n\n') + '\n',
     )
   })
+
+  it('exports every stretch of the agent’s words, in order, with the work between them (every-word-the-agent-writes-stays-in-view)', async () => {
+    setup({
+      turn: async (t) => {
+        await t.say('Reading the readme first.')
+        await t.update({ sessionUpdate: 'tool_call', toolCallId: 'r1', title: 'README.md', kind: 'read', status: 'completed' })
+        await t.say('Should I keep the old route?')
+        await t.update({ sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'bun test', kind: 'execute', status: 'completed' })
+        await t.say('All green.')
+        await t.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Worth a summary.' } })
+        await t.say('Summary: one route kept.')
+      },
+    })
+    const id = chat()
+    await caller.thread.rename({ threadId: id, title: 'Tests' })
+    await caller.thread.send({ threadId: id, text: 'Run them' })
+    await logUntil(id, turnsEnded(1))
+    const { markdown } = await caller.thread.export({ threadId: id })
+    expect(markdown).toBe(
+      [
+        '# Tests',
+        '## You',
+        'Run them',
+        '## Agent',
+        'Reading the readme first.',
+        '*Worked for 0s: read 1 file*',
+        'Should I keep the old route?',
+        '*Worked for 0s: ran 1 command*',
+        'All green.',
+        '*Thought for 1s*',
+        'Summary: one route kept.',
+      ].join('\n\n') + '\n',
+    )
+  })
 })

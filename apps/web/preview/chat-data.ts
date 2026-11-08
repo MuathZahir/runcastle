@@ -204,7 +204,6 @@ const WORKING: ThreadItem[] = [
           call({ id: 's1b', kind: 'read', title: 'src/app/Markdown.tsx' }),
         ],
       },
-      { kind: 'narration', id: 'n1', text: 'The web side uses `react-markdown`, which only targets HTML. I will parse with `mdast` and map the blocks myself.' },
       {
         kind: 'tools',
         id: 't2',
@@ -372,7 +371,6 @@ const IDLE: ThreadItem[] = [
         calls: [call({ id: 's2a', kind: 'search', title: 'react-markdown' }), call({ id: 's2b', kind: 'read', title: 'src/app/Markdown.tsx' })],
       },
       { kind: 'tools', id: 't4', calls: [call({ id: 'c10', kind: 'edit', title: 'src/server/note-document.tsx', diff: DOC_DIFF })] },
-      { kind: 'narration', id: 'n2', text: 'One test fails: a long note now fits on 2 pages where the test expects 3. The test is out of date, not the export.' },
       {
         kind: 'tools',
         id: 't5',
