@@ -233,6 +233,55 @@ describe('foldThread: words put to the human never fold away', () => {
   })
 })
 
+describe('foldThread: a chat stored before every word stayed in view', () => {
+  // The shape claude-agent-acp logs a multi-step turn in, as stored chats from
+  // before this change hold it: each call surfaces pending and untitled, its
+  // title follows, then untitled updates until it completes; usage reports
+  // fall between; words arrive under message ids between the calls; the turn
+  // ends on a question, a wait_for_you and a last line.
+  const call = (id: string, title: string, kind: 'read' | 'execute' | 'other' = 'execute'): ThreadEventBody[] => [
+    { type: 'tool', call: { id, kind, title: title.split(' ')[0] === 'Read' ? 'Read File' : 'Terminal', status: 'pending' } },
+    { type: 'tool', call: { id, title } },
+    { type: 'usage', context: { used: 40_000, size: 200_000 } },
+    { type: 'tool', call: { id } },
+    { type: 'tool', call: { id, status: 'completed' } },
+  ]
+  const say = (messageId: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId, text })
+  const stored = log(
+    prompt('p1', 'Is the export broken?'),
+    { type: 'process', state: 'running' },
+    { type: 'model', model: 'claude-opus-5-5', label: 'Opus 5.5' },
+    { type: 'turn_started' },
+    { type: 'thought', thoughtId: 'th1', text: 'Look at the export first.' },
+    ...call('toolu_1', 'Read src/export.ts', 'read'),
+    ...call('toolu_2', 'grep -n exportNote src'),
+    say('msg_1', 'The export calls the old name in two places.'),
+    say('msg_1', ' Fixing both.'),
+    ...call('toolu_3', 'sed -i s/old/new/ src/a.ts'),
+    ...call('toolu_4', 'bun test'),
+    say('msg_2', 'Tests pass. Should I also rename the route?'),
+    ...call('toolu_5', 'mcp__runcastle__wait_for_you', 'other'),
+    say('msg_3', 'Waiting on your answer.'),
+    { type: 'turn_ended', reason: 'end_turn', files: [{ path: 'src/a.ts', added: 1, removed: 1, lines: [] }] },
+  )
+
+  it('shows every message the agent wrote, in order, with each run of work folded between them', () => {
+    const v = foldThread(stored)
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent', 'work', 'agent', 'changes'])
+    expect(v.items.filter((x) => x.kind === 'agent').map((x) => (x.kind === 'agent' ? x.text : ''))).toEqual([
+      'The export calls the old name in two places. Fixing both.',
+      'Tests pass. Should I also rename the route?\n\nWaiting on your answer.',
+    ])
+    expect(work(v, 0).steps.map((s) => s.kind)).toEqual(['thought', 'tools'])
+    expect(work(v, 1).steps.flatMap((s) => (s.kind === 'tools' ? s.calls.map((c) => [c.title, c.status]) : []))).toEqual([
+      ['sed -i s/old/new/ src/a.ts', 'completed'],
+      ['bun test', 'completed'],
+    ])
+    expect(v.items.every((x) => x.kind !== 'work' || !x.live)).toBe(true)
+    expect(v.items.findLast((x) => x.kind === 'agent')).toMatchObject({ id: 'msg_2', model: 'Opus 5.5', turnSeconds: expect.any(Number) })
+  })
+})
+
 describe('foldThread: subagents across turns and late updates', () => {
   const opened = (id: string, title: string): ThreadEventBody => ({ type: 'subagent', id, title, status: 'in_progress' })
   const finished = (id: string): ThreadEventBody => ({ type: 'subagent', id, status: 'completed' })
