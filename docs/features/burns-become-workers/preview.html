@@ -169,7 +169,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="node">Lead</div>
       <div class="ind"><div class="node">Workers (build) &middot; recover by themselves <a class="pin" data-d="8">8</a><a class="pin" data-d="9">9</a><a class="pin" data-d="10">10</a></div>
       <div class="node new">Review worker &middot; enterable, chat kept <a class="pin" data-d="3">3</a><a class="pin" data-d="12">12</a></div>
-      <div class="node new">Review Package card in the lead's chat <a class="pin" data-d="4">4</a></div></div>
+      <div class="node new">Review Package card in the lead's chat <a class="pin" data-d="4">4</a></div>
+      <div class="node">Old tickets: read-only History <a class="pin" data-d="19">19</a></div></div>
     </div>
   </div></div>
 
@@ -182,17 +183,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="sub"><h3>When a worker's turn goes wrong</h3>
     <div class="flow"><span class="node">Rate limit, overload, dropped line, stall</span><span class="arr">&rarr;</span><span class="node">"carry on" in the same chat, up to 3&times; <a class="pin" data-d="8">8</a></span><span class="arr">&rarr;</span><span class="node">failed, lead woken once</span></div>
     <div class="flow"><span class="node">Usage limit</span><span class="arr">&rarr;</span><span class="node">your "carry on when the limit resets" setting, as every chat <a class="pin" data-d="7">7</a></span></div>
+    <div class="flow"><span class="node">Bad login, no credit</span><span class="arr">&rarr;</span><span class="node">queued workers held, lead told once, lifts on your next message <a class="pin" data-d="21">21</a></span></div>
     <div class="flow"><span class="node">Server restart</span><span class="arr">&rarr;</span><span class="node">"carry on where you were" <a class="pin" data-d="10">10</a></span></div>
     <div class="flow"><span class="node">Land conflicts</span><span class="arr">&rarr;</span><span class="node">"on its own": sent back to resolve, 2&times; <a class="pin" data-d="6">6</a></span><span class="arr">&rarr;</span><span class="node">then, or for "with you": the lead chooses</span></div>
   </div>
 
-  <div class="sub"><h3>How it gets built</h3><p class="hint">Burned as tickets by the runcastle you have installed (it predates workers), one at a time.</p>
-    <div class="tk"><span class="n">1</span><span>Workers recover: retries, stalls, restart, conflict send-back</span><span class="tag">Opus</span></div>
-    <div class="tk"><span class="n">2</span><span>Warm sandboxes, working rules, CPU cap, guard, token counts</span><span class="tag">Sonnet</span></div>
-    <div class="tk"><span class="n">3</span><span>The review runs as a Review worker</span><span class="tag">Opus</span></div>
-    <div class="tk"><span class="n">4</span><span>Web: no Work view, rounds or tickets; Stop; settings renamed &middot; after 3</span><span class="tag">Opus</span></div>
-    <div class="tk"><span class="n">5</span><span>Server: delete the burn engine, tickets, rounds, runs &middot; after 1&ndash;4</span><span class="tag">Sonnet</span></div>
-    <div class="tk"><span class="n">6</span><span>Review of the whole feature &middot; last</span><span class="tag">review</span></div>
+  <div class="sub"><h3>How it gets built</h3><p class="hint">Burned as tickets by the runcastle you have installed (it predates workers), one at a time, in this order.</p>
+    <div class="tk"><span class="n">7</span><span>Workers recover: retries, stalls, account hold, restart, conflict send-back</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">8</span><span>Warm sandboxes, working rules, CPU cap, guard, token counts &middot; after 7</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">9</span><span>The review runs as a Review worker &middot; after 8</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">10</span><span>Web: live Work view goes, old tickets read as History, Stop, settings renamed &middot; after 9</span><span class="tag">Opus</span></div>
+    <div class="tk"><span class="n">11</span><span>History: tables frozen, get_work_record over workers, upgrade note &middot; after 9</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">12</span><span>Server: delete the burn engine and every ticket and round writer &middot; after 10, 11</span><span class="tag">Sonnet</span></div>
+    <div class="tk"><span class="n">13</span><span>Review of the whole feature &middot; last</span><span class="tag">review</span></div>
   </div>
 </section>
 
@@ -223,7 +226,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub">
-      <p>Error patterns move from the burner into a pure classifier; the worker service retries on its turn-ended hook and watches turns for stalls. Boot reconcile wakes cut-off workers. Worker sandboxes call the image build, seed from the per-project cache, run the setup command, take the CPU cap and the guard hook; the conversation file is copied out before removal and tokens recorded. The review is a worker kind: a host thread in the checkout for drive reviews, a sandbox for gates; findings are re-keyed to it. Then sandcastle, the burner, review gates, tickets, rounds and runs are deleted, with a migration that keeps open findings and leaves a note for leads with unfinished tickets. ADR-0020 records the move.</p>
+      <p>Error patterns move from the burner into a pure classifier; the worker service retries on its turn-ended hook and watches turns for stalls. Boot reconcile wakes cut-off workers. Worker sandboxes call the image build, seed from the per-project cache, run the setup command, take the CPU cap and the guard hook; the conversation file is copied out before removal and tokens recorded. The review is a worker kind: a host thread in the checkout for drive reviews, a sandbox for gates; findings are re-keyed to it. Tickets, rounds and runs become frozen history read by a History view and get_work_record, whose seam lookup also matches the files workers changed. Then sandcastle, the burner, review gates, the per-tool timer and every ticket and round writer are deleted; leads with unfinished tickets get one note. ADR-0020 records the move.</p>
     </div>
   </details>
 </section>
@@ -251,15 +254,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["Workers start from the warm per-project dependency cache", "The burn engine's measured speed-up; a missing image is built, not refused.", "assumed"],
     ["A worker's own conversation file is kept, and its tokens counted", "The brief asks for kept transcripts and countable tokens.", "assumed"],
     ["The working rules from burns carry over to workers", "The cheaper-burns savings never reached the worker briefing.", "assumed"],
-    ["Old tickets and rounds are not kept as history", "outcome.md already records them; a history view keeps most of the old code alive.", "assumed"],
+    ["Old tickets and rounds are not kept as history", "Superseded by 19.", "superseded"],
     ["Stop stops the lead and every working worker", "Without rounds, Stop would otherwise leave workers running.", "assumed"],
     ["Plans list workers; nothing dispatches by itself", "Follows from decision 1.", "assumed"],
-    ["Work in flight at the upgrade is named, not carried", "A user mid-round must not lose work silently; the note wakes nothing.", "assumed"],
-    ["Which burn settings survive", "Agents at once, CPU cap and guard stay; the attempt and iteration counts go.", "assumed"]
+    ["Work in flight at the upgrade is named, not carried", "Superseded by 20.", "superseded"],
+    ["Which burn settings survive", "Agents at once, CPU cap and guard stay; the attempt and iteration counts go.", "assumed"],
+    ["Old tickets, rounds and runs are kept as frozen history", "Only 113 of 170 outcome.md files carry digests; nothing writes the tables, old pages still read, get_work_record works over both. Orchestrator's change.", "assumed"],
+    ["Work in flight at the upgrade stays in the history and is named", "Nothing dropped; the lead's note still wakes nothing. Orchestrator's change.", "assumed"],
+    ["An account-level error holds the queue", "Otherwise each queued worker fails the same way and wakes its lead. Orchestrator's change.", "assumed"],
+    ["The per-tool timing breakdown retires", "Token counts per worker remain; nothing else of ADR-0008 changes. Orchestrator's change.", "assumed"]
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [[3, "Every review in a sandbox, with a browser in the image", "It decides where the review touches your checkout and drive slot."], [6, "A separate conflict worker, or the lead always resolves", "It amends an interactive-workers decision you made, and adds an automatic send-back."], [8, "A fresh conversation per attempt, as burns did", "A new automatic wake; the challenger would make the last retry fresh."], [10, "Mark a cut-off worker failed and wake the lead", "A new automatic wake on restart."], [14, "Keep a read-only Work view for features shipped before this", "Old feature pages lose their tickets view."]]
+  var C = [[3, "Every review in a sandbox, with a browser in the image", "It decides where the review touches your checkout and drive slot."], [6, "A separate conflict worker, or the lead always resolves", "It amends an interactive-workers decision you made, and adds an automatic send-back."], [8, "A fresh conversation per attempt, as burns did", "A new automatic wake; the challenger would make the last retry fresh."], [10, "Mark a cut-off worker failed and wake the lead", "A new automatic wake on restart."], [19, "Drop the tables and rely on outcome.md", "Keeps a read-only History view and the frozen tables alive, which the brief's \"no old code\" pulls against."]]
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
