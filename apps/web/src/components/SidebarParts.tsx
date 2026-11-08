@@ -12,7 +12,6 @@ import {
   needsMe,
   progressState,
   rowChip,
-  ticketProgress,
   ticketShare,
   triageOf,
 } from '../lib/feature-ui'
@@ -71,11 +70,11 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
 }
 
 /**
- * A held need on a row with no round running: its words ("With the
+ * A held need on a row with no workers at work: its words ("With the
  * orchestrator · Plan to approve") stand in for "Agent working" (decision 18).
  */
 function heldNeedWords(f: FeatureListItem): string | null {
-  return !f.activeRun && f.need?.held ? f.need.words : null
+  return f.workersWorking === 0 && f.need?.held ? f.need.words : null
 }
 
 /**
@@ -86,14 +85,13 @@ function heldNeedWords(f: FeatureListItem): string | null {
  */
 export function featureStateWords(f: FeatureListItem): string {
   const lane = triageOf(f)
-  const progress = ticketProgress(f)
   if (lane === 'needsYou') {
     // An Up next feature that cannot start by itself (its hover says why).
     if (f.status === 'draft') return "Won't start by itself"
     return needsMe(f)?.label ?? 'Needs you'
   }
   if (lane === 'agentWorking') {
-    if (f.activeRun) return `Working${progress ? ` · ${progress}` : ''}`
+    if (f.workersWorking > 0) return `Working · ${f.workersWorking} ${f.workersWorking === 1 ? 'worker' : 'workers'}`
     return heldNeedWords(f) ?? 'Agent working'
   }
   // Up next says what it starts after; a backlog draft whether it could start.

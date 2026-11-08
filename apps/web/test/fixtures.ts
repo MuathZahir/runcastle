@@ -33,7 +33,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
       failed: 0,
       cancelled: 0,
     },
-    activeRun: over.activeRun ?? false,
+    workersWorking: over.workersWorking ?? 0,
     liveSession: over.liveSession ?? null,
     leadAwaitsHuman: over.leadAwaitsHuman ?? false,
     leadInBackground: over.leadInBackground ?? false,

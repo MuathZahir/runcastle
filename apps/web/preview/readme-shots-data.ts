@@ -255,7 +255,7 @@ export function features(stage: RtStage): FeatureListItem[] {
       RT.id,
       RT.title,
       building
-        ? { activeRun: true, ticketCounts: counts(10, 2, 3) }
+        ? { workersWorking: 1, ticketCounts: counts(10, 2, 3) }
         : { ticketCounts: counts(10, 0), need: need('plan', 'Plan to approve', 4 * MIN), leadAwaitsHuman: true },
       3 * MIN,
     ),

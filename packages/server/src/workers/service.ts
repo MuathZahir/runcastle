@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { eq, ne } from 'drizzle-orm'
+import { and, count, eq, inArray, ne } from 'drizzle-orm'
 import {
   type Ask,
   type Feature,
@@ -23,7 +23,7 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { envPath, sessionDir } from '@runcastle/core/paths'
-import { workers } from '../db/schema'
+import { features, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
@@ -102,6 +102,18 @@ function requireWorker(ctx: AppCtx, id: string): WorkerRow {
 /** A feature's workers, oldest first. */
 export function listWorkers(ctx: AppCtx, featureId: string): WorkerRow[] {
   return ctx.db.select().from(workers).where(eq(workers.featureId, featureId)).orderBy(workers.createdAt).all()
+}
+
+/** How many workers of each feature of the project are working or queued: what the feature list shows as at work. */
+export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<string, number> {
+  const rows = ctx.db
+    .select({ featureId: workers.featureId, n: count() })
+    .from(workers)
+    .innerJoin(features, eq(features.id, workers.featureId))
+    .where(and(eq(features.projectId, projectId), inArray(workers.status, ['working', 'queued'])))
+    .groupBy(workers.featureId)
+    .all()
+  return new Map(rows.map((r) => [r.featureId, r.n]))
 }
 
 /** A worker of `featureId`: refuses another feature's, so a lead acts only on its own workers. */

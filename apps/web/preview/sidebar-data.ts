@@ -42,7 +42,7 @@ export const busyFeatures: FeatureListItem[] = [
   }),
   f('Changelog file per release', { ticketCounts: tickets(5, 5), waitingReason: 'ready to test' }),
   f('Prepare reruns stale checks', {
-    activeRun: true,
+    workersWorking: 1,
     ticketCounts: tickets(7, 3),
   }),
   f('Note capture keeps drafts', { liveSession: { status: 'live', awaitingInput: false } }),

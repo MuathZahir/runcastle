@@ -91,7 +91,7 @@ describe('PortfolioHome', () => {
   })
 
   it('sits live projects first in their own card, waiting before running', () => {
-    const running: FeatureListItem = listItem({ activeRun: true })
+    const running: FeatureListItem = listItem({ workersWorking: 1 })
     const waiting: FeatureListItem = listItem({ need: need('test', 'Ready to test') })
     stub.features = [[], [running], [waiting]]
     render(

@@ -24,7 +24,7 @@ export const featuresOf = (input: unknown) => {
     ]
   if (id === 'proj_3') return []
   return [
-    listItem({ id: 'f3', title: 'Slack alerts on failed runs', activeRun: true }),
+    listItem({ id: 'f3', title: 'Slack alerts on failed runs', workersWorking: 1 }),
     listItem({ id: 'f4', title: 'Export a run as a report' }),
     listItem({ id: 'f5', title: 'Faster sidebar' }),
   ]

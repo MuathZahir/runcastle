@@ -145,7 +145,7 @@ describe('the lanes and order around Up next', () => {
     const groups = triage([
       ...list,
       upNext('stuck', [MERGED]),
-      listItem({ id: 'working', activeRun: true }),
+      listItem({ id: 'working', workersWorking: 1 }),
       listItem({ id: 'stopped' }),
       listItem({ id: 'shipped', status: 'shipped' }),
     ])

@@ -42,7 +42,7 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
     projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
   )
   const stats = projects.map((_, i) => projectStats(featureQueries[i]?.data ?? []))
-  const running = stats.reduce((n, s) => n + s.activeRuns, 0)
+  const running = stats.reduce((n, s) => n + s.working, 0)
   const waiting = stats.reduce((n, s) => n + s.needsYou, 0)
 
   const rows = projects.map((project, i) => ({
@@ -51,8 +51,8 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
     loading: featureQueries[i]?.data === undefined,
   }))
   const live = rows
-    .filter((r) => r.stats.needsYou > 0 || r.stats.activeRuns > 0)
-    .sort((a, b) => b.stats.needsYou - a.stats.needsYou || b.stats.activeRuns - a.stats.activeRuns)
+    .filter((r) => r.stats.needsYou > 0 || r.stats.working > 0)
+    .sort((a, b) => b.stats.needsYou - a.stats.needsYou || b.stats.working - a.stats.working)
   const quiet = rows.filter((r) => !live.includes(r))
   const row = (r: (typeof rows)[number], i: number) => (
     <ProjectCard

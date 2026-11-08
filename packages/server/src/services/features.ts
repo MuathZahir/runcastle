@@ -46,7 +46,6 @@ import { needEventsByProject, needOf } from './feature-need'
 import {
   getFeatureRow,
   getProjectById,
-  hasActiveRun,
   listRunsByFeature,
   listSessionsByFeature,
   projectForFeature,
@@ -58,7 +57,7 @@ import { endSession } from '../pty/end-session'
 import { leadState, NO_LEAD } from '../threads/read'
 import { agentHost } from '../threads/types'
 import { listByFeature, ticketStatusCounts } from './tickets'
-import { removeFeatureWorkers, stopFeatureWorkers, workersHoldingReady } from '../workers/service'
+import { removeFeatureWorkers, stopFeatureWorkers, workersHoldingReady, workersWorkingByFeature } from '../workers/service'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
@@ -76,9 +75,8 @@ export interface TicketCounts {
 
 /**
  * A feature's open terminal, as the triage lanes read it (decisions §3): is one
- * open at all, and is its agent mid-turn or waiting on the human? `activeRun`
- * answers the same question for the unattended burner; this is the HITL half,
- * which the list simply did not carry.
+ * open at all, and is its agent mid-turn or waiting on the human?
+ * `workersWorking` answers the same question for the feature's workers.
  */
 export interface LiveSessionState {
   /** `launching` while the terminal opens, `live` once Claude Code reported in. */
@@ -88,9 +86,10 @@ export interface LiveSessionState {
 }
 
 export interface FeatureListItem extends Feature {
-  /** Every ticket, by status — the red dot reads `failed`. */
+  /** Every ticket of its frozen history, by status: the progress pie of a feature built before workers. */
   ticketCounts: TicketCounts
-  activeRun: boolean
+  /** How many of its workers are working or queued right now. */
+  workersWorking: number
   /**
    * The feature's open session, or null when it has none — an ended session
    * clears this entirely, because a conversation nobody is in is not a claim on
@@ -452,6 +451,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const deps = dependencyMaps(ctx, projectId, projectFeatures)
   const problems = upNextProblems(ctx, projectId)
   const ticketStatuses = ticketStatusCounts(ctx, projectId)
+  const working = workersWorkingByFeature(ctx, projectId)
   const needEvents = needEventsByProject(ctx, projectId)
   const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
 
@@ -471,7 +471,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     return {
       ...feature,
       ticketCounts: counts,
-      activeRun: hasActiveRun(ctx, feature.id),
+      workersWorking: working.get(feature.id) ?? 0,
       liveSession: liveSessionOf(ctx, feature.id),
       leadAwaitsHuman: lead.awaitsHuman,
       leadInBackground: lead.inBackground,

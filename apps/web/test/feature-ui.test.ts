@@ -28,7 +28,6 @@ import {
   sortForSidebar,
   testDriveFigure,
   landedShare,
-  ticketProgress,
   ticketShare,
   triage,
   triageOf,
@@ -653,7 +652,7 @@ function withSession(
 
 describe('archive derivations', () => {
   it('triageOf sorts an archived feature into the archived lane', () => {
-    expect(triageOf(listItem({ status: 'archived', activeRun: true }))).toBe('archived')
+    expect(triageOf(listItem({ status: 'archived', workersWorking: 1 }))).toBe('archived')
   })
 
   it('needsMe is null for archived features', () => {
@@ -853,7 +852,7 @@ describe('rowChip', () => {
   })
 
   it('shows Working while a run is active, outranking the age stamp', () => {
-    const chip = rowChip(listItem({ activeRun: true, lastActivityAt: NOW - 600_000 }), NOW)
+    const chip = rowChip(listItem({ workersWorking: 1, lastActivityAt: NOW - 600_000 }), NOW)
     expect(chip.kind).toBe('working')
     expect(chip.text).toBe('Working')
   })
@@ -979,7 +978,7 @@ describe('turn-aware feature states', () => {
   })
 
   it('lets an active run outrank the session and a stale waiting reason — the server needs nothing while a round runs', () => {
-    const f = withSession(true, { activeRun: true, waitingReason: 'stopped', need: null })
+    const f = withSession(true, { workersWorking: 1, waitingReason: 'stopped', need: null })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
   })
@@ -991,24 +990,6 @@ describe('turn-aware feature states', () => {
       withSession(true, { id: 'waiting' }),
     ])
     expect(sorted[0].id).toBe('waiting')
-  })
-})
-
-/**
- * improve-features-section ticket 2 — line 2's ticket progress. Omitted
- * entirely when the feature has no tickets: '0/0 done' is a figure about
- * nothing, and the rail has one line's width to spend.
- */
-describe('ticketProgress', () => {
-  it('reads every ticket done over every ticket not cancelled', () => {
-    const counts = { total: 9, pending: 2, burning: 0, done: 5, failed: 1, cancelled: 1 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('5/8')
-  })
-
-  it('is null when the feature has no tickets, or only cancelled ones', () => {
-    expect(ticketProgress(listItem())).toBeNull()
-    const cancelled = { total: 2, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 2 }
-    expect(ticketProgress(listItem({ ticketCounts: cancelled }))).toBeNull()
   })
 })
 
@@ -1052,7 +1033,7 @@ describe('landedShare', () => {
  * the row the eye lands on.
  */
 describe.skip('landingFeature', () => {
-  const working = listItem({ id: 'working', activeRun: true })
+  const working = listItem({ id: 'working', workersWorking: 1 })
   const needsYou = listItem({ id: 'needs' })
   const inProgress = listItem({ id: 'planning' })
   const draft = listItem({ id: 'draft', status: 'draft' })

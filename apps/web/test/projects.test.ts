@@ -40,7 +40,7 @@ const feat = (over: Partial<FeatureListItem>): FeatureListItem =>
     status: 'active',
     createdAt: 0,
     ticketCounts: { total: 0, pending: 0, burning: 0, done: 0, failed: 0 },
-    activeRun: false,
+    workersWorking: 0,
     ...over,
   }) as FeatureListItem
 
@@ -285,7 +285,7 @@ describe('projectStats', () => {
     expect(projectStats([])).toEqual({
       total: 0,
       needsYou: 0,
-      activeRuns: 0,
+      working: 0,
       shipped: 0,
       health: 'empty',
     })
@@ -293,10 +293,10 @@ describe('projectStats', () => {
 
   it('counts active runs and marks health working when a run is in flight', () => {
     const s = projectStats([
-      feat({ id: 'a', activeRun: true }),
+      feat({ id: 'a', workersWorking: 1 }),
       feat({ id: 'b', status: 'shipped' }),
     ])
-    expect(s.activeRuns).toBe(1)
+    expect(s.working).toBe(1)
     expect(s.shipped).toBe(1)
     expect(s.needsYou).toBe(0)
     expect(s.health).toBe('working')
@@ -305,13 +305,13 @@ describe('projectStats', () => {
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
       feat({ id: 'a', need: need('test', 'Ready to test · Checkout') }),
-      feat({ id: 'b', activeRun: true }),
+      feat({ id: 'b', workersWorking: 1 }),
       feat({ id: 'c' }), // nothing asked: in progress, not needs-you
       // Its orchestrator handles it: not counted until its hour passes (decision 18).
       feat({ id: 'd', need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) }),
     ])
     expect(s.needsYou).toBe(1)
-    expect(s.activeRuns).toBe(1)
+    expect(s.working).toBe(1)
     expect(s.health).toBe('attention')
   })
 

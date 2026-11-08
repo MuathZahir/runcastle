@@ -65,7 +65,7 @@ const fakes = withShell({
           failed: 0,
           cancelled: 0,
         },
-        activeRun: step.key === 'round',
+        workersWorking: step.key === 'round' ? 1 : 0,
         lastActivityAt: Date.now() - 4 * 60_000,
       }),
     ].map((row) => ({ ...row, title: TITLE })),
