@@ -21,8 +21,10 @@ with its own time ("Worked for 46s"); a run that is only thinking reads
 Nothing the agent writes is ever inside a fold. Shown files, posted cards (the
 plan, designs, a review package, the features card) and answered-ask lines sit
 where they happened (decision 5). The changed-files card stays once at the end
-of the turn (decision 6). Every stretch has Copy; only the turn's last words
-carry "Branch into a new chat from here" and the model name (decision 10).
+of the turn (decision 6). Every stretch has Copy; Copy on the turn's last
+words copies all of the turn's words. Only the turn's last words carry "Branch
+into a new chat from here" and the model name, with the turn's total time
+beside it ("Opus 5.5 · 3m 12s") (decisions 3, 10).
 Short stretches are never merged (decision 12).
 
 While a turn runs, the newest run of work shows open, step by step, as today.
@@ -36,7 +38,10 @@ chats) and to past chats too, because a chat is re-folded from its stored log
 each time it is read (decision 7). The same goes for the two places a chat is
 turned into text, both built on the same fold: the chat's Copy / Save as
 Markdown (`thread.export`) and the preface an agent reads when a chat is
-branched into a new one. They now carry every word as well.
+branched into a new one. They now carry every word as well. The orchestrator's
+`read_feature_chat` and the main-chat quote in a kickoff do not read the fold:
+they read the runtime's own transcript, which already keeps every text block
+of a turn in order, so they are unchanged and already whole.
 
 **The shape of it.** The whole behaviour lives in core's thread fold
 (`foldThread` in `packages/core/src/thread.ts`), which server and web share. Its
@@ -71,7 +76,10 @@ what came before it and starts a fresh sequence after it. The turn's
 **Web.** `WorkBlock` (in `Work.tsx`) folds one run, and renders a
 thinking-only run as one `Thought` fold. `ChatThread` passes each agent message
 whether it is its turn's last words (no later `agent` item before the next
-`user` item), and `AgentMessage` shows Branch and the model only then. The
+`user` item), and `AgentMessage` shows Branch, the model and the turn's total
+time only then; its Copy there takes every `agent` item of the turn, joined by
+a blank line. The turn's total comes from the fold: on `turn_ended` the turn's
+last `agent` item gets the turn's seconds. The
 designed screens below show all three states; their look is in the design
 page, not repeated here.
 
@@ -82,9 +90,8 @@ data in `turn-words-data.ts`):
 - *The same turn while it runs* — `?state=live`
 - *A chatty turn: a line before every tool call* — `?state=ladder`
 
-The page carries a Tweaks menu for the two looks still open: the tone of words
-that more work follows (decision 4) and whether a fold's line also says what
-the run did (decision 11). Whatever the human picks is written into the real
+The page carries a Tweaks menu for the one look still open: whether a fold's
+line also says what the run did (decision 11). Whatever the human picks is written into the real
 components and the menu is deleted.
 
 **Scenario.** Ship `.runcastle/scenarios/chat/words-between-work.ts`: it seeds a
@@ -105,8 +112,8 @@ scenario declared ready, since a real agent's turn is not reproducible.
   tests in `packages/core/test/thread.test.ts` that pin the old split
   (answer after the last tool, the asked item, narration steps, card placement
   ahead of the final words) are rewritten to the new rule.
-- **`threadMarkdown(view)`** (existing, server): a chat's Markdown copy now
-  holds every stretch of words; one test pins it.
+- **`threadMarkdown(view)`** (existing, server): a chat's Markdown copy and a
+  branch's preface now hold every stretch of words; one test pins it.
 - **`ChatThread` / `WorkBlock`** (existing, web): component tests for Branch
   and the model showing only on a turn's last words, and a thinking-only run
   rendering as one "Thought for …" fold.
@@ -126,8 +133,6 @@ scenario declared ready, since a real agent's turn is not reproducible.
 
 ## Open questions
 
-- The two Tweaks (decisions 4 and 11) wait for the human's pick on the design
-  page.
-- The challenger's two disagreements (decisions 3 and 10: show the turn's total
-  time on its last words; Copy on the last words copies the whole turn) wait
-  for the human.
+- The fold-line Tweak (decision 11) waits for the human's pick on the design
+  page, and the three designs wait for the human's approval.
+- Decisions 3, 4 and 10 were settled by the orchestrator, not the human.

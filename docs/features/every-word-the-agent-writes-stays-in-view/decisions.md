@@ -14,16 +14,18 @@ Check first: 2, 3, 4, 10, 12
 **Why:** Today words stream in as the answer and then jump into the fold when a tool call follows them. With every word staying in place that jump is gone, and folding each run as words follow keeps a long live turn short to read.
 **Assumed.** Alternative: keep every run of the live turn open until the turn ends, then fold them all at once.
 
-## 3. Each fold says its own time
-**Decision:** Each fold's line reads "Worked for <its own time>": from its first step to the words that follow it (or to the turn's end, for a run that ends the turn). The turn's whole time is not shown anywhere else.
-**Why:** With several folds in one turn, a single total on one of them says nothing about the others, and the folds' times add up to roughly the turn's.
-**Assumed.** Alternative: only the turn's first fold shows a time, the whole turn's, and later folds say "Worked" with no time.
+## 3. Each fold says its own time, and the turn says its total once
+**Decision:** Each fold's line reads "Worked for <its own time>": from its first step to the words that follow it (or to the turn's end, for a run that ends the turn). The turn's whole time also shows once, quietly, beside the model name in the hover line of the turn's last words ("Opus 5.5 · 3m 12s").
+**Why:** With several folds in one turn, a single total on one of them says nothing about the others; and a long turn should still say how long it ran without adding a line to every turn.
+**Assumed.** Alternative: only each fold's own time, and no total anywhere.
 **Challenged:** Also show the turn's total time once, beside the model name on its last words: adding up several folds in your head is no answer to "how long did this turn take".
+**Changed by the orchestrator:** add the turn's total somewhere unobtrusive, as the challenger suggested, so a long turn still says how long it ran. The human has not seen this.
 
 ## 4. Words between work read as normal prose
 **Decision:** Every stretch of the agent's words reads in the same full prose style, whether more work follows it or not. Short progress lines ("Fixes in; running the full test suite.") look like any other paragraph.
 **Why:** A lighter style for "progress" needs a rule that picks which words are progress, the rule the human rejected. Styling by position (lighter when work follows) would grey out exactly the questions and paragraphs this feature exists to bring back.
-**Assumed.** Alternative: words that more work follows read lighter (the secondary grey), and only a turn's last words read at full strength. The design page carries a Tweak that switches between the two.
+**Assumed.** Alternative: words that more work follows read lighter (the secondary grey), and only a turn's last words read at full strength.
+**Changed by the orchestrator:** kept as written and the lighter option dropped from the design page's Tweaks: greying mid-turn words brings back the feeling that they are second-class. The human has not seen this.
 
 ## 5. Files, cards and answered asks sit where they happened
 **Decision:** A file the agent shows, a card it posts (the plan, designs, a review package, the features card) and the line for an ask the human answered all sit in the turn at the point they happened: the words written before them above, the words after below.
@@ -50,11 +52,12 @@ Check first: 2, 3, 4, 10, 12
 **Why:** With folds between paragraphs, thinking-only gaps will be common, and a fold inside a fold for one thought is noise.
 **Assumed.** Alternative: every run reads "Worked for …", whatever it holds.
 
-## 10. Copy on every message, branching on the turn's last words
-**Decision:** Each stretch of words keeps its own hover actions, and Copy copies that stretch only. "Branch into a new chat from here" and the model name show only on the turn's last words.
-**Why:** A branch always carries the whole turn it was taken from, so offering it on a paragraph halfway through promises a cut that does not happen.
-**Assumed.** Alternative: the same three actions on every stretch, each branching through the whole turn.
+## 10. Copy on every message takes the whole turn from its last words; branching sits on the last words only
+**Decision:** Each stretch of words keeps its own hover actions. Copy on an earlier stretch copies that stretch; Copy on the turn's last words copies all of the turn's words, in order. "Branch into a new chat from here" and the model name show only on the turn's last words.
+**Why:** A reply is now often split across several stretches, and copying it whole should take one click. A branch always carries the whole turn it was taken from, so offering it on a paragraph halfway through promises a cut that does not happen.
+**Assumed.** Alternative: Copy on the last words copies only that stretch.
 **Challenged:** Copy on the turn's last words should copy all of the turn's words, since a reply is now often split across several stretches; earlier stretches copy only themselves.
+**Changed by the orchestrator:** Copy on the last words copies the whole turn's words, as the challenger said. The human has not seen this.
 
 ## 11. A fold's line says only its time
 **Decision:** A fold reads "Worked for 12s", as today, with nothing more on its line.

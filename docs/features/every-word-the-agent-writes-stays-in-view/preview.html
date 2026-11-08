@@ -206,7 +206,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub">
     <h3>Designed screens</h3>
-    <p class="hint">Real components on sample data, each with a card in the chat and in the Design tab. The design page has a Tweaks menu for decisions <a class="pin" data-d="4">4</a> and <a class="pin" data-d="11">11</a>.</p>
+    <p class="hint">Real components on sample data, each with a card in the chat and in the Design tab. The design page has a Tweaks menu for decision <a class="pin" data-d="11">11</a>.</p>
     <div class="designs">
 <!-- screen:turn-settled -->
 <div class="designed">
@@ -301,22 +301,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['Every word the agent writes shows, in the order written', 'Decided in triage: only tools, thinking and subagents fold, so replies stop reading as cut off. Any rule telling a paragraph from a progress line would misfire.'],
     ['Words never move once shown: a run of work folds the moment words follow it', 'Removes today\'s jump where streaming words get pulled into the fold, and keeps a long live turn short. A finished turn looks exactly like the live one did.', 'assumed'],
-    ['Each fold says its own time', 'With several folds, one total on one of them says nothing about the others. Challenged: also show the turn\'s total time on its last words.', 'assumed'],
-    ['Words between work read as normal prose', 'A lighter style for "progress" needs the rule the human rejected, and styling by position would grey out the very questions this feature brings back.', 'assumed'],
+    ['Each fold says its own time, and the turn says its total once', 'Each fold has its own time; the turn\'s total shows quietly beside the model name on its last words. Changed by the orchestrator, as the challenger suggested.', 'assumed'],
+    ['Words between work read as normal prose', 'A lighter style for "progress" needs the rule the human rejected, and greying by position makes mid-turn words feel second-class. Settled by the orchestrator; the Tweak is gone.', 'assumed'],
     ['Files, cards and answered asks sit where they happened', 'In order is now the rule for everything in a turn; today\'s spot only made sense with one fold.', 'assumed'],
     ['The changed-files card stays at the turn\'s end', 'It sums up the whole turn, and the turn reports its files only when it ends.', 'assumed'],
     ['Every chat reads the new way, old ones included', 'Chats are re-read from their stored log each time they open, so old chats get it for free.', 'assumed'],
     ['Questions stay where they were asked', 'Pulling questions out of the fold existed only because words were hidden there.', 'assumed'],
     ['A run that is only thinking reads "Thought for …"', 'Thinking-only gaps will be common; a fold inside a fold for one thought is noise.', 'assumed'],
-    ['Copy on every message, branching on the turn\'s last words', 'A branch always carries the whole turn, so offering it mid-turn promises a cut that does not happen. Challenged: Copy on the last words should copy the whole turn.', 'assumed'],
+    ['Copy on every message takes the whole turn from its last words; branching sits on the last words only', 'Copying a split reply should take one click; a branch always carries the whole turn. Copy-the-whole-turn changed by the orchestrator, as the challenger suggested.', 'assumed'],
     ['A fold\'s line says only its time', 'Keeps the turn quiet between paragraphs; what the run did is one click away.', 'assumed'],
     ['Short stretches are never merged', 'Any merge needs a rule that tells a throwaway line from a real one. The ladder design shows what that costs.', 'assumed']
   ]
   var C = [
     [2, 'Keep every run of a running turn open until the turn ends, then fold them all.', 'It sets how a live turn reads and how much moves on screen; you may prefer to watch every step of the turn at once.'],
-    [3, 'Also show the turn\'s total time once, beside the model name on its last words.', 'The challenger disagreed: dropping the total loses "how long did this turn take".', 'challenged'],
-    [4, 'Words that more work follows read lighter; only the last words are full strength.', 'Pure taste, and the brief left it open. Try it with the Tweaks menu on the design page.', 'tweak'],
-    [10, 'Copy on the last words copies all of the turn\'s words.', 'The challenger disagreed: a reply is now often split, and copying it whole should be one click.', 'challenged'],
+    [3, 'Only each fold\'s own time, no total anywhere.', 'The orchestrator added the total on the challenger\'s advice; you have not seen it.', 'orchestrator'],
+    [4, 'Words that more work follows read lighter; only the last words are full strength.', 'Pure taste, and the brief left it open; the orchestrator settled it for normal prose.', 'orchestrator'],
+    [10, 'Copy on the last words copies only that stretch.', 'The orchestrator chose whole-turn Copy on the challenger\'s advice; you have not seen it.', 'orchestrator'],
     [12, 'Fold a run of one-line messages and the work between them into one fold.', 'A chatty agent makes a long ladder; see the "chatty turn" design before deciding.']
   ]
   var list = $('#dlist')
