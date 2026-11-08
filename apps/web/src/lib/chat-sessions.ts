@@ -7,12 +7,8 @@ import type { ThreadEntry } from './chat-thread'
  * main chat, and the list a page offers.
  */
 
-/** What a scenario chat was opened for: ＋ New scenario, or Fix it on one. */
+/** What the Scenarios worker was opened for: ＋ New scenario, or Fix it on one. */
 export type ScenarioErrand = { kind: 'new' } | { kind: 'fix'; name: string }
-
-export function scenarioChatLabel(errand: ScenarioErrand): string {
-  return `Scenario chat · ${errand.kind === 'fix' ? `Fix ${errand.name}` : 'New scenario'}`
-}
 
 /** What a thread with nothing said in it is called, as `thread.list` names it (decision 14). */
 export const NEW_CHAT_NAME = 'New chat'

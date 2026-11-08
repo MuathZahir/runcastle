@@ -573,8 +573,7 @@ export interface ThreadEntry {
    * side chat or old drive chat (read-only since workers replaced them), a
    * project chat.
    */
-  // TODO(drive-chats-become-workers ticket 5): nothing reads back as 'scenario' any more; the web still names it.
-  role: 'main' | 'worker' | 'side' | 'old-drive-chat' | 'scenario' | 'project'
+  role: 'main' | 'worker' | 'side' | 'old-drive-chat' | 'project'
   state: ThreadState
   /** When it was started: the sidebar's order, which an agent posting never changes. */
   createdAt: number

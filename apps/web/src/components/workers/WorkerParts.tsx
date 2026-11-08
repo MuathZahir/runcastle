@@ -2,11 +2,12 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { FileChange } from '../../lib/chat-thread'
 import {
+  OLD_CHAT_WORDS,
   WORKER_KIND_WORDS,
   WORKER_STATUS_TONE,
   WORKER_STATUS_WORDS,
 } from '../../lib/workers'
-import type { WorkerAssignment, WorkerKind, WorkerStatus } from '../../lib/workers'
+import type { OldChat, WorkerAssignment, WorkerKind, WorkerStatus } from '../../lib/workers'
 import {
   IconActivity,
   IconAlert,
@@ -48,19 +49,20 @@ import { Delta, FilePath } from '../chat/thread/Work'
  */
 export function WorkerStatusLine({
   status,
-  oldSideChat = false,
+  old,
   why,
 }: {
   status: WorkerStatus
-  oldSideChat?: boolean
+  /** A chat from before workers: read-only, with no status of its own. */
+  old?: OldChat
   /** A few words after the status: what failed, why a queued worker is held. */
   why?: string
 }) {
   return (
     <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary" role="status">
-      <StatusDot tone={oldSideChat ? 'neutral' : WORKER_STATUS_TONE[status]} />
-      <span className="min-w-0 truncate text-text-secondary">{oldSideChat ? 'Old side chat · read-only' : WORKER_STATUS_WORDS[status]}</span>
-      {why && !oldSideChat && <span className="min-w-0 shrink-[100] truncate">· {why}</span>}
+      <StatusDot tone={old ? 'neutral' : WORKER_STATUS_TONE[status]} />
+      <span className="min-w-0 truncate text-text-secondary">{old ? `${OLD_CHAT_WORDS[old]} · read-only` : WORKER_STATUS_WORDS[status]}</span>
+      {why && !old && <span className="min-w-0 shrink-[100] truncate">· {why}</span>}
     </p>
   )
 }
@@ -172,12 +174,26 @@ function Rule({ children }: { children: ReactNode }) {
   )
 }
 
-/** The worker's chat ends here: its handback went to the lead (decision 21's matching line). */
-export function HandedBackLine({ commits, files, by }: { commits: number; files: number; by?: 'you' | 'worker' }) {
+/**
+ * The worker's chat ends here: its handback went to the lead (decision 21's
+ * matching line), or to the project chat for a project drive's Scenarios worker
+ * (drive-chats-become-workers decision 2).
+ */
+export function HandedBackLine({
+  commits,
+  files,
+  by,
+  to = 'the lead',
+}: {
+  commits: number
+  files: number
+  by?: 'you' | 'worker'
+  to?: 'the lead' | 'the project chat'
+}) {
   return (
     <Rule>
       <IconArrowLeft size={12} className="text-icon" />
-      Handed back to the lead{by === 'you' ? ' at your word' : ''} · {commits} {commits === 1 ? 'commit' : 'commits'} · {files}{' '}
+      Handed back to {to}{by === 'you' ? ' at your word' : ''} · {commits} {commits === 1 ? 'commit' : 'commits'} · {files}{' '}
       {files === 1 ? 'file' : 'files'}
     </Rule>
   )
@@ -185,7 +201,8 @@ export function HandedBackLine({ commits, files, by }: { commits: number; files:
 
 /**
  * What stands at the foot of a worker's chat that takes no messages, in place
- * of the composer: an old side chat (decision 23), a failed worker, a settled one.
+ * of the composer: an old chat (decision 23), a failed worker, a settled one,
+ * a drive worker between drives.
  */
 export function WorkerClosedNote({ icon, title, hint }: { icon: ReactNode; title: string; hint?: ReactNode }) {
   return (
@@ -199,15 +216,14 @@ export function WorkerClosedNote({ icon, title, hint }: { icon: ReactNode; title
   )
 }
 
-/** The note an old side chat shows in place of its composer. */
-export function OldSideChatNote() {
-  return (
-    <WorkerClosedNote
-      icon={<IconLock />}
-      title="Old side chat — read-only"
-      hint="To carry it on, start a worker with “+” on the feature and paste what it needs."
-    />
-  )
+const OLD_CHAT_HINT: Record<OldChat, string> = {
+  side: 'To carry it on, start a worker with “+” on the feature and paste what it needs.',
+  drive: 'The drive’s chats are workers now: Fix drive or New scenario on a drive starts one.',
+}
+
+/** The note an old side or drive chat shows in place of its composer. */
+export function OldChatNote({ old }: { old: OldChat }) {
+  return <WorkerClosedNote icon={<IconLock />} title={`${OLD_CHAT_WORDS[old]} — read-only`} hint={OLD_CHAT_HINT[old]} />
 }
 
 // ---------------------------------------------------------------------------

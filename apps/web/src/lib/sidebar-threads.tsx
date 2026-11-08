@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { FeatureListItem } from './api'
 import { newestThread } from './chat-sessions'
 import type { ThreadEntry } from './chat-thread'
+import type { WorkerEntry } from './workers'
 
 /**
  * Threads in the sidebar (docs/features/threads-in-the-sidebar): the open page
@@ -23,6 +24,8 @@ export interface SidebarThreads {
   newThread: () => void
   /** The drive's scenario chat while its errand is open: its row's menu closes it. */
   errand?: { threadId: string; close: () => void }
+  /** The project's own workers, listed with its chats: a project drive's Scenarios worker (drive-chats-become-workers decision 2). */
+  workers?: readonly WorkerEntry[]
   /** The Conversations page, where every conversation is listed ("All N conversations"). */
   allConversations?: () => void
 }

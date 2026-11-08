@@ -155,8 +155,38 @@ describe('a Review worker in the feature’s worker list', () => {
     const review = row({ id: 'w_review', kind: 'review', label: 'Review', status: 'queued', reviewMode: 'drive' })
     expect(workerEntry(review)).toMatchObject({ label: 'Review', kind: 'review', status: 'queued' })
     expect(workerWhere(review, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
-    expect(workerWhere({ kind: 'review', reviewMode: 'gates' }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
+    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x' }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
     expect(workerWhere(row(), 'feature/x')).toBe('Sandbox · its own branch off feature/x')
+  })
+})
+
+describe('a drive worker (drive-chats-become-workers decisions 3, 5)', () => {
+  const drive = (over: Partial<WorkerRow> = {}) =>
+    row({ id: 'w_scen', kind: 'scenario', label: 'Scenarios', startedBy: 'human', featureBranch: 'main', ...over })
+  const driveHandback: PromptDisplay = {
+    handback: {
+      workerId: 'w_scen',
+      label: 'Scenarios',
+      kind: 'scenario',
+      summary: 'Wrote the logged-in scenario.',
+      commits: ['a1b2c3d Logged-in scenario'],
+      files: ['.runcastle/scenarios/logged-in.ts'],
+      threadId: 'w_scen',
+      branch: 'main',
+    },
+  }
+
+  it('says it works in your checkout and names the branch it commits on', () => {
+    expect(workerWhere(drive(), 'feature/x')).toBe('Your checkout · commits on main')
+  })
+
+  it('draws its handback card with the branch its commits landed on, and no Landed line', () => {
+    // Even a row that somehow reads landed: a drive worker never lands.
+    draw(driveHandback, [drive({ handbackSummary: 'Wrote the logged-in scenario.', outcome: 'landed' })])
+    const card = screen.getByRole('article', { name: 'Handback from Scenarios' })
+    expect(card.textContent).toContain('1 commit')
+    expect(card.textContent).toContain('on main')
+    expect(screen.queryByText('Landed')).toBeNull()
   })
 })
 

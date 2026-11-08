@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { PromptDisplay, WorkerRow } from '@runcastle/core'
+import { isDriveWorkerKind, type PromptDisplay, type WorkerRow } from '@runcastle/core'
 import type { ThreadItem } from '../../../lib/chat-thread'
 import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
 import type { FeatureListItem } from '../../../lib/api'
@@ -53,8 +53,9 @@ type HandbackDisplay = Extract<PromptDisplay, { handback: unknown }>['handback']
  * only the latest handback's outcome, so an earlier handback of the same worker
  * (its summary is no longer the row's) shows none rather than a later one's.
  */
-export function handbackOutcome(handback: Pick<HandbackDisplay, 'summary'>, row: WorkerRow | undefined): HandbackOutcome | undefined {
-  if (!row || row.handbackSummary !== handback.summary) return undefined
+export function handbackOutcome(handback: Pick<HandbackDisplay, 'summary' | 'kind'>, row: WorkerRow | undefined): HandbackOutcome | undefined {
+  // A drive worker's commits are already on the driven branch: nothing lands, nothing is sent back (drive-chats-become-workers decision 3).
+  if (!row || isDriveWorkerKind(handback.kind) || row.handbackSummary !== handback.summary) return undefined
   switch (row.outcome) {
     case 'landed':
       return { kind: 'landed', into: row.featureBranch }

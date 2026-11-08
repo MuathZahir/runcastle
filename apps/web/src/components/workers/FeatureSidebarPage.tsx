@@ -64,7 +64,6 @@ export function FeatureSidebarPage({
   leadActions,
   actionsFor,
   defaultDoneOpen = false,
-  leadThreads,
   className,
 }: {
   feature: FeatureListItem
@@ -80,8 +79,6 @@ export function FeatureSidebarPage({
   leadActions: FeatureAction[]
   actionsFor: (w: WorkerEntry) => FeatureAction[]
   defaultDoneOpen?: boolean
-  /** The feature's scenario chats, listed inside the Lead card as the Orchestrator lists its chats; absent with none. */
-  leadThreads?: ReactNode
   /** Placement only. */
   className?: string
 }) {
@@ -102,7 +99,6 @@ export function FeatureSidebarPage({
           onOpen={() => onOpen(lead.id)}
           actions={leadActions}
           title={lead.title}
-          {...(leadThreads ? { threads: leadThreads } : {})}
         />
       </div>
       <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">

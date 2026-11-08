@@ -14,12 +14,12 @@ import { useFeatureWorkers, workerColumnProps, workerInFront } from '../workers/
 import { WorkerLinksContext } from '../chat/thread/FeatureCardItems'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans the work and hands it to workers.'
-/** A thread that is neither the lead's, a scenario chat nor a listed worker yet: a worker whose row is still on its way. */
+/** A thread that is neither the lead's, the drive's Scenarios worker nor a listed worker yet: a worker whose row is still on its way. */
 const WORKER_PENDING_HINT = 'A worker on this feature, in its own sandbox.'
 
 /**
  * The feature page's chat column (chat-as-web-components decisions 3, 7): the
- * thread in front — the lead's chat, a worker's, an old side chat or a scenario chat — through
+ * thread in front — the lead's chat, a worker's (a drive worker's too), or an old side or drive chat — through
  * `ThreadColumn`. Opening a thread launches nothing, with one exception: a new
  * feature's main chat starts itself the first time the human can see it, so its
  * agent speaks first ({@link startsItself}). Any other main chat nobody has
@@ -114,7 +114,7 @@ export function FeatureChat({
         // own. The main chat keeps one through its start, so the first message
         // stays on screen while the chat it started takes its id.
         key={isMain ? 'main' : inFront}
-        label={isMain ? 'Agent' : isScenario ? 'Scenario chat' : workerProps ? 'Worker' : 'Chat'}
+        label={isMain ? 'Agent' : workerProps || isScenario ? 'Worker' : 'Chat'}
         threadId={inFront}
         {...(entry ? { runtime: entry.runtime } : {})}
         {...(isMain ? { start: startForSend, startsAs: { featureId: full.feature.id }, onStarted: column.started, inbox: mainChatInbox(full.feature.id) } : {})}
