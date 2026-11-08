@@ -89,6 +89,8 @@ export function FrameSidebar({
   onSelectFeature,
   page,
   motion,
+  workersFor,
+  openId,
 }: {
   workers: readonly WorkerEntry[]
   threads?: ReactNode
@@ -102,6 +104,10 @@ export function FrameSidebar({
   page?: ReactNode
   /** Which way the body last moved: down into a feature, up to the list. Slides it in from that side. */
   motion?: 'down' | 'up' | null
+  /** A feature row's workers arrow, where the feature has a workers page (clicking-a-feature-opens-its-lead). */
+  workersFor?: (f: FeatureListItem) => { live: number; onOpen: () => void } | undefined
+  /** The open feature, when the page moves it; else the sample's "Sidebar refresh". */
+  openId?: string
 }) {
   const theme = useTheme()
   const features = given ?? featuresWith(needing(workers))
@@ -112,7 +118,8 @@ export function FrameSidebar({
   const [folded, setFolded] = useState(false)
 
   const row = (f: FeatureListItem, nested = false) => {
-    const isOpen = f.id === open.id
+    const isOpen = f.id === (openId ?? open.id)
+    const arrow = workersFor?.(f)
     return (
       <SidebarFeatureRow
         key={f.id}
@@ -124,6 +131,7 @@ export function FrameSidebar({
         {...(isOpen && onNewWorker ? { onNewThread: onNewWorker } : {})}
         {...(isOpen && threads ? { threads, folded, onToggleThreads: () => setFolded((v) => !v) } : {})}
         needsYou={isOpen && needing(workers) > 0}
+        {...(arrow ? { workers: arrow } : {})}
       />
     )
   }
