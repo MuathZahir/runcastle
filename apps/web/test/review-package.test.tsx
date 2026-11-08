@@ -94,6 +94,15 @@ describe('the page', () => {
     expect(stage().getByText('2 of 4')).toBeTruthy()
   })
 
+  it('names a review ticket’s round, and a Review worker’s pass by its build alone', () => {
+    open()
+    expect(screen.getByText('Round 2, this build')).toBeTruthy()
+    cleanup()
+    open(pack({ seq: null, round: null }))
+    expect(screen.getByText('this build')).toBeTruthy()
+    expect(screen.queryByText(/Ticket #/)).toBeNull()
+  })
+
   it('shows every finding on one page, in full, defects first', () => {
     open()
     fireEvent.click(screen.getByRole('button', { name: /^Findings/ }))

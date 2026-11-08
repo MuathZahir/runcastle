@@ -40,6 +40,14 @@ export function workerInFront(rows: readonly WorkerListRow[], threads: readonly 
 
 const WORKER_HINT = 'A worker in its own sandbox, on its own branch off the feature. It hands its work back to the lead.'
 
+/** Where a worker runs, under its composer: a drive review in the human's checkout, a gates review on the committed branch, anyone else on its own branch. */
+export function workerWhere(row: Pick<WorkerListRow, 'kind' | 'reviewMode'>, featureBranch: string): string {
+  if (row.kind === 'review') {
+    return row.reviewMode === 'drive' ? `Your checkout · reviewing ${featureBranch} on the drive` : `Sandbox · reviewing ${featureBranch}`
+  }
+  return `Sandbox · its own branch off ${featureBranch}`
+}
+
 /** What the chat column wears for a worker's thread, as `ThreadColumn` props. */
 export function workerColumnProps(
   w: NonNullable<WorkerInFront>,
@@ -73,7 +81,7 @@ export function workerColumnProps(
     ...(closed
       ? { closed }
       : {
-          meta: `Sandbox · its own branch off ${featureBranch}`,
+          meta: workerWhere(row, featureBranch),
           placeholder: row.status === 'handed-back' ? 'Message the worker — the lead has its handback' : 'Message the worker',
         }),
   }
