@@ -6,6 +6,7 @@ import { emitForSession } from '../services/events'
 import { rowToSession, tryGetFeature } from '../services/repo'
 import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent, readThreadEvents } from '../threads/types'
+import { getWorker } from '../workers/service'
 import { markSessionEnded } from './sessions'
 
 /**
@@ -60,13 +61,18 @@ export const RESTART_CARRY_ON_EVENT = 'session.restart_carry_on'
 
 /**
  * Whether a chat a restart cut off is told to carry on: a feature's lead
- * (its main chat, not a headless or self-planning run) or an orchestrator chat.
- * Side chats and workers are not (a worker's lead hears when it fails), nor a
- * lead whose round was cut off (its round message already goes), nor a lead of
- * a feature that has shipped or been archived.
+ * (its main chat, not a headless or self-planning run), an orchestrator chat,
+ * or a worker still at work (burns-become-workers decision 10), whose row then
+ * follows the turn. Side chats are not, nor a worker that landed, was dropped
+ * or failed, nor a lead whose round was cut off (its round message already
+ * goes), nor a lead of a feature that has shipped or been archived.
  */
 function carriesOn(ctx: AppCtx, row: SessionRow, roundCutOff: ReadonlySet<string>): boolean {
   if (row.kind === 'project') return true
+  if (row.kind === 'worker') {
+    const status = getWorker(ctx, row.id)?.status
+    return status === 'working' || status === 'queued'
+  }
   if (row.kind !== 'chat' || !row.featureId || row.headless || row.purpose === 'self-plan') return false
   if (roundCutOff.has(row.featureId)) return false
   const feature = tryGetFeature(ctx, row.featureId)

@@ -271,6 +271,16 @@ export async function fetchWorkerBranch(sb: WorkerSandbox): Promise<void> {
 }
 
 /**
+ * Bring the feature branch's current tip from the host repo into the worker's
+ * bare copy, which was cloned with that branch alone and never moves by
+ * itself: a worker sent back to merge the feature branch in then reaches it
+ * with `git fetch origin` (burns-become-workers decision 6).
+ */
+export async function refreshWorkerFeatureBranch(sb: WorkerSandbox): Promise<void> {
+  await git(workerOrigin(sb.id), ['fetch', '-q', '--update-head-ok', sb.repoPath, `+refs/heads/${sb.featureBranch}:refs/heads/${sb.featureBranch}`])
+}
+
+/**
  * Put the human's setup into the sandbox's home (decisions 8, 12), in place
  * of an earlier start's copy: staged on the host (owner-only, since it carries
  * logins), copied in with the engine's `cp`, the staging removed after.

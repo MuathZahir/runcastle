@@ -8,7 +8,7 @@ import { emitForSession } from '../services/events'
 import { setWaiting } from '../services/lead-status'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { getWorker, isWorkerThread, workerAskAnswered, workerAskOpened, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
+import { getWorker, humanWrote, isWorkerThread, workerAskAnswered, workerAskOpened, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
 import type { ThreadLifecycle } from './host'
 
 /**
@@ -45,8 +45,8 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
       })
     },
 
-    turnEnded(row, source) {
-      if (isWorkerThread(ctx, row.id)) void workerTurnEnded(ctx, row).catch((err) => console.error(`worker ${row.id}: handback`, err))
+    turnEnded(row, source, end) {
+      if (isWorkerThread(ctx, row.id)) void workerTurnEnded(ctx, row, end).catch((err) => console.error(`worker ${row.id}: handback`, err))
       // Only runcastle's prompt is the planning errand; what the human types into it after is a chat.
       if (source !== 'runcastle') return
       endSelfPlan(ctx, row)
@@ -67,6 +67,11 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
         message: `${row.kind} thread's agent stopped (${reason})`,
         data: { sessionId: row.id, kind: row.kind, reason, startedBy },
       })
+    },
+
+    // The human writing anywhere lifts an account hold on the worker queue (burns-become-workers decision 21).
+    humanPrompted(row) {
+      humanWrote(ctx, row)
     },
 
     // A worker halted on an ask reads "needs you" until it is answered.

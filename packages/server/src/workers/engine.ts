@@ -14,6 +14,7 @@ import {
   createWorkerSandbox,
   ensureSandboxRunning,
   fetchWorkerBranch,
+  refreshWorkerFeatureBranch,
   removeSandbox,
   stopSandbox,
   workerContainers,
@@ -50,6 +51,8 @@ export interface SandboxEngine {
   devServerStarted(sb: WorkerSandbox): Promise<boolean>
   /** Bring the worker branch's commits into the host repo as `refs/heads/<branch>`. */
   fetchBranch(sb: WorkerSandbox): Promise<void>
+  /** Bring the feature branch's current tip into the worker's bare copy, so `git fetch origin` in the sandbox sees it (a conflict to merge). */
+  refreshFeatureBranch(sb: WorkerSandbox): Promise<void>
   /** Put the human's setup for its runtime into the sandbox (decisions 8, 12), waking it if need be, in place of an earlier copy, and record its fingerprint there. */
   copySetup(sb: WorkerSandbox, setup: WorkerSetup, fingerprint: string): Promise<void>
   /** The fingerprint of the setup last copied into the sandbox (waking it if need be); undefined when none finished. */
@@ -78,6 +81,7 @@ export function containerEngine(name: Engine): SandboxEngine {
     takeHandback: (sb) => takeHandbackNote(sb),
     devServerStarted: (sb) => devServerRecorded(sb),
     fetchBranch: (sb) => fetchWorkerBranch(sb),
+    refreshFeatureBranch: (sb) => refreshWorkerFeatureBranch(sb),
     copySetup: (sb, setup, fingerprint) => copyWorkerSetup(sb, setup, fingerprint),
     setupFingerprint: (sb) => copiedSetupFingerprint(sb),
     copyOut: (sb, containerPath, hostPath) => copyOutOfSandbox(sb, containerPath, hostPath),

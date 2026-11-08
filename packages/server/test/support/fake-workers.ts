@@ -49,6 +49,8 @@ export type FakeEngine = SandboxEngine & {
   held: Map<string, boolean>
   woken: string[]
   fetched: string[]
+  /** Containers whose bare copy was given the feature branch's current tip. */
+  refreshed: string[]
   /** Conversation ids the sandbox holds a record of, for the reload guard. */
   conversations: Set<string>
   /** Each copy of the human's setup the engine was asked to make, oldest first. */
@@ -77,6 +79,7 @@ export function fakeEngine(): FakeEngine {
     held: new Map(),
     woken: [],
     fetched: [],
+    refreshed: [],
     conversations: new Set(),
     setups: [],
     fingerprints: new Map(),
@@ -126,6 +129,9 @@ export function fakeEngine(): FakeEngine {
     devServerStarted: async (sb) => engine.devServers.has(sb.id),
     fetchBranch: async (sb) => {
       engine.fetched.push(sb.branch)
+    },
+    refreshFeatureBranch: async (sb) => {
+      engine.refreshed.push(sb.container)
     },
     conversationOnDisk: async (_sb, conversationId) => engine.conversations.has(conversationId),
     copySetup: async (sb, setup, fingerprint) => {

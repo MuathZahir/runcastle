@@ -12,6 +12,7 @@ import {
   type WorkerRow,
   type WorkerStartedBy,
   type WorkerStatus,
+  isUsageLimitText,
   modelEntryFor,
   resolveModelEntry,
   resolveSandboxImage,
@@ -22,8 +23,9 @@ import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
 import { createSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
+import { classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
-import { emit } from '../services/events'
+import { emit, listAfter } from '../services/events'
 import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
 import { deliverToLead } from '../services/lead-delivery'
@@ -31,7 +33,7 @@ import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { rosterConfig } from '../services/model-discovery'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../services/repo'
 import { requireAnnotatedModels } from '../services/tickets'
-import type { AgentTransport } from '../threads/host'
+import type { AgentTransport, StallBounds, TurnEnding } from '../threads/host'
 import type { StopReason } from '../threads/types'
 import { agentHost, readThreadEvents } from '../threads/types'
 import { sandboxEngine } from './engine'
@@ -370,16 +372,22 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
 
 /**
  * A worker's turn ended. A new handback records the worker branch's commits and
- * files, marks it handed back and wakes the lead once (decision 4); a turn that
- * ended without one leaves a working worker needing the human (decision 5).
+ * files, marks it handed back and wakes the lead once (decision 4). A turn that
+ * failed is recovered from by itself where it can be ({@link recoverFromError});
+ * one that ended otherwise without a handback leaves a working worker needing
+ * the human (decision 5).
  */
-export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>): Promise<void> {
+export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
   const w = getWorker(ctx, row.id)
   if (!w) return
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
   const note = sb ? await engine.takeHandback(sb) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
+  // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
+  const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
+  if (!note && error !== undefined && w.status === 'working') return recoverFromError(ctx, w, error)
+  forgetRetries(w.id)
   if (!note || !sb) {
     if (w.status === 'working') setStatus(ctx, w, 'needs-you')
     return
@@ -421,12 +429,118 @@ function handbackText(w: WorkerRow, commits: string[], files: string[]): string 
   ].join('\n')
 }
 
+// --- recovering by itself (burns-become-workers decisions 8, 9, 21) ---------------
+
+/** How many times a worker's failed turn is retried on a transient error before it fails. */
+export const MAX_TRANSIENT_RETRIES = 3
+
+/** A worker turn's stall bounds (decision 9): ten quiet minutes with no command running, or one command for 45. */
+export const WORKER_STALL: StallBounds = { silenceMs: 10 * 60_000, commandMs: 45 * 60_000 }
+
+/** The stall bounds for the agent host's `stallBounds`: worker threads only. */
+export function workerStallBounds(bounds: StallBounds = WORKER_STALL): (row: SessionRow) => StallBounds | undefined {
+  return (row) => (row.kind === 'worker' ? bounds : undefined)
+}
+
+/** Each worker's transient retries for its current run of failed turns, and the retry waiting out its backoff. */
+const retries = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>()
+
+let retryDelay: (attempt: number) => number = retryDelayMs
+
+/** Shorten the backoff between retries (tests); `undefined` restores 5s, 10s, 20s. */
+export function setWorkerRetryDelayForTests(delay: ((attempt: number) => number) | undefined): void {
+  retryDelay = delay ?? retryDelayMs
+}
+
+/** Forget a worker's retries: its turn ended cleanly, or the human wrote to it. */
+function forgetRetries(id: string): void {
+  const entry = retries.get(id)
+  if (entry?.timer) clearTimeout(entry.timer)
+  retries.delete(id)
+}
+
+/** The first line of an error, short enough for a prompt. */
+function errorLine(error: string): string {
+  const line = error.trim().split(/\r?\n/)[0] ?? ''
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line
+}
+
+/**
+ * A working worker's turn failed (decision 8). A transient error is retried in
+ * the same conversation after a backoff, the worker staying working, up to
+ * {@link MAX_TRANSIENT_RETRIES} times; the next one, or any fatal or account
+ * error, fails it and wakes its lead once. An account error also holds the
+ * queue of its runtime (decision 21).
+ */
+async function recoverFromError(ctx: AppCtx, w: WorkerRow, error: string): Promise<void> {
+  const verdict = classifyAgentError(error, w.runtime)
+  const attempt = (retries.get(w.id)?.attempts ?? 0) + 1
+  const line = errorLine(error)
+  if (verdict !== 'transient' || attempt > MAX_TRANSIENT_RETRIES) {
+    forgetRetries(w.id)
+    const failure = verdict === 'transient' ? `${line} (still failing after ${MAX_TRANSIENT_RETRIES} retries)` : error.trim()
+    return failWorker(ctx, w, failure, verdict === 'account' ? holdQueue(ctx, w, line) : undefined)
+  }
+  const timer = setTimeout(() => void retryTurn(ctx, w.id, line), retryDelay(attempt))
+  timer.unref?.()
+  retries.set(w.id, { attempts: attempt, timer })
+  emitWorker(ctx, w, 'worker.retrying', `worker "${w.label}" stopped on a transient error; retry ${attempt} of ${MAX_TRANSIENT_RETRIES}`, {
+    attempt,
+    error: line,
+  })
+}
+
+/** What a retried worker is told. */
+export function transientRetryText(line: string): string {
+  return `[runcastle] The last turn stopped on a transient error (${line}). Carry on where you were.`
+}
+
+/** The backoff is over: tell the same conversation to carry on, unless the worker moved on meanwhile. */
+async function retryTurn(ctx: AppCtx, id: string, line: string): Promise<void> {
+  const entry = retries.get(id)
+  if (!entry?.timer) return
+  delete entry.timer
+  if (getWorker(ctx, id)?.status !== 'working') return
+  await agentHost(ctx)
+    .prompt(id, { text: transientRetryText(line) }, { source: 'runcastle' })
+    .catch((err) => console.error(`worker ${id}: retry`, err))
+}
+
+/**
+ * Hold every queued worker turn on `w`'s runtime (decision 21): none starts to
+ * fail the same way. Each worker already queued on it says why; the hold lifts
+ * at the human's next message ({@link humanWrote}). Returns what the failed
+ * worker's lead is told of it.
+ */
+function holdQueue(ctx: AppCtx, w: WorkerRow, reason: string): string {
+  agentSlots(ctx.config.burnConcurrency).hold(w.runtime, reason)
+  const held = ctx.db.select().from(workers).all().filter((q) => q.status === 'queued' && q.runtime === w.runtime)
+  for (const q of [w, ...held]) {
+    emitWorker(ctx, q, 'worker.queue_held', `no queued worker on ${w.runtime} starts until the human next writes: ${reason}`, {
+      runtime: w.runtime,
+      reason,
+    })
+  }
+  return `It failed on the account, so no queued worker on ${w.runtime} starts until the human next writes to a lead or a worker.`
+}
+
+/** Why a queued worker is held (decision 21), or null when it is not. */
+export function queueHoldOf(ctx: AppCtx, w: WorkerRow): string | null {
+  return w.status === 'queued' ? (agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null) : null
+}
+
+/** The human sent a message to a thread: an account hold lifts (decision 21), and a worker they wrote to starts its retries over. */
+export function humanWrote(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): void {
+  agentSlots(ctx.config.burnConcurrency).lift()
+  if (row.kind === 'worker') forgetRetries(row.id)
+}
+
 /**
  * The slot a worker's turn holds under the machine's limit of agents working
  * at once (decision 14), for the agent host's `turnSlot`: none for any other
- * thread. A worker that has to wait is `queued` until its slot comes, then
- * working again; one waiting on the human or stopped holds none, since only a
- * running turn asks.
+ * thread. A worker that has to wait — for a free slot, or for its runtime's
+ * account hold to lift — is `queued` until its slot comes, then working again;
+ * one waiting on the human or stopped holds none, since only a running turn asks.
  */
 export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => void> | undefined {
   return (row) => (row.kind === 'worker' ? takeWorkerSlot(ctx, row.id) : undefined)
@@ -434,11 +548,11 @@ export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => 
 
 async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
   const slots = agentSlots(ctx.config.burnConcurrency)
-  const now = slots.tryTake()
-  if (now) return now
   const w = getWorker(ctx, id)
+  const now = slots.tryTake(w?.runtime)
+  if (now) return now
   if (w && (w.status === 'working' || w.status === 'needs-you')) setStatus(ctx, w, 'queued')
-  const release = await slots.take()
+  const release = await slots.take(w?.runtime)
   const after = getWorker(ctx, id)
   if (after?.status === 'queued') setStatus(ctx, after, 'working')
   return release
@@ -496,8 +610,9 @@ function crashFailure(threadId: string): string {
  * so a lead never waits on a worker that will not hand back. A worker that is
  * already failed, dropped or landed is left as it is.
  */
-async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string): Promise<void> {
+async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: string): Promise<void> {
   if (w.status === 'failed' || w.status === 'dropped' || w.status === 'landed') return
+  forgetRetries(w.id)
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
@@ -506,6 +621,7 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string): Promise<v
   await deliverToLead(ctx, feature, {
     text:
       `Worker "${w.label}" failed (worker ${w.id}): ${short}\n\n` +
+      (held ? `${held}\n\n` : '') +
       `Next: start it again with start_worker, drop_worker({ workerId: "${w.id}" }), or do the job yourself.`,
     source: 'runcastle',
     display: { workerFailed: { workerId: w.id, label: w.label, failure: short } },
@@ -546,12 +662,17 @@ export function askWorkerToHandBack(ctx: AppCtx, id: string): Promise<{ ok: true
 
 export type LandWorkerResult =
   | { ok: true; commits: number; files: number }
-  | { ok: false; conflict: boolean; files: string[]; error: string }
+  | { ok: false; conflict: boolean; files: string[]; error: string; sentBack?: boolean }
+
+/** How many times runcastle sends an "on its own" worker back to resolve a landing conflict before the lead decides (decision 6). */
+export const MAX_CONFLICT_SEND_BACKS = 2
 
 /**
  * Land a handed-back worker's branch on the feature branch, through the
  * feature's landing queue like the lead's own commits (decision 4). A conflict
- * comes back to the lead to resolve, and the worker stays handed back.
+ * sends an "on its own" worker back by itself to resolve it, up to
+ * {@link MAX_CONFLICT_SEND_BACKS} times; otherwise it comes back to the lead,
+ * and the worker stays handed back (burns-become-workers decision 6).
  */
 export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerResult> {
   const w = requireWorker(ctx, id)
@@ -570,14 +691,31 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
   }
   if (!result.ok) {
     const error = result.error ?? 'merge failed'
-    emitWorker(ctx, w, 'worker.land_failed', `worker "${w.label}" could not land: ${error}`, { conflict: !!result.conflict, files: result.files ?? [] })
+    const files = result.files ?? []
+    emitWorker(ctx, w, 'worker.land_failed', `worker "${w.label}" could not land: ${error}`, { conflict: !!result.conflict, files })
+    if (!result.conflict) return { ok: false, conflict: false, files, error }
+    const conflictIn = files.length ? ` in ${files.join(', ')}` : ''
+    const tries = conflictSendBacks(ctx, w)
+    if (w.kind === 'on-its-own' && tries < MAX_CONFLICT_SEND_BACKS) {
+      const behind = (await branchChangesAhead(sb.repoPath, sb.branch, feature.branch)).commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`)
+      await sendBack(ctx, w, conflictSendBackText(feature.branch, files, behind), 'runcastle sent it back to resolve a landing conflict', { conflict: true, files })
+      return {
+        ok: false,
+        conflict: true,
+        files,
+        sentBack: true,
+        error:
+          `${sb.branch} conflicts with ${feature.branch}${conflictIn}. Runcastle sent worker "${w.label}" back to merge ${feature.branch} in and resolve it ` +
+          `(try ${tries + 1} of ${MAX_CONFLICT_SEND_BACKS}); call land_worker again on its next handback.`,
+      }
+    }
     return {
       ok: false,
-      conflict: !!result.conflict,
-      files: result.files ?? [],
-      error: result.conflict
-        ? `${sb.branch} conflicts with ${feature.branch}. Merge ${sb.branch} into your checkout yourself, resolve and commit, then call land_worker again.`
-        : error,
+      conflict: true,
+      files,
+      error:
+        `${sb.branch} conflicts with ${feature.branch}${conflictIn}. Either resolve it yourself — merge ${sb.branch} into your checkout, resolve and commit, ` +
+        `then call land_worker again — or send_back_worker({ workerId: "${w.id}", note }) to have the worker merge ${feature.branch} in and resolve it.`,
     }
   }
   const landed = updateWorker(ctx, w.id, { status: 'landed', outcome: 'landed', outcomeNote: null })
@@ -592,10 +730,44 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
 export async function sendBackWorker(ctx: AppCtx, id: string, note: string): Promise<{ ok: true }> {
   const w = requireWorker(ctx, id)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker is sent back`)
-  const sent = updateWorker(ctx, w.id, { status: 'working', outcome: 'sent-back', outcomeNote: note })
-  emitWorker(ctx, sent, 'worker.sent_back', `worker "${w.label}" was sent back`, { note })
-  await agentHost(ctx).prompt(w.id, { text: `Your lead sent your work back:\n\n${note}\n\nWork on it, then hand back again.` }, { source: 'runcastle' })
+  await sendBack(ctx, w, `Your lead sent your work back:\n\n${note}\n\nWork on it, then hand back again.`, note)
   return { ok: true }
+}
+
+/**
+ * Send a worker back with `text`: it works again, its bare copy holding the
+ * feature branch's current tip, so a conflict it is asked to resolve is one
+ * `git fetch origin` away.
+ */
+async function sendBack(ctx: AppCtx, w: WorkerRow, text: string, note: string, data: Record<string, unknown> = {}): Promise<void> {
+  const sb = sandboxOf(ctx, w)
+  if (sb) await sandboxEngine(w.engine).refreshFeatureBranch(sb)
+  const sent = updateWorker(ctx, w.id, { status: 'working', outcome: 'sent-back', outcomeNote: note })
+  emitWorker(ctx, sent, 'worker.sent_back', `worker "${w.label}" was sent back`, { note, ...data })
+  await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
+}
+
+/** How many times runcastle has sent `w` back to resolve a landing conflict, read off its feature's timeline. */
+function conflictSendBacks(ctx: AppCtx, w: WorkerRow): number {
+  return listAfter(ctx, w.featureId, 0).filter((e) => {
+    const data = e.data as { workerId?: string; conflict?: boolean } | null
+    return e.type === 'worker.sent_back' && data?.workerId === w.id && data.conflict === true
+  }).length
+}
+
+/** What a worker sent back over a landing conflict is told: the files, the commits it lacks, and how to resolve it. */
+function conflictSendBackText(featureBranch: string, files: string[], behind: string[]): string {
+  return [
+    `Your work could not land: it conflicts with ${featureBranch}, which moved on since you started.`,
+    '',
+    `Conflicting files: ${files.length ? files.join(', ') : 'git did not name them'}`,
+    '',
+    `Commits on ${featureBranch} your branch lacks:`,
+    ...(behind.length ? behind.map((c) => `- ${c}`) : ['- none listed']),
+    '',
+    `Run \`git fetch origin && git merge origin/${featureBranch}\` on your branch, resolve each conflict keeping both sides' intent, ` +
+      'run the checks covering the files you touched, commit the merge, then hand back.',
+  ].join('\n')
 }
 
 /**
@@ -612,6 +784,7 @@ export async function dropWorker(ctx: AppCtx, id: string): Promise<{ ok: true }>
 
 /** Stop a worker's process, remove its sandbox and branch, and mark it dropped unless it landed. */
 async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  forgetRetries(w.id)
   const drops = w.status !== 'dropped' && w.status !== 'landed'
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   await agentHost(ctx).stop(w.id, 'archived')

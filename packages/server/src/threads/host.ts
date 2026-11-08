@@ -79,7 +79,7 @@ import {
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers, workerTurnSlot } from '../workers/service'
+import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
@@ -159,6 +159,13 @@ export interface AgentHostDeps {
    * Undefined for a thread that needs none.
    */
   turnSlot?: (row: SessionRow) => Promise<() => void> | undefined
+  /**
+   * The bounds a thread's prompted turn is watched with (burns-become-workers
+   * decision 9), undefined for a thread nobody watches: a turn silent past
+   * `silenceMs` with no tool call open, or with one tool call open past
+   * `commandMs`, is cancelled and ends as an error that says it stalled.
+   */
+  stallBounds?: (row: SessionRow) => StallBounds | undefined
   /** When a feature lead is compacted at a quiet moment; {@link AUTOCOMPACT} by default. */
   autoCompact?: Partial<AutoCompactPolicy>
 }
@@ -175,14 +182,30 @@ export interface ThreadLifecycle {
   briefing?(row: SessionRow): string | undefined
   /** The process runs; `source` is who sent the prompt that started it. */
   started?(row: SessionRow, source: PromptOptions['source']): void
-  /** A turn ended; `source` is who sent the prompt it answered. Never a compaction's turn, which moves nothing. */
-  turnEnded?(row: SessionRow, source: PromptOptions['source']): void
+  /** A turn ended, how it ended (`end`); `source` is who sent the prompt it answered. Never a compaction's turn, which moves nothing. */
+  turnEnded?(row: SessionRow, source: PromptOptions['source'], end: TurnEnding): void
+  /** The human sent a message to the thread. */
+  humanPrompted?(row: SessionRow): void
   /** The process stopped, with who started it. */
   stopped?(row: SessionRow, reason: StopReason, startedBy: PromptOptions['source']): void
   /** An ask of `kind` opened, and the agent waits on the human mid-turn. */
   askOpened?(row: SessionRow, kind: Ask['kind']): void
   /** The human answered the open ask (or the page a link ask opened finished), and the agent goes on. */
   askAnswered?(row: SessionRow): void
+}
+
+/** How a turn ended, as the lifecycle hears it: why, and the agent's error when it failed. */
+export interface TurnEnding {
+  reason: TurnEnd
+  error?: string
+}
+
+/** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
+export interface StallBounds {
+  /** No agent output, and no tool call open, for this long. */
+  silenceMs: number
+  /** One tool call open for this long. */
+  commandMs: number
 }
 
 /** codex-acp's hook-trust extension: the session's hooks, and trusting them. */
@@ -454,10 +477,27 @@ interface Turn {
   compaction?: { trigger: CompactTrigger; before?: number }
   /** Gives back the turn's slot ({@link AgentHostDeps.turnSlot}); called once, as the turn ends or the process stops. */
   release?: () => void
+  /** The stall watch on a prompted turn ({@link AgentHostDeps.stallBounds}). */
+  watch?: StallWatch
 }
 
-/** Give back a turn's slot, once. */
+interface StallWatch {
+  bounds: StallBounds
+  /** The tool calls open now, by session and call id, with when each opened. */
+  open: Map<string, number>
+  timer?: ReturnType<typeof setTimeout>
+  /** Why the watch cancelled the turn; the turn then ends as this error. */
+  stalled?: string
+}
+
+/** End a turn's stall watch, if it has one. */
+function endWatch(turn: Turn | null | undefined): void {
+  if (turn?.watch?.timer) clearTimeout(turn.watch.timer)
+}
+
+/** Give back a turn's slot, once, and end its stall watch. */
 function releaseSlot(turn: Turn | null | undefined): void {
+  endWatch(turn)
   const release = turn?.release
   if (!turn || !release) return
   delete turn.release
@@ -512,6 +552,11 @@ interface Thread {
 /** Read through a function so a check after an `await` is not narrowed away. */
 function isStopped(t: Thread): boolean {
   return t.state === 'stopped'
+}
+
+/** A span as a person says it: whole minutes, or seconds under one. */
+function spanText(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)}s`
 }
 
 /** What went wrong, in the agent's words: an ACP internal error carries them in `data.details`. */
@@ -590,6 +635,7 @@ class Host implements AgentHost {
   private readonly backgroundWindowMs: number
   private readonly usageResetGraceMs: number
   private readonly turnSlot: NonNullable<AgentHostDeps['turnSlot']>
+  private readonly stallBounds: NonNullable<AgentHostDeps['stallBounds']>
   private readonly autoCompact: AutoCompactPolicy
   /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
   private readonly pendingConfig = new Map<string, ConfigChoice>()
@@ -616,12 +662,14 @@ class Host implements AgentHost {
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
     this.usageResetGraceMs = deps.usageResetGraceMs ?? USAGE_RESET_GRACE_MS
     this.turnSlot = deps.turnSlot ?? (() => undefined)
+    this.stallBounds = deps.stallBounds ?? (() => undefined)
     this.autoCompact = { ...AUTOCOMPACT, ...deps.autoCompact }
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
     seedFromTranscript(this.ctx, threadId)
+    if (opts.source === 'human') this.hook(() => this.lifecycle.humanPrompted?.(row))
     if (opts.hold) return this.hold(threadId, input.text, opts.source, opts.display)
     // While the account is over its usage limit, runcastle's own messages wait
     // instead of starting turns that fail: for the reset when the human chose to
@@ -1478,6 +1526,11 @@ class Host implements AgentHost {
     }
     markAgentWorking(this.ctx, t.id)
     appendThreadEvent(t.id, { type: 'turn_started' })
+    const bounds = item.compaction || !slotRow ? undefined : this.stallBounds(slotRow)
+    if (bounds) {
+      turn.watch = { bounds, open: new Map() }
+      this.armStall(t, turn)
+    }
     // Taken before the agent hears the prompt, so nothing it does is in it.
     await turn.snapshot
     // The opening rides after the prompt's own words, so a human's message
@@ -1500,6 +1553,9 @@ class Host implements AgentHost {
       if (t.state === 'stopped') return
       end = { type: 'turn_ended', reason: 'error', error: errorText(err) }
     }
+    endWatch(turn)
+    // The watch cancelled it: the turn failed, and says why.
+    if (turn.watch?.stalled) end = { type: 'turn_ended', reason: 'error', error: turn.watch.stalled }
     if (end.reason === 'error' && !item.hidden && isUsageLimitText(end.error ?? '')) {
       void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
     }
@@ -1518,7 +1574,7 @@ class Host implements AgentHost {
     if (item.compaction) return this.compacted(t, end.reason)
     // Read before the lifecycle ends the run and makes the thread the lead's ordinary chat.
     const planned = item.source === 'runcastle' && row?.purpose === 'self-plan'
-    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source))
+    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source, { reason: end.reason, ...(end.error !== undefined ? { error: end.error } : {}) }))
     // A self-planning run is over: the lead is compacted while its cache is warm (decision 6a).
     if (planned && this.compactNow(t, 'planned')) return
     this.pump(t)
@@ -1541,6 +1597,45 @@ class Host implements AgentHost {
   private newTurn(t: Thread): Turn {
     const cwd = getSessionRow(this.ctx, t.id)?.worktreePath ?? ''
     return { diffs: new Map(), snapshot: snapshotWorktree(cwd).catch(() => null) }
+  }
+
+  /** Agent output on a watched turn: it made progress; a tool call opens or closes. */
+  private noteProgress(t: Thread, turn: Turn, sessionId: string, update: acp.SessionUpdate): void {
+    const watch = turn.watch
+    if (!watch) return
+    if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+      const key = `${sessionId}:${update.toolCallId}`
+      if (update.status === 'completed' || update.status === 'failed') watch.open.delete(key)
+      else if (update.sessionUpdate === 'tool_call' && !watch.open.has(key)) watch.open.set(key, Date.now())
+    }
+    this.armStall(t, turn)
+  }
+
+  /**
+   * Arm the watch's one timer (decision 9): with no tool call open, for the
+   * silence bound from now; with one open, for the command ceiling from when
+   * the oldest opened, however much it says meanwhile.
+   */
+  private armStall(t: Thread, turn: Turn): void {
+    const watch = turn.watch
+    if (!watch) return
+    if (watch.timer) clearTimeout(watch.timer)
+    const oldest = Math.min(...watch.open.values())
+    const [ms, why] = watch.open.size
+      ? [oldest + watch.bounds.commandMs - Date.now(), `one command ran past ${spanText(watch.bounds.commandMs)}`]
+      : [watch.bounds.silenceMs, `no progress for ${spanText(watch.bounds.silenceMs)}`]
+    watch.timer = setTimeout(() => void this.stall(t, turn, why), Math.max(0, ms))
+    watch.timer.unref?.()
+  }
+
+  /** A watched turn stalled: cancel it, so it ends as an error saying so. A turn waiting on the human's answer is not stalled. */
+  private async stall(t: Thread, turn: Turn, why: string): Promise<void> {
+    const watch = turn.watch
+    if (!watch || t.turn !== turn || isStopped(t)) return
+    if (t.ask) return this.armStall(t, turn)
+    watch.stalled = `stalled: ${why}`
+    appendThreadEvent(t.id, { type: 'notice', text: `Runcastle stopped this turn as stalled: ${why}.` })
+    await this.cancel(t.id).catch((err) => console.error('stall cancel failed', err))
   }
 
   /**
@@ -1649,6 +1744,7 @@ class Host implements AgentHost {
       const turn = t.turn ?? this.selfTurn(t)
       this.stillTalking(t, turn)
     }
+    if (t.turn?.watch && TURN_OUTPUT.has(update.sessionUpdate) && !t.loading) this.noteProgress(t, t.turn, sessionId, update)
     // A subagent's file changes are the turn's too.
     if (t.turn && (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update')) {
       const diffs = toolDiffs(update.content)
@@ -1810,6 +1906,7 @@ export function processAgentHost(ctx: AppCtx): AgentHost {
       lifecycle: threadLifecycle(ctx),
       transport: withWorkers(ctx, spawnAdapter),
       turnSlot: workerTurnSlot(ctx),
+      stallBounds: workerStallBounds(),
     })
   return g[HOST_KEY]
 }

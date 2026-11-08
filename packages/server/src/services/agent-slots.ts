@@ -9,16 +9,21 @@
  * and making a burn wait on the human's workers would stall a round — but it
  * counts while it runs. A worker's turn waits, first come first served, until
  * the count is under the limit.
+ *
+ * A turn may name the runtime it runs on. A runtime is put on hold when an
+ * agent on it fails on an account-level error (burns-become-workers decision
+ * 21): no turn on it is granted a slot, so none starts only to fail the same
+ * way, until the hold is lifted. Turns on other runtimes go by meanwhile.
  */
 
 /** Gives a held slot back; calling it again does nothing. */
 export type ReleaseSlot = () => void
 
 export interface AgentSlots {
-  /** A slot now when one is free, else undefined. */
-  tryTake(): ReleaseSlot | undefined
-  /** A slot as soon as one frees, in the order asked. */
-  take(): Promise<ReleaseSlot>
+  /** A slot now when one is free and `runtime` is not on hold, else undefined. */
+  tryTake(runtime?: string): ReleaseSlot | undefined
+  /** A slot as soon as one frees and `runtime` is not on hold, in the order asked. */
+  take(runtime?: string): Promise<ReleaseSlot>
   /** Count an agent that does not wait (a ticket agent), over the limit if need be. */
   occupy(): ReleaseSlot
   /** Slots held now. */
@@ -27,12 +32,28 @@ export interface AgentSlots {
   waiting(): number
   /** Retune the limit: a raise lets waiting turns in at once; slots held over a lowered one stay held. */
   resize(limit: number): void
+  /** Grant no slot to a turn on `runtime` until {@link lift}, saying `reason`; the first reason stands. */
+  hold(runtime: string, reason: string): void
+  /** Why `runtime` is on hold, or undefined when it is not. */
+  holdOf(runtime: string): string | undefined
+  /** Lift every hold, letting waiting turns in. True when there was one. */
+  lift(): boolean
+}
+
+interface Waiter {
+  runtime?: string
+  admit: (release: ReleaseSlot) => void
 }
 
 export function createAgentSlots(limit: number): AgentSlots {
   let width = Math.max(1, limit)
   let count = 0
-  const queue: ((release: ReleaseSlot) => void)[] = []
+  const queue: Waiter[] = []
+  const holds = new Map<string, string>()
+
+  const onHold = (runtime: string | undefined): boolean => runtime !== undefined && holds.has(runtime)
+  /** Free now for `runtime`: under the limit, not on hold, and no earlier turn that could go waits. */
+  const freeFor = (runtime: string | undefined): boolean => count < width && !onHold(runtime) && !queue.some((w) => !onHold(w.runtime))
 
   function grant(): ReleaseSlot {
     count++
@@ -46,15 +67,22 @@ export function createAgentSlots(limit: number): AgentSlots {
   }
 
   function admit(): void {
-    while (count < width && queue.length) queue.shift()?.(grant())
+    for (let i = 0; i < queue.length && count < width; ) {
+      const next = queue[i]!
+      if (onHold(next.runtime)) {
+        i++
+        continue
+      }
+      queue.splice(i, 1)
+      next.admit(grant())
+    }
   }
 
   return {
-    tryTake: () => (count < width && queue.length === 0 ? grant() : undefined),
-    take() {
-      const now = count < width && queue.length === 0 ? grant() : undefined
-      if (now) return Promise.resolve(now)
-      return new Promise((resolve) => queue.push(resolve))
+    tryTake: (runtime) => (freeFor(runtime) ? grant() : undefined),
+    take(runtime) {
+      if (freeFor(runtime)) return Promise.resolve(grant())
+      return new Promise((resolve) => queue.push({ ...(runtime !== undefined ? { runtime } : {}), admit: resolve }))
     },
     occupy: grant,
     held: () => count,
@@ -62,6 +90,16 @@ export function createAgentSlots(limit: number): AgentSlots {
     resize(next) {
       width = Math.max(1, next)
       admit()
+    },
+    hold(runtime, reason) {
+      if (!holds.has(runtime)) holds.set(runtime, reason)
+    },
+    holdOf: (runtime) => holds.get(runtime),
+    lift() {
+      if (holds.size === 0) return false
+      holds.clear()
+      admit()
+      return true
     },
   }
 }
