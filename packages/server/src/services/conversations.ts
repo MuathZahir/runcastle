@@ -263,7 +263,7 @@ function conversationTitle(ctx: AppCtx, earliest: SessionRow): string {
 }
 
 /** The kinds a feature's session switcher lists. */
-export type FeatureSessionKind = Extract<SessionKind, 'chat' | 'scenario'>
+export type FeatureSessionKind = Extract<SessionKind, 'chat'>
 
 /** One row of a feature's session switcher (several-sessions-per-feature decision 10). */
 export interface FeatureSession {
@@ -282,8 +282,8 @@ export interface FeatureSession {
 }
 
 /**
- * A feature's sessions: the main chat, then the scenario chat docked beside a
- * drive of this feature, while it is up. Side chats are retired
+ * A feature's sessions: the main chat. The drive's chats are workers
+ * now (listed by `worker.list`), and side chats are retired
  * (interactive-workers decision 7): the old ones read back as read-only
  * threads in `thread.list`, not here.
  *
@@ -292,12 +292,10 @@ export interface FeatureSession {
  * picked it up.
  */
 export function listFeatureSessions(ctx: AppCtx, featureId: string): FeatureSession[] {
-  const rows = featureSessions(ctx, featureId, ['chat', 'scenario'])
+  const rows = featureSessions(ctx, featureId, ['chat'])
   const main = rows.find((row) => row.kind === 'chat')
-  const scenario = rows.find((row) => row.kind === 'scenario' && row.status !== 'ended')
   return [
     ...(main ? [entryFor('chat', main, 'Main chat', [main])] : []),
-    ...(scenario ? [entryFor('scenario', scenario, 'Scenario chat', [scenario])] : []),
   ]
 }
 

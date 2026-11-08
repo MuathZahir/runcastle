@@ -306,10 +306,6 @@ function projectScopedNoun(kind: SessionKind): string {
   switch (kind) {
     case 'project':
       return 'orchestrator'
-    // Project-scoped only on a project drive; on a feature drive it takes the
-    // feature path above.
-    case 'scenario':
-      return 'scenario chat'
     default:
       return 'session'
   }

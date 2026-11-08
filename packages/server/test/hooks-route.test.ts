@@ -932,7 +932,6 @@ describe('hooks route, project-scoped sessions', () => {
   it('announces each kind by its own name in its lifecycle events', async () => {
     for (const [kind, noun] of [
       ['project', 'orchestrator'],
-      ['scenario', 'scenario chat'],
     ] as const) {
       const sessionId = projectScopedSession(kind)
       const before = listByProject(ctx, projectId, 0).at(-1)?.id ?? 0

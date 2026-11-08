@@ -1482,7 +1482,7 @@ export function toolReportFinding(
   return { findingId: reportReviewFinding(ctx, review.id, input).finding.id }
 }
 
-/** What one `retry_drive` attempt observed, as the drive-fix agent reads it. */
+/** What one `retry_drive` attempt observed, as the Fix-drive worker reads it. */
 export interface RetryDriveResult {
   /**
    * Whether the fresh drive STARTED. Its setup may still have failed — that is
@@ -1505,7 +1505,7 @@ export interface RetryDriveResult {
 
 /**
  * Retry the drive this session was opened to fix (decision 9) — the fix→retry
- * half of the loop, and the only tool a drive-fix session has that no other
+ * half of the loop, and the only tool the Fix-drive worker has that no other
  * session does.
  *
  * Stopping first is not optional and not the agent's job to remember: the failed
@@ -1518,9 +1518,9 @@ export async function toolRetryDrive(
   ctx: AppCtx,
   session: SessionRow,
 ): Promise<RetryDriveResult> {
-  if (session.kind !== 'drive-fix' && driveWorkerOf(ctx, session)?.kind !== 'fix-drive') {
+  if (driveWorkerOf(ctx, session)?.kind !== 'fix-drive') {
     throw new GateError(
-      `retrying a drive belongs to a drive-fix session or the Fix-drive worker, and this is a ${session.kind} session. ` +
+      `retrying a drive belongs to the Fix-drive worker, and this is a ${session.kind} session. ` +
         "It stops and restarts a test drive on the human's machine — only the session opened on " +
         'that failed drive may do that; everyone else asks the human to drive from the review panel.',
     )
@@ -1546,9 +1546,9 @@ export async function toolRetryDrive(
 
 /** Refuse anything but a `scenario` session or the Scenarios worker, and resolve the project it belongs to. */
 function requireScenarioSession(ctx: AppCtx, session: SessionRow, what: string): Project {
-  if (session.kind !== 'scenario' && driveWorkerOf(ctx, session)?.kind !== 'scenario') {
+  if (driveWorkerOf(ctx, session)?.kind !== 'scenario') {
     throw new GateError(
-      `${what} belongs to a scenario session or the Scenarios worker, and this is a ${session.kind} session. Scenarios ` +
+      `${what} belongs to the Scenarios worker, and this is a ${session.kind} session. Scenarios ` +
         'are written and landed from ＋ New scenario inside a running test drive.',
     )
   }
@@ -2428,12 +2428,12 @@ const PROJECT_READ_NOTE =
 export type McpAudience = SessionKindT | 'review' | 'fix-drive-worker' | 'scenario-worker'
 
 /** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
-const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
+const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'side']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['project']
 
 /**
- * `scenario` is in neither list: its scope follows its drive (feature or
+ * The Scenarios worker is in neither list: its scope follows its drive (feature or
  * project), so it is offered only the tools that work at either scope plus its
  * own two. `worker` is in neither either: a worker gets none of the lead's tools
  * (interactive-workers decision 9). A drive worker is offered what the drive chat
@@ -2442,7 +2442,6 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
 const ALL_AUDIENCES: readonly McpAudience[] = [
   ...FEATURE_KINDS,
   ...PROJECT_KINDS,
-  'scenario',
   'worker',
   'review',
   'fix-drive-worker',
@@ -2452,8 +2451,8 @@ const ALL_AUDIENCES: readonly McpAudience[] = [
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
- * `requireProject`, `requireReviewer`, the `kind !== 'project'` and
- * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
+ * `requireProject`, `requireReviewer`, the `kind !== 'project'`
+ * checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
  *
@@ -2499,7 +2498,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_design: ['chat'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
-  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review', 'fix-drive-worker', 'scenario-worker'],
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'review', 'fix-drive-worker', 'scenario-worker'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
@@ -2512,18 +2511,18 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   update_project_note: ['project'],
   set_feature_dependencies: ['project'],
   // `createFeatureProject`: the project kinds get the whole door, the drafting
-  // talk kinds get parking only, `qa` and `drive-fix` get nothing.
+  // talk kinds get parking only, `qa` and the drive workers get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
   // Single-kind tools, each gated on that kind at call time.
   dry_run_drive: ['project'],
-  retry_drive: ['drive-fix', 'fix-drive-worker'],
-  run_scenario: ['scenario', 'scenario-worker'],
-  set_scenario_runner: ['scenario', 'scenario-worker'],
+  retry_drive: ['fix-drive-worker'],
+  run_scenario: ['scenario-worker'],
+  set_scenario_runner: ['scenario-worker'],
   // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
   review_drive: ['review'],
   report_finding: ['review'],
   // The one tool both halves share — it emits at whatever scope the caller has.
-  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'fix-drive-worker', 'scenario-worker'],
+  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'fix-drive-worker', 'scenario-worker'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
   // orchestrator, refused at call time unless it is still live
   // (`requireOrchestratorSession`). Registered in `orchestrator-tools.ts` and

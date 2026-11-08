@@ -44,7 +44,7 @@ export function FeatureSidebar({
   const rows = workersQ.data ?? []
   const lead = published.threads.find((t) => t.role === 'main') ?? standIn(UNSTARTED_CHAT, NEW_CHAT_NAME, 'main')
   const workers = featureWorkerEntries(rows, published.threads)
-  const scenarios = sidebarThreadOrder(published.threads.filter((t) => t.role === 'scenario'))
+  const scenarios = sidebarThreadOrder(published.threads.filter((t) => t.role === 'old-drive-chat'))
   const titles = new Map(published.threads.map((t) => [t.id, t]))
 
   const actionsFor = (w: WorkerEntry): FeatureAction[] => {

@@ -570,10 +570,11 @@ export interface ThreadEntry {
   title: string
   /**
    * What kind of thread: the feature's main chat (its lead), a worker, an old
-   * side chat (read-only since workers replaced them), a scenario chat, a
+   * side chat or old drive chat (read-only since workers replaced them), a
    * project chat.
    */
-  role: 'main' | 'worker' | 'side' | 'scenario' | 'project'
+  // TODO(drive-chats-become-workers ticket 5): nothing reads back as 'scenario' any more; the web still names it.
+  role: 'main' | 'worker' | 'side' | 'old-drive-chat' | 'scenario' | 'project'
   state: ThreadState
   /** When it was started: the sidebar's order, which an agent posting never changes. */
   createdAt: number

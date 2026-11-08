@@ -794,24 +794,6 @@ describe('renderSessionPrompt', () => {
         },
       },
     ],
-    [
-      'drive-fix',
-      {
-        session: session({ kind: 'drive-fix' }),
-        driveFix: {
-          project,
-          feature: feature(),
-          failure: {
-            command: 'bash .runcastle/drive-setup.sh',
-            exitCode: 3,
-            timedOut: false,
-            output: 'boom',
-          },
-          envKeys: [],
-          delta: { base: 'main', branch: 'feature/dark-mode', stat: '' },
-        },
-      },
-    ],
   ]
 
   it.each(briefs)('ends a %s brief with how to talk to the human, exactly once', (_, brief) => {
@@ -894,22 +876,6 @@ describe('claudeRuntime.writeArtifacts', () => {
         },
       }
     }
-    if (kind === 'drive-fix') {
-      return {
-        driveFix: {
-          project,
-          feature: feature(),
-          failure: {
-            command: 'bash .runcastle/drive-setup.sh',
-            exitCode: 3,
-            timedOut: false,
-            output: 'boom',
-          },
-          envKeys: [],
-          delta: { base: 'main', branch: 'feature/dark-mode', stat: '' },
-        },
-      }
-    }
     return { feature: feature() }
   }
 
@@ -931,7 +897,7 @@ describe('claudeRuntime.writeArtifacts', () => {
     })
   }
 
-  it.each(SessionKind.options)('builds the pre-refactor argv for a %s session', async (kind) => {
+  it.each(SessionKind.options.filter((k) => k !== 'drive-fix' && k !== 'scenario'))('builds the pre-refactor argv for a %s session', async (kind) => {
     const spec = await launchSpec(kind)
     const dir = sessionDir(`sess_rt_${kind}`)
 

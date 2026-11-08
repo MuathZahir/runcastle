@@ -90,6 +90,11 @@ function hostSidePosture(runtime: string): { permissionMode?: string } {
  * decisions 7, 23): workers replaced side chats, and the ones made before stay
  * as read-only transcripts.
  */
+export const OLD_DRIVE_CHAT_READ_ONLY =
+  'this is an old drive chat, kept as a read-only transcript since the drive\'s chats became workers — ' +
+  'press Fix drive or New scenario in a drive to start one'
+
+/** Why an old side chat takes no message and starts no agent (see above). */
 export const OLD_SIDE_CHAT_READ_ONLY =
   'this is an old side chat, kept as a read-only transcript since workers replaced side chats — ' +
   'to carry it on, start a worker with "+" on the feature and paste what it needs'
@@ -178,46 +183,8 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
         permissionMode: 'bypassPermissions',
       }
     }
-    case 'drive-fix': {
-      const feature = getFeatureRow(ctx, row.featureId as string)
-      const drive = git.activeDriveInfo(project.id)
-      if (drive?.featureId !== feature.id || !drive.hookFailure) {
-        throw new GateError(`no failed drive of ${feature.slug} to fix — the Fix-it chat works from a drive whose setup failed`)
-      }
-      return {
-        ...base,
-        ...hostSidePosture(runtime),
-        driveFix: {
-          project,
-          feature,
-          failure: drive.hookFailure,
-          envKeys: drive.envKeys ?? [],
-          delta: await git.featureBranchDelta(project, feature),
-        },
-      }
-    }
-    case 'scenario': {
-      const drive = git.activeDriveInfo(project.id)
-      const driveEnv = git.scenarioDriveEnv(ctx, project.id)
-      if (!drive || !driveEnv) {
-        throw new GateError('a scenario chat lands scenarios on a running test drive — start one first')
-      }
-      return {
-        ...base,
-        ...hostSidePosture(runtime),
-        // What the human asks for comes in the thread's prompts.
-        scenario: {
-          project,
-          ...(row.featureId ? { feature: getFeatureRow(ctx, row.featureId) } : {}),
-          branch: drive.branch,
-          identity: driveEnv.identity,
-          envOverlay: driveEnv.envOverlay,
-          driveUrl: drive.devUrl,
-          runner: project.scenarioRunner ?? undefined,
-          files: await listScenarioPaths(project.repoPath, 'HEAD'),
-          setup: row.purpose === 'scenario-setup',
-        },
-      }
-    }
+    case 'drive-fix':
+    case 'scenario':
+      throw new GateError(OLD_DRIVE_CHAT_READ_ONLY)
   }
 }

@@ -12,7 +12,7 @@ import {
 import * as z from 'zod'
 import { createProjectThread, kickoffFor, openingSummary } from '../../launcher/launcher'
 import { GateError } from '../../errors'
-import { OLD_SIDE_CHAT_READ_ONLY } from '../../threads/launch'
+import { OLD_DRIVE_CHAT_READ_ONLY, OLD_SIDE_CHAT_READ_ONLY } from '../../threads/launch'
 import { setSessionTitle } from '../../launcher/sessions'
 import { rosterConfig } from '../../services/model-discovery'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../../services/repo'
@@ -82,6 +82,7 @@ export const threadRouter = router({
       const { threadId: id, text, images, model, effort, fast } = input
       const row = threadRow(ctx, id)
       if (row.kind === 'side') throw new GateError(OLD_SIDE_CHAT_READ_ONLY)
+      if (row.kind === 'drive-fix' || row.kind === 'scenario') throw new GateError(OLD_DRIVE_CHAT_READ_ONLY)
       const between = driveWorkerBetweenDrives(ctx, row)
       if (between) throw new GateError(between)
       // A thread opened empty (New thread) is briefed ahead of the human's first

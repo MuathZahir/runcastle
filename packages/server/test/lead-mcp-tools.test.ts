@@ -55,7 +55,7 @@ describe('the lead’s MCP tools', () => {
   it('offers the lead tools to the feature chat only, and no ticket or round tool to anyone', () => {
     for (const tool of ['declare_ready', 'wait_for_you']) {
       expect(toolsForAudience('chat')).toContain(tool)
-      expect(toolsForAudience('drive-fix')).not.toContain(tool)
+      expect(toolsForAudience('fix-drive-worker')).not.toContain(tool)
       expect(toolsForAudience('project')).not.toContain(tool)
       expect(toolsForAudience('review')).not.toContain(tool)
     }

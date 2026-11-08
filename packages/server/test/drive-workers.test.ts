@@ -227,7 +227,7 @@ describe('MCP tools', () => {
 
   it('lets the Fix-drive worker retry the drive, and no other worker', async () => {
     const fix = seedDriveWorker(ctx, { feature }, 'fix-drive', repo)
-    const kindRefusal = /belongs to a drive-fix session/
+    const kindRefusal = /belongs to the Fix-drive worker/
     const tried = await toolRetryDrive(ctx, fix).catch((e: Error) => e)
     expect(tried instanceof Error ? tried.message : '').not.toMatch(kindRefusal)
     await expect(toolRetryDrive(ctx, seedDriveWorker(ctx, { feature }, 'scenario', repo))).rejects.toThrow(kindRefusal)
@@ -239,7 +239,7 @@ describe('MCP tools', () => {
     await expect(toolRunScenario(ctx, scenario, 'a.ts')).rejects.toThrow(/no longer running/)
     expect(toolSetScenarioRunner(ctx, scenario, 'bun {file}')).toEqual({ scenarioRunner: 'bun {file}' })
     const fix = seedDriveWorker(ctx, { feature }, 'fix-drive', repo)
-    await expect(toolRunScenario(ctx, fix, 'a.ts')).rejects.toThrow(/belongs to a scenario session/)
+    await expect(toolRunScenario(ctx, fix, 'a.ts')).rejects.toThrow(/belongs to the Scenarios worker/)
   })
 
   it("writes a drive worker's hand_back to the host handback file", () => {

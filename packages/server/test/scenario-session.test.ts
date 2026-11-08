@@ -1,50 +1,40 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Feature, Project, SessionRow } from '@runcastle/core'
-import { sessionDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { type ScenarioBrief, renderScenarioPrompt } from '../src/launcher/artifacts'
 import { evaluateCheckoutGuard } from '../src/launcher/checkout-guard'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
-import { launchScenarioSession, launchSession } from '../src/launcher/launcher'
 import {
   createSessionRow,
   getSessionRow,
-  kickoffLineFor,
-  markSessionEnded,
-  markSessionLive,
 } from '../src/launcher/sessions'
-import { runtimeAdapterFor } from '../src/launcher/runtimes'
 import { toolRunScenario, toolSetScenarioRunner } from '../src/mcp/server'
-import { listAfter, listByProject } from '../src/services/events'
+import { listByProject } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import {
   __resetTestDriveState,
   __setAppReadinessTiming,
   activeDriveInfo,
+  attachScenarioSession,
   createFeatureBranch,
-  projectDrive,
   recordDriveUrl,
-  reviewDrive,
-  runScenarioOnDrive,
   testDrive,
 } from '../src/services/git'
 import { usePipePty } from './helpers/pipe-pty'
-import { type PtyEntry, ptyRegistry } from '../src/pty/registry'
 import { getProjectById } from '../src/services/repo'
 import { resolveBun } from './helpers/bun'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
-import { briefOf, kickoffOf, promptsOf } from './support/thread-launch'
+import { rmTemp, seedDriveWorker, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * The scenario session (drive-scenarios decision 8): ＋ New scenario / Fix it
@@ -98,7 +88,6 @@ async function waitFor(fn: () => boolean, tries = 1000): Promise<void> {
 }
 
 usePipePty()
-const PTY = !WIN
 
 function setupCommand(): string {
   const envFile = join('.runcastle', 'drive.env')
@@ -164,152 +153,21 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
     return url
   }
 
-  function launch(input: { description?: string; fixFile?: string } = {}): Promise<{ sessionId: string }> {
-    return launchScenarioSession(ctx, { projectId: project.id, ...input }, { spawn: false })
+  /** The Scenarios worker of this feature, docked beside the drive as its button docks it. */
+  function launch(): { sessionId: string } {
+    const { id } = seedDriveWorker(ctx, { feature }, 'scenario', repo)
+    attachScenarioSession(project.id, id)
+    return { sessionId: id }
   }
 
   function session(id: string): SessionRow {
     return getSessionRow(ctx, id) as SessionRow
   }
 
-  /** The brief the thread's process starts with: the drive's values and the setup block. */
-  function prompt(id: string): Promise<string> {
-    return briefOf(ctx, id)
-  }
-
-  describe('launching', () => {
-    it('refuses without a live human drive whose app answers', async () => {
-      await expect(launch()).rejects.toThrow(GateError)
-      await testDrive(ctx, project, feature, 'start')
-      await expect(launch()).rejects.toThrow(/Open app/)
-      await testDrive(ctx, project, feature, 'stop')
-      await reviewDrive(ctx, project, { ...feature }, 'start')
-      await expect(launch()).rejects.toThrow(GateError)
-    }, 30_000)
-
-    it('opens a feature-scoped session in the checkout, docked to the drive', async () => {
-      await driveUp()
-      const { sessionId } = await launch({ description: 'a buyer with a full cart' })
-      expect(session(sessionId)).toMatchObject({
-        kind: 'scenario',
-        featureId: feature.id,
-        worktreePath: project.repoPath,
-      })
-      // Scenarios exist on this branch, so this is not setup mode.
-      expect(session(sessionId).purpose).toBeUndefined()
-      expect(activeDriveInfo(project.id)?.scenarioSessionId).toBe(sessionId)
-      expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('scenario.chat_opened')
-
-      // The human's ask is in the thread's first prompt, after its opening.
-      expect(kickoffOf(sessionId)).toContain('The human asked for a new scenario: a buyer with a full cart')
-      const text = await prompt(sessionId)
-      expect(text).toContain('`DB_NAME` = `app_scn`')
-      expect(text).toContain('`.runcastle/scenarios/_fixtures/buyer.ts`')
-      expect(text).not.toContain('Setup mode')
-    }, 30_000)
-
-    it('opens a feature drive chat knowing the feature and the main chat\'s latest turns', async () => {
-      await driveUp()
-      const chat = createSessionRow(ctx, {
-        featureId: feature.id,
-        kind: 'chat',
-        worktreePath: project.repoPath,
-      })
-      const transcriptPath = join(mkTmp('rc-scs-tr-'), 'main.jsonl')
-      writeFileSync(
-        transcriptPath,
-        `${JSON.stringify({ type: 'user', message: { content: 'we were building the cart page' } })}\n`,
-      )
-      markSessionLive(ctx, chat.id, { ccSessionId: 'cc-main', transcriptPath })
-
-      const { sessionId } = await launch({ description: 'a buyer' })
-
-      const line = kickoffOf(sessionId)
-      expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
-      expect(line).toContain('Feature status: Talking with you.')
-      expect(line).toContain('Human: we were building the cart page')
-      expect(line).toContain(transcriptPath)
-    }, 30_000)
-
-    it('reopens the scenario thread of this drive instead of starting a second, whatever its process does', async () => {
-      await driveUp()
-      const first = await launch()
-      expect((await launch()).sessionId).toBe(first.sessionId)
-
-      markSessionEnded(ctx, first.sessionId)
-      expect((await launch()).sessionId).toBe(first.sessionId)
-    }, 30_000)
-
-    it('starts in setup mode, decided at launch, when the branch has no scenarios yet', async () => {
-      await driveUp()
-      rmSync(join(repo, '.runcastle', 'scenarios'), { recursive: true, force: true })
-      const { sessionId } = await launch({ description: 'signed in as an admin' })
-      expect(session(sessionId).purpose).toBe('scenario-setup')
-      expect(await prompt(sessionId)).toContain('Setup mode')
-    }, 30_000)
-
-    it('briefs Fix it with the failed file, its reason and its output tail', async () => {
-      await driveUp()
-      await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
-      const { sessionId } = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
-      const text = kickoffOf(sessionId)
-      expect(text).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
-      expect(text).toContain('exited 2')
-      expect(text).toContain('no such table')
-    }, 30_000)
-
-    it('says the next ask into the docked thread — Fix it with its failure, or a new description', async () => {
-      await driveUp()
-      const first = await launch()
-
-      await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
-      const fixed = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
-      expect(fixed.sessionId).toBe(first.sessionId)
-      const line = promptsOf(first.sessionId).at(-1)
-      expect(line?.source).toBe('runcastle')
-      expect(line?.text).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
-      expect(line?.text).toContain('exited 2')
-      expect(line?.text).toContain('no such table')
-
-      await launch({ description: 'a buyer with an expired coupon' })
-      expect(promptsOf(first.sessionId).at(-1)?.text).toContain('a buyer with an expired coupon')
-      // A plain reopen says nothing.
-      await launch()
-      expect(promptsOf(first.sessionId)).toHaveLength(3)
-    }, 30_000)
-
-    it.runIf(PTY)('opens a project-scoped session on a project drive', async () => {
-      const port = await freePort()
-      await serveApp(port)
-      recordFinding(ctx, project.id, {
-        key: 'devCommand',
-        value: `echo http://127.0.0.1:${port}/; sleep 30`,
-        source: 'human',
-      })
-      project = getProjectById(ctx, project.id) as Project
-      expect((await projectDrive(ctx, project, 'start')).ok).toBe(true)
-      await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
-
-      const { sessionId } = await launch()
-      // A project drive has no main chat to quote: the kickoff is the plain line.
-      expect(kickoffOf(sessionId)).toBe(kickoffLineFor('scenario', undefined, 'claude-code'))
-      expect(session(sessionId)).toMatchObject({ kind: 'scenario', projectId: project.id })
-      expect(session(sessionId).featureId ?? null).toBeNull()
-      expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('scenario.chat_opened')
-      await projectDrive(ctx, project, 'stop')
-    }, 30_000)
-
-    it('is never opened as a plain talk session', async () => {
-      await expect(launchSession(ctx, { featureId: feature.id, kind: 'scenario' })).rejects.toThrow(
-        GateError,
-      )
-    })
-  })
-
   describe('MCP tools', () => {
     it('run_scenario lands the drive for its own session, and refuses others', async () => {
       const url = await driveUp()
-      const { sessionId } = await launch()
+      const { sessionId } = launch()
       expect(await toolRunScenario(ctx, session(sessionId), LAND)).toMatchObject({
         ok: true,
         entryUrl: `${url}cart?db=app_scn`,
@@ -328,7 +186,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
     }, 30_000)
 
     it('set_scenario_runner records the runner through the settings service', () => {
-      const scn = createSessionRow(ctx, { projectId: project.id, kind: 'scenario', worktreePath: repo })
+      const scn = seedDriveWorker(ctx, { project }, 'scenario', repo)
       expect(() => toolSetScenarioRunner(ctx, scn, 'bun run')).toThrow(InvalidInputError)
 
       expect(toolSetScenarioRunner(ctx, scn, 'bun {file}')).toEqual({ scenarioRunner: 'bun {file}' })

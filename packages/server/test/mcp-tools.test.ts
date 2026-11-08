@@ -324,28 +324,28 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('chat')).not.toContain('read_feature_brief')
     expect(toolsForAudience('review')).not.toContain('read_feature_brief')
     for (const tool of ['list_project_notes', 'triage_project_note', 'update_project_note']) {
-      expect(toolsForAudience('scenario'), tool).not.toContain(tool)
+      expect(toolsForAudience('scenario-worker'), tool).not.toContain(tool)
       expect(toolsForAudience('chat'), tool).not.toContain(tool)
       expect(toolsForAudience('review'), tool).not.toContain(tool)
     }
 
     // Single-kind tools stay single-kind.
     expect(toolsForAudience('project')).toContain('dry_run_drive')
-    expect(toolsForAudience('scenario')).not.toContain('dry_run_drive')
+    expect(toolsForAudience('scenario-worker')).not.toContain('dry_run_drive')
     expect(toolsForAudience('chat')).not.toContain('dry_run_drive')
-    expect(toolsForAudience('drive-fix')).toContain('retry_drive')
+    expect(toolsForAudience('fix-drive-worker')).toContain('retry_drive')
     expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
     // A scenario session's scope follows its drive, so it gets only the
     // either-scope note plus its own two tools and show_file.
-    expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner', 'show_file'])
-    for (const audience of ['chat', 'project', 'drive-fix', 'review'] as const) {
+    expect(toolsForAudience('scenario-worker')).toEqual(['hand_back', 'record_event', 'run_scenario', 'set_scenario_runner', 'show_file'])
+    for (const audience of ['chat', 'project', 'fix-drive-worker', 'review'] as const) {
       expect(toolsForAudience(audience)).not.toContain('run_scenario')
       expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')
     }
 
     // The review wires are a drive review's alone (a gates review reports over its relay).
-    for (const audience of SessionKind.options) {
+    for (const audience of SessionKind.options.filter((k) => k !== 'drive-fix' && k !== 'scenario')) {
       expect(toolsForAudience(audience), audience).not.toContain('review_drive')
       expect(toolsForAudience(audience), audience).not.toContain('report_finding')
     }
@@ -392,7 +392,7 @@ describe('mcp tool registration by audience', () => {
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['chat', 'project', 'drive-fix', 'scenario', 'review'] as const) {
+    for (const audience of ['chat', 'project', 'fix-drive-worker', 'scenario-worker', 'review'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })
