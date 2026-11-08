@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { eq, ne } from 'drizzle-orm'
 import {
   type Ask,
@@ -40,6 +40,7 @@ import { getFeatureRow, projectForFeature, tryGetFeature } from '../services/rep
 import { requireAnnotatedModels } from '../services/tickets'
 import type { AgentTransport, StallBounds, TurnEnding } from '../threads/host'
 import type { StopReason } from '../threads/types'
+import { claudeTranscriptPath } from '../threads/side-channels'
 import { agentHost, readThreadEvents } from '../threads/types'
 import { isOverwritable } from '../services/findings'
 import { adoptProjectImage, releaseProjectImage } from '../services/project-image'
@@ -618,6 +619,8 @@ async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
  */
 async function reviewHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): Promise<void> {
   await giveDriveBack(ctx, w)
+  // A drive review's conversation is on the host: its tokens are counted as it hands back (decision 12).
+  if (isHostReview(w)) await keepConversation(ctx, w)
   const handed = updateWorker(ctx, w.id, {
     status: 'handed-back',
     handbackSummary: note.summary,
@@ -1116,11 +1119,9 @@ async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   await agentHost(ctx).stop(w.id, 'archived')
   await giveDriveBack(ctx, w)
+  if (hasConversation(w)) await keepConversation(ctx, w)
   const sb = sandboxOf(ctx, w)
-  if (sb) {
-    await keepConversation(ctx, w)
-    await sandboxEngine(w.engine).remove(sb)
-  }
+  if (sb) await sandboxEngine(w.engine).remove(sb)
   if (drops) emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
 }
 
@@ -1137,15 +1138,9 @@ export function keptConversationPath(workerId: string): string {
  */
 export async function keepConversation(ctx: AppCtx, w: WorkerRow): Promise<void> {
   try {
-    const sb = sandboxOf(ctx, w)
-    const conversationId = getSessionRow(ctx, w.id)?.ccSessionId
-    if (!sb || !conversationId) return
-    const engine = sandboxEngine(w.engine)
-    const inside = await engine.conversationPath(sb, conversationId)
-    if (!inside) return
     const kept = keptConversationPath(w.id)
-    await engine.copyOut(sb, inside, kept)
-    const usage = readTranscriptUsage(kept, w.runtime)
+    const read = isHostReview(w) ? keepHostConversation(ctx, w, kept) : await keepSandboxConversation(ctx, w, kept)
+    const usage = read ? readTranscriptUsage(read, w.runtime) : null
     if (usage) updateWorker(ctx, w.id, { tokens: usage.total })
   } catch (err) {
     emitWorker(ctx, w, 'worker.conversation_unkept', `worker "${w.label}": its conversation file could not be kept`, {
@@ -1154,9 +1149,44 @@ export async function keepConversation(ctx: AppCtx, w: WorkerRow): Promise<void>
   }
 }
 
+/** Copy a sandboxed worker's conversation file out to `kept`; the path to read its tokens from, or undefined when there is none. */
+async function keepSandboxConversation(ctx: AppCtx, w: WorkerRow, kept: string): Promise<string | undefined> {
+  const sb = sandboxOf(ctx, w)
+  const conversationId = getSessionRow(ctx, w.id)?.ccSessionId
+  if (!sb || !conversationId) return undefined
+  const engine = sandboxEngine(w.engine)
+  const inside = await engine.conversationPath(sb, conversationId)
+  if (!inside) return undefined
+  await engine.copyOut(sb, inside, kept)
+  return kept
+}
+
+/**
+ * A drive review's conversation file is on the host already (it ran there):
+ * the transcript its session recorded, else Claude Code's file for its
+ * conversation. Copied to `kept` beside its thread log; its tokens are read
+ * where it lies, with any subagent transcripts beside it.
+ */
+function keepHostConversation(ctx: AppCtx, w: WorkerRow, kept: string): string | undefined {
+  const row = getSessionRow(ctx, w.id)
+  const recorded = row?.transcriptPath && existsSync(row.transcriptPath) ? row.transcriptPath : undefined
+  const path = recorded ?? (row?.ccSessionId && w.runtime === 'claude-code' ? claudeTranscriptPath(row.ccSessionId) : undefined)
+  if (!path) return undefined
+  if (resolve(path) !== resolve(kept)) {
+    mkdirSync(dirname(kept), { recursive: true })
+    copyFileSync(path, kept)
+  }
+  return path
+}
+
+/** Whether a worker has a conversation file to keep: a sandbox's, or a drive review's on the host. */
+function hasConversation(w: WorkerRow): boolean {
+  return !!w.container || isHostReview(w)
+}
+
 /** Keep every worker's conversation of a feature, so a record written before its sandboxes go (the outcome) carries their tokens. */
 export async function keepFeatureConversations(ctx: AppCtx, featureId: string): Promise<void> {
-  for (const w of listWorkers(ctx, featureId)) if (w.container && w.status !== 'dropped') await keepConversation(ctx, w)
+  for (const w of listWorkers(ctx, featureId)) if (hasConversation(w) && w.status !== 'dropped') await keepConversation(ctx, w)
 }
 
 /**

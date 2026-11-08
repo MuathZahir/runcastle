@@ -65,7 +65,7 @@ describe('show_file', () => {
     for (const kind of ['chat', 'side', 'scenario', 'drive-fix', 'project'] as const) {
       expect(toolsForAudience(kind), kind).toContain('show_file')
     }
-    expect(toolsForAudience('run')).not.toContain('show_file')
+    expect(toolsForAudience('worker')).not.toContain('show_file')
   })
 
   it('copies the file into the thread and logs it, and the copy outlives the original', async () => {

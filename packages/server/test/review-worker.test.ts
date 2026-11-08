@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, ReviewFindingInput, WorkerRow } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
@@ -16,6 +18,7 @@ import {
   dropDriveWaitsForTests,
   dropWorker,
   getWorker,
+  keptConversationPath,
   landWorker,
   listWorkers,
   resumeDriveReviewWaits,
@@ -229,6 +232,28 @@ describe('a drive review', () => {
     const second = await toolStartReview(ctx, leadSession(), {})
     expect(getWorker(ctx, second.workerId)).toMatchObject({ status: 'failed', failure: expect.stringContaining('uncommitted files') })
     expect(drive.given).toContain(second.workerId)
+  })
+
+  it('records its tokens from its conversation file on the host as it hands back, keeping a copy beside its thread log', async () => {
+    const claudeDir = join(home, 'claude-config')
+    vi.stubEnv('CLAUDE_CONFIG_DIR', claudeDir)
+    const usage = (output: number) =>
+      JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { id: `m${output}`, role: 'assistant', usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: output } } })
+    realHost(
+      reviewer((w) => {
+        // Claude Code wrote its conversation where it keeps every project's: on the host, since a drive review runs there.
+        const conversation = getSessionRow(ctx, w.id)?.ccSessionId ?? 'conv-review'
+        markSessionLive(ctx, w.id, { ccSessionId: conversation })
+        mkdirSync(join(claudeDir, 'projects', '-work'), { recursive: true })
+        writeFileSync(join(claudeDir, 'projects', '-work', `${conversation}.jsonl`), `${usage(30)}\n${usage(12)}\n`)
+        toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })
+      }),
+    )
+    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    await until(() => getWorker(ctx, workerId)?.status === 'handed-back')
+
+    expect(getWorker(ctx, workerId)?.tokens).toBe(42)
+    expect(readFileSync(keptConversationPath(workerId), 'utf8')).toContain('"output_tokens":30')
   })
 
   it('queued for the drive slot when the server restarts, waits again after boot and starts when the slot frees', async () => {

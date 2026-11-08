@@ -57,7 +57,7 @@ describe('the lead’s MCP tools', () => {
       expect(toolsForAudience('chat')).toContain(tool)
       expect(toolsForAudience('drive-fix')).not.toContain(tool)
       expect(toolsForAudience('project')).not.toContain(tool)
-      expect(toolsForAudience('run')).not.toContain(tool)
+      expect(toolsForAudience('review')).not.toContain(tool)
     }
   })
 

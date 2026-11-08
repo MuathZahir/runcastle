@@ -133,10 +133,19 @@ export async function rewindClaudeFiles(input: { sessionId: string; cwd: string;
  * it, whatever directory the conversation began in.
  */
 export function claudeTranscriptOnDisk(conversationId: string): boolean {
+  return claudeTranscriptPath(conversationId) !== undefined
+}
+
+/** Where Claude Code holds the transcript of the conversation on this machine ({@link claudeTranscriptOnDisk}), or undefined. */
+export function claudeTranscriptPath(conversationId: string): string | undefined {
   const projects = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects')
   try {
-    return readdirSync(projects, { withFileTypes: true }).some((dir) => dir.isDirectory() && existsSync(join(projects, dir.name, `${conversationId}.jsonl`)))
+    for (const dir of readdirSync(projects, { withFileTypes: true })) {
+      const path = join(projects, dir.name, `${conversationId}.jsonl`)
+      if (dir.isDirectory() && existsSync(path)) return path
+    }
   } catch {
-    return false
+    // No projects dir: no transcript.
   }
+  return undefined
 }

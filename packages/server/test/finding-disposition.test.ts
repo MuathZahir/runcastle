@@ -80,7 +80,7 @@ describe('the agent resolves a review’s open defects', () => {
         expect(toolsForAudience(kind), kind).toContain('resolve_finding')
       }
       expect(toolsForAudience('project')).not.toContain('resolve_finding')
-      expect(toolsForAudience('run')).not.toContain('resolve_finding')
+      expect(toolsForAudience('review')).not.toContain('resolve_finding')
     })
 
     it('offers addressed and dismissed, and nothing else', () => {

@@ -9,7 +9,7 @@ const TOOL_CAP = 400
 const PARAM_CAP = 120
 
 /** Audiences runcastle's MCP serves tools to; a worker's tools are relayed into its sandbox instead. */
-const AUDIENCES: McpAudience[] = [...SessionKind.options, 'run'].filter((a) => toolsForAudience(a).length > 0)
+const AUDIENCES: McpAudience[] = [...SessionKind.options, 'review'].filter((a) => toolsForAudience(a).length > 0)
 
 type Schema = {
   description?: string
