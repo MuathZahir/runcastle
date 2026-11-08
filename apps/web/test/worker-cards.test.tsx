@@ -5,6 +5,7 @@ import { reviewPackageUrl, type PromptDisplay, type ReviewPackage, type WorkerRo
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RuncastleDisplay, WorkerLinksContext } from '../src/components/chat/thread/FeatureCardItems'
 import { workerWhere } from '../src/components/workers/WorkerChat'
+import { HandedBackLine } from '../src/components/workers/WorkerParts'
 import { workerEntry } from '../src/lib/workers'
 
 /**
@@ -187,6 +188,11 @@ describe('a drive worker (drive-chats-become-workers decisions 3, 5)', () => {
     expect(card.textContent).toContain('1 commit')
     expect(card.textContent).toContain('on main')
     expect(screen.queryByText('Landed')).toBeNull()
+  })
+
+  it('ends its own chat on a handed-back line naming the branch its commits landed on', () => {
+    render(<HandedBackLine commits={1} files={1} to="the orchestrator" branch="main" />)
+    expect(document.body.textContent).toContain('Handed back to the orchestrator · 1 commit · 1 file · on main')
   })
 })
 

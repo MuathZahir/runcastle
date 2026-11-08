@@ -184,17 +184,21 @@ export function HandedBackLine({
   files,
   by,
   to = 'the lead',
+  branch,
 }: {
   commits: number
   files: number
   by?: 'you' | 'worker'
   to?: 'the lead' | 'the orchestrator'
+  /** The branch a drive worker's commits landed on (decision 3): named so a commit on main is never a surprise. */
+  branch?: string
 }) {
   return (
     <Rule>
       <IconArrowLeft size={12} className="text-icon" />
       Handed back to {to}{by === 'you' ? ' at your word' : ''} · {commits} {commits === 1 ? 'commit' : 'commits'} · {files}{' '}
       {files === 1 ? 'file' : 'files'}
+      {branch ? ` · on ${branch}` : ''}
     </Rule>
   )
 }

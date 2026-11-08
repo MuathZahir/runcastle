@@ -78,6 +78,7 @@ export function workerColumnProps(
           commits={row.handbackCommits?.length ?? 0}
           files={row.handbackFiles?.length ?? 0}
           {...(row.featureId === null ? { to: 'the orchestrator' as const } : {})}
+          {...(drive ? { branch: row.featureBranch } : {})}
         />
       </div>
     ) : undefined
