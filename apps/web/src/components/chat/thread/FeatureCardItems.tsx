@@ -80,6 +80,7 @@ function HandbackItem({ handback }: { handback: HandbackDisplay }) {
         summary: handback.summary,
         commits: handback.commits.length,
         files: handback.files.map((path) => ({ path })),
+        ...(handback.branch ? { branch: handback.branch } : {}),
         ...(outcome ? { outcome } : {}),
       }}
       onOpenWorker={(id) => links?.openWorker(id)}

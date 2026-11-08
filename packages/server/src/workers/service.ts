@@ -76,7 +76,7 @@ import {
   verifyFindings,
 } from './review'
 import { listByFeature as listFindings } from '../services/review-findings'
-import { DRIVE_WORKER_REFUSAL, isHostWorker } from './drive'
+import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, recordDriveTurnCommits } from './drive'
 import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
@@ -161,7 +161,7 @@ export function requireFeatureWorker(ctx: AppCtx, featureId: string, id: string)
   return w
 }
 
-function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'id' | 'createdAt'>>): WorkerRow {
+export function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'id' | 'createdAt'>>): WorkerRow {
   ctx.db
     .update(workers)
     .set({ ...patch, updatedAt: Date.now() })
@@ -171,7 +171,7 @@ function updateWorker(ctx: AppCtx, id: string, patch: Partial<Omit<WorkerRow, 'i
 }
 
 /** Emit `type` for `w` on its feature's timeline (its project's, for a project-owned worker), with its id and status. */
-function emitWorker(ctx: AppCtx, w: WorkerRow, type: string, message: string, data: Record<string, unknown> = {}): void {
+export function emitWorker(ctx: AppCtx, w: WorkerRow, type: string, message: string, data: Record<string, unknown> = {}): void {
   const e = { type, message, data: { workerId: w.id, label: w.label, status: w.status, ...data } }
   if (w.featureId === null) emitProject(ctx, w.projectId, e)
   else emit(ctx, w.featureId, e)
@@ -183,7 +183,7 @@ function featureOf(ctx: AppCtx, w: WorkerRow): Feature | null {
 }
 
 /** Set a worker's status and say so (`worker.status`); a no-op when it is already there. */
-function setStatus(ctx: AppCtx, w: WorkerRow, status: WorkerStatus): WorkerRow {
+export function setStatus(ctx: AppCtx, w: WorkerRow, status: WorkerStatus): WorkerRow {
   if (w.status === status) return w
   const next = updateWorker(ctx, w.id, { status })
   emitWorker(ctx, next, 'worker.status', `worker "${w.label}" is ${status}`, { from: w.status })
@@ -731,7 +731,7 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
  * the human (decision 5).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
-  const w = getWorker(ctx, row.id)
+  let w = getWorker(ctx, row.id)
   if (!w) return
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
@@ -743,6 +743,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   const engine = sandboxEngine(w.engine)
   const note = sb ? await engine.takeHandback(sb) : isHostWorker(w) ? takeHostHandback(w.id) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
+  // What a drive worker committed on the driven branch this turn joins what it made in this drive (drive-chats-become-workers decision 3).
+  if (isDriveWorkerKind(w.kind)) w = await recordDriveTurnCommits(ctx, w)
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
@@ -774,13 +776,18 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
 }
 
 /**
- * A drive worker handed back: it is Done with its summary, and nothing waits to
- * land (drive-chats-become-workers decision 3). Its commits on the driven
- * branch and the lead's quiet card come with the drive's own handback.
+ * A drive worker handed back: it is Done with its summary, never landed, since
+ * its commits are already on the driven branch (drive-chats-become-workers
+ * decision 3), and its card reaches its parent without waking it (decision 4).
  */
-function driveWorkerHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): void {
+async function driveWorkerHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): Promise<void> {
   const handed = updateWorker(ctx, w.id, { status: 'handed-back', handbackSummary: note.summary, outcome: null, outcomeNote: null })
-  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`)
+  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, {
+    commits: handed.handbackCommits?.length ?? 0,
+    files: handed.handbackFiles?.length ?? 0,
+    branch: handed.featureBranch,
+  })
+  await deliverDriveHandback(ctx, handed)
 }
 
 /** What the lead reads of a handback: the summary, the work, and its three choices. */

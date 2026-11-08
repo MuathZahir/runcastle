@@ -140,7 +140,7 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
           ...base,
           worktreePath: project.repoPath,
           ...(row.featureId ? { feature: getFeatureRow(ctx, row.featureId) } : {}),
-          hostWorker: { briefing: driveWorkerBriefing(drive), env: {} },
+          hostWorker: { briefing: await driveWorkerBriefing(ctx, drive, row, project), env: {} },
           ...hostSidePosture(runtime),
         }
       }

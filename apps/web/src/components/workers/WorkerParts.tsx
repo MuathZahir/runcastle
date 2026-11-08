@@ -226,6 +226,8 @@ export interface Handback {
   commits: number
   /** The files it changed; the line counts only where they are known (a handback records paths). */
   files: HandbackFile[]
+  /** A drive worker's: the branch its commits are already on. */
+  branch?: string
   /** Absent while the lead has not acted on it yet. */
   outcome?: HandbackOutcome
 }
@@ -335,6 +337,14 @@ export function HandbackCard({ handback, onOpenWorker }: { handback: Handback; o
           <span className="tabular-nums">
             {h.commits} {h.commits === 1 ? 'commit' : 'commits'}
           </span>
+          {h.branch && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="min-w-0 truncate">
+                on <span className="font-mono">{h.branch}</span>
+              </span>
+            </>
+          )}
         </p>
         <div className="px-4 pt-2.5 pb-3.5 pl-[42px]">
           <Markdown source={h.summary} size="sm" tone="primary" />

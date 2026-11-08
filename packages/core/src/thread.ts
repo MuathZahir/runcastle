@@ -287,6 +287,8 @@ export const PromptDisplay = z.union([
       files: z.array(z.string()),
       /** The worker's thread, for the card's link. */
       threadId: z.string(),
+      /** A drive worker's: the branch its commits are already on (drive-chats-become-workers decision 3). */
+      branch: z.string().optional(),
     }),
   }),
   /**
