@@ -1072,6 +1072,8 @@ describe('files, titles, suggestions, export', () => {
         await t.say('Should I keep the old route?')
         await t.update({ sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'bun test', kind: 'execute', status: 'completed' })
         await t.say('All green.')
+        await t.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Worth a summary.' } })
+        await t.say('Summary: one route kept.')
       },
     })
     const id = chat()
@@ -1090,6 +1092,8 @@ describe('files, titles, suggestions, export', () => {
         'Should I keep the old route?',
         '*Worked for 0s: ran 1 command*',
         'All green.',
+        '*Thought for 1s*',
+        'Summary: one route kept.',
       ].join('\n\n') + '\n',
     )
   })

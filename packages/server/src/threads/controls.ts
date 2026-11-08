@@ -245,6 +245,8 @@ const VERBS: Partial<Record<ToolKind, [string, string, string]>> = {
 
 /** "Worked for 3m 43s: read 3 files, ran 2 commands". */
 function workLine(steps: readonly WorkStep[], seconds: number): string {
+  // A run that is only thinking reads as the chat shows it: one "Thought for …".
+  if (steps.length > 0 && steps.every((s) => s.kind === 'thought')) return `Thought for ${formatDuration(Math.max(1, seconds))}`
   const counts = new Map<string, { verb: string; one: string; many: string; n: number }>()
   const count = (verb: string, one: string, many: string) => {
     const key = `${verb} ${many}`

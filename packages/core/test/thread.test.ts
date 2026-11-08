@@ -211,6 +211,12 @@ describe('foldThread: words put to the human never fold away', () => {
     expect(settled.items.filter((x) => x.kind === 'agent').map((x) => x.kind === 'agent' && x.turnSeconds)).toEqual([undefined, 60])
   })
 
+  it('a turn with no time to tell, as an old chat read back from its transcript, carries no total', () => {
+    const v = foldThread(log(prompt('p1'), [5_000, { type: 'turn_started' }], [5_000, say('m1', 'Hello.')], [5_000, end]))
+    expect(v.items.at(-1)).toMatchObject({ kind: 'agent', text: 'Hello.' })
+    expect(v.items.at(-1)).not.toHaveProperty('turnSeconds')
+  })
+
   it('a run that is only thinking is a run of its own between two stretches of words', () => {
     const v = foldThread(log(...running, say('m1', 'First.'), { type: 'thought', thoughtId: 't1', text: 'Hmm.' }, say('m2', 'Second.'), end))
     expect(kinds(v.items)).toEqual(['user', 'agent', 'work', 'agent'])

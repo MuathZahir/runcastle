@@ -1042,9 +1042,12 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       for (const c of t.calls.values()) if (c.status === 'in_progress' || c.status === 'pending') c.status = reason === 'end_turn' ? 'completed' : 'failed'
       for (const s of t.subagents.values()) if (s.status === 'in_progress' || s.status === 'pending') s.status = reason === 'end_turn' ? 'completed' : 'failed'
       render(false, e.at)
-      // The turn's last words carry its whole time, beside the model they name.
+      // The turn's last words carry its whole time, beside the model they name. A
+      // turn with no time to tell (an old chat read back from its transcript, all
+      // one moment) carries none, rather than a bare "0s".
       const last = t.regionStart >= 0 ? items.slice(t.regionStart).findLast((x) => x.kind === 'agent') : undefined
-      if (last?.kind === 'agent') last.turnSeconds = Math.max(0, Math.round((e.at - t.firstStartedAt) / 1000))
+      const turnSeconds = Math.round((e.at - t.firstStartedAt) / 1000)
+      if (last?.kind === 'agent' && turnSeconds >= 1) last.turnSeconds = turnSeconds
     }
     turn = null
     if (files?.length) items.push({ kind: 'changes', id: `changes:${e.i}`, files })
