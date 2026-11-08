@@ -18,28 +18,28 @@ const SPEC: ChatNotice = {
   count: 1,
   eventId: 1,
 }
-const TICKETS: ChatNotice = {
-  kind: 'tickets',
+const HISTORY: ChatNotice = {
+  kind: 'history',
   hue: 'tickets',
-  title: 'Tickets updated',
+  title: 'Ticket history',
   subtitle: 'ticket 3 cancelled',
-  actionLabel: 'View tickets',
+  actionLabel: 'View history',
   target: 'work',
   count: 3,
   eventId: 2,
 }
-const RUN: ChatNotice = {
-  kind: 'run',
-  hue: 'danger',
-  title: 'Round finished with failures',
-  subtitle: '4 of 6 landed',
-  actionLabel: 'View round',
-  target: 'work',
+const DRIVE: ChatNotice = {
+  kind: 'drive',
+  hue: 'review',
+  title: 'Test drive running',
+  subtitle: 'http://localhost:4613',
+  actionLabel: 'Open',
+  target: 'drive',
   count: 1,
   eventId: 3,
 }
 
-function renderStrip(notices: ChatNotice[] = [RUN, TICKETS, SPEC]) {
+function renderStrip(notices: ChatNotice[] = [DRIVE, HISTORY, SPEC]) {
   const onAct = vi.fn()
   const onDismiss = vi.fn()
   const view = render(<NoticeStrip notices={notices} onAct={onAct} onDismiss={onDismiss} />)
@@ -63,8 +63,8 @@ describe('NoticeStrip', () => {
     renderStrip()
     expect(screen.getByText('+2 more')).toBeTruthy()
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'View round' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'View tickets' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'View history' })).toBeNull()
   })
 
   it('offers no "+N more" for a single notice', () => {
@@ -79,7 +79,7 @@ describe('NoticeStrip', () => {
     expect(more.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByRole('article').map((n) => within(n).getAllByRole('button')[0].textContent)).toEqual([
       'View spec',
-      'View tickets',
+      'View history',
       'Show less',
     ])
     fireEvent.click(screen.getByRole('button', { name: 'Show less' }))
@@ -89,8 +89,8 @@ describe('NoticeStrip', () => {
   it("calls onAct and onDismiss with the notice's kind", () => {
     const { onAct, onDismiss } = renderStrip()
     fireEvent.click(screen.getByRole('button', { name: '+2 more' }))
-    fireEvent.click(screen.getByRole('button', { name: 'View tickets' }))
-    expect(onAct).toHaveBeenCalledWith('tickets')
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }))
+    expect(onAct).toHaveBeenCalledWith('history')
     const spec = screen.getByText('Spec written').closest('article') as HTMLElement
     fireEvent.click(within(spec).getByRole('button', { name: 'Dismiss' }))
     expect(onDismiss).toHaveBeenCalledWith('spec')
@@ -107,7 +107,7 @@ describe('NoticeStrip', () => {
     }
     const UNVERIFIED: StandingNotice = { key: 'unverified', hue: 'review', title: 'Nothing verified', subtitle: 'ask the agent' }
 
-    function renderStanding(standing: StandingNotice[], notices: ChatNotice[] = [RUN, TICKETS, SPEC]) {
+    function renderStanding(standing: StandingNotice[], notices: ChatNotice[] = [DRIVE, HISTORY, SPEC]) {
       const onAct = vi.fn()
       const onDismiss = vi.fn()
       render(<NoticeStrip notices={notices} standing={standing} onAct={onAct} onDismiss={onDismiss} />)
@@ -125,7 +125,7 @@ describe('NoticeStrip', () => {
       expect(screen.getAllByRole('article').map((a) => within(a).getAllByText(/./)[0].textContent)).toEqual([
         'Merge conflict',
         'Nothing verified',
-        'Round finished with failures',
+        'Test drive running',
       ])
       expect(screen.getByText('+2 more')).toBeTruthy()
     })
@@ -151,18 +151,18 @@ describe('NoticeStrip', () => {
 
     it('leaves the event notices acting by kind as before', () => {
       const { onAct } = renderStanding([CONFLICT])
-      fireEvent.click(screen.getByRole('button', { name: 'View round' }))
-      expect(onAct).toHaveBeenCalledWith('run')
+      fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(onAct).toHaveBeenCalledWith('drive')
     })
   })
 
   it('shows a burst count and wears each notice in its hue, on its glyph alone', () => {
-    renderStrip([TICKETS, RUN])
+    renderStrip([HISTORY, DRIVE])
     expect(screen.getByLabelText('3 times').textContent).toBe('×3')
-    const notice = screen.getByText('Tickets updated').closest('article') as HTMLElement
+    const notice = screen.getByText('Ticket history').closest('article') as HTMLElement
     expect(notice.getAttribute('data-hue')).toBe('tickets')
     const glyph = notice.querySelector('[data-phase="tickets"]')!.parentElement as HTMLElement
     expect(glyph.getAttribute('class')).toContain('text-phase-tickets')
-    expect(screen.getByRole('button', { name: 'View tickets' }).getAttribute('class')).not.toContain('text-phase-tickets')
+    expect(screen.getByRole('button', { name: 'View history' }).getAttribute('class')).not.toContain('text-phase-tickets')
   })
 })

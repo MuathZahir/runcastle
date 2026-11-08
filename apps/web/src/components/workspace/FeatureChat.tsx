@@ -125,7 +125,6 @@ export function FeatureChat({
       >
         <FeatureNoticeDeck
           events={events}
-          tickets={full.tickets}
           standing={standing}
           active
           onView={onView}

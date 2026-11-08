@@ -23,7 +23,7 @@ const noteAdded = () => event('note.added', 'note added')
 function setup(initial: EventRow[] = [], active = true) {
   const onView = vi.fn()
   const view = (events: EventRow[], isActive: boolean) => (
-    <FeatureNoticeDeck events={events} tickets={[]} active={isActive} onView={onView} />
+    <FeatureNoticeDeck events={events} active={isActive} onView={onView} />
   )
   const { rerender } = render(view(initial, active))
   return { onView, update: (events: EventRow[], isActive = active) => rerender(view(events, isActive)) }
@@ -45,13 +45,13 @@ describe('FeatureNoticeDeck', () => {
     const history = [ticketsStored(NOW - 60_000)]
     const { update } = setup([])
     update(history)
-    expect(screen.queryByText('Tickets updated')).toBeNull()
+    expect(screen.queryByText('Ticket history')).toBeNull()
   })
 
   it('raises a notice for a change that arrives while Chat is in front', () => {
     const { update } = setup([])
     update([ticketsStored()])
-    expect(screen.getByText('Tickets updated')).toBeTruthy()
+    expect(screen.getByText('Ticket history')).toBeTruthy()
   })
 
   it('raises nothing for an event the mapping ignores', () => {
@@ -66,15 +66,15 @@ describe('FeatureNoticeDeck', () => {
     update(missed, false)
     vi.setSystemTime(NOW + 5_000)
     update(missed, true)
-    expect(screen.queryByText('Tickets updated')).toBeNull()
+    expect(screen.queryByText('Ticket history')).toBeNull()
   })
 
   it('View switches to the notice’s tab and takes the card away', () => {
     const { update, onView } = setup([])
     update([ticketsStored()])
-    fireEvent.click(screen.getByRole('button', { name: /View tickets/ }))
+    fireEvent.click(screen.getByRole('button', { name: /View history/ }))
     expect(onView).toHaveBeenCalledWith('work')
-    expect(screen.queryByText('Tickets updated')).toBeNull()
+    expect(screen.queryByText('Ticket history')).toBeNull()
   })
 
   it('✕ takes the card away without switching tabs', () => {
@@ -82,7 +82,7 @@ describe('FeatureNoticeDeck', () => {
     update([ticketsStored()])
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(onView).not.toHaveBeenCalled()
-    expect(screen.queryByText('Tickets updated')).toBeNull()
+    expect(screen.queryByText('Ticket history')).toBeNull()
   })
 
   it('never expires a card', () => {
@@ -91,7 +91,7 @@ describe('FeatureNoticeDeck', () => {
     act(() => {
       vi.advanceTimersByTime(10 * 60_000)
     })
-    expect(screen.getByText('Tickets updated')).toBeTruthy()
+    expect(screen.getByText('Ticket history')).toBeTruthy()
   })
 
   it('lets the drive-start card go by itself after a few seconds, the others staying', () => {
@@ -102,7 +102,7 @@ describe('FeatureNoticeDeck', () => {
       vi.advanceTimersByTime(DRIVE_NOTICE_MS)
     })
     expect(screen.queryByText('Test drive running')).toBeNull()
-    expect(screen.getByText('Tickets updated')).toBeTruthy()
+    expect(screen.getByText('Ticket history')).toBeTruthy()
   })
 
   describe('on a phone', () => {
@@ -114,19 +114,19 @@ describe('FeatureNoticeDeck', () => {
       const { update, onView } = setup([])
       update([ticketsStored(), event('testdrive.url', 'drive up', NOW + 1_000)])
       expect(screen.queryByText('Test drive running')).toBeNull()
-      fireEvent.click(screen.getByRole('button', { name: /View tickets/ }))
+      fireEvent.click(screen.getByRole('button', { name: /View history/ }))
       expect(onView).toHaveBeenCalledWith('work')
     })
 
     it('says a feature ready to test has its drive on the computer', () => {
       atWidth(true)
-      render(<FeatureNoticeDeck events={[]} tickets={[]} active onView={() => {}} readyToTest />)
+      render(<FeatureNoticeDeck events={[]} active onView={() => {}} readyToTest />)
       expect(screen.getByText(READY)).toBeTruthy()
     })
 
     it('says nothing of it at desktop width, where the drive is', () => {
       atWidth(false)
-      render(<FeatureNoticeDeck events={[]} tickets={[]} active onView={() => {}} readyToTest />)
+      render(<FeatureNoticeDeck events={[]} active onView={() => {}} readyToTest />)
       expect(screen.queryByText(READY)).toBeNull()
     })
   })
@@ -136,6 +136,6 @@ describe('FeatureNoticeDeck', () => {
     const { update } = setup([])
     update([first])
     update([first, ticketsStored()])
-    expect(screen.getAllByText('Tickets updated')).toHaveLength(1)
+    expect(screen.getAllByText('Ticket history')).toHaveLength(1)
   })
 })

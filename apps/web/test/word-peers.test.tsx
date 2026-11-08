@@ -17,11 +17,11 @@ function classes(el: Element | null): string[] {
 }
 
 const TICKETS: ChatNotice = {
-  kind: 'tickets',
+  kind: 'history',
   hue: 'tickets',
-  title: 'Tickets updated',
+  title: 'Ticket history',
   subtitle: 'ticket 3 cancelled',
-  actionLabel: 'View tickets',
+  actionLabel: 'View history',
   target: 'work',
   count: 3,
   eventId: 1,
@@ -33,7 +33,7 @@ describe('word peers', () => {
   it('gives a chat notice its glyph in the hue and leaves its words neutral', () => {
     render(<NoticeStrip notices={[TICKETS]} onAct={() => {}} onDismiss={() => {}} />)
 
-    expect(classes(screen.getByRole('button', { name: 'View tickets' }))).not.toContain('text-phase-tickets-text')
+    expect(classes(screen.getByRole('button', { name: 'View history' }))).not.toContain('text-phase-tickets-text')
     const glyph = screen.getByRole('article').querySelector('[data-phase="tickets"]')!.parentElement
     expect(classes(glyph)).toContain('text-phase-tickets')
     expect(classes(glyph)).not.toContain('text-phase-tickets-text')
