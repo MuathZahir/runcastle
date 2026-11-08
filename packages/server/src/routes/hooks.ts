@@ -23,9 +23,8 @@ import { isLeadSession } from '../services/lead-delivery'
 import { isRuncastlePrompt } from '../services/lead-prompt'
 import { markHumanMessage } from '../services/lead-status'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
-import { getProjectById, listRunsByFeature, tryGetFeature } from '../services/repo'
+import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
-import { listByFeature } from '../services/tickets'
 
 /**
  * Hook receiver (SPEC §5.6): `POST /api/hooks/:event` for `session-start`,
@@ -372,12 +371,11 @@ async function orchestratorPrepNote(ctx: AppCtx, project: Project): Promise<stri
  * (several-sessions-per-feature): it is not the main chat, whatever it reads.
  */
 function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): unknown {
-  const tickets = listByFeature(ctx, feature.id).length
   const role = session.kind === 'side' ? ' role=side' : ''
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `[runcastle] feature=${feature.slug} status=${featureStateLine(ctx, feature)} tickets=${tickets}${role}`,
+      additionalContext: `[runcastle] feature=${feature.slug} status=${featureStateLine(ctx, feature)}${role}`,
     },
   }
 }
@@ -538,29 +536,12 @@ function leadGuardDenial(
   })
 }
 
-/** The SessionStart context digest: brief + status + tickets + pointer to MCP. */
+/** The SessionStart context digest: brief + status + pointer to MCP. */
 function sessionStartContext(ctx: AppCtx, feature: Feature, session: SessionRow | null): string {
-  const tickets = listByFeature(ctx, feature.id)
-  const byStatus = tickets.reduce<Record<string, number>>((acc, t) => {
-    acc[t.status] = (acc[t.status] ?? 0) + 1
-    return acc
-  }, {})
-  const ticketSummary =
-    tickets.length === 0
-      ? 'none yet'
-      : `${tickets.length} (${Object.entries(byStatus)
-          .map(([s, n]) => `${n} ${s}`)
-          .join(', ')})`
-  // What the chat kickoff header carried too: a plain chat resume sends no
-  // kickoff, so this is where the agent learns it on resume.
-  const featureRuns = listRunsByFeature(ctx, feature.id)
-
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
     `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
-    `tickets: ${ticketSummary}`,
-    `rounds run: ${featureRuns.length}; latest run: ${featureRuns[0]?.status ?? 'none'}`,
     'A repeat `get_feature_context` returns only what changed; `read_feature_doc` returns any doc in full.',
     ...toolLoadLine(session),
   ].join('\n')

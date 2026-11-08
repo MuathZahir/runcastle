@@ -10,7 +10,7 @@
  *      resolved INTO the output (NOT `--compile`); every real dependency
  *      (simple-git, hono, drizzle, …) stays external so it installs normally —
  *      EXCEPT the patched ones listed in
- *      `BUNDLED_DEPENDENCIES` (sandcastle), which are inlined so the workspace
+ *      `BUNDLED_DEPENDENCIES` (empty today), which are inlined so the workspace
  *      patch ships with them. The output is then checked for the patch's code:
  *      a registry copy of the dep would bundle just as happily and fail on the
  *      user's first burn instead (that was v1.2.11).
@@ -53,7 +53,7 @@ function readPkg(dir: string): PackageJson {
 /**
  * The manifest of a dependency as resolved FROM THE SERVER PACKAGE — i.e. the
  * copy the bundle will inline. Resolved through the entry module rather than
- * `<name>/package.json` because an `exports` map (sandcastle has one) refuses
+ * `<name>/package.json` because an `exports` map (some packages have one) refuses
  * the latter; the manifest is then found by walking up from the entry file.
  */
 function readDependencyPkg(name: string): PackageJson {

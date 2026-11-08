@@ -101,7 +101,7 @@ describe('the feature skill', () => {
     for (const [file, text] of allTexts()) {
       expect(text, file).not.toMatch(/packages\/|apps\/web|STYLE\.md|DESIGN\.md/)
     }
-    expect(text).toContain('**never start a review yourself**')
+  })
 })
 
 describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)', () => {

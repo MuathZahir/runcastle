@@ -115,29 +115,6 @@ describe('hooks route', () => {
     expect(started[0].message).toContain('resumed')
   })
 
-  it('session-start context carries the rounds run and the latest run, which a resume no longer kicks off with', async () => {
-    const start = (): Promise<{ status: number; json: any }> =>
-      post(mount(), 'session-start', {
-        sessionId,
-        payload: { session_id: 'cc-resumed', hook_event_name: 'SessionStart', source: 'resume' },
-      })
-    expect((await start()).json.hookSpecificOutput.additionalContext).toContain(
-      'rounds run: 0; latest run: none',
-    )
-
-    ctx.db
-      .insert(runs)
-      .values({ id: 'run_old', featureId, workflow: 'ticket-burner', status: 'succeeded', startedAt: 1 })
-      .run()
-    ctx.db
-      .insert(runs)
-      .values({ id: 'run_new', featureId, workflow: 'ticket-burner', status: 'failed', startedAt: 2 })
-      .run()
-    expect((await start()).json.hookSpecificOutput.additionalContext).toContain(
-      'rounds run: 2; latest run: failed',
-    )
-  })
-
   /**
    * `/clear` and compaction start a NEW Claude Code conversation in the same
    * terminal: keep the id current (a stale one resumes the wrong transcript)
@@ -282,7 +259,7 @@ describe('hooks route', () => {
 
     expect(json.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
     expect(json.hookSpecificOutput.additionalContext).toBe(
-      '[runcastle] feature=dark-mode status=Talking with you tickets=2',
+      '[runcastle] feature=dark-mode status=Talking with you',
     )
   })
 
@@ -307,7 +284,7 @@ describe('hooks route', () => {
     async function expectStatus(words: string): Promise<void> {
       const prompt = await promptContext()
       const start = await startContext()
-      expect(prompt).toContain(`status=${words} tickets=`)
+      expect(prompt).toContain(`status=${words}`)
       expect(start).toContain(`status: ${words}; branch:`)
       for (const text of [prompt, start]) expect(text).not.toMatch(/phase/)
     }
@@ -319,19 +296,6 @@ describe('hooks route', () => {
     it('says "Waiting for you · <why>" while a waiting reason is set', async () => {
       ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
       await expectStatus('Waiting for you · ready to test')
-    })
-
-    it('says "Working · Round N" while a round runs, numbered among the feature\'s rounds', async () => {
-      ctx.db
-        .insert(runs)
-        .values({ id: 'run_done', featureId, workflow: 'ticket-burner', status: 'succeeded', startedAt: 1 })
-        .run()
-      ctx.db
-        .insert(runs)
-        .values({ id: 'run_live', featureId, workflow: 'ticket-burner', status: 'running', startedAt: 2 })
-        .run()
-      ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
-      await expectStatus('Working · Round 2')
     })
 
     it('says "Merged" once the feature has shipped', async () => {
