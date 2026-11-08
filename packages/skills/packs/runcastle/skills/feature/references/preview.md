@@ -15,7 +15,7 @@ they say yes to the work. Draw it for that reader.
    preview before anyone sees it.
 3. **Show it**: `show_plan()` posts the Plan card in the chat and opens the
    Plan tab beside it. Tell the human what you propose — the workers, the work you
-   will do yourself, the review round — and ask for their explicit yes. Then wait for the answer.
+   will do yourself, the Review worker at the end — and ask for their explicit yes. Then wait for the answer.
 4. **A correction is a decision edit plus a redraw.** Edit the decision in
    `decisions.md` and redraw the preview in the same move, call `show_plan()`
    again, then ask them to look again.
@@ -66,7 +66,7 @@ built.
    screen gets flows, use cases, before and after, or a clickable skeleton.
    **It ends with who builds what**: each worker you offer by its label, one-line
    purpose and kind ("with you" or "on its own"), what you build yourself, and
-   the review round at the end. The human's yes starts those workers.
+   the Review worker at the end. The human's yes starts those workers.
 3. **What was decided.** Every decision in `decisions.md` by its number and
    title, with the reason available on demand (the starter's `D` list builds
    this). Where a decision is visible in the show, pin its number on that spot:
@@ -169,7 +169,7 @@ minute for a small feature, a few minutes for a large one.**
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
 - The show ends with who builds what: every worker by label, purpose and kind,
-  and the review round unless the human declined it.
+  and the Review worker unless the human declined it.
 - Every screen designed in design mode is a designed-screen entry that names its
   states, its committed component and design page, not a redrawn mock.
 - The file is still fully inline.

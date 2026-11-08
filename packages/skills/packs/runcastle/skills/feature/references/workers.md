@@ -96,6 +96,28 @@ same way, and you land, send back or drop it the same way.
 A worker that hands back after you declared ready: land it, then declare ready
 again.
 
+## The review
+
+The review at the end is a worker labelled **Review**. Start it when the work
+is done, every build worker landed or dropped: `start_review({})`. It writes no
+code and lands nothing. It runs the project's checks itself, reports each
+finding as it goes, and hands back.
+
+- **Its mode is set at start.** Left unset, it drives the app when this
+  machine can: on the human's machine, in their checkout, while it holds
+  the one drive slot. It waits as queued while the human drives. Otherwise, or
+  with `mode: "gates"` (a change with nothing to drive), it reads the diff in
+  its own sandbox.
+- **Its handback is the Review Package** in your chat: its account,
+  screenshots, walkthrough, calls and findings, with the findings listed for
+  you. Close each finding with `resolve_finding` (`addressed` or `dismissed`,
+  with a note). Fix the defects you judge real, yourself or with workers.
+- **Then verify.** Once you fixed some, start a fresh one:
+  `start_review({ verify: { findingIds, commits } })`, with only those findings
+  and the commits that fixed them. It checks each fix holds and nothing else.
+- `send_back_worker` asks a review for more; `drop_worker` closes it. Never
+  `land_worker` it.
+
 ## A failed worker
 
 When a worker's sandbox dies, its setup fails or its agent crashes, you get one

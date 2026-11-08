@@ -31,7 +31,7 @@ A **worker** is a sandboxed agent you start on one piece of the feature; the hum
 
 Offer them in your plan (label, one-line purpose and kind each), and mid-chat when the human starts iterating on a design here: "This is taste work. Want a worker for it, so this chat stays small?" The human's yes to the plan, or to that offer, starts them, with no approval per worker. How: `./references/workers.md`.
 
-There are no build tickets. Tickets and rounds remain only for the review at the end, until the `burns-become-workers` feature retires them; use them for nothing else.
+There are no tickets and no rounds to run: the review at the end is a worker too. Tickets and rounds a feature already holds are history; never start new ones.
 
 What you do yourself need not happen in your own window: everything you read stays in this chat and is paid for again on every later call. Prefer your own subagents (the Agent tool in Claude Code, `spawn_agent` in Codex; not runcastle workers) for the work you keep here, where its output is bigger than its conclusion:
 
@@ -46,18 +46,18 @@ When the feature changes how a screen looks, offer to show it live before you ta
 
 ## The human's yes
 
-Before you start any work, draw the Plan (`./references/preview.md`, from `./references/preview-starter.html`), show it with `show_plan()`, and get the human's **explicit yes in chat**. Ask again before any round or worker the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — sending a worker back, a retry, the review round it describes — needs no new yes. That yes does not approve designs: before you start workers or a round, commit only the designs the human approved, and name and ask about every other waiting design (`./references/design.md`, section 8). Show every design page with `show_design` as you go (`./references/design.md`, section 3).
+Before you start any work, draw the Plan (`./references/preview.md`, from `./references/preview-starter.html`), show it with `show_plan()`, and get the human's **explicit yes in chat**. Ask again before any worker the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — sending a worker back, a retry, the review it describes — needs no new yes. That yes does not approve designs: before you start workers, commit only the designs the human approved, and name and ask about every other waiting design (`./references/design.md`, section 8). Show every design page with `show_design` as you go (`./references/design.md`, section 3).
 
-## Every feature ends with a review round
+## Every feature ends with a review
 
-When the work is done, run one review round before you say ready, however it was built: emit a single review ticket (`./references/tickets.md`) and dispatch it (`./references/rounds.md`). Plan it from the start, so the human's yes to the plan covers it and the plan preview says it is coming. Skip it only when the human says they do not want one. A change with nothing to drive gets a code review from the same ticket. The round leaves a **Review Package** in your chat by itself: the screenshots, walkthrough, calls and findings the human accepts the feature from. No server rule requires any of this; it is how a feature gets looked at.
+When the work is done, start the **Review worker** before you say ready, however it was built: `start_review({})` (`./references/workers.md`, "The review"). Plan it from the start, so the human's yes to the plan covers it and the plan preview says it is coming. Skip it only when the human says they do not want one. It drives the app when this machine can, and reads the diff when there is nothing to drive; either way it runs the project's checks itself. It hands back with a **Review Package** in your chat: the screenshots, walkthrough, calls and findings the human accepts the feature from. Close every finding with `resolve_finding`, and once you have fixed the defects you judged real, start a **verify review** given only those findings and the fix commits. No server rule requires any of this; it is how a feature gets looked at.
 
 ## Ready for the human
 
-Before you say ready, land or drop every worker; `declare_ready` refuses while one works or holds work not landed. Then always run the project's own checks (its typecheck and its tests) and fix what they find. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
+Before you say ready, land or drop every worker (a Review worker that handed back needs neither); `declare_ready` refuses while one works or holds work not landed. Then always run the project's own checks (its typecheck and its tests) and fix what they find. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
 
 - **what to test**: what changed, where to look, what would count as broken;
-- **how you checked it**: for example "typecheck and tests green; the review round found nothing".
+- **how you checked it**: for example "typecheck and tests green; the review found nothing".
 
 Pass on any warning `declare_ready` returns.
 
@@ -74,12 +74,12 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 ## When to ask, and when to stop
 
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })` with a few words, and end your turn.
-- **Say which kind of wait it is.** `wait_for_you` takes a `kind`: `"plan"` for a yes to start the work (workers, or a round), `"design"` only for designs recorded with `show_design` (optional: waiting designs raise "Design to approve" by themselves; anything else shown for a yes, such as a file or a picture, is an answer, and a `"design"` wait with no recorded design waiting reads as one), `"stuck"` for the runaway guard, and `"answer"` (the default) for anything else. The feature shows its own words and button for each.
+- **Say which kind of wait it is.** `wait_for_you` takes a `kind`: `"plan"` for a yes to start the work (workers), `"design"` only for designs recorded with `show_design` (optional: waiting designs raise "Design to approve" by themselves; anything else shown for a yes, such as a file or a picture, is an answer, and a `"design"` wait with no recorded design waiting reads as one), `"stuck"` for the runaway guard, and `"answer"` (the default) for anything else. The feature shows its own words and button for each.
 - **Your question is the last thing you write.** Put it after any `wait_for_you` call, so the turn ends on it. Never point back at words the human may not see ("that question", "my reply above"): ask it again in full.
 - **Handing over with a command still running.** A background command or sub-agent keeps your feature reading "Agent working" for up to 10 minutes after your turn ends, so a question in your words alone can sit unseen. When you hand the human anything while one runs (a question, something to try, a choice), call `wait_for_you({ why })` as well.
 - **Reaching their phone.** Runcastle pings the human's desktop and phone by itself whenever the feature starts needing them, so do not call `notify_human` merely because you wait. Call `notify_human({ message })` only for something they asked to be told beyond a wait, such as the screenshots when it is done. Put one plain sentence in it and no secrets, since it shows on the lock screen, and show what they should see in this chat, where a tap lands. When an orchestrator chat holds this feature it is refused: say so in the chat, and they can ask that chat. Relay any `note` it answers with.
 - After the human presses Stop, start nothing until they reply.
-- **Runaway guard.** When a round, or a worker you sent back, makes no progress on the same failure as the try before, do not try a third time. Tell the human what is stuck, what you tried and what you need, then `wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`.
+- **Runaway guard.** When a worker you sent back makes no progress on the same failure as the try before, do not try a third time. Tell the human what is stuck, what you tried and what you need, then `wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`.
 
 ## Situations
 

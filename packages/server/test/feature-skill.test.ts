@@ -43,10 +43,10 @@ describe('the feature skill', () => {
     expect(skill()).toContain('nothing has to be unlocked')
   })
 
-  it("asks for the human's explicit yes before any work, and again for an unsettled round or worker", () => {
+  it("asks for the human's explicit yes before any work, and again for an unsettled worker", () => {
     const text = flat(skill())
     expect(text).toContain("get the human's **explicit yes in chat**")
-    expect(text).toContain('Ask again before any round or worker the agreed plan did not settle.')
+    expect(text).toContain('Ask again before any worker the agreed plan did not settle.')
     expect(text).toContain('That yes does not approve designs')
   })
 
@@ -57,14 +57,17 @@ describe('the feature skill', () => {
     expect(text).toContain('**"with you"** worker')
     expect(text).toContain('**"on its own"** worker')
     expect(text).toContain('**Small jobs** you do yourself')
-    expect(text).toContain('There are no build tickets.')
-    expect(text).toContain('Tickets and rounds remain only for the review at the end')
+    expect(text).toContain('There are no tickets and no rounds to run: the review at the end is a worker too.')
     expect(text).toContain('The human\'s yes to the plan, or to that offer, starts them, with no approval per worker.')
   })
 
-  it('ends every feature with a review round unless the human declines, and always runs the checks before ready', () => {
-    const text = skill()
-    expect(text).toContain('## Every feature ends with a review round')
+  it('ends every feature with a Review worker unless the human declines, then a verify review, and always runs the checks before ready', () => {
+    const text = flat(skill())
+    expect(text).toContain('## Every feature ends with a review')
+    expect(text).toContain('start the **Review worker** before you say ready')
+    expect(text).toContain('`start_review({})`')
+    expect(text).toContain('start a **verify review** given only those findings and the fix commits')
+    expect(text).not.toMatch(/review round|review ticket/)
     expect(text).toContain('Skip it only when the human says they do not want one.')
     expect(text).toContain('No server rule requires any of this')
     expect(text).toContain("always run the project's own checks (its typecheck and its tests)")
@@ -81,7 +84,7 @@ describe('the feature skill', () => {
   })
 
   it('links every reference file it carries', () => {
-    for (const ref of ['grilling', 'spec', 'tickets', 'rounds', 'workers', 'planning-alone', 'preview', 'design']) {
+    for (const ref of ['grilling', 'spec', 'workers', 'planning-alone', 'preview', 'design']) {
       expect(skill()).toContain(`./references/${ref}.md`)
     }
     expect(skill()).toContain('./references/preview-starter.html')
@@ -183,6 +186,16 @@ describe('the feature skill, workers', () => {
     expect(text()).toContain('`drop_worker({ workerId })`')
     expect(text()).toContain('`message_worker({ workerId, text })`')
     expect(text()).toContain('Never ask a worker for its transcript')
+  })
+
+  it('starts the Review worker when the work is done, resolves its findings, then verifies the fixes', () => {
+    expect(text()).toContain('## The review')
+    expect(text()).toContain('`start_review({})`')
+    expect(text()).toContain('It waits as queued while the human drives.')
+    expect(text()).toContain('**Its handback is the Review Package**')
+    expect(text()).toContain('Close each finding with `resolve_finding`')
+    expect(text()).toContain('`start_review({ verify: { findingIds, commits } })`, with only those findings and the commits that fixed them')
+    expect(text()).toContain('Never `land_worker` it.')
   })
 })
 
