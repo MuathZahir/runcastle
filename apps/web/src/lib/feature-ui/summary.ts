@@ -144,27 +144,30 @@ function landsRow(delta: { commits?: number; files?: number } | undefined): Chec
 }
 
 /**
- * What the burn delivered, never green over set-aside work (decision 31a). A
+ * What an old feature's tickets delivered, never green over set-aside work (decision 31a). A
  * waived ticket (decision 11) is a cancelled one: work the human deliberately
  * stopped, which is exactly what an all-green row used to hide at the last door.
+ * None for a feature built by workers: it has no tickets, and its commits are the row above.
  */
-function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow {
+function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow[] {
   const key = 'run'
   // Review tickets are the pass, not the delivery — counting one as landed work
   // is the same overcount the lap chip stopped making (decision 27a).
   const implementation = tickets.filter((ticket) => ticket.kind !== 'review')
-  if (implementation.length === 0) return { key, value: 'no tickets built', tone: 'warn' }
+  if (implementation.length === 0) return []
   const done = implementation.filter((ticket) => ticket.status === 'done').length
   const waived = implementation.filter((ticket) => ticket.status === 'cancelled').length
   const failed = implementation.filter((ticket) => ticket.status === 'failed').length
   const parts = [`${done}/${implementation.length} tickets done`]
   if (waived > 0) parts.push(`${waived} waived`)
   if (failed > 0) parts.push(`${failed} failed`)
-  return {
-    key,
-    value: parts.join(' · '),
-    tone: done === implementation.length ? 'ok' : 'warn',
-  }
+  return [
+    {
+      key,
+      value: parts.join(' · '),
+      tone: done === implementation.length ? 'ok' : 'warn',
+    },
+  ]
 }
 
 /**
@@ -286,7 +289,7 @@ export function mergeSummary(input: {
     conflictRow: input.conflict
       ? `⚠ A merge conflict is standing (${input.conflict.files.join(', ') || input.conflict.base}) — this merge will fail unless it’s been resolved.`
       : null,
-    rows: [landsRow(input.delta), landedRow(tickets), drive, review],
+    rows: [landsRow(input.delta), ...landedRow(tickets), drive, review],
     warnings,
     next: `Merges ${input.branch} into ${input.base ?? 'its base branch'}, writes the outcome doc, and moves the feature to Shipped.`,
   }

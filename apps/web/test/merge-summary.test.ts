@@ -90,12 +90,8 @@ describe('mergeSummary', () => {
       )
     })
 
-    it('says outright that no ticket ever burned on this branch', () => {
-      expect(row(mergeSummary({ ...clean, tickets: [] }), 'run')).toEqual({
-        key: 'run',
-        value: 'no tickets built',
-        tone: 'warn',
-      })
+    it('has no tickets row for a feature built by workers, rather than an amber "no tickets built"', () => {
+      expect(mergeSummary({ ...clean, tickets: [] }).rows.map((r) => r.key)).not.toContain('run')
     })
 
     it('ambers the run row over waived work rather than reading 8/8 green', () => {
