@@ -23,7 +23,7 @@ import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
 import { createSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
-import { classifyAgentError, retryDelayMs } from '../services/agent-errors'
+import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { emit, listAfter } from '../services/events'
 import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
@@ -380,13 +380,16 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
   const w = getWorker(ctx, row.id)
   if (!w) return
+  // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
+  const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
+  const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
+  // Held before anything here awaits: the slot this turn just gave back must not start a queued turn on the same account.
+  const held = failed?.verdict === 'account' ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
   const note = sb ? await engine.takeHandback(sb) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
-  // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
-  const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
-  if (!note && error !== undefined && w.status === 'working') return recoverFromError(ctx, w, error)
+  if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (!note || !sb) {
     if (w.status === 'working') setStatus(ctx, w, 'needs-you')
@@ -469,17 +472,16 @@ function errorLine(error: string): string {
  * A working worker's turn failed (decision 8). A transient error is retried in
  * the same conversation after a backoff, the worker staying working, up to
  * {@link MAX_TRANSIENT_RETRIES} times; the next one, or any fatal or account
- * error, fails it and wakes its lead once. An account error also holds the
- * queue of its runtime (decision 21).
+ * error, fails it and wakes its lead once, saying so when an account error
+ * held the queue (`held`, decision 21).
  */
-async function recoverFromError(ctx: AppCtx, w: WorkerRow, error: string): Promise<void> {
-  const verdict = classifyAgentError(error, w.runtime)
+async function recoverFromError(ctx: AppCtx, w: WorkerRow, error: string, verdict: AgentErrorClass, held?: string): Promise<void> {
   const attempt = (retries.get(w.id)?.attempts ?? 0) + 1
   const line = errorLine(error)
   if (verdict !== 'transient' || attempt > MAX_TRANSIENT_RETRIES) {
     forgetRetries(w.id)
     const failure = verdict === 'transient' ? `${line} (still failing after ${MAX_TRANSIENT_RETRIES} retries)` : error.trim()
-    return failWorker(ctx, w, failure, verdict === 'account' ? holdQueue(ctx, w, line) : undefined)
+    return failWorker(ctx, w, failure, held)
   }
   const timer = setTimeout(() => void retryTurn(ctx, w.id, line), retryDelay(attempt))
   timer.unref?.()
@@ -552,7 +554,12 @@ async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
   const now = slots.tryTake(w?.runtime)
   if (now) return now
   if (w && (w.status === 'working' || w.status === 'needs-you')) setStatus(ctx, w, 'queued')
-  const release = await slots.take(w?.runtime)
+  let release = await slots.take(w?.runtime)
+  // Admitted by a slot freed by a turn whose failure then held this runtime: wait again.
+  while (w && slots.holdOf(w.runtime) !== undefined) {
+    release()
+    release = await slots.take(w.runtime)
+  }
   const after = getWorker(ctx, id)
   if (after?.status === 'queued') setStatus(ctx, after, 'working')
   return release

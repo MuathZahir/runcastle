@@ -1,4 +1,5 @@
-import type { Run } from '@runcastle/core'
+import type { Run, WorkerStatus } from '@runcastle/core'
+import { workers } from '../src/db/schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { reconcileStaleSessions, RESTART_CARRY_ON, wakeCutOffChats } from '../src/launcher/reconcile'
@@ -81,5 +82,29 @@ describe('after a restart', () => {
     await wakeCutOffChats(ctx, cutOff, stale)
 
     for (const id of [side, planning, roundLead, shippedLead]) expect(said(id)).toHaveLength(0)
+  })
+
+  it('tells a worker still at work to carry on, once, and none that landed, was dropped or failed (burns-become-workers decision 10)', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'workers' })
+    const worker = (status: WorkerStatus): string => {
+      const row = createSessionRow(ctx, { featureId: f.id, kind: 'worker', worktreePath: '/wt' })
+      const now = Date.now()
+      ctx.db
+        .insert(workers)
+        .values({ id: row.id, featureId: f.id, label: status, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: f.branch, createdAt: now, updatedAt: now })
+        .run()
+      return thread(row)
+    }
+    const working = worker('working')
+    const queued = worker('queued')
+    const done = [worker('landed'), worker('dropped'), worker('failed')]
+
+    const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
+    reconcileStaleSessions(ctx, cutOff)
+    await wakeCutOffChats(ctx, cutOff, [])
+
+    expect(said(working)).toHaveLength(1)
+    expect(said(queued)).toHaveLength(1)
+    for (const id of done) expect(said(id)).toHaveLength(0)
   })
 })
