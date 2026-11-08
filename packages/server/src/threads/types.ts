@@ -45,7 +45,7 @@ export interface PromptOptions {
 }
 
 /** Why a thread's process stops. None of them is shown to the human as "ended". */
-export type StopReason = 'idle' | 'shutdown' | 'archived' | 'crashed'
+export type StopReason = 'idle' | 'shutdown' | 'archived' | 'crashed' | 'stalled'
 
 export interface AgentHost {
   /**

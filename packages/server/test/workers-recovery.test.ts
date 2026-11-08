@@ -8,7 +8,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listAfter } from '../src/services/events'
-import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { createAgentHost, setAgentHostForTests, type StallBounds } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
@@ -92,7 +92,7 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 }
 
 /** A real agent host over the fake ACP agent (workers and the lead alike), the worker transport and the server's lifecycle. */
-function realHost(fake: FakeAcp, stall = { silenceMs: 60_000, commandMs: 60_000 }): AgentHost {
+function realHost(fake: FakeAcp, stall: StallBounds = { silenceMs: 60_000, commandMs: 60_000 }): AgentHost {
   engine.transport = fake.transport
   host = createAgentHost({
     ctx,
@@ -253,6 +253,32 @@ describe('a stalled turn', () => {
     const id = await startWorker()
     await until(() => status(id) === 'needs-you')
     expect(eventsOf('worker.retrying', id).map((e) => (e.data as { error: string }).error)).toEqual([expect.stringMatching(/^stalled: one command ran past/)])
+  })
+
+  it('whose agent ignores the cancel is killed after the grace and retried in the same conversation', async () => {
+    let turns = 0
+    const fake = createFakeAcp({
+      turn: async (t) => {
+        if (!text(t).includes('Build the') && !text(t).includes('[runcastle]')) return
+        if (++turns > 1) return void (await t.say('Done.'))
+        // Deaf to the cancel: the turn never ends by itself.
+        await new Promise(() => {})
+      },
+    })
+    realHost(fake, { silenceMs: 40, commandMs: 60_000, killGraceMs: 60 })
+    const id = await startWorker()
+    await until(() => status(id) === 'needs-you')
+
+    const [first, second] = fake.processes
+    expect(first?.received.some((r) => r.method === 'session/cancel')).toBe(true)
+    expect(first?.killed).toBe(true)
+    // The retry resumed the same conversation in a fresh process.
+    expect(second?.received.map((r) => r.method)).toContain('session/load')
+    expect(eventsOf('worker.retrying', id).map((e) => (e.data as { error: string }).error)).toEqual([
+      'stalled: no progress for 0s, and its agent ignored the cancel',
+    ])
+    expect(workerPrompts(id)[1]).toContain('transient error (stalled')
+    expect(eventsOf('worker.failed', id)).toEqual([])
   })
 })
 

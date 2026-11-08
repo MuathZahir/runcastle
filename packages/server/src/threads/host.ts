@@ -206,7 +206,12 @@ export interface StallBounds {
   silenceMs: number
   /** One tool call open for this long. */
   commandMs: number
+  /** How long a stalled turn's agent has to end it after its cancel before its process is killed; {@link STALL_KILL_GRACE_MS} by default. */
+  killGraceMs?: number
 }
+
+/** How long a stalled turn's agent has to honour its cancel before runcastle kills its process. */
+export const STALL_KILL_GRACE_MS = 60_000
 
 /** codex-acp's hook-trust extension: the session's hooks, and trusting them. */
 const CODEX_HOOKS_LIST = '_codex/hooks/list'
@@ -487,9 +492,12 @@ interface StallWatch {
   bounds: StallBounds
   /** The tool calls open now, by session and call id, with when each opened. */
   open: Map<string, number>
+  /** The stall timer; once the turn stalled, the timer that kills a process that ignores the cancel. */
   timer?: ReturnType<typeof setTimeout>
   /** Why the watch cancelled the turn; the turn then ends as this error. */
   stalled?: string
+  /** Who sent the prompt the turn answers, for the lifecycle when a kill ends it. */
+  source: PromptOptions['source']
 }
 
 /** End a turn's stall watch, if it has one. */
@@ -1534,7 +1542,7 @@ class Host implements AgentHost {
     appendThreadEvent(t.id, { type: 'turn_started' })
     const bounds = item.compaction || !slotRow ? undefined : this.stallBounds(slotRow)
     if (bounds) {
-      turn.watch = { bounds, open: new Map() }
+      turn.watch = { bounds, open: new Map(), source: item.source }
       this.armStall(t, turn)
     }
     // Taken before the agent hears the prompt, so nothing it does is in it.
@@ -1624,7 +1632,8 @@ class Host implements AgentHost {
    */
   private armStall(t: Thread, turn: Turn): void {
     const watch = turn.watch
-    if (!watch) return
+    // A stalled turn's timer is its kill: output while it winds down does not put it off.
+    if (!watch || watch.stalled) return
     if (watch.timer) clearTimeout(watch.timer)
     const oldest = Math.min(...watch.open.values())
     const [ms, why] = watch.open.size
@@ -1641,7 +1650,35 @@ class Host implements AgentHost {
     if (t.ask) return this.armStall(t, turn)
     watch.stalled = `stalled: ${why}`
     appendThreadEvent(t.id, { type: 'notice', text: `Runcastle stopped this turn as stalled: ${why}.` })
+    watch.timer = setTimeout(
+      () => void this.killStalled(t, turn).catch((err) => console.error('stall kill failed', err)),
+      watch.bounds.killGraceMs ?? STALL_KILL_GRACE_MS,
+    )
+    watch.timer.unref?.()
     await this.cancel(t.id).catch((err) => console.error('stall cancel failed', err))
+  }
+
+  /**
+   * A stalled turn whose agent ignored the cancel past the grace: kill its
+   * process. The turn ends as the stall error, so the lifecycle's retry step
+   * (a worker's, decision 8) prompts again, which resumes the conversation in
+   * a fresh process.
+   */
+  private async killStalled(t: Thread, turn: Turn): Promise<void> {
+    const watch = turn.watch
+    if (!watch?.stalled || t.turn !== turn || isStopped(t)) return
+    const error = `${watch.stalled}, and its agent ignored the cancel`
+    appendThreadEvent(t.id, { type: 'notice', text: 'The agent did not stop the stalled turn, so runcastle stopped its process.' })
+    this.detach(t)
+    await t.proc?.kill().catch(() => {})
+    if (turn.quiet) clearTimeout(turn.quiet)
+    const files = await this.turnFiles(t, turn)
+    appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
+    appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
+    const row = markSessionEnded(this.ctx, t.id)
+    if (!row) return
+    this.hook(() => this.lifecycle.turnEnded?.(row, watch.source, { reason: 'error', error }))
+    this.hook(() => this.lifecycle.stopped?.(row, 'stalled', t.startedBy))
   }
 
   /**

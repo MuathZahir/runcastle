@@ -904,7 +904,7 @@ export async function stopFeatureWorkers(ctx: AppCtx, featureId: string): Promis
 }
 
 /**
- * A worker's process stopped: an idle or archive stop stops its sandbox too; a
+ * A worker's process stopped: an idle or archive stop stops its sandbox too; a stall kill only gives a drive review's drive back (its retry follows its turn); a
  * crash (its container died, its sandbox would not wake, its agent exited)
  * fails it (decision 16).
  */
