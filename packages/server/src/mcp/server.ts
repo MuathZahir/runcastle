@@ -37,8 +37,6 @@ import type {
   ScenarioFailure,
   SessionKind as SessionKindT,
   SessionRow,
-  TestNote,
-  Ticket,
   TicketStatus as TicketStatusT,
   WorkerStatus as WorkerStatusT,
   WorkerRow,
@@ -60,7 +58,6 @@ import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../errors'
-import { RUN_HEADER } from '../launcher/artifacts'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import { showFile, showableFile } from '../threads/shown'
@@ -106,7 +103,6 @@ import {
   dismissAsAgent,
   listByFeature as listReviewFindings,
   openDefects as openDefectsOf,
-  reportFinding,
 } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
@@ -121,9 +117,7 @@ import {
   getProjectById,
   listRunsByFeature,
   projectForFeature,
-  tryGetRun,
 } from '../services/repo'
-import { addNote } from '../services/test-notes'
 import { type AnnotatedModel, annotatedModels, listByFeature } from '../services/tickets'
 import { sendDriveCall } from '../services/drive-call'
 import {
@@ -133,7 +127,6 @@ import {
   type ScenarioRunResult,
 } from '../services/scenarios'
 import { updateSettings } from '../services/settings'
-import { withheldDriveFor } from '../services/drive-host'
 import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { recordFeatureAction, registerOrchestratorTools, requireProjectFeature } from './orchestrator-tools'
@@ -147,14 +140,9 @@ import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha } from 
  * Session identity: the `X-Runcastle-Session` header set in each session's
  * `mcp.json` (forwarded by `@hono/mcp` as `requestInfo.headers`). A caller with
  * no session header falls back to the most recently created live session — a
- * convenience for a hand-run client, NOT a general rule: a caller that presents
- * an `X-Runcastle-Run` header is a burner agent with no session at all, and it
- * must never be handed somebody else's conversation. That fallback used to fire
- * for run agents, silently binding a review agent to whatever human talk session
- * happened to be live and serving it that feature's context
- * (`docs/features/improve-workflow/outcome.md:255`). `resolveSession` now
- * refuses to fall back once a run header is present, and the run-scoped read
- * tools resolve to the RUN's own feature instead (see {@link resolveFeatureReader}).
+ * convenience for a hand-run client. Every agent runcastle launches on the host
+ * carries its session header; a sandboxed worker never reaches this server at
+ * all (its tools are relayed, `workers/tools.ts`).
  *
  * A fresh `McpServer` + transport is built per request (stateless mode,
  * `enableJsonResponse`) so there is no cross-request shared transport state.
@@ -183,26 +171,12 @@ function headerSessionId(extra: HeaderCarrier): string | undefined {
   return identityHeader(extra, 'X-Runcastle-Session')
 }
 
-/**
- * Resolve the session for a tool call: header first, else the live singleton.
- *
- * `runId` is the caller's OTHER identity header, and its only job here is to
- * suppress the fallback. A caller that named a run has told us it is not a
- * conversation; handing it the newest live session would bind a burner agent to
- * an unrelated human's feature, which is exactly the mis-binding this argument
- * exists to close. A run caller with a session header too (nothing writes one
- * today) still resolves that session — it named one, so it gets that one.
- */
-export function resolveSession(
-  ctx: AppCtx,
-  sessionId: string | undefined,
-  runId?: string | undefined,
-): SessionRow | null {
+/** Resolve the session for a tool call: header first, else the live singleton. */
+export function resolveSession(ctx: AppCtx, sessionId: string | undefined): SessionRow | null {
   if (sessionId) {
     const byId = getSessionRow(ctx, sessionId)
     if (byId) return byId
   }
-  if (runId) return null
   return mostRecentLiveSession(ctx)
 }
 
@@ -241,32 +215,13 @@ function requireFeatureId(session: SessionRow): string {
 /** Who a feature READ is for: the feature to read. */
 export interface FeatureReader {
   featureId: string
-  /**
-   * The conversation reading, when the caller is one — what its sent-memory is
-   * keyed by. Absent for a worker under a run header, which always reads in full.
-   */
+  /** The conversation reading, when the caller is one — what its sent-memory is keyed by. A worker's relayed read has none and reads in full. */
   sessionId?: string
 }
 
-/**
- * The feature a read tool should serve, from whichever identity the caller has.
- *
- * The run header wins outright: a burner review agent has no session, and the
- * feature it may read is the one its RUN is burning — never one it names and
- * never one a live conversation happens to be on. A session caller resolves the
- * ordinary way, through the guard that refuses project-scoped kinds.
- */
-export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureReader {
-  if (caller.runId) {
-    const identity = requireRunIdentity(ctx, caller, 'this feature read')
-    return { featureId: identity.featureId }
-  }
-  if (!caller.session) {
-    throw new GateError(
-      'this call carries neither a session nor a live run identity — nothing to read a feature for.',
-    )
-  }
-  return { featureId: requireFeatureId(caller.session), sessionId: caller.session.id }
+/** The feature a session's read tool serves: its own, through the guard that refuses project-scoped kinds. */
+export function resolveFeatureReader(session: SessionRow): FeatureReader {
+  return { featureId: requireFeatureId(session), sessionId: session.id }
 }
 
 /**
@@ -1327,112 +1282,43 @@ export async function toolDryRunDrive(
   return git.dryRunDrive(ctx, project, input.action)
 }
 
-// --- run identity: the review agent's two wires (improve-workflow) ----------
+// --- the review's wires: a Review worker's drive and findings -----------------
 
-/**
- * Who a RUN-scoped tool call is from. Not a conversation: a review ticket
- * burning at the tail of a run has no terminal and no session row, so it
- * identifies itself with the `X-Runcastle-Run` header naming the run it is
- * executing under, and the feature comes from that run rather than from
- * anything the agent says.
- */
-export interface RunIdentity {
-  runId: string
-  featureId: string
-}
-
-function headerRunId(extra: HeaderCarrier): string | undefined {
-  return identityHeader(extra, RUN_HEADER)
-}
-
-/**
- * The run a tool call belongs to, or null.
- *
- * A run that has already finished resolves to nothing: the header outlives the
- * burn (an agent process can survive its run being cancelled), and a stale one
- * must not be able to switch the human's checkout or write notes minutes later.
- */
-export function resolveRunIdentity(ctx: AppCtx, runId: string | undefined): RunIdentity | null {
-  if (!runId) return null
-  const run = tryGetRun(ctx, runId)
-  if (!run || run.status !== 'running') return null
-  return { runId: run.id, featureId: run.featureId }
-}
-
-/**
- * What the run-scoped tools are called with: the run header when the caller
- * carried one, and otherwise whichever session the request resolved to — kept
- * only so the refusal can name it.
- */
-export interface RunCaller {
-  runId?: string
+/** Who calls a review tool: whichever session the request resolved to, if any. */
+export interface ReviewCaller {
   session?: SessionRow
 }
 
 /**
- * The gate both review wires share, and the socket the runner plugs into: these
- * tools are reachable exactly when the caller carries a live run identity.
- *
- * Gated for the same reason `dry_run_drive` is gated to preparation. One boots
- * the app on the human's machine and the other writes into the feature's review
- * record — authority that belongs to the agent the runner launched for this
- * feature, and to no ordinary talk session, which has neither the header nor a
- * reason to want it.
+ * The drive review a `review_drive` call is for (burns-become-workers decision
+ * 3): the Review worker on the host this session is. Its pictures are kept under
+ * its own id. Gated for the same reason `dry_run_drive` is gated to preparation:
+ * it boots the app on the human's machine, authority that belongs to the review
+ * runcastle started for this feature and to no ordinary talk session.
  */
-function requireRunIdentity(ctx: AppCtx, caller: RunCaller, tool: string): RunIdentity {
-  const identity = resolveRunIdentity(ctx, caller.runId)
-  if (identity) return identity
-  const who = caller.session
-    ? `this is a ${caller.session.kind} session`
-    : 'this call carries no run identity'
+function requireReviewer(ctx: AppCtx, caller: ReviewCaller, tool: string): WorkerRow {
+  const w = hostReviewOf(ctx, caller.session)
+  if (w) return w
+  const who = caller.session ? `this is a ${caller.session.kind} session` : 'this call carries no session'
   throw new GateError(
-    `${tool} belongs to a review ticket burning under a run, and ${who}. It acts on the ` +
-      "human's machine under the run's authority — only the review agent the runner launches " +
-      'may call it.',
+    `${tool} belongs to a drive review (a Review worker on the host), and ${who}. It acts on the ` +
+      "human's machine — only the Review worker runcastle starts may call it.",
   )
 }
 
-/** Who drives and reports for a review: its feature, the pass its pictures are kept under, and why it may not drive, if it may not. */
-interface Reviewer {
-  featureId: string
-  passId: string | undefined
-  withheld: string | undefined
-}
-
 /**
- * The review a `review_drive` or `report_finding` call is for: a drive review
- * on the host (burns-become-workers decision 3), whose pictures are kept under
- * its own id, or a review ticket burning under a run.
- */
-function requireReviewer(ctx: AppCtx, caller: RunCaller, tool: string): Reviewer {
-  const w = caller.runId ? undefined : hostReviewOf(ctx, caller.session)
-  if (w) return { featureId: w.featureId, passId: w.id, withheld: undefined }
-  const identity = requireRunIdentity(ctx, caller, tool)
-  return {
-    featureId: identity.featureId,
-    passId: burningReview(ctx, identity.featureId)?.id,
-    withheld: withheldDriveFor(identity.runId),
-  }
-}
-
-/**
- * Boot the integrated feature branch so a review ticket can drive it
+ * Boot the integrated feature branch so a drive review can drive it
  * (improve-workflow decisions 3, 4): the server's REAL test-drive machinery,
- * started under the run's identity instead of a human's click.
+ * started under the review's identity instead of a human's click.
  *
- * The feature is the run's, never the agent's to name — a review ticket reviews
- * the branch it was burned for.
+ * The feature is the review's, never the agent's to name.
  */
 export async function toolReviewDrive(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.ReviewDriveResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  // A pass told Drive is closed must not drive off the record: the reason the
-  // host withheld it is the refusal, final like any missing prerequisite.
-  const withheld = reviewer.withheld
-  if (withheld) return { ok: false, action: input.action, deniedReason: withheld, retriable: false, drive: null }
   const feature = getFeatureRow(ctx, reviewer.featureId)
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
@@ -1465,11 +1351,6 @@ const reviewScenarioDenial = (action: ReviewScenarioDenial['action'], deniedReas
 /** `review_drive({ action: 'capture' })`: the picture kept, or why it was not. */
 export type ReviewCaptureResult = { ok: true; action: 'capture'; caption: string; scenario?: string } | ReviewScenarioDenial
 
-/** The burning review ticket on this run's feature: the pass a tool call belongs to. */
-function burningReview(ctx: AppCtx, featureId: string): Ticket | undefined {
-  return listByFeature(ctx, featureId).find((ticket) => ticket.kind === 'review' && ticket.status === 'burning')
-}
-
 /**
  * Keep a picture of what the review agent's browser shows, with what it shows
  * as the caption. Runcastle takes it and names it, so the agent writes nothing.
@@ -1477,13 +1358,11 @@ function burningReview(ctx: AppCtx, featureId: string): Ticket | undefined {
  */
 export async function toolReviewCapture(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { caption?: string; outside?: boolean },
   capture: typeof captureReviewShot = captureReviewShot,
 ): Promise<ReviewCaptureResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  const withheld = reviewer.withheld
-  if (withheld) return reviewScenarioDenial('capture', withheld)
   const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
@@ -1491,8 +1370,7 @@ export async function toolReviewCapture(
   }
   const caption = input.caption?.replace(/\s+/g, ' ').trim()
   if (!caption) return reviewScenarioDenial('capture', '`capture` needs `caption`: one line saying what the picture shows.')
-  const passId = reviewer.passId
-  if (!passId) return reviewScenarioDenial('capture', 'No review pass is running on this feature.')
+  const passId = reviewer.id
   const entries = readSaw(passId)
   const taken = entries.filter((entry) => entry.kind === 'shot').length
   if (taken >= SAW_MAX_SHOTS) {
@@ -1517,27 +1395,25 @@ export async function toolReviewCapture(
  */
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'scenario'; file?: string },
 ): Promise<ReviewScenarioResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'try_call'; file?: string },
 ): Promise<ReviewCallResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult>
 export async function toolReviewScenario(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   { action, file }: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  const withheld = reviewer.withheld
-  if (withheld) return reviewScenarioDenial(action, withheld)
   const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
@@ -1551,13 +1427,13 @@ export async function toolReviewScenario(
   if (action === 'scenario') {
     const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowReview: true })
     if ('denied' in result) return { ok: false, action, deniedReason: result.denied }
-    const pass = reviewer.passId
+    const pass = reviewer.id
     const name = git.activeDriveInfo(projectId)?.scenario?.name ?? file
     if (!result.ok) {
-      if (pass) appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
+      appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
       return { ok: false, action, failure: result.failure }
     }
-    if (pass) appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
+    appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
     return { ok: true, action, entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
   }
 
@@ -1569,50 +1445,22 @@ export async function toolReviewScenario(
     return reviewScenarioDenial(action, scenario.callError ?? 'this scenario has no .http call')
   }
   const result = await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })
-  const pass = reviewer.passId
-  if (pass) appendSaw(pass, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
+  appendSaw(reviewer.id, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
   return { action, ...result }
 }
 
 /**
- * Append one review finding as a test note, attributed to the agent
- * (improve-workflow decision 2). Findings ride the channel the human's own
- * observations already use.
+ * `report_finding` from a drive review on the host: recorded against the Review
+ * worker itself (burns-become-workers decision 4). A gates review reports the
+ * same way over its sandbox's relay (`workers/tools.ts`).
  */
-export function toolAddTestNote(
-  ctx: AppCtx,
-  caller: RunCaller,
-  input: { text: string },
-): TestNote {
-  const identity = requireRunIdentity(ctx, caller, 'add_test_note')
-  return addNote(ctx, identity.featureId, input.text, 'agent')
-}
-
 export function toolReportFinding(
   ctx: AppCtx,
-  caller: RunCaller,
+  caller: ReviewCaller,
   input: ReviewFindingInputT,
-): { findingId: string; fixTicketSeq: number | null; overCap: boolean } {
-  // A drive review on the host reports against itself (burns-become-workers decision 4).
-  const review = caller.runId ? undefined : hostReviewOf(ctx, caller.session)
-  if (review) return { findingId: reportReviewFinding(ctx, review.id, input).finding.id, fixTicketSeq: null, overCap: false }
-  const identity = requireRunIdentity(ctx, caller, 'report_finding')
-  const reviewTicket = listByFeature(ctx, identity.featureId).find(
-    (ticket) => ticket.kind === 'review' && ticket.status === 'burning',
-  )
-  if (!reviewTicket) {
-    throw new GateError('report_finding requires a burning review ticket on this run’s feature')
-  }
-  const result = reportFinding(ctx, {
-    featureId: identity.featureId,
-    reviewTicket,
-    input,
-  })
-  return {
-    findingId: result.finding.id,
-    fixTicketSeq: result.fixTicket?.seq ?? null,
-    overCap: result.overCap,
-  }
+): { findingId: string } {
+  const review = requireReviewer(ctx, caller, 'report_finding')
+  return { findingId: reportReviewFinding(ctx, review.id, input).finding.id }
 }
 
 /** What one `retry_drive` attempt observed, as the drive-fix agent reads it. */
@@ -2506,34 +2354,27 @@ function noSession(): CallToolResult {
 
 async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; session: SessionRow } | null> {
   const ctx = await getRuntimeCtx()
-  const session = resolveSession(ctx, headerSessionId(extra), headerRunId(extra))
+  const session = resolveSession(ctx, headerSessionId(extra))
   return session ? { ctx, session } : null
 }
 
 /**
- * The caller of a run-scoped tool. Unlike a session tool this never refuses for
- * want of a session — a review agent HAS no session — so the gate is the run
- * header, checked in `requireRunIdentity`; the session is resolved only when
- * there is no run header, to make the refusal name who called.
+ * The caller of a review tool. Never refuses for want of a session: the gate is
+ * `requireReviewer`, and the session (if any) is there to make its refusal
+ * name who called.
  */
-async function resolveRunCaller(extra: HeaderCarrier): Promise<{ ctx: AppCtx; caller: RunCaller }> {
-  const ctx = await getRuntimeCtx()
-  const runId = headerRunId(extra)
-  if (runId) return { ctx, caller: { runId } }
-  const session = resolveSession(ctx, headerSessionId(extra))
-  return { ctx, caller: session ? { session } : {} }
+async function resolveReviewCaller(extra: HeaderCarrier): Promise<{ ctx: AppCtx; caller: ReviewCaller }> {
+  const rs = await resolveCtxSession(extra)
+  return rs ? { ctx: rs.ctx, caller: { session: rs.session } } : { ctx: await getRuntimeCtx(), caller: {} }
 }
 
-/**
- * The caller of a feature READ, from either identity. A run header binds to the
- * run's own feature; otherwise the resolved session's.
- */
+/** The caller of a feature READ: the resolved session's own feature. */
 async function resolveReader(
   extra: HeaderCarrier,
 ): Promise<{ ctx: AppCtx; reader: FeatureReader } | null> {
-  const rc = await resolveRunCaller(extra)
-  if (!rc.caller.runId && !rc.caller.session) return null
-  return { ctx: rc.ctx, reader: resolveFeatureReader(rc.ctx, rc.caller) }
+  const rs = await resolveCtxSession(extra)
+  if (!rs) return null
+  return { ctx: rs.ctx, reader: resolveFeatureReader(rs.session) }
 }
 
 /** The caller of a feature READ from an orchestrator: the feature `slug` names. */
@@ -2559,11 +2400,11 @@ const PROJECT_READ_NOTE =
 // --- who gets which tools ---------------------------------------------------
 
 /**
- * The audience a built server is for: a session kind, a burner agent running
- * under a run (`run`), a drive review on the host (`review`, a `worker`
- * session whose worker is one), or `undefined` for "we could not tell".
+ * The audience a built server is for: a session kind, a drive review on the
+ * host (`review`, a `worker` session whose worker is one), or `undefined` for
+ * "we could not tell".
  */
-export type McpAudience = SessionKindT | 'run' | 'review'
+export type McpAudience = SessionKindT | 'review'
 
 /** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
@@ -2576,12 +2417,12 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
  * own two. `worker` is in neither either: a worker gets none of the lead's tools
  * (interactive-workers decision 9).
  */
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'run', 'review']
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'review']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
- * `requireProject`, `requireRunIdentity`, the `kind !== 'project'` and
+ * `requireProject`, `requireReviewer`, the `kind !== 'project'` and
  * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
@@ -2596,12 +2437,11 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
  * definition — the two do not follow from each other.
  */
 const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
-  // Feature reads. Also reachable by a burner agent under a run header, which
-  // binds to ITS OWN feature (a review agent reviewing a branch legitimately
-  // wants that branch's context) — never to a live conversation's. The project
+  // Feature reads. Also reachable by a drive review, which reads ITS OWN
+  // feature (a review legitimately wants the branch's context). The project
   // session reads any feature of its project by `slug` (`projectFeatureReader`).
-  get_feature_context: [...FEATURE_KINDS, 'run', 'review', 'project'],
-  read_feature_doc: [...FEATURE_KINDS, 'run', 'review', 'project'],
+  get_feature_context: [...FEATURE_KINDS, 'review', 'project'],
+  read_feature_doc: [...FEATURE_KINDS, 'review', 'project'],
   // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
   declare_ready: ['chat'],
@@ -2628,7 +2468,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_plan: ['chat'],
   show_design: ['chat'],
   set_design_state: ['chat'],
-  // Every session with a thread to show it in; a run agent has none.
+  // Every session with a thread to show it in.
   show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
@@ -2649,14 +2489,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],
-  // A review's: `requireReviewer` (a run, or a drive review on the host).
-  review_drive: ['run', 'review'],
-  report_finding: ['run', 'review'],
-  // Retained for compatibility with unidentified/legacy clients, but no
-  // recognized session kind receives it; review runs use report_finding.
-  add_test_note: [],
+  // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
+  review_drive: ['review'],
+  report_finding: ['review'],
   // The one tool both halves share — it emits at whatever scope the caller has.
-  // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
   // orchestrator, refused at call time unless it is still live
@@ -2798,41 +2634,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         },
       },
       async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
+        const rc = await resolveReviewCaller(extra)
         const { action, file, caption, outside } = args
         if (action === 'capture') return ok(await toolReviewCapture(rc.ctx, rc.caller, { caption, outside }))
         if (action === 'scenario' || action === 'try_call') {
           return ok(await toolReviewScenario(rc.ctx, rc.caller, { action, file }))
         }
         return ok(await toolReviewDrive(rc.ctx, rc.caller, { action }))
-      },
-    )
-  }
-
-  if (wants('add_test_note')) {
-    server.registerTool(
-      'add_test_note',
-      {
-        title: 'Add a review note',
-        description:
-          'Record one review finding on the feature you are reviewing. It lands in the same ' +
-          'notes the human writes while test-driving — attributed to you — so it shows up in the ' +
-          'review panel. Findings are not failure: report what you saw and let the human decide. Refused ' +
-          'unless your call carries a live run identity.',
-        inputSchema: {
-          text: z
-            .string()
-            .min(1)
-            .describe(
-              'ONE finding, written as an observation the human can reproduce: what you did, ' +
-                'what happened, what you expected. Call the tool again per finding, and once ' +
-                'more at the end with a note summarising the pass.',
-            ),
-        },
-      },
-      async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
-        return ok(toolAddTestNote(rc.ctx, rc.caller, args))
       },
     )
   }
@@ -2848,7 +2656,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         inputSchema: ReviewFindingInput.shape,
       },
       async (args, extra) => {
-        const rc = await resolveRunCaller(extra)
+        const rc = await resolveReviewCaller(extra)
         return ok(toolReportFinding(rc.ctx, rc.caller, ReviewFindingInput.parse(args)))
       },
     )
@@ -3680,16 +3488,11 @@ mcp.use('*', async (c, next) => {
  * server is assembled, because the tool list is part of the answer.
  *
  * Deliberately total: every path that cannot say for sure returns `undefined`,
- * which registers everything. A run header means a burner agent whatever the
- * run's state (a dead run's tools all refuse, which is the correct answer to a
- * stale header); a session header that resolves gives its kind; a request with
- * no headers at all falls back to the live singleton the same way tool calls do.
+ * which registers everything. A session header that resolves gives its kind; a
+ * request with no headers at all falls back to the live singleton the same way
+ * tool calls do.
  */
-export async function resolveAudience(
-  sessionId: string | undefined,
-  runId: string | undefined,
-): Promise<McpAudience | undefined> {
-  if (runId) return 'run'
+export async function resolveAudience(sessionId: string | undefined): Promise<McpAudience | undefined> {
   try {
     const ctx = await getRuntimeCtx()
     const session = resolveSession(ctx, sessionId)
@@ -3766,10 +3569,7 @@ async function readMcpBody(c: Context): Promise<unknown> {
 
 mcp.all('*', async (c) => {
   const body = await readMcpBody(c)
-  const audience = await resolveAudience(
-    c.req.header('X-Runcastle-Session'),
-    c.req.header(RUN_HEADER),
-  )
+  const audience = await resolveAudience(c.req.header('X-Runcastle-Session'))
   const server = buildMcpServer(audience)
   const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
   await server.connect(transport)

@@ -74,8 +74,8 @@ export function listByFeature(ctx: AppCtx, featureId: string): TestNote[] {
  * Capture a note on an existing feature.
  *
  * `author` is the one thing the caller chooses: the review panel leaves it
- * at `human`, and the `add_test_note` MCP wire passes `agent` so a review
- * ticket's findings arrive attributed. Nothing else about the note differs.
+ * at `human`. `agent` marks the notes old review tickets wrote through the
+ * retired `add_test_note` wire. Nothing else about the note differs.
  *
  * `videoTimestamp` arrives only from the annotation player — the moment in the
  * walkthrough the human paused on. The screenshot that usually accompanies it is

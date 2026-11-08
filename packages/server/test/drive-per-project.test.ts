@@ -5,10 +5,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
-import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { toolReviewDrive } from '../src/mcp/server'
 import {
@@ -28,7 +26,7 @@ import { prepView } from '../src/services/prep'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { seedFeature, seedHostReview, seedProject } from './helpers/fixtures'
 
 /**
  * One drive slot per project (ADR-0014): a drive of any kind in one project
@@ -213,27 +211,17 @@ describe('one drive slot per project', () => {
   })
 
   it("the review agent's review_drive starts in B while a human drive holds A, and its status sees only B", async () => {
-    // The review agent arrives under its run's identity; the tool resolves the
-    // project from that run's feature, never from anything the agent names.
-    const runB = ctx.db
-      .insert(runs)
-      .values({
-        id: newId('run'),
-        featureId: b.feature.id,
-        workflow: 'ticket-burner',
-        status: 'running',
-        startedAt: Date.now(),
-      })
-      .returning()
-      .get()
+    // The review arrives as B's Review worker; the tool resolves the project
+    // from that worker's feature, never from anything the agent names.
+    const session = seedHostReview(ctx, b.feature, b.project.repoPath)
     expect((await testDrive(ctx, a.project, a.feature, 'start')).ok).toBe(true)
     const held = activeDriveInfo(a.project.id)
 
-    const start = await toolReviewDrive(ctx, { runId: runB.id }, { action: 'start' })
+    const start = await toolReviewDrive(ctx, { session }, { action: 'start' })
     expect(start.ok).toBe(true)
     expect(start.deniedReason).toBeUndefined()
 
-    const status = await toolReviewDrive(ctx, { runId: runB.id }, { action: 'status' })
+    const status = await toolReviewDrive(ctx, { session }, { action: 'status' })
     expect(status.ok).toBe(true)
     expect(status.drive).toMatchObject({ featureId: b.feature.id, purpose: 'review' })
     expect(status.drive).toEqual(activeDriveInfo(b.project.id))

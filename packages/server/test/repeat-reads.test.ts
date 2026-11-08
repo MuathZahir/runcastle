@@ -1,9 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { newId } from '@runcastle/core'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
@@ -115,14 +113,6 @@ describe('repeat feature reads', () => {
     for (const source of ['compact', 'clear', 'startup']) {
       await sessionStart(chatId, source)
       expect((await docsOf(asChat())).every((doc) => doc.content !== undefined), source).toBe(true)
-    }
-  })
-
-  it('always sends a run caller every doc whole', async () => {
-    const runId = newId('run')
-    ctx.db.insert(runs).values({ id: runId, featureId, workflow: 'ticket-burner', status: 'running', startedAt: 1 }).run()
-    for (let i = 0; i < 2; i++) {
-      expect((await docsOf({ 'X-Runcastle-Run': runId })).every((doc) => doc.content !== undefined)).toBe(true)
     }
   })
 

@@ -172,26 +172,6 @@ export function driveWithheldReason(
 }
 
 /**
- * The withheld-drive reason of each run's review pass in flight, keyed by run
- * id — what `review_drive` refuses with, so a pass told Drive is closed cannot
- * boot the app off the record anyway.
- */
-const withheldDrives = new Map<string, string>()
-
-/** Close the drive to this run's review pass for `reason`; the returned function reopens it. */
-export function withholdDrive(runId: string, reason: string): () => void {
-  withheldDrives.set(runId, reason)
-  return () => {
-    withheldDrives.delete(runId)
-  }
-}
-
-/** Why this run's review pass may not drive, or undefined when it may. */
-export function withheldDriveFor(runId: string): string | undefined {
-  return withheldDrives.get(runId)
-}
-
-/**
  * The `{{DRIVE_INSTRUCTIONS}}` block: how to exercise THIS app, in the project
  * owner's own words.
  *

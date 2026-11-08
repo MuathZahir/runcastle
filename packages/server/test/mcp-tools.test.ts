@@ -9,10 +9,10 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
 import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput } from '@runcastle/core'
-import { SessionKind, TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { projects, runs } from '../src/db/schema'
+import { SessionKind, TicketInput as TicketInputSchema } from '@runcastle/core'
+import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
+import { InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
@@ -20,7 +20,6 @@ import mcpApp, {
   featureContext,
   featureContextWithGit,
   featureScenarios,
-  resolveFeatureReader,
   resolveSession,
   toolGetFeatureContext,
   toolReadFeatureDoc,
@@ -277,78 +276,6 @@ describe('mcp session resolution', () => {
     expect(resolveSession(ctx, undefined)?.id).toBe(s2.id) // fallback = most recent live
     expect(resolveSession(ctx, 'sess_missing')?.id).toBe(s2.id) // bad header -> fallback
   })
-
-  /**
-   * The mis-binding recorded at `docs/features/improve-workflow/outcome.md:255`.
-   * A burner review agent carries ONLY `X-Runcastle-Run`, and the docstring
-   * justified the session fallback with "at most one live ideation session
-   * exists at a time" — which concurrent burns simply are not.
-   */
-  it('never falls back to a live session for a caller carrying a run header', () => {
-    const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'f2' })
-    const live = createSessionRow(ctx, {
-      featureId: feature.id,
-      kind: 'chat',
-      worktreePath: 'x',
-    })
-    markSessionLive(ctx, live.id)
-
-    expect(resolveSession(ctx, undefined)?.id).toBe(live.id)
-    expect(resolveSession(ctx, undefined, 'run_whatever')).toBeNull()
-  })
-})
-
-/**
- * The other half of the same fix: a run agent is not merely refused a session —
- * the feature READS resolve to the feature its OWN run is burning. A review
- * agent reviewing a branch legitimately wants that branch's context, and that
- * is the only feature it may ever have.
- */
-describe('mcp run-scoped feature reads', () => {
-  let ctx: AppCtx
-  let repoPath: string
-  let mine: string
-  let theirs: string
-
-  beforeEach(async () => {
-    ctx = await makeTestCtx()
-    repoPath = tmpRepo()
-    const project = seedProject(ctx, repoPath)
-    mine = seedFeature(ctx, project.id, { slug: 'under-review' }).id
-    theirs = seedFeature(ctx, project.id, { slug: 'somebody-elses' }).id
-    // The live human conversation the fallback used to hand review agents.
-    const talk = createSessionRow(ctx, {
-      featureId: theirs,
-      kind: 'chat',
-      worktreePath: repoPath,
-    })
-    markSessionLive(ctx, talk.id)
-  })
-
-  function startRun(featureId: string): string {
-    const id = newId('run')
-    ctx.db
-      .insert(runs)
-      .values({ id, featureId, workflow: 'ticket-burner', status: 'running', startedAt: 1 })
-      .run()
-    return id
-  }
-
-  it('binds a run caller to its OWN feature, never the live talk session’s', () => {
-    storeTickets(ctx, mine, [ticket('the work under review')])
-    const runId = startRun(mine)
-
-    const reader = resolveFeatureReader(ctx, { runId })
-    expect(reader.featureId).toBe(mine)
-    expect(featureContext(ctx, reader).feature.slug).toBe('under-review')
-  })
-
-  it('refuses a caller whose run is over — a stale header binds to nothing', () => {
-    const runId = startRun(mine)
-    ctx.db.update(runs).set({ status: 'succeeded' }).where(eq(runs.id, runId)).run()
-    expect(() => resolveFeatureReader(ctx, { runId })).toThrow(GateError)
-  })
 })
 
 /**
@@ -358,7 +285,7 @@ describe('mcp run-scoped feature reads', () => {
  */
 describe('mcp tool registration by audience', () => {
   it('registers neither complete_phase nor go_feature for any session kind', () => {
-    for (const audience of [...SessionKind.options, 'run' as const, undefined]) {
+    for (const audience of [...SessionKind.options, undefined]) {
       const tools = toolsForAudience(audience)
       expect(tools, String(audience)).not.toContain('complete_phase')
       expect(tools, String(audience)).not.toContain('go_feature')
@@ -371,7 +298,7 @@ describe('mcp tool registration by audience', () => {
     // The ticket and round tools are gone for every audience (burns-become-workers):
     // work is handed to workers, and get_work_record reads the frozen history.
     const retired = ['emit_tickets', 'update_ticket', 'cancel_ticket', 'list_tickets', 'get_ticket', 'dispatch_round', 'stop_round']
-    for (const audience of [...SessionKind.options, 'run' as const, 'review' as const, undefined]) {
+    for (const audience of [...SessionKind.options, 'review' as const, undefined]) {
       for (const tool of retired) expect(toolsForAudience(audience), `${audience}/${tool}`).not.toContain(tool)
     }
     for (const tool of ['start_worker', 'resolve_finding', 'declare_ready']) expect(chat, tool).toContain(tool)
@@ -395,11 +322,11 @@ describe('mcp tool registration by audience', () => {
     )
     // …and the project's fetch-one stays the project's.
     expect(toolsForAudience('chat')).not.toContain('read_feature_brief')
-    expect(toolsForAudience('run')).not.toContain('read_feature_brief')
+    expect(toolsForAudience('review')).not.toContain('read_feature_brief')
     for (const tool of ['list_project_notes', 'triage_project_note', 'update_project_note']) {
       expect(toolsForAudience('scenario'), tool).not.toContain(tool)
       expect(toolsForAudience('chat'), tool).not.toContain(tool)
-      expect(toolsForAudience('run'), tool).not.toContain(tool)
+      expect(toolsForAudience('review'), tool).not.toContain(tool)
     }
 
     // Single-kind tools stay single-kind.
@@ -412,19 +339,17 @@ describe('mcp tool registration by audience', () => {
     // A scenario session's scope follows its drive, so it gets only the
     // either-scope note plus its own two tools and show_file.
     expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner', 'show_file'])
-    for (const audience of ['chat', 'project', 'drive-fix', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'drive-fix', 'review'] as const) {
       expect(toolsForAudience(audience)).not.toContain('run_scenario')
       expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')
     }
 
-    // A run agent gets its review wires plus the reads bound to its feature.
-    expect(toolsForAudience('run').sort()).toEqual([
-      'get_feature_context',
-      'read_feature_doc',
-      'report_finding',
-      'review_drive',
-    ])
-    expect(toolsForAudience('run')).not.toContain('add_test_note')
+    // The review wires are a drive review's alone (a gates review reports over its relay).
+    for (const audience of SessionKind.options) {
+      expect(toolsForAudience(audience), audience).not.toContain('review_drive')
+      expect(toolsForAudience(audience), audience).not.toContain('report_finding')
+    }
+    expect(toolsForAudience(undefined)).not.toContain('add_test_note')
 
     // A drive review on the host (burns-become-workers decision 3): its drive,
     // its findings, its hand-back, its own chat and the feature reads; none of
@@ -438,7 +363,7 @@ describe('mcp tool registration by audience', () => {
       'show_file',
     ])
     expect(toolsForAudience('chat')).toContain('start_review')
-    for (const audience of ['project', 'worker', 'run', 'review'] as const) {
+    for (const audience of ['project', 'worker', 'review'] as const) {
       expect(toolsForAudience(audience), audience).not.toContain('start_review')
     }
   })
@@ -446,7 +371,7 @@ describe('mcp tool registration by audience', () => {
   // Mapped ideation is retired (ADR-0012): its three tools are not registered at
   // all, so no audience — not even the unidentified one — is offered them.
   it('offers no audience the retired map tools', () => {
-    const audiences = [...SessionKind.options, 'run' as const, undefined]
+    const audiences = [...SessionKind.options, undefined]
     for (const audience of audiences) {
       const tools = toolsForAudience(audience)
       for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint']) {
@@ -467,7 +392,7 @@ describe('mcp tool registration by audience', () => {
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['chat', 'project', 'drive-fix', 'scenario', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'drive-fix', 'scenario', 'review'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })
