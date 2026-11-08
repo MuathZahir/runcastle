@@ -68,3 +68,8 @@ Check first: 2, 3, 4, 10, 12
 **Decision:** An agent that writes one line before nearly every tool call gets a ladder: line, fold, line, fold. Stretches are not merged and runs are not joined across words, however short.
 **Why:** Any merge needs a rule that tells a throwaway line from a real one, which is the rule the human rejected (decision 1). The ladder is what the agent wrote; the design page shows it so it can be judged before building.
 **Assumed.** Alternative: fold a run of one-line stretches, and the work between them, into a single fold.
+
+## 13. An answered ask's line follows the run of work it was asked in
+**Decision:** Refines 5. The line for an ask the human answered (an approved command, an answered question) sits right after the run of work it was asked in, not in the middle of it. The run stays one fold, and it stays open while it is the newest thing in a running turn, so an approved command keeps running in view.
+**Why:** Found while building: placing the line exactly where it was answered split the run, and folded the approved command above its own "Allowed" line while it was still running, hiding its spinner.
+**Assumed.** Alternative: the line exactly where it was answered, splitting the run into one fold per approval.

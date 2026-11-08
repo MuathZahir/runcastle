@@ -54,8 +54,15 @@ walks the turn's segments in order and emits:
 - one `work` item per run of non-text segments (tools, thinking, subagents)
   between two stretches, with its own `seconds`, and `live` only while it is
   the turn's last item and the turn is running;
-- cards, shown files and answered-ask lines at their place in that sequence,
-  rather than at a single `shownIndex` slot after the turn's one work item.
+- cards and shown files at their place in that sequence, rather than at a
+  single `shownIndex` slot after the turn's one work item; consecutive files,
+  designs or feature actions with no words between them group into one item,
+  which moves down past the work done since it was posted (never past words);
+- answered-ask lines right after the run they were asked in, so the run stays
+  one fold and stays live while an approved command runs (decision 13).
+
+`show_design`, `show_plan` and `show_review_package` join the talk-only tools:
+the card each posts is what shows, not a row in a fold.
 
 The `asked` item (questions pulled out of the fold) retires, and so does the
 `narration` work step: a `WorkStep` is only `tools`, `thought` or `subagent`
