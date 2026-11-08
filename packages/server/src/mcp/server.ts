@@ -8,6 +8,7 @@ import {
   getWorker,
   landWorker,
   leadWorkers,
+  listWorkers,
   messageWorker,
   requireFeatureWorker,
   sendBackWorker,
@@ -41,6 +42,7 @@ import type {
   Ticket,
   TicketInput as TicketInputT,
   TicketStatus as TicketStatusT,
+  WorkerStatus as WorkerStatusT,
   WorkerRow,
 } from '@runcastle/core'
 import {
@@ -384,6 +386,18 @@ export interface ReviewEvidence {
   digestPath: string
 }
 
+/** Where a Review worker's pass left its evidence (burns-become-workers decision 4); its account is its handback. */
+export interface WorkerReviewEvidence {
+  workerId: string
+  label: string
+  status: WorkerStatusT
+  reviewMode: 'drive' | 'gates' | null
+  /** Its hand-back account; null when it failed before handing back. */
+  account: string | null
+  /** `~/.runcastle/reviews/<workerId>/`: `walkthrough.webm` and the pictures in `saw/`. */
+  dir: string
+}
+
 /** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
 export interface NotInlinedDoc {
   relPath: string
@@ -469,11 +483,13 @@ export interface FeatureContext {
    */
   openDefects: OpenDefect[]
   /**
-   * Where the latest review pass left its evidence on disk — the `DIGEST.md`
-   * the review agent wrote, the walkthrough beside it, and how that pass ended.
-   * Null until a review pass has burned.
+   * Where the latest review pass left its evidence on disk — its account (a
+   * Review worker's handback, an older review ticket's `DIGEST.md`), the
+   * walkthrough beside it, and how that pass ended. Null until a pass has
+   * finished: the newest Review worker that handed back or failed, else the
+   * newest review ticket that burned.
    */
-  reviewEvidence: ReviewEvidence | null
+  reviewEvidence: WorkerReviewEvidence | ReviewEvidence | null
   /** The pictures reviews kept, newest pass first. Empty when none took any. */
   reviewShots: ReviewShots[]
   /**
@@ -667,9 +683,15 @@ export function featureContext(
   const allTickets = listByFeature(ctx, feature.id)
   const openDefects = openDefectsOf(ctx, feature.id).map(toOpenDefect)
   const latestReview = latestBurnedReview(allTickets)
+  // Every Review worker came after every review ticket, so a finished one is the latest pass.
+  const latestReviewWorker = listWorkers(ctx, feature.id)
+    .filter((w) => w.kind === 'review' && (w.handbackSummary !== null || w.status === 'failed'))
+    .at(-1)
   const stated = new Set(openDefects.map((defect) => defect.id))
   const findings = listReviewFindings(ctx, feature.id).filter(
-    (finding) => finding.reviewTicketId === latestReview?.id && !stated.has(finding.id),
+    (finding) =>
+      (latestReviewWorker ? finding.reviewWorkerId === latestReviewWorker.id : finding.reviewTicketId === latestReview?.id) &&
+      !stated.has(finding.id),
   )
   const withheldDocs = WITHHELD_FEATURE_DOCS
 
@@ -720,7 +742,11 @@ export function featureContext(
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
-    reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
+    reviewEvidence: latestReviewWorker
+      ? workerReviewEvidenceOf(latestReviewWorker)
+      : latestReview
+        ? reviewEvidenceOf(latestReview)
+        : null,
     reviewShots: reviewShots(ctx, feature.id),
     designs: leadDesigns(ctx, feature.id),
     workers: leadWorkers(ctx, feature.id),
@@ -918,6 +944,17 @@ function reviewEvidenceOf(ticket: Ticket): ReviewEvidence {
     reviewVerdictReason: ticket.reviewVerdictReason ?? null,
     dir,
     digestPath: join(dir, 'DIGEST.md'),
+  }
+}
+
+function workerReviewEvidenceOf(w: WorkerRow): WorkerReviewEvidence {
+  return {
+    workerId: w.id,
+    label: w.label,
+    status: w.status,
+    reviewMode: w.reviewMode,
+    account: w.handbackSummary,
+    dir: reviewDir(w.id),
   }
 }
 
@@ -3203,8 +3240,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Drive the feature branch for review',
         description:
-          "Boot the feature branch on the human's checkout under your run's identity, to review it. " +
-          'Always `stop` what you started; a refusal carries `deniedCode` and `retriable`.',
+          "The feature branch running on the human's checkout, to review it: `status` for its URL, scenarios, calls and " +
+          'screenshots. A refusal carries `deniedCode` and `retriable`.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop', 'scenario', 'try_call', 'capture'])

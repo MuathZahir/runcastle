@@ -817,6 +817,22 @@ describe('mcp tool registration by audience', () => {
       'review_drive',
     ])
     expect(toolsForAudience('run')).not.toContain('add_test_note')
+
+    // A drive review on the host (burns-become-workers decision 3): its drive,
+    // its findings, its hand-back, its own chat and the feature reads; none of
+    // the lead's tools. Only the lead starts one.
+    expect(toolsForAudience('review').sort()).toEqual([
+      'get_feature_context',
+      'hand_back',
+      'read_feature_doc',
+      'report_finding',
+      'review_drive',
+      'show_file',
+    ])
+    expect(toolsForAudience('chat')).toContain('start_review')
+    for (const audience of ['project', 'worker', 'run', 'review'] as const) {
+      expect(toolsForAudience(audience), audience).not.toContain('start_review')
+    }
   })
 
   // Mapped ideation is retired (ADR-0012): its three tools are not registered at

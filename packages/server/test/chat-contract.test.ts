@@ -43,6 +43,7 @@ describe('chat contract', () => {
       'show_plan',
       'show_review_package',
       'start_design_server',
+      'start_review',
       'start_worker',
       'stop_round',
       'update_ticket',
