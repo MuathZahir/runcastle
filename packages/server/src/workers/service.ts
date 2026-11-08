@@ -846,6 +846,26 @@ export function workerPrompted(ctx: AppCtx, id: string): void {
 }
 
 /**
+ * The feature's Stop (burns-become-workers decision 15): cancel the turn of
+ * every worker of it that is working or queued — a turn waiting for its slot,
+ * a retry waiting out its backoff, a drive review waiting for the drive. Each
+ * stays where it is, enterable, and needs the human; nothing starts it again
+ * until someone writes to it.
+ */
+export async function stopFeatureWorkers(ctx: AppCtx, featureId: string): Promise<void> {
+  const live = listWorkers(ctx, featureId).filter((w) => w.status === 'working' || w.status === 'queued')
+  for (const w of live) {
+    forgetRetries(w.id)
+    stopDriveWait(w.id)
+    // Needs the human first, so a turn its cancel ends finds nothing left to move.
+    setStatus(ctx, w, 'needs-you')
+    await agentHost(ctx)
+      .cancel(w.id)
+      .catch((err) => console.error(`worker ${w.id}: stop`, err))
+  }
+}
+
+/**
  * A worker's process stopped: an idle or archive stop stops its sandbox too; a
  * crash (its container died, its sandbox would not wake, its agent exited)
  * fails it (decision 16).

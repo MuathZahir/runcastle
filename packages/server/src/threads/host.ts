@@ -477,6 +477,8 @@ interface Turn {
   compaction?: { trigger: CompactTrigger; before?: number }
   /** Gives back the turn's slot ({@link AgentHostDeps.turnSlot}); called once, as the turn ends or the process stops. */
   release?: () => void
+  /** The prompt of a turn still waiting for its slot: the agent has not heard it yet. */
+  waiting?: Queued
   /** The stall watch on a prompted turn ({@link AgentHostDeps.stallBounds}). */
   watch?: StallWatch
 }
@@ -726,6 +728,8 @@ class Host implements AgentHost {
 
   async cancel(threadId: string): Promise<void> {
     const t = this.threads.get(threadId)
+    // A turn still waiting for its slot never reached the agent: it ends here.
+    if (t?.turn?.waiting) return this.endWaitingTurn(t, t.turn, t.turn.waiting)
     if (!t?.turn || !t.conn || !t.sessionId) return
     // ACP: a cancelled turn's open permission request is answered `cancelled`.
     this.settleAsk(t, 'cancelled')
@@ -1521,7 +1525,9 @@ class Host implements AgentHost {
     const slotRow = getSessionRow(this.ctx, t.id)
     const slot = slotRow ? this.turnSlot(slotRow) : undefined
     if (slot) {
+      turn.waiting = item
       turn.release = await slot
+      delete turn.waiting
       if (isStopped(t) || t.turn !== turn) return releaseSlot(turn)
     }
     markAgentWorking(this.ctx, t.id)
@@ -1679,6 +1685,22 @@ class Host implements AgentHost {
   /** Claude reports its session going idle (forwarded SDK `session_state_changed`). */
   private saysWhenIdle(t: Thread): boolean {
     return (getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
+  }
+
+  /**
+   * Cancel a turn still waiting for its slot (burns-become-workers decision
+   * 15): it ends cancelled without the agent hearing it, and gives back the
+   * slot it is granted later, when that comes.
+   */
+  private endWaitingTurn(t: Thread, turn: Turn, item: Queued): void {
+    delete turn.waiting
+    t.turn = null
+    this.logAwaits(t.id, { type: 'turn_ended', reason: 'cancelled' })
+    markAwaitingInput(this.ctx, t.id)
+    t.turnEndedAt = Date.now()
+    const row = getSessionRow(this.ctx, t.id)
+    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source, { reason: 'cancelled' }))
+    this.pump(t)
   }
 
   private async endSelfTurn(t: Thread, turn: Turn, reason: 'end_turn' | 'cancelled'): Promise<void> {

@@ -82,6 +82,7 @@ import {
   type FeatureListItem,
   list as listFeatures,
   listReadyDeclarations,
+  requireNotStopped,
   setWaiting,
   stopRound,
 } from '../services/features'
@@ -1223,6 +1224,7 @@ export async function toolStartWorker(
   input: { label: string; purpose: string; kind: 'with-you' | 'on-its-own'; goal: string; doneWhen: string; model?: string },
 ): Promise<StartedWorker> {
   const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  requireNotStopped(feature)
   return startWorker(ctx, feature, { ...input, startedBy: 'lead' })
 }
 
@@ -1233,6 +1235,7 @@ export async function toolStartReview(
   input: { mode?: 'drive' | 'gates'; verify?: { findingIds: string[]; commits: string[] }; model?: string },
 ): Promise<StartedReview> {
   const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  requireNotStopped(feature)
   return startReviewWorker(ctx, feature, { ...input, startedBy: 'lead' })
 }
 
@@ -1259,6 +1262,7 @@ export function toolReviewHandBack(ctx: AppCtx, session: SessionRow, input: { su
 
 export async function toolMessageWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; text: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  requireNotStopped(getFeatureRow(ctx, worker.featureId))
   return messageWorker(ctx, worker.id, input.text)
 }
 
@@ -1269,6 +1273,7 @@ export async function toolLandWorker(ctx: AppCtx, session: SessionRow, input: { 
 
 export async function toolSendBackWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; note: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
+  requireNotStopped(getFeatureRow(ctx, worker.featureId))
   return sendBackWorker(ctx, worker.id, input.note)
 }
 

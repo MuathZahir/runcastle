@@ -54,9 +54,10 @@ import {
   requireProjectById,
   rowToFeature,
 } from './repo'
-import { activeSessionsForFeature } from '../launcher/sessions'
+import { activeSessionsForFeature, featureSessions } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { leadState, NO_LEAD, type LeadState } from '../threads/read'
+import { leadState, NO_LEAD } from '../threads/read'
+import { agentHost } from '../threads/types'
 import {
   getTicket,
   isPendingTicket,
@@ -66,7 +67,7 @@ import {
   updateTicket,
 } from './tickets'
 import { cancelRun, startRun } from '../workflows/runner'
-import { removeFeatureWorkers, workersHoldingReady } from '../workers/service'
+import { removeFeatureWorkers, stopFeatureWorkers, workersHoldingReady } from '../workers/service'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, rounds. Git branch
@@ -568,9 +569,7 @@ export async function dispatchRound(
   if (git.activeTestDriveFeatureId(project.id) === featureId) {
     throw new GateError('the human is test-driving this feature — no round starts until the drive stops')
   }
-  if (feature.stoppedAt !== null && !((feature.lastHumanMessageAt ?? 0) > feature.stoppedAt)) {
-    throw new GateError('Stopped by the human — wait for their reply')
-  }
+  requireNotStopped(feature)
   if (seqs.length === 0) throw new InvalidInputError('name at least one ticket seq to dispatch')
 
   // No run is live (refused above), so a `burning` row is an orphan of a dead run.
@@ -644,18 +643,23 @@ export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId
   return { runId: run.id, confirmed }
 }
 
-/** A lead mid-turn, or whose turn waits on the human's answer: it hears Stop at that turn's end (decision 10). */
-function busyLead(lead: LeadState): boolean {
-  return lead.working || lead.asking
+/** Refuse the lead's starts while the human's Stop stands: nothing starts until they reply (decision 15). */
+export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHumanMessageAt'>): void {
+  if (feature.stoppedAt !== null && !((feature.lastHumanMessageAt ?? 0) > feature.stoppedAt)) {
+    throw new GateError('Stopped by the human — wait for their reply')
+  }
 }
 
 /**
- * The human's Stop (decision 23): stop the running round if there is one, set
- * the stopped mark so nothing new is dispatched until the human replies, and
- * tell the lead. The status reads "Waiting for you · stopped".
+ * The human's Stop (burns-become-workers decision 15): end the lead's turn,
+ * cancel the turn of every working or queued worker (they stay where they are,
+ * enterable), stop a round still running from before workers, set the stopped
+ * mark so nothing new starts until the human replies, and tell the lead with
+ * that reply. The status reads "Waiting for you · stopped".
  *
- * The mark lands and emits first: killing a round's sandboxes can take seconds,
- * and the status the human just pressed beside must not wait them out.
+ * The mark lands and emits first: cancelling turns and killing a round's
+ * sandboxes can take seconds, and the status the human just pressed beside
+ * must not wait them out.
  */
 export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
@@ -671,15 +675,22 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
     message: running ? 'stopped by the human — cancelling the round' : 'stopped by the human',
     data: { runId: running?.id ?? null },
   })
+  await stopFeatureWorkers(ctx, featureId)
+  for (const chat of featureSessions(ctx, featureId, ['chat'])) {
+    await agentHost(ctx)
+      .cancel(chat.id)
+      .catch((err) => console.error(`chat ${chat.id}: stop`, err))
+  }
   const stopped = running ? await stopRound(ctx, featureId) : null
   const updated = getFeatureRow(ctx, featureId)
   await deliverToLead(ctx, updated, {
     text:
-      `[runcastle] The human pressed Stop${stopped ? ' — the running round was cancelled; landed work stays' : ''}. ` +
-      'Dispatch nothing until the human replies.',
+      `[runcastle] The human pressed Stop: your turn and every working worker's were cancelled` +
+      `${stopped ? ', and the running round too; landed work stays' : ''}. ` +
+      'Start, message or send back no worker until the human replies.',
     source: 'runcastle',
-    // A lead mid-turn must hear it before its next step; an idle one has nothing to stop (decision 10).
-    reason: busyLead(leadState(ctx, featureId)) ? 'question' : 'news',
+    // Its turn is over: the note rides the human's reply and wakes nothing.
+    reason: 'news',
   })
   return updated
 }
