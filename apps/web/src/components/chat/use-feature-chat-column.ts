@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FeatureFull } from '../../lib/api'
 import { NEW_CHAT_NAME, UNSTARTED_CHAT, newestThread, standIn, withStandIns } from '../../lib/chat-sessions'
-import { WORKER_KIND_WORDS } from '../../lib/workers'
+import { SCENARIOS_LABEL } from '../../lib/workers'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { mainChatInbox, subscribeInbox } from '../../lib/composer-inbox'
 import { featureChat } from '../../lib/feature-ui'
@@ -99,7 +99,7 @@ export function useFeatureChatColumn({
   const threads = withStandIns(listed, [
     standIn(main ?? UNSTARTED_CHAT, NEW_CHAT_NAME, 'main'),
     ...(inFront && inFront !== main
-      ? [standIn(inFront, inFront === scenario.sessionId ? WORKER_KIND_WORDS.scenario : NEW_CHAT_NAME, 'worker')]
+      ? [standIn(inFront, inFront === scenario.sessionId ? SCENARIOS_LABEL : NEW_CHAT_NAME, 'worker')]
       : []),
   ])
 

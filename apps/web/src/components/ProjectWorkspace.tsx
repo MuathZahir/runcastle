@@ -7,7 +7,7 @@ import { useLivePoll } from '../lib/live'
 import { PageTopbar } from '../ui'
 import { backInApp } from '../lib/use-history-sync'
 import { NEW_CHAT_NAME, UNSTARTED_CHAT, standIn, withStandIns } from '../lib/chat-sessions'
-import { WORKER_KIND_WORDS, workerEntry } from '../lib/workers'
+import { SCENARIOS_LABEL, workerEntry } from '../lib/workers'
 import { useProjectWorkers, useWorkerHeader, workerColumnProps } from './workers/WorkerChat'
 import { useToast } from '../lib/toast'
 import { orchestratorLanding, usePublishSidebarThreads } from '../lib/sidebar-threads'
@@ -299,7 +299,7 @@ export function ProjectWorkspace({
   const inFrontTitle = !inFront
     ? undefined
     : workerFront
-      ? (workerRow?.label ?? WORKER_KIND_WORDS.scenario)
+      ? (workerRow?.label ?? SCENARIOS_LABEL)
       : threads.find((t) => t.id === inFront)?.title
 
   const panelView = (view: PanelView) => {

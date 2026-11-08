@@ -154,13 +154,20 @@ export function workerStatusWhy(w: { status: WorkerStatus; failure?: string | nu
   return undefined
 }
 
-/** The kind in words, on the assignment card. */
+/** The Scenarios worker's name, as the server labels it: what its chat is called before its row arrives. */
+export const SCENARIOS_LABEL = 'Scenarios'
+
+/**
+ * The kind in words, on the assignment card and the handback card. A drive
+ * worker's label already says which one it is ("Fix drive", "Scenarios"), so its
+ * kind says where it works instead of repeating the label.
+ */
 export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
   'with-you': 'With you',
   'on-its-own': 'On its own',
   review: 'Review',
-  'fix-drive': 'Fix drive',
-  scenario: 'Scenarios',
+  'fix-drive': 'Beside the drive',
+  scenario: 'Beside the drive',
 }
 
 /** Whether a worker still takes messages: everything but the settled ones and old chats. */

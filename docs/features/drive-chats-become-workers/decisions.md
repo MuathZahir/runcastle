@@ -70,6 +70,7 @@ would spend a turn of its large context on a note. ADR-0019 point 6 lets runcast
 hears what; a build worker's handback still wakes its lead because the lead must land it.
 **Assumed.** Alternative: wake the lead with every handback, as build workers do.
 **For the human.** The lead does not start working when a drive chat finishes.
+**Confirmed by the orchestrator on the human's delegation (2026-11-08)**, after it listed this behaviour change to the human.
 **Challenged:** an unread Fix-drive handback should surface when the lead declares ready, so
 drive-script changes on the branch are seen before merge. Kept: the drive usually comes after
 ready, the changes are confined to `.runcastle/`, and the feature's work record lists every
@@ -130,6 +131,7 @@ decision 25) does not apply.
 drive; one rule for every worker is what the human asked for.
 **Assumed.** Alternative: no pings while the drive is on, since the chat sits beside it.
 **For the human.** They now get a ping when a drive chat finishes a turn.
+**Confirmed by the orchestrator on the human's delegation (2026-11-08)**, after it listed this behaviour change to the human.
 **Challenged:** skip the ping while the drive page is open and visible; a ping on every short
 turn beside the human's eyes is noise. Kept: one rule for every worker, and runcastle's desktop
 ping already stays quiet in a focused window.
