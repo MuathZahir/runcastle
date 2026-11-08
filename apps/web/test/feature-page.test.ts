@@ -235,7 +235,7 @@ describe('the panel’s views', () => {
     const panel = panelOf(page({ view: 'plan', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('spec.md')] }))
     const views = panel.slice(at(panel, 'aria-label="Panel views"'), at(panel, 'aria-label="Fold the panel"'))
     expect([...views.matchAll(/role="tab"/g)]).toHaveLength(4)
-    expect(views).toContain('Tickets')
+    expect(views).toContain('History')
     expect(views).toContain('Details')
     expect(views).toContain('Design')
     expect(views).not.toContain('Review')
@@ -261,12 +261,19 @@ describe('the panel’s views', () => {
     expect(panel).not.toContain('<iframe')
   })
 
-  it('shows the ticket ledger in Work, with no Go above it', () => {
+  it('shows old tickets read only in History: no Go, no ticket action, no live log (burns-become-workers decision 19)', () => {
     const panel = panelOf(page({ view: 'work', tickets: [ticket(1), ticket(2, { kind: 'review', passKind: 'review' })] }))
-    expect(panel).toContain('aria-label="Tickets"')
+    expect(panel).toContain('aria-label="History"')
     expect(panel).toContain('Ticket 1')
     expect(panel).not.toMatch(/>Go</)
     expect(panel).not.toContain('Go anyway')
+    expect(panel).not.toMatch(/>(Stop|Retry|Cancel|Edit)</)
+    expect(panel).not.toContain('Live log')
+  })
+
+  it('offers no History to a feature with no old tickets', () => {
+    const panel = panelOf(page({ view: 'plan', preview: true, queries: READY, docs: [doc('spec.md')] }))
+    expect(panel).not.toContain('History')
   })
 })
 
@@ -308,7 +315,7 @@ describe('what opens the panel', () => {
     expect(facts).toContain('3h ago')
   })
 
-  it('opens Work on the panel.show emit_tickets raises, even before the refetched feature has the tickets', () => {
+  it('opens no History on a panel.show for a feature with no old tickets', () => {
     const event = (id: number, type: string, data?: unknown): EventRow =>
       ({ id, projectId: 'p1', featureId: 'f1', ts: id, type, message: type, data }) as EventRow
     const onViewChange = vi.fn()
@@ -316,7 +323,7 @@ describe('what opens the panel', () => {
     const view = render(workspace({ onViewChange }))
     store.queries.set('events.list', [event(1, 'session.started'), event(2, 'panel.show', { view: 'work' })])
     act(() => view.rerender(workspace({ onViewChange })))
-    expect(onViewChange).toHaveBeenCalledWith('work')
+    expect(onViewChange).not.toHaveBeenCalledWith('work')
   })
 })
 
