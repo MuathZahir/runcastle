@@ -387,7 +387,9 @@ export const workers = sqliteTable(
   'workers',
   {
     id: text('id').primaryKey(),
-    featureId: text('feature_id').notNull(),
+    /** Null for a project-owned worker (a project drive's Scenarios worker). */
+    featureId: text('feature_id'),
+    projectId: text('project_id').notNull(),
     label: text('label').notNull(),
     purpose: text('purpose').notNull(),
     kind: text('kind').notNull().$type<WorkerKind>(),
@@ -418,7 +420,7 @@ export const workers = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [index('workers_feature').on(t.featureId)],
+  (t) => [index('workers_feature').on(t.featureId), index('workers_project').on(t.projectId)],
 )
 
 export const tickets = sqliteTable('tickets', {

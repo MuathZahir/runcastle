@@ -8,6 +8,7 @@ import {
   type ReviewPackage,
   type Ticket,
   type WorkerRow,
+  workerFeatureId,
 } from '@runcastle/core'
 import { reviewShotPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { and, eq } from 'drizzle-orm'
@@ -63,7 +64,7 @@ export function ticketPass(ctx: AppCtx, ticket: Ticket): ReviewPass {
 export function workerPass(w: WorkerRow): ReviewPass {
   return {
     id: w.id,
-    featureId: w.featureId,
+    featureId: workerFeatureId(w),
     seq: null,
     round: null,
     passKind: w.reviewVerify ? 'verification' : 'review',

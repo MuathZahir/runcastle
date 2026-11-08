@@ -17,8 +17,10 @@ import {
   IconExternalLink,
   IconEye,
   IconGitMerge,
+  IconList,
   IconLock,
   IconMessage,
+  IconPlay,
   IconUser,
   IconX,
 } from '../../icons'
@@ -100,6 +102,8 @@ const KIND_ICON: Record<WorkerKind, ReactNode> = {
   'with-you': <IconUser size={14} />,
   'on-its-own': <IconActivity size={14} />,
   review: <IconEye size={14} />,
+  'fix-drive': <IconPlay size={14} />,
+  scenario: <IconList size={14} />,
 }
 
 /**

@@ -141,6 +141,7 @@ function seedWorker(ctx: AppCtx, feature: Feature, leadId: string, w: SeededWork
     .values({
       id: session.id,
       featureId: feature.id,
+      projectId: feature.projectId,
       label: w.label,
       purpose: w.purpose,
       kind: w.kind,

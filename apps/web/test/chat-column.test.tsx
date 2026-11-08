@@ -70,6 +70,7 @@ const logOf = (threadId: string): ThreadEvent[] => [
 const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): WorkerListRow => ({
   id,
   featureId: 'feat_1',
+  projectId: 'proj_1',
   label,
   purpose: `What ${label} is for`,
   kind: 'with-you',

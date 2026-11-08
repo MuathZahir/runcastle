@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk/unstable'
-import type { AgentRuntime, WorkerKind } from '@runcastle/core'
+import { type AgentRuntime, type DriveWorkerKind, type WorkerKind, isDriveWorkerKind } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
@@ -380,7 +380,7 @@ export async function copyOutOfSandbox(sb: WorkerSandbox, containerPath: string,
 }
 
 /** What a worker of each kind does with its turn and when it hands back (decision 5); a review's own briefing says it. */
-function howItHandsBack(kind: Exclude<WorkerKind, 'review'>): string {
+function howItHandsBack(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): string {
   switch (kind) {
     case 'with-you':
       return (
@@ -400,6 +400,7 @@ function howItHandsBack(kind: Exclude<WorkerKind, 'review'>): string {
 /** The worker's briefing: appended to Claude Code's system prompt, or after the human's instructions in a Codex worker's AGENTS.md. */
 export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
   if (brief.kind === 'review') return sandboxReviewBriefing(brief.label, sb.branch)
+  if (isDriveWorkerKind(brief.kind)) throw new Error(`worker "${brief.label}" is a drive worker: it runs on the host, with no sandbox to brief`)
   return [
     `# You are a runcastle worker: ${brief.label}`,
     '',

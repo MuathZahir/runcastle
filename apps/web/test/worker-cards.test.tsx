@@ -20,6 +20,7 @@ afterEach(cleanup)
 const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   id: 'w_head',
   featureId: 'feat_1',
+  projectId: 'proj_1',
   label: 'Header',
   purpose: 'The sidebar header',
   kind: 'with-you',

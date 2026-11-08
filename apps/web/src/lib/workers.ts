@@ -144,6 +144,8 @@ export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
   'with-you': 'With you',
   'on-its-own': 'On its own',
   review: 'Review',
+  'fix-drive': 'Fix drive',
+  scenario: 'Scenarios',
 }
 
 /** Whether a worker still takes messages: everything but the settled ones and old side chats. */

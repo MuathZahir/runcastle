@@ -60,7 +60,7 @@ describe('chat contract', () => {
     for (const [i, status] of (['working', 'queued'] as const).entries()) {
       ctx.db
         .insert(workers)
-        .values({ id: newId('wkr'), featureId: feature.id, label: `w${i}`, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+        .values({ id: newId('wkr'), featureId: feature.id, projectId: feature.projectId, label: `w${i}`, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
         .run()
     }
     expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Working · 2 workers at work.')

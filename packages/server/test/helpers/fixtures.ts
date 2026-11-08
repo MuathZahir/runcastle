@@ -86,7 +86,7 @@ export function seedHostReview(
   const now = Date.now()
   ctx.db
     .insert(workers)
-    .values({ id: session.id, featureId: feature.id, label: 'Review', purpose: 'Review the feature', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
+    .values({ id: session.id, featureId: feature.id, projectId: feature.projectId, label: 'Review', purpose: 'Review the feature', kind: 'review', reviewMode: 'drive', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
     .run()
   return session
 }

@@ -820,7 +820,7 @@ describe('project-session MCP tools', () => {
     ctx.db
       .insert(workers)
       .values({
-        id: row.id, featureId, label: 'Add laps', purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code',
+        id: row.id, featureId, projectId, label: 'Add laps', purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code',
         startedBy: 'lead', status: 'landed', engine: 'docker', featureBranch: 'feature/x', createdAt: now, updatedAt: now,
         ...over,
       })

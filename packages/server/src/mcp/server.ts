@@ -52,6 +52,7 @@ import {
   unstartedState,
   SAW_MAX_SHOTS,
   maskedCall,
+  workerFeatureId,
 } from '@runcastle/core'
 import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir, reviewShotPath } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
@@ -788,7 +789,7 @@ export function toolReviewHandBack(ctx: AppCtx, session: SessionRow, input: { su
 
 export async function toolMessageWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; text: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
-  requireNotStopped(getFeatureRow(ctx, worker.featureId))
+  requireNotStopped(getFeatureRow(ctx, workerFeatureId(worker)))
   return messageWorker(ctx, worker.id, input.text)
 }
 
@@ -799,7 +800,7 @@ export async function toolLandWorker(ctx: AppCtx, session: SessionRow, input: { 
 
 export async function toolSendBackWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; note: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
-  requireNotStopped(getFeatureRow(ctx, worker.featureId))
+  requireNotStopped(getFeatureRow(ctx, workerFeatureId(worker)))
   return sendBackWorker(ctx, worker.id, input.note)
 }
 
@@ -1319,7 +1320,7 @@ export async function toolReviewDrive(
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.ReviewDriveResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  const feature = getFeatureRow(ctx, reviewer.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(reviewer))
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
 
@@ -1363,7 +1364,7 @@ export async function toolReviewCapture(
   capture: typeof captureReviewShot = captureReviewShot,
 ): Promise<ReviewCaptureResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  const featureId = reviewer.featureId
+  const featureId = workerFeatureId(reviewer)
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial('capture', "No review drive of this feature is running — review_drive({ action: 'start' }) first.")
@@ -1417,7 +1418,7 @@ export async function toolReviewScenario(
   { action, file }: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
-  const featureId = reviewer.featureId
+  const featureId = workerFeatureId(reviewer)
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial(
