@@ -45,6 +45,13 @@ drive-fix chat, side chat) with different rules.
    holding with a feature's agent directly.)
 7. **The human finds their way by labels and status**, not by fewer threads: each
    feature lists its workers with "needs you" on top.
+7b. **Drive chats are the one exception to a workspace of their own.** The
+   Fix-drive chat and the scenario chat run as workers on the host, in the
+   human's checkout the drive switched to, because they need its database and
+   dev server; they commit straight to the driven branch and name it in every
+   handback. Only the human talks to them. A project drive's chat is a worker of
+   the project, under the orchestrator. (Amended 2026-11-08 by
+   `drive-chats-become-workers`, on the human's delegation.)
 8. **An agent's in-reply subagents are not workers.** They stay invisible tools.
 9. **User-level skills stay loaded** in every session. Keeping them lean is the
    user's job.
