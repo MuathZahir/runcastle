@@ -7,13 +7,14 @@ import { simpleGit, type SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
-import { toolRunScenario } from '../src/mcp/server'
+import { toolRetryDrive, toolRunScenario } from '../src/mcp/server'
 import { recordFinding } from '../src/services/findings'
 import {
   __resetTestDriveState,
   __setAppReadinessTiming,
   activeDriveInfo,
   createFeatureBranch,
+  onDriveEnded,
   projectDrive,
   recordDriveUrl,
   testDrive,
@@ -25,9 +26,9 @@ import { appRouter } from '../src/trpc/router'
 import { type AgentHost, createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent } from '../src/threads/log'
-import { forgetDriveTurnBasesForTests } from '../src/workers/drive'
+import { forgetDriveTurnBasesForTests, handBackDriveWorkers, handBackOrphanedDriveWorkers } from '../src/workers/drive'
 import { writeHostHandback } from '../src/workers/review'
-import { getWorker, listProjectWorkers, listWorkers, withWorkers, workerTurnSlot } from '../src/workers/service'
+import { getWorker, listProjectWorkers, listWorkers, setStatus, withWorkers, workerTurnSlot } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedDriveWorker, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -109,6 +110,7 @@ function underway(id: string): void {
 beforeEach(async () => {
   __resetTestDriveState()
   __setAppReadinessTiming({ intervalMs: 10, budgetMs: 10_000 })
+  onDriveEnded((ended) => handBackDriveWorkers(ctx, ended))
   restoreDataDir = useDataDir(tmpRepo())
   ctx = await makeTestCtx()
   repo = tmpRepo()
@@ -285,6 +287,91 @@ describe('the commits it makes and its handback', () => {
     expect(card?.text).toContain('Set nothing up yet.')
     expect(card?.display).toMatchObject({ handback: { workerId, branch: 'main' } })
     expect(host.isRunning(chat.id)).toBe(false)
+
+    // Pressed again, then the drive stops: the project's worker is handed back, to the project chat.
+    onTurn = async (t) => {
+      await t.say('Still at it.')
+      await t.cancelled
+    }
+    await caller().feature.openScenarioChat({ projectId: project.id, description: 'more' })
+    await until(() => host.isRunning(workerId))
+    await new Promise((r) => setTimeout(r, 200))
     await projectDrive(ctx, project, 'stop')
+    expect(getWorker(ctx, workerId)?.handbackSummary).toContain('The drive stopped.')
+    expect(getWorker(ctx, workerId)?.handbackSummary).toContain('Still at it.')
+    expect(status(workerId)).toBe('handed-back')
+    expect(promptsOf(chat.id).at(-1)?.text).toContain('Still at it.')
   }, 30_000)
 })
+
+describe("the drive's end", () => {
+  /** A scenario turn that commits one file, leaves another dirty, says something and hangs till cancelled. */
+  function hangingTurn(): void {
+    onTurn = async (t) => {
+      put('.runcastle/scenarios/cart/full.ts', "console.log('ENTRY_URL=/cart')\n")
+      await g.add('.runcastle/scenarios/cart/full.ts')
+      await g.commit('scenario: a full cart')
+      put('.runcastle/scenarios/cart/half.ts', 'half written\n')
+      await t.say('Writing the half scenario.')
+      await t.cancelled
+    }
+  }
+
+  it("cancels a working drive worker's turn and hands it back quietly, listing what it left uncommitted", async () => {
+    const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })
+    underway(lead.id)
+    await driveUp()
+    hangingTurn()
+    const workerId = (await caller().feature.openScenarioChat({ projectId: project.id, description: 'a full cart' })).sessionId
+    await until(() => promptsOf(workerId).length > 0 && host.isRunning(workerId))
+    await new Promise((r) => setTimeout(r, 200))
+
+    const stopped = await testDrive(ctx, project, feature, 'stop')
+    expect(stopped.carriedChanges).toContain('.runcastle/scenarios/cart/half.ts')
+
+    const w = getWorker(ctx, workerId)!
+    expect(w.status).toBe('handed-back')
+    expect(w.handbackCommits).toEqual([expect.stringMatching(/^[0-9a-f]{7} scenario: a full cart$/)])
+    expect(w.handbackSummary).toContain('The drive stopped.')
+    expect(w.handbackSummary).toContain('Writing the half scenario.')
+    expect(w.handbackSummary).toContain('Left uncommitted')
+    expect(w.handbackSummary).toContain('.runcastle/scenarios/cart/half.ts')
+    const card = promptsOf(lead.id).at(-1)
+    expect(card?.held).toBe(true)
+    expect(card?.display).toMatchObject({ handback: { workerId, branch: 'feature/drive-me' } })
+    expect(host.isRunning(lead.id)).toBe(false)
+  })
+
+  it("leaves the Fix-drive worker working through retry_drive's stop-and-start", async () => {
+    await failedDrive()
+    const { sessionId } = await caller().feature.fixDrive({ featureId: feature.id })
+    await until(() => status(sessionId) === 'needs-you')
+    setStatusWorking(sessionId)
+    await toolRetryDrive(ctx, getSessionRow(ctx, sessionId)!)
+    expect(status(sessionId)).toBe('working')
+    expect(getWorker(ctx, sessionId)?.handbackSummary).toBeNull()
+  })
+
+  it('refuses a human message to a drive worker between drives, and allows it while its drive runs', async () => {
+    await driveUp()
+    const { sessionId } = await caller().feature.openScenarioChat({ projectId: project.id, description: 'x' })
+    await until(() => status(sessionId) === 'needs-you')
+    await expect(caller().thread.send({ threadId: sessionId, text: 'more' })).resolves.toBeDefined()
+    await testDrive(ctx, project, feature, 'stop')
+    await expect(caller().thread.send({ threadId: sessionId, text: 'more' })).rejects.toThrow(
+      /starts with your next drive's New scenario button/,
+    )
+  })
+
+  it('hands back, rather than wakes, a drive worker a restart left working', async () => {
+    const w = seedDriveWorker(ctx, { feature }, 'scenario', repo, { status: 'working' })
+    await handBackOrphanedDriveWorkers(ctx)
+    expect(getWorker(ctx, w.id)?.status).toBe('handed-back')
+    expect(getWorker(ctx, w.id)?.handbackSummary).toContain('The drive stopped.')
+  })
+})
+
+function setStatusWorking(id: string): void {
+  const w = getWorker(ctx, id)!
+  setStatus(ctx, w, 'working')
+}

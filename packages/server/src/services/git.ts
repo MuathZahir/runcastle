@@ -2114,6 +2114,7 @@ export function __resetTestDriveState(): void {
   }
   drives.clear()
   reviewDriveReleases.clear()
+  driveEndedListeners.length = 0
 }
 
 /** Every event that starts or stops a drive holding the slot, of all three kinds. */
