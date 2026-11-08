@@ -184,14 +184,21 @@ function Fold({
 }
 
 /**
- * A turn's work. Live, each step shows as it lands — the call in flight with
- * its verb ("Running bun test"), narration in secondary prose. Settled, the
- * whole of it folds to one line, "Worked for 3m 43s", so a finished thread
- * reads as the conversation it was: your words, then the agent's answer.
+ * One run of a turn's work: the tool calls, thinking and subagents between two
+ * stretches of the agent's words. Live, each step shows as it lands — the call
+ * in flight with its verb ("Running bun test"). Settled (as soon as words
+ * follow it), it folds to one line with its own time, "Worked for 3m 43s", so
+ * a thread reads as the conversation it was: every word in order, the work
+ * folded between them. A run that is only thinking is one "Thought for …"
+ * fold, not a fold inside a fold.
  */
 export function WorkBlock({ steps, seconds, live }: { steps: WorkStep[]; seconds: number; live?: boolean }) {
   const [open, setOpen] = useState(false)
   if (live) return <Steps steps={steps} />
+  const thoughts = steps.filter((s): s is Extract<WorkStep, { kind: 'thought' }> => s.kind === 'thought')
+  if (thoughts.length === steps.length && thoughts.length > 0) {
+    return <Thought seconds={Math.max(1, seconds)} text={thoughts.map((t) => t.text.trim()).join('\n\n')} />
+  }
   return (
     <Fold open={open} onToggle={() => setOpen(!open)} head={<span>Worked for {duration(seconds)}</span>}>
       <div className="border-l border-border-subtle pl-4">
