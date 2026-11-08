@@ -1,5 +1,10 @@
 # Decisions — Burns become workers
 
+Planned by the lead on the human's delegation (2026-11-08), not in a grill; decisions marked
+**For the human.** change what they see or how runcastle behaves for them.
+
+Check first: 3, 6, 8, 10, 14
+
 ## 1. No rounds, no tickets and no burn engine are left behind
 **Decision:** This feature retires the review round, the remaining ticket and round machinery
 (tickets, rounds, runs, `emit_tickets`, `dispatch_round` and the rest), the conflict-fixing agent,
@@ -20,49 +25,52 @@ land no code. Moving them is a separate design problem from retiring the burn en
 the orchestrator on the human's delegation (2026-11-08: "do what you think is best … I want these
 things to be done anyway").
 
-## 3. The review is a worker that runs on the host, not in a sandbox
+## 3. The review is a worker; a drive review runs in the human's checkout, a gates review in a sandbox
 **For the human.** The end-of-feature review becomes a worker labelled **Review**, listed with the
-feature's other workers, enterable, its conversation kept. Unlike other workers it runs on the
-host in the feature's worktree, as the review does today, because it drives the real app in a
-browser (agent-browser, the walkthrough recording, the project's scenarios and dev database) and
-needs the one drive slot per project. It writes no code and has no branch to land.
-**Why:** It keeps everything the review already does working, and gains what workers give
-(enterable, transcript kept, one list). A sandboxed review would need a browser, ffmpeg, the
-scenarios and a database inside the image: a large, risky change for no gain to the human.
-**Assumed.** Alternative: a sandboxed review worker with a browser in the project image.
-
-## 4. The review's handback is the Review Package; the same worker verifies the fixes
+feature's other workers, enterable, its conversation kept. It writes no code and has no branch to
+land. Its mode is chosen at start, as today:
+- **Drive review** (the app can be driven): it runs on the host in the human's own checkout, as the
+  review does today, while it holds the project's one drive slot with the feature branch checked
+  out (the review drive). It needs the real app, the browser, the walkthrough recording, the
+  scenarios and the dev database. It gives the drive slot back when it hands back, and takes it
+  again if it is sent back; while the human drives, it waits as queued.
+- **Gates review** (nothing to drive): it runs as an ordinary sandboxed worker on the committed
+  feature branch, so it checks a clean checkout and never the human's.
+**Why:** It keeps everything the review already does, and gains what workers give (enterable,
+transcript kept, one list). A browser, ffmpeg, the scenarios and a database inside the image would
+be a large, risky change; a gates review needs none of them, so it takes the sandbox's clean
+checkout, which also catches uncommitted files.
+**Assumed.** Alternative: every review runs sandboxed, with a browser in the project image.
+## 4. The review's handback is the Review Package; a fresh small review verifies fixes
 **For the human.** The review worker reports findings as it goes (`report_finding`, unchanged) and
 hands back with the Review Package card in the lead's chat: screenshots, walkthrough, calls and
-findings, as today. The lead closes findings with `resolve_finding`. After fixing, the lead sends
-the same review worker back to verify the fixes, in place of the automatic verification ticket the
-burn engine minted.
-**Why:** The worker that found the problems has their context and can check them cheaply; a
-verification pass becomes one message, not a new run. The human's acceptance material is
-unchanged.
-**Assumed.** Alternative: runcastle starts a fresh verification review worker by itself once fixes
-land.
-
+findings, as today. The lead closes findings with `resolve_finding`. Once it has fixed findings it
+judged real defects, the lead starts a new review worker in verify mode, given only the findings
+and the fix commits, in place of the verification ticket the burn engine minted by itself.
+**Why:** A fresh verify worker reads little and is not anchored on its own findings; sending the
+first reviewer back would re-read a context full of drive output on every message.
+**Assumed.** Alternative: send the same review worker back to verify.
 ## 5. The review runs the project's checks itself; server-run gates retire
-**Decision:** A review in Gates mode (nothing to drive) runs the project's verify commands
-(typecheck, tests) itself, as any agent would, and reports failures as findings. The server-run
-gate step (`review-gates.ts`, run in a sandcastle sandbox) and gate reuse are deleted.
+**Decision:** The review worker runs the project's verify commands (typecheck, tests) itself and
+reports failures as findings: a gates review in its sandbox, a drive review in the human's checkout
+while the review drive holds the feature branch there. The server-run gate step (`review-gates.ts`,
+run in a sandcastle sandbox) and gate reuse are deleted.
 **Why:** They are the last users of sandcastle outside the burn, and the lead already runs the
 project's checks before it declares ready. Keeping them would mean keeping, or rebuilding, a
 container runner just for gates.
 **Assumed.** Alternative: keep server-run gates on a plain `docker run` of the project image.
-
-## 6. A landing conflict sends the worker back to resolve it
-**For the human.** When the lead lands a worker and the merge conflicts, runcastle sends that
-worker back by itself with the conflicting files and the commits on the other side: merge the
-feature branch into its own branch, keep both sides' intent, run the checks, hand back. The lead
-is told it went back for a conflict and lands again on the next handback. After two such tries
-the conflict goes to the lead, as today.
-**Why:** The worker that wrote the code knows its intent; the old resolver had to rebuild it from
-a ticket. No new agent kind is needed, and the human can step in like any worker.
-**Assumed.** Alternative: a separate conflict worker started for each conflict, like the old
-resolver.
-
+## 6. A landing conflict goes back to an "on its own" worker by itself; the lead chooses for "with you"
+**For the human.** When the lead lands an "on its own" worker and the merge conflicts, runcastle
+sends that worker back by itself with the conflicting files and the commits on the other side:
+merge the feature branch into its own branch, keep both sides' intent, run the checks, hand back.
+The lead is told, and lands again on the next handback. After two such tries the conflict goes to
+the lead. For a "with you" worker the lead is told of the conflict and chooses: resolve it itself,
+or send the worker back. This amends `interactive-workers` decision 4 ("the lead resolves any
+conflict") for "on its own" workers only.
+**Why:** The worker that wrote the code knows its intent, and an "on its own" worker's work is
+unattended anyway: this is the brief's in-loop conflict agent without a new agent kind. A "with
+you" worker's conversation is one the human closed, so reopening it is the lead's call.
+**Assumed.** Alternative: a separate conflict worker for each conflict, like the old resolver.
 ## 7. Workers follow the human's "Carry on when the usage limit resets" setting
 **For the human.** A worker the usage limit stops behaves like any chat under the setting the
 wake feature added (`agents-are-woken-only-when-it-matters`): with it on, the worker carries on at
@@ -76,12 +84,15 @@ quietly overrides it would be a second, hidden setting.
 **For the human.** When a worker's turn ends on a transient error (rate limit, overloaded, a
 dropped connection, a stall from decision 9), runcastle tells the same conversation to carry on,
 after a short backoff, up to three times. Then the worker is marked failed and its lead is woken
-once, as today. Errors that will not pass by themselves (bad login, no credit, a CLI too old) fail
-at once. The burn engine's error classes are kept for this.
+once, as today. Errors that will not pass by themselves (bad login, no credit, a CLI too old, a
+conversation too long to continue) fail at once. The burn engine's error classes are kept for this.
 **Why:** A retry in the same conversation keeps everything the worker already knew; the burn
-engine's fresh attempt had to be told what the dead one was doing.
+engine's fresh attempt had to be told what the dead one was doing. A conversation that is itself
+the problem fails at once, so retries never repeat it.
 **Assumed.** Alternative: a fresh conversation per attempt, as burns did.
-
+**Challenged:** the last retry should start a fresh conversation with a handoff, since a stuck
+conversation repeats its failure. Kept: compaction keeps long conversations alive, the
+too-long case fails at once, and the lead decides what to do with a failed worker.
 ## 9. A stalled turn is stopped and retried
 **For the human.** A worker turn that shows no progress for too long (no agent output and no
 running command) is cancelled and counted as a transient error under decision 8. A single command
@@ -105,14 +116,14 @@ full install at every start.
 **Assumed.** Alternative: keep the shared download cache and only add the image build.
 
 ## 12. A worker's own conversation file is kept, and its tokens counted
-**Decision:** The host-side thread log already survives the container. In addition, the agent's
-own conversation file (Claude's session file, Codex's rollout) is copied out of the sandbox before
-the sandbox is removed, and each worker's token use is read from it and recorded on its row. The
-outcome lists each worker with its tokens.
+**Decision:** The worker's chat (the host-side thread log) already survives its sandbox, and stays
+readable from the feature's worker list after the feature merges. In addition, the agent's own
+conversation file (Claude's session file, Codex's rollout) is copied out of the sandbox before the
+sandbox is removed and kept beside that log, and each worker's token use is read from it and
+recorded on its row. The outcome lists each worker with its tokens.
 **Why:** The brief asks that transcripts are kept and tokens can be counted; the host log carries
 only context size, not totals.
 **Assumed.** Alternative: count tokens from the agent's live usage updates only.
-
 ## 13. The working rules from burns carry over to workers
 **Decision:** The working rules the burn prompt carried after `cheaper-burns` (the one check rule:
 targeted checks while working, the full checks once at the end; keep digests short) go into the
@@ -145,3 +156,21 @@ by itself any more: the review starts when the lead starts it. The lead's skill 
 and rounds guides; the review moves into its workers guide.
 **Why:** Follows from decision 1; the old paths would start code that no longer exists.
 **Assumed.** Alternative: none worth keeping.
+
+## 17. Work in flight at the upgrade is named, not carried
+**For the human.** The upgrade drops tickets, rounds and runs. Open review findings stay with their
+feature. A feature that still had tickets not done gets one note, riding its lead's next message
+(it wakes nothing), naming each dropped ticket and its goal, so the lead can hand the work to
+workers.
+**Why:** Runcastle is about to be published; a user mid-round must not lose work silently, and a
+note costs nothing where nothing was in flight.
+**Assumed.** Alternative: refuse the upgrade until no feature has tickets left.
+
+## 18. Which burn settings survive
+**For the human.** "Agents working at once" stays. The per-container CPU cap applies to every
+worker sandbox. The repeated-test-suite guard's switch stays and now governs workers. The burn
+attempt, iteration and conflict-attempt counts are removed: retries are fixed (decisions 6, 8).
+The Settings page that held them is renamed so "Workers" names only the workers.
+**Why:** The CPU cap and the guard still protect the machine and the bill (ADR-0008); the counts
+belonged to a loop that no longer exists.
+**Assumed.** Alternative: drop the CPU cap and the guard switch too.
