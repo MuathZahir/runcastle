@@ -108,10 +108,10 @@ export function serverUrlFor(config: RuncastleConfig): string {
  */
 export function leadCodeRule(): string {
   return (
-    '- **You may change code yourself.** A change small enough not to need a ticket is yours ' +
+    '- **You may change code yourself.** A change small enough not to need a worker is yours ' +
     'to make in this checkout, and you may install dependencies here to typecheck and test it. ' +
     "Verify with the project's own checks before you commit.\n" +
-    '- **Your commits land through the feature\'s landing queue**, between ticket landings ' +
+    '- **Your commits land through the feature\'s landing queue**, between worker landings ' +
     'during a round, and they wait while the human is driving the feature. Use a conventional ' +
     '`feat(scope): …` subject; never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
   )
@@ -388,7 +388,7 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     '**commit it to the feature branch** — a branch carries its own setup, so the fix must ride it',
     'to review, and `retry_drive` cannot even start on a dirty tree. Those files and `.gitignore`',
     'are the only ones you may write; the guard denies the rest, and a change to the app itself',
-    'belongs in a ticket.',
+    'belongs in a worker assignment.',
     '',
     '**Ask before you act.** Anything that starts or stops a service, creates or migrates a',
     'database, installs software, or writes outside the repo needs the human to agree first — say',
@@ -408,11 +408,10 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     'human change it or ask the Orchestrator to — do not spend retries working around it.',
     '',
     '## The feature',
-    `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
+    `- \`${docs}/\` — this feature's own docs (brief, spec, decisions).`,
     `- branch \`${delta.branch}\`, based on \`${delta.base}\`.`,
-    '- `get_feature_context` gives you the row, the rounds, the ticket rows and the docs in one',
-    '  call — a doc it lists in `notInlined` must be read before you act; `get_ticket({ seq })`',
-    "  holds a ticket's context, acceptance criteria and digest.",
+    '- `get_feature_context` gives you the row, its workers and the docs in one',
+    '  call — a doc it lists in `notInlined` must be read before you act.',
     '',
   ].join('\n')
 }
@@ -547,7 +546,7 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
     : [
         '## What you may edit',
         'Only `.runcastle/` — the scenarios and their `_` shared code. The guard denies the rest; a',
-        'change the app itself needs belongs in a ticket, so tell the human.',
+        'change the app itself needs belongs in a worker assignment, so tell the human.',
         '',
       ]
 
@@ -795,9 +794,6 @@ export type HooksSettings = SessionSettings
  */
 export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__get_feature_context',
-  'mcp__runcastle__emit_tickets',
-  'mcp__runcastle__update_ticket',
-  'mcp__runcastle__cancel_ticket',
   'mcp__runcastle__record_event',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
@@ -807,8 +803,6 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // for a fourth doc is a tool call, and an un-allowed one stalls the session on
   // a permission prompt at exactly the moment it went looking for evidence.
   'mcp__runcastle__read_feature_doc',
-  'mcp__runcastle__list_tickets',
-  'mcp__runcastle__get_ticket',
   'mcp__runcastle__read_adr',
   // The orchestrator's three (decision 19). Every session is launched with
   // the whole list: the MCP server gates each tool on the calling session's
@@ -826,11 +820,9 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__update_project_note',
   // Re-ordering parked drafts (ADR-0013) — project-only at the server, likewise.
   'mcp__runcastle__set_feature_dependencies',
-  // The feature lead's round tools. "Run until ready" dispatches and declares
-  // with nobody watching, and a headless wake (`claude -p --resume`) has no one
-  // to answer a prompt at all — an un-allowed one stops the loop dead.
-  'mcp__runcastle__dispatch_round',
-  'mcp__runcastle__stop_round',
+  // The feature lead's tools. "Run until ready" declares with nobody watching,
+  // and a headless wake (`claude -p --resume`) has no one to answer a prompt at
+  // all — an un-allowed one stops the loop dead.
   'mcp__runcastle__declare_ready',
   'mcp__runcastle__wait_for_you',
   // A headless wake has nobody to answer a prompt, and it may be the one that

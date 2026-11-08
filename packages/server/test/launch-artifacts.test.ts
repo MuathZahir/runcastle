@@ -83,7 +83,7 @@ describe('renderSettings', () => {
     expect(s.permissions.allow).toEqual(
       expect.arrayContaining([
         'mcp__runcastle__get_feature_context',
-        'mcp__runcastle__emit_tickets',
+        'mcp__runcastle__declare_ready',
         'mcp__runcastle__record_event',
       ]),
     )
@@ -114,8 +114,6 @@ describe('renderSettings', () => {
     // human present, and a headless wake has no one to answer a prompt
     expect(s.permissions.allow).toEqual(
       expect.arrayContaining([
-        'mcp__runcastle__dispatch_round',
-        'mcp__runcastle__stop_round',
         'mcp__runcastle__declare_ready',
         'mcp__runcastle__wait_for_you',
       ]),
@@ -273,7 +271,7 @@ describe('renderSettings', () => {
    */
   it('pre-approves the paged-context tools', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
-    for (const tool of ['read_feature_doc', 'list_tickets', 'read_adr']) {
+    for (const tool of ['read_feature_doc', 'read_adr']) {
       expect(s.permissions.allow).toContain(`mcp__runcastle__${tool}`)
     }
   })
@@ -761,7 +759,7 @@ describe('writeSessionArtifacts', () => {
       ...SESSION_START_SOURCES,
     ])
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
-    expect(settings.permissions.allow).toContain('mcp__runcastle__emit_tickets')
+    expect(settings.permissions.allow).toContain('mcp__runcastle__declare_ready')
     // the pack the session's skills load from is readable without a prompt
     expect(settings.permissions.allow).toContain(skillPackReadRule(resolvePluginDir()))
     // the edit guard reaches the session as a real registered hook, not just a rule

@@ -25,8 +25,6 @@ const PROJECT_TOOLS = [
   'update_project_note',
   'get_feature_context',
   'read_feature_doc',
-  'list_tickets',
-  'get_ticket',
   'start_feature',
   'plan_feature',
   'send_to_feature',
@@ -103,7 +101,7 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**Outside a cut, merge only when the human asks you to.**')
     expect(text).toContain('read the agreement back from the briefs')
     expect(text).toContain('**Autonomous: never stop for a test drive.**')
-    expect(text).toContain('**never create review tickets yourself**')
+    expect(text).toContain('**never start a review yourself**')
     expect(text).toContain('**Checkpoints: stop exactly at the points they named**')
     expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
   })
@@ -329,7 +327,7 @@ describe('the project skill, with no Go, no quick changes and no missing tools',
     }
   })
 
-  it('speaks of rounds, never of phases, laps or burns', () => {
+  it('speaks of workers, never of phases, laps or burns', () => {
     for (const text of texts()) expect(text).not.toMatch(/\b(phases?|laps?|burn\w*)\b/i)
   })
 

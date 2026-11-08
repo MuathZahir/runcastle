@@ -101,7 +101,7 @@ describe('the feature skill', () => {
     for (const [file, text] of allTexts()) {
       expect(text, file).not.toMatch(/packages\/|apps\/web|STYLE\.md|DESIGN\.md/)
     }
-  })
+    expect(text).toContain('**never start a review yourself**')
 })
 
 describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)', () => {
@@ -193,7 +193,7 @@ describe('the feature skill, planning with no human present', () => {
 
   it('plans and does not build', () => {
     expect(text()).toContain('**This run plans; it does not build.**')
-    expect(text()).toContain('never call `dispatch_round` in this run')
+    expect(text()).toContain('never call `start_worker` or `start_review` in this run')
   })
 
   it('works in one turn, with one challenger and at most five to check first', () => {
@@ -210,7 +210,7 @@ describe('the feature skill, planning with no human present', () => {
   })
 
   it('plans the workers it would offer and starts none', () => {
-    expect(flat(text())).toContain('nor `start_worker`: nothing starts without the human\'s yes')
+    expect(flat(text())).toContain('never call `start_worker` or `start_review` in this run: nothing starts without the human\'s yes')
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
     expect(close).toContain('Plan the workers by the offering rule')
     expect(close).toContain('Start none.')
