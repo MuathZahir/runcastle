@@ -90,6 +90,7 @@ conversation too long to continue) fail at once. The burn engine's error classes
 engine's fresh attempt had to be told what the dead one was doing. A conversation that is itself
 the problem fails at once, so retries never repeat it.
 **Assumed.** Alternative: a fresh conversation per attempt, as burns did.
+**Confirmed by the orchestrator on the human's delegation (2026-11-08)**, after it listed this behaviour change to the human. It keeps the retries in the same chat over the challenger's fresh-chat last retry.
 **Challenged:** the last retry should start a fresh conversation with a handoff, since a stuck
 conversation repeats its failure. Kept: compaction keeps long conversations alive, the
 too-long case fails at once, and the lead decides what to do with a failed worker.
@@ -105,6 +106,7 @@ that runs past a hard ceiling counts too.
 were" message leads and orchestrator chats already get, and its status follows its turn again.
 **Why:** Today such a worker stays "working" with nothing running, until the human writes to it.
 **Assumed.** Alternative: mark it failed and wake the lead.
+**Confirmed by the orchestrator on the human's delegation (2026-11-08)**, after it listed this behaviour change to the human.
 
 ## 11. Workers start from the warm per-project dependency cache
 **Decision:** A worker's sandbox is set up from the burn engine's per-project cache (a warm copy of
