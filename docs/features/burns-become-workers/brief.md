@@ -37,3 +37,9 @@ No checkpoint is named on this feature: the human passes interactive workers at 
 ## Planning mode: grill with the human (2026-11-06)
 
 The human decided this feature is planned in a full grill with them, not by a self-planning run: it changes how runcastle's most battle-tested code runs agents, and decides whether rounds survive. The orchestrator does not call plan_feature on it; when it starts, it tells the human to open this feature's chat.
+
+## Added by the orchestrator, 2026-11-08
+
+## The human delegated the rest (2026-11-08)
+
+At the grill's first question (scope), the human said: "I don't care, do what you think is best here. But I want these things to be done anyway. So do how you see fit." They want everything from this effort finished so runcastle is ready to publish. Planning mode is now: plans itself, with the orchestrator giving the yes and carrying it to merge. The Fix-drive and scenario chats are out of this feature and done in their own feature, which waits on this one.
