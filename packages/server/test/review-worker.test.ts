@@ -3,7 +3,7 @@ import type { Feature, ReviewFindingInput, WorkerRow } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolReportFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
+import { toolReportFinding, toolResolveFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
 import { resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
 import { reviewPackage, workerPass } from '../src/services/review-package'
@@ -188,6 +188,10 @@ describe('a drive review', () => {
     const pack = await reviewPackage(ctx, workerPass(w), feature, repo)
     expect(pack).toMatchObject({ ticketId: w.id, seq: null, verdict: 'Drive review: the theme picker works but forgets · 1 defect' })
     expect(pack.findings.map((f) => f.id)).toEqual([finding!.id])
+
+    // The lead closes it as it closes any finding.
+    toolResolveFinding(ctx, leadSession(), { findingId: finding!.id, disposition: 'addressed', note: 'Fixed in abc1234.' })
+    expect(listFindings(ctx, feature.id)[0]).toMatchObject({ status: 'fixed', resolvedBy: 'session' })
 
     // A review lands nothing, and no longer takes findings once it handed back.
     await expect(landWorker(ctx, w.id)).rejects.toBeInstanceOf(GateError)
