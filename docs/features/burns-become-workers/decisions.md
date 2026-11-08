@@ -3,7 +3,7 @@
 Planned by the lead on the human's delegation (2026-11-08), not in a grill; decisions marked
 **For the human.** change what they see or how runcastle behaves for them.
 
-Check first: 3, 6, 8, 10, 14
+Check first: 3, 6, 8, 10, 19
 
 ## 1. No rounds, no tickets and no burn engine are left behind
 **Decision:** This feature retires the review round, the remaining ticket and round machinery
@@ -141,6 +141,7 @@ view. Findings and the Review Package stay (decision 4), now tied to the review 
 **Why:** The brief and decision 1 ask for no old code left behind; a read-only history view would
 be most of that code kept alive for pages nobody opens.
 **Assumed.** Alternative: keep a read-only Work view for features shipped before this one.
+**Superseded by 19.**
 
 ## 15. Stop stops the lead and every working worker
 **For the human.** The feature's Stop ends the lead's turn and cancels the turn of every worker
@@ -165,6 +166,7 @@ workers.
 **Why:** Runcastle is about to be published; a user mid-round must not lose work silently, and a
 note costs nothing where nothing was in flight.
 **Assumed.** Alternative: refuse the upgrade until no feature has tickets left.
+**Superseded by 20.**
 
 ## 18. Which burn settings survive
 **For the human.** "Agents working at once" stays. The per-container CPU cap applies to every
@@ -174,3 +176,47 @@ The Settings page that held them is renamed so "Workers" names only the workers.
 **Why:** The CPU cap and the guard still protect the machine and the bill (ADR-0008); the counts
 belonged to a loop that no longer exists.
 **Assumed.** Alternative: drop the CPU cap and the guard switch too.
+
+## 19. Old tickets, rounds and runs are kept as frozen history
+**For the human.** Supersedes: 14. The tickets, rounds and runs tables are not dropped. They are
+frozen: nothing writes to them any more, and the machinery that wrote them is deleted. A feature
+that has old tickets still shows them, read only (no retry, stop, cancel or edit, no live
+transcript lanes); the live Work view goes. `get_work_record` keeps working: for old features it
+reads the frozen tables; for new ones it reads the worker records (assignment, handback summary,
+files changed, commits). Its seam lookup, which the orchestrator uses to spot two in-flight
+features heading for the same files, matches the files a worker changed as well as old ticket
+seams.
+**Why:** Only 113 of 170 `outcome.md` files carry digests, so they cannot be the only record, and
+dropping the tables would destroy history with no backup.
+**Assumed.** Alternative: drop the tables and rely on `outcome.md` (decision 14).
+**Changed by the orchestrator:** keep history, don't drop the tables; keep `get_work_record` and
+its seam lookup working over workers.
+
+## 20. Work in flight at the upgrade stays in the history and is named
+**For the human.** Supersedes: 17. Nothing is dropped at the upgrade. A ticket not yet done stays
+in the frozen history as it was, never run again. Open review findings stay with their feature. A
+feature that still had tickets not done gets one note, riding its lead's next message (it wakes
+nothing), naming each such ticket and its goal, so the lead can hand the work to workers.
+**Why:** Follows from 19; the note still keeps a user mid-round from losing work silently.
+**Assumed.** Alternative: refuse the upgrade until no feature has tickets left.
+**Changed by the orchestrator:** follows its history change (19).
+
+## 21. An account-level error holds the queue
+**For the human.** When a worker fails on an account-level error (bad login, no credit, billing,
+a revoked token), no further queued worker on that runtime starts. The failed worker's lead is
+told once, and the held workers show as queued, with the reason. The hold lifts when the human
+next sends a message to any lead or worker, as the old Resume did.
+**Why:** The old engine halted the whole run on such errors; without a hold, each queued worker
+would start, fail the same way and wake its lead in turn.
+**Assumed.** Alternative: let each worker fail on its own.
+**Changed by the orchestrator:** asked that an account-level error stop the queue and tell the
+lead once.
+
+## 22. The per-tool timing breakdown retires
+**Decision:** The burn's per-tool timing breakdown (ADR-0008's measure, the `ticket.timing`
+events) is not rebuilt for workers. Token counts per worker (decision 12) are what remains of
+burn measurement. Nothing else in ADR-0008 is amended by this.
+**Why:** It was measured on headless burns to tune them; workers are chats whose context and
+token use are already visible.
+**Assumed.** Alternative: rebuild the timing breakdown from the worker's ACP stream.
+**Changed by the orchestrator:** asked that it be retired plainly rather than rebuilt.

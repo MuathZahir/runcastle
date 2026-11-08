@@ -21,8 +21,8 @@ reached the worker briefing.
 
 **One kind of delegated work.** The review is a worker labelled **Review** in the feature's
 worker list, enterable like any worker, its chat kept after the feature merges (decisions 3, 12).
-There are no rounds, no Work view, no tickets view and no round transcript lanes. A shipped
-feature's record of its old tickets is its `outcome.md` (decision 14).
+There are no rounds, no live Work view and no round transcript lanes. A feature that has old
+tickets still shows them read only, from frozen history (decision 19).
 
 **The review.** The lead starts it when the work is done. Its mode is fixed at start:
 - a **drive review** runs on the host in the human's own checkout while it holds the project's one
@@ -57,14 +57,22 @@ worker at once, the lead is told and chooses: resolve it itself or send the work
 **Stop** ends the lead's turn and cancels every working or queued worker's turn. They stay where
 they are, enterable, and nothing starts until the human replies (decision 15).
 
+**Account errors hold the queue.** A worker that fails on a bad login, no credit or billing stops
+every queued worker on that runtime from starting; its lead is told once; the hold lifts when the
+human next writes to any lead or worker (decision 21).
+
 **Settings.** "Agents working at once" stays. The CPU cap per sandbox and the
 repeated-test-suite guard's switch stay and govern workers. The attempt, iteration and
 conflict-attempt counts, the burn workspace mode and the "sandbox off" switch go. The page that
 held them is renamed so "Workers" names only workers (decision 18).
 
-**The upgrade.** Tickets, rounds and runs are dropped. Open findings stay with their feature. A
-feature that still had tickets not done gets one note, riding its lead's next message, naming each
-dropped ticket and its goal (decision 17).
+**The upgrade.** Nothing is dropped. Tickets, rounds and runs become frozen history: never
+written again, read by the history view and `get_work_record`. Open findings stay with their
+feature. A feature that still had tickets not done gets one note, riding its lead's next message,
+naming each and its goal (decision 20).
+
+**Measurement.** The per-tool timing breakdown is retired; token counts per worker remain
+(decision 22).
 
 ### The shape of it
 
@@ -102,12 +110,16 @@ worker instead of a review ticket.
 built). `emit_tickets`, `update_ticket`, `cancel_ticket`, `list_tickets`, `get_ticket`,
 `dispatch_round`, `stop_round` and the round fields of `get_feature_context` are removed;
 `resolve_finding`, `report_finding`, `review_drive`, `show_review_package` and `declare_ready` stay.
+`get_work_record` stays: frozen tables for old features, worker records (assignment, handback
+summary, files changed, commits) for new ones; its seam lookup also matches the files a worker
+changed, so the orchestrator's collision check works across features built with workers.
 `declare_ready` keeps refusing while a worker, the review included, is working or holds unlanded
 work.
 
 **Deleted.** The sandcastle dependency and its patch, the ticket burner, review ticket runner,
-review gates, gate reuse, kill registry, run reconcile, interrupted-command notes, the round and
-run services, the tickets service, the ticket and run routers, their web views and libs, the
+review gates, gate reuse, kill registry, run reconcile, interrupted-command notes, the per-tool
+timer, the writing half of the round, run and tickets services and routers (their read queries
+stay for history), the live Work view and round lanes, the
 burner prompt templates, the lead skill's tickets and rounds guides, and the orchestrator's and
 self-planning run's ticket paths. ADRs 0002, 0003, 0006, 0007 and 0011 are marked superseded by a
 new ADR recording this move; 0004, 0005, 0008 and 0018 are amended to say they now govern worker
@@ -133,8 +145,11 @@ sandboxes.
   findings.
 - **The MCP audience table** (existing). The lead's tools lose the ticket and round tools; review
   workers get `report_finding` (and on the host, `review_drive`).
-- **The migration** (existing drizzle migrations). Tickets, rounds and runs dropped; findings
-  re-keyed; the in-flight note held for leads of features with unfinished tickets.
+- **The migration and history reads** (existing drizzle migrations, `get_work_record`). Nothing
+  dropped; findings re-keyed; the in-flight note held for leads of features with unfinished
+  tickets; `get_work_record` by slug and by seam returns old tickets and new workers alike.
+- **The agent slots** (existing). An account-level failure holds queued workers on that runtime
+  until the human's next message.
 - **Web components** (existing). The feature page with no Work or tickets view, the Review worker
   in the worker list, the Review Package card, the renamed settings page.
 
