@@ -198,7 +198,7 @@ const RUNTIME_BINARY: Record<AgentRuntime, string> = {
 
 export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
   const binary = RUNTIME_BINARY[runtime]
-  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image)${orBuildImageCommand(image)}.`
+  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Sandboxes (Rebuild image)${orBuildImageCommand(image)}.`
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +413,7 @@ export function agentCliDriftMessage(
 ): string {
   const { label } = RUNTIME_SPECS[runtime]
   const burningOn = imageVersion ? `${label} ${imageVersion}` : `its ${label}`
-  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this round runs on ${burningOn}. Rebuild from Settings → Workers${orBuildImageCommand(image)} to catch up.`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this round runs on ${burningOn}. Rebuild from Settings → Sandboxes${orBuildImageCommand(image)} to catch up.`
 }
 
 /**
@@ -2613,7 +2613,7 @@ export function missingAgentBinaryMessage(
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const binary = AGENT_BINARY[runtime]
   if (!missingCommandRegex(binary).test(msg)) return undefined
-  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the worker Dockerfile. Rebuild it from Settings → Sandboxes (Rebuild image).`
 }
 
 /**
@@ -2637,8 +2637,8 @@ export function cliTooOldMessage(
   const tooOld = `${cli} is too old for ${target} (needs ${required} or newer).`
   const hostVsRequired = hostVersion ? compareDottedVersions(hostVersion, required) : undefined
   return hostVsRequired !== undefined && hostVsRequired >= 0
-    ? `${tooOld} Your machine already has ${hostVersion} — Rebuild from Settings → Workers.`
-    : `${tooOld} Run \`claude update\` on the host, then Rebuild from Settings → Workers.`
+    ? `${tooOld} Your machine already has ${hostVersion} — Rebuild from Settings → Sandboxes.`
+    : `${tooOld} Run \`claude update\` on the host, then Rebuild from Settings → Sandboxes.`
 }
 
 /**
@@ -3111,7 +3111,7 @@ export function burnCacheDeniedMessage(
     .slice(1)
     .some((line) => line.includes(BURN_CACHE_MOUNT) && /permission denied/i.test(line))
   if (!denied) return undefined
-  return `Worker cache volume ${volume} is not writable by worker user ${burnUserSpec(burnUser)}. Clear the worker cache in Settings → Workers, then start the round again.\n\n${message}`
+  return `Worker cache volume ${volume} is not writable by worker user ${burnUserSpec(burnUser)}. Clear the worker cache in Settings → Sandboxes, then start the round again.\n\n${message}`
 }
 
 /**

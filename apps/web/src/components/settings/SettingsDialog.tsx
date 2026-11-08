@@ -16,7 +16,7 @@ import { SETTINGS_PAGES, SettingsRail } from './SettingsRail'
 import { GeneralPage, THEME_FIELD } from './GeneralPage'
 import { ModelsPage } from './ModelsPage'
 import { PHONE_LINK_SEARCH } from './PhoneLinkSection'
-import { BurnsPage } from './BurnsPage'
+import { SandboxesPage } from './SandboxesPage'
 import { ProjectPage } from './ProjectPage'
 import type { FilterState, SettingsPageProps } from './types'
 
@@ -35,14 +35,14 @@ import type { FilterState, SettingsPageProps } from './types'
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
   general: 'How runcastle looks, where its server listens, and how chats are sandboxed.',
   models: 'The default model, the roster this machine offers, and which model runs each step.',
-  burns: 'What workers need before a round can start, and how hard they try once it does.',
+  sandboxes: 'What a worker’s sandbox needs before it starts, and how many workers run at once.',
   project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',
 }
 
 const PAGE_BODY: Record<SettingsPage, (props: SettingsPageProps) => ReactNode> = {
   general: GeneralPage,
   models: ModelsPage,
-  burns: BurnsPage,
+  sandboxes: SandboxesPage,
   project: ProjectPage,
 }
 
@@ -181,7 +181,7 @@ function searchableSettings(
   })
   const prerequisites = BURN_PREREQUISITES.map((p) => ({
     id: p.field,
-    page: 'burns' as const,
+    page: 'sandboxes' as const,
     terms: [p.label, ...p.terms],
   }))
   return [THEME_SEARCH, PHONE_LINK_SEARCH, ...rows, ...prerequisites]

@@ -5,10 +5,10 @@ import type { SettingField, SettingsView } from '../src/lib/api'
 import type { SettingsLocation } from '../src/lib/settings'
 
 /**
- * Settings → Workers (flow-redesign-settings, ticket 9). Tier 2: the page is the
- * prerequisites checklist over one doctor report plus five numeric fields, and
+ * Settings → Sandboxes (flow-redesign-settings, ticket 9). Tier 2: the page is the
+ * prerequisites checklist over one doctor report plus two numeric fields, and
  * the questions worth asking — what a deep link highlights, whether the machine
- * default is a ghost rather than a value, what a "Settings → Workers" message
+ * default is a ghost rather than a value, what a "Settings → Sandboxes" message
  * turns into — are all about a rendered tree.
  *
  * Two seams: `settings.get`/`settings.update` for the fields and `setup.doctor`
@@ -95,7 +95,7 @@ const field = (over: Partial<SettingField>): SettingField =>
     ...over,
   }) as SettingField
 
-/** The five burn numbers, as an untouched machine reports them. */
+/** The worker numbers, and the retired burn counts the server still reports, as an untouched machine has them. */
 const burnFields: SettingField[] = [
   field({ key: 'burnConcurrency', value: 3, source: 'default' }),
   field({ key: 'burnMaxIterations', value: 3, source: 'file' }),
@@ -134,7 +134,7 @@ const doctorProbes = () => [
   }),
 ]
 
-function open(location: SettingsLocation = { page: 'burns' }) {
+function open(location: SettingsLocation = { page: 'sandboxes' }) {
   return render(
     <SettingsDialog
       projectId="proj_1"
@@ -145,7 +145,7 @@ function open(location: SettingsLocation = { page: 'burns' }) {
   )
 }
 
-describe('Settings → Workers', () => {
+describe('Settings → Sandboxes', () => {
   beforeEach(() => {
     server.globals = { fields: burnFields } as unknown as SettingsView
     server.probes = doctorProbes()
@@ -159,18 +159,15 @@ describe('Settings → Workers', () => {
     open()
 
     expect(screen.getByText('Prerequisites for unattended workers')).toBeTruthy()
-    expect(screen.getByText('Width & retries')).toBeTruthy()
+    expect(screen.getByText('Workers at once')).toBeTruthy()
     expect(screen.getByText('Container runtime')).toBeTruthy()
   })
 
-  it('renders the five burn numbers with the unit each one counts', () => {
+  it('renders the two worker numbers with the unit each one counts, and none of the burn loop’s counts', () => {
     open()
 
     const units: [string, string][] = [
-      ['Agents working at once', 'ticket agents and workers at once · default on this machine: 3'],
-      ['Iterations per attempt', 'turns'],
-      ['Attempts per ticket', 'attempts'],
-      ['Conflict resolver passes', 'passes before asking you'],
+      ['Agents working at once', 'workers at once · default on this machine: 3'],
       ['CPU limit per worker', 'cores · e.g. 4 on a 12-thread box at width 3'],
     ]
     for (const [label, unit] of units) {
@@ -178,8 +175,9 @@ describe('Settings → Workers', () => {
       expect(input.type).toBe('number')
       expect(screen.getByText(unit)).toBeTruthy()
     }
-    // The one line the labels alone cannot carry.
-    expect(screen.getByText(/an attempt restarts an agent that crashed/)).toBeTruthy()
+    for (const gone of ['Iterations per attempt', 'Attempts per ticket', 'Conflict resolver passes', 'Sandbox']) {
+      expect(screen.queryByLabelText(gone)).toBeNull()
+    }
   })
 
   // Nobody chose this width — the machine did — so the control stays empty over
@@ -190,15 +188,12 @@ describe('Settings → Workers', () => {
     const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
     expect(width.value).toBe('')
     expect(width.getAttribute('placeholder')).toBe('3')
-
-    const iterations = screen.getByLabelText('Iterations per attempt') as HTMLInputElement
-    expect(iterations.value).toBe('3')
   })
 
   it('scrolls to and flashes the checklist row a deep link named', () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
-    open({ page: 'burns', field: 'sandcastle-image' })
+    open({ page: 'sandboxes', field: 'sandcastle-image' })
 
     // The dialog is portalled, so the rows are under `document`, not the render
     // container.
@@ -216,7 +211,7 @@ describe('Settings → Workers', () => {
     expect(screen.getByText('Sandcastle image')).toBeTruthy()
     expect(screen.queryByText('Container runtime')).toBeNull()
     expect(screen.queryByLabelText('Agents working at once')).toBeNull()
-    expect(screen.queryByText('Width & retries')).toBeNull()
+    expect(screen.queryByText('Workers at once')).toBeNull()
   })
 
   /**
@@ -242,10 +237,10 @@ describe('Settings → Workers', () => {
   it('drops the prerequisites heading when the filter leaves no row of it', () => {
     open()
 
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'attempts' } })
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'cpus' } })
 
     expect(screen.queryByText('Prerequisites for unattended workers')).toBeNull()
-    expect(screen.getByLabelText('Attempts per ticket')).toBeTruthy()
+    expect(screen.getByLabelText('CPU limit per worker')).toBeTruthy()
   })
 
   /**
@@ -304,7 +299,7 @@ describe('Settings → Workers', () => {
 })
 
 /**
- * The other half of decision 9: every "Settings → Workers" in the app is a link
+ * The other half of decision 9: every "Settings → Sandboxes" in the app is a link
  * now, not an instruction to go looking.
  */
 describe('MessageWithSettingsLink', () => {
@@ -312,7 +307,7 @@ describe('MessageWithSettingsLink', () => {
 
   const burnerFailure =
     'claude is not installed in image sandcastle:runcastle — the image predates the burner ' +
-    'Dockerfile. Rebuild it from Settings → Workers (Rebuild image).'
+    'Dockerfile. Rebuild it from Settings → Sandboxes (Rebuild image).'
 
   it('opens Burns on the image row from a burner failure', () => {
     const opened: SettingsLocation[] = []
@@ -322,9 +317,9 @@ describe('MessageWithSettingsLink', () => {
       </OpenSettingsProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings → Workers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings → Sandboxes' }))
 
-    expect(opened).toEqual([{ page: 'burns', field: 'sandcastle-image' }])
+    expect(opened).toEqual([{ page: 'sandboxes', field: 'sandcastle-image' }])
     // The sentence around it stays prose.
     expect(screen.getByText(/the image predates the burner Dockerfile/)).toBeTruthy()
   })
@@ -338,7 +333,7 @@ describe('MessageWithSettingsLink', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings → AFK burns' }))
-    expect(opened).toEqual([{ page: 'burns', field: 'sandcastle-image' }])
+    expect(opened).toEqual([{ page: 'sandboxes', field: 'sandcastle-image' }])
   })
 
   it('leaves a message that points nowhere as plain text', () => {

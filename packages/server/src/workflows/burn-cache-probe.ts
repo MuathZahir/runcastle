@@ -395,7 +395,7 @@ export function preflightFailure(
       : 'podman CLI is installed but its machine is not initialized/started.\nFix: run `podman machine init && podman machine start`, then re-run.'
   }
   if (!ok(probes.image)) {
-    return `image ${image} not found locally.\nFix: run runcastle build-image, or click Build image in Settings → Workers.`
+    return `image ${image} not found locally.\nFix: run runcastle build-image, or click Build image in Settings → Sandboxes.`
   }
   return undefined
 }

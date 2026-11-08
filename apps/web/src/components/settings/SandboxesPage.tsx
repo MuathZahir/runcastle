@@ -6,18 +6,19 @@ import { SettingGroup, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
 /**
- * Burns: what an unattended run needs before it can start, and how wide and how
- * hard it tries once it does (decision 9).
+ * Sandboxes: what a worker's sandbox needs before it can start (the image, the
+ * dependency cache), and how many workers work at once and on how many cores
+ * (burns-become-workers decision 18).
  *
- * The prerequisites come first because they are the difference between a burn
- * that runs and one that cannot — and because every "Settings → Workers (Rebuild
- * image)" pointer in the app lands on a row of that checklist.
+ * The prerequisites come first because they are the difference between a
+ * worker that starts and one that cannot — and because every "Settings →
+ * Sandboxes (Rebuild image)" pointer in the app lands on a row of that checklist.
  */
-/** Label widths for the placeholder rows: Prerequisites · Width & retries. */
-export const BURNS_SKELETON = [['w-32', 'w-28', 'w-36'], ['w-20', 'w-24']] as const
+/** Label widths for the placeholder rows: Prerequisites · Workers. */
+export const SANDBOXES_SKELETON = [['w-32', 'w-28', 'w-36'], ['w-20', 'w-24']] as const
 
-export function BurnsPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
-  if (globals.isLoading) return <SettingsSkeleton groups={BURNS_SKELETON} />
+export function SandboxesPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
+  if (globals.isLoading) return <SettingsSkeleton groups={SANDBOXES_SKELETON} />
   if (globals.error) return <DimLine>Could not load settings: {globals.error.message}</DimLine>
   if (!globals.data) return null
 
@@ -32,8 +33,8 @@ export function BurnsPage({ globals, projectId, filter, highlightField }: Settin
         </SettingSection>
       )}
       <SettingGroup
-        title="Width & retries"
-        rows={pageRows(globals.data, 'burns')}
+        title="Workers at once"
+        rows={pageRows(globals.data, 'sandboxes')}
         filter={filter}
         highlightField={highlightField}
       />

@@ -175,7 +175,7 @@ describe('FirstRunWizard', () => {
     click('Set up runcastle')
     click('Continue')
 
-    expect(screen.getByText(/run a round’s tickets in containers/)).toBeTruthy()
+    expect(screen.getByText(/run in sandboxes, unattended/)).toBeTruthy()
     expect(screen.queryByText('Ready for unattended workers')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to your first project' })).toBeNull()
   })

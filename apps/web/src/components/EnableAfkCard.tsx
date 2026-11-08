@@ -156,11 +156,11 @@ export function EnableAfkCard({
               </span>
             )}
           </div>
-          {/* The wizard's step heading has just said what a round is — say
+          {/* The wizard's step heading has just said what a worker is — say
               it once (DESIGN.md), so this line is Settings' alone. */}
           {!onDismiss && (
             <p className="m-0 text-xs text-pretty text-text-tertiary">
-              Workers run a round’s tickets in containers while you are away, so they need what
+              Workers run in sandboxes while you are away, so they need what
               a chat you watch never does. Fix any of these now, or leave them for later.
             </p>
           )}

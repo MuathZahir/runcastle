@@ -1,6 +1,6 @@
 import type { RefObject } from 'react'
 import type { SettingsPage } from '../../lib/settings'
-import { IconCube, IconFlame, IconFolder, IconSettings } from '../../icons'
+import { IconCube, IconFolder, IconSettings, IconShield } from '../../icons'
 import { NavItem, SearchField } from '../../ui'
 import type { FilterState } from './types'
 
@@ -19,7 +19,7 @@ export const SETTINGS_PAGES: readonly {
 }[] = [
   { page: 'general', label: 'General', Icon: IconSettings },
   { page: 'models', label: 'Models', Icon: IconCube },
-  { page: 'burns', label: 'Workers', Icon: IconFlame },
+  { page: 'sandboxes', label: 'Sandboxes', Icon: IconShield },
   { page: 'project', label: 'This project', Icon: IconFolder },
 ]
 

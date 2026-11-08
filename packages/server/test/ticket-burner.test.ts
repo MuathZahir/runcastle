@@ -238,7 +238,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(calls).toEqual([])
       expect(res.status).toBe('failed')
       expect(res.summary).toContain('built for UID 1000')
-      expect(res.summary).toContain('Rebuild it from Settings → Workers')
+      expect(res.summary).toContain('Rebuild it from Settings → Sandboxes')
     })
 
     it('burns on when only the group differs', async () => {
@@ -317,7 +317,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Sandboxes (Rebuild image).',
       }),
     )
   })
@@ -435,7 +435,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the worker Dockerfile. Rebuild it from Settings → Sandboxes (Rebuild image).',
       }),
     )
   })
@@ -576,7 +576,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this round runs on Claude Code 2.1.270. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this round runs on Claude Code 2.1.270. Rebuild from Settings → Sandboxes, or run `runcastle build-image` to catch up.',
           data: {
             warning: true,
             managed: true,
@@ -590,7 +590,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
     })
 
-    it('leads a "CLI too old" halt’s summary with the Settings → Workers fix', async () => {
+    it('leads a "CLI too old" halt’s summary with the Settings → Sandboxes fix', async () => {
       const { ctx } = makeCtx([ticket(1)])
       const error = cliTooOldMessage(
         new Error(
@@ -611,7 +611,7 @@ describe('burnRun — scheduling and summary', () => {
 
       expect(res.status).toBe('failed')
       expect(res.summary).toContain(
-        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Workers.',
+        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Sandboxes.',
       )
     })
 
@@ -717,7 +717,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this round runs on Codex 0.45.0. Rebuild from Settings → Workers, or run `runcastle build-image` to catch up.',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this round runs on Codex 0.45.0. Rebuild from Settings → Sandboxes, or run `runcastle build-image` to catch up.',
           data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
       ])
