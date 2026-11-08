@@ -176,7 +176,7 @@ function Rule({ children }: { children: ReactNode }) {
 
 /**
  * The worker's chat ends here: its handback went to the lead (decision 21's
- * matching line), or to the project chat for a project drive's Scenarios worker
+ * matching line), or to the orchestrator for a project drive's Scenarios worker
  * (drive-chats-become-workers decision 2).
  */
 export function HandedBackLine({
@@ -188,7 +188,7 @@ export function HandedBackLine({
   commits: number
   files: number
   by?: 'you' | 'worker'
-  to?: 'the lead' | 'the project chat'
+  to?: 'the lead' | 'the orchestrator'
 }) {
   return (
     <Rule>
