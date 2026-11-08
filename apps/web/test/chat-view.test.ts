@@ -59,9 +59,9 @@ describe('PanelToggle', () => {
 /** One line on Overview, in every state, whenever a session is live (decision 7). */
 describe('the live-session line', () => {
   it('names the live session', () => {
-    expect(liveSessionLine([session({ kind: 'drive-fix' })])).toEqual({
+    expect(liveSessionLine([session({ kind: 'project' })])).toEqual({
       sessionId: 'sess_1',
-      text: 'Drive fix live',
+      text: 'Project live',
     })
     // A launching terminal is as live as a live one — it is holding the seat.
     expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Agent live')

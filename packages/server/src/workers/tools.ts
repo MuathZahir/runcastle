@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, posix } from 'node:path'
-import { ReviewFindingInput, type WorkerRow } from '@runcastle/core'
+import { ReviewFindingInput, type WorkerRow, workerFeatureId } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
@@ -46,7 +46,7 @@ export function provideWorkerFeatureRead(read: FeatureRead): void {
 /** The feature as a worker reads it: the lead's whole bundle, plus a quote of the lead's latest turns. */
 export async function readFeatureForWorker(ctx: AppCtx, w: WorkerRow): Promise<unknown> {
   if (!featureRead) throw new GateError('the feature read is not loaded: runcastle is still starting, try again in a moment')
-  const feature = getFeatureRow(ctx, w.featureId)
+  const feature = getFeatureRow(ctx, workerFeatureId(w))
   const { quote } = mainChatExcerpt(ctx, feature)
   return { feature: await featureRead(ctx, feature.id), leadLatestTurns: quote ?? null }
 }
@@ -79,8 +79,7 @@ export async function showSandboxFile(
 
 /** Park a draft feature in the worker's project's backlog, as a lead's `create_feature({ draft: true })` does: a row and its brief, no branch. */
 export async function parkFeatureForWorker(ctx: AppCtx, w: WorkerRow, input: { title: string; oneLiner: string; brief: string }): Promise<{ slug: string }> {
-  const { projectId } = getFeatureRow(ctx, w.featureId)
-  const created = await createFeature(ctx, { projectId, ...input, draft: true })
+  const created = await createFeature(ctx, { projectId: w.projectId, ...input, draft: true })
   return { slug: created.slug }
 }
 

@@ -70,6 +70,7 @@ const logOf = (threadId: string): ThreadEvent[] => [
 const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): WorkerListRow => ({
   id,
   featureId: 'feat_1',
+  projectId: 'proj_1',
   label,
   purpose: `What ${label} is for`,
   kind: 'with-you',
@@ -236,16 +237,8 @@ const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as H
 const header = (): HTMLElement => document.querySelector('[data-header]') as HTMLElement
 /** The open feature's own sidebar page (decision 24); null while the sidebar shows the features list. */
 const featurePage = (): HTMLElement | null => within(sidebar()).queryByRole('region', { name: 'Demo' })
-/** The scenario chats inside the Lead card. */
+/** A list of chats inside the Lead card, which the drive's chats no longer get: they are workers. */
 const threadList = (): HTMLElement | null => within(sidebar()).queryByRole('list', { name: 'Chats' })
-const options = (): string[] =>
-  threadList() ? within(threadList()!).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
-const threadRow = (title: string): HTMLElement => within(threadList()!).getByTitle(title).parentElement as HTMLElement
-/** An item of a scenario chat row's "…" menu. */
-const threadAction = (title: string, name: string): void => {
-  openMenu(within(threadRow(title)).getByRole('button', { name: 'Chat actions' }))
-  fireEvent.click(screen.getByRole('menuitem', { name }))
-}
 /** A lane of the feature's page: its rows' labels, in order. */
 const lane = (name: 'Needs you' | 'Working' | 'Done'): string[] => {
   const section = within(featurePage()!).queryByRole('region', { name })
@@ -590,33 +583,69 @@ describe('a thread’s link', () => {
   })
 })
 
-describe('the scenario errand in the column', () => {
-  it('brings the scenario chat an errand opens to the front, naming it by its errand', async () => {
+describe('the Scenarios worker in the column (drive-chats-become-workers decision 11)', () => {
+  /** The feature's Scenarios worker, as `worker.list` serves it once a drive button started it. */
+  const scenarios = worker('th_scn', 'Scenarios', {
+    kind: 'scenario',
+    purpose: 'Writes and fixes this drive’s scenarios',
+    goal: null,
+    doneWhen: null,
+    startedBy: 'human',
+    container: null,
+    branch: null,
+  })
+
+  it('brings the Scenarios worker New scenario opens to the front, named by its label', async () => {
     const api = server()
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
     newScenario()
     expect(await within(column()).findByText('said in th_scn')).toBeTruthy()
-    expect(threadName().textContent).toBe('Scenario chat · New scenario')
+    expect(threadName().textContent).toBe('Scenarios')
     // The drive keeps the panel: no chat is docked inside it.
     expect(within(document.querySelector('[data-panel]') as HTMLElement).queryByLabelText('Message')).toBeNull()
   })
 
-  it('names a Fix it errand by its scenario', async () => {
-    const api = server()
+  it('wears the worker header and assignment card: Started by you, no goal, no Open preview, the branch it commits on', async () => {
+    const api = server({ workers: [scenarios] })
     render(<Page scenario={FAILED} />, { wrapper: api.Wrapper })
     fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
-    await waitFor(() => expect(threadName().textContent).toBe('Scenario chat · Fix Expired coupon'))
+    const card = await within(column()).findByRole('region', { name: 'Assignment: Scenarios' })
+    expect(card.textContent).toContain('Started by you')
+    expect(card.textContent).not.toContain('Goal')
+    await waitFor(() => expect(within(header()).getByRole('status').textContent).toContain('Needs you'))
+    expect(within(header()).getByRole('button', { name: 'Hand back' })).toBeTruthy()
+    expect(within(header()).queryByRole('button', { name: 'Open preview' })).toBeNull()
+    expect(within(column()).getByText('Your checkout · commits on feature/demo')).toBeTruthy()
   })
 
-  it('hands the column back when the errand is closed, and New scenario brings it to the front again', async () => {
-    const api = server()
+  it('says why Fix it was refused where the button is, while the Fix-drive worker works (decision 13)', async () => {
+    const api = server({
+      extra: {
+        'feature.openScenarioChat': () => {
+          throw new Error('Fix drive is working — wait for it to finish')
+        },
+      },
+    })
+    render(<Page scenario={FAILED} />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
+    const panel = document.querySelector('[data-panel]') as HTMLElement
+    expect((await within(panel).findByText('Fix drive is working — wait for it to finish')).closest('[role="alert"]')).toBeTruthy()
+    expect(within(column()).getByText('said in th_main')).toBeTruthy()
+  })
+
+  it('lists it in the worker lanes, and hands the column back when its errand is closed', async () => {
+    const api = server({ workers: [scenarios] })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
     newScenario()
     await within(column()).findByText('said in th_scn')
-    await waitFor(() => expect(options()).toContain('Scenario chat · New scenario'))
-    threadAction('Scenario chat · New scenario', 'Close the scenario chat')
+    await waitFor(() => expect(lane('Needs you')).toEqual(['Scenarios']))
+    expect(threadList()).toBeNull()
+    const row = within(featurePage()!).getByTitle(/^Scenarios — /).parentElement as HTMLElement
+    openMenu(within(row).getByRole('button', { name: 'Worker actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close the scenario chat' }))
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
 
     newScenario()

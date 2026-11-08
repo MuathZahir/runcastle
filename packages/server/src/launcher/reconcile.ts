@@ -1,4 +1,4 @@
-import { foldThread, type SessionRow } from '@runcastle/core'
+import { foldThread, isDriveWorkerKind, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { mayStartInBackground } from '../services/database-copy'
@@ -70,8 +70,10 @@ export const RESTART_CARRY_ON_EVENT = 'session.restart_carry_on'
 function carriesOn(ctx: AppCtx, row: SessionRow): boolean {
   if (row.kind === 'project') return true
   if (row.kind === 'worker') {
-    const status = getWorker(ctx, row.id)?.status
-    return status === 'working' || status === 'queued'
+    const w = getWorker(ctx, row.id)
+    // A drive worker's drive died with the server: it is handed back at boot, not woken.
+    if (!w || isDriveWorkerKind(w.kind)) return false
+    return w.status === 'working' || w.status === 'queued'
   }
   if (row.kind !== 'chat' || !row.featureId || row.headless || row.purpose === 'self-plan') return false
   const feature = tryGetFeature(ctx, row.featureId)

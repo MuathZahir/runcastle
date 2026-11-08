@@ -16,6 +16,7 @@ import { listScenarioPaths } from '../services/scenarios'
 import { clearEndedErrand } from '../services/resolved-merge'
 import { hostReviewBriefing, hostReviewEnv, isHostReview } from '../workers/review'
 import { getWorker } from '../workers/service'
+import { driveWorkerBriefing, driveWorkerOf } from '../workers/drive'
 
 /**
  * How a thread's agent is launched over ACP: its runtime's {@link AcpLaunchSpec}
@@ -63,13 +64,18 @@ function rowProject(ctx: AppCtx, row: SessionRow): Project {
   return row.featureId ? projectForFeature(ctx, getFeatureRow(ctx, row.featureId)) : requireProjectById(ctx, row.projectId as string)
 }
 
-/** The model runcastle launches a thread of the row's kind on now, as Settings (and its project) resolve it. */
+/**
+ * The model runcastle launches a thread of the row's kind on now, as Settings
+ * (and its project) resolve it. A drive worker runs on the drive chats' step,
+ * as the chats it replaces did (drive-chats-become-workers decision 9).
+ */
 export function resolvedThreadModel(ctx: AppCtx, row: SessionRow): ModelEntry {
-  return resolveModelEntry(STEP[row.kind], rosterConfig(ctx), rowProject(ctx, row))
+  const step = driveWorkerOf(ctx, row) ? 'prepare' : STEP[row.kind]
+  return resolveModelEntry(step, rosterConfig(ctx), rowProject(ctx, row))
 }
 
 /**
- * The posture of the host-side kinds (`drive-fix`, `scenario`), which
+ * The posture of the host-side kinds (`drive-fix`, `scenario`, and the host workers), which
  * work in the human's own checkout. Claude runs them without prompts and the
  * checkout guard (a pre-tool hook, which holds under bypass) refuses what the
  * prompts used to catch. Codex never asks, and passes no mode so it keeps its
@@ -84,6 +90,11 @@ function hostSidePosture(runtime: string): { permissionMode?: string } {
  * decisions 7, 23): workers replaced side chats, and the ones made before stay
  * as read-only transcripts.
  */
+export const OLD_DRIVE_CHAT_READ_ONLY =
+  'this is an old drive chat, kept as a read-only transcript since the drive\'s chats became workers — ' +
+  'press Fix drive or New scenario in a drive to start one'
+
+/** Why an old side chat takes no message and starts no agent (see above). */
 export const OLD_SIDE_CHAT_READ_ONLY =
   'this is an old side chat, kept as a read-only transcript since workers replaced side chats — ' +
   'to carry it on, start a worker with "+" on the feature and paste what it needs'
@@ -126,6 +137,18 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
       }
     }
     case 'worker': {
+      // A drive worker runs on the host, in the checkout the drive switched to, under the drive chats' posture
+      // (drive-chats-become-workers decisions 1, 9); a project drive's Scenarios worker has no feature.
+      const drive = driveWorkerOf(ctx, row)
+      if (drive) {
+        return {
+          ...base,
+          worktreePath: project.repoPath,
+          ...(row.featureId ? { feature: getFeatureRow(ctx, row.featureId) } : {}),
+          hostWorker: { briefing: await driveWorkerBriefing(ctx, drive, row, project), env: {} },
+          ...hostSidePosture(runtime),
+        }
+      }
       const feature = getFeatureRow(ctx, row.featureId as string)
       const w = getWorker(ctx, row.id)
       // A drive review runs here, on the host, in the checkout the review drive holds (burns-become-workers decision 3).
@@ -160,46 +183,8 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
         permissionMode: 'bypassPermissions',
       }
     }
-    case 'drive-fix': {
-      const feature = getFeatureRow(ctx, row.featureId as string)
-      const drive = git.activeDriveInfo(project.id)
-      if (drive?.featureId !== feature.id || !drive.hookFailure) {
-        throw new GateError(`no failed drive of ${feature.slug} to fix — the Fix-it chat works from a drive whose setup failed`)
-      }
-      return {
-        ...base,
-        ...hostSidePosture(runtime),
-        driveFix: {
-          project,
-          feature,
-          failure: drive.hookFailure,
-          envKeys: drive.envKeys ?? [],
-          delta: await git.featureBranchDelta(project, feature),
-        },
-      }
-    }
-    case 'scenario': {
-      const drive = git.activeDriveInfo(project.id)
-      const driveEnv = git.scenarioDriveEnv(ctx, project.id)
-      if (!drive || !driveEnv) {
-        throw new GateError('a scenario chat lands scenarios on a running test drive — start one first')
-      }
-      return {
-        ...base,
-        ...hostSidePosture(runtime),
-        // What the human asks for comes in the thread's prompts.
-        scenario: {
-          project,
-          ...(row.featureId ? { feature: getFeatureRow(ctx, row.featureId) } : {}),
-          branch: drive.branch,
-          identity: driveEnv.identity,
-          envOverlay: driveEnv.envOverlay,
-          driveUrl: drive.devUrl,
-          runner: project.scenarioRunner ?? undefined,
-          files: await listScenarioPaths(project.repoPath, 'HEAD'),
-          setup: row.purpose === 'scenario-setup',
-        },
-      }
-    }
+    case 'drive-fix':
+    case 'scenario':
+      throw new GateError(OLD_DRIVE_CHAT_READ_ONLY)
   }
 }

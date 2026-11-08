@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Drive chats become workers preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.sb{padding:10px;display:grid;gap:2px;background:var(--color-canvas);min-height:250px}
+.sb .hd{display:flex;align-items:center;gap:6px;color:var(--color-text-tertiary);font-size:12px;margin-bottom:6px}
+.sb .grp{margin-top:8px;color:var(--color-text-tertiary);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;align-items:flex-start;gap:8px;padding:5px 8px;border-radius:var(--radius-md)}
+.row.sel{background:var(--color-surface-selected)}
+.row .dot{margin-top:7px}
+.row .l{display:grid}.row .l span{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.row.old{opacity:.6}
+.sep{border-top:1px dashed var(--color-border);margin:6px 0}
+.dock{display:grid;grid-template-columns:1.4fr 1fr;min-height:230px}
+.app{display:grid;place-items:center;color:var(--color-text-tertiary);border-right:1px solid var(--color-border);background:var(--color-canvas)}
+.chat{display:grid;grid-template-rows:auto auto 1fr auto}
+.wh{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--color-border-subtle)}
+.wh .st{color:var(--color-warning);font-size:12px}
+.wh .hb{margin-left:auto;font-size:12px;padding:2px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm)}
+.card{margin:8px 10px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);font-size:12px;line-height:17px;color:var(--color-text-secondary)}
+.msg{padding:4px 10px;color:var(--color-text-secondary);font-size:12px}
+.box{margin:8px 10px;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);color:var(--color-text-disabled);font-size:12px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
+.step{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step small{display:block;color:var(--color-text-tertiary);font-size:11px;line-height:14px}
+.arr{color:var(--color-text-tertiary)}
+.who{display:grid;gap:8px;margin-top:12px}
+.who .w{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.who .w b{font-weight:500}
+.who .w span{color:var(--color-text-secondary)}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.who .w{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Drive chats become workers</h1>
+  <p class="lede">The Fix-drive chat and the scenario chat beside a test drive become workers: listed with the feature's workers, with a status, a header and a handback to the lead. They still run in your checkout, beside the drive, exactly where they work today.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/drive-chats-become-workers/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <p class="hint">Nothing changes during a drive: same buttons, same checkout, same tools. What changes is how the two chats are listed, what they say they are, and what happens when the drive ends.</p>
+
+  <div class="sub">
+    <h3>The feature's sidebar page <a class="pin" data-d="11">11</a> <a class="pin" data-d="10">10</a></h3>
+    <p class="hint">Today the two drive chats sit in their own list above the workers. They join the worker groups.</p>
+<!-- screen:feature-sidebar -->
+    <div class="ba">
+      <div><h3>Today</h3><div class="screen"><div class="sb">
+        <div class="hd">‹ Features · Checkout redesign</div>
+        <div class="row sel"><i class="dot live"></i><div class="l">Lead</div></div>
+        <div class="row"><i class="dot"></i><div class="l">Fix drive<span>drive-fix chat</span></div></div>
+        <div class="row"><i class="dot"></i><div class="l">New scenario<span>scenario chat</span></div></div>
+        <div class="sep"></div>
+        <div class="grp">Working</div>
+        <div class="row"><i class="dot live"></i><div class="l">Cart totals<span>Moves totals to the server</span></div></div>
+        <div class="grp">Done (2)</div>
+      </div></div></div>
+      <div><h3>After</h3><div class="screen"><div class="sb">
+        <div class="hd">‹ Features · Checkout redesign</div>
+        <div class="row sel"><i class="dot live"></i><div class="l">Lead</div></div>
+        <div class="grp">Needs you</div>
+        <div class="row"><i class="dot" style="background:var(--color-warning)"></i><div class="l">Scenarios<span>Writes and fixes this drive's scenarios</span></div></div>
+        <div class="grp">Working</div>
+        <div class="row"><i class="dot live"></i><div class="l">Cart totals<span>Moves totals to the server</span></div></div>
+        <div class="grp">Done (3)</div>
+        <div class="row"><i class="dot ok"></i><div class="l">Fix drive<span>Fixes this drive's setup · handed back</span></div></div>
+        <div class="row old"><i class="dot"></i><div class="l">Old drive chat<span>read-only transcript</span></div></div>
+      </div></div></div>
+    </div>
+<!-- /screen:feature-sidebar -->
+  </div>
+
+  <div class="sub">
+    <h3>The chat docked beside the drive <a class="pin" data-d="11">11</a> <a class="pin" data-d="9">9</a></h3>
+    <p class="hint">Same dock, now with the worker header and an assignment card. A project drive's Scenarios worker docks the same way and lists with the project's chats <a class="pin" data-d="2">2</a>.</p>
+<!-- screen:drive-dock -->
+    <div class="screen"><div class="dock">
+      <div class="app">the app, on the feature branch</div>
+      <div class="chat">
+        <div class="wh"><b>Scenarios</b><span class="st">● needs you</span><span class="hb">Hand back</span></div>
+        <div class="card"><b>Scenarios</b> · with you · Started by you<br>Writes and fixes this drive's scenarios. Commits straight onto <span class="mono">feature/checkout-redesign</span>.</div>
+        <div><div class="msg"><b>You:</b> a cart with an expired coupon</div><div class="msg">Wrote <span class="mono">.runcastle/scenarios/cart/expired-coupon.ts</span>, ran it on the drive, committed on <span class="mono">feature/checkout-redesign</span>. Pick it from Scenarios.</div></div>
+        <div class="box">Message Scenarios…</div>
+      </div>
+    </div></div>
+<!-- /screen:drive-dock -->
+  </div>
+
+  <div class="sub">
+    <h3>A drive worker's life</h3>
+    <p class="hint">One Fix-drive and one Scenarios worker per feature, living with the drive.</p>
+    <div class="flow">
+      <div class="step">You press Fix drive / New scenario / Fix it<small>starts at once, never queued <a class="pin" data-d="7">7</a></small></div><span class="arr">→</span>
+      <div class="step">Working<small>commits straight onto the driven branch, and says which <a class="pin" data-d="3">3</a></small></div><span class="arr">→</span>
+      <div class="step">Needs you<small>pings like any worker <a class="pin" data-d="8">8</a></small></div><span class="arr">→</span>
+      <div class="step">Drive stops<small>turn ended, handback written for it <a class="pin" data-d="5">5</a> <a class="pin" data-d="12">12</a></small></div><span class="arr">→</span>
+      <div class="step">Done<small>lead hears quietly, no wake <a class="pin" data-d="4">4</a></small></div><span class="arr">→</span>
+      <div class="step">Next drive's button<small>reopens the same worker</small></div>
+    </div>
+    <p class="hint" style="margin-top:8px">Fix drive also hands back by itself once the app is answering again. Only you start them or talk to them; the lead reads their handbacks <a class="pin" data-d="6">6</a>. One works at a time <a class="pin" data-d="13">13</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Who builds what</h3>
+    <div class="who">
+      <div class="w"><b>1 · Worker kinds and host placement</b><span>Fix-drive and Scenarios kinds, owner feature-or-project (migration), host placement, no agents-at-once slot, today's guards, their tools plus hand back, the lead's tools refuse them.</span><span class="tag">ticket</span></div>
+      <div class="w"><b>2 · Drive buttons start them</b><span>Fix drive / New scenario / Fix it start or resume the worker with today's brief; commits name the branch; the quiet handback card.</span><span class="tag">ticket</span></div>
+      <div class="w"><b>3 · The drive's stop hands them back</b><span>Turns ended, handback written for them with uncommitted files listed; retry_drive exempt; no messages between drives.</span><span class="tag">ticket</span></div>
+      <div class="w"><b>4 · Retire the old chat kinds</b><span>Nothing creates drive-fix or scenario chats; old ones read "Old drive chat".</span><span class="tag">ticket</span></div>
+      <div class="w"><b>5 · Screens</b><span>Worker groups in the sidebar, the dock's worker header and card, the project chat list, the handback card's branch; ships a scenario seeding all of it.</span><span class="tag">ticket</span></div>
+      <div class="w"><b>Me (the lead)</b><span>Docs, small fixes between rounds, typecheck and tests before ready.</span><span class="tag">lead</span></div>
+      <div class="w"><b>6 · Review</b><span>Drives the seeded feature and project pages, and reads the server tests against the spec.</span><span class="tag">review</span></div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Sending drive-script fixes to the base branch so every feature gets them at once <a class="pin" data-d="14">14</a></li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The test drive itself: start, stop, the drive slot</li>
+      <li><i class="dot"></i>Running drive chats in a sandbox <a class="pin" data-d="1">1</a></li>
+      <li><i class="dot"></i>What the chats may write or which tools they hold <a class="pin" data-d="9">9</a></li>
+      <li><i class="dot"></i>The drive review worker's behaviour</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow">
+        <div class="step">WorkerKind<small>+ fix-drive, scenario</small></div><span class="arr">→</span>
+        <div class="step">Host placement<small>drive review, fix-drive, scenario run in the drive's checkout; the rest sandboxed</small></div><span class="arr">→</span>
+        <div class="step">Owner<small>featureId nullable + projectId (migration)</small></div>
+      </div>
+      <ul class="hint" style="margin-top:12px;padding-left:18px">
+        <li>The drive routes (<span class="mono">feature.fixDrive</span>, <span class="mono">feature.openScenarioChat</span>) keep their inputs and call one worker-service entry that finds or creates the owner's worker of that kind and sends the ask.</li>
+        <li>Host handback reuses the drive review's handback file; status goes to handed-back, never landed; land, send back and drop refuse.</li>
+        <li>The drive's stop ends drive workers' turns and writes their handback; <span class="mono">retry_drive</span> does not count as a stop.</li>
+        <li>Guards unchanged: edit guard (<span class="mono">.runcastle/</span>, <span class="mono">.gitignore</span>), checkout guard, bypassPermissions on Claude Code. Model from the "Drive chats" setting.</li>
+        <li>Drive workers skip the "agents working at once" slots and the account hold; they get the worker runner's retry, stall and restart nets.</li>
+        <li>The <span class="mono">drive-fix</span> and <span class="mono">scenario</span> session kinds are no longer created; old rows read as "Old drive chat" and take no message.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Both run on the host, in the drive\'s checkout, as host-placed workers', 'Their whole job is the running drive and its database; a sandbox has neither.', 'assumed'],
+    ['A drive worker belongs to whoever owns the drive', 'A project drive\'s scenario chat becomes a worker of the project, so no old-style chat is left.', 'assumed'],
+    ['Their commits go straight onto the driven branch; nothing waits to be landed', 'The checkout already is the driven branch, and you want the scenario now. The chat and handback name the branch (orchestrator).', 'assumed'],
+    ['A drive worker\'s handback reaches its lead quietly', 'Nothing in it needs the lead to act; waking it would spend a turn on a note.', 'assumed'],
+    ['One Fix-drive worker and one Scenarios worker per feature, living with the drive', 'Keeps what each learned and the list short; between drives the checkout is on another branch.', 'assumed'],
+    ['Only the human starts or talks to a drive worker', 'They work in your checkout during your drive; a lead\'s message would commit there behind your back. Changed by the orchestrator.', 'assumed'],
+    ['Drive workers never wait in line', 'The human is beside the drive waiting; the drive slot is their limit.', 'assumed'],
+    ['Drive workers need the human like any worker', 'A Fix-drive turn can take minutes; one rule for every worker.', 'assumed'],
+    ['What they may write is unchanged', 'The guards were built for this checkout; auto mode was chosen for a sandbox.', 'assumed'],
+    ['Old Fix-drive and scenario chats become read-only transcripts', 'The precedent the human accepted for side chats.', 'assumed'],
+    ['They dock beside the drive and list with the feature\'s workers', 'One list of threads per feature; the dock is where the human looks during a drive.', 'assumed'],
+    ['A turn the drive\'s stop cuts off keeps its uncommitted files visible', 'The drive\'s existing rule for uncommitted work; nothing is thrown away.', 'assumed'],
+    ['Only one drive worker works at a time', 'Both work in one checkout; two agents committing there would tangle.', 'assumed'],
+    ['Fix-drive fixes stay on the feature\'s branch', 'Committing to the base branch would need a branch switch under the running app.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [1, 'Sandboxed workers on their own branch, reaching the drive through runcastle\'s tools', 'The brief\'s central question; it decides most of the rest.'],
+    [4, 'Wake the lead with every handback, as build workers do', 'Changes when a lead is woken; that is yours to decide, not the orchestrator\'s.', 'behaviour'],
+    [5, 'A new Scenarios worker every drive (today\'s behaviour); the Fix-drive worker one per project', 'The challenger argued both: remembered scenario context goes stale, and drive lessons are project-wide.', 'challenged'],
+    [6, 'The lead may message a drive worker during its drive, like any worker', 'Changed by the orchestrator on your delegation, siding with the challenger.', 'orchestrator'],
+    [8, 'No pings while the drive page is open and visible', 'Adds phone pings you do not get today; that is yours to decide.', 'behaviour']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

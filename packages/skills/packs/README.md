@@ -97,8 +97,8 @@ live: **per-session settings**. The launcher launches each session with
 `entrySkillDenyRules` in `packages/server/src/launcher`), and each injected
 prompt states the policy in one line. Same layering as the edit guard: the
 prompt says it, the harness enforces it. `chat` gets `feature`; `qa` — whose
-session kind was retired — is denied everywhere; `drive-fix` has no entry skill
-and denies all of them.
+session kind was retired — is denied everywhere; the drive's chats are workers now and have no entry skill
+and deny all of them.
 
 The reached skill — `code-review` (reached by description) — is in no deny list.
 

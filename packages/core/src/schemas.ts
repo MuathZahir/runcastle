@@ -1007,10 +1007,22 @@ export function unresolvedMergeConflict(events: readonly Pick<EventRow, 'type' |
  * (`with-you`), self-contained work that runs in the background (`on-its-own`),
  * a worker the human started with "+" and no assignment (`unassigned`,
  * decision 7), or the end-of-feature review (`review`, burns-become-workers
- * decision 3), which writes no code and lands nothing.
+ * decision 3), which writes no code and lands nothing; or one of a test
+ * drive's two chats (drive-chats-become-workers decision 1): `fix-drive`,
+ * which fixes the drive's setup, and `scenario`, which writes and fixes its
+ * scenarios. Those run on the host, in the drive's checkout, and land nothing.
  */
-export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned', 'review'])
+export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned', 'review', 'fix-drive', 'scenario'])
 export type WorkerKind = z.infer<typeof WorkerKind>
+
+/** The worker kinds docked beside a test drive (drive-chats-become-workers decision 1). */
+export const DRIVE_WORKER_KINDS = ['fix-drive', 'scenario'] as const satisfies readonly WorkerKind[]
+export type DriveWorkerKind = (typeof DRIVE_WORKER_KINDS)[number]
+
+/** Whether `kind` is a drive worker's: on the host in the drive's checkout, started and spoken to only by the human. */
+export function isDriveWorkerKind(kind: WorkerKind): kind is DriveWorkerKind {
+  return (DRIVE_WORKER_KINDS as readonly WorkerKind[]).includes(kind)
+}
 
 /**
  * Where a Review worker runs (burns-become-workers decision 3): `drive` on the
@@ -1055,7 +1067,9 @@ export type WorkerEngine = z.infer<typeof WorkerEngine>
  */
 export const WorkerRow = z.object({
   id: z.string(),
-  featureId: z.string(),
+  /** The feature that owns it; null for a project-owned worker (a project drive's Scenarios worker, drive-chats-become-workers decision 2). */
+  featureId: z.string().nullable(),
+  projectId: z.string(),
   label: z.string(),
   purpose: z.string(),
   kind: WorkerKind,
@@ -1093,3 +1107,13 @@ export const WorkerRow = z.object({
   updatedAt: z.number(),
 })
 export type WorkerRow = z.infer<typeof WorkerRow>
+
+/**
+ * The feature a worker belongs to, on a path only a feature's worker reaches
+ * (its sandbox, its review, its lead). A project-owned worker has none: reaching
+ * one here is a bug, so it throws rather than reading as another feature's.
+ */
+export function workerFeatureId(w: Pick<WorkerRow, 'id' | 'featureId'>): string {
+  if (w.featureId === null) throw new Error(`worker ${w.id} belongs to the project, not a feature`)
+  return w.featureId
+}

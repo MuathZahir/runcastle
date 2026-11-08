@@ -51,17 +51,6 @@ export interface WriteArtifactsInput {
   /** The brief for a `project` session; required when `feature` is absent. */
   projectBrief?: ProjectBrief
   /**
-   * The brief for a `drive-fix` session. Feature-scoped but host-side, so it
-   * carries its own feature rather than being briefed from `feature` — the
-   * failure it exists to repair is not something the feature row can say.
-   */
-  driveFix?: DriveFixBrief
-  /**
-   * The brief for a `scenario` session. Its scope follows the drive, so it
-   * carries the drive rather than being briefed from `feature`.
-   */
-  scenario?: ScenarioBrief
-  /**
    * The brief for a worker that runs on the host rather than in a sandbox (a
    * drive review, burns-become-workers decision 3): its whole briefing, and the
    * env its agent process runs with.
@@ -1084,11 +1073,11 @@ export function talkingToTheHumanSection(): string {
 }
 
 /**
- * The whole briefing for one session, whichever of the five briefs it carries.
+ * The whole briefing for one session, whichever of its briefs it carries.
  *
  * A session that is not briefed from its feature row — a project-scoped one, or
- * the host-side drive fix and scenario chat — supplies its kind's brief instead.
- * Exactly one of the five is always present: a session with none would spawn a terminal with no
+ * a host-placed worker — supplies its own brief instead.
+ * Exactly one brief is always present: a session with none would spawn a terminal with no
  * instructions at all.
  *
  * Exported because a runtime injects it differently: Claude Code appends the
@@ -1105,15 +1094,11 @@ function renderBrief(input: WriteArtifactsInput): string {
     session,
     feature,
     projectBrief,
-    driveFix,
-    scenario,
     purpose,
     runtime,
     hostWorker,
   } = input
   if (hostWorker) return hostWorker.briefing
-  if (driveFix) return renderDriveFixPrompt(driveFix)
-  if (scenario) return renderScenarioPrompt(scenario)
   if (feature) {
     return renderSystemPrompt(feature, session.kind, purpose, runtime, session.headless)
   }

@@ -129,23 +129,18 @@ describe('feature.sessions', () => {
   })
 
   // Old side chats are read-only threads in thread.list, not sessions (interactive-workers decision 23).
-  it('lists the main chat, then a live scenario chat, and no old side chat', async () => {
+  it('lists the main chat, and no old side chat or drive chat', async () => {
     const f = await feature('order')
     const chat = await mainChat(f.id, { live: true })
     const ended = side(f.id, 'cc-ended')
     markSessionEnded(ctx, ended)
     markAwaitingInput(ctx, side(f.id, 'cc-live'))
-    const scenario = createSessionRow(ctx, {
-      featureId: f.id,
-      kind: 'scenario',
-      worktreePath: scratch,
-    })
+    createSessionRow(ctx, { featureId: f.id, kind: 'scenario', worktreePath: scratch })
 
     const list = await caller().feature.sessions({ featureId: f.id })
 
     expect(list.map((s) => [s.kind, s.id, s.status])).toEqual([
       ['chat', chat, 'live'],
-      ['scenario', scenario.id, 'launching'],
     ])
     expect(list[0]).toMatchObject({ title: 'Main chat', awaitingInput: false })
   })
