@@ -216,7 +216,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="chat">
         <div class="wh"><b>Scenarios</b><span class="st">● needs you</span><span class="hb">Hand back</span></div>
         <div class="card"><b>Scenarios</b> · with you · Started by you<br>Writes and fixes this drive's scenarios. Commits straight onto <span class="mono">feature/checkout-redesign</span>.</div>
-        <div><div class="msg"><b>You:</b> a cart with an expired coupon</div><div class="msg">Wrote <span class="mono">.runcastle/scenarios/cart/expired-coupon.ts</span>, ran it on the drive, committed. Pick it from Scenarios.</div></div>
+        <div><div class="msg"><b>You:</b> a cart with an expired coupon</div><div class="msg">Wrote <span class="mono">.runcastle/scenarios/cart/expired-coupon.ts</span>, ran it on the drive, committed on <span class="mono">feature/checkout-redesign</span>. Pick it from Scenarios.</div></div>
         <div class="box">Message Scenarios…</div>
       </div>
     </div></div>
@@ -228,13 +228,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <p class="hint">One Fix-drive and one Scenarios worker per feature, living with the drive.</p>
     <div class="flow">
       <div class="step">You press Fix drive / New scenario / Fix it<small>starts at once, never queued <a class="pin" data-d="7">7</a></small></div><span class="arr">→</span>
-      <div class="step">Working<small>commits straight onto the driven branch <a class="pin" data-d="3">3</a></small></div><span class="arr">→</span>
+      <div class="step">Working<small>commits straight onto the driven branch, and says which <a class="pin" data-d="3">3</a></small></div><span class="arr">→</span>
       <div class="step">Needs you<small>pings like any worker <a class="pin" data-d="8">8</a></small></div><span class="arr">→</span>
       <div class="step">Drive stops<small>turn ended, handback written for it <a class="pin" data-d="5">5</a> <a class="pin" data-d="12">12</a></small></div><span class="arr">→</span>
       <div class="step">Done<small>lead hears quietly, no wake <a class="pin" data-d="4">4</a></small></div><span class="arr">→</span>
       <div class="step">Next drive's button<small>reopens the same worker</small></div>
     </div>
-    <p class="hint" style="margin-top:8px">Fix drive also hands back by itself once the app is answering again. Only you start them; the lead can message one during the drive <a class="pin" data-d="6">6</a>. One works at a time <a class="pin" data-d="13">13</a>.</p>
+    <p class="hint" style="margin-top:8px">Fix drive also hands back by itself once the app is answering again. Only you start them or talk to them; the lead reads their handbacks <a class="pin" data-d="6">6</a>. One works at a time <a class="pin" data-d="13">13</a>.</p>
   </div>
 
   <div class="sub">
@@ -309,10 +309,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['Both run on the host, in the drive\'s checkout, as host-placed workers', 'Their whole job is the running drive and its database; a sandbox has neither.', 'assumed'],
     ['A drive worker belongs to whoever owns the drive', 'A project drive\'s scenario chat becomes a worker of the project, so no old-style chat is left.', 'assumed'],
-    ['Their commits go straight onto the driven branch; nothing waits to be landed', 'The checkout already is the driven branch, and the human wants the scenario now.', 'assumed'],
+    ['Their commits go straight onto the driven branch; nothing waits to be landed', 'The checkout already is the driven branch, and you want the scenario now. The chat and handback name the branch (orchestrator).', 'assumed'],
     ['A drive worker\'s handback reaches its lead quietly', 'Nothing in it needs the lead to act; waking it would spend a turn on a note.', 'assumed'],
     ['One Fix-drive worker and one Scenarios worker per feature, living with the drive', 'Keeps what each learned and the list short; between drives the checkout is on another branch.', 'assumed'],
-    ['Only the human starts a drive worker; the lead can message one', 'The drive is the human\'s; with nothing to land, the lead\'s landing tools have nothing to do.', 'assumed'],
+    ['Only the human starts or talks to a drive worker', 'They work in your checkout during your drive; a lead\'s message would commit there behind your back. Changed by the orchestrator.', 'assumed'],
     ['Drive workers never wait in line', 'The human is beside the drive waiting; the drive slot is their limit.', 'assumed'],
     ['Drive workers need the human like any worker', 'A Fix-drive turn can take minutes; one rule for every worker.', 'assumed'],
     ['What they may write is unchanged', 'The guards were built for this checkout; auto mode was chosen for a sandbox.', 'assumed'],
@@ -329,7 +329,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [1, 'Sandboxed workers on their own branch, reaching the drive through runcastle\'s tools', 'The brief\'s central question; it decides most of the rest.'],
     [4, 'Wake the lead with every handback, as build workers do', 'Changes when a lead is woken; that is yours to decide, not the orchestrator\'s.', 'behaviour'],
     [5, 'A new Scenarios worker every drive (today\'s behaviour); the Fix-drive worker one per project', 'The challenger argued both: remembered scenario context goes stale, and drive lessons are project-wide.', 'challenged'],
-    [6, 'The lead cannot message drive workers', 'The challenger: a lead\'s message starts a turn that commits in your checkout during your drive.', 'challenged'],
+    [6, 'The lead may message a drive worker during its drive, like any worker', 'Changed by the orchestrator on your delegation, siding with the challenger.', 'orchestrator'],
     [8, 'No pings while the drive page is open and visible', 'Adds phone pings you do not get today; that is yours to decide.', 'behaviour']
   ]
   var list = $('#dlist')

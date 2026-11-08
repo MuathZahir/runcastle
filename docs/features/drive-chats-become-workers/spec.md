@@ -48,8 +48,10 @@ read-only transcripts marked "Old drive chat" (decision 10).
   (decision 7). The resume cap that today starts a fresh drive-fix conversation when the old one is
   too long applies to both kinds.
 - **Handback.** Host workers hand back through the host handback file the drive review uses. A
-  drive worker's handback carries its summary and the commits it made on the driven branch during
-  this drive (its files changed). There is no land step: the worker goes straight to
+  drive worker's handback carries its summary, the branch its commits landed on, and the commits
+  it made there during this drive (its files changed). Its brief tells it to name that branch in
+  the chat whenever it commits, and the handback card shows it, so a commit on a project drive's
+  base branch is never a surprise (decision 3). There is no land step: the worker goes straight to
   `handed-back` (Done), never `landed`, and `land_worker`, `send_back_worker` and `drop_worker`
   refuse it with the reason. The lead (or, for a project drive, the project chat) receives the
   handback card **without a wake**: it is delivered with its next message (decision 4). The
@@ -61,9 +63,10 @@ read-only transcripts marked "Old drive chat" (decision 10).
   existing carried-changes notice), and the worker's last message as summary (decision 12).
   Between drives a drive worker refuses messages, from the human and the lead, with "starts with
   your next drive's <button>".
-- **Messages and ready.** The lead may `message_worker` a drive worker while its drive is on
-  (decision 6). Drive workers never block `declare_ready` (interactive-workers decision 19 counts
-  only workers with work to land). Feature Stop cancels their turns like any worker's.
+- **Messages and ready.** Only the human writes to a drive worker: the lead's `message_worker`
+  refuses one with the reason (decision 6). Drive workers never block `declare_ready`
+  (interactive-workers decision 19 counts only workers with work to land). Feature Stop cancels
+  their turns like any worker's.
 - **Retired.** The `drive-fix` and `scenario` session kinds are no longer created. Their launch
   functions, kind-specific branches in the launcher, hooks, naming, threads and MCP audiences fold
   into the worker paths. Existing rows of those kinds read as "Old drive chat" transcripts that
@@ -101,6 +104,6 @@ read-only transcripts marked "Old drive chat" (decision 10).
 ## Open questions
 
 - The human's own answer on the wake rule (decision 4) and the new pings (decision 8): both
-  change how runcastle behaves for them.
+  change how runcastle behaves for them, and the orchestrator's yes does not settle them.
 - Whether a project-drive Scenarios worker's handback card in the project chat is noise in
   practice; it is quiet by decision 4 either way.

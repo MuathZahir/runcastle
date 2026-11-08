@@ -54,7 +54,11 @@ not after the lead lands it. The worry interactive workers solved, work reaching
 its lead's back, is met by the handback telling the lead.
 **Assumed.** Alternative: commit on a worker branch the lead lands through the landing queue,
 like a build worker.
-**For the human.** A scenario still works the moment the chat commits it.
+**Changed by the orchestrator:** the worker's chat and its handback name the branch every commit
+landed on, so a commit on a project drive's base branch (possibly main) is never a surprise
+(2026-11-08, on the human's delegation).
+**For the human.** A scenario still works the moment the chat commits it, and the chat and its
+handback say which branch it was committed on.
 
 ## 4. A drive worker's handback reaches its lead quietly
 **Decision:** A drive worker's handback is a card in the lead's chat (or the project chat, per
@@ -93,19 +97,20 @@ the current scenario list, since remembered context goes stale and grows. Kept: 
 matches today's Fix-drive reopening and the feature's own worker list, and long conversations
 are compacted.
 
-## 6. Only the human starts a drive worker; the lead can message one
+## 6. Only the human starts or talks to a drive worker
 **Decision:** Drive workers start only from the drive's buttons ("Fix drive", "New scenario",
-"Fix it"), as today. The lead cannot start, land, send back or drop one, and drive workers never
-block "ready". The lead can message one while its drive is on, like any worker
+"Fix it"), as today, and only the human writes to them. The lead cannot start, message, land,
+send back or drop one; it reads their handbacks, and that is all. Drive workers never block
+"ready".
+**Why:** They work in the human's own checkout during the human's drive, and in scenario setup
+mode the whole checkout is writable: a lead's message would start a turn that commits there
+behind the human's back. With nothing to land (3), the lead's landing tools have nothing to act
+on.
+**Assumed.** Alternative: the lead may message one during its drive, like any worker
 (`interactive-workers` decision 17).
-**Why:** The drive is the human's (ADR-0014); a lead starting work in the human's checkout would
-reach into a drive it does not hold. With nothing to land (3), the lead's landing tools have
-nothing to act on.
-**Assumed.** Alternative: let the lead start a Scenarios worker to write the scenario it plans to
-declare ready with.
-**Challenged:** the lead should not message drive workers either: its message starts a turn
-that edits and commits in the human's checkout during the human's drive, which is reaching into
-the drive. Kept for consistency with every other worker; the human is the one to overturn it.
+**Changed by the orchestrator:** the lead does not message drive workers; only the human talks to
+them (2026-11-08, on the human's delegation). It sides with the challenger's objection.
+**For the human.** Only you talk to the drive chats; the lead never sends them anything.
 
 ## 7. Drive workers never wait in line
 **Decision:** Drive workers start at once and do not count toward "agents working at once"
