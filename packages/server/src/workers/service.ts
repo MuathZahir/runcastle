@@ -14,6 +14,7 @@ import {
   type WorkerRow,
   type WorkerStartedBy,
   type WorkerStatus,
+  IN_PLAY_WORKER_STATUSES,
   isDriveWorkerKind,
   isUsageLimitText,
   workerFeatureId,
@@ -25,7 +26,7 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { envPath, sessionDir } from '@runcastle/core/paths'
-import { features, workers } from '../db/schema'
+import { features, sessions, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
@@ -128,6 +129,39 @@ export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<str
     .all()
   // The join keeps feature-owned rows only, so every `featureId` here is set.
   return new Map(rows.flatMap((r) => (r.featureId ? [[r.featureId, r.n] as const] : [])))
+}
+
+/**
+ * What each feature's workers page holds, for the arrow on its sidebar row
+ * (clicking-a-feature-opens-its-lead decisions 4, 5): how many workers are in
+ * play, and whether the page lists anything at all — a worker in any state, or
+ * a side or drive chat from before workers. A feature absent from the map has
+ * an empty page.
+ */
+export function workersPageByFeature(ctx: AppCtx, projectId: string): Map<string, { inPlay: number }> {
+  const out = new Map<string, { inPlay: number }>()
+  const rows = ctx.db
+    .select({ featureId: workers.featureId, status: workers.status, n: count() })
+    .from(workers)
+    .innerJoin(features, eq(features.id, workers.featureId))
+    .where(eq(features.projectId, projectId))
+    .groupBy(workers.featureId, workers.status)
+    .all()
+  for (const r of rows) {
+    if (!r.featureId) continue
+    const page = out.get(r.featureId) ?? { inPlay: 0 }
+    if (IN_PLAY_WORKER_STATUSES.includes(r.status)) page.inPlay += r.n
+    out.set(r.featureId, page)
+  }
+  // The old side and drive chats the page lists in Done (interactive-workers decision 23).
+  const oldChats = ctx.db
+    .selectDistinct({ featureId: sessions.featureId })
+    .from(sessions)
+    .innerJoin(features, eq(features.id, sessions.featureId))
+    .where(and(eq(features.projectId, projectId), inArray(sessions.kind, ['side', 'scenario', 'drive-fix'])))
+    .all()
+  for (const r of oldChats) if (r.featureId && !out.has(r.featureId)) out.set(r.featureId, { inPlay: 0 })
+  return out
 }
 
 /**

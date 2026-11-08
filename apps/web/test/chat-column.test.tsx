@@ -125,8 +125,14 @@ function server({
     'feature.launchSession': () => ({ sessionId: 'th_started' }),
     'feature.driveScenarios': () => ({ runnerConfigured: true, scenarios: [] }),
     'feature.openScenarioChat': () => ({ sessionId: 'th_scn' }),
-    // The sidebar's own read: the open feature's row, in its lane.
-    'feature.list': () => ['feat_1', 'feat_a', 'feat_b'].map((id) => listItem({ id, slug: id })),
+    // The sidebar's own read: the open feature's row, in its lane, with its
+    // workers arrow while its workers page lists anything (clicking-a-feature-opens-its-lead decision 4).
+    'feature.list': () =>
+      ['feat_1', 'feat_a', 'feat_b'].map((id) => {
+        const page = id === 'feat_1' && (rows.length > 0 || list.some((t) => t.role === 'side' || t.role === 'old-drive-chat'))
+        const inPlay = rows.filter((w) => ['needs-you', 'failed', 'working', 'queued'].includes(w.status)).length
+        return listItem({ id, slug: id, ...(page ? { workersPage: { inPlay } } : {}) })
+      }),
     ...extra,
   })
 }
@@ -237,6 +243,13 @@ const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as H
 const header = (): HTMLElement => document.querySelector('[data-header]') as HTMLElement
 /** The open feature's own sidebar page (decision 24); null while the sidebar shows the features list. */
 const featurePage = (): HTMLElement | null => within(sidebar()).queryByRole('region', { name: 'Demo' })
+/** The open feature's workers arrow, which alone goes down to its page (clicking-a-feature-opens-its-lead decisions 2, 3). */
+const arrow = (): Promise<HTMLElement> => within(sidebar()).findByRole('button', { name: /^Workers/ })
+/** Press the arrow and wait for the feature's page. */
+const down = async (): Promise<void> => {
+  fireEvent.click(await arrow())
+  await waitFor(() => expect(featurePage()).not.toBeNull())
+}
 /** A list of chats inside the Lead card, which the drive's chats no longer get: they are workers. */
 const threadList = (): HTMLElement | null => within(sidebar()).queryByRole('list', { name: 'Chats' })
 /** A lane of the feature's page: its rows' labels, in order. */
@@ -284,8 +297,15 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     ],
   }
 
-  it('opens on the feature’s page from worker.list: the Lead card, needs-you rows, the Working shelf with queued inside, Done folded', async () => {
+  it('opens on the features list, and its arrow goes down to the feature’s page from worker.list: the Lead card, needs-you rows, the Working shelf with queued inside, Done folded', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await within(column()).findByText('said in th_main')
+    // Opening the feature keeps the list (clicking-a-feature-opens-its-lead decision 1).
+    expect(featurePage()).toBeNull()
+    expect(within(sidebar()).getAllByRole('button', { name: /^Demo/ }).length).toBeGreaterThan(0)
+    // The arrow counts the workers in play: two need you, one works, one queued.
+    expect((await arrow()).textContent).toBe('4')
+    await down()
     await waitFor(() => expect(lane('Needs you')).toEqual(['Header', 'Search']))
     expect(within(featurePage()!).getByRole('heading', { name: 'Demo' })).toBeTruthy()
     expect(within(featurePage()!).getByRole('button', { name: 'Back to the features' })).toBeTruthy()
@@ -302,8 +322,9 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     expect(within(sidebar()).queryByRole('button', { name: 'Orchestrator' })).toBeNull()
   })
 
-  it('goes back to the features list leaving the chat in front unchanged, and the feature’s row comes back down', async () => {
+  it('goes back to the features list leaving the chat in front unchanged, and the feature’s row brings its lead back without going down', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await down()
     await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
     pickWorker('Header')
     expect(await within(column()).findByText('said in w_ask')).toBeTruthy()
@@ -314,14 +335,15 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     expect(within(column()).getByText('said in w_ask')).toBeTruthy()
     expect(threadName().textContent).toBe('Header')
 
-    // The open feature's row goes down a level again, its lead in front.
+    // The open feature's row brings its lead to the front and the list stays (decisions 1, 3).
     fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0]!)
-    await waitFor(() => expect(featurePage()).not.toBeNull())
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
+    expect(featurePage()).toBeNull()
   })
 
   it('lights the amber dot on a worker that needs the human, and red on a failed one', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await down()
     await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
     const row = (label: string) => within(featurePage()!).getAllByRole('button').find((b) => b.title.startsWith(`${label} — `))!
     expect(row('Header').innerHTML).toContain('bg-warning')
@@ -329,9 +351,10 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     expect(row('Data').innerHTML).not.toContain('bg-warning')
   })
 
-  it('keeps a picked worker in the address, and a reload reopens it', async () => {
+  it('keeps a picked worker in the address, and a reload reopens it on the features list', async () => {
     window.history.replaceState(null, '', '/p/proj_1/f/login')
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await down()
     await waitFor(() => expect(lane('Working')).toHaveLength(2))
     pickWorker('Data')
     await waitFor(() => expect(window.location.search).toBe('?thread=w_run'))
@@ -340,6 +363,8 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     render(<Page />, { wrapper: server(mixed).Wrapper })
     expect(await within(column()).findByText('said in w_run')).toBeTruthy()
     expect(threadName().textContent).toBe('Data')
+    // Only the arrow goes down (decision 3).
+    expect(featurePage()).toBeNull()
   })
 
   it('moving to another feature leaves the open worker behind: the new page shows its own', async () => {
@@ -363,9 +388,10 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
   })
 
   it('starts an unassigned worker with the "+" and opens its chat on its assignment card', async () => {
-    const api = server()
+    const api = server({ threads: [lead, thread('w_run', 'Data', 'worker')], workers: [worker('w_run', 'Data', { status: 'working' })] })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
+    await down()
     fireEvent.click(within(featurePage()!).getByRole('button', { name: 'New worker' }))
     expect(await within(column()).findByText('said in th_new')).toBeTruthy()
     expect(api.inputs('worker.startUnassigned')).toEqual([{ featureId: 'feat_1' }])
@@ -383,6 +409,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
       workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001, devServer: true })],
     })
     render(<Page />, { wrapper: api.Wrapper })
+    await down()
     await waitFor(() => expect(lane('Needs you')).toEqual(['Header']))
     pickWorker('Header')
     const card = await within(column()).findByRole('region', { name: 'Assignment: Header' })
@@ -400,6 +427,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
 
   it('offers no Open preview without a preview, and no Hand back once a worker has handed back', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await down()
     await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
     openDone()
     pickWorker('Footer')
@@ -413,6 +441,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
   it('opens an old side chat as a read-only transcript: no composer, the old-side-chat note', async () => {
     const api = server(mixed)
     render(<Page />, { wrapper: api.Wrapper })
+    await down()
     await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
     openDone()
     pickWorker('An old side thread')
@@ -422,7 +451,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     expect(within(header()).getByRole('status').textContent).toContain('Old side chat · read-only')
   })
 
-  it('renames the lead’s chat from the Lead card’s menu through thread.rename', async () => {
+  it('renames the lead’s chat from the open feature row’s menu through thread.rename', async () => {
     const list = [lead]
     const api = server({
       extra: {
@@ -435,8 +464,10 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    openMenu(within(featurePage()!).getByRole('button', { name: 'Lead actions' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    // No workers, so no arrow and no Lead card: the row's own "…" holds it (clicking-a-feature-opens-its-lead decision 11).
+    expect(within(sidebar()).queryByRole('button', { name: /^Workers/ })).toBeNull()
+    openMenu(within(sidebar()).getAllByRole('button', { name: 'Feature actions' })[0]!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename the lead’s chat…' }))
     const field = screen.getByRole('textbox', { name: 'Chat name' })
     fireEvent.change(field, { target: { value: 'Coupon expiry' } })
     fireEvent.submit(field.closest('form')!)
@@ -444,17 +475,18 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     await waitFor(() => expect(threadName().textContent).toBe('Coupon expiry'))
   })
 
-  it('offers no Rename or Export on the Lead card while nobody has started the chat', async () => {
+  it('offers no Rename or Export of the lead’s chat while nobody has started it', async () => {
     render(<Page worked />, { wrapper: server({ threads: [] }).Wrapper })
-    await waitFor(() => expect(featurePage()).not.toBeNull())
-    expect(within(featurePage()!).queryByRole('button', { name: 'Lead actions' })).toBeNull()
+    await waitFor(() => expect(within(sidebar()).getAllByRole('button', { name: 'Feature actions' }).length).toBeGreaterThan(0))
+    openMenu(within(sidebar()).getAllByRole('button', { name: 'Feature actions' })[0]!)
+    expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: /lead’s chat/ })).toBeNull()
   })
 
   it('counts a click on the open feature’s row, from the list, as opening it while its chat has no thread', async () => {
     const onSelect = vi.fn()
     render(<Page worked onSelect={onSelect} />, { wrapper: server({ threads: [] }).Wrapper })
-    await waitFor(() => expect(featurePage()).not.toBeNull())
-    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'Back to the features' }))
+    await waitFor(() => expect(within(sidebar()).getAllByRole('button', { name: /^Demo/ }).length).toBeGreaterThan(0))
     fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0]!)
     expect(onSelect).toHaveBeenCalledWith('feat_1')
   })
@@ -641,6 +673,7 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     await within(column()).findByText('said in th_main')
     newScenario()
     await within(column()).findByText('said in th_scn')
+    await down()
     await waitFor(() => expect(lane('Needs you')).toEqual(['Scenarios']))
     expect(threadList()).toBeNull()
     const row = within(featurePage()!).getByTitle(/^Scenarios — /).parentElement as HTMLElement
@@ -783,6 +816,7 @@ describe('a Select area crop', () => {
     URL.createObjectURL = vi.fn(() => 'blob:crop')
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
+    await down()
     await waitFor(() => expect(lane('Working')).toEqual(['A worker']))
     pickWorker('A worker')
     await within(column()).findByText('said in th_old')

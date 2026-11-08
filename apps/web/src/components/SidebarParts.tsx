@@ -161,6 +161,7 @@ function TwoLineRow({
   onClick,
   actions,
   toggle,
+  trail,
 }: {
   title: string
   tooltip?: string
@@ -177,6 +178,8 @@ function TwoLineRow({
   onClick?: () => void
   actions?: ReactNode
   toggle?: ReactNode
+  /** A control at the row's right end, centred across both lines and always shown (a feature row's workers arrow). */
+  trail?: ReactNode
 }) {
   return (
     <div
@@ -192,7 +195,7 @@ function TwoLineRow({
         title={tooltip ?? title}
         aria-current={active ? 'page' : undefined}
         onClick={onClick}
-        className="flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] px-2.5 py-2 text-left"
+        className={cx('flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] py-2 pl-2.5 text-left', trail !== undefined ? 'pr-10' : 'pr-2.5')}
       >
         <span className={cx('flex min-w-0 items-center gap-2', toggle !== undefined && 'pr-6')}>
           <span
@@ -220,7 +223,7 @@ function TwoLineRow({
           data-row-actions=""
           className={cx(
             'absolute top-1.5 flex items-center transition-opacity duration-(--dur-1)',
-            toggle !== undefined ? 'right-7' : 'right-1',
+            toggle !== undefined ? 'right-7' : trail !== undefined ? 'right-10' : 'right-1',
             REVEAL_NAV,
           )}
         >
@@ -228,6 +231,7 @@ function TwoLineRow({
         </span>
       )}
       {toggle !== undefined && <span className="absolute top-1.5 right-1">{toggle}</span>}
+      {trail !== undefined && <span className="absolute top-1/2 right-1.5 -translate-y-1/2">{trail}</span>}
     </div>
   )
 }
@@ -256,6 +260,7 @@ export function SidebarFeatureRow({
   folded = false,
   onToggleThreads,
   needsYou = false,
+  workers,
 }: {
   f: FeatureListItem
   active: boolean
@@ -275,6 +280,12 @@ export function SidebarFeatureRow({
   onToggleThreads?: () => void
   /** A worker waits on the human: the row's amber dot lights even when the feature's own chat does not ask (decision 3). */
   needsYou?: boolean
+  /**
+   * The feature has something on its workers page: the arrow at the row's end
+   * that goes down to it, with how many workers need the human or are at work
+   * (clicking-a-feature-opens-its-lead decisions 2, 4, 5).
+   */
+  workers?: { live: number; onOpen: () => void }
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
@@ -306,6 +317,7 @@ export function SidebarFeatureRow({
           </>
         ) : undefined
       }
+      {...(workers ? { trail: <WorkersArrow live={workers.live} onOpen={workers.onOpen} /> } : {})}
       toggle={
         threads !== undefined && onToggleThreads ? (
           <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
@@ -319,6 +331,32 @@ export function SidebarFeatureRow({
       {row}
       {shown}
     </div>
+  )
+}
+
+/**
+ * The way down to a feature's workers page (clicking-a-feature-opens-its-lead
+ * decisions 2, 5, 6): a quiet "3 ›" at the row's end, the number being the
+ * workers that need the human or are at work, a bare "›" when none are. It
+ * never takes a colour: the row's own dot and words say when a worker needs you.
+ */
+export function WorkersArrow({ live, onOpen }: { live: number; onOpen: () => void }) {
+  const label = live > 0 ? `Workers · ${live} working or waiting` : 'Workers'
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onOpen}
+      className={cx(
+        'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center gap-px rounded-full bg-fill-well pr-1 text-xs text-text-secondary tabular-nums',
+        live > 0 ? 'pl-2' : 'pl-1',
+        'transition-colors duration-(--dur-1) ease-app hover:bg-surface-selected hover:text-text',
+      )}
+    >
+      {live > 0 && <span>{live}</span>}
+      <IconChevronRight size={14} />
+    </button>
   )
 }
 

@@ -1047,6 +1047,14 @@ export type ReviewVerify = z.infer<typeof ReviewVerify>
 export const WorkerStatus = z.enum(['working', 'queued', 'needs-you', 'handed-back', 'landed', 'dropped', 'failed'])
 export type WorkerStatus = z.infer<typeof WorkerStatus>
 
+/**
+ * A worker still in play: waiting on the human (or failed, so someone must
+ * act), or at work (or queued for a slot). The workers page's Needs you and
+ * Working groups, and the number on a feature row's workers arrow
+ * (clicking-a-feature-opens-its-lead decision 5).
+ */
+export const IN_PLAY_WORKER_STATUSES: readonly WorkerStatus[] = ['needs-you', 'failed', 'working', 'queued']
+
 /** What the lead did with a worker's latest handback (decision 4). */
 export const WorkerOutcome = z.enum(['landed', 'sent-back', 'dropped'])
 export type WorkerOutcome = z.infer<typeof WorkerOutcome>

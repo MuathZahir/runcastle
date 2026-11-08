@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clicking a feature opens its lead preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 2.5%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 6%, transparent);--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 4%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);--color-fill-card:color-mix(in oklab, var(--color-text) 3%, transparent);--color-fill-well:color-mix(in oklab, var(--color-text) 7%, transparent);--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#596075;--color-text-tertiary:#676e82;--color-text-disabled:#a4aab9;--color-icon:#7a8195;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flows{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.flow{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;background:var(--color-surface-raised)}
+.flow h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:10px}
+.step{display:flex;align-items:center;gap:8px;min-height:30px}
+.step .k{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--radius-md);background:var(--color-fill-well);font-size:12px;white-space:nowrap}
+.step .arr{color:var(--color-text-tertiary)}
+.step.bad{color:var(--color-text-secondary)}
+.step.bad .k{background:var(--color-danger-subtle);color:var(--color-danger)}
+.clicks{width:100%;border-collapse:collapse;margin-top:12px}
+.clicks td,.clicks th{padding:8px;border-bottom:1px solid var(--color-border-subtle);text-align:left;vertical-align:top}
+.clicks th{color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.clicks td:first-child{white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:1px;height:20px;padding:0 4px 0 7px;border-radius:999px;background:var(--color-fill-well);color:var(--color-text-secondary);font-size:11px}
+.designs{display:grid;gap:8px;margin-top:12px}
+.plan{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+@media (max-width:760px){.flows{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Clicking a feature opens its lead</h1>
+  <p class="lede">Clicking a feature opens its lead's chat and the sidebar stays on the features list. A small “3 ›” pill at the row's end goes down to the feature's workers page.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/clicking-a-feature-opens-its-lead/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="flows">
+    <div class="flow"><h3>Today</h3>
+      <div class="step"><span class="k">Click a feature</span><span class="arr">→</span><span>sidebar swaps to its workers page</span></div>
+      <div class="step"><span class="k">Read the lead</span></div>
+      <div class="step bad"><span class="k">Back</span><span>to reach any other feature, every time</span></div>
+    </div>
+    <div class="flow"><h3>After</h3>
+      <div class="step"><span class="k">Click a feature</span><span class="arr">→</span><span>its lead's chat; the list stays <a class="pin" data-d="1">1</a></span></div>
+      <div class="step"><span class="k">Click the next one</span><span class="arr">→</span><span>no Back needed</span></div>
+      <div class="step"><span class="k"><span class="pill">3 ›</span></span><span class="arr">→</span><span>the workers page, only when asked <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a></span></div>
+    </div>
+  </div>
+
+  <div class="sub"><h3>What each click does</h3>
+    <table class="clicks">
+      <tr><th>You click</th><th>Chat in front</th><th>Sidebar</th></tr>
+      <tr><td>A feature's row</td><td>Its lead <a class="pin" data-d="1">1</a></td><td>Stays on the list, the row highlighted <a class="pin" data-d="10">10</a></td></tr>
+      <tr><td>A row reading “Header needs you”</td><td>Its lead too; Header is down the pill <a class="pin" data-d="7">7</a></td><td>Stays on the list</td></tr>
+      <tr><td>The <span class="pill">3 ›</span> pill</td><td>Its lead, or what was already in front <a class="pin" data-d="2">2</a></td><td>Down to the workers page; Back comes up</td></tr>
+      <tr><td>Palette, notification, link, reload</td><td>The chat it names</td><td>Stays on the list <a class="pin" data-d="3">3</a></td></tr>
+      <tr><td>A row on the phone</td><td>Its lead, full screen; workers from the chat title</td><td>No pill <a class="pin" data-d="8">8</a></td></tr>
+    </table>
+    <p class="hint" style="margin-top:8px">The pill shows on any feature with something on its workers page <a class="pin" data-d="4">4</a>. Its number counts workers that need you or are at work; a bare “›” when none are <a class="pin" data-d="5">5</a>. It never turns amber: the row already does <a class="pin" data-d="6">6</a>. A feature with no workers gets no new “+” <a class="pin" data-d="9">9</a>.</p>
+  </div>
+
+  <div class="sub"><h3>Designed screens</h3>
+    <p class="hint">Real components over sample features and workers, approved by you. Open them from their cards in the chat or the Design tab.</p>
+    <div class="designs">
+<!-- screen:list-with-arrows -->
+<div class="designed">
+  <h3>Features list with workers arrows, lead in front</h3>
+  <p>The row and its pill are real components; the features, counts and chat are sample data.</p>
+  <p class="mono">apps/web/src/components/SidebarParts.tsx (WorkersArrow, SidebarFeatureRow) · design page /preview/lead-first.html?state=lead</p>
+</div>
+<!-- /screen:list-with-arrows -->
+<!-- screen:worker-needs-you -->
+<div class="designed">
+  <h3>A worker needs you: the row still opens the lead</h3>
+  <p>The row reads “Header needs you”; its click puts the lead in front, and the pill leads to Header. Sample data.</p>
+  <p class="mono">apps/web/src/components/SidebarParts.tsx · design page /preview/lead-first.html?state=worker-needs</p>
+</div>
+<!-- /screen:worker-needs-you -->
+<!-- screen:arrow-pressed -->
+<div class="designed">
+  <h3>Arrow pressed: the workers page</h3>
+  <p>The existing workers page, unchanged, reached by the pill; sample workers.</p>
+  <p class="mono">apps/web/src/components/workers/FeatureSidebarPage.tsx · design page /preview/lead-first.html?state=workers</p>
+</div>
+<!-- /screen:arrow-pressed -->
+    </div>
+  </div>
+
+  <div class="sub"><h3>How it gets built</h3>
+    <div class="plan">
+      <span class="step"><span class="k">I build it myself</span></span><span class="arr">→</span>
+      <span class="step"><span class="k">Typecheck and tests</span></span><span class="arr">→</span>
+      <span class="step"><span class="k">One review round</span></span><span class="arr">→</span>
+      <span class="step"><span class="k">Ready, with screenshots</span></span>
+    </div>
+    <p class="hint" style="margin-top:6px">No worker tickets: it is one server count and one sidebar rule. The review round takes the screenshots you asked for: the list with pills, a click opening the lead, the pill opening the workers page, at desktop and phone width.</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Nothing parked</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Any change to the workers page itself</li>
+      <li><i class="dot"></i>A right-hand column or worker tab</li>
+      <li><i class="dot"></i>How workers are started, handed back or listed</li>
+      <li><i class="dot"></i>Remembering the workers page across a reload</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow">
+        <div class="step"><span class="k">Server</span><span class="arr">→</span><span>the feature list gains, per feature, its live-worker count (needs you, failed, working, queued) and whether its workers page has anything, by widening the one grouped query that already counts working workers</span></div>
+        <div class="step"><span class="k">Row</span><span class="arr">→</span><span>the sidebar row gains an optional pill slot, centred across both lines; the hover “…” sits left of it</span></div>
+        <div class="step"><span class="k">Sidebar</span><span class="arr">→</span><span>goes down only after the pill was pressed for the open feature, until Back or another feature opens; a row click picks the worker the need names, else the lead</span></div>
+        <div class="step"><span class="k">Phone</span><span class="arr">→</span><span>passes no pill; unchanged</span></div>
+      </div>
+      <p class="hint" style="margin-top:8px">Tested at the feature list, the row and the sidebar, where the existing tests already render them.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Clicking a feature\'s row opens its lead\'s chat and keeps the features list', 'Settled with you (brief): most clicks are to see the lead, and the drill-in cost a Back press each time.'],
+    ['A small arrow on the row opens the feature\'s workers page', 'Settled with you (brief): getting to the workers becomes a deliberate step.'],
+    ['The arrow is the only way down to the workers page', 'One way in keeps the sidebar predictable: the list stays unless you asked to go down.', 'assumed'],
+    ['The arrow shows on any feature that has something on its workers page', 'The workers page is the only sidebar route to done workers and old chats.', 'assumed'],
+    ['The arrow\'s number counts the workers still in play', 'A total that includes landed workers only grows; the live count says work is going on.', 'assumed'],
+    ['The arrow does not signal a worker\'s need; the row already does', 'The row already moves to Needs you, lights amber and names the worker.', 'assumed'],
+    ['A row click always opens the lead, even when a worker needs you', 'Your call: a click that always lands in the same place is the point of this feature.'],
+    ['The phone shows no arrow', 'The phone never had the workers page; its chat title already lists every worker one tap away.', 'assumed'],
+    ['A feature with no workers gets no new "+" on the list', 'The brief rules out changing how workers start; palette, Ctrl+Shift+O and the phone\'s list remain.', 'assumed'],
+    ['The open feature\'s row stays highlighted whatever chat is in front', 'The row stands for the feature; the workers page shows which of its chats.'],
+    ['The open feature\'s row menu renames and exports the lead\'s chat', 'Found while building: the Lead card was the only place for them, and it is now behind the arrow, or absent with no workers.', 'assumed']
+  ]
+  var C = [
+    [8, 'A pill on phone rows too, with a full 44px tap target.', 'You asked for screenshots of the arrow at phone width, so you may expect one there.', 'challenged'],
+    [5, 'Count everything on the workers page, or show no number.', 'A taste call; the approved design shows the live count.'],
+    [3, 'Opening a worker\'s chat from a notification or link also goes down; a reload keeps the workers page.', 'The challenger wanted a reload to keep the workers page.', 'challenged'],
+    [9, 'Add "New worker" to the row\'s "…" menu.', 'Without the old click-through, a feature with no workers has no visible "+" in the sidebar.'],
+    [11, 'Leave them on the Lead card only, and show the arrow on every started feature.', 'Added while building, after the plan was agreed.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
