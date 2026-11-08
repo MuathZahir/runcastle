@@ -95,6 +95,7 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   updatedAt: at,
   previewPath: null,
   passPort: 4514,
+  heldBy: null,
   ...over,
 })
 
