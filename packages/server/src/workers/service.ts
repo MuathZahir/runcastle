@@ -493,7 +493,7 @@ async function recoverFromError(ctx: AppCtx, w: WorkerRow, error: string, verdic
 }
 
 /** What a retried worker is told. */
-export function transientRetryText(line: string): string {
+function transientRetryText(line: string): string {
   return `[runcastle] The last turn stopped on a transient error (${line}). Carry on where you were.`
 }
 
