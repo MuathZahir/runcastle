@@ -3,7 +3,7 @@
 Planned without the human (a self-planning run, 2026-11-08). Decisions marked
 **Assumed.** are the planner's own pick; the human confirms or changes them.
 
-Check first: 2, 3, 4, 10, 12
+Check first: 2, 3, 10
 
 ## 1. Every word the agent writes shows, in the order written
 **Decision:** A turn reads top to bottom as it happened: each stretch of the agent's words is its own message at full prose, and each run of tool calls, thinking and subagents between two stretches folds to its own "Worked for …" line. A turn can show several folds. Nothing the agent writes goes inside a fold any more: folds hold only tools, thinking and subagents.
@@ -24,8 +24,6 @@ Check first: 2, 3, 4, 10, 12
 ## 4. Words between work read as normal prose
 **Decision:** Every stretch of the agent's words reads in the same full prose style, whether more work follows it or not. Short progress lines ("Fixes in; running the full test suite.") look like any other paragraph.
 **Why:** A lighter style for "progress" needs a rule that picks which words are progress, the rule the human rejected. Styling by position (lighter when work follows) would grey out exactly the questions and paragraphs this feature exists to bring back.
-**Assumed.** Alternative: words that more work follows read lighter (the secondary grey), and only a turn's last words read at full strength.
-**Changed by the orchestrator:** kept as written and the lighter option dropped from the design page's Tweaks: greying mid-turn words brings back the feeling that they are second-class. The human has not seen this.
 
 ## 5. Files, cards and answered asks sit where they happened
 **Decision:** A file the agent shows, a card it posts (the plan, designs, a review package, the features card) and the line for an ask the human answered all sit in the turn at the point they happened: the words written before them above, the words after below.
@@ -62,12 +60,10 @@ Check first: 2, 3, 4, 10, 12
 ## 11. A fold's line says only its time
 **Decision:** A fold reads "Worked for 12s", as today, with nothing more on its line.
 **Why:** It keeps the turn quiet between paragraphs, which matters now that a turn can have several folds. What the run did is one click away.
-**Assumed.** Alternative: the line also says what the run did, "Read 3 files, ran 2 commands · 12s". The design page carries a Tweak that switches between the two.
 
 ## 12. Short stretches are never merged
 **Decision:** An agent that writes one line before nearly every tool call gets a ladder: line, fold, line, fold. Stretches are not merged and runs are not joined across words, however short.
 **Why:** Any merge needs a rule that tells a throwaway line from a real one, which is the rule the human rejected (decision 1). The ladder is what the agent wrote; the design page shows it so it can be judged before building.
-**Assumed.** Alternative: fold a run of one-line stretches, and the work between them, into a single fold.
 
 ## 13. An answered ask's line follows the run of work it was asked in
 **Decision:** Refines 5. The line for an ask the human answered (an approved command, an answered question) sits right after the run of work it was asked in, not in the middle of it. The run stays one fold, and it stays open while it is the newest thing in a running turn, so an approved command keeps running in view.

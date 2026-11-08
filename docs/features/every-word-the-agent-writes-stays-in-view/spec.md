@@ -97,9 +97,7 @@ data in `turn-words-data.ts`):
 - *The same turn while it runs* — `?state=live`
 - *A chatty turn: a line before every tool call* — `?state=ladder`
 
-The page carries a Tweaks menu for the one look still open: whether a fold's
-line also says what the run did (decision 11). Whatever the human picks is written into the real
-components and the menu is deleted.
+The human approved all three designs as they are.
 
 **Scenario.** Ship `.runcastle/scenarios/chat/words-between-work.ts`: it seeds a
 project chat in the driven instance whose log holds a finished multi-stretch
@@ -140,6 +138,6 @@ scenario declared ready, since a real agent's turn is not reproducible.
 
 ## Open questions
 
-- The fold-line Tweak (decision 11) waits for the human's pick on the design
-  page, and the three designs wait for the human's approval.
-- Decisions 3, 4 and 10 were settled by the orchestrator, not the human.
+- Decisions 3 and 10 (the turn's total time beside the model; Copy on the last
+  words takes the whole turn) were settled by the orchestrator; the human has
+  not spoken to them directly.
