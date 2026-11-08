@@ -36,7 +36,7 @@ import { mainChatContext } from '../services/main-chat-excerpt'
 import { rosterConfig } from '../services/model-discovery'
 import { getFeatureRow, projectForFeature, requireProjectById, tryGetFeature } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
-import { hasThreadLog } from '../threads/log'
+import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { agentHost } from '../threads/types'
 import { sandboxEngine } from './engine'
 import { isHostReview } from './review'
@@ -469,4 +469,95 @@ export async function deliverDriveHandback(ctx: AppCtx, w: WorkerRow): Promise<v
   const chat = newestThread(ctx, { projectId: w.projectId }, 'project')
   if (!chat || !(chat.ccSessionId || hasThreadLog(chat.id))) return
   await agentHost(ctx).prompt(chat.id, { text: tagRuncastlePrompt(text) }, { source: 'runcastle', hold: true, display })
+}
+
+// --- the drive's end (decisions 5, 12) --------------------------------------------
+
+/**
+ * Why the human's message to this thread is refused, when it is a drive worker
+ * between drives (decision 5): it is reopened by its drive button, never by a
+ * message. `undefined` when it may be written to.
+ */
+export function driveWorkerBetweenDrives(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): string | undefined {
+  const w = driveWorkerOf(ctx, row)
+  if (!w) return undefined
+  const drive = git.activeDriveInfo(w.projectId)
+  const running =
+    !!drive &&
+    (w.featureId !== null ? drive.featureId === w.featureId : drive.projectDrive === true) &&
+    (w.kind !== 'scenario' || drive.scenarioSessionId === w.id)
+  if (running) return undefined
+  return `This worker starts with your next drive's ${DRIVE_WORKER[w.kind].button} button.`
+}
+
+/** The words of a thread's last agent message, or none. */
+function lastAgentMessage(threadId: string): string {
+  if (!hasThreadLog(threadId)) return ''
+  let id: string | undefined
+  let text = ''
+  for (const e of readThreadEvents(threadId)) {
+    if (e.type !== 'agent_text') continue
+    if (e.messageId !== id) {
+      id = e.messageId
+      text = ''
+    }
+    text += e.text
+  }
+  return text.trim()
+}
+
+/** Whether a drive worker's guard lets it write `path` in the checkout (decision 9). */
+function writableByGuard(path: string, setup: boolean): boolean {
+  return setup || path === '.gitignore' || path.startsWith('.runcastle/')
+}
+
+/**
+ * A drive stopped (a retry is not a stop): each of its owner's drive workers
+ * still working or waiting has its turn cancelled and is handed back on its
+ * behalf, with what it committed during the drive and the files it left
+ * uncommitted, which came back with the checkout. A worker already handed back
+ * gets nothing new.
+ */
+export async function handBackDriveWorkers(
+  ctx: AppCtx,
+  ended: { projectId: string; featureId: string | null; carriedChanges: readonly string[]; retry?: boolean },
+): Promise<void> {
+  if (ended.retry) return
+  const owned = ended.featureId !== null ? listWorkers(ctx, ended.featureId) : listProjectWorkers(ctx, ended.projectId)
+  for (const w0 of owned) {
+    if (!isDriveWorkerKind(w0.kind) || (w0.status !== 'working' && w0.status !== 'needs-you')) continue
+    await agentHost(ctx)
+      .cancel(w0.id)
+      .catch((err) => console.error(`drive worker ${w0.id}: stop`, err))
+    const w = await recordDriveTurnCommits(ctx, getWorker(ctx, w0.id) ?? w0).catch(() => w0)
+    if (w.status === 'handed-back') continue
+    const setup = getSessionRow(ctx, w.id)?.purpose === 'scenario-setup'
+    const left = ended.carriedChanges.filter((p) => writableByGuard(p, setup))
+    const summary = [
+      'The drive stopped.',
+      lastAgentMessage(w.id),
+      left.length ? `Left uncommitted (came back with the checkout): ${left.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+    const handed = updateWorker(ctx, w.id, { status: 'handed-back', handbackSummary: summary, outcome: null, outcomeNote: null })
+    emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back — the drive stopped`, {
+      commits: handed.handbackCommits?.length ?? 0,
+      files: handed.handbackFiles?.length ?? 0,
+      branch: handed.featureBranch,
+      leftUncommitted: left,
+    })
+    await deliverDriveHandback(ctx, handed)
+  }
+}
+
+/** Boot: drives live in memory, so a drive worker still at work has lost its drive; hand it back. */
+export async function handBackOrphanedDriveWorkers(ctx: AppCtx): Promise<void> {
+  const owners = new Map<string, { projectId: string; featureId: string | null }>()
+  for (const w of ctx.db.select().from(workers).all()) {
+    if (!isDriveWorkerKind(w.kind) || (w.status !== 'working' && w.status !== 'needs-you')) continue
+    if (git.activeDriveInfo(w.projectId)) continue
+    owners.set(`${w.projectId}/${w.featureId ?? ''}`, { projectId: w.projectId, featureId: w.featureId })
+  }
+  for (const o of owners.values()) await handBackDriveWorkers(ctx, { ...o, carriedChanges: [] })
 }

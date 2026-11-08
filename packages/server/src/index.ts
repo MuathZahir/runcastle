@@ -29,7 +29,8 @@ import { mountWebAppIfBuilt } from './routes/web'
 import { detachCopyOnce, isDatabaseCopy } from './services/database-copy'
 import { designServerStatus } from './services/design'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
-import { recoverCutOffDrives } from './services/git'
+import { onDriveEnded, recoverCutOffDrives } from './services/git'
+import { handBackDriveWorkers, handBackOrphanedDriveWorkers } from './workers/drive'
 import { startModelDiscovery } from './services/model-discovery'
 import { sweepHolders } from './services/holding'
 import { startNeedPush } from './services/need-push'
@@ -265,6 +266,11 @@ export async function startServer(): Promise<void> {
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
+  // …a drive's workers are handed back when it stops; a restart already stopped every drive, so any left at work are handed back now.
+  onDriveEnded((ended) => handBackDriveWorkers(ctx, ended))
+  if (!isDatabaseCopy()) {
+    void handBackOrphanedDriveWorkers(ctx).catch((err) => console.error('could not hand back the drive workers a restart cut off', err))
+  }
   // …and each drive review left queued for the drive slot waits for it again: its re-ask died with the last server.
   // A copied database's reviews are the live install's, never this server's to start.
   if (!isDatabaseCopy()) {

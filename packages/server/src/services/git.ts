@@ -2067,6 +2067,32 @@ function driveOf(projectId: string): DriveState | undefined {
  */
 const reviewDriveReleases = new Map<string, () => Promise<unknown>>()
 
+/** What a drive's end tells its listeners (drive-chats-become-workers decision 12). */
+export interface DriveEnded {
+  projectId: string
+  /** The feature a feature drive belongs to; null for a project drive. */
+  featureId: string | null
+  /** The driven branch. */
+  branch: string
+  /** Files left dirty that came back with the checkout. */
+  carriedChanges: string[]
+  /** The stop of a `retry_drive`: the drive is about to start again, so nothing ended. */
+  retry: boolean
+}
+
+const driveEndedListeners: Array<(ended: DriveEnded) => Promise<void>> = []
+
+/** Be told when a drive stops, after its checkout is back (registered at boot; git.ts imports no workers). */
+export function onDriveEnded(fn: (ended: DriveEnded) => Promise<void>): void {
+  driveEndedListeners.push(fn)
+}
+
+async function notifyDriveEnded(ended: DriveEnded): Promise<void> {
+  for (const fn of driveEndedListeners) {
+    await fn(ended).catch((err) => console.error('drive-ended listener failed', err))
+  }
+}
+
 /**
  * The machinery's own account of a dry run, accumulated as it goes: the only
  * input to the verification verdict (decision 3). The agent's deeper checks —
@@ -2461,6 +2487,13 @@ export async function testDrive(
         data: { branch: previousBranch, files: carriedChanges },
       })
     }
+    await notifyDriveEnded({
+      projectId: project.id,
+      featureId: feature.id,
+      branch,
+      carriedChanges,
+      retry: opts.retry === true,
+    })
 
     const dbDrift = await detectDbDrift(ctx, project, feature, previousBranch, branch)
     return {
@@ -3034,7 +3067,9 @@ export async function projectDrive(
   const held = driveOf(project.id)
   if (action === 'stop') {
     if (held?.kind !== 'project') return { ok: false, deniedReason: DENY_NO_PROJECT_DRIVE }
-    return stopProjectDrive(ctx, project, held)
+    const result = await stopProjectDrive(ctx, project, held)
+    await notifyDriveEnded({ projectId: project.id, featureId: null, branch: held.branch, carriedChanges: [], retry: false })
+    return result
   }
 
   if (held) return deniedStart(slotHeldReason(held), 'slot_held')
@@ -3150,6 +3185,8 @@ function recordProjectDriveUrl(ctx: AppCtx, projectId: string, url: string): voi
 export interface DriveStartOptions {
   /** A scenario file to run once the app answers (drive-scenarios decision 7). */
   scenario?: string
+  /** On `stop`: this is `retry_drive`'s stop-and-start, which does not end the drive's workers. */
+  retry?: boolean
 }
 
 const DENY_NO_SCENARIO_DRIVE = 'No test drive or project drive is running for this project'

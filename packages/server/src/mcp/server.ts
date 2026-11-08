@@ -1529,7 +1529,7 @@ export async function toolRetryDrive(
   const project = projectForFeature(ctx, feature)
 
   const stopped = git.activeTestDriveFeatureId(project.id) === feature.id
-  if (stopped) await git.testDrive(ctx, project, feature, 'stop')
+  if (stopped) await git.testDrive(ctx, project, feature, 'stop', 'human', { retry: true })
 
   const start = await git.testDrive(ctx, project, feature, 'start')
   const drive = git.activeDriveInfo(project.id)
