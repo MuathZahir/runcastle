@@ -59,7 +59,10 @@ import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
 import {
   chooseReviewMode,
+  driveWaitOf,
+  forgetDriveWait,
   isHostReview,
+  keepDriveWait,
   keepReviewAssignment,
   renderReviewAssignment,
   reviewAssignment,
@@ -530,6 +533,11 @@ export function setReviewDriveRetryForTests(ms: number | undefined): void {
 /** Each drive review's next ask for the drive slot, while it waits. */
 const driveWaits = new Map<string, ReturnType<typeof setTimeout>>()
 
+/** Lose every drive review's re-ask timer, as a server that dies does (tests). */
+export function dropDriveWaitsForTests(): void {
+  for (const id of [...driveWaits.keys()]) stopDriveWait(id)
+}
+
 function stopDriveWait(id: string): void {
   const timer = driveWaits.get(id)
   if (timer) clearTimeout(timer)
@@ -544,28 +552,58 @@ function stopDriveWait(id: string): void {
 async function driveThenPrompt(ctx: AppCtx, id: string, text: string): Promise<void> {
   stopDriveWait(id)
   const w = getWorker(ctx, id)
-  if (!w || w.status === 'failed' || w.status === 'dropped') return
+  if (!w || w.status === 'failed' || w.status === 'dropped') return forgetDriveWait(id)
   const feature = getFeatureRow(ctx, w.featureId)
   const taken = await reviewDriveHost().take(ctx, projectForFeature(ctx, feature), feature)
   if (taken.ok) {
+    forgetDriveWait(id)
     setStatus(ctx, requireWorker(ctx, id), 'working')
     await agentHost(ctx).prompt(id, { text }, { source: 'runcastle' })
     return
   }
-  if (!taken.retriable) return failWorker(ctx, w, `the review drive could not start: ${taken.reason}`)
+  if (!taken.retriable) {
+    forgetDriveWait(id)
+    return failWorker(ctx, w, `the review drive could not start: ${taken.reason}`)
+  }
   if (w.status !== 'queued') {
     const queued = setStatus(ctx, w, 'queued')
     emitWorker(ctx, queued, 'worker.waiting_for_drive', `worker "${w.label}" waits for the drive slot: ${taken.reason}`, { reason: taken.reason })
   }
+  // Kept on disk too: the timer dies with the server, and the next boot arms the wait again from this.
+  keepDriveWait(id, text)
   const timer = setTimeout(() => void driveThenPrompt(ctx, id, text).catch((err) => console.error(`worker ${id}: review drive`, err)), driveRetryMs)
   timer.unref?.()
   driveWaits.set(id, timer)
+}
+
+/**
+ * At boot, arm again the wait of every drive review the last server left
+ * queued for the drive slot: its re-ask timer died with that server, and the
+ * review would otherwise stay queued forever. It sends the prompt it was
+ * waiting to send (its assignment, or a send-back note) once the drive is its.
+ * A review in `skip` (cut off mid-turn, told to carry on instead) is left alone.
+ */
+export async function resumeDriveReviewWaits(ctx: AppCtx, skip: ReadonlySet<string> = new Set()): Promise<number> {
+  const host = agentHost(ctx)
+  const waiting = ctx.db
+    .select()
+    .from(workers)
+    .where(eq(workers.status, 'queued'))
+    .all()
+    .filter((w) => isHostReview(w) && !skip.has(w.id) && !driveWaits.has(w.id) && !host.isRunning(w.id))
+  for (const w of waiting) {
+    await driveThenPrompt(ctx, w.id, driveWaitOf(w.id) ?? workerKickoff(ctx, w)).catch((err) =>
+      console.error(`worker ${w.id}: arming its wait for the review drive again`, err),
+    )
+  }
+  return waiting.length
 }
 
 /** A drive review is done with the drive (handed back, failed, dropped, stopped): give the slot back and stop its recorder. */
 async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
   if (!isHostReview(w)) return
   stopDriveWait(w.id)
+  forgetDriveWait(w.id)
   const feature = tryGetFeature(ctx, w.featureId)
   if (!feature) return
   await reviewDriveHost()

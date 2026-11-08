@@ -39,7 +39,7 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
-import { stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
+import { resumeDriveReviewWaits, stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { freezeStaleRuns } from './services/runs'
@@ -265,6 +265,13 @@ export async function startServer(): Promise<void> {
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
+  // …and each drive review left queued for the drive slot waits for it again: its re-ask died with the last server.
+  // A copied database's reviews are the live install's, never this server's to start.
+  if (!isDatabaseCopy()) {
+    void resumeDriveReviewWaits(ctx, new Set(cutOffChats.map((row) => row.id))).catch((err) =>
+      console.error('could not arm the drive reviews’ waits again', err),
+    )
+  }
   // …and each lead of a feature with unfinished tickets gets one held note, riding its next message (decision 20).
   void holdUpgradeNotes(ctx).catch((err) => console.error('could not hold the ticket upgrade notes', err))
 

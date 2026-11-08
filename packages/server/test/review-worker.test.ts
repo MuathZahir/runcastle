@@ -13,10 +13,12 @@ import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { type DriveTaken, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
 import {
+  dropDriveWaitsForTests,
   dropWorker,
   getWorker,
   landWorker,
   listWorkers,
+  resumeDriveReviewWaits,
   setReviewDriveRetryForTests,
   withWorkers,
   workerStallBounds,
@@ -227,6 +229,32 @@ describe('a drive review', () => {
     const second = await toolStartReview(ctx, leadSession(), {})
     expect(getWorker(ctx, second.workerId)).toMatchObject({ status: 'failed', failure: expect.stringContaining('uncommitted files') })
     expect(drive.given).toContain(second.workerId)
+  })
+
+  it('queued for the drive slot when the server restarts, waits again after boot and starts when the slot frees', async () => {
+    const held = { ok: false, retriable: true, reason: 'A test drive of feature/work is running — stop it first' } as const
+    setReviewDriveRetryForTests(60_000)
+    drive.answers = [held]
+    realHost(reviewer((w) => toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })))
+    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    expect(getWorker(ctx, workerId)?.status).toBe('queued')
+
+    // The server dies: its re-ask timer goes with it, and nothing asks for the slot again.
+    dropDriveWaitsForTests()
+    setReviewDriveRetryForTests(5)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(drive.asks).toBe(1)
+
+    // Boot: the human still drives once, then the slot frees and the review starts on its assignment.
+    drive.answers = [held]
+    expect(await resumeDriveReviewWaits(ctx)).toBe(1)
+    expect(getWorker(ctx, workerId)?.status).toBe('queued')
+    await until(() => getWorker(ctx, workerId)?.status === 'handed-back')
+    expect(drive.asks).toBe(3)
+    expect(promptsOf(workerId)).toHaveLength(1)
+    expect(promptsOf(workerId)[0]?.text).toContain('# Review this feature')
+    // Nothing waits any more, so another boot arms nothing.
+    expect(await resumeDriveReviewWaits(ctx)).toBe(0)
   })
 })
 

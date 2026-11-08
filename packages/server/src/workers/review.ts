@@ -249,6 +249,28 @@ export function reviewAssignment(workerId: string): string {
   return existsSync(path) ? readFileSync(path, 'utf8') : 'Review this feature: read it with your tools, run its checks, report what you find and hand back.'
 }
 
+/** Where a drive review waiting for the drive slot keeps the prompt it sends once it has it: beside its thread log. */
+function driveWaitPath(workerId: string): string {
+  return join(sessionDir(workerId), 'drive-wait.txt')
+}
+
+/** Keep the prompt a drive review waits to send, so a restart that loses the wait can arm it again. */
+export function keepDriveWait(workerId: string, text: string): void {
+  mkdirSync(sessionDir(workerId), { recursive: true })
+  writeFileSync(driveWaitPath(workerId), text, 'utf8')
+}
+
+/** The prompt a drive review was waiting to send, or undefined when it was not waiting. */
+export function driveWaitOf(workerId: string): string | undefined {
+  const path = driveWaitPath(workerId)
+  return existsSync(path) ? readFileSync(path, 'utf8') : undefined
+}
+
+/** The drive review stopped waiting: it took the drive, failed or was dropped. */
+export function forgetDriveWait(workerId: string): void {
+  rmSync(driveWaitPath(workerId), { force: true })
+}
+
 // --- the briefing -----------------------------------------------------------------
 
 /** A Review worker's briefing in its sandbox (a gates review): appended to its system prompt like any worker's. */
