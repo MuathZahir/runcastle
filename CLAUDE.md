@@ -8,7 +8,7 @@
 (schemas, tRPC map, gates, file ownership). Names in the spec are law. Read
 `CONTEXT.md` for vision + locked decisions, and `docs/research/*` for exact
 version pins and wiring patterns (`STACK-NOTES.md`), Claude Code integration
-(`CC-INTEGRATION-NOTES.md`), and sandcastle (`SANDCASTLE-NOTES.md`). If a research
+(`CC-INTEGRATION-NOTES.md`), and sandcastle (`SANDCASTLE-NOTES.md`, history: the dependency is gone, ADR-0020). If a research
 note contradicts a *format detail* in the spec, the research note wins — record
 the correction in `docs/research/CORRECTIONS.md`.
 
@@ -29,13 +29,13 @@ the correction in `docs/research/CORRECTIONS.md`.
   scale, the primitives, the two component-test tiers, and the rule that retires
   `styles.css` one flow at a time.
 - **Commit your own work when done**: conventional message `feat(scope): ...`.
-  Two subject forms are owned by the machinery and are the convention on burn
-  branches: a burn agent commits `ticket(<seq>): <summary>` (SPEC §8, rendered
-  into every prompt from `packages/skills/burner/implement-ticket.md`), and the
-  orchestrator's own docs commits are `runcastle: <what>` (scaffold, outcome,
-  MCP checkpoints — see `services/features.ts`, `services/outcome.ts`). Both
-  are correct where they appear; they are published to the integration branch
-  and to sibling ticket branches, so never reword them.
+  Two subject forms are owned by the machinery: `ticket(<seq>): <summary>`,
+  which the retired burn engine's agents committed (SPEC §8; it stays in the
+  history of features built before workers, and never gets reworded), and the
+  orchestrator's own docs commits, `runcastle: <what>` (scaffold, outcome, MCP
+  checkpoints — see `services/features.ts`, `services/outcome.ts`). Both are
+  correct where they appear; they are published to the integration branch, so
+  never reword them. A worker commits with the conventional form above.
 - **For library/API shapes, use `npx ctx7@latest library|docs`** (≤3 calls per
   question) — don't trust training data for API shapes.
 - Ports: server **4512**, web **4513**. Data dir: `~/.runcastle/`.
@@ -45,8 +45,8 @@ the correction in `docs/research/CORRECTIONS.md`.
 | Package             | Name                 | Role |
 |---------------------|----------------------|------|
 | `packages/core`     | `@runcastle/core`    | IO-free contracts: schemas, drizzle schema, pipeline/gates, paths, workflow types, config. |
-| `packages/server`   | `@runcastle/server`  | Hono + tRPC + services + launcher + MCP + workflows. |
-| `packages/skills`   | `@runcastle/skills`  | Vendored/forked skill packs + burner prompt template (content only). |
+| `packages/server`   | `@runcastle/server`  | Hono + tRPC + services + launcher + MCP + workers. |
+| `packages/skills`   | `@runcastle/skills`  | Vendored/forked skill packs + the Review worker's assignments (content only). |
 | `apps/web`          | `@runcastle/web`     | Vite + React + tRPC client + TanStack Query. |
 
 Those four are the whole map. `packages/design-system` and the `.design-sync/` Claude
@@ -70,7 +70,7 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/services/projects.ts`        | A1 | initProject, getProject |
 | `src/services/features.ts`        | A1 | createFeature, getFeatureFull, phase transitions |
 | `src/services/gates.ts`           | A1 | checkGate(gateId, feature), overrideGate |
-| `src/services/tickets.ts`         | A1 | storeTickets (seq + blockedBy resolve), listByFeature, updateTicket |
+| `src/services/tickets.ts`         | A1 | frozen ticket history: listByFeature, getTicket (read only since ADR-0020) |
 | `src/services/events.ts`          | A1 | emit, listAfter |
 | `src/services/knowledge.ts`       | A1 | scaffoldDocs, listDocs, readDoc |
 | `src/services/git.ts`             | B2 | simple-git: branch, worktree, test-drive guard, merge (§7) |
@@ -81,9 +81,8 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/routes/hooks.ts`             | B1 | POST /api/hooks/:event |
 | `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) — build-era count; the server registers **26** today, filtered per session kind so no session sees all of them |
 | `src/mcp/sent-memory.ts`          | — | per-session memory of what a conversation was already sent (stubs, chat read position); in-process, reset on SessionStart |
-| `src/workflows/registry.ts`       | A1 | Map<string, WorkflowDef>; stub ticket-burner entry |
-| `src/workflows/ticket-burner.ts`  | B3 | @ai-hero/sandcastle burner (§8) |
-| `src/workflows/runner.ts`         | A1 | startRun: create run row, wire ctx, catch, finalize |
+| `src/services/runs.ts`            | A1 | frozen run and round history reads; `freezeStaleRuns` closes a run the old server left running |
+| `src/workers/*`                   | —  | the worker service, sandbox engine, review worker, burn-cache/image/guard (ADR-0019, ADR-0020) — where the retired `src/workflows/` burn engine's duties now live |
 
 Other dir owners: `packages/skills` = A2 (§9); `apps/web` = A3 (§10).
 

@@ -127,7 +127,7 @@ Sub-agent output is a hypothesis, not evidence. Say so in the report where a cla
 That is the caller's call, not yours. Reporting the two blocks IS this skill's deliverable.
 
 - Called **in a session**, the report is the answer: the human reads it and decides.
-- Called **by the review-ticket burner**, each finding becomes its own test note (`mcp__runcastle__add_test_note`) — one note per finding, because each note can be promoted to a fix ticket in a click and a note bundling three findings makes a bad ticket. The review agent's prompt says this; follow it there.
+- Called **by a Review worker**, each finding is reported on its own with `report_finding` — one finding per call, because the lead closes them one at a time and a call bundling three findings cannot be closed in parts. The review's assignment says this; follow it there.
 
 Either way: **finding problems is a successful review.** The report is the deliverable, not a verdict, and not a pass/fail.
 

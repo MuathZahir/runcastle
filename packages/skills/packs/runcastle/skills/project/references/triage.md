@@ -23,7 +23,7 @@ order.
 - `mcp__runcastle__list_project_notes()` — the open notes, oldest first: `id`,
   `text`, `createdAt`, and, when the note has a screenshot, `screenshotPath` (an
   absolute host path — `Read` it) and `attachmentSentence` (ready-made prose
-  naming `.runcastle-attachments/<noteId>.png`, to paste into a ticket string).
+  naming `.runcastle-attachments/<noteId>.png`, to paste into an assignment).
   A note taken during a project test drive also carries `driveBranch` and
   `driveCommit` — it was noted while driving `<driveBranch>` @ `<driveCommit>`
   (`+dirty` means uncommitted edits were driven too), so you can tell whether
@@ -118,8 +118,8 @@ one per theme would give you a feature each.
   the ten-second line. The feature's agent reads it and judges the work.
 - A theme whose note has a screenshot ends with that note's
   `attachmentSentence`, **pasted verbatim**. That sentence is the whole contract:
-  the feature's agent carries it into any ticket it writes, and the worker scans
-  it back out of the ticket and puts the PNG in its sandbox.
+  the feature's agent carries it into any assignment it writes, and the worker scans
+  it back out of the assignment and puts the PNG in its sandbox.
 - Pass `baseBranch` the way §1c requires. The batch's review is then an ordinary
   feature test drive of its branch.
 

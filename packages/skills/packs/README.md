@@ -8,7 +8,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 
 | Skill | Invoked | Does |
 |---|---|---|
-| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or writes tickets and runs rounds, reviews when it is worth it, hands over the drive; grilling, spec, tickets, rounds, planning alone, the preview and design live in its `references/` |
+| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or hands work to workers, has the end reviewed by a Review worker, hands over the drive; grilling, spec, workers, planning alone, the preview and design live in its `references/` |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
@@ -24,7 +24,7 @@ packs/
     └── skills/
         ├── feature/
         │   ├── SKILL.md
-        │   └── references/         # grilling, spec, tickets, rounds, planning-alone, preview, design
+        │   └── references/         # grilling, spec, workers, planning-alone, preview, design
         ├── qa/SKILL.md
         ├── project/
         │   ├── SKILL.md
@@ -145,9 +145,5 @@ ticket instead.
 
 1. Create `packs/<pack-name>/.claude-plugin/plugin.json` with at least `{ "name": "<pack-name>" }` — `name` sets the `/<pack-name>:` namespace.
 2. Add skills at `packs/<pack-name>/skills/<skill>/SKILL.md` (folder name = skill name; frontmatter needs `name` matching the folder, `description`, and `disable-model-invocation` — see the split above). Long, rarely-needed sections go in a sibling `references/` dir.
-3. If you are forking an upstream skill, keep the provenance header and rewire its steps to runcastle's MCP tools (`get_feature_context`, `emit_tickets`, `record_event`).
+3. If you are forking an upstream skill, keep the provenance header and rewire its steps to runcastle's MCP tools (`get_feature_context`, `start_worker`, `record_event`).
 4. Pass another `--plugin-dir` for it at launch.
-
-## Not a pack: `../burner/`
-
-The sibling `packages/skills/burner/` holds **prompt templates**, not skills — e.g. `implement-ticket.md`, rendered per ticket by the unattended ticket-burner workflow (placeholders `{{TICKET_JSON}}`, `{{FEATURE_BRIEF}}`, `{{DOCS_DIGEST}}`, `{{COMMIT_CONVENTION}}`). It is never passed to `--plugin-dir`.

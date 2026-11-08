@@ -7,7 +7,7 @@ import {
   type ImageBuildNeed,
   resolveSandboxImage,
   type RuncastleConfig,
-  type WorkflowCtx,
+  type Project,
 } from '@runcastle/core'
 import { logsDir } from '@runcastle/core/paths'
 import type { ExecFn } from '../doctor/doctor'
@@ -77,8 +77,25 @@ const NEED_WORDS: Record<ImageBuildNeed, string> = {
   'dockerfile-changed': "the repo's Dockerfile has changed",
 }
 
-/** What the image build reads of a run: the burn's context, or a worker start's stand-in for it. */
-export type BurnImageCtx = Pick<WorkflowCtx, 'runId' | 'project' | 'emitEvent' | 'signal' | 'projectImage'>
+/** What the image build reads of a worker start: the project, a way to say what it is doing, and a stop. */
+export interface BurnImageCtx {
+  /** Names the start in events; a worker start passes its own id. */
+  runId: string
+  project: Project
+  emitEvent(e: { type: string; message: string; ticketId?: string; data?: unknown }): void
+  signal: AbortSignal
+  /**
+   * The project's stored image. `adopt` and `release` also refresh `project`
+   * above, because a snapshot would otherwise keep resolving to the image it
+   * started with. Optional: a caller with no store leaves image building off.
+   */
+  projectImage?: {
+    /** Runcastle may rewrite the column: false once a human typed the value. */
+    overwritable(): boolean
+    adopt(tag: string): void
+    release(): void
+  }
+}
 
 export interface EnsureBurnImageDeps {
   config: Pick<RuncastleConfig, 'sandbox' | 'sandboxImage'>

@@ -7,7 +7,7 @@ import { SKILLS_DIR_ENV, resolveSkillsRoot } from '../src/launcher/skills-root'
 
 /**
  * Issue #51 — a published `runcastle` ships skills as real files, so the runtime
- * must resolve the plugin pack and burner templates from the *installed*
+ * must resolve the plugin pack and review assignments from the *installed*
  * location, not only the contributor workspace. `RUNCASTLE_SKILLS_DIR` points at
  * the vendored root (mirroring `RUNCASTLE_WEB_DIST` for the SPA); with it unset,
  * resolution ascends to the workspace `packages/skills` exactly as before.
@@ -17,7 +17,7 @@ import { SKILLS_DIR_ENV, resolveSkillsRoot } from '../src/launcher/skills-root'
 function fakeSkillsRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'runcastle-skills-'))
   mkdirSync(join(root, 'packs', 'runcastle'), { recursive: true })
-  mkdirSync(join(root, 'burner'), { recursive: true })
+  mkdirSync(join(root, 'review'), { recursive: true })
   return root
 }
 

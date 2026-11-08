@@ -145,22 +145,6 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
   })
 })
 
-describe('the feature skill, running the review round', () => {
-  const text = (): string => flat(read('references', 'rounds.md'))
-
-  it('runs only the review ticket, after every worker is landed or dropped', () => {
-    expect(text()).toContain('A round now runs only the review ticket')
-    expect(text()).toContain('Build work goes to workers')
-    expect(text()).toContain('**Land or drop every worker first**')
-    expect(text()).toContain('`dispatch_round({ seqs })`')
-  })
-
-  it('trusts the record when a round returns, and never dispatches under a drive', () => {
-    expect(text()).toContain('**Trust the record over the prose.**')
-    expect(text()).toContain('Never dispatch while the feature is being driven')
-  })
-})
-
 describe('the feature skill, workers', () => {
   const text = (): string => flat(read('references', 'workers.md'))
 
@@ -177,6 +161,11 @@ describe('the feature skill, workers', () => {
     expect(text()).toContain('**UI work names its design references**')
     expect(text()).toContain('**One area each.**')
     expect(text()).toContain('Pieces that run side by side should touch different files')
+  })
+
+  it('ships a scenario for hard-to-reach state only in a set-up project', () => {
+    expect(text()).toContain('**Ship a scenario when the state is hard to reach.**')
+    expect(text()).toContain('**When `setUp` is false**, card nothing about scenarios.')
   })
 
   it('lands, sends back or drops a handback, and trusts the commits over the summary', () => {
@@ -196,19 +185,6 @@ describe('the feature skill, workers', () => {
     expect(text()).toContain('Close each finding with `resolve_finding`')
     expect(text()).toContain('`start_review({ verify: { findingIds, commits } })`, with only those findings and the commits that fixed them')
     expect(text()).toContain('Never `land_worker` it.')
-  })
-})
-
-describe('the feature skill, writing the review ticket', () => {
-  const text = (): string => read('references', 'tickets.md')
-
-  it('has a review ticket, when there is one, say what to walk', () => {
-    expect(text()).toContain('**Say what to walk, never which mode.**')
-  })
-
-  it('ships a scenario for hard-to-reach state only in a set-up project', () => {
-    expect(text()).toContain('**Ship a scenario when the state is hard to reach.**')
-    expect(text()).toContain('**When `setUp` is false**, card nothing about scenarios.')
   })
 })
 

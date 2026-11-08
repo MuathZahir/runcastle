@@ -4,6 +4,7 @@
 > the feature docs because the ideation session cannot edit `docs/adr/`.
 
 - **Status:** accepted (2026-08-28)
+- **Superseded by ADR-0020** (burns become workers): sandcastle and its patch are deleted.
 - **Deciders:** Muath + ideation session for `upstream-named-volume-mounts-to-sandcastle` (feature dropped)
 - **Supersedes:** decision 3 of `docs/features/persistent-burn-cache-volume/decisions.md` ("upstream later")
 

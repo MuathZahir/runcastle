@@ -24,8 +24,8 @@ short list of findings the human can route.
   ticket marked `digestNotInlined: true` had its digest moved out for size;
   read it with `get_work_record({ featureSlug, seq })`.
 - Features in flight whose index line and work record say they have stalled:
-  tickets pending with no round running, or the same ticket failing round after
-  round.
+  workers queued or needing you for a long while, or the same kind of worker
+  failing again and again.
 
 ## What to do with the findings
 

@@ -15,7 +15,7 @@ questions, and keep the short map it returns. Read a
 file yourself only to settle one fact the map left open.
 
 **This run plans; it does not build.** Whatever the plan says,
-never call `dispatch_round` in this run, nor `start_worker`: nothing starts
+never call `start_worker` or `start_review` in this run: nothing starts
 without the human's yes. You write the feature's docs (`decisions.md`,
 `spec.md`, `preview.html`), and the preview names the workers you would start.
 The one exception

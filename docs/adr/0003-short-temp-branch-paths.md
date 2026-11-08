@@ -1,6 +1,7 @@
 # ADR-0003: Truncate the slug in temp branch names (Windows MAX_PATH)
 
 - **Status:** accepted (2026-07-20)
+- **Superseded by ADR-0020** (burns become workers): worker temp branches keep short paths, in the worker service.
 - **Amends:** ADR-0002 decision 1 (branch-name format detail only; the
   concurrency model is unchanged).
 

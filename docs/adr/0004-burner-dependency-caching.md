@@ -1,6 +1,7 @@
 # ADR-0004: Burner dependency caching — mount download caches, never the pnpm store
 
 - **Status:** accepted (2026-07-20)
+- **Amended by ADR-0020** (burns become workers): its dependency caching now governs worker sandboxes.
 - **Amends:** the cache-mount half of the pre-install work (`selectSandbox`
   mounts, `PM_CACHE_SANDBOX_PATHS`). The `onSandboxReady` install hook and
   `maxIterations` are unchanged.

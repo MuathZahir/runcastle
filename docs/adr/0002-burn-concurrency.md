@@ -1,6 +1,7 @@
 # ADR-0002: Burn concurrency via per-ticket temp branches + serialized landings
 
 - **Status:** accepted (2026-07-20)
+- **Superseded by ADR-0020** (burns become workers): the burn engine is gone; workers keep per-worker temp branches and a serialized landing queue.
 - **Deciders:** Muath + planning session
 - **Spec delta:** `docs/SPEC.md` §8 ("concurrency = 1 (M1) but code shaped as a
   worker pool so M2 raises the constant") — this is that M2 change.

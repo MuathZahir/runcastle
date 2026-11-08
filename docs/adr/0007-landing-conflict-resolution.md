@@ -1,6 +1,7 @@
 # ADR-0007: Landing conflicts are resolved in-loop by an agent, not handed to the human
 
 - **Status:** accepted (2026-07-26)
+- **Superseded by ADR-0020** (burns become workers): a landing conflict sends an "on its own" worker back to resolve it.
 - **Extends:** ADR-0002 (burn concurrency), which creates these conflicts, and
   ADR-0006 (attempt chaining), whose `attempt_branch` pointer this reuses as the
   preserved-work mechanism.

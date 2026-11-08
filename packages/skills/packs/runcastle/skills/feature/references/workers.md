@@ -61,9 +61,29 @@ concrete:
   markup changed only where the wiring needs it. The states on the design
   page's switcher are the states it must reach.
 - **Hard-to-reach state**: when `scenarios.setUp` is true, the done-when ships
-  the scenario (`./tickets.md`, scenarios).
+  the scenario (see **Ship a scenario**, below).
 - **One area each.** A worker's cost grows with the square of its context, so a
   job across several packages is two workers, one after the other.
+
+## Ship a scenario
+
+**Ship a scenario when the state is hard to reach.** A scenario is a project
+command under `.runcastle/scenarios/` that seeds a state and prints the URL to
+land on, so a test drive starts where the feature is instead of on a blank app.
+Read `get_feature_context`'s `scenarios` field — `{ setUp, runnerConfigured,
+scenarios, fixtures }` — before you decide anything.
+
+**When `setUp` is true**, ask of each piece of work: will the person driving
+this have to build state by hand to see it — an account, a cart with an expired
+coupon?
+
+- If yes, the work that builds that state ships `.runcastle/scenarios/<group>/<name>.<ext>`, which seeds the state (reusing `_fixtures`) and prints `ENTRY_URL=<where>`: a line in that worker's done-when, or yours to write. Name the fixtures it should reuse. When the change is an API call, it also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
+- Use that scenario as the `scenario` you declare ready with; the Review worker replays it rather than improvising the setup.
+- Copy changes and settings toggles get none. A scenario earns its place only where reaching the state is the chore.
+- A worker writes and typechecks the scenario but cannot run it — a sandbox has no drive.
+
+**When `setUp` is false**, card nothing about scenarios. Tell the human once
+that ＋ New scenario in a test drive sets scenarios up for this project.
 
 ## Talk to it
 
