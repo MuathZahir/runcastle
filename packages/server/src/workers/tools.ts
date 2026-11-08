@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, posix } from 'node:path'
-import type { WorkerRow } from '@runcastle/core'
+import { ReviewFindingInput, type WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
@@ -9,6 +9,7 @@ import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { getFeatureRow } from '../services/repo'
 import { showFetchedFile } from '../threads/shown'
 import type { SandboxEngine } from './engine'
+import { reportReviewFinding } from './review'
 import { IN } from './sandbox'
 import type { WorkerToolHandler } from './tool-relay'
 import { type WorkerSandbox, workersDir } from './worker'
@@ -16,7 +17,7 @@ import { type WorkerSandbox, workersDir } from './worker'
 /**
  * Runcastle's answers to the tools a worker calls through its relay
  * (interactive-workers decision 9): read the feature, show a file in its own
- * chat, park a backlog feature. Each reuses what the lead's own tools run on;
+ * chat, park a backlog feature, and a Review worker's findings. Each reuses what the lead's own tools run on;
  * none can change the feature the worker works on.
  */
 
@@ -96,6 +97,10 @@ export function workerTools(ctx: AppCtx, w: WorkerRow, sb: WorkerSandbox, engine
       case 'park_feature': {
         const { slug } = await parkFeatureForWorker(ctx, w, parsed(ParkFeatureArgs, tool, args))
         return `Parked as a draft in the backlog: ${slug}. Tell the human in a line; it starts only when they start it.`
+      }
+      case 'report_finding': {
+        const { finding } = reportReviewFinding(ctx, w.id, parsed(ReviewFindingInput, tool, args))
+        return `Reported as ${finding.id}.`
       }
       default:
         throw new InvalidInputError(`runcastle has no worker tool ${tool}`)

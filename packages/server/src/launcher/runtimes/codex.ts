@@ -607,6 +607,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
         NO_BROWSER: '1',
+        ...input.hostWorker?.env,
       },
       envScrub: [],
       sessionMeta: {},

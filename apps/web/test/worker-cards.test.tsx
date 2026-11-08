@@ -39,6 +39,8 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   outcome: null,
   outcomeNote: null,
   tokens: null,
+  reviewMode: null,
+  reviewVerify: null,
   createdAt: 1,
   updatedAt: 2,
   ...over,

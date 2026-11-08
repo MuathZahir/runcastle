@@ -7,6 +7,8 @@ import {
   type Feature,
   type ModelEntry,
   type PromptDisplay,
+  type ReviewVerify,
+  type ReviewWorkerMode,
   type SessionRow,
   type WorkerKind,
   type WorkerRow,
@@ -55,7 +57,20 @@ import { codexSetup } from './codex-setup'
 import { workerMcpServer } from './sandbox'
 import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
-import { type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
+import {
+  chooseReviewMode,
+  isHostReview,
+  keepReviewAssignment,
+  renderReviewAssignment,
+  reviewAssignment,
+  reviewDriveHost,
+  reviewHandbackText,
+  reviewLabel,
+  takeHostHandback,
+  verifyFindings,
+} from './review'
+import { listByFeature as listFindings } from '../services/review-findings'
+import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
@@ -175,6 +190,8 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
   return async (spec, row) => {
     if (row.kind !== 'worker') return base(spec, row)
     const w = requireWorker(ctx, row.id)
+    // A drive review runs on the host, in the human's checkout: its launch (`acpLaunchInput`) briefs it there.
+    if (isHostReview(w)) return base(spec, row)
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new Error(`worker "${w.label}" has no sandbox${w.failure ? `: ${w.failure}` : ''}`)
     const launched = sb.runtime === 'claude-code' ? (spec.sessionMeta as { claudeCode?: { options?: { model?: string } } } | undefined)?.claudeCode?.options?.model : undefined
@@ -200,7 +217,7 @@ export function withWorkers(ctx: AppCtx, base: AgentTransport): AgentTransport {
 /** The human's setup for the worker's runtime: Claude Code's from `~`, Codex's from their Codex home with the worker's own config and briefing. */
 function workerSetup(sb: WorkerSandbox, brief: WorkerBrief, model: string): WorkerSetup {
   if (sb.runtime === 'claude-code') return claudeSetup(homedir())
-  return codexSetup(codexHomeDir(), { model, briefing: workerBriefing(sb, brief), mcp: workerMcpServer(sb.port, sb.previewUrl) })
+  return codexSetup(codexHomeDir(), { model, briefing: workerBriefing(sb, brief), mcp: workerMcpServer(sb.port, sb.previewUrl, brief.kind === 'review') })
 }
 
 /** The permission mode each worker last said it runs in, so a mode is recorded once per change, not once per report. */
@@ -238,6 +255,8 @@ export interface StartWorkerInput {
   /** One of the human's annotated models; the feature chat's model when omitted. */
   model?: string
   startedBy: WorkerStartedBy
+  /** A gates review's (kind `review`): what it verifies, if anything, and its assignment, its first prompt. */
+  review?: { verify: ReviewVerify | null; assignment: string }
 }
 
 export interface StartedWorker {
@@ -304,10 +323,12 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
       status: 'working',
       engine: engine.name,
       featureBranch: feature.branch,
+      ...(input.review ? { reviewMode: 'gates' as const, reviewVerify: input.review.verify } : {}),
       createdAt: now,
       updatedAt: now,
     })
     .run()
+  if (input.review) keepReviewAssignment(session.id, input.review.assignment)
   const short = shortId(session.id)
   let sb: WorkerSandbox
   try {
@@ -323,6 +344,8 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
       image: resolveSandboxImage(ctx.config, projectForFeature(ctx, feature)),
       repoPath: project.repoPath,
       featureBranch: feature.branch,
+      // A review reads its diff against the base, which a worker's copy of the feature branch alone lacks.
+      ...(input.review && feature.baseBranch ? { baseBranch: feature.baseBranch } : {}),
       takenPorts: takenPorts(ctx),
       ...sandboxSetup(ctx, project),
     })
@@ -406,6 +429,177 @@ export function startUnassignedWorker(ctx: AppCtx, featureId: string): Promise<S
   })
 }
 
+// --- the review (burns-become-workers decisions 3–5) ------------------------------
+
+export interface StartReviewInput {
+  /** `gates` when the feature has nothing to drive; omitted, a drive whenever this host can drive the project. */
+  mode?: ReviewWorkerMode
+  /** A verify review's findings and fix commits; omitted for a first review. */
+  verify?: ReviewVerify
+  model?: string
+  startedBy: WorkerStartedBy
+}
+
+export interface StartedReview {
+  workerId: string
+  mode: ReviewWorkerMode
+  /** A drive review waits for the drive slot while the human drives. */
+  status: WorkerStatus
+}
+
+/**
+ * Start the feature's Review worker (decision 3). A gates review is an ordinary
+ * sandboxed worker on the committed feature branch; a drive review is an agent
+ * thread on the host, in the project's checkout, that starts once the review
+ * drive holds the drive slot and waits `queued` until then.
+ */
+export async function startReviewWorker(ctx: AppCtx, feature: Feature, input: StartReviewInput): Promise<StartedReview> {
+  const project = projectForFeature(ctx, feature)
+  const mode = chooseReviewMode(project, input.mode)
+  const verify = input.verify ?? null
+  if (verify) verifyFindings(ctx, feature.id, verify)
+  const label = reviewLabel(verify)
+  const purpose = verify ? `Verifies ${verify.findingIds.length} fixed finding(s)` : `${mode === 'drive' ? 'Drives' : 'Reads'} the feature for review`
+  if (mode === 'gates') {
+    const assignment = await renderReviewAssignment(ctx, feature, project, { mode, passId: '' }, verify)
+    const started = await startWorker(ctx, feature, {
+      label,
+      purpose,
+      kind: 'review',
+      goal: purpose,
+      ...(input.model ? { model: input.model } : {}),
+      startedBy: input.startedBy,
+      review: { verify, assignment },
+    })
+    return { workerId: started.workerId, mode, status: requireWorker(ctx, started.workerId).status }
+  }
+  const model = workerModel(ctx, feature, input.model)
+  const mainChat = newestThread(ctx, { featureId: feature.id }, 'chat')
+  // Its agent runs where the review drive puts the feature branch: the project's own checkout.
+  const session = createSessionRow(ctx, {
+    featureId: feature.id,
+    kind: 'worker',
+    worktreePath: project.repoPath,
+    model,
+    ...(mainChat ? { openedBeside: mainChat.id } : {}),
+  })
+  setSessionTitle(ctx, session.id, label)
+  const now = Date.now()
+  ctx.db
+    .insert(workers)
+    .values({
+      id: session.id,
+      featureId: feature.id,
+      label,
+      purpose,
+      kind: 'review',
+      goal: purpose,
+      doneWhen: null,
+      model: model.id,
+      runtime: model.runtime,
+      startedBy: input.startedBy,
+      status: 'queued',
+      engine: sandboxEngine(ctx.config.sandbox).name,
+      featureBranch: feature.branch,
+      reviewMode: 'drive',
+      reviewVerify: verify,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+  keepReviewAssignment(session.id, await renderReviewAssignment(ctx, feature, project, { mode, passId: session.id }, verify))
+  const w = requireWorker(ctx, session.id)
+  emitWorker(ctx, w, 'worker.started', `worker "${label}" started on the host, for the review drive`, {
+    sessionId: session.id,
+    kind: 'review',
+    startedBy: input.startedBy,
+    mode,
+  })
+  await driveThenPrompt(ctx, session.id, workerKickoff(ctx, w))
+  return { workerId: session.id, mode, status: requireWorker(ctx, session.id).status }
+}
+
+/** How long a drive review waits before asking for the drive slot again. */
+let driveRetryMs = 15_000
+
+/** Shorten the wait between a drive review's asks for the drive slot (tests); `undefined` restores 15s. */
+export function setReviewDriveRetryForTests(ms: number | undefined): void {
+  driveRetryMs = ms ?? 15_000
+}
+
+/** Each drive review's next ask for the drive slot, while it waits. */
+const driveWaits = new Map<string, ReturnType<typeof setTimeout>>()
+
+function stopDriveWait(id: string): void {
+  const timer = driveWaits.get(id)
+  if (timer) clearTimeout(timer)
+  driveWaits.delete(id)
+}
+
+/**
+ * Take the review drive for a drive review, then send it `text`. While another
+ * drive (the human's) holds the slot it waits `queued` and asks again; a start
+ * that waiting cannot fix (an uncommitted file in the checkout) fails it.
+ */
+async function driveThenPrompt(ctx: AppCtx, id: string, text: string): Promise<void> {
+  stopDriveWait(id)
+  const w = getWorker(ctx, id)
+  if (!w || w.status === 'failed' || w.status === 'dropped') return
+  const feature = getFeatureRow(ctx, w.featureId)
+  const taken = await reviewDriveHost().take(ctx, projectForFeature(ctx, feature), feature)
+  if (taken.ok) {
+    setStatus(ctx, requireWorker(ctx, id), 'working')
+    await agentHost(ctx).prompt(id, { text }, { source: 'runcastle' })
+    return
+  }
+  if (!taken.retriable) return failWorker(ctx, w, `the review drive could not start: ${taken.reason}`)
+  if (w.status !== 'queued') {
+    const queued = setStatus(ctx, w, 'queued')
+    emitWorker(ctx, queued, 'worker.waiting_for_drive', `worker "${w.label}" waits for the drive slot: ${taken.reason}`, { reason: taken.reason })
+  }
+  const timer = setTimeout(() => void driveThenPrompt(ctx, id, text).catch((err) => console.error(`worker ${id}: review drive`, err)), driveRetryMs)
+  timer.unref?.()
+  driveWaits.set(id, timer)
+}
+
+/** A drive review is done with the drive (handed back, failed, dropped, stopped): give the slot back and stop its recorder. */
+async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  if (!isHostReview(w)) return
+  stopDriveWait(w.id)
+  const feature = tryGetFeature(ctx, w.featureId)
+  if (!feature) return
+  await reviewDriveHost()
+    .give(projectForFeature(ctx, feature), feature, w.id)
+    .catch((err) => console.error(`worker ${w.id}: giving the review drive back`, err))
+}
+
+/**
+ * A Review worker handed back (decision 4): the drive goes back, and the lead
+ * gets its Review Package card, with its findings, in place of the plain
+ * handback card. A review has no branch: nothing lands.
+ */
+async function reviewHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): Promise<void> {
+  await giveDriveBack(ctx, w)
+  const handed = updateWorker(ctx, w.id, {
+    status: 'handed-back',
+    handbackSummary: note.summary,
+    handbackCommits: [],
+    handbackFiles: [],
+    outcome: null,
+    outcomeNote: null,
+  })
+  const findings = listFindings(ctx, w.featureId).filter((f) => f.reviewWorkerId === w.id)
+  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, { commits: 0, files: 0, findings: findings.length })
+  const feature = tryGetFeature(ctx, w.featureId)
+  if (!feature) return
+  await deliverToLead(ctx, feature, {
+    text: reviewHandbackText(handed, findings),
+    source: 'runcastle',
+    display: { reviewPackage: { workerId: w.id, label: w.label } },
+  })
+  emit(ctx, feature.id, { type: 'review.package_posted', message: 'review package posted in the chat', data: { workerId: w.id } })
+}
+
 /**
  * A worker's first prompt. An assigned worker starts on its goal; an
  * unassigned one is told the feature's state and the lead's latest turns (as a
@@ -413,6 +607,7 @@ export function startUnassignedWorker(ctx: AppCtx, featureId: string): Promise<S
  * hands back) rides its system prompt.
  */
 export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
+  if (w.kind === 'review') return reviewAssignment(w.id)
   if (w.kind !== 'unassigned') {
     return [`Start your assignment: ${w.goal ?? w.purpose}`, ...(w.doneWhen ? ['', `Done when: ${w.doneWhen}`] : [])].join('\n')
   }
@@ -445,10 +640,11 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   const held = failed?.verdict === 'account' ? holdQueue(ctx, w, errorLine(failed.error)) : undefined
   const sb = sandboxOf(ctx, w)
   const engine = sandboxEngine(w.engine)
-  const note = sb ? await engine.takeHandback(sb) : undefined
+  const note = sb ? await engine.takeHandback(sb) : isHostReview(w) ? takeHostHandback(w.id) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
+  if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
   if (!note || !sb) {
     if (w.status === 'working') setStatus(ctx, w, 'needs-you')
     return
@@ -656,6 +852,8 @@ export async function workerStopped(ctx: AppCtx, row: Pick<SessionRow, 'id'>, re
   const w = getWorker(ctx, row.id)
   if (!w) return
   if (reason === 'crashed') return failWorker(ctx, w, crashFailure(w.id))
+  // A drive review whose agent stopped holds the human's drive for nothing; it takes it again with review_drive.
+  await giveDriveBack(ctx, w)
   if (reason !== 'idle' && reason !== 'archived') return
   const sb = sandboxOf(ctx, w)
   if (!sb || w.status === 'dropped') return
@@ -678,6 +876,7 @@ function crashFailure(threadId: string): string {
 async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: string): Promise<void> {
   if (w.status === 'failed' || w.status === 'dropped' || w.status === 'landed') return
   forgetRetries(w.id)
+  await giveDriveBack(ctx, w)
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
@@ -741,6 +940,7 @@ export const MAX_CONFLICT_SEND_BACKS = 2
  */
 export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerResult> {
   const w = requireWorker(ctx, id)
+  if (w.kind === 'review') throw new GateError(`worker "${w.label}" is a review: it writes no code, so nothing lands. Resolve its findings instead.`)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker lands`)
   const sb = sandboxOf(ctx, w)
   if (!sb) throw new GateError(`worker "${w.label}" has no sandbox to land from`)
@@ -809,6 +1009,8 @@ async function sendBack(ctx: AppCtx, w: WorkerRow, text: string, note: string, d
   if (sb) await sandboxEngine(w.engine).refreshFeatureBranch(sb)
   const sent = updateWorker(ctx, w.id, { status: 'working', outcome: 'sent-back', outcomeNote: note })
   emitWorker(ctx, sent, 'worker.sent_back', `worker "${w.label}" was sent back`, { note, ...data })
+  // A drive review sent back takes the drive slot again first (decision 3).
+  if (isHostReview(w)) return driveThenPrompt(ctx, w.id, text)
   await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
 }
 
@@ -853,6 +1055,7 @@ async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
   const drops = w.status !== 'dropped' && w.status !== 'landed'
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   await agentHost(ctx).stop(w.id, 'archived')
+  await giveDriveBack(ctx, w)
   const sb = sandboxOf(ctx, w)
   if (sb) {
     await keepConversation(ctx, w)
@@ -923,9 +1126,9 @@ export async function removeFeatureWorkers(ctx: AppCtx, featureId: string, after
 /** The statuses that keep a feature from being ready: at work, or holding work not landed (decision 19). */
 const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'handed-back'])
 
-/** The feature's workers still at work or holding work that has not landed. */
+/** The feature's workers still at work or holding work that has not landed; a review that handed back holds nothing to land. */
 export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[] {
-  return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status))
+  return listWorkers(ctx, featureId).filter((w) => HOLDS_READY.has(w.status) && !(w.kind === 'review' && w.status === 'handed-back'))
 }
 
 /**

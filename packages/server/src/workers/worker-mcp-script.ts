@@ -83,6 +83,29 @@ const TOOLS = [
   },
 ]
 
+// A Review worker's one more tool (burns-become-workers decision 3): its findings, answered by runcastle.
+if (process.env.RUNCASTLE_WORKER_REVIEW === '1') {
+  TOOLS.push({
+    name: 'report_finding',
+    description:
+      'Report one typed finding of your review, as you find it. Defects stay open for the feature lead, which decides what each becomes; ' +
+      'observations are kept with the review. A defect needs a reproStep.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['defect', 'observation'] },
+        severity: { type: 'string', enum: ['high', 'medium', 'low'] },
+        title: { type: 'string', description: 'One line, the whole finding in a glance.' },
+        location: { type: 'string', description: 'The file and hunk, or the screen and the steps that reach it.' },
+        citation: { type: 'string', description: 'The standard and rule, the smell and hunk, the spec line, or the check command.' },
+        detail: { type: 'string', description: 'What you did, what happened, what you expected.' },
+        reproStep: { type: 'string', description: 'The exact steps or command that shows it: required for a defect.' },
+      },
+      required: ['kind', 'severity', 'title', 'location', 'citation', 'detail'],
+    },
+  })
+}
+
 function send(msg) { process.stdout.write(JSON.stringify(msg) + '\n') }
 function text(t, isError) { return { content: [{ type: 'text', text: t }], ...(isError ? { isError: true } : {}) } }
 
@@ -148,6 +171,7 @@ async function call(name, args) {
   if (name === 'start_dev_server') return startDev(args && args.command)
   if (name === 'read_feature') return relay('read_feature', {})
   if (name === 'park_feature') return relay('park_feature', args || {})
+  if (name === 'report_finding' && process.env.RUNCASTLE_WORKER_REVIEW === '1') return relay('report_finding', args || {})
   if (name === 'show_file') {
     const given = String((args && args.path) || '')
     if (!given) return text('show_file needs a path.', true)

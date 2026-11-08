@@ -5,6 +5,7 @@ import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutco
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
+import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 
 /**
  * What the feature rows in a chat read and open
@@ -135,6 +136,8 @@ export function RuncastleDisplay({
   if ('summary' in display) return <RuncastleNote summary={display.summary} agentText={agentText} />
   if ('handback' in display) return <HandbackItem handback={display.handback} />
   if ('workerFailed' in display) return <WorkerFailedItem failed={display.workerFailed} />
+  // A Review worker's handback is its Review Package card (burns-become-workers decision 4).
+  if ('reviewPackage' in display) return <ReviewPackageItem ticketId={display.reviewPackage.workerId} />
   if ('featureHandback' in display) {
     const h = display.featureHandback
     return <FeatureHandbackCard title={find(h.featureId)?.title ?? h.title} state={h.state} summary={h.summary} onOpenFeature={() => open(h.featureId)} />

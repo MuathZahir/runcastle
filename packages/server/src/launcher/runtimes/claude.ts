@@ -301,6 +301,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         // under CC's background supervisor.
         CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
         ...leadCompactEnv(input),
+        ...input.hostWorker?.env,
       },
       envScrub: CC_NESTING_ENV,
       sessionMeta: {

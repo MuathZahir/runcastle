@@ -24,8 +24,8 @@ import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import type { runReviewGates } from './review-gates'
 import { startSaw } from '../services/review-saw'
-import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
-export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
+import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from '../services/recorder-reap'
+export { AGENT_BROWSER_BIN, findOnPath } from '../services/recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,

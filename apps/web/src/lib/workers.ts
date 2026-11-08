@@ -130,6 +130,7 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
 export const WORKER_KIND_WORDS: Record<WorkerKind, string> = {
   'with-you': 'With you',
   'on-its-own': 'On its own',
+  review: 'Review',
 }
 
 /** Whether a worker still takes messages: everything but the settled ones and old side chats. */

@@ -304,6 +304,8 @@ export const PromptDisplay = z.union([
   }),
   /** A worker failed (interactive-workers decision 16): its container died, its setup failed or its agent crashed. */
   z.object({ workerFailed: z.object({ workerId: z.string(), label: z.string(), failure: z.string() }) }),
+  /** A Review worker handed back (burns-become-workers decision 4): its Review Package card, read by the worker's id. */
+  z.object({ reviewPackage: z.object({ workerId: z.string(), label: z.string() }) }),
 ])
 export type PromptDisplay = z.infer<typeof PromptDisplay>
 

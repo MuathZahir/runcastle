@@ -1,4 +1,4 @@
-import type { FixProgress, ReviewFinding, ReviewFindingInput, Ticket, TicketInput } from '@runcastle/core'
+import type { FixProgress, ReviewFinding, ReviewFindingInput, Ticket, TicketInput, WorkerRow } from '@runcastle/core'
 import { ReviewFinding as ReviewFindingSchema, newId } from '@runcastle/core'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -62,6 +62,22 @@ function defectKey(finding: Pick<ReviewFinding, 'title' | 'location'>): string {
   return [finding.title, finding.location].map((part) => part.trim().toLowerCase()).join(' @ ')
 }
 
+/** Who reports a finding: a Review worker (burns-become-workers decision 4), or an older review ticket. */
+export type FindingReporter = { reviewTicket: Ticket } | { reviewWorker: WorkerRow }
+
+/** The reporter as its finding records it: the column that keys it, its id, and whether it verifies fixes. */
+interface ReportingPass {
+  column: 'reviewTicketId' | 'reviewWorkerId'
+  id: string
+  verification: boolean
+}
+
+function passOf(reporter: FindingReporter): ReportingPass {
+  return 'reviewWorker' in reporter
+    ? { column: 'reviewWorkerId', id: reporter.reviewWorker.id, verification: reporter.reviewWorker.reviewVerify !== null }
+    : { column: 'reviewTicketId', id: reporter.reviewTicket.id, verification: reporter.reviewTicket.passKind === 'verification' }
+}
+
 /**
  * Re-report a defect onto the finding an earlier attempt of the same review
  * already recorded, or `null` when it is new.
@@ -76,13 +92,13 @@ function defectKey(finding: Pick<ReviewFinding, 'title' | 'location'>): string {
  */
 function refreshEarlierReport(
   ctx: AppCtx,
-  args: { featureId: string; reviewTicket: Ticket; input: ReviewFindingInput },
+  args: { featureId: string; pass: ReportingPass; input: ReviewFindingInput },
 ): ReviewFinding | null {
-  const { featureId, reviewTicket, input } = args
+  const { featureId, pass, input } = args
   const key = defectKey(input)
   const prior = listByFeature(ctx, featureId).find(
     (finding) =>
-      finding.reviewTicketId === reviewTicket.id &&
+      finding[pass.column] === pass.id &&
       finding.kind === 'defect' &&
       finding.status !== 'dismissed' &&
       defectKey(finding) === key,
@@ -112,14 +128,15 @@ function refreshEarlierReport(
  */
 export function reportFinding(
   ctx: AppCtx,
-  args: { featureId: string; reviewTicket: Ticket; input: ReviewFindingInput },
+  args: { featureId: string; input: ReviewFindingInput } & FindingReporter,
 ): { finding: ReviewFinding; fixTicket: Ticket | null; overCap: boolean } {
-  const { featureId, reviewTicket, input } = args
-  const verification = reviewTicket.passKind === 'verification'
+  const { featureId, input } = args
+  const pass = passOf(args)
+  const verification = pass.verification
 
   const refreshed =
     input.kind === 'defect' && !verification
-      ? refreshEarlierReport(ctx, { featureId, reviewTicket, input })
+      ? refreshEarlierReport(ctx, { featureId, pass, input })
       : null
   if (refreshed) {
     emit(ctx, featureId, {
@@ -136,7 +153,7 @@ export function reportFinding(
     .values({
       id,
       featureId,
-      reviewTicketId: reviewTicket.id,
+      [pass.column]: pass.id,
       ...input,
       reproStep: input.reproStep ?? '',
       status: 'open',

@@ -127,6 +127,8 @@ async function main(): Promise<void> {
   // Skills pack + burner prompts (read at launch / by the burner workflow).
   cpSync(join(SKILLS_DIR, 'packs'), join(OUT, 'skills', 'packs'), { recursive: true })
   cpSync(join(SKILLS_DIR, 'burner'), join(OUT, 'skills', 'burner'), { recursive: true })
+  // The Review worker's assignments (read by workers/review.ts).
+  cpSync(join(SKILLS_DIR, 'review'), join(OUT, 'skills', 'review'), { recursive: true })
   // Built SPA (served by mountWebAppIfBuilt via RUNCASTLE_WEB_DIST).
   cpSync(join(WEB_DIR, 'dist'), join(OUT, 'web'), { recursive: true })
   // Sandcastle build-context template (scaffolded into `.sandcastle/` on demand by

@@ -183,7 +183,7 @@ export function composeRoundWake(ctx: AppCtx, featureId: string, runId: string):
   const round = listRounds(ctx, featureId).find((r) => r.runId === runId)
   const held = listByIds(ctx, runClaimedTicketIds(ctx, runId)).sort((a, b) => a.seq - b.seq)
   const heldIds = new Set(held.map((t) => t.id))
-  const findings = listFindings(ctx, featureId).filter((f) => heldIds.has(f.reviewTicketId))
+  const findings = listFindings(ctx, featureId).filter((f) => f.reviewTicketId !== null && heldIds.has(f.reviewTicketId))
 
   const lines = [
     `[runcastle] Round ${round?.round ?? '?'} returned: ${run.status}${run.summary ? ` — ${run.summary}` : ''}`,

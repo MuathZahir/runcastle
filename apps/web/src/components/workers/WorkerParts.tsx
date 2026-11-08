@@ -15,6 +15,7 @@ import {
   IconChevronRight,
   IconDoc,
   IconExternalLink,
+  IconEye,
   IconGitMerge,
   IconLock,
   IconMessage,
@@ -98,6 +99,7 @@ export function WorkerHeaderActions({
 const KIND_ICON: Record<WorkerKind, ReactNode> = {
   'with-you': <IconUser size={14} />,
   'on-its-own': <IconActivity size={14} />,
+  review: <IconEye size={14} />,
 }
 
 /**

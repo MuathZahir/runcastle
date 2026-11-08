@@ -29,6 +29,7 @@ const DEFECT: ReviewFinding = {
   id: 'find_1',
   featureId: 'ftr_1',
   reviewTicketId: 'tkt_review_2',
+  reviewWorkerId: null,
   kind: 'defect',
   severity: 'high',
   title: 'the merge dialog is blind to a standing conflict',

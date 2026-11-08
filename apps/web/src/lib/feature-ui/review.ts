@@ -26,8 +26,8 @@ interface ReviewTicketFigure {
   passKind?: 'review' | 'verification'
 }
 
-export function latestReview<T extends { seq: number; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
-  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq).at(-1)
+export function latestReview<T extends { seq: number | null; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
+  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || (a.seq ?? Infinity) - (b.seq ?? Infinity)).at(-1)
 }
 
 /**
@@ -43,7 +43,7 @@ export function latestReview<T extends { seq: number; completedAt?: number | nul
  * shows the pass would read "Not reviewed yet" above it. Having no time, it
  * ranks below every stamped pass.
  */
-export function stampedReview<T extends { ticketId: string; seq: number; completedAt?: number | null }>(
+export function stampedReview<T extends { ticketId: string; seq: number | null; completedAt?: number | null }>(
   rows: readonly T[],
   tickets: readonly { id: string; status: string }[],
 ): T | null {
@@ -467,7 +467,8 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
 /** One review pass as the trail reads it — the artifacts feed row, narrowed. */
 export interface ReviewPassFigure {
   ticketId: string
-  seq: number
+  /** The review ticket's number; null for a Review worker's pass. */
+  seq: number | null
   passKind: 'review' | 'verification'
   /** What the pass actually ran; null on a pass that recorded no declaration. */
   reviewMode: 'drive' | 'gates' | null

@@ -2,15 +2,19 @@ import { existsSync, readFileSync } from 'node:fs'
 import {
   type LandWorkerResult,
   type LeadWorker,
+  type StartedReview,
   type StartedWorker,
   dropWorker,
+  getWorker,
   landWorker,
   leadWorkers,
   messageWorker,
   requireFeatureWorker,
   sendBackWorker,
+  startReviewWorker,
   startWorker,
 } from '../workers/service'
+import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
 import { provideWorkerFeatureRead } from '../workers/tools'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
@@ -37,6 +41,7 @@ import type {
   Ticket,
   TicketInput as TicketInputT,
   TicketStatus as TicketStatusT,
+  WorkerRow,
 } from '@runcastle/core'
 import {
   PreparedKey,
@@ -65,7 +70,7 @@ import { showFile, showableFile } from '../threads/shown'
 import { showReviewPackage } from '../threads/review-package'
 import { reviewShots, type ReviewShots } from '../services/review-package'
 import { appendSaw, readSaw } from '../services/review-saw'
-import { captureReviewShot } from '../workflows/review-capture'
+import { captureReviewShot } from '../services/review-capture'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, landProjectBranchNow, mostRecentLiveSession } from '../launcher/sessions'
 import {
@@ -1184,6 +1189,37 @@ export async function toolStartWorker(
   return startWorker(ctx, feature, { ...input, startedBy: 'lead' })
 }
 
+/** The lead starts the feature's Review worker (burns-become-workers decisions 3, 4): a first review, or a verify review of the given fixes. */
+export async function toolStartReview(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { mode?: 'drive' | 'gates'; verify?: { findingIds: string[]; commits: string[] }; model?: string },
+): Promise<StartedReview> {
+  const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
+  return startReviewWorker(ctx, feature, { ...input, startedBy: 'lead' })
+}
+
+/** The Review worker this session is, on the host: its own `hand_back`, `review_drive` and `report_finding` act on it alone. */
+function hostReviewOf(ctx: AppCtx, session: SessionRow | undefined): WorkerRow | undefined {
+  if (session?.kind !== 'worker') return undefined
+  const w = getWorker(ctx, session.id)
+  return w && isHostReview(w) ? w : undefined
+}
+
+/**
+ * A drive review's hand-back (burns-become-workers decision 4): its account,
+ * read when its turn ends, when runcastle gives the drive back and posts its
+ * Review Package to the lead.
+ */
+export function toolReviewHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): { handedBack: true } {
+  const w = hostReviewOf(ctx, session)
+  if (!w) throw new GateError(`hand_back here belongs to a Review worker, and this is a ${session.kind} session.`)
+  const summary = input.summary.trim()
+  if (!summary) throw new InvalidInputError('a handback needs a summary')
+  writeHostHandback(w.id, summary)
+  return { handedBack: true }
+}
+
 export async function toolMessageWorker(ctx: AppCtx, session: SessionRow, input: { workerId: string; text: string }): Promise<{ ok: true }> {
   const worker = requireFeatureWorker(ctx, requireLeadFeatureId(session), input.workerId)
   return messageWorker(ctx, worker.id, input.text)
@@ -1830,6 +1866,29 @@ function requireRunIdentity(ctx: AppCtx, caller: RunCaller, tool: string): RunId
   )
 }
 
+/** Who drives and reports for a review: its feature, the pass its pictures are kept under, and why it may not drive, if it may not. */
+interface Reviewer {
+  featureId: string
+  passId: string | undefined
+  withheld: string | undefined
+}
+
+/**
+ * The review a `review_drive` or `report_finding` call is for: a drive review
+ * on the host (burns-become-workers decision 3), whose pictures are kept under
+ * its own id, or a review ticket burning under a run.
+ */
+function requireReviewer(ctx: AppCtx, caller: RunCaller, tool: string): Reviewer {
+  const w = caller.runId ? undefined : hostReviewOf(ctx, caller.session)
+  if (w) return { featureId: w.featureId, passId: w.id, withheld: undefined }
+  const identity = requireRunIdentity(ctx, caller, tool)
+  return {
+    featureId: identity.featureId,
+    passId: burningReview(ctx, identity.featureId)?.id,
+    withheld: withheldDriveFor(identity.runId),
+  }
+}
+
 /**
  * Boot the integrated feature branch so a review ticket can drive it
  * (improve-workflow decisions 3, 4): the server's REAL test-drive machinery,
@@ -1843,12 +1902,12 @@ export async function toolReviewDrive(
   caller: RunCaller,
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.ReviewDriveResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
   // A pass told Drive is closed must not drive off the record: the reason the
   // host withheld it is the refusal, final like any missing prerequisite.
-  const withheld = withheldDriveFor(identity.runId)
+  const withheld = reviewer.withheld
   if (withheld) return { ok: false, action: input.action, deniedReason: withheld, retriable: false, drive: null }
-  const feature = getFeatureRow(ctx, identity.featureId)
+  const feature = getFeatureRow(ctx, reviewer.featureId)
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
 
@@ -1896,31 +1955,31 @@ export async function toolReviewCapture(
   input: { caption?: string; outside?: boolean },
   capture: typeof captureReviewShot = captureReviewShot,
 ): Promise<ReviewCaptureResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
-  const withheld = withheldDriveFor(identity.runId)
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
+  const withheld = reviewer.withheld
   if (withheld) return reviewScenarioDenial('capture', withheld)
-  const featureId = identity.featureId
+  const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial('capture', "No review drive of this feature is running — review_drive({ action: 'start' }) first.")
   }
   const caption = input.caption?.replace(/\s+/g, ' ').trim()
   if (!caption) return reviewScenarioDenial('capture', '`capture` needs `caption`: one line saying what the picture shows.')
-  const ticket = burningReview(ctx, featureId)
-  if (!ticket) return reviewScenarioDenial('capture', 'No review pass is running on this feature.')
-  const entries = readSaw(ticket.id)
+  const passId = reviewer.passId
+  if (!passId) return reviewScenarioDenial('capture', 'No review pass is running on this feature.')
+  const entries = readSaw(passId)
   const taken = entries.filter((entry) => entry.kind === 'shot').length
   if (taken >= SAW_MAX_SHOTS) {
     return reviewScenarioDenial('capture', `This pass has its ${SAW_MAX_SHOTS} screenshots, the most one pass keeps. Carry on without more.`)
   }
   const image = `shot-${taken + 1}.png`
-  const result = await capture(ticket.id, reviewShotPath(ticket.id, image))
+  const result = await capture(passId, reviewShotPath(passId, image))
   if (!result.ok) return reviewScenarioDenial('capture', result.reason)
   const scenario = input.outside
     ? undefined
     : entries.findLast((entry) => entry.kind === 'scenario' && entry.ok)
   const file = scenario?.kind === 'scenario' ? scenario.file : undefined
-  appendSaw(ticket.id, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
+  appendSaw(passId, { kind: 'shot', at: Date.now(), caption, image, ...(file ? { scenario: file } : {}) })
   return { ok: true, action: 'capture', caption, ...(file ? { scenario: file } : {}) }
 }
 
@@ -1950,10 +2009,10 @@ export async function toolReviewScenario(
   caller: RunCaller,
   { action, file }: { action: 'scenario' | 'try_call'; file?: string },
 ): Promise<ReviewScenarioResult | ReviewCallResult> {
-  const identity = requireRunIdentity(ctx, caller, 'the review drive')
-  const withheld = withheldDriveFor(identity.runId)
+  const reviewer = requireReviewer(ctx, caller, 'the review drive')
+  const withheld = reviewer.withheld
   if (withheld) return reviewScenarioDenial(action, withheld)
-  const featureId = identity.featureId
+  const featureId = reviewer.featureId
   const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
   if (!git.reviewDriveFor(projectId, featureId)) {
     return reviewScenarioDenial(
@@ -1966,13 +2025,13 @@ export async function toolReviewScenario(
   if (action === 'scenario') {
     const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowReview: true })
     if ('denied' in result) return { ok: false, action, deniedReason: result.denied }
-    const pass = burningReview(ctx, featureId)
+    const pass = reviewer.passId
     const name = git.activeDriveInfo(projectId)?.scenario?.name ?? file
     if (!result.ok) {
-      if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
+      if (pass) appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: false, failure: result.failure })
       return { ok: false, action, failure: result.failure }
     }
-    if (pass) appendSaw(pass.id, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
+    if (pass) appendSaw(pass, { kind: 'scenario', at: Date.now(), file, name, ok: true, entryUrl: result.entryUrl })
     return { ok: true, action, entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
   }
 
@@ -1984,8 +2043,8 @@ export async function toolReviewScenario(
     return reviewScenarioDenial(action, scenario.callError ?? 'this scenario has no .http call')
   }
   const result = await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })
-  const pass = burningReview(ctx, featureId)
-  if (pass) appendSaw(pass.id, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
+  const pass = reviewer.passId
+  if (pass) appendSaw(pass, { kind: 'call', at: Date.now(), scenario: file, ...maskedCall(scenario.call, result) })
   return { action, ...result }
 }
 
@@ -2008,6 +2067,9 @@ export function toolReportFinding(
   caller: RunCaller,
   input: ReviewFindingInputT,
 ): { findingId: string; fixTicketSeq: number | null; overCap: boolean } {
+  // A drive review on the host reports against itself (burns-become-workers decision 4).
+  const review = caller.runId ? undefined : hostReviewOf(ctx, caller.session)
+  if (review) return { findingId: reportReviewFinding(ctx, review.id, input).finding.id, fixTicketSeq: null, overCap: false }
   const identity = requireRunIdentity(ctx, caller, 'report_finding')
   const reviewTicket = listByFeature(ctx, identity.featureId).find(
     (ticket) => ticket.kind === 'review' && ticket.status === 'burning',
@@ -2908,9 +2970,10 @@ const PROJECT_READ_NOTE =
 
 /**
  * The audience a built server is for: a session kind, a burner agent running
- * under a run (`run`), or `undefined` for "we could not tell".
+ * under a run (`run`), a drive review on the host (`review`, a `worker`
+ * session whose worker is one), or `undefined` for "we could not tell".
  */
-export type McpAudience = SessionKindT | 'run'
+export type McpAudience = SessionKindT | 'run' | 'review'
 
 /** The kinds whose session belongs to a FEATURE and may shape its work (every feature kind but `worker`). */
 const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
@@ -2923,7 +2986,7 @@ const PROJECT_KINDS: readonly SessionKindT[] = ['project']
  * own two. `worker` is in neither either: a worker gets none of the lead's tools
  * (interactive-workers decision 9).
  */
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'run']
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'worker', 'run', 'review']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
@@ -2947,8 +3010,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // binds to ITS OWN feature (a review agent reviewing a branch legitimately
   // wants that branch's context) — never to a live conversation's. The project
   // session reads any feature of its project by `slug` (`projectFeatureReader`).
-  get_feature_context: [...FEATURE_KINDS, 'run', 'project'],
-  read_feature_doc: [...FEATURE_KINDS, 'run', 'project'],
+  get_feature_context: [...FEATURE_KINDS, 'run', 'review', 'project'],
+  read_feature_doc: [...FEATURE_KINDS, 'run', 'review', 'project'],
   list_tickets: [...FEATURE_KINDS, 'run', 'project'],
   get_ticket: [...FEATURE_KINDS, 'run', 'project'],
   emit_tickets: FEATURE_KINDS,
@@ -2963,13 +3026,15 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
-  hand_back: ['chat'],
+  // The lead's hands back to the orchestrator; a drive review's (`review`) hands back to its lead.
+  hand_back: ['chat', 'review'],
   // A `worker` session is in no list here: its tools are its own, served in its
   // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
   // into it (`workers/tools.ts`); its only way to change the feature is its
   // handback (decision 9).
   // The lead's worker tools (decision 4): `requireLeadFeatureId`.
   start_worker: ['chat'],
+  start_review: ['chat'],
   message_worker: ['chat'],
   land_worker: ['chat'],
   send_back_worker: ['chat'],
@@ -2984,7 +3049,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_design: ['chat'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in; a run agent has none.
-  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'review'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
@@ -3004,9 +3069,9 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   retry_drive: ['drive-fix'],
   run_scenario: ['scenario'],
   set_scenario_runner: ['scenario'],
-  // Run-scoped: `requireRunIdentity`.
-  review_drive: ['run'],
-  report_finding: ['run'],
+  // A review's: `requireReviewer` (a run, or a drive review on the host).
+  review_drive: ['run', 'review'],
+  report_finding: ['run', 'review'],
   // Retained for compatibility with unidentified/legacy clients, but no
   // recognized session kind receives it; review runs use report_finding.
   add_test_note: [],
@@ -3869,6 +3934,35 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  if (wants('start_review')) {
+    server.registerTool(
+      'start_review',
+      {
+        title: 'Start the Review worker',
+        description:
+          'Start the feature’s Review worker once the work is done: it runs the project’s checks, drives the app when it can ' +
+          '(else reads the diff), reports findings and hands back with the Review Package. After fixing defects you judged ' +
+          'real, start one with `verify`.',
+        inputSchema: {
+          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          verify: z
+            .object({
+              findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),
+              commits: z.array(z.string().min(1)).describe('The commits that fixed them, `<sha> <subject>`.'),
+            })
+            .optional()
+            .describe('A verify review: given only these findings and fix commits.'),
+          model: z.string().optional().describe('An id from get_feature_context’s annotatedModels; omit for the feature chat’s model.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolStartReview(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
   if (wants('message_worker')) {
     server.registerTool(
       'message_worker',
@@ -3962,7 +4056,25 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  if (wants('hand_back')) {
+  if (wants('hand_back') && audience === 'review') {
+    server.registerTool(
+      'hand_back',
+      {
+        title: 'Hand your review back to your lead',
+        description:
+          'Hand the review back when it is done (or cannot run): your account, its first line standing alone. Runcastle gives the ' +
+          'drive back and shows your lead your findings, pictures and walkthrough. End your turn after.',
+        inputSchema: {
+          summary: z.string().min(1).describe('Your account: one standalone first line, then a few plain sentences.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolReviewHandBack(rs.ctx, rs.session, args))
+      },
+    )
+  } else if (wants('hand_back')) {
     server.registerTool(
       'hand_back',
       {
@@ -4190,7 +4302,8 @@ export async function resolveAudience(
   if (runId) return 'run'
   try {
     const ctx = await getRuntimeCtx()
-    return resolveSession(ctx, sessionId)?.kind
+    const session = resolveSession(ctx, sessionId)
+    return hostReviewOf(ctx, session ?? undefined) ? 'review' : session?.kind
   } catch {
     return undefined
   }

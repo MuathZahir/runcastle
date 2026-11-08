@@ -10,12 +10,12 @@ import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow } from '../src/launcher/sessions'
 import reviews from '../src/routes/reviews'
-import { reviewPackage, reviewShots } from '../src/services/review-package'
+import { reviewPackage, reviewShots, ticketPass } from '../src/services/review-package'
 import { appendSaw, readSaw, startSaw } from '../src/services/review-saw'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { readThreadEvents } from '../src/threads/log'
 import { postReviewPackage, showReviewPackage } from '../src/threads/review-package'
-import { captureReviewShot, sessionListed } from '../src/workflows/review-capture'
+import { captureReviewShot, sessionListed } from '../src/services/review-capture'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -70,7 +70,7 @@ describe('review package', () => {
     it('leads with the first line of the digest, and says why there are no pictures', async () => {
       updateTicket(ctx, pass.id, { status: 'done', digest: 'Lap 1: it works · Gates mode\n\nThe long account.', reviewMode: 'gates' })
       const stored = { ...pass, digest: 'Lap 1: it works · Gates mode\n\nThe long account.', reviewMode: 'gates' as const, status: 'done' as const }
-      const pack = await reviewPackage(ctx, stored, feature, project.repoPath)
+      const pack = await reviewPackage(ctx, ticketPass(ctx, stored), feature, project.repoPath)
       expect(pack.verdict).toBe('Lap 1: it works · Gates mode')
       expect(pack.account).toBe('The long account.')
       expect(pack.empty).toContain('read the code')
@@ -80,7 +80,7 @@ describe('review package', () => {
     it('holds the pictures, and no empty line, once there are some', async () => {
       startSaw(pass.id)
       keep(pass.id, 'shot-1.png', 'The dialog')
-      const pack = await reviewPackage(ctx, pass, feature, project.repoPath)
+      const pack = await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)
       expect(pack.empty).toBeNull()
       expect(pack.groups[0]?.shots[0]?.caption).toBe('The dialog')
     })
@@ -88,7 +88,7 @@ describe('review package', () => {
     it('knows a walkthrough by its file', async () => {
       mkdirSync(reviewSawDir(pass.id), { recursive: true })
       writeFileSync(reviewWalkthroughPath(pass.id), 'video')
-      expect((await reviewPackage(ctx, pass, feature, project.repoPath)).hasWalkthrough).toBe(true)
+      expect((await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)).hasWalkthrough).toBe(true)
     })
   })
 

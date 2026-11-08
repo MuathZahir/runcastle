@@ -62,6 +62,12 @@ export interface WriteArtifactsInput {
    */
   scenario?: ScenarioBrief
   /**
+   * The brief for a worker that runs on the host rather than in a sandbox (a
+   * drive review, burns-become-workers decision 3): its whole briefing, and the
+   * env its agent process runs with.
+   */
+  hostWorker?: { briefing: string; env: Record<string, string> }
+  /**
    * Why the session was launched, when that changes its briefing — a relay, a
    * merge conflict to resolve or a self-planning run each add one sentence.
    */
@@ -1137,7 +1143,9 @@ function renderBrief(input: WriteArtifactsInput): string {
     scenario,
     purpose,
     runtime,
+    hostWorker,
   } = input
+  if (hostWorker) return hostWorker.briefing
   if (driveFix) return renderDriveFixPrompt(driveFix)
   if (scenario) return renderScenarioPrompt(scenario)
   if (feature) {

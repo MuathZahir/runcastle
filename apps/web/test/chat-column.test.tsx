@@ -92,6 +92,8 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   outcome: null,
   outcomeNote: null,
   tokens: null,
+  reviewMode: null,
+  reviewVerify: null,
   createdAt: at,
   updatedAt: at,
   previewPath: null,

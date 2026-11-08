@@ -14,7 +14,8 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 /** Mirrors `ReviewTicketArtifacts` in packages/server/src/routes/reviews.ts. */
 export interface ReviewArtifacts {
   ticketId: string
-  seq: number
+  /** The review ticket's number; null for a Review worker's pass. */
+  seq: number | null
   passKind: 'review' | 'verification'
   reviewMode: 'drive' | 'gates' | null
   reviewVerdict: 'verified' | 'unverified' | null

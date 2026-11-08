@@ -216,8 +216,16 @@ export function codexAdapterExecArgs(container: string, port: number, previewUrl
 /** Where the in-sandbox relay listens for the worker's MCP server: inside the container only. */
 export const TOOLS_SOCKET = `${IN.state}/tools.sock`
 
-/** The worker's own MCP server (runcastle's tools, decision 9): the script inside the sandbox and the env it reads. */
-export function workerMcpServer(port: number, previewUrl: string): { command: string; args: string[]; env: Record<string, string> } {
+/**
+ * The worker's own MCP server (runcastle's tools, decision 9): the script inside
+ * the sandbox and the env it reads. A Review worker's also offers
+ * `report_finding` (burns-become-workers decision 3).
+ */
+export function workerMcpServer(
+  port: number,
+  previewUrl: string,
+  review = false,
+): { command: string; args: string[]; env: Record<string, string> } {
   return {
     command: 'node',
     args: [`${IN.runtime}/worker-mcp.cjs`],
@@ -225,6 +233,7 @@ export function workerMcpServer(port: number, previewUrl: string): { command: st
       WORKER_PORT: String(port),
       WORKER_PREVIEW_URL: previewUrl,
       RUNCASTLE_TOOLS_SOCKET: TOOLS_SOCKET,
+      ...(review ? { RUNCASTLE_WORKER_REVIEW: '1' } : {}),
       PATH: '/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin',
     },
   }

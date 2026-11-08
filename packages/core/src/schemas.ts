@@ -226,7 +226,10 @@ export type ReviewFindingInput = z.infer<typeof ReviewFindingInput>
 export const ReviewFinding = ReviewFindingInput.safeExtend({
   id: z.string(),
   featureId: z.string(),
-  reviewTicketId: z.string(),
+  /** The review ticket that reported it, for a finding from before reviews ran as workers; null since. */
+  reviewTicketId: z.string().nullable(),
+  /** The Review worker that reported it (burns-become-workers decision 4); null on an older finding. */
+  reviewWorkerId: z.string().nullable(),
   reproStep: z.string(),
   status: FindingStatus,
   openReason: FindingOpenReason.nullable(),
@@ -1002,11 +1005,27 @@ export function unresolvedMergeConflict(events: readonly Pick<EventRow, 'type' |
 /**
  * What a worker was handed (decision 5): taste work the human iterates on
  * (`with-you`), self-contained work that runs in the background (`on-its-own`),
- * or a worker the human started with "+" and no assignment (`unassigned`,
- * decision 7).
+ * a worker the human started with "+" and no assignment (`unassigned`,
+ * decision 7), or the end-of-feature review (`review`, burns-become-workers
+ * decision 3), which writes no code and lands nothing.
  */
-export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned'])
+export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned', 'review'])
 export type WorkerKind = z.infer<typeof WorkerKind>
+
+/**
+ * Where a Review worker runs (burns-become-workers decision 3): `drive` on the
+ * host, in the human's checkout while the review drive holds the drive slot;
+ * `gates` in an ordinary worker sandbox on the committed feature branch.
+ */
+export const ReviewWorkerMode = z.enum(['drive', 'gates'])
+export type ReviewWorkerMode = z.infer<typeof ReviewWorkerMode>
+
+/** What a verify review is given (decision 4): the findings the lead fixed and the commits that fixed them, and nothing else. */
+export const ReviewVerify = z.object({
+  findingIds: z.array(z.string()),
+  commits: z.array(z.string()),
+})
+export type ReviewVerify = z.infer<typeof ReviewVerify>
 
 /**
  * Where a worker is (spec, "Statuses"): at a turn, in line for a slot, waiting
@@ -1066,6 +1085,10 @@ export const WorkerRow = z.object({
   outcomeNote: z.string().nullable(),
   /** Tokens the worker spent, read from its kept conversation file when it was retired; null until counted. */
   tokens: z.number().int().nullable(),
+  /** A Review worker's mode, fixed at its start; null for every other kind. */
+  reviewMode: ReviewWorkerMode.nullable(),
+  /** A verify review's findings and fix commits; null for a first review and every other kind. */
+  reviewVerify: ReviewVerify.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })

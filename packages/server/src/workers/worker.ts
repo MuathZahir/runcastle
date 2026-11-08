@@ -8,6 +8,7 @@ import type { AgentRuntime, WorkerKind } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
+import { sandboxReviewBriefing } from './review'
 import { type WorkerPermissionMode, permissionModeOf, workerAllowsItself } from './permissions'
 import {
   CODEX_AUTO_REVIEW_MODE,
@@ -130,6 +131,8 @@ export interface NewSandboxInput {
   image: string
   repoPath: string
   featureBranch: string
+  /** A branch copied into the worker's bare copy beside the feature branch: a review's base, which it diffs against. */
+  baseBranch?: string
   /** Ports other workers hold, even stopped ones: never handed out again (review finding). */
   takenPorts: ReadonlySet<number>
   /** Skip the dependency install (the harness measures it separately). */
@@ -172,6 +175,7 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
     rmSync(originDir, { recursive: true, force: true })
     await execFileP('git', ['clone', '-q', '--bare', '--no-hardlinks', '--single-branch', '--branch', input.featureBranch, input.repoPath, originDir])
     await git(originDir, ['branch', '-f', sb.branch, input.featureBranch])
+    if (input.baseBranch) await git(originDir, ['fetch', '-q', input.repoPath, `+refs/heads/${input.baseBranch}:refs/heads/${input.baseBranch}`])
   })
   const gitName = (await git(input.repoPath, ['config', 'user.name']).catch(() => 'runcastle worker')).trim()
   const gitEmail = (await git(input.repoPath, ['config', 'user.email']).catch(() => 'worker@runcastle.local')).trim()
@@ -375,8 +379,8 @@ export async function copyOutOfSandbox(sb: WorkerSandbox, containerPath: string,
   await engineRun(sb.engine, ['cp', `${sb.container}:${containerPath}`, hostPath])
 }
 
-/** What a worker of each kind does with its turn and when it hands back (decision 5). */
-function howItHandsBack(kind: WorkerKind): string {
+/** What a worker of each kind does with its turn and when it hands back (decision 5); a review's own briefing says it. */
+function howItHandsBack(kind: Exclude<WorkerKind, 'review'>): string {
   switch (kind) {
     case 'with-you':
       return (
@@ -395,6 +399,7 @@ function howItHandsBack(kind: WorkerKind): string {
 
 /** The worker's briefing: appended to Claude Code's system prompt, or after the human's instructions in a Codex worker's AGENTS.md. */
 export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
+  if (brief.kind === 'review') return sandboxReviewBriefing(brief.label, sb.branch)
   return [
     `# You are a runcastle worker: ${brief.label}`,
     '',
@@ -477,7 +482,7 @@ export function workerLaunch(sb: WorkerSandbox, brief: WorkerBrief, opts: Pick<W
     }
   }
   if (!opts.token) throw new Error('a Claude Code worker needs the Claude token')
-  const server = workerMcpServer(sb.port, sb.previewUrl)
+  const server = workerMcpServer(sb.port, sb.previewUrl, brief.kind === 'review')
   const mcp: acp.McpServer = {
     name: 'worker',
     command: server.command,
