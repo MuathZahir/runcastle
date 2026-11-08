@@ -619,6 +619,22 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     expect(within(column()).getByText('Your checkout · commits on feature/demo')).toBeTruthy()
   })
 
+  it('says why Fix it was refused where the button is, while the Fix-drive worker works (decision 13)', async () => {
+    const api = server({
+      extra: {
+        'feature.openScenarioChat': () => {
+          throw new Error('Fix drive is working — wait for it to finish')
+        },
+      },
+    })
+    render(<Page scenario={FAILED} />, { wrapper: api.Wrapper })
+    await within(column()).findByText('said in th_main')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
+    const panel = document.querySelector('[data-panel]') as HTMLElement
+    expect((await within(panel).findByText('Fix drive is working — wait for it to finish')).closest('[role="alert"]')).toBeTruthy()
+    expect(within(column()).getByText('said in th_main')).toBeTruthy()
+  })
+
   it('lists it in the worker lanes, and hands the column back when its errand is closed', async () => {
     const api = server({ workers: [scenarios] })
     render(<Page />, { wrapper: api.Wrapper })

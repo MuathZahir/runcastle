@@ -4,8 +4,8 @@ import { IconAlert, IconRefresh, IconTerminal } from '../../icons'
 import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
 import { DRIVE_INSTRUCTIONS_SCOPE_NOTE } from '../../lib/settings'
-import { useToast } from '../../lib/toast'
 import { useLandOnChat } from '../../lib/land-on-chat'
+import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { Markdown } from '../Markdown'
@@ -74,17 +74,18 @@ export function DriveSetupFailed({
   onToChat?: () => void
 }) {
   const utils = trpc.useUtils()
-  const toast = useToast()
-  // The fix session lands on the Chat tab, like every session launch.
+  // The Fix-drive worker lands on the Chat tab, in front of the column (drive-chats-become-workers decision 11).
   const landOnChat = useLandOnChat(featureId)
+  const column = useScenarioChatDoor()
   const fix = trpc.feature.fixDrive.useMutation({
-    onSuccess: () => {
+    onSuccess: ({ sessionId }) => {
       void utils.feature.get.invalidate({ id: featureId })
       void utils.events.invalidate()
+      void utils.worker.list.invalidate({ featureId })
       landOnChat()
+      column?.front(sessionId)
       onToChat?.()
     },
-    onError: (e) => toast.push(e.message),
   })
 
   return (
@@ -108,7 +109,22 @@ export function DriveSetupFailed({
           Fix drive
         </Button>
       )}
+      {fix.error && <DriveButtonRefusal reason={fix.error.message} />}
     </DriveFailureReport>
+  )
+}
+
+/**
+ * Why a drive button was refused, where the button is: most often the other
+ * drive worker is working in the same checkout (drive-chats-become-workers
+ * decision 13), in the server's own words.
+ */
+export function DriveButtonRefusal({ reason }: { reason: string }) {
+  return (
+    <p role="alert" className="m-0 flex items-start gap-1.5 text-sm text-warning-text">
+      <IconAlert size={14} className="mt-[3px] shrink-0" />
+      <span className="min-w-0">{reason}</span>
+    </p>
   )
 }
 

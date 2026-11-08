@@ -9,6 +9,7 @@ import { scenarioFailureLine, scenarioMenu, scenarioTarget, showsScenarioNudge }
 import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ApiView } from './ApiView'
 import { DrivePanel } from './DrivePanel'
+import { DriveButtonRefusal } from './drive-parts'
 import { ScenarioControl } from './ScenarioPicker'
 import { Term } from '../Term'
 
@@ -81,7 +82,6 @@ export function ScenarioDrive({
       chat?.opened(res.sessionId)
       onToChat?.()
     },
-    onError: (e) => toast.push(e.message),
   })
   // Blank app: back to the plain URL, until the next landing takes it again.
   const [blankOver, setBlankOver] = useState<string | null>(null)
@@ -149,6 +149,12 @@ export function ScenarioDrive({
   // the hint, read where the app is rather than above the frame.
   const above = (
     <>
+      {/* New scenario and Fix it refused, say while the Fix-drive worker works (drive-chats-become-workers decision 13). */}
+      {openChat.error && (
+        <div className="shrink-0 border-b border-border-subtle px-4 py-2">
+          <DriveButtonRefusal reason={openChat.error.message} />
+        </div>
+      )}
       {!api && strip}
       {nudge && (
         <p className="m-0 flex shrink-0 items-center gap-2 border-b border-border-subtle py-1 pr-1.5 pl-4 text-xs text-text-tertiary">
