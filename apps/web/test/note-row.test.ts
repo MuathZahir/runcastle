@@ -109,7 +109,6 @@ describe('NoteRow', () => {
     expect(render(note())).not.toContain('>Agent<')
   })
 
-
   it('renders a defect in the same anatomy, with its severity and why it is open', () => {
     const html = render({ kind: 'defect', finding: DEFECT })
     expect(html).toContain('the merge dialog is blind to a standing conflict')
@@ -119,23 +118,11 @@ describe('NoteRow', () => {
     expect(html).toContain('<details')
   })
 
-  it('links a fixing defect to the lane fixing it', () => {
-    const html = render(
-      { kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } },
-      { onViewLane: () => undefined },
-    )
-    expect(html).toContain('being fixed in the running round · worker #9')
-  })
-
-  it('states the fix as history when there is nowhere live to go', () => {
-    const html = render(
-      { kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } },
-      { readonly: true, onViewLane: () => undefined },
-    )
+  it('states an old fix ticket as history', () => {
+    const html = render({ kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } })
     expect(html).toContain('being fixed by #9')
-    expect(html).not.toContain('being fixed in the running burn')
+    expect(html).not.toContain('running round')
   })
-
 
   /**
    * A session attestation and a landed fix ticket are the same `fixed` status

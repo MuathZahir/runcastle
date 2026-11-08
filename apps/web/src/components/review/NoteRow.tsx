@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
-import { cx, Disclosure, FindingSeverityChip, LINK, NoteAuthorChip, NoteThumbnail } from '../../ui'
+import { cx, Disclosure, FindingSeverityChip, NoteAuthorChip, NoteThumbnail } from '../../ui'
 import { findingOpenReason, headline } from '../../lib/feature-ui'
 import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
@@ -87,7 +87,6 @@ export function NoteRow({
   highlighted = false,
   onSeek,
   onOpenImage,
-  onViewLane,
   waitingForAgent = false,
 }: {
   item: NoteItem
@@ -103,8 +102,6 @@ export function NoteRow({
   highlighted?: boolean
   onSeek?: (seconds: number) => void
   onOpenImage: (url: string) => void
-  /** Go to the lane fixing this defect in the running burn (decision 18c). */
-  onViewLane?: (ticketId: string) => void
   /** A sent note no agent has taken yet — queued, or its wake failed (decision 28). */
   waitingForAgent?: boolean
 }) {
@@ -168,18 +165,7 @@ export function NoteRow({
           {why && <span className="text-warning-text">{why}</span>}
           {note?.sentAt !== undefined && <span>{waitingForAgent ? 'Waiting for the agent' : 'Sent to the agent'}</span>}
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
-          {fixing &&
-            (readonly || !onViewLane ? (
-              <span className="text-phase-implementation-text">being fixed by #{fixing.seq}</span>
-            ) : (
-              <button
-                type="button"
-                className={LINK}
-                onClick={() => onViewLane(fixing.id)}
-              >
-                being fixed in the running round · worker #{fixing.seq}
-              </button>
-            ))}
+          {fixing && <span className="text-phase-implementation-text">being fixed by #{fixing.seq}</span>}
         </div>
 
         {disposition?.note && <p className="m-0 text-sm text-pretty text-text-secondary">{disposition.note}</p>}

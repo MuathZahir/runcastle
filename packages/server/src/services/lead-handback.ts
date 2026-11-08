@@ -1,33 +1,27 @@
-import { READY_TO_TEST, type Feature, type RoundSummary } from '@runcastle/core'
+import { READY_TO_TEST, type Feature, type WorkerRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { agentHost } from '../threads/types'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { holderName, holderOf } from './holding'
-import { listRounds } from './runs'
+import { listWorkers } from '../workers/service'
 
 /** The event a lead's handback leaves on its feature's timeline. */
 export const LEAD_HANDED_BACK = 'lead.handed_back'
 
-const ROUND_WORDS: Record<RoundSummary['status'], string> = {
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  cancelled: 'cancelled',
-}
-
 /**
  * The one line of the feature's state runcastle adds to a lead's handback
  * (`agents-are-woken-only-when-it-matters` decision 21): ready to test or not,
- * what it waits on, and its latest round, so the orchestrator needs no fetch.
+ * what it waits on, and how many of its workers are at work, so the
+ * orchestrator needs no fetch.
  */
-export function handbackStateLine(feature: Pick<Feature, 'waitingReason'>, rounds: readonly RoundSummary[]): string {
+export function handbackStateLine(feature: Pick<Feature, 'waitingReason'>, workers: readonly Pick<WorkerRow, 'status'>[]): string {
   const ready = feature.waitingReason === READY_TO_TEST
   const parts = [ready ? 'Ready to test' : 'Not declared ready']
   if (feature.waitingReason && !ready) parts.push(`waits on the human: ${feature.waitingReason}`)
-  const latest = rounds.at(-1)
-  parts.push(latest ? `round ${latest.round} ${ROUND_WORDS[latest.status]}` : 'no rounds yet')
+  const working = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
+  parts.push(working ? `${working} ${working === 1 ? 'worker' : 'workers'} at work` : 'no workers at work')
   return parts.join(' · ')
 }
 
@@ -53,7 +47,7 @@ export async function handBackToOrchestrator(
   if (!mayStartInBackground(holder)) {
     throw new GateError('this test drive has not started the orchestrator chat that holds this feature, so the handback was not sent')
   }
-  const state = handbackStateLine(feature, listRounds(ctx, feature.id))
+  const state = handbackStateLine(feature, listWorkers(ctx, feature.id))
   const text =
     `[runcastle] ${feature.slug} handed back:\n${summary.trim()}\n` +
     `State: ${state}. Reply with send_to_feature({ slug: "${feature.slug}" }), or merge it when it is ready.`

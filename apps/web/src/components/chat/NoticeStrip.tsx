@@ -34,8 +34,8 @@ export interface NoticeStripProps {
 const DIVIDED = 'border-b border-border-subtle'
 
 /**
- * What happened while you were in the chat (a round finished, a ticket
- * failed, the plan is ready), on the composer's top edge where your eye
+ * What happened while you were in the chat (the spec written, a test drive
+ * up, the preview ready), on the composer's top edge where your eye
  * already is (the-chat-looks-the-part decision 18), never over the messages.
  * One line: the newest notice with its action; older ones fold behind
  * "+N more" and open above it, oldest at the top. A notice leaves by its
