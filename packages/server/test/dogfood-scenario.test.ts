@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/sql-js'
 import { simpleGit } from 'simple-git'
 import initSqlJs from 'sql.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { features, readyDeclarations, schema, sessions, tickets, workers } from '../src/db/schema'
+import { features, readyDeclarations, reviewFindings, schema, sessions, tickets, workers } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx, Db } from '../src/db/types'
 import { openProject } from '../src/services/projects'
@@ -94,7 +94,7 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
 
   afterEach(() => rmTemp(root))
 
-  it('seeds a feature declared ready, with its tickets done, and prints its page', async () => {
+  it('seeds a feature declared ready, whose Review worker handed back with findings and a package, and prints its page', async () => {
     const out = runScenario({
       RUNCASTLE_DATA_DIR: dataDir,
       RUNCASTLE_SCENARIO_RUN: 'abc123',
@@ -108,9 +108,19 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
     const feature = ctx.db.select().from(features).where(eq(features.slug, 'scenario-feature-abc123')).get()
     expect(feature).toMatchObject({ projectId, status: 'active', waitingReason: 'ready to test' })
-    const rows = ctx.db.select().from(tickets).where(eq(tickets.featureId, feature!.id)).all()
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.every((t) => t.status === 'done')).toBe(true)
+    expect(ctx.db.select().from(tickets).where(eq(tickets.featureId, feature!.id)).all()).toEqual([])
+    const [review] = ctx.db.select().from(workers).where(eq(workers.featureId, feature!.id)).all()
+    expect(review).toMatchObject({ kind: 'review', label: 'Review', status: 'handed-back', reviewMode: 'drive' })
+    expect(review!.handbackSummary).toMatch(/^Drive review: /)
+    const found = ctx.db.select().from(reviewFindings).where(eq(reviewFindings.featureId, feature!.id)).all()
+    expect(found.map((f) => [f.kind, f.reviewWorkerId, f.reviewTicketId])).toEqual([
+      ['defect', review!.id, null],
+      ['observation', review!.id, null],
+    ])
+    expect(readFileSync(join(dataDir, 'reviews', review!.id, 'saw', 'saw.jsonl'), 'utf8')).toContain('"kind":"shot"')
+    const lead = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().find((s) => s.kind === 'chat')!
+    const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8')
+    expect(leadLog).toContain(`"reviewPackage":{"workerId":"${review!.id}","label":"Review"}`)
     const declared = ctx.db.select().from(readyDeclarations).where(eq(readyDeclarations.featureId, feature!.id)).all()
     expect(declared).toEqual([expect.objectContaining({ scenario: 'review/feature-at-review.ts' })])
 
