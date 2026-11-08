@@ -3,7 +3,7 @@
 Planned without the human (a self-planning run, 2026-11-08). Decisions marked
 **Assumed.** are the planner's own pick; the human confirms or changes them.
 
-Check first: 3, 5, 7, 8, 9
+Check first: 3, 5, 8, 9
 
 ## 1. Clicking a feature's row opens its lead's chat and keeps the features list
 **Decision:** Supersedes the "opening a feature swaps the sidebar" part of interactive-workers decision 24. Clicking a feature's row in the sidebar opens the feature with its lead's chat in front, and the sidebar stays on the features list. Clicking the row of the feature already open brings its lead back to the front if a worker's chat was there.
@@ -15,7 +15,7 @@ Check first: 3, 5, 7, 8, 9
 
 ## 3. The arrow is the only way down to the workers page
 **Decision:** Nothing else drills the sidebar into a feature's page any more: not a row click, not the command palette, not a notification tap, not a reload or pasted link that names a worker's chat. Those open the chat they name and leave the sidebar on the features list. Today's rule that reopening a feature "comes back down" goes away.
-**Why:** One way in keeps the sidebar predictable: the list stays put unless the human asked to go down. A tap on "Header needs you" still lands in Header's chat; only the sidebar stays where it was.
+**Why:** One way in keeps the sidebar predictable: the list stays put unless the human asked to go down. A notification tap on "Header needs you" still lands in Header's chat; only the sidebar stays where it was.
 **Assumed.** Alternative: opening a worker's chat from elsewhere (a notification tap, a link) also drills the sidebar into that feature.
 **Challenged:** A reload while on the workers page should keep the sidebar there, since a reload is not "opening" anything. Kept: reloads are rare in a live-updating app, and remembering the level across a reload is extra state for a one-click recovery (the arrow).
 
@@ -34,11 +34,9 @@ Check first: 3, 5, 7, 8, 9
 **Why:** The brief asked to keep it quiet unless clearly better, and the row already says it in words; a second amber mark on the same row would say the same thing twice.
 **Assumed.** Alternative: tint the arrow's number amber while a worker needs you.
 
-## 7. A row that says a worker needs you opens that worker's chat
-**Decision:** When the row's need is a worker's ("Header needs you"), clicking the row opens the worker the row names, in front instead of the lead. A feature has one need at a time, so the row's words and the click always point at the same chat; when the lead's own question outranks the worker, the row names the lead and opens it. Clicking again while that worker is already in front brings the lead forward, so the row always gets the human to the lead. The sidebar stays on the features list. Every other row opens the lead.
-**Why:** The row names the worker the human is being asked about; landing in the lead's chat would make them go find it through the arrow, two more clicks for the most urgent case.
-**Assumed.** Alternative: always open the lead, as the brief says, and let the arrow lead to the worker.
-**Challenged:** The brief, settled with the human, says the row opens the lead. Under this decision a click lands in different places as the feature's state changes, which is the unpredictability the feature exists to remove; the worker is two clicks away through the arrow.
+## 7. A row click always opens the lead, even when a worker needs you
+**Decision:** Clicking a feature's row opens its lead's chat even when the row says a worker needs the human ("Header needs you"). That worker is reached through the arrow, down on the workers page. Clicking the open feature's row while a worker's chat is in front brings the lead back (decision 1).
+**Why:** The human's call, relayed by the orchestrator: a click that always lands in the same place is the point of this feature. Chosen over opening the worker the row names, which made the click land in different places as the feature's state changed.
 
 ## 8. The phone shows no arrow
 **Decision:** On a phone the features list has no arrow. Tapping a row opens the lead's chat full screen, as today, and a feature's workers are reached from that chat's title, which already opens the list of the lead and its workers with "New worker" first.

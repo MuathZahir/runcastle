@@ -176,7 +176,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <table class="clicks">
       <tr><th>You click</th><th>Chat in front</th><th>Sidebar</th></tr>
       <tr><td>A feature's row</td><td>Its lead <a class="pin" data-d="1">1</a></td><td>Stays on the list, the row highlighted <a class="pin" data-d="10">10</a></td></tr>
-      <tr><td>A row reading “Header needs you”</td><td>Header's chat; click again for the lead <a class="pin" data-d="7">7</a></td><td>Stays on the list</td></tr>
+      <tr><td>A row reading “Header needs you”</td><td>Its lead too; Header is down the pill <a class="pin" data-d="7">7</a></td><td>Stays on the list</td></tr>
       <tr><td>The <span class="pill">3 ›</span> pill</td><td>Its lead, or what was already in front <a class="pin" data-d="2">2</a></td><td>Down to the workers page; Back comes up</td></tr>
       <tr><td>Palette, notification, link, reload</td><td>The chat it names</td><td>Stays on the list <a class="pin" data-d="3">3</a></td></tr>
       <tr><td>A row on the phone</td><td>Its lead, full screen; workers from the chat title</td><td>No pill <a class="pin" data-d="8">8</a></td></tr>
@@ -185,7 +185,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </div>
 
   <div class="sub"><h3>Designed screens</h3>
-    <p class="hint">Real components over sample features and workers. Open them from their cards in the chat or the Design tab. The Tweaks menu switches the pill between “3 ›” and a bare “›”.</p>
+    <p class="hint">Real components over sample features and workers, approved by you. Open them from their cards in the chat or the Design tab.</p>
     <div class="designs">
 <!-- screen:list-with-arrows -->
 <div class="designed">
@@ -196,8 +196,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- /screen:list-with-arrows -->
 <!-- screen:worker-needs-you -->
 <div class="designed">
-  <h3>A worker needs you: its row opens that worker</h3>
-  <p>The row reads “Header needs you” and its click put Header's chat in front; sample data.</p>
+  <h3>A worker needs you: the row still opens the lead</h3>
+  <p>The row reads “Header needs you”; its click puts the lead in front, and the pill leads to Header. Sample data.</p>
   <p class="mono">apps/web/src/components/SidebarParts.tsx · design page /preview/lead-first.html?state=worker-needs</p>
 </div>
 <!-- /screen:worker-needs-you -->
@@ -277,15 +277,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The arrow shows on any feature that has something on its workers page', 'The workers page is the only sidebar route to done workers and old chats.', 'assumed'],
     ['The arrow\'s number counts the workers still in play', 'A total that includes landed workers only grows; the live count says work is going on.', 'assumed'],
     ['The arrow does not signal a worker\'s need; the row already does', 'The row already moves to Needs you, lights amber and names the worker.', 'assumed'],
-    ['A row that says a worker needs you opens that worker\'s chat', 'The row names that worker; landing in the lead would cost two more clicks for the most urgent case.', 'assumed'],
+    ['A row click always opens the lead, even when a worker needs you', 'Your call: a click that always lands in the same place is the point of this feature.'],
     ['The phone shows no arrow', 'The phone never had the workers page; its chat title already lists every worker one tap away.', 'assumed'],
     ['A feature with no workers gets no new "+" on the list', 'The brief rules out changing how workers start; palette, Ctrl+Shift+O and the phone\'s list remain.', 'assumed'],
     ['The open feature\'s row stays highlighted whatever chat is in front', 'The row stands for the feature; the workers page shows which of its chats.']
   ]
   var C = [
-    [7, 'Always open the lead, as the brief says; reach the worker through the arrow.', 'It departs from the brief, and the challenger argued a click that lands in different places is the unpredictability this feature removes.', 'challenged'],
     [8, 'A pill on phone rows too, with a full 44px tap target.', 'You asked for screenshots of the arrow at phone width, so you may expect one there.', 'challenged'],
-    [5, 'Count everything on the workers page, or show no number.', 'A taste call; the design page\'s Tweaks menu switches it.'],
+    [5, 'Count everything on the workers page, or show no number.', 'A taste call; the approved design shows the live count.'],
     [3, 'Opening a worker\'s chat from a notification or link also goes down; a reload keeps the workers page.', 'The challenger wanted a reload to keep the workers page.', 'challenged'],
     [9, 'Add "New worker" to the row\'s "…" menu.', 'Without the old click-through, a feature with no workers has no visible "+" in the sidebar.']
   ]
