@@ -1,4 +1,4 @@
-import type { Run, WorkerStatus } from '@runcastle/core'
+import type { WorkerStatus } from '@runcastle/core'
 import { workers } from '../src/db/schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -59,7 +59,7 @@ describe('after a restart', () => {
     const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
     reconcileStaleSessions(ctx, cutOff)
     expect(cutOff.map((r) => r.id).sort()).toEqual([lead, orchestrator].sort())
-    await wakeCutOffChats(ctx, cutOff, [])
+    await wakeCutOffChats(ctx, cutOff)
 
     expect(said(lead)).toHaveLength(1)
     expect(said(orchestrator)).toHaveLength(1)
@@ -67,21 +67,18 @@ describe('after a restart', () => {
     expect(promptsOf(lead)[1]).toMatchObject({ source: 'runcastle', display: { summary: 'A restart cut off this turn: carrying on' } })
   })
 
-  it('skips a side chat, a worker, a self-planning run, a shipped feature and a lead whose round was cut off', async () => {
+  it('skips a side chat, a worker, a self-planning run and a shipped feature', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'f' })
-    const roundCut = seedFeature(ctx, projectId, { slug: 'round-cut' })
     const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' })
     const side = thread(createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' }))
     const planning = thread(createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: '/wt', purpose: 'self-plan' }))
-    const roundLead = thread(createSessionRow(ctx, { featureId: roundCut.id, kind: 'chat', worktreePath: '/wt' }))
     const shippedLead = thread(createSessionRow(ctx, { featureId: shipped.id, kind: 'chat', worktreePath: '/wt' }))
 
     const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
     reconcileStaleSessions(ctx, cutOff)
-    const stale = [{ id: 'run_1', featureId: roundCut.id, workflow: 'ticket-burner' } as Run]
-    await wakeCutOffChats(ctx, cutOff, stale)
+    await wakeCutOffChats(ctx, cutOff)
 
-    for (const id of [side, planning, roundLead, shippedLead]) expect(said(id)).toHaveLength(0)
+    for (const id of [side, planning, shippedLead]) expect(said(id)).toHaveLength(0)
   })
 
   it('tells a worker still at work to carry on, once, and none that landed, was dropped or failed (burns-become-workers decision 10)', async () => {
@@ -101,7 +98,7 @@ describe('after a restart', () => {
 
     const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
     reconcileStaleSessions(ctx, cutOff)
-    await wakeCutOffChats(ctx, cutOff, [])
+    await wakeCutOffChats(ctx, cutOff)
 
     expect(said(working)).toHaveLength(1)
     expect(said(queued)).toHaveLength(1)

@@ -23,7 +23,7 @@ import { reapRecorder } from '../services/recorder-reap'
 import { listByFeature as listFindings, reportFinding } from '../services/review-findings'
 import { startSaw } from '../services/review-saw'
 import { listFeatureScenarios } from '../services/scenarios'
-import { buildDriveInstructions, buildScenarioBlock, driveWithheldReason, probeDriveHost } from '../workflows/review-ticket'
+import { buildDriveInstructions, buildScenarioBlock, driveWithheldReason, probeDriveHost } from '../services/drive-host'
 import { IN } from './sandbox'
 import type { HandbackNote } from './worker'
 

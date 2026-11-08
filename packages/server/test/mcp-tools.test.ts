@@ -39,13 +39,8 @@ import { listFeatureScenarios } from '../src/services/scenarios'
 import { reportFinding } from '../src/services/review-findings'
 import { writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { addNote } from '../src/services/test-notes'
-import {
-  cancelTicket,
-  getTicket,
-  listByFeature,
-  storeTickets,
-  updateTicket,
-} from '../src/services/tickets'
+import { getTicket, listByFeature } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'

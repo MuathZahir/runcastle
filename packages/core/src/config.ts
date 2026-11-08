@@ -171,7 +171,9 @@ export const RuncastleConfig = z.preprocess(
      * and where annotating a curated entry with a note lands.
      */
     models: z.array(ModelEntry).default([]),
-    sandbox: z.enum(['docker', 'podman', 'noSandbox']).default('docker'),
+    // `.catch`, not `.default`: an old config file may still carry the retired
+    // `noSandbox` value, and it must load (as docker) rather than fail to parse.
+    sandbox: z.enum(['docker', 'podman']).catch('docker'),
     /**
      * Whether a launched terminal also sees the human's OWN MCP servers.
      *
@@ -247,65 +249,27 @@ export const RuncastleConfig = z.preprocess(
      * count and size their install/test worker pools from it, so width N
      * oversubscribes the box N-fold and every agent's commands slow down
      * together. Setting this to roughly `cores / burnConcurrency` keeps each
-     * agent's wall-clock predictable. Container sandboxes only — `noSandbox`
-     * runs on the host, where there is no container to constrain.
+     * agent's wall-clock predictable. Applies to every worker sandbox.
      *
-     * There is deliberately no matching memory ceiling: sandcastle's provider
-     * options do not expose `--memory`, and a hard cap would convert today's
+     * There is deliberately no matching memory ceiling: a hard cap would convert
      * host-level pressure into a certain in-container OOM kill of the agent
      * process. Bound memory by lowering {@link burnConcurrency} instead.
      */
     burnCpus: z.number().positive().max(256).optional(),
     /**
-     * Install the burn guard — a Claude Code `PreToolUse` hook inside each burn
-     * sandbox that denies a few things the burner prompt already forbids (git
-     * stash, overriding test-runner concurrency, rewriting files through
+     * Install the burn guard — a Claude Code `PreToolUse` hook inside each
+     * worker sandbox that denies a few things the working rules already forbid
+     * (git stash, overriding test-runner concurrency, rewriting files through
      * interpreter heredocs).
      *
      * On by default because prompt rules measurably did not hold on their own.
      * Set `false` to fall back to prompt-only guidance — worth doing if a rule
      * ever misfires, since a false deny in an unattended agent costs turns.
-     * Container sandboxes only: under `noSandbox` the agent runs on the host,
-     * where writing `~/.claude/settings.json` would clobber the human's own.
      */
     burnGuard: z.boolean().default(true),
     /**
-     * Max agent iterations per ticket burn (sandcastle `maxIterations`). Each
-     * iteration is one fresh non-interactive `claude --print` invocation against
-     * the same worktree, so an agent that ends its turn prematurely (print mode
-     * has no background-task notifications) is picked up by the next iteration
-     * instead of failing the ticket. The burner prompt's
-     * `<promise>COMPLETE</promise>` signal stops the loop early once a ticket is
-     * actually done, so raising this does not make successful burns slower.
-     */
-    burnMaxIterations: z.number().int().min(1).max(10).default(3),
-    /**
-     * Max sandcastle attempts per ticket per run. Distinct from
-     * `burnMaxIterations` (turns WITHIN one healthy agent process): an attempt
-     * is a whole `run()` — when the agent process dies on a transient
-     * infrastructure error (API stream drop, network, overload/rate-limit,
-     * idle timeout), the burner starts a fresh attempt on a new temp branch
-     * BASED ON the failed attempt's branch, so commits already made are never
-     * lost, and tells the agent to continue rather than start over. Fatal
-     * errors (auth, unknown model, merge conflicts, agent-reported BLOCKED)
-     * never retry.
-     */
-    burnAttempts: z.number().int().min(1).max(5).default(3),
-    /**
-     * Max in-loop conflict-RESOLVER passes per landing. When a ticket's branch
-     * conflicts with the feature branch (its siblings landed first and touched
-     * the same files), the burner does not hand the human a git command: it
-     * runs one more agent on that branch — same ticket, same feature docs, plus
-     * the conflicting paths and the sibling commits it is reconciling against —
-     * which merges the feature branch IN, resolves, and commits, turning the
-     * landing into a fast-forward. A pass is repeated only when the feature tip
-     * moves again mid-resolve. `0` disables it: conflicts go straight to the
-     * human (the pre-resolver behaviour).
-     */
-    burnConflictAttempts: z.number().int().min(0).max(3).default(2),
-    /**
-     * Command run inside the burner sandbox before the agent starts (sandcastle
-     * `sandbox.onSandboxReady`), overriding lockfile-based detection. Leave
+     * Command run inside the worker sandbox before the agent starts,
+     * overriding lockfile-based detection. Leave
      * unset to auto-detect from the target repo (`packageManager` field, then
      * lockfiles — a root install covers JS workspaces/monorepos). Set it for
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
@@ -345,29 +309,16 @@ export const RuncastleConfig = z.preprocess(
      */
     knownFailures: z.string().optional(),
     /**
-     * Where the burn agent's working tree lives (ADR-0005). `mounted` keeps the
-     * agent in sandcastle's bind-mounted worktree; `isolated` clones it onto the
-     * container's native filesystem and syncs commits back via a post-commit
-     * hook — the fix for Docker Desktop's per-file mount translation tax, which
-     * makes small-file-heavy tools (pnpm, tsc, jest) 10–60x slower on
-     * Windows/macOS hosts. `auto` picks `isolated` on win32/darwin and `mounted`
-     * on Linux (where the bind mount is native and free). Ignored for
-     * `noSandbox` (no container, nothing to isolate).
-     */
-    burnWorkspace: z.enum(['auto', 'mounted', 'isolated']).default('auto'),
-    /**
-     * Whether burns share a persistent per-project cache volume. `volume`
-     * (default) mounts one Docker/Podman named volume per project holding the
-     * package-manager store and one persistent checkout per burn-concurrency
-     * slot, so install, `.tsbuildinfo`, the test runner's cache and turbo's
-     * cache all survive the container rebuild that happens between iterations.
-     * `off` is today's behaviour byte for byte: a fresh clone and a cold install
-     * every time.
+     * Whether worker sandboxes share a persistent per-project cache volume.
+     * `volume` (default) mounts one Docker/Podman named volume per project
+     * holding the package-manager store and one persistent checkout per
+     * concurrency slot, so install, `.tsbuildinfo`, the test runner's cache and
+     * turbo's cache survive between workers. `off` is a fresh clone and a cold
+     * install every time.
      *
-     * Config-file + env only, like {@link burnWorkspace} — a burn-internals
-     * escape hatch, not a setting the overlay offers. Non-container sandboxes
-     * resolve to `off` on their own; go through {@link resolveBurnCacheMode}
-     * rather than reading this field.
+     * Config-file + env only — an escape hatch, not a setting the overlay
+     * offers. Go through {@link resolveBurnCacheMode} rather than reading this
+     * field.
      */
     burnCache: z.enum(['volume', 'off']).default('volume'),
   }),
@@ -421,20 +372,12 @@ export function resolveSandboxImage(
   return project?.sandboxImage?.trim() || config.sandboxImage?.trim() || DEFAULT_SANDBOX_IMAGE
 }
 
-/** The sandboxes whose engine can hold a named volume for the burn cache. */
-const BURN_CACHE_SANDBOXES: readonly RuncastleConfig['sandbox'][] = ['docker', 'podman']
-
 /**
- * The burn cache mode actually in force. `off` whenever the sandbox is not one
- * whose engine owns named volumes — `noSandbox` has no container to mount into,
- * and a provider that is neither docker nor podman has no volume vocabulary at
- * all, so both degrade to today's behaviour rather than failing. Pure; the
- * single reader of `config.burnCache`.
+ * The burn cache mode actually in force: the configured one (both sandbox
+ * engines own named volumes). Pure; the single reader of `config.burnCache`.
  */
-export function resolveBurnCacheMode(
-  config: Pick<RuncastleConfig, 'burnCache' | 'sandbox'>,
-): RuncastleConfig['burnCache'] {
-  return BURN_CACHE_SANDBOXES.includes(config.sandbox) ? config.burnCache : 'off'
+export function resolveBurnCacheMode(config: Pick<RuncastleConfig, 'burnCache'>): RuncastleConfig['burnCache'] {
+  return config.burnCache
 }
 
 /**

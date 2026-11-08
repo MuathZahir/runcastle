@@ -39,7 +39,8 @@ import {
   getNote as getProjectNote,
 } from '../src/services/project-notes'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'

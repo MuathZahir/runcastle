@@ -95,12 +95,9 @@ const field = (over: Partial<SettingField>): SettingField =>
     ...over,
   }) as SettingField
 
-/** The worker numbers, and the retired burn counts the server still reports, as an untouched machine has them. */
+/** The worker numbers, as an untouched machine has them. */
 const burnFields: SettingField[] = [
   field({ key: 'burnConcurrency', value: 3, source: 'default' }),
-  field({ key: 'burnMaxIterations', value: 3, source: 'file' }),
-  field({ key: 'burnAttempts', value: 3, source: 'file' }),
-  field({ key: 'burnConflictAttempts', value: 2, source: 'file' }),
   field({ key: 'burnCpus', value: null, source: 'default' }),
 ]
 

@@ -11,7 +11,7 @@ import type {
   SessionPurpose,
   SessionRow,
 } from '@runcastle/core'
-import { DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
+import { DEFAULT_RUNTIME } from '@runcastle/core'
 import { designCropsDir, featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'

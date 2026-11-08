@@ -18,7 +18,7 @@ import { listAfter, listByProject } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import { keysToPrepare } from '../src/services/prep'
 import { getProjectById } from '../src/services/repo'
-import { storeTickets } from '../src/services/tickets'
+import { storeTickets } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 

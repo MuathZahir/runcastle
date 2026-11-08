@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { reviewFindings } from '../../src/db/schema'
 import type { AppCtx } from '../../src/db/types'
 import { buildFixTicket, listByFeature, reportFinding } from '../../src/services/review-findings'
-import { storeTickets } from '../../src/services/tickets'
+import { storeTickets } from './tickets'
 
 /**
  * Report a defect and give it the fix ticket a review used to mint for it —

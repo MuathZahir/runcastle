@@ -100,7 +100,7 @@ export async function ensureBurnImage(
 ): Promise<BurnImageOutcome> {
   const { config, exec } = deps
   const columns = ctx.projectImage
-  if (config.sandbox === 'noSandbox' || !columns) return { status: 'ready' }
+  if (!columns) return { status: 'ready' }
   const engine = config.sandbox
   const burnUser = deps.burnUser ?? resolveBurnUser(engine)
 

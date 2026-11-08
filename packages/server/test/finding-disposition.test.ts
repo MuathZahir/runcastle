@@ -11,7 +11,8 @@ import {
   markFixProgress,
   markFixed,
 } from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature as listTickets } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { reportWithFixTicket } from './helpers/findings'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'

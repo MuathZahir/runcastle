@@ -30,7 +30,7 @@ import {
 } from '../src/services/git'
 import { getProjectById } from '../src/services/repo'
 import { appendSaw, readSaw } from '../src/services/review-saw'
-import { storeTickets, updateTicket } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { resolveBun } from './helpers/bun'

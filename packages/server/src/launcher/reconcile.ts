@@ -1,4 +1,4 @@
-import { foldThread, type Run, type SessionRow } from '@runcastle/core'
+import { foldThread, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { mayStartInBackground } from '../services/database-copy'
@@ -67,14 +67,13 @@ export const RESTART_CARRY_ON_EVENT = 'session.restart_carry_on'
  * or failed, nor a lead whose round was cut off (its round message already
  * goes), nor a lead of a feature that has shipped or been archived.
  */
-function carriesOn(ctx: AppCtx, row: SessionRow, roundCutOff: ReadonlySet<string>): boolean {
+function carriesOn(ctx: AppCtx, row: SessionRow): boolean {
   if (row.kind === 'project') return true
   if (row.kind === 'worker') {
     const status = getWorker(ctx, row.id)?.status
     return status === 'working' || status === 'queued'
   }
   if (row.kind !== 'chat' || !row.featureId || row.headless || row.purpose === 'self-plan') return false
-  if (roundCutOff.has(row.featureId)) return false
   const feature = tryGetFeature(ctx, row.featureId)
   return !!feature && feature.status !== 'shipped' && feature.status !== 'archived'
 }
@@ -85,11 +84,10 @@ function carriesOn(ctx: AppCtx, row: SessionRow, roundCutOff: ReadonlySet<string
  * server. On a copied database (a test drive) it starts no chat the drive has
  * not started. Best effort: nothing here throws.
  */
-export async function wakeCutOffChats(ctx: AppCtx, cutOff: readonly SessionRow[], staleRuns: readonly Run[]): Promise<void> {
-  const roundCutOff = new Set(staleRuns.filter((r) => r.workflow === 'ticket-burner').map((r) => r.featureId))
+export async function wakeCutOffChats(ctx: AppCtx, cutOff: readonly SessionRow[]): Promise<void> {
   for (const row of cutOff) {
     try {
-      if (!carriesOn(ctx, row, roundCutOff) || !mayStartInBackground(row)) continue
+      if (!carriesOn(ctx, row) || !mayStartInBackground(row)) continue
       await agentHost(ctx).prompt(row.id, { text: RESTART_CARRY_ON }, { source: 'runcastle', display: { summary: 'A restart cut off this turn: carrying on' } })
       emitForSession(ctx, row, {
         type: RESTART_CARRY_ON_EVENT,

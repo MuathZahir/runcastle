@@ -451,9 +451,6 @@ const globalView = (): SettingsView =>
     { key: 'sandboxImage', value: null },
     { key: 'sessionMcp', value: 'inherit' },
     { key: 'burnConcurrency', value: 3, source: 'file' },
-    { key: 'burnMaxIterations', value: 3 },
-    { key: 'burnAttempts', value: 3 },
-    { key: 'burnConflictAttempts', value: 2 },
     { key: 'burnCpus', value: null },
     { key: 'setupCommand', value: null },
     { key: 'verifyCommands', value: null },
@@ -508,8 +505,8 @@ describe('pageRows — one page per task', () => {
     expect(rows.find((r) => r.key === 'burnCpus')?.placeholder).toBe('unlimited')
   })
 
-  it('renders the retired attempt, iteration, conflict-pass and sandbox settings on no page', () => {
-    const retired = ['burnMaxIterations', 'burnAttempts', 'burnConflictAttempts', 'sandbox']
+  it('renders the retired sandbox on/off switch on no page', () => {
+    const retired = ['sandbox']
     const shown = (['general', 'models', 'sandboxes'] as const).flatMap((page) => pageRows(globalView(), page).map((r) => r.key))
     const project = pageRows(projectView(), 'project').map((r) => r.key)
     for (const key of retired) {

@@ -817,10 +817,10 @@ export function describeField(
 
 /**
  * Settings the server still reports that govern nothing a human runs any more
- * (burns-become-workers decision 18): the burn loop's attempt, iteration and
- * conflict-pass counts, and the sandbox on/off switch. They render nowhere.
+ * (burns-become-workers decision 18): the sandbox on/off switch. It renders
+ * nowhere.
  */
-const RETIRED_KEYS: ReadonlySet<string> = new Set(['burnMaxIterations', 'burnAttempts', 'burnConflictAttempts', 'sandbox'])
+const RETIRED_KEYS: ReadonlySet<string> = new Set(['sandbox'])
 
 /** A field that renders as a row — not a per-step model, not the roster itself, not a retired setting. */
 function isRowKey(key: string): boolean {

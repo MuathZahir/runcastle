@@ -31,7 +31,6 @@ const SERVER_PKG = {
   files: ['src', 'drizzle'],
   scripts: { dev: 'bun --hot src/index.ts', prepack: 'bun run scripts/build-package.ts' },
   dependencies: {
-    '@ai-hero/sandcastle': '0.12.0',
     '@runcastle/core': 'workspace:*',
     'drizzle-orm': '0.45.2',
     hono: '4.12.30',
@@ -47,56 +46,13 @@ const CORE_PKG = {
   dependencies: { 'drizzle-orm': '0.45.2', nanoid: '6.0.0', zod: '4.4.3' },
 }
 
-/** sandcastle as resolved from node_modules — bundled in, so its deps become ours. */
-const SANDCASTLE_PKG = {
-  name: '@ai-hero/sandcastle',
-  version: '0.12.0',
-  dependencies: { '@clack/prompts': '^1.1.0' },
-  peerDependencies: { '@daytona/sdk': '^0.164.0' },
-}
-const BUNDLED = { '@ai-hero/sandcastle': SANDCASTLE_PKG }
-
 function build(overrides?: { version?: string }) {
   return buildPublishedManifest({
     serverPkg: SERVER_PKG,
     corePkg: CORE_PKG,
-    bundledPkgs: BUNDLED,
     ...overrides,
   })
 }
-
-/** A built bundle that inlined the PATCHED sandcastle (the shapes the patch adds). */
-const PATCHED_BUNDLE = `
-var resolveUserMounts = (mounts, sandboxHomedir) => mounts.map((m) => {
-  if (m.volume !== void 0) {
-    return { hostPath: m.volume, sandboxPath: resolveSandboxPath(m.sandboxPath, sandboxHomedir), volume: m.volume };
-  }
-  const resolvedHostPath = resolveHostPath(m.hostPath);
-});
-var formatVolumeMount = (mount, selinuxLabel) => {
-  const selinux = mount.volume !== void 0 ? void 0 : selinuxLabel || void 0;
-};
-var docker = (options) => {
-  const containerName = options?.containerName ?? \`sandcastle-\${randomUUID()}\`;
-  const volumeMounts = allMounts.map((m) => ({ hostPath: m.hostPath, readonly: m.readonly, volume: m.volume }));
-};
-var noSandbox = (options) => {
-  const proc = spawn(shellCmd, shellArgs, {});
-  if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
-};
-var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\\/=]{120,}'/g, "'…'");
-var TOOL_ARG_FIELDS = { Bash: "command", Read: "file_path", NotebookEdit: "notebook_path", Glob: "pattern" };
-`
-
-/** The same bundle built from the REGISTRY copy: v1.2.11's output. */
-const UNPATCHED_BUNDLE = `
-var resolveUserMounts = (mounts, sandboxHomedir) => mounts.map((m) => {
-  const resolvedHostPath = resolveHostPath(m.hostPath);
-});
-var formatVolumeMount = (mount, selinuxLabel) => {
-  const options = [mount.readonly ? "ro" : void 0, selinuxLabel || void 0];
-};
-`
 
 describe('buildPublishedManifest', () => {
   it('names the package `runcastle` and un-privates it', () => {
@@ -113,23 +69,6 @@ describe('buildPublishedManifest', () => {
       expect(String(spec).startsWith('workspace:')).toBe(false)
     }
     expect('@runcastle/core' in deps).toBe(false)
-  })
-
-  it('drops every bundled dependency and folds ITS runtime deps in', () => {
-    const deps = build().dependencies ?? {}
-    // sandcastle is inlined (patched) — a registry install of it must not happen.
-    expect('@ai-hero/sandcastle' in deps).toBe(false)
-    // …but what sandcastle itself imports must now resolve from our node_modules.
-    expect(deps['@clack/prompts']).toBe('^1.1.0')
-    // peer deps (optional cloud sandboxes) are not runtime deps and stay out.
-    expect('@daytona/sdk' in deps).toBe(false)
-  })
-
-  it('refuses to build without the manifest of every bundled dependency', () => {
-    // Silently dropping sandcastle's deps would ship a package that cannot import @clack/prompts.
-    expect(() => buildPublishedManifest({ serverPkg: SERVER_PKG, corePkg: CORE_PKG })).toThrow(
-      /@ai-hero\/sandcastle: manifest not supplied/,
-    )
   })
 
   it("folds core's own runtime deps in (core is bundled, its deps become ours)", () => {
@@ -193,48 +132,28 @@ describe('buildPublishedManifest', () => {
  * The patched-dependency contract (v1.2.11 regression): a workspace patch only
  * applies inside this monorepo, so every patched dep must be bundled (and the
  * patch proven present in the output) or be explicitly, with a reason, external.
+ * Nothing is patched today: the burn engine's patched sandcastle is gone.
  */
 describe('patched dependencies', () => {
-  const ROOT_PATCHES = {
-    '@ai-hero/sandcastle@0.12.0': 'patches/@ai-hero%2Fsandcastle@0.12.0.patch',
-  }
-
   it('strips the version from a patchedDependencies key, scoped or not', () => {
-    expect(patchedDependencyName('@ai-hero/sandcastle@0.12.0')).toBe('@ai-hero/sandcastle')
+    expect(patchedDependencyName('@scope/pkg@0.12.0')).toBe('@scope/pkg')
     expect(patchedDependencyName('node-pty@1.1.0')).toBe('node-pty')
     expect(patchedDependencyName('node-pty')).toBe('node-pty')
   })
 
-  it("accepts the workspace's current patches: sandcastle bundled", () => {
-    expect(checkPatchedDependencies(ROOT_PATCHES)).toEqual([])
-    expect('@ai-hero/sandcastle' in BUNDLED_DEPENDENCIES).toBe(true)
-  })
-
-  it('matches the patches the root manifest actually declares', () => {
+  it('matches the root manifest: no patched dependency, nothing bundled, nothing external-with-a-reason', () => {
     const root = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'))
-    expect(root.patchedDependencies).toEqual(ROOT_PATCHES)
-    // node-pty's patch retired with 1.2: nothing is external-with-a-reason today.
+    expect(root.patchedDependencies ?? {}).toEqual({})
+    expect(checkPatchedDependencies(root.patchedDependencies ?? {})).toEqual([])
+    expect(BUNDLED_DEPENDENCIES).toEqual({})
     expect(PATCHED_EXTERNAL_DEPENDENCIES).toEqual({})
   })
 
   it('fails the build for a patch that would ship unpatched', () => {
-    const errors = checkPatchedDependencies({ ...ROOT_PATCHES, 'simple-git@3.36.0': 'patches/simple-git.patch' })
+    const errors = checkPatchedDependencies({ 'simple-git@3.36.0': 'patches/simple-git.patch' })
     expect(errors).toHaveLength(1)
     expect(errors[0]).toMatch(/simple-git@3\.36\.0 is patched/)
     expect(errors[0]).toMatch(/BUNDLED_DEPENDENCIES/)
-  })
-
-  it('finds every patch marker in a bundle built from the patched sandcastle', () => {
-    expect(findMissingPatchMarkers('@ai-hero/sandcastle', PATCHED_BUNDLE)).toEqual([])
-  })
-
-  it("reports the markers a registry (unpatched) sandcastle lacks — v1.2.11's bundle", () => {
-    const missing = findMissingPatchMarkers('@ai-hero/sandcastle', UNPATCHED_BUNDLE)
-    expect(missing).toHaveLength(BUNDLED_DEPENDENCIES['@ai-hero/sandcastle']!.markers.length)
-  })
-
-  it('tolerates the bundler printing `undefined` for `void 0`', () => {
-    expect(findMissingPatchMarkers('@ai-hero/sandcastle', PATCHED_BUNDLE.replaceAll('void 0', 'undefined'))).toEqual([])
   })
 
   it('rejects a marker check for a dependency that is not bundled', () => {
@@ -242,14 +161,14 @@ describe('patched dependencies', () => {
   })
 
   it('detects an entrypoint that still imports the dependency from node_modules', () => {
-    const name = '@ai-hero/sandcastle'
-    expect(importsExternally(name, `import { run } from "@ai-hero/sandcastle";`)).toBe(true)
-    expect(importsExternally(name, `import { docker } from '@ai-hero/sandcastle/sandboxes/docker'`)).toBe(true)
-    expect(importsExternally(name, `const m = await import("@ai-hero/sandcastle")`)).toBe(true)
-    expect(importsExternally(name, `require("@ai-hero/sandcastle")`)).toBe(true)
+    const name = '@scope/pkg'
+    expect(importsExternally(name, `import { run } from "@scope/pkg";`)).toBe(true)
+    expect(importsExternally(name, `import { docker } from '@scope/pkg/sub/path'`)).toBe(true)
+    expect(importsExternally(name, `const m = await import("@scope/pkg")`)).toBe(true)
+    expect(importsExternally(name, `require("@scope/pkg")`)).toBe(true)
     // inlined: only the code remains, plus a same-named string that is not an import.
-    expect(importsExternally(name, `${PATCHED_BUNDLE}\nconst label = "@ai-hero/sandcastle"`)).toBe(false)
+    expect(importsExternally(name, `var x = 1;\nconst label = "@scope/pkg"`)).toBe(false)
     // a different package sharing the prefix is not it.
-    expect(importsExternally(name, `import x from "@ai-hero/sandcastle-extras"`)).toBe(false)
+    expect(importsExternally(name, `import x from "@scope/pkg-extras"`)).toBe(false)
   })
 })

@@ -1,6 +1,6 @@
 import type { ExecFn } from '../doctor/doctor'
 import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
-import type { PackageManager } from '../workflows/ticket-burner'
+import type { PackageManager } from '../services/repo-toolchain'
 
 /**
  * The persistent worker cache: one Docker/Podman named volume per project, and

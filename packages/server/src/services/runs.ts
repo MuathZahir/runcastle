@@ -1,32 +1,64 @@
-import type { ReviewGateRun, RoundGates, RoundSummary, Run, RunStatus, Ticket } from '@runcastle/core'
+import type { ReviewGateRun, RoundGates, RoundSummary, Run, Ticket } from '@runcastle/core'
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { events } from '../db/schema'
-import { workflowClaimsFeatureBranch } from '../workflows/runner'
-import { getRunRow, listRunsByFeature } from './repo'
-import { listByFeature, listByIds } from './tickets'
+import { events, runs, tickets } from '../db/schema'
+import { releaseTalkWorktreeAfterRun } from './chat-branch'
+import { emit } from './events'
+import { getProjectById, getRunRow, listRunsByFeature, rowToRun, tryGetFeature } from './repo'
+import { listByFeature } from './tickets'
 
 /**
- * Run history (decision #15b). A feature accumulates one run per burn, and only
- * the latest one used to be renderable — the rest were rows nothing could
- * reach. Everything a past run needs to draw its lanes is already stored: the
- * run row, the ticket rows, and the run's own events, which is where the join
- * between the two lives (every ticket event a run emits carries its `runId`).
- *
- * So this adds no persistence. It reads what the round already wrote.
+ * Run history, read only. Runs, rounds and tickets are frozen: nothing writes
+ * them any more (burns became workers), and these reads serve the History view
+ * and `get_work_record` for features built before. Everything a past run needs
+ * is already stored: the run row, the ticket rows, and the run's own events,
+ * which is where the join between the two lives (every ticket event a run
+ * emitted carries its `runId`).
  */
 
-/** One run as the runs list renders it — enough to name it, not to draw it. */
-export interface RunSummary {
-  id: string
-  status: RunStatus
-  startedAt: number
-  endedAt?: number
-  ticketIds: string[]
+/**
+ * Boot step for the upgrade that retired the burn engine: a run still marked
+ * `running` died with the old server and nothing will ever finish it, so it is
+ * closed as failed (and its `burning` lanes with it) rather than wedging the
+ * "a run is in progress" guards forever. Idempotent: once nothing is `running`
+ * it does nothing. Returns how many runs it closed.
+ */
+export async function freezeStaleRuns(ctx: AppCtx): Promise<number> {
+  const stale = ctx.db.select().from(runs).where(eq(runs.status, 'running')).all().map(rowToRun)
+  for (const run of stale) {
+    ctx.db
+      .update(runs)
+      .set({ status: 'failed', endedAt: Date.now(), summary: 'orphaned by server restart' })
+      .where(eq(runs.id, run.id))
+      .run()
+    const reason = 'the burn engine is retired — hand this work to a worker'
+    ctx.db
+      .update(tickets)
+      .set({ status: 'failed', error: reason })
+      .where(and(eq(tickets.featureId, run.featureId), eq(tickets.status, 'burning')))
+      .run()
+    const feature = tryGetFeature(ctx, run.featureId)
+    const project = feature ? getProjectById(ctx, feature.projectId) : null
+    if (feature && project) {
+      try {
+        await releaseTalkWorktreeAfterRun(ctx, project, feature)
+      } catch {
+        // best-effort — a parked worktree is still readable; never fail boot
+      }
+    }
+    emit(ctx, run.featureId, {
+      type: 'run.reconciled',
+      message: 'a round left running by the old server was closed — the burn engine is retired',
+      runId: run.id,
+    })
+  }
+  return stale.length
 }
 
-/** A run plus the ledger rows its lanes are, for rendering one in record mode. */
-export type RunWithTickets = Run & { tickets: Ticket[] }
+/** The only workflow that ever claimed a feature branch: the retired burn. */
+function workflowClaimsFeatureBranch(workflowId: string): boolean {
+  return workflowId === 'ticket-burner'
+}
 
 /**
  * The tickets a run touched, in the order the run first spoke about them.
@@ -99,29 +131,6 @@ export function latestBurn(ctx: AppCtx, featureId: string): Run | undefined {
 }
 
 /**
- * The live run holding this ticket, if there is one — a branch-claiming run
- * (the burn) whose schedule includes it. The chat's ticket surgery refuses those
- * and nothing else (decisions.md #3): a ticket no live burn claimed is the next
- * burn's work and stays editable while this one runs.
- */
-export function activeBurnClaim(ctx: AppCtx, featureId: string, ticketId: string): Run | undefined {
-  return listRunsByFeature(ctx, featureId)
-    .filter((run) => run.status === 'running' && workflowClaimsFeatureBranch(run.workflow))
-    .find((run) => runClaimedTicketIds(ctx, run.id).includes(ticketId))
-}
-
-/** Every run of a feature, newest first, for the run-history picker. */
-export function listRunSummaries(ctx: AppCtx, featureId: string): RunSummary[] {
-  return listRunsByFeature(ctx, featureId).map((run) => ({
-    id: run.id,
-    status: run.status,
-    startedAt: run.startedAt,
-    ...(run.endedAt === undefined ? {} : { endedAt: run.endedAt }),
-    ticketIds: runTicketIds(ctx, run.id),
-  }))
-}
-
-/**
  * A round's verify-gate record as the trail reads it: every command passed, or
  * which did not. `null` when no verify command is configured, or the gates have
  * not run yet — there is no result to show, which is not the same as a pass.
@@ -161,15 +170,4 @@ export function listRounds(ctx: AppCtx, featureId: string): RoundSummary[] {
         finishedAt: run.endedAt ?? null,
       }
     })
-}
-
-/**
- * One run with the ticket rows it burned. The live run view reads the feature's
- * whole ledger instead — it is watching work in flight, and a ticket admitted
- * mid-run (a review's fix wave) must appear the moment it exists. A past run is
- * the opposite: it is exactly the lanes it had, and nothing since.
- */
-export function getRunWithTickets(ctx: AppCtx, runId: string): RunWithTickets {
-  const run = getRunRow(ctx, runId)
-  return { ...run, tickets: listByIds(ctx, runTicketIds(ctx, runId)) }
 }

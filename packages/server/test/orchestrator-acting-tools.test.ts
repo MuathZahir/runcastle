@@ -46,7 +46,7 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
-import { storeTickets } from '../src/services/tickets'
+import { storeTickets } from './helpers/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'

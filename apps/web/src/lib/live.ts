@@ -398,10 +398,6 @@ export function useLiveSync(): LiveStatus {
       // clean dry run stamps them mid-session — without this the warning would
       // outlive the run that disproved it until the next remount.
       refetches.push(u.project.prep.invalidate())
-      refetches.push(u.run.get.invalidate())
-      // The run history behind the runs counter (decision #15b) — a burn that
-      // starts adds a row to it, and the counter is on screen while that happens.
-      refetches.push(u.run.listByFeature.invalidate())
       refetches.push(u.project.list.invalidate())
       // Spec/plan documents — their text, and the size of the digest a burn
       // would hand every ticket off them. These queries have no polling interval
@@ -447,10 +443,6 @@ export function useLiveSync(): LiveStatus {
       return Promise.allSettled(refetches)
     }
 
-    const invalidateTranscript = (): void => {
-      void utilsRef.current.run.agentTranscript.invalidate()
-    }
-
     // Partial input: `events` is keyed by its cursor too, and every cursor of
     // this thread is invalidated — only the one on screen is active to refetch.
     const invalidateThread = (threadId: string): Promise<unknown> => utilsRef.current.thread.events.invalidate({ threadId })
@@ -458,7 +450,8 @@ export function useLiveSync(): LiveStatus {
 
     return startLiveSync({
       resyncAll: invalidateDbBacked,
-      resyncTranscript: invalidateTranscript,
+      // No live burn transcript is served any more; the handler stays for the stream contract.
+      resyncTranscript: () => undefined,
       resyncThread: invalidateThread,
       resyncThreadLists: invalidateThreadLists,
     })

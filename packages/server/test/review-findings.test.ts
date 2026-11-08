@@ -17,7 +17,8 @@ import {
   reportFinding,
   viewByFeature,
 } from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
+import { listByFeature as listTickets } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
 import { reportWithFixTicket } from './helpers/findings'

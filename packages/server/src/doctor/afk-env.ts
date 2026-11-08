@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { AGENT_RUNTIMES } from '@runcastle/core'
 import { envPath } from '@runcastle/core/paths'
-import { parseEnvFile } from '../workflows/ticket-burner'
+import { parseEnvFile } from '../services/repo-toolchain'
 import { RUNTIME_SPECS } from './doctor'
 
 /**

@@ -10,7 +10,7 @@ import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp from '../src/mcp/server'
 import { resetSentMemoryForTests } from '../src/mcp/sent-memory'
 import hooksApp from '../src/routes/hooks'
-import { storeTickets, updateTicket } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 

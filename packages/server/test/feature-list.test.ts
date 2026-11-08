@@ -9,7 +9,8 @@ import {
 } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { list } from '../src/services/features'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { listByFeature } from '../src/services/tickets'
+import { storeTickets, updateTicket } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 

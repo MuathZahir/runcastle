@@ -40,7 +40,6 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
-import { latestBurn, runClaimedTicketIds } from './runs'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import { needEventsByProject, needOf } from './feature-need'
@@ -58,15 +57,7 @@ import { activeSessionsForFeature, featureSessions } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
 import { leadState, NO_LEAD } from '../threads/read'
 import { agentHost } from '../threads/types'
-import {
-  getTicket,
-  isPendingTicket,
-  listByFeature,
-  ticketStatusCounts,
-  sweepOrphanedBurning,
-  updateTicket,
-} from './tickets'
-import { cancelRun, startRun } from '../workflows/runner'
+import { listByFeature, ticketStatusCounts } from './tickets'
 import { removeFeatureWorkers, stopFeatureWorkers, workersHoldingReady } from '../workers/service'
 
 /**
@@ -512,136 +503,7 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
   return { status: session.status, awaitingInput: session.awaitingInput }
 }
 
-/**
- * Restart the round over the feature's pending tickets — the engine under the
- * run lane's per-ticket retry ({@link retryTicket}), which has already reset
- * exactly the tickets it wants burned. Rounds start through
- * {@link dispatchRound}; this is never a door of its own.
- *
- * No run is live (refused first), so a ticket still marked `burning` is an
- * orphan from a run that died without finalizing — it is failed first, so the
- * scheduler (which only queues `pending`) never strands it.
- */
-export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
-  const feature = getFeatureRow(ctx, featureId)
-  requireNotDraft(feature)
-  // One burn at a time on a feature branch (ADR-0002).
-  if (hasActiveRun(ctx, featureId)) throw new GateError('a round is already running for this feature')
-  const tickets = listByFeature(ctx, featureId)
-  if (!tickets.some(isPendingTicket)) {
-    throw new GateError(tickets.length > 0 ? 'no pending tickets to build' : 'no tickets to build')
-  }
-  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was building')
-  emit(ctx, featureId, { type: 'burn.restarted', message: 'restarting the round' })
-  // Only the id crosses the seam — `startRun` also hands back a `done` promise
-  // the caller must not await (the run finishes long after the click returns).
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner')
-  return { runId }
-}
-
 export { markHumanMessage, setWaiting } from './lead-status'
-
-/**
- * Dispatch a round (decision 13): one ticket-burner run over exactly the named
- * tickets; every other pending ticket waits for a later round. The engine
- * underneath is the burn's, unchanged.
- *
- * The only hard refusals, each saying why: the feature is a draft or has
- * shipped, a round is already running, a drive of this feature holds the drive
- * slot (decision 19), the human pressed Stop and has not replied since
- * (decision 23), a seq that is unknown or has nothing left to burn, or a named
- * ticket blocked by one outside the round that is not `done`/`cancelled` (or
- * does not exist) — the refusal lists every such edge. A named
- * `failed` ticket is reset to `pending` first, as the burn's restart does.
- */
-export async function dispatchRound(
-  ctx: AppCtx,
-  featureId: string,
-  seqs: number[],
-): Promise<{ runId: string }> {
-  const feature = getFeatureRow(ctx, featureId)
-  requireNotDraft(feature)
-  if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has shipped — there is nothing left to dispatch`)
-  if (hasActiveRun(ctx, featureId)) {
-    throw new GateError('a round is already running — wait for it to return, or stop it with stop_round')
-  }
-  const project = projectForFeature(ctx, feature)
-  if (git.activeTestDriveFeatureId(project.id) === featureId) {
-    throw new GateError('the human is test-driving this feature — no round starts until the drive stops')
-  }
-  requireNotStopped(feature)
-  if (seqs.length === 0) throw new InvalidInputError('name at least one ticket seq to dispatch')
-
-  // No run is live (refused above), so a `burning` row is an orphan of a dead run.
-  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was building')
-  const bySeq = new Map(listByFeature(ctx, featureId).map((t) => [t.seq, t]))
-  const named = [...new Set(seqs)].map((seq) => {
-    const ticket = bySeq.get(seq)
-    if (!ticket) throw new GateError(`ticket ${seq} does not exist on this feature`)
-    if (ticket.status !== 'pending' && ticket.status !== 'failed') {
-      throw new GateError(`ticket ${seq} is ${ticket.status} — only pending (or failed) tickets can be dispatched`)
-    }
-    return ticket
-  })
-  // A blocker outside the round must already be finished (decisions 1, 3, 5).
-  const namedSeqs = new Set(named.map((t) => t.seq))
-  const unmet: string[] = []
-  for (const t of [...named].sort((a, b) => a.seq - b.seq)) {
-    for (const b of [...t.blockedBy].sort((x, y) => x - y)) {
-      if (namedSeqs.has(b)) continue
-      const blocker = bySeq.get(b)
-      if (!blocker) {
-        unmet.push(`ticket ${t.seq} is blocked by ticket ${b}, which does not exist on this feature`)
-      } else if (blocker.status !== 'done' && blocker.status !== 'cancelled') {
-        unmet.push(
-          `ticket ${t.seq} is blocked by ticket ${b}, which is not in this round and is ${blocker.status} — name ${b} in this round as well`,
-        )
-      }
-    }
-  }
-  if (unmet.length > 0) throw new GateError(`this round cannot start: ${unmet.join('; ')}`)
-  for (const t of named) {
-    // Keep `attemptBranch`/`conflictFiles` so the retry resumes, as burn()'s restart does.
-    if (t.status === 'failed') updateTicket(ctx, t.id, { status: 'pending', error: null })
-  }
-
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: named.map((t) => t.id) })
-  ctx.db
-    .update(features)
-    .set({ lastDispatchAt: Date.now(), waitingReason: null, waitingKind: null })
-    .where(eq(features.id, featureId))
-    .run()
-  emit(ctx, featureId, {
-    type: 'round.dispatched',
-    message: `round dispatched over ${named.map((t) => `#${t.seq}`).join(', ')}`,
-    runId,
-    data: { seqs: named.map((t) => t.seq) },
-  })
-  return { runId }
-}
-
-/** The feature's running round, or a refusal saying there is none. */
-function requireRunningRound(ctx: AppCtx, featureId: string): Run {
-  const run = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
-  if (!run) throw new GateError('no round is running')
-  return run
-}
-
-/**
- * Stop the running round (decision 15): its agents are killed and the run reads
- * cancelled; work that already landed stays on the feature branch.
- */
-export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId: string; confirmed: boolean }> {
-  const run = requireRunningRound(ctx, featureId)
-  const { confirmed } = await cancelRun(run.id)
-  emit(ctx, featureId, {
-    type: 'round.stopped',
-    message: confirmed ? 'round stopped' : 'round stopped — an agent of it may still be running',
-    runId: run.id,
-    data: { confirmed },
-  })
-  return { runId: run.id, confirmed }
-}
 
 /** Refuse the lead's starts while the human's Stop stands: nothing starts until they reply (decision 15). */
 export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHumanMessageAt'>): void {
@@ -653,7 +515,7 @@ export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHuma
 /**
  * The human's Stop (burns-become-workers decision 15): end the lead's turn,
  * cancel the turn of every working or queued worker (they stay where they are,
- * enterable), stop a round still running from before workers, set the stopped
+ * enterable), set the stopped
  * mark so nothing new starts until the human replies, and tell the lead with
  * that reply. The status reads "Waiting for you · stopped".
  *
@@ -664,7 +526,6 @@ export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHuma
 export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  const running = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
   ctx.db
     .update(features)
     .set({ stoppedAt: Date.now(), waitingReason: STOPPED, waitingKind: null })
@@ -672,8 +533,7 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
     .run()
   emit(ctx, featureId, {
     type: 'feature.stopped',
-    message: running ? 'stopped by the human — cancelling the round' : 'stopped by the human',
-    data: { runId: running?.id ?? null },
+    message: 'stopped by the human',
   })
   await stopFeatureWorkers(ctx, featureId)
   for (const chat of featureSessions(ctx, featureId, ['chat'])) {
@@ -681,12 +541,10 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
       .cancel(chat.id)
       .catch((err) => console.error(`chat ${chat.id}: stop`, err))
   }
-  const stopped = running ? await stopRound(ctx, featureId) : null
   const updated = getFeatureRow(ctx, featureId)
   await deliverToLead(ctx, updated, {
     text:
-      `[runcastle] The human pressed Stop: your turn and every working worker's were cancelled` +
-      `${stopped ? ', and the running round too; landed work stays' : ''}. ` +
+      `[runcastle] The human pressed Stop: your turn and every working worker's were cancelled. ` +
       'Start, message or send back no worker until the human replies.',
     source: 'runcastle',
     // Its turn is over: the note rides the human's reply and wakes nothing.
@@ -731,14 +589,13 @@ export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDecl
  * trail and the feature waits on the human ("ready to test"), which clears like
  * any waiting reason — on their next message or the next round. What to test
  * and how the work was checked the lead says in chat; the declaration carries
- * only the scenario the Test drive button starts. A declaration, never a gate:
- * what the human should hear about comes back as warnings the lead must relay.
+ * only the scenario the Test drive button starts. A declaration, never a gate.
  */
 export function declareReady(
   ctx: AppCtx,
   featureId: string,
   input: { scenario: string },
-): { declaration: ReadyDeclaration; warnings: string[] } {
+): { declaration: ReadyDeclaration } {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
@@ -746,13 +603,12 @@ export function declareReady(
   if (!scenario) throw new InvalidInputError('a ready declaration needs a scenario')
   refuseWhileWorkersOpen(ctx, featureId)
 
-  const lastRound = latestBurn(ctx, featureId)
   const declaration = ctx.db
     .insert(readyDeclarations)
     .values({
       id: newId('ready'),
       featureId,
-      runId: lastRound?.id ?? null,
+      runId: null,
       scenario,
       createdAt: Date.now(),
     })
@@ -761,13 +617,12 @@ export function declareReady(
   // Under Needs you until the human replies or a round runs; the event below speaks for it.
   ctx.db.update(features).set({ waitingReason: READY_TO_TEST, waitingKind: null }).where(eq(features.id, featureId)).run()
 
-  const warnings = readyWarnings(ctx, lastRound)
   emit(ctx, featureId, {
     type: 'feature.ready_declared',
     message: `ready for you · test drive ▸ ${scenario}`,
-    data: { declarationId: declaration.id, runId: declaration.runId, scenario, warnings },
+    data: { declarationId: declaration.id, runId: null, scenario },
   })
-  return { declaration, warnings }
+  return { declaration }
 }
 
 /**
@@ -784,159 +639,7 @@ function refuseWhileWorkersOpen(ctx: AppCtx, featureId: string): void {
   )
 }
 
-/**
- * What the lead must tell the human alongside "Ready for you": a last round
- * that did not come back clean. Whether a review ran is the lead's call, and it
- * says how the work was checked in chat, so its absence is not a warning.
- */
-function readyWarnings(ctx: AppCtx, lastRound: Run | undefined): string[] {
-  if (!lastRound) return []
-  const held = new Set(runClaimedTicketIds(ctx, lastRound.id))
-  const failed =
-    lastRound.status !== 'succeeded' ||
-    listByFeature(ctx, lastRound.featureId).some((t) => held.has(t.id) && t.status === 'failed')
-  return failed ? ['the last round had failures — tell the human what failed before they drive it.'] : []
-}
 
-/**
- * Retry ONE failed ticket (UI lane action). Resets the ticket — and every
- * failed ticket in its transitive `blockedBy` closure, since a dependent can
- * only burn once its blockers are redone — to `pending`, then starts a round if
- * none is live. Other failed tickets stay failed (unlike the whole-feature
- * re-burn, which retries everything).
- *
- * `fresh` discards the ticket's preserved work — EVERY attempt branch of this
- * ticket (the recorded one plus any orphans a pre-`attemptBranch` burn left),
- * `attemptBranch` and `conflictFiles` cleared — so the new agent starts from the
- * feature branch tip. Blockers reset alongside it keep their chains — only the
- * named ticket starts over.
- *
- * A ticket that failed on a LANDING CONFLICT keeps its `conflictFiles`, which is
- * what makes the burner resolve the conflict instead of re-implementing the
- * ticket (`resolvingConflict` in the result says so, for the caller's copy).
- * "Retry fresh" is the escape hatch that throws the conflicted work away and
- * re-implements from the current tip.
- *
- * When the ticket has NO recorded `attemptBranch` (it failed before the column
- * existed, or the db was reset), the fallback lookup
- * (`git.findPreservedTicketBranch`) checks the ticket's deterministic branch
- * prefix for leftover unmerged work and adopts it, so the button rescues old
- * failures too.
- *
- * Refused while a run is live: the running scheduler snapshotted its ticket
- * set at start and would never pick the reset ticket up, which would strand it
- * `pending` with no agent coming.
- *
- */
-export async function retryTicket(
-  ctx: AppCtx,
-  ticketId: string,
-  opts: { fresh?: boolean } = {},
-): Promise<{
-  runId: string
-  retried: number[]
-  /** Branch the retry will resume from (recorded or adopted), or null. */
-  resumedFrom: string | null
-  /** Commits preserved on that branch (0 when starting clean). */
-  preservedCommits: number
-  /** True when this retry resolves a landing conflict rather than re-implementing. */
-  resolvingConflict: boolean
-}> {
-  const ticket = getTicket(ctx, ticketId)
-  const feature = getFeatureRow(ctx, ticket.featureId)
-  if (ticket.status !== 'failed') {
-    throw new GateError(`only failed tickets can be retried — ticket ${ticket.seq} is ${ticket.status}`)
-  }
-  if (hasActiveRun(ctx, feature.id)) {
-    throw new GateError('a run is live for this feature — retry after it finishes, or cancel it first')
-  }
-  const project = projectForFeature(ctx, feature)
-
-  const all = listByFeature(ctx, feature.id)
-  const bySeq = new Map(all.map((t) => [t.seq, t]))
-
-  // Transitive failed-blocker closure: retrying a dependent without its failed
-  // blockers would just cascade it straight back to failed. A failed REVIEW
-  // blocker is reset like any other — the blocked dependent is a fix ticket the
-  // review minted, and the scheduler no longer counts those against the review's
-  // own gate, so the reset pair burns in order instead of deadlocking.
-  const toReset = new Map<number, Ticket>([[ticket.seq, ticket]])
-  const queue = [ticket.seq]
-  while (queue.length > 0) {
-    const t = bySeq.get(queue.shift() as number)
-    if (!t) continue
-    for (const b of t.blockedBy) {
-      const blocker = bySeq.get(b)
-      if (blocker && blocker.status === 'failed' && !toReset.has(blocker.seq)) {
-        toReset.set(blocker.seq, blocker)
-        queue.push(blocker.seq)
-      }
-    }
-  }
-
-  let resumedFrom: string | null = ticket.attemptBranch ?? null
-  let preservedCommits = 0
-  if (opts.fresh) {
-    const discard = new Set(
-      await git.listTicketAttemptBranches(project.repoPath, feature.slug, ticket.seq),
-    )
-    if (ticket.attemptBranch) discard.add(ticket.attemptBranch)
-    for (const b of discard) await git.deleteTempBranch(project.repoPath, b) // best-effort
-    resumedFrom = null
-  } else if (resumedFrom) {
-    preservedCommits = (
-      await git.branchCommitsAhead(project.repoPath, feature.branch, resumedFrom)
-    ).length
-  } else {
-    const found = await git.findPreservedTicketBranch(
-      project.repoPath,
-      feature.branch,
-      feature.slug,
-      ticket.seq,
-    )
-    if (found) {
-      resumedFrom = found.branch
-      preservedCommits = found.commits.length
-    }
-  }
-
-  // A landing conflict survives a plain retry (the burner resolves it) but not
-  // a fresh one (the work it described is being discarded).
-  const resolvingConflict = !opts.fresh && ticket.conflictFiles !== undefined && !!resumedFrom
-
-  for (const t of toReset.values()) {
-    const isTarget = t.id === ticket.id
-    updateTicket(ctx, t.id, {
-      status: 'pending',
-      error: null,
-      // Record an adopted branch / clear on fresh — the burner reads this
-      // pointer to base the new attempt; blockers keep whatever they have.
-      ...(isTarget ? { attemptBranch: resumedFrom } : {}),
-      ...(isTarget && !resolvingConflict ? { conflictFiles: null } : {}),
-    })
-  }
-
-  const seqs = [...toReset.keys()].sort((a, b) => a - b)
-  const how = opts.fresh
-    ? ' from scratch'
-    : resolvingConflict
-      ? ` — resolving its conflict with ${feature.branch} (${preservedCommits} commit(s) preserved on ${resumedFrom})`
-      : resumedFrom
-        ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
-        : ''
-  emit(ctx, feature.id, {
-    type: 'ticket.retry',
-    message:
-      seqs.length > 1
-        ? `retrying ticket ${ticket.seq}${how} (+ failed blocker${seqs.length > 2 ? 's' : ''} ${seqs.filter((s) => s !== ticket.seq).join(', ')})`
-        : `retrying ticket ${ticket.seq}${how}`,
-    ticketId: ticket.id,
-    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits, resolvingConflict },
-  })
-
-  const { runId } = await burn(ctx, feature.id)
-  return { runId, retried: seqs, resumedFrom, preservedCommits, resolvingConflict }
-}
 
 /**
  * Archive a feature (decision #8): allowed from any status except a draft or
@@ -1015,7 +718,7 @@ export function unarchiveFeature(ctx: AppCtx, featureId: string): Feature {
  * Cleanup order stops live things first and deletes DB rows LAST, so a failure
  * mid-cleanup (e.g. a locked talk worktree on Windows) throws with the feature
  * row still present and the whole operation retryable:
- *   1. cancel an active run   2. end a live session   3. stop THIS feature's test
+ *   1. (none: rounds are frozen)   2. end a live session   3. stop THIS feature's test
  *   drive   4. remove the talk worktree (throws on a locked/failed removal)
  *   5. delete feature + runcastle temp branches   6. emit a PROJECT-scoped
  *   `feature.deleted` (a feature-scoped event would die with the rows)
@@ -1033,13 +736,7 @@ export async function deleteFeature(
   }
   const project = projectForFeature(ctx, feature)
 
-  // (1) Cancel any in-flight run — and wait for its agents to actually die
-  // before we tear the rest down: a container still holding the worktree open
-  // is exactly what makes step (4)'s removal fail on Windows.
-  for (const run of listRunsByFeature(ctx, featureId)) {
-    if (run.status === 'running') await cancelRun(run.id)
-  }
-
+  // (1) Nothing is in flight outside the workers (removed in step 2): rounds are frozen history.
   // (2) End the live sessions (the same PTY-killing teardown Archive uses), and
   // remove the workers' containers and branches (interactive-workers decision 18).
   endLiveSessions(ctx, featureId)
