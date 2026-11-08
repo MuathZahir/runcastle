@@ -46,6 +46,7 @@ import {
 } from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { CLI_TOO_OLD, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
 import {
@@ -2582,177 +2583,6 @@ export function isMergeConflictError(err: unknown): boolean {
 // Pure unit — transient-error classification + retry pacing
 // ---------------------------------------------------------------------------
 
-/** The status numbers a closed door arrives as, whatever wording sits beside them. */
-const REFUSAL_STATUS = String.raw`\b(?:401|403)\b`
-
-/**
- * `forbidden` names an account only where the status it is the reason phrase
- * for is not sitting right beside it. `forbidden response: status 403` is a
- * CLI saying what was refused; `403 forbidden` is one refusal spelled twice,
- * and the reason phrase adds nothing the bare number did not already say — so
- * it may not stand in for the credential the pairing rule asks for.
- */
-const DETACHED_FORBIDDEN = String.raw`(?<!${REFUSAL_STATUS}[\W_]*)forbidden(?![\W_]*${REFUSAL_STATUS})`
-
-/**
- * What a refusal has to NAME for it to be the account's refusal rather than
- * this ticket's. `permission denied` is equally how git and the filesystem
- * report a read-only path, and a bare `401`/`403` is how any HTTP call in the
- * sandbox reports a closed door — neither says whose door on its own, so the
- * patterns built from this pair with it, anywhere on the same line and in
- * either order, instead of standing alone. Missing a genuine auth wording
- * costs one run the old behaviour; halting a healthy run over a chmod costs
- * every ticket left in it.
- *
- * `auth` is spelled out to its endings — `authentication`, `authorized`,
- * `authn`/`authz` — rather than left as a loose substring, because `author`
- * spells it too, and `git author permission denied` names no credential.
- */
-const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth(?:entic\w*|ori[sz]\w*|[nz])?\b|unauthorized|${DETACHED_FORBIDDEN}|account|organi[sz]ation|\borg\b)`
-
-/**
- * A refusal wording paired with the credential subject, in EITHER order: which
- * side the account word lands on is an accident of each CLI's phrasing, not
- * evidence about whose door was closed, so `API token permission denied` and
- * `permission denied: invalid api key` are the same fact (decision 8). Both
- * halves must sit on one line, so a `403` never borrows the word `token` from
- * a stack frame ten lines below it.
- */
-function refusalNamingCredential(refusal: string): RegExp {
-  return new RegExp(
-    `(?:${refusal}[^\\n]*${CREDENTIAL_SUBJECT}|${CREDENTIAL_SUBJECT}[^\\n]*${refusal})`,
-    'i',
-  )
-}
-
-/** `permission denied`, but only where what was denied is the account's. */
-const ACCOUNT_PERMISSION_DENIED = refusalNamingCredential(String.raw`permission denied`)
-
-/**
- * Errors that are facts about the ACCOUNT or the environment rather than about
- * the ticket: bad or lapsed credentials, an exhausted balance, a subscription
- * usage limit, an image with no agent binary in it. Every other ticket in the
- * run would rediscover the same fact from its own container, so these halt the
- * run instead of failing one ticket at a time (decision 3).
- *
- * Runtime-neutral entries plus each provider's own wording. The runtime-specific
- * lists are tagged rather than merged so it stays visible which provider a
- * pattern was written for — an OpenAI `insufficient_quota` and an Anthropic
- * `credit balance` are the same fact spelled two ways, and neither CLI emits
- * the other's string.
- */
-const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
-  /invalid (api key|x-api-key)/i,
-  /authentication|unauthorized/i,
-  ACCOUNT_PERMISSION_DENIED,
-  /credit balance|billing/i,
-  /oauth token|setup-token/i,
-  // The Anthropic subscription cap — "5-hour usage limit reached". It matched
-  // nothing before this feature and fell to fatal-by-default, so a whole burn
-  // could spend a container per ticket rediscovering one exhausted plan.
-  /usage limit/i,
-]
-
-/**
- * A `401`/`403` — or its word, `forbidden` — that says what it refused. An
- * OpenAI auth failure arrives as a status beside its `invalid_api_key` or
- * `Unauthorized`, on whichever side the CLI happens to put it (`401
- * invalid_api_key`, `forbidden response: status 403`), while an unrelated HTTP
- * failure inside the sandbox arrives as the number alone — or as the number
- * beside its own reason phrase, `403 forbidden`, which names no more than it.
- */
-const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSAL_STATUS}|forbidden)`)
-
-/**
- * Claude Code's refusal of a model newer than itself, e.g. `API Error: 400
- * Claude Code 2.1.270 does not support this model; version 2.1.280 or newer is
- * required.` The in-use version is optional so a reworded prefix still reads.
- */
-const CLI_TOO_OLD =
-  /(?:Claude Code\s+(\S+)\s+)?does not support this model[^\n]*?version\s+(\S+?)\s+or newer is required/i
-
-/**
- * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
- * `invalid_api_key` code and an exhausted account as `insufficient_quota` (a
- * billing fact no retry fixes, despite arriving as a 429).
- *
- * A container burn runs on the operator's borrowed `codex login`, so the auth
- * wording it fails with is the CLI's own — "not logged in", a refused refresh
- * token — and none of it is worth a retry: the fix is `codex login` on the
- * host, which no attempt of ours can perform.
- */
-const RUNTIME_RUN_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
-  // A fact about the image's CLI, not the ticket — and it arrives as an
-  // `API Error: 400`, which the retryable `api error` entry would otherwise
-  // retry in every ticket (see {@link cliTooOldMessage}).
-  'claude-code': [CLI_TOO_OLD],
-  codex: [
-    /invalid_api_key/i,
-    REFUSED_CREDENTIAL_STATUS,
-    /insufficient_quota|exceeded your current quota/i,
-    /CODEX_API_KEY/,
-    // "unauthorized" and "authentication …" are already run-fatal for every
-    // runtime (see RUN_FATAL_ERROR_PATTERNS); these are the login wordings that
-    // are not.
-    /not logged in/i,
-    /\bauth (failed|required)\b/i,
-    /refresh token/i,
-  ],
-}
-
-/**
- * Errors where a retry can only fail the same way, but which say nothing about
- * the rest of the run — a model this ticket cannot use, a broken resume.
- * Checked BEFORE the retryable patterns so "exited with code 1: model not
- * found" stays fatal.
- */
-const FATAL_ERROR_PATTERNS: RegExp[] = [
-  /issue with the selected model|model not found|unknown model/i,
-  /does not support resumeSession|resumeSession .* not found/i,
-]
-
-/**
- * Per-runtime fatal wording: OpenAI's unusable model is a `model_not_found`,
- * and a malformed request is this ticket's problem alone — neither is a fact
- * about the account, so neither halts the run.
- */
-const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
-  'claude-code': [],
-  codex: [
-    /invalid_request_error/i,
-    /model_not_found|does not exist or you do not have access/i,
-  ],
-}
-
-/**
- * Transient infrastructure failures a fresh attempt has a real chance of
- * surviving. The broad `exited with code N` entry is sandcastle's `AgentError`
- * for ANY nonzero `claude --print` exit — in practice a dropped API stream,
- * an OOM-killed process, or a CLI crash, none of which say anything about the
- * ticket itself (a genuinely wrong ticket fails via zero commits or BLOCKED.md,
- * which are outcomes, not throws — they never reach this classifier).
- */
-const RETRYABLE_ERROR_PATTERNS: RegExp[] = [
-  /exited with code \d+/i,
-  /idle timeout|AgentIdleTimeout/i,
-  /connection (closed|error|refused|reset)|socket hang up|fetch failed/i,
-  /econnreset|etimedout|econnrefused|epipe|eai_again/i,
-  /overloaded|rate.?limit|too many requests/i,
-  /internal server error|service unavailable|bad gateway|gateway timeout/i,
-  /\bapi error\b/i,
-  /session capture failed/i,
-]
-
-/**
- * Per-runtime transient wording. OpenAI's plain rate limit is a 429 with
- * `rate_limit_exceeded` — worth another attempt, unlike the `insufficient_quota`
- * that shares its status code and is classified fatal above.
- */
-const RUNTIME_RETRYABLE_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
-  'claude-code': [],
-  codex: [/rate_limit_exceeded/i, /\b429\b/, /server_error/i, /stream (disconnected|interrupted)/i],
-}
-
 const AGENT_BINARY: Record<AgentRuntime, string> = {
   'claude-code': 'claude',
   codex: 'codex',
@@ -2770,18 +2600,6 @@ function missingCommandRegex(name: string): RegExp {
     'i',
   )
 }
-
-/**
- * Exit 127 in any of the wordings a failing container hook reports it with —
- * sandcastle's own `Command failed (exit 127): …` included. Fatal for every
- * runtime: no attempt of ours installs a binary into the image, and blindly
- * retrying exactly this is the worst behavior the burner has been observed in
- * (a Java setup command in a JS-only image, three times over).
- */
-const MISSING_COMMAND_PATTERNS: RegExp[] = [
-  /\bexit(?:ed with)?(?: code)? 127\b/i,
-  /command not found/i,
-]
 
 /**
  * Turn the shell's missing-command failure into the operator action that can
@@ -2886,39 +2704,23 @@ export function classifyTicketRunError(
 ): TicketRunErrorClass {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const runtimes: AgentRuntime[] = runtime ? [runtime] : ['claude-code', 'codex']
-  const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
-    runtimes.flatMap((r) => table[r])
-
   // An image with no agent binary in it is the environment, not the ticket —
   // every remaining container would be built from the same image.
   if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'run-fatal'
-  if (
-    [...RUN_FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_RUN_FATAL_ERROR_PATTERNS)].some((p) =>
-      p.test(msg),
-    )
-  )
-    return 'run-fatal'
+  const verdict = classifyAgentError(msg, runtime)
+  // The subscription cap halts a burn too: it matched nothing once and fell to
+  // fatal-by-default, so a burn spent a container per ticket rediscovering it.
+  if (verdict === 'account' || USAGE_LIMIT_ERROR.test(msg)) return 'run-fatal'
   // A setup hook that died on a missing tool is the project's Dockerfile, not
   // the account — ticket-fatal, and the run-level preflight catches it first.
   if (missingSetupBinaryMessage(msg, setupCommand, 'image')) return 'fatal'
-  // Before the retryable patterns, whose broad `exited with code N` entry would
-  // otherwise send a missing command around the retry loop.
-  if (MISSING_COMMAND_PATTERNS.some((p) => p.test(msg))) return 'fatal'
-  if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
-    return 'fatal'
-  if (
-    [...RETRYABLE_ERROR_PATTERNS, ...forRuntimes(RUNTIME_RETRYABLE_ERROR_PATTERNS)].some((p) =>
-      p.test(msg),
-    )
-  )
-    return 'retryable'
-  return 'fatal'
+  return verdict === 'transient' ? 'retryable' : 'fatal'
 }
 
-/** Backoff before retry attempt `attempt + 1`: 5s, 10s, 20s, capped at 30s. */
-export function retryDelayMs(attempt: number): number {
-  return Math.min(30_000, 5_000 * 2 ** (attempt - 1))
-}
+/** "5-hour usage limit reached": run-fatal in a burn, though workers leave it to the host's carry-on setting (decision 7). */
+const USAGE_LIMIT_ERROR = /usage limit/i
+
+export { retryDelayMs }
 
 /**
  * The prompt block appended when an attempt continues interrupted work — a
