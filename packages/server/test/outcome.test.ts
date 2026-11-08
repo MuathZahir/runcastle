@@ -53,6 +53,31 @@ describe('composeOutcomeDoc', () => {
     expect(composeOutcomeDoc(input)).toContain('1 tickets landed')
   })
 
+  it('records a feature reviewed by Review workers: each review’s mode and its findings with their status', () => {
+    const reviewWorker = (id: string, overrides: Partial<WorkerRow>): WorkerRow =>
+      ({ id, label: 'Review', kind: 'review', status: 'handed-back', outcome: null, tokens: null, reviewMode: 'drive', reviewVerify: null, ...overrides }) as WorkerRow
+    const first = reviewWorker('wkr_r1', {})
+    const verify = reviewWorker('wkr_r2', { label: 'Review: verify', reviewMode: 'gates', reviewVerify: { findingIds: ['finding_a'], commits: ['f00d123'] } })
+    const reported = (id: string, reviewWorkerId: string, overrides: Partial<ReviewFinding>): ReviewFinding =>
+      ({ ...finding, id, reviewTicketId: null, reviewWorkerId, fixTicketId: null, resolvedBy: null, ...overrides }) as ReviewFinding
+    const findings = [
+      reported('finding_a', first.id, { title: 'Theme resets', status: 'fixed', resolvedBy: 'session', resolutionNote: 'persisted in f00d123' }),
+      reported('finding_b', first.id, { title: 'Copy typo', kind: 'observation', severity: 'low', status: 'dismissed', resolutionNote: 'intended wording' }),
+      reported('finding_c', first.id, { title: 'Slow list', severity: 'medium', status: 'open' }),
+    ]
+
+    const doc = composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [first, verify], findings })
+
+    expect(doc).not.toContain('No completed review pass')
+    expect(doc).toContain('### Review · drive review\n\n- Outcome: handed-back')
+    expect(doc).toContain('- **Theme resets** (defect, high) — fixed: persisted in f00d123')
+    expect(doc).toContain('- **Copy typo** (observation, low) — dismissed: intended wording')
+    expect(doc).toContain('- **Slow list** (defect, medium) — open')
+    expect(doc).toContain('### Review: verify · gates review, verify\n\n- Outcome: handed-back\n- Verified fix commits: f00d123\n\n- No findings')
+    // A feature with neither a review ticket nor a Review worker still says so.
+    expect(composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [], findings: [] })).toContain('- No completed review pass')
+  })
+
   it('drops digests containing only empty None/Nothing rows', () => {
     expect(digestHasSubstance('## Surprises\n- None\n## Left undone\n- Nothing')).toBe(false)
     expect(digestHasSubstance('## Surprises\n- A coupling mattered')).toBe(true)

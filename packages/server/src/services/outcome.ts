@@ -48,6 +48,24 @@ function noteResolution(note: TestNote): string {
   return note.sentAt === undefined ? 'not sent' : 'sent to the agent'
 }
 
+/** One finding as the record keeps it: what it was, where it ended, and why when the lead said. */
+function findingRecordLine(finding: ReviewFinding): string {
+  const why = finding.resolutionNote?.trim()
+  return `- **${finding.title}** (${finding.kind}, ${finding.severity}) — ${findingResolution(finding)}${why ? `: ${why}` : ''}`
+}
+
+/** A Review worker's part of the review record: its mode, what it verified, and its findings. */
+function reviewWorkerRecord(review: WorkerRow, findings: ReviewFinding[]): string[] {
+  const mode = `${review.reviewMode ?? 'unknown'} review${review.reviewVerify ? ', verify' : ''}`
+  const facts = [`- Outcome: ${review.outcome ?? review.status}`]
+  if (review.reviewVerify?.commits.length) facts.push(`- Verified fix commits: ${review.reviewVerify.commits.join(', ')}`)
+  const own = findings.filter((finding) => finding.reviewWorkerId === review.id)
+  return [
+    `### ${review.label} · ${mode}\n\n${facts.join('\n')}`,
+    own.length ? own.map(findingRecordLine).join('\n') : '- No findings',
+  ]
+}
+
 /** Pure synthesis of the permanent shipped record. */
 export function composeOutcomeDoc(input: OutcomeInput): string {
   const { feature, tickets, workers = [], findings, notes, artifacts, shippedAt, delta } = input
@@ -80,7 +98,11 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
         : '- No findings')
     }
   }
-  if (!completed.length) blocks.push('- No completed review pass')
+  // A feature reviewed since reviews became workers (burns-become-workers decision 4):
+  // each Review worker with every finding it reported, keyed to it.
+  const reviews = workers.filter((w) => w.kind === 'review')
+  for (const review of reviews) blocks.push(...reviewWorkerRecord(review, findings))
+  if (!completed.length && !reviews.length) blocks.push('- No completed review pass')
 
   blocks.push('## Notes record', notes.length
     ? notes.map((note) => `- ${note.text} — ${noteResolution(note)}`).join('\n')
