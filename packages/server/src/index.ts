@@ -14,6 +14,7 @@ import { runMigrations } from './db/migrate'
 import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions, wakeCutOffChats } from './launcher/reconcile'
+import { holdUpgradeNotes } from './services/upgrade-note'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -267,6 +268,8 @@ export async function startServer(): Promise<void> {
   void wakeInterruptedRounds(ctx, staleRuns)
   // …and chats it cut off mid-turn without a round carry on (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats, staleRuns)
+  // …and each lead of a feature with unfinished tickets gets one held note, riding its next message (decision 20).
+  void holdUpgradeNotes(ctx).catch((err) => console.error('could not hold the ticket upgrade notes', err))
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

@@ -62,7 +62,10 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
     const matches = implementation.filter((ticket) => ticket.status === status)
     return `- ${matches.length} ${label}${matches.length ? `: ${matches.map((t) => `#${t.seq} ${t.title}`).join('; ')}` : ''}`
   }
-  blocks.push(`${line('done', 'tickets landed')}\n${line('cancelled', 'waived')}\n${line('failed', 'failed')}`)
+  // A feature built by workers has no tickets: its Workers section below is the record.
+  if (implementation.length) {
+    blocks.push(`${line('done', 'tickets landed')}\n${line('cancelled', 'waived')}\n${line('failed', 'failed')}`)
+  }
 
   blocks.push('## Review record')
   const completed = artifacts.filter((artifact) => artifact.completedAt !== null)

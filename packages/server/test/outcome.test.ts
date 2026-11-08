@@ -1,4 +1,4 @@
-import type { Feature, ReviewFinding, TestNote, Ticket } from '@runcastle/core'
+import type { Feature, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import { composeOutcomeDoc, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
 
@@ -43,6 +43,14 @@ describe('composeOutcomeDoc', () => {
     expect(doc).toContain('- Reviewed commit: abc123\n- Landed since: 0')
     expect(doc).toContain('**Broken button** — fixed')
     expect(doc).toContain('Align the title — sent to the agent')
+  })
+
+  it('writes no ticket lines for a feature built by workers, and lists its workers', () => {
+    const worker = { label: 'Add laps', kind: 'on-its-own', outcome: 'landed', status: 'landed', tokens: 900 } as unknown as WorkerRow
+    const doc = composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [worker] })
+    expect(doc).not.toContain('tickets landed')
+    expect(doc).toContain('- Add laps (on-its-own) — landed · 900 tokens')
+    expect(composeOutcomeDoc(input)).toContain('1 tickets landed')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

@@ -2629,7 +2629,7 @@ function featureIndex(ctx: AppCtx, projectId: string, callerId: string): string[
     ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
   ]
   const names = new Map<string, string>()
-  const lines = listed.map((feature) => `${featureIndexLine(feature)}${holderMark(ctx, feature, callerId, names)}`)
+  const lines = listed.map((feature) => `${featureIndexLine(feature, workerStateOf(ctx, feature))}${holderMark(ctx, feature, callerId, names)}`)
 
   const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
   const archived = all.filter((f) => f.status === 'archived').length
@@ -2707,8 +2707,8 @@ export function toolReadAdr(
  * paragraphs and were most of the payload, and `read_feature_brief` serves one
  * on request. The per-line docs path went with it; the index note says once
  * where shipped docs live. The in-flight state keeps what the portfolio lookup
- * is asked for — whether a round runs and ticket counts, all true of the feature in
- * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
+ * is asked for — how many workers are working, queued or need the human, all true
+ * of the feature in SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
  * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
  * trail the line as slugs and marks — edges and state only, so the session can
  * tell what is startable without re-cutting already-ordered work (decision 8).
@@ -2716,7 +2716,7 @@ export function toolReadAdr(
  * dependencies ship), `up next, stuck` (needs the human) or `blocked` (backlog
  * with an open dependency); otherwise plain `draft`.
  */
-function featureIndexLine(feature: FeatureListItem): string {
+function featureIndexLine(feature: FeatureListItem, workerState = ''): string {
   const edges = feature.dependsOn.length
     ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
     : ''
@@ -2730,11 +2730,22 @@ function featureIndexLine(feature: FeatureListItem): string {
     }[unstartedState(feature, feature.dependsOn) ?? 'backlog']
     return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}`
   }
-  const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
-  const counts = feature.ticketCounts
-  if (counts.pending > 0) state.push(`${counts.pending} pending`)
-  if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
+  return `${feature.slug} — ${feature.title} [${workerState ? `in flight: ${workerState}` : 'in flight'}]${edges}`
+}
+
+/** An in-flight feature's workers for its index line: `2 working, 1 needs you`; empty when none is at work or waiting. */
+function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
+  if (feature.status !== 'active') return ''
+  const rows = listWorkers(ctx, feature.id)
+  const count = (...statuses: WorkerRow['status'][]) => rows.filter((w) => statuses.includes(w.status)).length
+  return [
+    [count('working'), 'working'],
+    [count('queued'), 'queued'],
+    [count('needs-you'), 'needs you'],
+  ]
+    .filter(([n]) => n !== 0)
+    .map(([n, label]) => `${n} ${label}`)
+    .join(', ')
 }
 
 /** ` · held by …` for an index line: a thread needs the holder before it acts, not after a refusal. */
@@ -2817,14 +2828,52 @@ export interface WorkRecordRun {
   summary?: string
 }
 
+/** One worker as history: what it was asked, how it ended and what it changed. */
+export interface WorkRecordWorker {
+  label: string
+  kind: WorkerRow['kind']
+  goal?: string
+  doneWhen?: string
+  status: WorkerRow['status']
+  /** The worker's handback summary. Moved out whole under the ceiling and the seam form. */
+  summary?: string
+  summaryNotInlined?: true
+  filesChanged: string[]
+  commits: string[]
+  tokens?: number
+}
+
 export interface WorkRecordFeature {
   slug: string
   title: string
   status: FeatureStatusT
   /** When the merge landed (`feature.shipped`); absent while unmerged. */
   shippedAt?: number
+  /** Frozen history: nothing writes runs any more (burns-become-workers decision 19). */
   runs: WorkRecordRun[]
+  /** Frozen history, as the old features left it. */
   tickets: WorkRecordTicket[]
+  /** The feature's workers; absent when it has none, and in the seq drill-down, which is a ticket's. */
+  workers?: WorkRecordWorker[]
+}
+
+function workRecordWorker(w: WorkerRow, withSummary: boolean): WorkRecordWorker {
+  return {
+    label: w.label,
+    kind: w.kind,
+    ...(w.goal !== null ? { goal: w.goal } : {}),
+    ...(w.doneWhen !== null ? { doneWhen: w.doneWhen } : {}),
+    status: w.status,
+    ...(withSummary && w.handbackSummary !== null ? { summary: w.handbackSummary } : {}),
+    filesChanged: w.handbackFiles ?? [],
+    commits: w.handbackCommits ?? [],
+    ...(w.tokens !== null ? { tokens: w.tokens } : {}),
+  }
+}
+
+/** Whether `seam` (lowercased) appears in a file the worker changed or in its assignment. */
+function workerMatchesSeam(w: WorkerRow, seam: string): boolean {
+  return [...(w.handbackFiles ?? []), w.goal ?? '', w.doneWhen ?? ''].some((s) => s.toLowerCase().includes(seam))
 }
 
 export interface WorkRecord {
@@ -2882,9 +2931,11 @@ export function toolGetWorkRecord(
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
+    let workerRows = seq === undefined ? listWorkers(ctx, feature.id) : []
     if (seam) {
       tickets = tickets.filter((t) => t.seams.some((s) => s.toLowerCase().includes(seam)))
-      if (tickets.length === 0) continue
+      workerRows = workerRows.filter((w) => workerMatchesSeam(w, seam))
+      if (tickets.length === 0 && workerRows.length === 0) continue
     }
     if (seq !== undefined) {
       tickets = tickets.filter((t) => t.seq === seq)
@@ -2912,6 +2963,7 @@ export function toolGetWorkRecord(
         ...(t.error !== undefined ? { error: t.error } : {}),
         ...(!seam && t.digest !== undefined ? { digest: t.digest } : {}),
       })),
+      ...(workerRows.length > 0 ? { workers: workerRows.map((w) => workRecordWorker(w, !seam)) } : {}),
     })
   }
   if (seq !== undefined && records.length === 0) {
@@ -2931,12 +2983,24 @@ export function toolGetWorkRecord(
     ticket.digestNotInlined = true
     record.note = WORK_RECORD_DIGESTS_NOTE
   }
+  // Worker summaries go the same way, after the digests, longest first.
+  const summaries = records
+    .flatMap((f) => f.workers ?? [])
+    .filter((w) => w.summary !== undefined)
+    .sort((a, b) => b.summary!.length - a.summary!.length)
+  for (const worker of summaries) {
+    if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
+    delete worker.summary
+    worker.summaryNotInlined = true
+    record.note = WORK_RECORD_DIGESTS_NOTE
+  }
   return record
 }
 
 const WORK_RECORD_DIGESTS_NOTE =
   'Some digests did not fit and were moved out whole, lowest seq first: each such ticket carries ' +
-  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
+  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }). Worker handback summaries ' +
+  'that did not fit carry summaryNotInlined: true; the worker is still listed, without its summary.'
 
 // --- MCP server assembly ----------------------------------------------------
 
@@ -3592,8 +3656,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get work record',
         description:
-          'What features actually did, facts only: status, runs and tickets with commits, and by ' +
-          '`featureSlug` each worker’s digest. Send a `featureSlug` (with `seq` for one ticket) or a `seam`.',
+          'What features actually did, facts only: status, workers (assignment, handback summary, files changed, ' +
+          'commits, tokens), and for older features runs and tickets with commits; by ' +
+          '`featureSlug` each ticket’s digest too. Send a `featureSlug` (with `seq` for one ticket) or a `seam`.',
         inputSchema: z.union([
           z.object({
             featureSlug: z
@@ -3608,7 +3673,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             seam: z
               .string()
               .min(1)
-              .describe('A surface to ask about; matched as a case-insensitive substring of ticket seams.'),
+              .describe('A surface to ask about; matched as a case-insensitive substring of ticket seams, of the files a worker changed, or of its assignment.'),
             // Accepted only so the tool can refuse it: zod would otherwise strip a
             // `seq` sent without its featureSlug and run a plain seam search.
             seq: z.number().int().min(1).optional(),
