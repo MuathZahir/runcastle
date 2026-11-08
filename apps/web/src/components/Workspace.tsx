@@ -25,8 +25,6 @@ import {
   type FeatureCommand,
   type FeatureCommands,
 } from '../lib/feature-commands'
-import { settingsLocationFromMessage } from '../lib/settings'
-import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
 import type { FeatureFull } from '../lib/api'
 import {
@@ -37,7 +35,6 @@ import {
   freshness,
   isSelfPlanRun,
   lastTestDriveAt,
-  latestRun,
   mergeSummary,
   nextStep,
   shippedAt,
@@ -59,7 +56,7 @@ import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
-import { TicketsView } from './bodies/tickets/TicketsView'
+import { HistoryView } from './bodies/history/HistoryView'
 import { DesignTab } from './design/DesignTab'
 import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
 import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
@@ -133,13 +130,13 @@ function useNowPast(deadline: number | undefined): number {
  *   the chat — the feature's live session (`FeatureChat`), filling the page,
  *              with the page's notices atop it and its standing warnings on
  *              the composer's notice strip
- *   one panel — on the right when open, one view at a time: Plan, Tickets,
- *              Details, and Design or Drive while they run
- *              (the-feature-s-right-panel decisions 14, 17)
+ *   one panel — on the right when open, one view at a time: Plan, History
+ *              (old tickets, read only), Details, and Design or Drive while
+ *              they run (the-feature-s-right-panel decisions 14, 17)
  *
- * There is no Go and no phase: the agent starts rounds from the chat. The
+ * There is no Go and no phase: the agent starts workers from the chat. The
  * panel opens from the header's toggle (at its last view), from the agent's
- * `panel.show` (`show_panel`, `emit_tickets`), and from runcastle only as the
+ * `panel.show` (`show_panel`), and from runcastle only as the
  * result of the human's own Test drive click. A draft has no chat, so its body
  * is the page, its next step in its header.
  */
@@ -177,7 +174,6 @@ export function Workspace({
   const phone = useIsPhone()
   const utils = trpc.useUtils()
   const toast = useToast()
-  const openSettings = useOpenSettings()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
   // The merge confirmation has to know two things the feature row cannot tell
@@ -232,8 +228,9 @@ export function Workspace({
     { enabled: !!projectId, refetchInterval: poll },
   )
   // The status line's inputs (`the-feature-lead-runs-rounds` decision 21): the
-  // rounds and the agent's ready declarations.
-  const roundsQ = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: poll })
+  // agent's ready declarations, and the workers at work (Stop cancels their turns).
+  const workers = useFeatureWorkers(featureId)
+  const workersWorking = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
   const declarationsQ = trpc.feature.readyDeclarations.useQuery({ featureId }, { refetchInterval: poll })
   const declared = (declarationsQ.data?.length ?? 0) > 0
   // What a drive of this feature can land on (drive-scenarios decision 7), for
@@ -311,11 +308,9 @@ export function Workspace({
   // The Plan view on screen is the plan seen (decision 10), from its card or its tab.
   const { mutate: markPlanSeen } = trpc.design.planSeen.useMutation()
   useMarkSeen(panel.state.view === 'plan' ? featureId : undefined, record.planIsNew, () => markPlanSeen({ featureId }))
-  // The agent's `show_panel` and `emit_tickets`, for a view this feature offers.
-  // Work is taken on trust: `emit_tickets` opens it the moment it stores them,
-  // and the panel shows it once the refetched feature has the tickets.
+  // The agent's `show_panel`, for a view this feature offers.
   usePanelShow(events, featureId, (request) => {
-    const offered = views.includes(request.view) || (request.view === 'work' && !!q.data && !isDraft)
+    const offered = views.includes(request.view)
     // A drive is the page: the agent does not take the human away from it.
     if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
@@ -355,7 +350,7 @@ export function Workspace({
   const inFrontTitle = column.threads.find((t) => t.id === column.current)?.title
   // A worker's chat in front: the header shows its status and actions in place of the feature's own.
   const workerHeader = useWorkerHeader(
-    workerInFront(useFeatureWorkers(featureId), column.threads, column.inFront !== column.main ? column.inFront : null),
+    workerInFront(workers, column.threads, column.inFront !== column.main ? column.inFront : null),
   )
   // The page's root, where Reply finds the composer to put the cursor in.
   const frame = useRef<HTMLElement>(null)
@@ -405,12 +400,12 @@ export function Workspace({
   // The main chat's start, by its first message or by itself on a new feature.
   // Already on the chat, so nothing lands; the caller says why it failed.
   const startChat = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: () => undefined })
-  // Stop, the status row's primary while a round runs (decision 23).
+  // Stop, the status row's primary while workers work (burns-become-workers decision 15).
   const [confirmStop, setConfirmStop] = useState(false)
   const stopAgent = trpc.feature.stop.useMutation({
     onSuccess: () => {
       invalidate()
-      void utils.feature.rounds.invalidate({ featureId })
+      void utils.worker.list.invalidate({ featureId })
       toast.push('stopped — nothing new starts until you reply to the agent', 'info')
     },
     onError: (e) => toast.push(e.message),
@@ -419,7 +414,7 @@ export function Workspace({
   const resumeAgent = trpc.feature.resume.useMutation({
     onSuccess: () => {
       invalidate()
-      toast.push('resumed — the agent picks up where the round stopped', 'info')
+      toast.push('resumed — the agent picks up where it stopped', 'info')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -602,7 +597,6 @@ export function Workspace({
   const feature = full.feature
   const holder = onOpenThread ? featureHolder(feature, projectThreads.data ?? []) : null
   const threadCrumb = isDraft ? undefined : inFrontTitle
-  const run = latestRun(full.runs)
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be
@@ -730,13 +724,6 @@ export function Workspace({
       case 'resumeProvider':
         resumeAgent.mutate({ featureId })
         break
-      // A burn that could not start named its fix in the summary — open the
-      // settings row that summary points at (the image rebuild).
-      case 'openBurnSettings': {
-        const location = run?.summary ? settingsLocationFromMessage(run.summary) : null
-        if (location) openSettings?.(location)
-        break
-      }
       case 'unarchive':
         unarchive.mutate({ featureId })
         break
@@ -886,7 +873,7 @@ export function Workspace({
     : featureStatus({
         feature,
         need: full.need,
-        rounds: roundsQ.data ?? [],
+        workersWorking,
         agentWorking: mainChatWorking(column.mainState, liveSession),
         agentStateKnown: column.mainState !== undefined,
         driving: isDriving,
@@ -1024,8 +1011,8 @@ export function Workspace({
       case 'plan':
         return documentView(v, <PlanBody full={full} />)
       case 'work':
-        // One list (decisions 17–19): earlier rounds folded, the current round's tickets.
-        return documentView(v, <TicketsView featureId={featureId} onOpenDoc={openDoc} />)
+        // The tickets the feature ran before workers, read only (burns-become-workers decision 19).
+        return documentView(v, <HistoryView featureId={featureId} />)
       case 'design':
         return (
           <DesignTab
@@ -1338,7 +1325,7 @@ export function Workspace({
             freshness: reviewFreshness,
             conflict,
             laterLaps,
-            burning: run?.status === 'running',
+            workersWorking,
           })}
           busy={merge.isPending}
           resolving={resolveConflict.pending}

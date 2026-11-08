@@ -6,7 +6,6 @@ import {
   type Feature,
   type FeatureNeed,
   type NeedKind,
-  type RoundSummary,
   type ThreadEntry,
 } from '@runcastle/core'
 import { CHAT_ACTION } from './next-step/chat'
@@ -22,7 +21,7 @@ export type FeatureStatusKind = 'talking' | 'working' | 'waiting' | 'ready' | 'm
 
 /**
  * The one primary button the status line's row carries: Stop drive while
- * driving, Stop while a round runs, Stop while the feature plans itself, and
+ * driving, Stop while workers work, Stop while the feature plans itself, and
  * otherwise the button of what the feature needs (you-always-know-what-s-waiting
  * decision 1) — none while nothing is needed.
  */
@@ -42,12 +41,10 @@ export type StatusPrimary =
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
-  /** The words before any reason: "Working · Round 3", "Plan to approve", "Needs your answer". */
+  /** The words before any reason: "Working", "Plan to approve", "Needs your answer". */
   label: string
-  /** The words after the label: why the agent waits, the call it asks for, the drive. */
+  /** The words after the label: why the agent waits, the call it asks for, the drive, the workers at work. */
   why?: string
-  /** The round in flight, or the last one the agent is checking. */
-  round?: number
   /** The drive the agent asked for. */
   scenario?: string
   /** The need its orchestrator is handling ("With the orchestrator · …"): a quiet dot, not a warning. */
@@ -55,7 +52,7 @@ export interface FeatureStatus {
   /** The row's one primary; absent when this state has none. */
   primary?: StatusPrimary
   /**
-   * The Stop a permission prompt pushed off the primary while a round runs or
+   * The Stop a need's own button pushed off the primary while workers work or
    * the feature plans itself: it waits in "⋯", still one click away.
    */
   stop?: 'stop' | 'stopSelfPlan'
@@ -65,8 +62,8 @@ export interface FeatureStatusInput {
   feature: Pick<Feature, 'status'> & Partial<Pick<Feature, 'waitingReason'>>
   /** What the feature needs from the human, as the server worked it out (`feature.get`'s `need`). */
   need: FeatureNeed | null
-  /** The feature's rounds in order, as `feature.rounds` returns them. */
-  rounds: readonly Pick<RoundSummary, 'round' | 'status' | 'startedAt'>[]
+  /** How many of the feature's workers are working or queued (`worker.list`): Stop cancels their turns. */
+  workersWorking: number
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
   /**
@@ -153,7 +150,7 @@ const NEED_PRIMARY: Record<NeedKind, StatusPrimary> = {
 /**
  * An open ask — a permission prompt, or a question box in one of the feature's
  * threads (an answer that names its thread) — halts the agent mid-turn, so it
- * outranks a running round and a self-planning run.
+ * outranks workers at work and a self-planning run.
  */
 function haltsAgent(need: FeatureNeed): boolean {
   return need.kind === 'permission' || (need.kind === 'answer' && !!need.threadId)
@@ -186,9 +183,9 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  *
  * - Merged — shipped is final.
  * - Needs permission · <call>, or a question box's Needs your answer — an open
- *   ask halts the agent mid-turn, so it shows even over a running round or a
+ *   ask halts the agent mid-turn, so it shows even over workers at work or a
  *   self-planning run, whose Stop then waits in "⋯" (`stop`).
- * - Working · Round N — a round is running; nothing else is true until it returns.
+ * - Working · N workers at work — the feature's workers are working or queued.
  * - Planning by itself — a self-planning run is live.
  * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
  *   server's `need`, in the sidebar row's own words: "Plan to approve", "Needs
@@ -196,21 +193,21 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  *   orchestrator · Ready to merge". Test and merge read as ready, the rest as
  *   waiting. While the main chat is mid-turn only a permission prompt or a
  *   merge conflict shows: the rest are the server's view before the turn began.
- * - Working · Round N — only on evidence: the agent's session is mid-turn, or a
+ * - Working — only on evidence: the agent's session is mid-turn, or a
  *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
  * - Talking with you — otherwise: nothing running and nothing asked.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
- * while a round runs, Stop the run while the feature plans itself, and the
+ * while workers work, Stop the run while the feature plans itself, and the
  * need's own button otherwise — Resume when the stop is a provider halt.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
-  // A permission prompt halts the agent mid-turn, round or self-plan included,
+  // A permission prompt halts the agent mid-turn, workers or self-plan included,
   // so it outranks their Stop: Show request leads and Stop waits in "⋯".
   // Driving keeps its own button: the human is at the drive.
   if (input.need && haltsAgent(input.need) && !input.driving) {
-    const stop = input.rounds.at(-1)?.status === 'running' ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
+    const stop = input.workersWorking > 0 ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
     return stop ? { ...status, stop } : status
   }
   const primary = primaryOf(input, status)
@@ -220,29 +217,31 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
 function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrimary | undefined {
   if (status.kind === 'merged') return undefined
   if (input.driving) return 'testDriveStop'
-  if (input.rounds.at(-1)?.status === 'running') return 'stop'
+  if (input.workersWorking > 0) return 'stop'
   if (input.selfPlanning) return 'stopSelfPlan'
   return undefined
 }
 
 function statusOf(input: FeatureStatusInput): FeatureStatus {
-  const { feature, rounds, need, agentWorking } = input
+  const { feature, need, agentWorking } = input
   if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
 
   // An open ask holds the agent where it stands, whatever runs.
   if (need && haltsAgent(need)) return needStatus(need)
 
-  const latest = rounds.at(-1)
-  // Before any round, an agent at work is just working: there is no round to name.
+  const workers = input.workersWorking
+  // Workers at work say how many; a lead working alone is just working.
   const working = (): FeatureStatus =>
-    latest ? { kind: 'working', label: `Working · Round ${latest.round}`, round: latest.round } : { kind: 'working', label: 'Working' }
-  if (latest?.status === 'running') return working()
+    workers > 0
+      ? { kind: 'working', label: 'Working', why: `${workers} ${workers === 1 ? 'worker' : 'workers'} at work` }
+      : { kind: 'working', label: 'Working' }
+  if (workers > 0) return working()
 
   if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
 
   if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) {
     const status = needStatus(need)
-    // A provider halt (usage limit, billing, sign-in) is cleared outside runcastle; Resume picks the round back up.
+    // A provider halt (usage limit, billing, sign-in) is cleared outside runcastle; Resume picks the work back up.
     return need.kind === 'stopped' && isProviderHaltReason(feature.waitingReason) ? { ...status, primary: 'resume' } : status
   }
 

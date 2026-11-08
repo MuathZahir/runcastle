@@ -644,7 +644,7 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
     const status = featureStatus({
       feature: full.feature,
       need: full.need,
-      rounds: [],
+      workersWorking: 0,
       agentWorking: mainChatWorking(column.mainState, { awaitingInput: false }),
       agentStateKnown: column.mainState !== undefined,
       driving: false,

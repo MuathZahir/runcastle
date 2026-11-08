@@ -31,7 +31,7 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
   const status = featureStatus({
     feature: { status: 'active' },
     need: null,
-    rounds: [],
+    workersWorking: 0,
     agentWorking: false,
     driving: false,
     selfPlanning,

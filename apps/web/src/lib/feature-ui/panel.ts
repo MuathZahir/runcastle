@@ -7,7 +7,7 @@
  */
 
 /**
- * What the panel can show, one at a time: Plan, Tickets (`work`), Details,
+ * What the panel can show, one at a time: Plan, History (`work`: old tickets, read only), Details,
  * Design (the list of the feature's designs), and Drive while it runs
  * (the-feature-s-right-panel decisions 14, 17).
  */
@@ -27,7 +27,7 @@ export function isPanelView(value: string): value is PanelView {
  */
 const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan', review: 'work' }
 
-/** A view name read from an address or an event, the retired `body`, `preview` and `review` mapped onto Tickets and Plan. */
+/** A view name read from an address or an event, the retired `body`, `preview` and `review` mapped onto History and Plan. */
 export function panelViewOf(value: string): PanelView | null {
   return isPanelView(value) ? value : (RETIRED_VIEWS[value] ?? null)
 }
@@ -66,7 +66,7 @@ export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: str
 
 /**
  * The views a feature offers right now, each once it has something to show:
- * Plan once there is a plan to read, Tickets once there is a ticket, Details
+ * Plan once there is a plan to read, History once there is an old ticket, Details
  * always, Design on every feature not yet shipped — its home is the list of
  * the feature's designs, server or not (designs-and-the-plan-get-their-own-place
  * decision 6) — and Drive only while it runs.
@@ -139,7 +139,7 @@ export function panelShowRequest(
 
 export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
   plan: 'Plan',
-  work: 'Tickets',
+  work: 'History',
   design: 'Design',
   drive: 'Drive',
   details: 'Details',

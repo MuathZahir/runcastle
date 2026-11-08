@@ -13,14 +13,14 @@ import {
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
  * derived from facts — the feature row's status, the need the server worked out
- * (you-always-know-what-s-waiting decision 14), its rounds and the agent's
+ * (you-always-know-what-s-waiting decision 14), its workers at work and the agent's
  * session — never from a phase (tickets-and-review-are-tools-not-phases
  * decisions 2, 7).
  */
 const input = (over: {
   feature?: Partial<FeatureStatusInput['feature']>
   need?: FeatureNeed | null
-  rounds?: FeatureStatusInput['rounds']
+  workersWorking?: number
   agentWorking?: boolean
   agentStateKnown?: boolean
   driving?: boolean
@@ -30,19 +30,13 @@ const input = (over: {
 }): FeatureStatusInput => ({
   feature: { status: 'active', ...over.feature },
   need: over.need ?? null,
-  rounds: over.rounds ?? [],
+  workersWorking: over.workersWorking ?? 0,
   agentWorking: over.agentWorking ?? false,
   ...(over.agentStateKnown ? { agentStateKnown: true } : {}),
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
   now: over.now ?? 0,
-})
-
-const round = (n: number, status: 'running' | 'succeeded' | 'failed' | 'cancelled', startedAt: number) => ({
-  round: n,
-  status,
-  startedAt,
 })
 
 /** A need as `feature.get` carries it. */
@@ -88,12 +82,12 @@ describe('featureStatus', () => {
     ).toEqual({ kind: 'waiting', label: 'With the orchestrator', why: 'Plan to approve', held: true, primary: 'openPlan' })
   })
 
-  it('reads Working, not the need, while a round runs or a self-planning run is live — but keeps Stop', () => {
+  it('reads Working, not the need, while workers work or a self-planning run is live — but keeps Stop', () => {
     const plan = need('plan', 'Plan to approve')
-    expect(featureStatus(input({ need: plan, rounds: [round(2, 'running', 10)] }))).toEqual({
+    expect(featureStatus(input({ need: plan, workersWorking: 2 }))).toEqual({
       kind: 'working',
-      label: 'Working · Round 2',
-      round: 2,
+      label: 'Working',
+      why: '2 workers at work',
       primary: 'stop',
     })
     expect(featureStatus(input({ need: plan, selfPlanning: true }))).toEqual({
@@ -127,11 +121,11 @@ describe('featureStatus', () => {
     })
   })
 
-  it('a running round, a drive and Merged outrank planning by itself', () => {
-    expect(featureStatus(input({ selfPlanning: true, rounds: [round(1, 'running', 10)] }))).toEqual({
+  it('workers at work, a drive and Merged outrank planning by itself', () => {
+    expect(featureStatus(input({ selfPlanning: true, workersWorking: 2 }))).toEqual({
       kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
+      label: 'Working',
+      why: '2 workers at work',
       primary: 'stop',
     })
     expect(featureStatus(input({ selfPlanning: true, driving: true }))).toMatchObject({
@@ -144,15 +138,15 @@ describe('featureStatus', () => {
     })
   })
 
-  it('reads Working between rounds, on the last round the agent is checking', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'succeeded', 10)], agentWorking: true }))).toEqual({
-      kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
-    })
+  it('reads Working with no Stop while the lead works and no worker does', () => {
+    expect(featureStatus(input({ agentWorking: true }))).toEqual({ kind: 'working', label: 'Working' })
   })
 
-  it('reads Working, with no round to name, while a message for the agent is inside its grace', () => {
+  it('names one worker at work in the singular', () => {
+    expect(featureStatus(input({ workersWorking: 1 }))).toMatchObject({ why: '1 worker at work', primary: 'stop' })
+  })
+
+  it('reads Working while a message for the agent is inside its grace', () => {
     expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 59_000 }))).toEqual({
       kind: 'working',
       label: 'Working',
@@ -197,18 +191,13 @@ describe('featureStatus', () => {
     ).toBe('chat')
   })
 
-  it('an idle agent after any round, with nothing asked, reads Talking with you, as the sidebar files it In progress', () => {
-    for (const status of ['cancelled', 'failed', 'succeeded'] as const) {
-      expect(featureStatus(input({ rounds: [round(2, status, 20)] }))).toEqual({
-        kind: 'talking',
-        label: 'Talking with you',
-      })
-    }
+  it('an idle agent with no worker at work and nothing asked reads Talking with you, as the sidebar files it In progress', () => {
+    expect(featureStatus(input({}))).toEqual({ kind: 'talking', label: 'Talking with you' })
   })
 
   it('reads Merged once shipped', () => {
     expect(
-      featureStatus(input({ feature: { status: 'shipped' }, need: need('merge', 'Ready to merge'), rounds: [round(1, 'running', 10)] })),
+      featureStatus(input({ feature: { status: 'shipped' }, need: need('merge', 'Ready to merge'), workersWorking: 2 })),
     ).toEqual({ kind: 'merged', label: 'Merged' })
   })
 })
@@ -316,10 +305,10 @@ describe('the header’s share of the row', () => {
     })
   })
 
-  it('lets a permission prompt outrank a running round: Show request leads, Stop waits in the menu', () => {
+  it('lets a permission prompt outrank workers at work: Show request leads, Stop waits in the menu', () => {
     const permission = need('permission', 'Needs permission · Bash: git push', { why: 'Bash: git push', threadId: 't' })
-    expect(featureStatus(input({ need: permission, rounds: [round(1, 'running', 1)] })).label).toBe('Needs permission')
-    expect(header({ need: permission, rounds: [round(1, 'running', 1)] })).toEqual({
+    expect(featureStatus(input({ need: permission, workersWorking: 2 })).label).toBe('Needs permission')
+    expect(header({ need: permission, workersWorking: 2 })).toEqual({
       action: { label: 'Show request', kind: 'showRequest' },
       merge: MERGE,
       overflow: [{ label: 'Stop', kind: 'stopAgent', danger: true }],
@@ -329,7 +318,7 @@ describe('the header’s share of the row', () => {
   it('lets a question box outrank a working agent, with Reply as its button', () => {
     const ask = need('answer', 'Needs your answer · Which database?', { why: 'Which database?', threadId: 'side_1' })
     expect(featureStatus(input({ need: ask, agentWorking: true }))).toMatchObject({ label: 'Needs your answer', primary: 'reply' })
-    expect(featureStatus(input({ need: ask, rounds: [round(1, 'running', 1)] })).stop).toBe('stop')
+    expect(featureStatus(input({ need: ask, workersWorking: 2 })).stop).toBe('stop')
   })
 
   it('lets a permission prompt outrank planning by itself, its Stop kept in the menu', () => {
@@ -342,8 +331,8 @@ describe('the header’s share of the row', () => {
     })
   })
 
-  it('keeps Stop as the button while a round runs, with Merge & ship beside it', () => {
-    expect(header({ need: need('plan', 'Plan to approve'), rounds: [round(1, 'running', 1)] })).toEqual({
+  it('keeps Stop as the button while workers work, with Merge & ship beside it', () => {
+    expect(header({ need: need('plan', 'Plan to approve'), workersWorking: 2 })).toEqual({
       action: { label: 'Stop', kind: 'stopAgent', danger: true },
       merge: MERGE,
       overflow: [],

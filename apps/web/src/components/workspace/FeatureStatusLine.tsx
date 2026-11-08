@@ -40,8 +40,9 @@ export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
 }
 
 /**
- * Stop asks once (decision 23): it stops the running round — landed work
- * stays — and nothing new is dispatched until the human replies.
+ * Stop asks once (decision 23): it ends the lead's turn and every working
+ * worker's (burns-become-workers decision 15) — they stay where they are —
+ * and nothing new starts until the human replies.
  */
 export function StopAgentDialog({
   open,
@@ -58,7 +59,7 @@ export function StopAgentDialog({
     <Dialog open={open} onClose={onClose} size="sm" label="Stop the agent?">
       <DialogHeader
         title="Stop the agent?"
-        description="The running round stops — work that already landed stays — and nothing new starts until you reply to the agent."
+        description="The agent and its workers stop where they are — you can still open each one — and nothing new starts until you reply to the agent."
       />
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>

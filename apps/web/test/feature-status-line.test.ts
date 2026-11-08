@@ -13,7 +13,7 @@ import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine
  */
 const line = (status: FeatureStatus): string => renderToStaticMarkup(createElement(FeatureStatusLine, { status }))
 
-const WORKING: FeatureStatus = { kind: 'working', label: 'Working · Round 3', round: 3, primary: 'stop' }
+const WORKING: FeatureStatus = { kind: 'working', label: 'Working', why: '2 workers at work', primary: 'stop' }
 const READY: FeatureStatus = {
   kind: 'ready',
   label: 'Ready for you',
@@ -25,7 +25,8 @@ const READY: FeatureStatus = {
 describe('FeatureStatusLine', () => {
   it('says the status once, as text beside a dot', () => {
     const html = line(WORKING)
-    expect(html).toContain('Working · Round 3')
+    expect(html).toContain('Working')
+    expect(html).toContain('· 2 workers at work')
     expect(html).toContain('role="status"')
   })
 

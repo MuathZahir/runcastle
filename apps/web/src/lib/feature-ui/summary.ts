@@ -225,8 +225,8 @@ export function mergeSummary(input: {
   conflict?: MergeConflictState | null
   /** Scope the spec left for a later lap ({@link deferredScope}). */
   laterLaps?: string | null
-  /** A burn is running on this feature right now (decision 7). */
-  burning?: boolean
+  /** How many of the feature's workers are working or queued right now (decision 7). */
+  workersWorking?: number
 }): MergeSummary {
   const tickets = input.tickets ?? []
   // The status row's own formula (decision 8a), so the two cannot disagree. A
@@ -244,12 +244,13 @@ export function mergeSummary(input: {
   }
 
   const warnings: string[] = []
-  // Merging mid-burn is a warning, never the third hard rule (decision 7): git
-  // takes what has landed, and the operator may want exactly those commits.
-  // What they cannot see from here is that the agents are still committing.
-  if (input.burning) {
+  // Merging while workers work is a warning, never the third hard rule
+  // (decision 7): git takes what has landed, and the operator may want exactly
+  // those commits. What they cannot see from here is that workers still build.
+  const working = input.workersWorking ?? 0
+  if (working > 0) {
     warnings.push(
-      'A round is running — work landing after this merge stays unshipped on the branch.',
+      `${noun(working, 'worker')} still at work — what lands after this merge stays unshipped on the branch.`,
     )
   }
   // Said before the click, not discovered after it: the notes are saved, but
