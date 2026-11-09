@@ -1,9 +1,12 @@
 import type { AcpSessionUpdate, SubagentSpawnedUpdate, SubagentStateUpdate } from '@agentclientprotocol/claude-agent-acp/dist/acp-subagents.js'
+import type * as acp from '@agentclientprotocol/sdk/unstable'
 import type { SDKBackgroundTasksChangedMessage } from '@anthropic-ai/claude-agent-sdk'
 import { foldThread, type ThreadEvent } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
+  backgroundAgents,
   backgroundTasks,
+  codexSubagents,
   createUpdateMapper,
   diffLines,
   elicitationAnswer,
@@ -304,6 +307,46 @@ describe('background commands', () => {
     ).toEqual([listed[0], { id: 'b2', title: 'bun test --watch', startedAt: 900 }])
     expect(backgroundTasks(changed([]), listed, 900)).toEqual([])
     expect(backgroundTasks({ type: 'system', subtype: 'task_started', task_id: 'b3' }, listed, 900)).toBeNull()
+  })
+
+  it("lists Claude's running subagents with their task ids and titles, not its commands or ambient agents", () => {
+    const tasks = changed([
+      { task_id: 'b1', task_type: 'local_bash', description: 'bun run dev' },
+      { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' },
+      { task_id: 'a2', task_type: 'local_agent', description: 'Build switcher direction mocks' },
+      { task_id: 'h1', task_type: 'local_agent', description: 'memory upkeep', ambient: true },
+    ])
+    expect(backgroundAgents(tasks, [], 500)).toEqual([
+      { id: 'a1', title: 'Find the auth code', startedAt: 500 },
+      { id: 'a2', title: 'Build switcher direction mocks', startedAt: 500 },
+    ])
+    // One already listed keeps when it started.
+    expect(backgroundAgents(tasks, [{ id: 'a2', title: 'Build switcher direction mocks', startedAt: 100 }], 500)).toMatchObject([{ startedAt: 500 }, { startedAt: 100 }])
+    expect(backgroundAgents(changed([]), [{ id: 'a2', title: 'x', startedAt: 100 }], 500)).toEqual([])
+    expect(backgroundAgents({ type: 'system', subtype: 'task_started', task_id: 'a3' }, [], 500)).toBeNull()
+  })
+})
+
+describe('codexSubagents', () => {
+  const listed = [{ id: 'thr-9', title: 'explorer', startedAt: 100 }]
+  const report = (sessionId: string, state: acp.StateUpdate | undefined, title?: string): acp.SessionUpdate =>
+    ({ sessionUpdate: 'subagent_update', sessionId, ...(title ? { title } : {}), ...(state ? { state } : {}) }) as acp.SessionUpdate
+
+  it('adds a subagent that starts, titled by its name, and keeps one already listed', () => {
+    expect(codexSubagents(report('thr-10', { state: 'running' }, 'reviewer'), listed, 500)).toEqual([...listed, { id: 'thr-10', title: 'reviewer', startedAt: 500 }])
+    expect(codexSubagents(report('thr-9', { state: 'running' }), listed, 500)).toBeNull()
+  })
+
+  it('drops one that completed, failed, was cancelled or can no longer be seen', () => {
+    for (const state of [{ state: 'idle', stopReason: 'end_turn' }, { state: 'idle', stopReason: 'error' }, { state: 'idle', stopReason: 'cancelled' }, { state: 'unknown' }]) {
+      expect(codexSubagents(report('thr-9', state as acp.StateUpdate), listed, 500)).toEqual([])
+    }
+  })
+
+  it('changes nothing for an unknown subagent ending, an update with no state, or another update', () => {
+    expect(codexSubagents(report('thr-11', { state: 'idle', stopReason: 'end_turn' }), listed, 500)).toBeNull()
+    expect(codexSubagents(report('thr-9', undefined, 'renamed'), listed, 500)).toBeNull()
+    expect(codexSubagents({ sessionUpdate: 'plan', entries: [] }, listed, 500)).toBeNull()
   })
 })
 
