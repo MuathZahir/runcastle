@@ -70,8 +70,8 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
 }
 
 /**
- * A held need on a row with no workers at work: its words ("With the
- * orchestrator · Plan to approve") stand in for "Agent working" (decision 18).
+ * A held need on a row with no workers at work: its words ("With Notes
+ * triage · Plan to approve") stand in for "Agent working" (decision 18).
  */
 function heldNeedWords(f: FeatureListItem): string | null {
   return f.workersWorking === 0 && f.need?.held ? f.need.words : null
@@ -596,6 +596,7 @@ export function SidebarThreadRow({
   actions,
   mark,
   tip,
+  about,
 }: {
   thread: ThreadEntry
   active: boolean
@@ -603,16 +604,16 @@ export function SidebarThreadRow({
   actions: FeatureAction[]
   mark?: ReactNode
   tip?: ReactNode
+  /**
+   * A plain second line under the title: what an Orchestrator chat is asking
+   * about ("Asking about <feature>", every-feature-has-one-owner decisions 17,
+   * 30). The row's amber dot stays the only mark of the question.
+   */
+  about?: string | null
 }) {
   const bare = mark === null
-  const open = (
-    <button
-      type="button"
-      title={tip ? undefined : thread.title}
-      aria-current={active ? 'page' : undefined}
-      onClick={() => onOpen(thread.id)}
-      className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[inherit] px-2.5 text-left"
-    >
+  const line = (
+    <>
       <ThreadGlyph state={thread.state} />
       <span
         className={cx(
@@ -631,6 +632,27 @@ export function SidebarThreadRow({
       >
         {mark === undefined ? thread.updatedAt > 0 && relTime(thread.updatedAt) : mark}
       </span>
+    </>
+  )
+  const open = (
+    <button
+      type="button"
+      title={tip ? undefined : about ? `${thread.title} — ${about}` : thread.title}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onOpen(thread.id)}
+      className={cx(
+        'flex w-full cursor-pointer rounded-[inherit] px-2.5 text-left',
+        about ? 'flex-col gap-0.5 py-1.5' : 'h-8 items-center gap-2',
+      )}
+    >
+      {about ? (
+        <>
+          <span className="flex h-5 w-full min-w-0 items-center gap-2">{line}</span>
+          <span className="min-w-0 truncate pl-6 text-xs text-text-tertiary">{about}</span>
+        </>
+      ) : (
+        line
+      )}
     </button>
   )
   return (
@@ -690,6 +712,7 @@ export function SidebarThreadList({
   keep,
   markFor,
   tipFor,
+  aboutFor,
 }: {
   threads: readonly ThreadEntry[]
   /** The thread in front, or null when none is (the Conversations page). */
@@ -705,6 +728,8 @@ export function SidebarThreadList({
   markFor?: (t: ThreadEntry) => ReactNode
   /** The names behind that mark, on hover. */
   tipFor?: (t: ThreadEntry) => ReactNode
+  /** A plain second line under a row's title ("Asking about …"); null for none. */
+  aboutFor?: (t: ThreadEntry) => string | null
 }) {
   const [all, setAll] = useState(false)
   const listed = keep ? threads.filter(keep) : null
@@ -726,6 +751,7 @@ export function SidebarThreadList({
             actions={actionsFor(t)}
             mark={markFor?.(t)}
             tip={tipFor?.(t)}
+            about={aboutFor?.(t)}
           />
         </li>
       ))}

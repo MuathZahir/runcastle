@@ -223,13 +223,13 @@ describe('the Working shelf', () => {
 
   it('holds a need its orchestrator handles, in the orchestrator’s words, and leaves a permission prompt under Needs you', () => {
     data.features = [
-      titled('Billing emails', { need: need('test', 'With the orchestrator · Ready to test · Invoices', { held: true }) }),
+      titled('Billing emails', { need: need('test', 'With Notes triage · Ready to test · Invoices', { held: true }) }),
       titled('Export to CSV', { need: need('permission', 'Needs permission · Bash: git push') }),
     ]
     rail()
     const working = screen.getByRole('region', { name: 'Working' })
     expect(titles(working)).toEqual(['Billing emails'])
-    expect(within(working).getByText('With the orchestrator · Ready to test · Invoices')).toBeTruthy()
+    expect(within(working).getByText('With Notes triage · Ready to test · Invoices')).toBeTruthy()
     const needs = screen.getByRole('region', { name: 'Needs you' })
     expect(within(needs).getByText('Needs permission · Bash: git push')).toBeTruthy()
   })
