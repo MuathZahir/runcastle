@@ -412,8 +412,12 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
    * `before`: the context size it compacted, when known.
    */
   z.object({ type: z.literal('compacted'), trigger: CompactTrigger.optional(), before: z.number().nonnegative().optional() }),
-  /** The thread's name: the runtime's generated title, or with `renamed` the human's rename, which wins over every other name. */
-  z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional() }),
+  /**
+   * The thread's name: the runtime's generated title; with `renamed` the human's
+   * rename, which wins over every other name; with `by: 'orchestrator'` the name an
+   * Orchestrator chat gave itself (its epic's name), which wins over all but the human's.
+   */
+  z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional(), by: z.literal('orchestrator').optional() }),
   /** The thread branched off another thread, then called `from`; shows nothing, and names it "Branch of …" until the human writes in it. */
   z.object({ type: z.literal('branched'), from: z.string() }),
   /** The agent's guess at the human's next message; `null` clears it. */
@@ -587,6 +591,10 @@ export interface ThreadEntry {
   runtime: 'claude-code' | 'codex'
   /** A conversation from before threads had logs: it reads back as plain turns until it is continued. */
   readOnlyTranscript?: boolean
+  /** The Orchestrator named this chat itself (its epic's name). Absent (false) on a thread with no log. */
+  epicNamed?: boolean
+  /** The human renamed this chat, which outranks every other name. Absent (false) on a thread with no log. */
+  humanNamed?: boolean
 }
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */

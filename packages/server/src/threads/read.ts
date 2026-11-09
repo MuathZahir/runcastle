@@ -19,7 +19,7 @@ import { isRuncastlePrompt, runcastleLines } from '../services/lead-prompt'
 import { tryGetFeature } from '../services/repo'
 import { withRelativePaths } from './acp-map'
 import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
-import { NEW_CHAT_NAME, threadAbout, threadName, type ThreadAbout } from './naming'
+import { givenNames, NEW_CHAT_NAME, threadAbout, threadName, type ThreadAbout } from './naming'
 import { agentHost } from './types'
 
 /**
@@ -174,9 +174,12 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiti
   const running = agentHost(ctx).isRunning(row.id)
   // A lead that said it waits on the human (`wait_for_you`, declared ready) has handed over, whatever still runs.
   const background = running && !(leadWaiting && row.kind === 'chat') && threadActivity(events, true, Date.now()) === 'background'
+  const given = givenNames(events)
   return {
     id: row.id,
     title: threadName(row, events, about),
+    epicNamed: given.epicName !== undefined,
+    humanNamed: given.renamed !== undefined,
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
     state: background ? 'working' : running ? view.state : 'idle',
