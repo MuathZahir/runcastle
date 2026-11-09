@@ -36,6 +36,7 @@ Check first: 4, 6, 12, 13, 14
 **Why:** What a feature belongs to should not move when who runs it changes; holding moves, the cut does not.
 **Assumed.** Alternative: nest under the holder, so a feature the human takes over leaves its epic.
 **For the human.**
+**Changed by the orchestrator:** the origin field is the owner feature's `chatId`. When the human takes a feature by typing in it, `chatId` stays, so it stays under its epic. When the human gives it to a different chat, `chatId` moves to that chat, so the feature moves to that chat's epic (the owner feature's decision 21, kept).
 
 ## 7. Features with no epic sit together after the epics
 **Decision:** A feature with no origin chat (made with New feature, or its chat is gone) sits in one group after the epics, labelled "Other features", in the same order an epic uses inside. The group sorts with the epics: it rises to the top when something in it is yellow.
