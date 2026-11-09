@@ -21,6 +21,9 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { FeatureSidebar } from './workers/FeatureSidebar'
+import { ownerReading } from '../lib/feature-owner'
+import { useSetOwner } from '../lib/use-set-owner'
+import { OwnerChoices } from './workspace/OwnerControl'
 import { useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT, standIn } from '../lib/chat-sessions'
 import {
@@ -187,7 +190,21 @@ export function Sidebar(props: SidebarProps) {
   // the stream invalidates this key with the rest (lib/live.ts).
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
   // Same query key the Orchestrator's chat list polls.
-  const chats = chatsState(trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? [])
+  const chatThreads = trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? []
+  const chats = chatsState(chatThreads)
+  const setOwner = useSetOwner()
+  // The row menu's owner choices (every-feature-has-one-owner decisions 11, 21): none for a feature with no chat.
+  const ownerChoicesFor = (f: FeatureListItem): ReactNode => {
+    const reading = ownerReading(f, chatThreads)
+    if (!reading.chatName || f.status === 'shipped') return undefined
+    return (
+      <OwnerChoices
+        current={reading.owner.kind === 'chat' ? reading.owner.finish : 'you'}
+        chat={reading.chatName}
+        onChoose={(choice) => setOwner(f.id, choice)}
+      />
+    )
+  }
   const features = list.data ?? []
   const { inbox, lanes } = sidebarLanes(features)
   const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
@@ -356,6 +373,7 @@ export function Sidebar(props: SidebarProps) {
           if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
         }}
         actions={open ? [...leadChatActions(), ...actionsFor(f)] : actionsFor(f)}
+        ownerChoices={ownerChoicesFor(f)}
         nested={nested}
         {...(f.workersPage
           ? {

@@ -60,7 +60,14 @@ export function FeatureActionsMenu({
   label = 'Feature actions',
   size = 'sm',
   align = 'end',
+  choices,
 }: {
+  /**
+   * Choices above the actions, behind a rule: a feature row's owner choices
+   * (`OwnerChoices`, every-feature-has-one-owner decision 11). Absent for a
+   * feature with no chat (decision 21).
+   */
+  choices?: ReactNode
   actions: FeatureAction[]
   /** The trigger's accessible name and tooltip — the rows it serves are not all features. */
   label?: string
@@ -70,7 +77,7 @@ export function FeatureActionsMenu({
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  if (actions.length === 0) return null
+  if (actions.length === 0 && !choices) return null
   const safe = actions.filter((a) => !a.danger)
   const destructive = actions.filter((a) => a.danger)
 
@@ -114,7 +121,8 @@ export function FeatureActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
-        className="font-sans"
+        // The owner choices spell each one out over two lines: the owner control's own width.
+        className={choices ? 'w-80 font-sans' : 'font-sans'}
         onCloseAutoFocus={(event) => {
           // An action can hand the focus straight on — Delete opens a dialog
           // that focuses its confirm input. Radix would pull it back to the
@@ -127,6 +135,8 @@ export function FeatureActionsMenu({
           }
         }}
       >
+        {choices}
+        {choices && actions.length > 0 && <DropdownMenuSeparator />}
         {safe.map(item)}
         {safe.length > 0 && destructive.length > 0 && <DropdownMenuSeparator />}
         {destructive.map(item)}
