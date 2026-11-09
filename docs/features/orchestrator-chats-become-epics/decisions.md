@@ -4,6 +4,8 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 wer
 
 On 2026-11-09 the project's orchestrator read the plan on the human's delegation and changed decisions 10, 12 and 13 (each marked **Changed by the orchestrator:**); the human has not confirmed them yet.
 
+The same night the human, through the orchestrator, said to build it ("I want you to finish both features. Don't merge them. I'll check them before (designs and logic)"). The work started on that word; the decisions above stay open for the human's check, and the design's options stay switchable.
+
 Check first: 4, 6, 12, 13, 14
 
 ## 1. Several orchestrator chats stay
@@ -69,8 +71,8 @@ Check first: 4, 6, 12, 13, 14
 
 ## 12. Every epic names itself on its first reply: 1–3 words, Title Case
 **Decision:** The orchestrator names its own chat, in one style: 1 to 3 words, Title Case, a noun phrase ("Payment System", "Feature Ownership", "Monday Burn"). It does so with a new tool on its first reply, question chats included, and may rename while the chat is young (for example when it cuts its first feature and the topic is clearer). The human's rename (the row menu's Rename, as today) always wins: once the human named a chat, the tool leaves the name alone and says so. The server caps a name's length; the style lives in the project skill as one line.
-**Why:** A short noun scans; the moment of the first cut is when the chat knows what it is about. The human keeps the last word on names.
-**Assumed.** Alternative: name every chat in epic style from its first reply, question chats included.
+**Why:** A short noun scans, and with question chats in the same list (decision 5) every row must read the same way. The human asked for names "very short and easy to scan. Like \"Payment System\"". The human keeps the last word on names.
+**Assumed.** Alternative: name a chat only when it cuts its first feature, with the runtime's title until then.
 **Challenged:** With question chats in the same list (decision 5), naming only at the first cut leaves sentence titles beside short names, the hard-to-read list the brief complains about; every chat should name itself in epic style on its first reply.
 **Changed by the orchestrator:** it took the challenger's side (2026-11-09, on the human's delegation), saying the human asked for exactly this: short names in one style, easy to scan. This run first planned naming at the first cut, with the runtime's title until then.
 **For the human.**
