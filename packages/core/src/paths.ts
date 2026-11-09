@@ -105,6 +105,14 @@ export function installIdPath(): string {
   return join(dataDir(), 'install-id')
 }
 
+/**
+ * The marker that the one-off epic naming pass ran on this install
+ * (orchestrator-chats-become-epics decision 13): `<dataDir>/epic-naming-pass`.
+ */
+export function epicNamingPassMarkerPath(): string {
+  return join(dataDir(), 'epic-naming-pass')
+}
+
 export function logsDir(): string {
   return join(dataDir(), 'logs')
 }

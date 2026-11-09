@@ -15,6 +15,7 @@ import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions, wakeCutOffChats } from './launcher/reconcile'
 import { holdUpgradeNotes } from './services/upgrade-note'
+import { runEpicNamingPassOnce } from './threads/epic-naming-pass'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -280,6 +281,15 @@ export async function startServer(): Promise<void> {
   }
   // …and each lead of a feature with unfinished tickets gets one held note, riding its next message (decision 20).
   void holdUpgradeNotes(ctx).catch((err) => console.error('could not hold the ticket upgrade notes', err))
+  // Once per install, the orchestrator chats listed now get epic names (orchestrator-chats-become-epics
+  // decision 13). Not awaited: one short model run per chat. A copied database's chats are the live install's.
+  if (!isDatabaseCopy()) {
+    void runEpicNamingPassOnce(ctx)
+      .then((r) => {
+        if (r.ran && r.named + r.skipped > 0) console.log(`epic naming pass: named ${r.named} chat(s), skipped ${r.skipped}`)
+      })
+      .catch((err) => console.error('epic naming pass failed', err))
+  }
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at

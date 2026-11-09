@@ -34,6 +34,7 @@ const PROJECT_TOOLS = [
   'merge_feature',
   'add_to_brief',
   'take_feature',
+  'name_epic',
   'record_finding',
   'dry_run_drive',
 ]
@@ -76,6 +77,15 @@ describe('the project skill, orchestrating', () => {
       .join('\n')
     for (const tool of PROJECT_TOOLS) expect(text, tool).toMatch(new RegExp(`\\b${tool}\\b`))
     expect(text).not.toMatch(/take_over_feature|record_test_note|complete_phase/)
+  })
+
+  it('names its epic on its first reply, never over the human, and suggests a new epic for a drifting request', () => {
+    const top = skill().slice(0, skill().indexOf('## 0.'))
+    expect(top).toContain('**This chat is an epic: name it.** In your first reply, call `name_epic` with 1–3 words, Title Case, a noun phrase')
+    expect(top).toContain('name it on your next reply')
+    expect(top).toContain("never over the human's rename")
+    expect(top).toContain('suggest starting a new epic')
+    expect(top).toContain('this chat is "the epic"')
   })
 
   it('asks for a working agreement at intake, and works within it while orchestrating', () => {

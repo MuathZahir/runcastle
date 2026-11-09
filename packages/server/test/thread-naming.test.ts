@@ -1,6 +1,6 @@
 import { lastHumanAt, type SessionRow, type ThreadEvent } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
-import { namesItsSubject, runtimeMayName, threadName } from '../src/threads/naming'
+import { givenNames, namesItsSubject, runtimeMayName, threadName } from '../src/threads/naming'
 
 const row = (over: Partial<SessionRow> = {}): SessionRow =>
   ({ id: 'sess_1', kind: 'project', title: null, runtime: 'claude-code', ...over }) as SessionRow
@@ -36,6 +36,38 @@ describe('what an Orchestrator thread is called', () => {
 
   it('keeps the first message until a title arrives', () => {
     expect(threadName(row(), [briefed(), human('triage my notes')])).toBe('triage my notes')
+  })
+})
+
+describe("an epic's own name", () => {
+  const epic = (title: string) => event({ type: 'title', title, by: 'orchestrator' })
+
+  it("beats the runtime's generated title and the first message, before and after it", () => {
+    expect(threadName(row(), [briefed(), human('pay with stripe?'), epic('Payment System')])).toBe('Payment System')
+    const events = [briefed(), human('pay with stripe?'), epic('Payment System'), generated('Adding Stripe payments to checkout')]
+    expect(threadName(row(), events)).toBe('Payment System')
+  })
+
+  it('beats a generated title the host stored on the row', () => {
+    const title = 'Adding Stripe payments to checkout'
+    expect(threadName(row({ title }), [human('pay?'), generated(title), epic('Payment System')])).toBe('Payment System')
+  })
+
+  it("loses to the human's rename, whichever came last", () => {
+    const rename = () => event({ type: 'title', title: 'Money', renamed: true })
+    expect(threadName(row(), [human('pay?'), epic('Payment System'), rename()])).toBe('Money')
+    expect(threadName(row(), [human('pay?'), rename(), epic('Payment System')])).toBe('Money')
+    expect(givenNames([human('pay?'), rename(), epic('Payment System')])).toEqual({ renamed: 'Money', epicName: 'Payment System' })
+  })
+
+  it('takes the latest of its names', () => {
+    expect(threadName(row(), [human('pay?'), epic('Payments'), epic('Payment System')])).toBe('Payment System')
+  })
+
+  it("is the parent's, not a branch's", () => {
+    const events = [human('pay?'), epic('Payment System'), event({ type: 'branched', from: 'Payment System' })]
+    expect(givenNames(events)).toEqual({})
+    expect(threadName(row(), events)).toBe('Branch of Payment System')
   })
 })
 
