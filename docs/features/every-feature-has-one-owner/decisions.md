@@ -79,6 +79,7 @@ The orchestrator agreed the plan on 2026-11-09 with changes to 12, 17, 20, 21 an
 **Why:** The name is what tells the human which chat to open; while an agent works there is nothing to open.
 **Assumed.** Alternative: a small orchestrator mark on every chat-owned row, always.
 **For the human.**
+**Noted by the orchestrator (2026-11-09):** the chat row's rings stay exactly as they are today, with nothing added or polished; "Orchestrator chats become epics" removes them, since its nesting replaces them.
 
 ## 16. Under a chat owner, a feature row goes yellow only for what only the feature can answer
 **Decision:** When a chat owns the feature, its row goes yellow only for a permission prompt in the lead's terminal or a "with you" worker's question: things the human can only answer inside the feature. A plan or design to approve, ready to test and a merge conflict go to the chat by handback, and the row reads "With <Chat> · …". This supersedes in part `the-status-tells-the-truth-about-who-and-what` decision 6, which never held a design to approve.
