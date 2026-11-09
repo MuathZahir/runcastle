@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
   AgentRuntime,
+  Effort,
   Feature,
   MergeBranchPair,
   ModelEntry,
@@ -76,6 +77,19 @@ export interface LaunchSessionInput {
   purposeData?: MergeBranchPair
   /** Start a new main-chat thread even when the feature has one. */
   fresh?: boolean
+  /**
+   * The model, effort and fast mode the human picked before the chat existed
+   * (a-new-feature-waits-for-start decision 10): a new thread is created on the
+   * model, and the opening turn runs on all three. Unset, Settings decide.
+   */
+  pick?: LaunchPick
+}
+
+/** What the composer's pickers chose for a chat not started yet. */
+export interface LaunchPick {
+  model?: string
+  effort?: Effort
+  fast?: boolean
 }
 
 /**
@@ -187,6 +201,7 @@ async function sayToThread(
   message: string,
   opts: LaunchSessionOptions,
   summary?: string,
+  pick?: LaunchPick,
 ): Promise<void> {
   const display = summary ? { summary } : undefined
   if (opts.spawn === false) {
@@ -195,7 +210,12 @@ async function sayToThread(
   }
   const hold = opts.holdOpening === true
   const text = hold ? heldOpening(line) : line
-  await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', ...(display ? { display } : {}), ...(hold ? { hold } : {}) })
+  const runsOn = {
+    ...(pick?.model ? { model: pick.model } : {}),
+    ...(pick?.effort ? { effort: pick.effort } : {}),
+    ...(pick?.fast !== undefined ? { fast: pick.fast } : {}),
+  }
+  await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', ...(display ? { display } : {}), ...(hold ? { hold } : {}), ...runsOn })
   emitForSession(ctx, row, {
     type: 'session.kickoff',
     message,
@@ -325,7 +345,7 @@ async function openMainChat(
 
   const project = projectForFeature(ctx, feature)
   let prior = input.fresh ? null : newestThread(ctx, { featureId: feature.id }, 'chat')
-  const model = resolveModelEntry('chat', rosterConfig(ctx), project)
+  const model = resolveModelEntry('chat', rosterConfig(ctx), project, input.pick?.model)
   // Before anything is created: a runtime that cannot run refuses the launch.
   assertRuntimeReady(prior?.runtime ?? model.runtime, opts)
   const worktreePath = await ensureFeatureWorktree(ctx, project, feature)
@@ -381,6 +401,7 @@ async function openMainChat(
     selfPlan ? 'opening the self-planning run with its briefing' : 'opening chat with its briefing',
     opts,
     openingSummary(thread, selfPlan),
+    input.pick,
   )
   return { sessionId: thread.id, resumed }
 }

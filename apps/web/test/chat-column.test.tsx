@@ -208,6 +208,7 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
           hidden={false}
           holdStart={false}
           start={async () => 'th_started'}
+          onPlanItYourself={async () => undefined}
           onView={() => {}}
         />
       </div>
@@ -538,10 +539,10 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
   })
 
   // No test renders the whole feature page, so its `start` is read from source:
-  // the launch holds its opening as the chat asks (feature-chat-start.test.tsx).
+  // the launch holds its opening as the chat asks, on the pick Start carries (feature-chat-start.test.tsx).
   it('starts the feature chat with its opening held as the chat asks', () => {
     const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
-    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening \}\)/)
+    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening, \.\.\.pick \}\)/)
   })
 })
 

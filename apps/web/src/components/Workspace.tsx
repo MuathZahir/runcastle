@@ -146,7 +146,6 @@ export function Workspace({
   onViewChange,
   guidance,
   driving,
-  landedOn = false,
   onDriveChange,
   onOpenThread,
   onDeleted,
@@ -158,8 +157,6 @@ export function Workspace({
   onViewChange: (view: FeatureView) => void
   guidance: boolean
   driving: DriveState | null
-  /** The app landed on this feature by itself; the human has not opened it. */
-  landedOn?: boolean
   onDriveChange: (d: DriveState | null) => void
   /** Open an Orchestrator thread: the header's first crumb, the thread holding this feature. */
   onOpenThread?: (threadId: string) => void
@@ -397,7 +394,7 @@ export function Workspace({
     landOnChat()
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
-  // The main chat's start, by its first message or by itself on a new feature.
+  // The main chat's start, by its first message or by Start on a new feature.
   // Already on the chat, so nothing lands; the caller says why it failed.
   const startChat = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: () => undefined })
   // Stop, the status row's primary while workers work (burns-become-workers decision 15).
@@ -517,10 +514,27 @@ export function Workspace({
     onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
+  // A draft's Start launches its chat at once, landing on the running agent
+  // (a-new-feature-waits-for-start decision 4). It holds the chat until the
+  // feature reads the new session, so the waiting screen never shows between.
+  // A refused launch leaves a started feature that never ran: its chat opens
+  // on Start with the refusal under it (decision 11).
+  const [launchRefusal, setLaunchRefusal] = useState<string | undefined>(undefined)
+  const launchStarted = trpc.feature.launchSession.useMutation({
+    onSuccess: async () => {
+      landOnChat()
+      await refresh()
+    },
+    onError: (e) => {
+      setLaunchRefusal(e.message)
+      toast.push(e.message)
+    },
+  })
   const start = trpc.feature.start.useMutation({
     onSuccess: (_res, vars) => {
       invalidate()
-      launch.mutate({ featureId: vars.featureId, kind: 'chat' })
+      setLaunchRefusal(undefined)
+      launchStarted.mutate({ featureId: vars.featureId, kind: 'chat' })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -529,14 +543,17 @@ export function Workspace({
   // the chat — the plan is watched from the body.
   // It stays pending until the feature is refetched with the new run on it, so
   // the row reads Planning by itself from the click on, never idle in between.
+  // A refusal is said by whoever pressed: a toast from the bar, a line under
+  // the waiting chat's buttons.
   const launchSelfPlan = trpc.feature.launchSession.useMutation({
     onSuccess: refresh,
-    onError: (e) => toast.push(e.message),
+    onError: () => undefined,
   })
+  const sayRefusal = { onError: (e: { message: string }) => toast.push(e.message) }
   const startSelfPlan = trpc.feature.start.useMutation({
     onSuccess: (_res, vars) => {
       invalidate()
-      launchSelfPlan.mutate({ featureId: vars.featureId, kind: 'chat', purpose: 'self-plan' })
+      launchSelfPlan.mutate({ featureId: vars.featureId, kind: 'chat', purpose: 'self-plan' }, sayRefusal)
     },
     onError: (e) => toast.push(e.message),
   })
@@ -608,6 +625,7 @@ export function Workspace({
   const liveSession = activeSession(full.sessions)
   const busy =
     start.isPending ||
+    launchStarted.isPending ||
     launch.isPending ||
     startSelfPlan.isPending ||
     launchSelfPlan.isPending ||
@@ -714,7 +732,7 @@ export function Workspace({
       // then launched as a self-planning run; a started feature just launches.
       case 'selfPlan':
         if (isDraft) startSelfPlan.mutate({ featureId, baseBranch: effectiveDraftBase })
-        else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
+        else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' }, sayRefusal)
         break
       // Stop is ending the run: nobody is attending it (decision 9). Only the
       // self-planning run it was offered for — never a lead woken in its place.
@@ -1252,12 +1270,15 @@ export function Workspace({
                   alerts={chatAlerts}
                   standing={standing}
                   hidden={chatHidden}
-                  holdStart={landedOn || start.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
-                  start={async ({ holdOpening }) => {
+                  holdStart={start.isPending || launchStarted.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
+                  start={async ({ holdOpening, pick }) => {
                     // Started by a message, the opening waits for it: one prompt, one answer.
-                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening })
+                    // Started by Start, it carries the composer's model pick (decision 10).
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening, ...pick })
                     return res.sessionId
                   }}
+                  onPlanItYourself={(pick) => launchSelfPlan.mutateAsync({ featureId, kind: 'chat', purpose: 'self-plan', ...pick })}
+                  refusal={launchRefusal}
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
