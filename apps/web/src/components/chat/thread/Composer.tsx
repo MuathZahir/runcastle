@@ -62,6 +62,7 @@ export function Composer({
   sendIcon = <IconSend />,
   multiple = true,
   inputRef,
+  locked = false,
 }: {
   value: string
   onChange: (v: string) => void
@@ -97,10 +98,16 @@ export function Composer({
   multiple?: boolean
   /** The field, for a caller that focuses it (a selected area landing in the box). */
   inputRef?: RefObject<HTMLTextAreaElement | null>
+  /**
+   * Nothing can be written yet (a-new-feature-waits-for-start decision 7): the
+   * box takes no input and says why, Send and Attach are off. What the caller
+   * puts in `footer` and `meter` (the model and effort pickers) still works.
+   */
+  locked?: boolean
 }) {
   const phone = useIsPhone()
   // The guess is taken with Tab, which a phone has not got.
-  const suggestion = phone ? undefined : guess
+  const suggestion = phone || locked ? undefined : guess
   const own = useRef<HTMLTextAreaElement>(null)
   const area = inputRef ?? own
   const picker = useRef<HTMLInputElement>(null)
@@ -124,9 +131,11 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
   }, [value])
 
-  const canSend = value.trim() !== '' || attachments.length > 0
+  const canSend = !locked && (value.trim() !== '' || attachments.length > 0)
   const working = state === 'working'
-  const prompt = working
+  const prompt = locked
+    ? (placeholder ?? 'Start the agent first — it opens the conversation')
+    : working
     ? phone
       ? 'Steer the agent'
       : 'Steer the agent — this joins the running turn'
@@ -197,6 +206,7 @@ export function Composer({
     return true
   }
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (locked) return
     if (takeImages(e.clipboardData.files)) e.preventDefault()
   }
 
@@ -270,7 +280,8 @@ export function Composer({
             ref={area}
             rows={2}
             value={value}
-            autoFocus={autoFocus}
+            autoFocus={autoFocus && !locked}
+            disabled={locked}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
@@ -278,7 +289,7 @@ export function Composer({
             aria-label={label}
             // 16px on a phone, or iOS zooms the page in when the box takes the focus.
             className={cx(
-              'block w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 font-sans text-text outline-none placeholder:text-text-tertiary',
+              'block w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 font-sans text-text outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed',
               phone ? 'text-lg' : 'text-base',
             )}
           />
@@ -294,7 +305,7 @@ export function Composer({
           {/* Never squeezed: where the row is tight, the model name shortens first. */}
           <span className={cx('ml-auto flex shrink-0 items-center', phone ? 'gap-0.5' : 'gap-1')}>
             {working ? <WorkingClock since={workingSince} /> : meter}
-            <IconButton label="Attach images" icon={<IconPaperclip />} size={control} onClick={() => picker.current?.click()} />
+            <IconButton label="Attach images" icon={<IconPaperclip />} size={control} disabled={locked} onClick={() => picker.current?.click()} />
             <input
               ref={picker}
               type="file"
