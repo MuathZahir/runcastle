@@ -332,6 +332,14 @@ describe('foldThread: subagents across turns and late updates', () => {
     expect(work(v, 1).steps).toMatchObject([{ kind: 'subagent', status: 'completed' }])
   })
 
+  it('gives that later card a fold id of its own, unique across the thread', () => {
+    const again = { type: 'subagent', id: 's1', status: 'in_progress' } as const
+    const v = foldThread(log(...turnOf('p1', opened('s1', 'Find it'), finished('s1')), ...turnOf('p2', again, finished('s1'))))
+    const ids = v.items.map((x) => x.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(v.items.filter((x) => x.kind === 'work')).toHaveLength(2)
+  })
+
   describe('what still runs (the-status-tells-the-truth decision 4)', () => {
     const say = (id: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId: id, text })
     const call = (id: string, title: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title, status: 'completed' } })
@@ -1163,6 +1171,24 @@ describe('threadActivity with background work', () => {
     it('stops counting when the process stops', () => {
       const stopped = line({ type: 'process', state: 'stopped' }, 6)
       expect(threadActivity([...withAgents([AGENT], false), stopped], true, soon)).toBe('replied')
+    })
+
+    // Claude Code keeps the turn open until its background subagents end, though its Stop hook already fired.
+    describe('in a turn held open by it', () => {
+      const open = (words: string) =>
+        reply(words)
+          .filter((e) => e.type !== 'turn_ended')
+          .map((e) => (e.type === 'tasks' ? { ...e, tasks: [], agents: [AGENT] } : e))
+
+      it('reads as background work, for as long as it is listed', () => {
+        expect(threadActivity(open('launched.'), true, at + 6 * BACKGROUND_WINDOW_MS)).toBe('background')
+        expect(threadActivity([...open('launched.'), line({ type: 'tasks', tasks: [], agents: [] }, 6)], true, soon)).toBe('turn')
+      })
+
+      it('stays a plain turn when the words end on a question, or the process is gone', () => {
+        expect(threadActivity(open('Mocks are building. Want the dark one too?'), true, soon)).toBe('turn')
+        expect(threadActivity(open('launched.'), false, soon)).toBe('turn')
+      })
     })
   })
 

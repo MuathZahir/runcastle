@@ -715,7 +715,12 @@ export type ThreadActivity =
   | 'asking'
   /** A turn runs. */
   | 'turn'
-  /** It replied, and background work it started still runs: the human is not being waited on yet. */
+  /**
+   * It replied, and background work it started still runs: the human is not being
+   * waited on yet. Also a turn held open only by a running subagent: Claude Code
+   * keeps the turn open until its background subagents end, though its Stop hook
+   * has already said the agent stopped.
+   */
   | 'background'
   /** It replied and the next move is the human's. */
   | 'replied'
@@ -734,7 +739,9 @@ export type ThreadActivity =
  * (threads-open-fast decisions 1 to 3), unless it ends on a question or the work
  * is no longer running with its process. A listed subagent counts for as long as
  * it is listed; a background command only until {@link BACKGROUND_WINDOW_MS} has
- * passed since the turn ended. The chat's own `foldThread` state knows none of this: the
+ * passed since the turn ended. A turn still open while a subagent is listed reads
+ * the same: Claude Code holds the turn open until its background subagents end.
+ * The chat's own `foldThread` state knows none of this: the
  * turn is over, and the composer treats it so.
  */
 export function threadActivity(events: readonly ThreadEvent[], running: boolean, now: number): ThreadActivity {
@@ -781,7 +788,7 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
     }
   }
   if (running && asking) return 'asking'
-  if (inTurn) return 'turn'
+  if (inTurn) return running && subagents > 0 && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'turn'
   if (!replied) return 'idle'
   const stillWorking = running && (subagents > 0 || (commands > 0 && now - endedAt < BACKGROUND_WINDOW_MS))
   return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
@@ -965,6 +972,8 @@ function markRunning(items: ThreadItem[], listed: readonly BackgroundTask[], sta
 export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const events = liveEvents(log)
   const items: ThreadItem[] = []
+  /** The ids a settled part of a turn laid out, so a later part never reuses one. */
+  const settledIds = new Set<string>()
   const view: ThreadView = { ...EMPTY_THREAD_VIEW, items, plan: [], tasks: [], commands: [] }
   view.cursor = log.length ? log[log.length - 1].i : -1
 
@@ -1024,11 +1033,15 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     const model = t.model ? { model: t.model } : {}
     const out: ThreadItem[] = []
     const ids = new Set<string>()
-    /** An id not yet used in this part: a message id the runtime reused after a tool call gets a suffix. */
+    /**
+     * An id not yet used in this part nor in a part already settled: a message id
+     * the runtime reused after a tool call, or a subagent woken again under its
+     * old id in a later turn, gets a suffix.
+     */
     const unique = (id: string): string => {
       let n = 1
       let candidate = id
-      while (ids.has(candidate)) candidate = `${id}:${++n}`
+      while (ids.has(candidate) || settledIds.has(candidate)) candidate = `${id}:${++n}`
       ids.add(candidate)
       return candidate
     }
@@ -1134,6 +1147,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     return turn
   }
 
+  const settle = (t: Turn) => {
+    if (t.regionStart >= 0) for (const x of items.slice(t.regionStart)) settledIds.add(x.id)
+  }
+
   const closeTurn = (e: ThreadEvent, reason: TurnEnd | 'restarted', files?: FileChange[], error?: string) => {
     if (turn) {
       const t: Turn = turn
@@ -1149,6 +1166,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       const last = t.regionStart >= 0 ? items.slice(t.regionStart).findLast((x) => x.kind === 'agent') : undefined
       const turnSeconds = Math.round((e.at - t.firstStartedAt) / 1000)
       if (last?.kind === 'agent' && turnSeconds >= 1) last.turnSeconds = turnSeconds
+      settle(t)
     }
     turn = null
     if (files?.length) items.push({ kind: 'changes', id: `changes:${e.i}`, files })
@@ -1176,6 +1194,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const splitTurn = (e: ThreadEvent) => {
     if (!turn) return
     render(false, e.at)
+    settle(turn)
     turn.id = String(e.i)
     turn.startedAt = e.at
     turn.segments = []
