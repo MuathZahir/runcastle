@@ -2,6 +2,7 @@ import type { SessionRow } from '@runcastle/core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
+import { requireMayMessage } from '../services/holding'
 import { deliverToLead } from '../services/lead-delivery'
 import { capTurns, capTurnsCounted, mainChatTurns } from '../services/main-chat-excerpt'
 import { shownCopies, type ShownCopy } from '../threads/shown'
@@ -11,7 +12,6 @@ import {
   ok,
   orchestratorTool,
   recordFeatureAction,
-  requireHeldFeature,
   requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
@@ -38,7 +38,8 @@ export async function toolSendToFeature(
   session: SessionRow,
   input: { slug: string; message: string; relaysHuman?: boolean },
 ): Promise<SendToFeatureResult> {
-  const feature = requireHeldFeature(ctx, session, input.slug)
+  // Allowed on a human-owned feature too: a marked note, or an answer to its lead (decisions 6, 9).
+  const feature = requireMayMessage(ctx, session, requireProjectFeature(ctx, session, input.slug))
   const from = input.relaysHuman ? RELAYED_HUMAN_LINE : FROM_ORCHESTRATOR_LINE
   const relayed = input.relaysHuman === true
   await deliverToLead(ctx, feature, {
