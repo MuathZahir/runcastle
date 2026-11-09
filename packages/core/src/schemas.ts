@@ -552,6 +552,14 @@ export const ProjectFinding = z.object({
 })
 export type ProjectFinding = z.infer<typeof ProjectFinding>
 
+/**
+ * How far a feature's chat takes it (`every-feature-has-one-owner` decision 7):
+ * `you` the human finishes it; `show` the chat builds it and shows the human
+ * before merging; `merge` the chat builds and merges it.
+ */
+export const FeatureFinish = z.enum(['you', 'show', 'merge'])
+export type FeatureFinish = z.infer<typeof FeatureFinish>
+
 export const Feature = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -578,6 +586,10 @@ export const Feature = z.object({
   upNext: z.boolean().default(false),
   /** The project thread holding this feature — see the db schema. Unset when none does. */
   heldBy: z.string().optional(),
+  /** The feature's chat (an orchestrator thread id) — see the db schema. Null when it has none. */
+  chatId: z.string().nullable().default(null),
+  /** How far its chat takes the feature — see the db schema. */
+  finish: FeatureFinish.default('you'),
   /**
    * When the human pressed Stop (ms); null when the feature is not stopped. No
    * round dispatches while it is set, and the next human message clears it.
@@ -591,6 +603,8 @@ export const Feature = z.object({
   lastHumanMessageAt: z.number().nullable().default(null),
   /** When the lead last dispatched a round (ms); null before the first. */
   lastDispatchAt: z.number().nullable().default(null),
+  /** The lead's outstanding handback to its orchestrator — see the db schema. Null when none is. */
+  handback: z.object({ at: z.number(), summary: z.string() }).nullable().default(null),
 })
 export type Feature = z.infer<typeof Feature>
 

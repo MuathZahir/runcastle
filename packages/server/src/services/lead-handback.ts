@@ -4,7 +4,10 @@ import { GateError } from '../errors'
 import { agentHost } from '../threads/types'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
-import { holderName, holderOf } from './holding'
+import { getSessionRow } from '../launcher/sessions'
+import { holderName, passAtPlanYes } from './holding'
+import { getFeatureRow } from './repo'
+import { setHandback } from './lead-status'
 import { listWorkers } from '../workers/service'
 
 /** The event a lead's handback leaves on its feature's timeline. */
@@ -26,41 +29,54 @@ export function handbackStateLine(feature: Pick<Feature, 'waitingReason'>, worke
 }
 
 /**
- * A lead hands back to the orchestrator thread that holds its feature
- * (decisions 20–22): one runcastle prompt into the holder, shown as a feature
- * handback card, waking it once. Refused when no orchestrator holds the
- * feature. In a test drive's copied database it never starts a holder the drive
- * has not started (drives-never-touch-real-conversations decision 9), and says
- * so to the lead.
+ * A lead hands back (decisions 20–22; every-feature-has-one-owner decisions 14,
+ * 20): one runcastle prompt into a chat, shown as a feature handback card,
+ * waking it once. It goes to the owner chat; on a human-owned feature, to its
+ * chat, as a question that leaves the owner as it is, except at the plan's yes
+ * (`planAgreed`) on a feature its chat finishes, which first passes the feature
+ * to that chat. Refused when the feature has neither. In a test drive's copied
+ * database it never starts a chat the drive has not started
+ * (drives-never-touch-real-conversations decision 9), and says so to the lead.
  */
 export async function handBackToOrchestrator(
   ctx: AppCtx,
   feature: Feature,
   summary: string,
-): Promise<{ deliveredTo: string; state: string }> {
-  const holder = feature.status === 'shipped' ? null : holderOf(ctx, feature)
+  opts: { planAgreed?: boolean } = {},
+): Promise<{ deliveredTo: string; state: string; passed?: true }> {
+  const live = feature.status !== 'shipped'
+  const targetId = live ? (feature.heldBy ?? feature.chatId) : null
+  const holder = targetId ? getSessionRow(ctx, targetId) : null
   if (!holder || holder.kind !== 'project') {
     throw new GateError(
-      'no orchestrator holds this feature, so there is nobody to hand back to: tell the human in your chat instead',
+      'this feature has no orchestrator chat to hand back to: ask the human in your chat with wait_for_you instead',
     )
   }
   if (!mayStartInBackground(holder)) {
-    throw new GateError('this test drive has not started the orchestrator chat that holds this feature, so the handback was not sent')
+    throw new GateError('this test drive has not started the orchestrator chat of this feature, so the handback was not sent')
   }
+  const passed = opts.planAgreed === true && passAtPlanYes(ctx, feature)
+  if (passed) feature = getFeatureRow(ctx, feature.id)
   const state = handbackStateLine(feature, listWorkers(ctx, feature.id))
   const text =
     `[runcastle] ${feature.slug} handed back:\n${summary.trim()}\n` +
-    `State: ${state}. Reply with send_to_feature({ slug: "${feature.slug}" }), or merge it when it is ready.`
+    `State: ${state}. ` +
+    (feature.heldBy === holder.id
+      ? `${passed ? 'Its plan has the yes, so you own it now. ' : ''}Reply with send_to_feature({ slug: "${feature.slug}" }), or merge it when it is ready.`
+      : `The human owns this feature: answer its lead with send_to_feature({ slug: "${feature.slug}" }); nothing else changes it.`)
   await agentHost(ctx).prompt(
     holder.id,
     { text },
     { source: 'runcastle', display: { featureHandback: { featureId: feature.id, title: feature.title, summary: summary.trim(), state } } },
   )
   const name = holderName(holder)
+  // Outstanding until the orchestrator acts, the human writes, or the hold moves
+  // (the-status-tells-the-truth decisions 5, 7); a newer handback replaces it.
+  setHandback(ctx, feature.id, summary.trim())
   emit(ctx, feature.id, {
     type: LEAD_HANDED_BACK,
     message: `handed back to the orchestrator chat "${name}"`,
-    data: { holderId: holder.id, summary: summary.trim(), state },
+    data: { holderId: holder.id, summary: summary.trim(), state, owner: feature.heldBy ?? null },
   })
-  return { deliveredTo: name, state }
+  return { deliveredTo: name, state, ...(passed ? { passed: true as const } : {}) }
 }

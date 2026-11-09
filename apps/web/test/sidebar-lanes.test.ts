@@ -41,11 +41,11 @@ describe('a lead that replied with work left running', () => {
   })
 })
 
-describe('a need its orchestrator holds (decision 18)', () => {
+describe('a need its orchestrator holds (decision 18; the-status-tells-the-truth decision 5)', () => {
   it('sits under Agent working until its hour passes, then needs you', () => {
-    const held = listItem({ id: 'held', need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) })
+    const held = listItem({ id: 'held', need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) })
     expect(sidebarLanes([held])).toEqual({ inbox: [], lanes: [{ key: 'agentWorking', label: 'Agent working', features: [held] }] })
-    const due = listItem({ id: 'due', need: need('plan', 'Plan to approve') })
+    const due = listItem({ id: 'due', need: need('handback', 'Handed back · Ready to merge') })
     expect(sidebarLanes([due]).inbox).toEqual([due])
   })
 

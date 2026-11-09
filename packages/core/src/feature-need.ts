@@ -9,8 +9,12 @@ import type { FeatureStatus } from './schemas'
  * module decides.
  */
 
-/** The needs, most pressing first (decision 17): the order {@link featureNeed} picks in. */
-export const NEED_KINDS = ['permission', 'conflict', 'worker', 'answer', 'plan', 'design', 'stopped', 'test', 'merge'] as const
+/**
+ * The needs, most pressing first (decision 17): the order {@link featureNeed}
+ * picks in. `handback` is the lead's outstanding handback to its orchestrator
+ * (the-status-tells-the-truth decision 5), last of all.
+ */
+export const NEED_KINDS = ['permission', 'conflict', 'worker', 'answer', 'plan', 'design', 'stopped', 'test', 'merge', 'handback'] as const
 export type NeedKind = (typeof NEED_KINDS)[number]
 
 /**
@@ -20,7 +24,10 @@ export type NeedKind = (typeof NEED_KINDS)[number]
 export const WaitingKind = z.enum(['answer', 'plan', 'design', 'stuck'])
 export type WaitingKind = z.infer<typeof WaitingKind>
 
-/** How long a need its orchestrator holds stays the orchestrator's before it comes to the human (decision 18). */
+/**
+ * How long an outstanding handback keeps a need the orchestrator's before it
+ * comes to the human (decision 18; the-status-tells-the-truth decision 2).
+ */
 export const HELD_NEED_GRACE_MS = 60 * 60_000
 
 /** The waiting reason the human's Stop sets. */
@@ -40,6 +47,27 @@ export const YOU_STOPPED_IT = 'you stopped it'
 
 /** The words before a held need's own words. */
 export const HELD_PREFIX = 'With the orchestrator · '
+
+/** The words before an outstanding handback's line once nothing holds it. */
+export const HANDED_BACK_PREFIX = 'Handed back · '
+
+/** How long a handback's line may run on a sidebar row or a status line. */
+const HANDBACK_LINE_MAX = 80
+
+/**
+ * The line a handback reads by: the summary's first non-empty line, cut at its
+ * first sentence's end and clipped to {@link HANDBACK_LINE_MAX} characters.
+ */
+export function handbackLine(summary: string): string {
+  const line = summary.split(/\r?\n/).map((l) => l.trim()).find((l) => l !== '') ?? ''
+  const end = line.search(/[.!?](\s|$)/)
+  // A question or an exclamation keeps its mark; a full stop is dropped.
+  const sentence = end > 0 ? line.slice(0, line[end] === '.' ? end : end + 1) : line
+  return sentence.length > HANDBACK_LINE_MAX ? `${sentence.slice(0, HANDBACK_LINE_MAX - 1).trimEnd()}…` : sentence
+}
+
+/** A prefix's words alone, for a line with nothing after it ("With the orchestrator"). */
+const alone = (prefix: string): string => prefix.slice(0, -' · '.length)
 
 /** The reason when the lead's latest wake failed to launch or died in its turn. */
 export function wakeFailedWhy(exitCode: number | null): string {
@@ -84,6 +112,12 @@ export interface NeedFacts {
    * you" or by failing (interactive-workers decisions 6, 16); `since` is when.
    */
   workerNeedsYou: { label: string; threadId: string; since: number } | null
+  /**
+   * The lead's outstanding handback to the orchestrator that holds the feature
+   * (the-status-tells-the-truth decisions 5, 7): when it handed back and what it
+   * said. Null when it never did, or something has answered it since.
+   */
+  handback: { at: number; summary: string } | null
 }
 
 /** The one thing a feature waits on the human for. */
@@ -93,7 +127,11 @@ export interface FeatureNeed {
   words: string
   /** The words after "·": the reason, the call's title, the scenario. */
   why?: string
-  /** Its orchestrator handles it: not Needs you, no ping, until {@link HELD_NEED_GRACE_MS} has passed. */
+  /**
+   * Its orchestrator handles it: not Needs you, no ping, until
+   * {@link HELD_NEED_GRACE_MS} has passed since the handback. Only an outstanding
+   * handback holds anything (the-status-tells-the-truth decisions 1, 6, 15).
+   */
   held: boolean
   /** When this need began. */
   since: number
@@ -109,8 +147,12 @@ export interface FeatureNeed {
   quiet?: true
 }
 
-/** The needs an orchestrator can answer itself; a permission prompt and a design need the human's own eyes. */
-const HOLDABLE: ReadonlySet<NeedKind> = new Set(['answer', 'plan', 'stopped', 'conflict', 'test', 'merge'])
+/**
+ * The machine states a handback holds when they already stood at the handback
+ * (the-status-tells-the-truth decisions 6, 15). A question to the human — a
+ * permission prompt, a worker's, an answer, a plan, a design — is never held.
+ */
+const MACHINE_STATES: ReadonlySet<NeedKind> = new Set(['conflict', 'stopped', 'test', 'merge'])
 
 type Bare = Omit<FeatureNeed, 'words' | 'held'>
 
@@ -135,6 +177,8 @@ function wordsOf(need: Bare): string {
       return `Ready to test · ${need.why}`
     case 'merge':
       return 'Ready to merge'
+    case 'handback':
+      return need.why ? `${HANDED_BACK_PREFIX}${need.why}` : alone(HANDED_BACK_PREFIX)
   }
 }
 
@@ -191,8 +235,9 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       }
       if (!idle) return null
       if (waitingKind === 'answer') return { kind: 'answer', why: waiting!.reason, since: waiting!.since }
-      // A lead that declared ready waits on the drive, not on an answer.
-      if (!waiting && !ready && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since, quiet: true }
+      // A lead that declared ready waits on the drive, not on an answer; one that
+      // handed back waits on its orchestrator, and its handback speaks for it.
+      if (!waiting && !ready && !facts.handback && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since, quiet: true }
       return null
     },
     () => idle && waitingKind === 'plan' ? { kind: 'plan', since: waiting!.since } : null,
@@ -225,7 +270,22 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       }
       return { kind: 'test', why: ready.scenario, scenario: ready.scenario, since: ready.at }
     },
+    () => (idle && facts.handback ? { kind: 'handback', why: handbackLine(facts.handback.summary), since: facts.handback.at } : null),
   ]
+}
+
+/** Whether an outstanding handback holds this need now (the-status-tells-the-truth decisions 1, 2, 5, 6, 15). */
+function isHeld(facts: NeedFacts, need: Bare, now: number): boolean {
+  const mark = facts.handback
+  if (!mark || !facts.held || now - mark.at >= HELD_NEED_GRACE_MS) return false
+  return need.kind === 'handback' || (MACHINE_STATES.has(need.kind) && need.since <= mark.at)
+}
+
+/** A need's words: a held one behind the orchestrator's prefix, a held handback by its own line. */
+function wordsAs(need: Bare, held: boolean): string {
+  if (!held) return wordsOf(need)
+  if (need.kind === 'handback') return need.why ? `${HELD_PREFIX}${need.why}` : alone(HELD_PREFIX)
+  return `${HELD_PREFIX}${wordsOf(need)}`
 }
 
 /**
@@ -233,19 +293,24 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
  * 17, 18). Only a started feature can need anything. While a round runs or the
  * lead is mid-turn, only an open ask (it halts the agent where it stands), a
  * standing merge conflict or a worker that needs the human counts.
- * A held need reads "With the orchestrator · …" until it has waited
- * {@link HELD_NEED_GRACE_MS}; a permission prompt and a design are never held.
+ *
+ * Only an outstanding handback holds a need (the-status-tells-the-truth
+ * decisions 1, 5, 6, 15): the handback itself, and a machine state that already
+ * stood when the lead handed back, read "With the orchestrator · …" while an
+ * orchestrator holds the feature and less than {@link HELD_NEED_GRACE_MS} has
+ * passed since the handback. A question to the human is never held, and a held
+ * need never outranks one that is not: precedence orders each group.
  */
 export function featureNeed(facts: NeedFacts, now: number): FeatureNeed | null {
   if (facts.status !== 'active') return null
+  let firstHeld: Bare | null = null
   for (const candidate of candidates(facts)) {
-    const bare = candidate()
-    if (!bare) continue
-    const words = wordsOf(bare)
-    const held = facts.held && HOLDABLE.has(bare.kind) && now - bare.since < HELD_NEED_GRACE_MS
-    return { ...bare, words: held ? `${HELD_PREFIX}${words}` : words, held }
+    const need = candidate()
+    if (!need) continue
+    if (!isHeld(facts, need, now)) return { ...need, words: wordsAs(need, false), held: false }
+    firstHeld ??= need
   }
-  return null
+  return firstHeld ? { ...firstHeld, words: wordsAs(firstHeld, true), held: true } : null
 }
 
 /**

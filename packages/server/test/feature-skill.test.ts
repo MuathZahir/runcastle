@@ -123,11 +123,16 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(s).toContain('no patch scripts in /tmp, no long heredocs. A script is for one change across many files.')
   })
 
-  it('tells the orchestrator only by hand_back, and only for what it can act on (agents-are-woken-only-when-it-matters 20–22)', () => {
+  it('talks to its owner, in one rule (every-feature-has-one-owner 18, 20, 14)', () => {
     const text = flat(skill())
-    expect(text).toContain('it hears from you only through `hand_back({ summary })`')
-    expect(text).toContain('when you are blocked on something it can settle')
-    expect(text).toContain('A question only the human can answer is no handback')
+    expect(text).toContain('## Talk to your owner')
+    expect(text).toContain('Bring everything to your owner, and to nobody else.')
+    expect(text).toContain('everything goes to that chat with `hand_back({ summary })`, and `wait_for_you` is refused')
+    expect(text).toContain('goes first to the chat it came from with `hand_back({ summary })`')
+    expect(text).toContain('`hand_back({ summary, planAgreed: true })`')
+    expect(text).toContain('and a sub-agent for as long as it runs')
+    expect(text).not.toContain('With the orchestrator')
+    expect(text).not.toContain('working agreement')
   })
 
   it('re-reads the feature state after any compaction', () => {
@@ -207,6 +212,11 @@ describe('the feature skill, planning with no human present', () => {
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
     expect(close).toContain('asking the human for their yes to start the work')
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`')
+  })
+
+  it('hands a chat-owned plan to its chat for its yes (every-feature-has-one-owner 3)', () => {
+    const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
+    expect(close).toContain('**When a chat owns the feature** (talk to your owner, SKILL.md), its yes is that chat\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
   })
 
   it('plans the workers it would offer and starts none', () => {

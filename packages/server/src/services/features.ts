@@ -11,7 +11,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { isProviderHaltReason, newId, PROVIDER_HALT_CLEARED, READY_TO_TEST, STOPPED } from '@runcastle/core'
+import { type FeatureFinish, isProviderHaltReason, newId, PROVIDER_HALT_CLEARED, READY_TO_TEST, STOPPED } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -40,6 +40,7 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
+import { clearHandback } from './lead-status'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import { needEventsByProject, needOf } from './feature-need'
@@ -171,6 +172,13 @@ export interface CreateFeatureInput {
    * resolved later, when the human clicks Start (decision 3).
    */
   draft?: boolean
+  /**
+   * The orchestrator chat creating it (`every-feature-has-one-owner` decision
+   * 21): it becomes the feature's chat, `finish` is recorded, and
+   * `feature.created` names it as `createdBy`. Absent for New feature and for a
+   * draft a feature's agent parks. Who owns it is the holding service's call.
+   */
+  chat?: { threadId: string; finish: FeatureFinish }
 }
 
 export async function createFeature(
@@ -198,11 +206,13 @@ export async function createFeature(
     baseBranch,
     status,
     createdAt: Date.now(),
+    chatId: input.chat?.threadId ?? null,
+    finish: input.chat?.finish ?? 'you',
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)
 
-  emitFeatureCreated(ctx, feature, cut)
+  emitFeatureCreated(ctx, feature, cut, input.chat?.threadId)
 
   // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
   // commit until Start, so parked scribbles never land on the current branch.
@@ -238,7 +248,7 @@ async function parkOrCut(
  * The birth event every creation door emits — `cut` is the branch it cut, or
  * null for a draft, which cuts nothing until Start.
  */
-function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null): void {
+function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null, createdBy?: string): void {
   const { slug, branch } = feature
   emit(ctx, feature.id, {
     type: 'feature.created',
@@ -253,6 +263,8 @@ function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null
       baseBranch: cut?.baseBranch,
       branchReady: cut?.branchReady ?? false,
       draft: !cut,
+      // The chat that created it, on record for good (one-owner decision 24's move reads it).
+      ...(createdBy ? { createdBy } : {}),
     },
   })
 }
@@ -686,6 +698,7 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
   endLiveSessions(ctx, featureId)
 
   ctx.db.update(features).set({ status: 'archived' }).where(eq(features.id, featureId)).run()
+  clearHandback(ctx, featureId, 'closed')
   emit(ctx, featureId, {
     type: 'feature.archived',
     message: `feature ${feature.slug} archived`,

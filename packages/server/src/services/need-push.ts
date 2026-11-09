@@ -43,6 +43,9 @@ export function needPushBody(need: NeedsYouData): string {
       return why ? sentence(`Ready to test: ${why}`) : 'Ready to test.'
     case 'merge':
       return 'Ready to merge.'
+    case 'handback':
+      // Only after the orchestrator left it an hour, or let go (the-status-tells-the-truth decision 2).
+      return why ? sentence(`Handed back, unanswered: ${why}`) : 'Handed back, unanswered.'
   }
 }
 

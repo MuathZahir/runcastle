@@ -41,11 +41,14 @@ export function rowToFeature(row: FeatureSelect): Feature {
     createdAt: row.createdAt,
     upNext: row.upNext,
     heldBy: row.heldBy ?? undefined,
+    chatId: row.chatId,
+    finish: row.finish,
     stoppedAt: row.stoppedAt,
     waitingReason: row.waitingReason,
     waitingKind: row.waitingKind,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,
+    handback: row.handbackAt !== null ? { at: row.handbackAt, summary: row.handbackSummary ?? '' } : null,
   })
 }
 

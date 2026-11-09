@@ -64,6 +64,8 @@ import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from 
 import {
   backgroundAgents,
   backgroundTasks,
+  codexSubagents,
+  sameWork,
   CLAUDE_SDK_MESSAGE_METHOD,
   createUpdateMapper,
   elicitationAnswer,
@@ -537,8 +539,10 @@ interface Thread {
   map: (update: acp.SessionUpdate, from?: string) => ThreadEventBody[]
   /** The background commands the agent runs now, as last logged. */
   tasks: BackgroundTask[]
-  /** How many sub-agents it runs in the background, as last logged. */
-  agents: number
+  /** The subagents it runs now, as last logged; they keep it working for as long as they are listed. */
+  agents: BackgroundTask[]
+  /** Its runtime reports no live list of subagents (Codex): the host keeps one from their start and end reports. */
+  subagentsByReport: boolean
   /** When its last turn ended, and the timer that says so when its background work stops counting. */
   turnEndedAt?: number
   windowEnds?: ReturnType<typeof setTimeout>
@@ -1158,7 +1162,8 @@ class Host implements AgentHost {
       queue: [],
       map: createUpdateMapper((prefix) => `${prefix}_${row.id}_${Date.now().toString(36)}_${++n}`),
       tasks: [],
-      agents: 0,
+      agents: [],
+      subagentsByReport: (row.runtime ?? DEFAULT_RUNTIME) === 'codex',
       startedBy,
       ...(opening ? { opening } : {}),
       ...(lastActiveAt !== undefined ? { lastActiveAt } : {}),
@@ -1773,13 +1778,15 @@ class Host implements AgentHost {
   }
 
   /**
-   * A thread's background work stops counting {@link BACKGROUND_WINDOW_MS} after
-   * its turn ended, with nothing logged to say so: push a `turn` signal then, so
-   * the sidebar and the header read it at once and not on their next poll.
+   * A thread's background commands stop counting {@link BACKGROUND_WINDOW_MS}
+   * after its turn ended, with nothing logged to say so: push a `turn` signal
+   * then, so the sidebar and the header read it at once and not on their next
+   * poll. A listed subagent has no window: while one is listed the window's end
+   * changes nothing, and the list changing is logged (and signalled) itself.
    */
   private watchWindow(t: Thread): void {
     if (t.windowEnds) clearTimeout(t.windowEnds)
-    if (t.turn || t.turnEndedAt === undefined || (t.tasks.length === 0 && t.agents === 0)) return
+    if (t.turn || t.turnEndedAt === undefined || t.tasks.length === 0 || t.agents.length > 0) return
     const left = t.turnEndedAt + this.backgroundWindowMs - Date.now()
     if (left <= 0) return
     t.windowEnds = setTimeout(() => publishLive({ kind: 'turn', sessionId: t.id }), left)
@@ -1790,6 +1797,8 @@ class Host implements AgentHost {
     if (t.idle) clearTimeout(t.idle)
     t.idle = setTimeout(() => {
       if (this.threads.get(t.id) !== t || t.turn || t.ask || t.queue.length) return
+      // A subagent still running is work, not idleness: look again later.
+      if (t.agents.length) return this.armIdle(t)
       // A lead is compacted before it stops, while its cache is still warm (decision 6b); it stops when that ends.
       if (this.compactNow(t, 'idle')) t.stopAfterCompaction = true
       else void this.stop(t.id, 'idle')
@@ -1814,6 +1823,8 @@ class Host implements AgentHost {
     }
     const own = !t.sessionId || sessionId === t.sessionId
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
+    // Codex lists no live background work: its subagents' start and end reports keep the list.
+    const reported = own && t.subagentsByReport ? codexSubagents(update, t.agents, Date.now()) : null
     if (own && update.sessionUpdate === 'current_mode_update') {
       t.modeId = update.currentModeId
       t.proc?.onMode?.(update.currentModeId)
@@ -1834,6 +1845,10 @@ class Host implements AgentHost {
       }
       appendThreadEvent(t.id, body)
     }
+    if (reported) {
+      t.agents = reported
+      this.logWork(t)
+    }
   }
 
   /**
@@ -1851,21 +1866,26 @@ class Host implements AgentHost {
   }
 
   /**
-   * A Claude session's forwarded SDK message: the background commands it runs,
-   * when they change, and its session going idle, which ends a turn it started
-   * by itself.
+   * A Claude session's forwarded SDK message: the background commands and
+   * subagents it runs, when they change, and its session going idle, which ends
+   * a turn it started by itself.
    */
   private onSdkMessage(t: Thread, message: unknown): void {
     if (t.state === 'stopped') return
     if (t.turn?.self && wentIdle(message)) return void this.endSelfTurn(t, t.turn, 'end_turn')
-    const agents = backgroundAgents(message)
+    const now = Date.now()
+    const agents = backgroundAgents(message, t.agents, now)
     if (agents === null) return
-    const tasks = backgroundTasks(message, t.tasks, Date.now())
-    if (!tasks && agents === t.agents) return
+    const tasks = backgroundTasks(message, t.tasks, now)
+    if (!tasks && sameWork(agents, t.agents)) return
     t.tasks = tasks ?? t.tasks
     t.agents = agents
-    // Its work ending moves what the thread reads as, turn or no turn.
-    this.logAwaits(t.id, { type: 'tasks', tasks: t.tasks, ...(agents ? { agents } : {}) })
+    this.logWork(t)
+  }
+
+  /** Log the background work a thread runs now; its work ending moves what the thread reads as, turn or no turn. */
+  private logWork(t: Thread): void {
+    this.logAwaits(t.id, { type: 'tasks', tasks: t.tasks, ...(t.agents.length ? { agents: t.agents } : {}) })
     this.watchWindow(t)
   }
 

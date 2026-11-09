@@ -41,7 +41,7 @@ describe('eventToNotification', () => {
 
   it('stays quiet for a need its orchestrator is handling, and for the human’s own Stop', () => {
     expect(
-      eventToNotification(ev({ data: { kind: 'plan', words: 'With the orchestrator · Plan to approve', held: true, why: null } })),
+      eventToNotification(ev({ data: { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' } })),
     ).toBeNull()
     expect(
       eventToNotification(ev({ data: { kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: 'you stopped it' } })),

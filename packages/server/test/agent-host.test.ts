@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { foldThread, threadActivity, type ThreadEvent, type ThreadItem } from '@runcastle/core'
+import { foldThread, runningSubagents, threadActivity, type ThreadEvent, type ThreadItem } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
 import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
@@ -445,6 +445,27 @@ describe('idle stop', () => {
     expect(fake.last().killed).toBe(false)
     // Nor is it compacted: an open ask is the human's to answer (lead-chats-stay-small decision 13).
     expect(prompts()).toHaveLength(1)
+  })
+
+  it('never stops a process while a subagent is listed as running (the-status-tells-the-truth decision 3)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const agent = { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' }
+    setup({
+      turn: (t) =>
+        t.sdkMessage({
+          type: 'system',
+          subtype: 'background_tasks_changed',
+          tasks: [agent],
+          uuid: '00000000-0000-0000-0000-000000000000',
+          session_id: 'acp-session-1',
+        }),
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Look it up in the background' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS * 3)
+    expect(host.isRunning(id)).toBe(true)
+    expect(fake.last().killed).toBe(false)
   })
 })
 
@@ -909,6 +930,41 @@ describe('subagents and background commands', () => {
     expect(subagentSteps(events)).toMatchObject([{ id: 'thr-9', title: 'explorer', status: 'completed', calls: [{ id: 'x1', title: 'rg router' }] }])
   })
 
+  it("keeps a Codex thread's running subagents from their start and end reports, as the tasks event Claude's list logs", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    setup({
+      turn: async (t) => {
+        await t.send({ sessionUpdate: 'subagent_spawned', subagentSessionId: 'thr-9', name: 'explorer', task: 'Map the router', capabilities: {} })
+        await t.send({ sessionUpdate: 'subagent_spawned', subagentSessionId: 'thr-10', name: 'reviewer', task: 'Read the diff', capabilities: {} })
+        await t.send({ sessionUpdate: 'subagent_state_update', subagentSessionId: 'thr-10', state: 'cancelled' })
+        await t.say('Both started.')
+        await gate
+        await t.send({ sessionUpdate: 'subagent_state_update', subagentSessionId: 'thr-9', state: 'completed' })
+      },
+    })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.6-sol', runtime: 'codex' } }).id
+    await host.prompt(id, { text: 'Map it' }, { source: 'human' })
+    const lists = (events: ThreadEvent[]) => events.flatMap((e) => (e.type === 'tasks' ? [runningSubagents(e).map((a) => [a.id, a.title])] : []))
+    const started = await logUntil(id, (events) => lists(events).length === 3)
+    expect(lists(started)).toEqual([[['thr-9', 'explorer']], [['thr-9', 'explorer'], ['thr-10', 'reviewer']], [['thr-9', 'explorer']]])
+    release()
+    const done = await logUntil(id, turnsEnded(1))
+    expect(lists(done).at(-1)).toEqual([])
+  })
+
+  it("keeps no subagent list of its own for a Claude thread, whose runtime lists them", async () => {
+    setup({
+      turn: async (t) => {
+        await t.send({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Explore', description: 'Find the auth code', state: { state: 'running' } })
+        await t.say('Started.')
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    expect((await logUntil(id, turnsEnded(1))).some((e) => e.type === 'tasks')).toBe(false)
+  })
+
   it('does not log a replayed subagent again when a conversation loads', async () => {
     setup({ replay: [{ sessionUpdate: 'subagent_update', sessionId: 'old-child', title: 'Explore', state: { state: 'idle', stopReason: 'end_turn' } }] })
     const id = thread({ ccSessionId: 'cc-old' })
@@ -979,7 +1035,7 @@ describe('subagents and background commands', () => {
       const id = thread()
       await host.prompt(id, { text: 'Run it' }, { source: 'human' })
       const log = await logUntil(id, turnsEnded(1))
-      expect(log.find((e) => e.type === 'tasks')).toMatchObject({ agents: 1 })
+      expect(log.find((e) => e.type === 'tasks')).toMatchObject({ agents: [{ id: 'a1', title: 'Find the auth code', startedAt: expect.any(Number) }] })
       expect(foldThread(log).tasks).toEqual([{ id: 'b1', title: 'bun test', startedAt: expect.any(Number) }])
     })
 
@@ -993,7 +1049,32 @@ describe('subagents and background commands', () => {
       const id = thread()
       await host.prompt(id, { text: 'Run it' }, { source: 'human' })
       const log = await logUntil(id, turnsEnded(1))
-      expect(log.filter((e) => e.type === 'tasks').map((e) => (e.type === 'tasks' ? (e.agents ?? 0) : -1))).toEqual([1, 0])
+      expect(log.filter((e) => e.type === 'tasks').map((e) => (e.type === 'tasks' ? runningSubagents(e).map((a) => a.id) : []))).toEqual([['a1'], []])
+    })
+
+    it("keeps a sub-agent's start time while it stays listed", async () => {
+      const OTHER = { task_id: 'a2', task_type: 'local_agent', subagent_type: 'Explore', description: 'Map the router' }
+      setup({
+        turn: async (t) => {
+          await t.sdkMessage(changed([AGENT]))
+          await new Promise((r) => setTimeout(r, 5))
+          await t.sdkMessage(changed([AGENT, OTHER]))
+        },
+      })
+      const id = thread()
+      await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+      const lists = (await logUntil(id, turnsEnded(1))).flatMap((e) => (e.type === 'tasks' ? [runningSubagents(e)] : []))
+      expect(lists).toHaveLength(2)
+      expect(lists[1].map((a) => a.id)).toEqual(['a1', 'a2'])
+      expect(lists[1][0].startedAt).toBe(lists[0][0].startedAt)
+    })
+
+    it('arms no window signal while a sub-agent is listed', async () => {
+      setup({ turn: (t) => t.sdkMessage(changed([COMMAND, AGENT])) }, { backgroundWindowMs: 40 })
+      const id = thread()
+      await host.prompt(id, { text: 'Run it' }, { source: 'human' })
+      await logUntil(id, turnsEnded(1))
+      expect(await signalsAfterTheTurn(id)).toBe(0)
     })
 
     it('says so when the work stops counting, with nothing logged at that moment', async () => {

@@ -73,6 +73,18 @@ export function recordChatRead(sessionId: string, featureId: string, position: C
   memoryOf(sessionId).chats.set(featureId, position)
 }
 
+/**
+ * True the first time a session is told `key`, false after: for news said once
+ * (every-feature-has-one-owner decision 23, a feature the human took).
+ */
+export function tellOnce(sessionId: string, key: string): boolean {
+  const docs = memoryOf(sessionId).docs
+  const at = `told:${key}`
+  if (docs.has(at)) return false
+  docs.set(at, '')
+  return true
+}
+
 /** Forget everything a session was sent — its conversation no longer holds it. */
 export function clearSentMemory(sessionId: string): void {
   memory.delete(sessionId)
