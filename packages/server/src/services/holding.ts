@@ -7,6 +7,7 @@ import { getSessionRow, projectSessions } from '../launcher/sessions'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { threadName } from '../threads/naming'
 import { emit, emitProject } from './events'
+import { clearHandback } from './lead-status'
 
 /**
  * Threads hold features (`threads-hold-features`): one orchestrator thread holds
@@ -96,6 +97,8 @@ export function takeHold(ctx: AppCtx, session: SessionRow, feature: Feature): { 
   const from = feature.heldBy
   const name = holderName(session)
   setHolder(ctx, feature.id, session.id)
+  // The thread the lead handed back to has let go: nobody it addressed holds the feature now.
+  clearHandback(ctx, feature.id, 'hold')
   emit(ctx, feature.id, {
     type: 'feature.taken',
     message: `taken by the thread "${name}" from "${nameOf(ctx, from)}"`,

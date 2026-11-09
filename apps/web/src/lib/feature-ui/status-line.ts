@@ -145,6 +145,8 @@ const NEED_PRIMARY: Record<NeedKind, StatusPrimary> = {
   stopped: 'chat',
   test: 'testDriveStart',
   merge: 'merge',
+  // The lead's handback: the chat holds its words (the-status-tells-the-truth decision 5).
+  handback: 'chat',
 }
 
 /**

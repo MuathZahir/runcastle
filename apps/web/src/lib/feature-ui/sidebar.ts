@@ -34,9 +34,9 @@ function agentMidTurn(f: FeatureListItem): boolean {
 /**
  * Which features need me: the feature's `need`, worked out once on the server
  * (you-always-know-what-s-waiting decision 14), so this row, the status line and
- * the pings never disagree. A need its orchestrator is handling is not mine
- * until its hour passes (decision 18): it reads "With the orchestrator · …"
- * among the working.
+ * the pings never disagree. A need held by the lead's outstanding handback is
+ * not mine until its hour passes (decision 18; the-status-tells-the-truth
+ * decision 5): it reads "With the orchestrator · …" among the working.
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
   // A parked draft claims no attention until the human clicks Start (decision 9).

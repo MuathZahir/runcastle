@@ -308,7 +308,7 @@ describe('projectStats', () => {
       feat({ id: 'b', workersWorking: 1 }),
       feat({ id: 'c' }), // nothing asked: in progress, not needs-you
       // Its orchestrator handles it: not counted until its hour passes (decision 18).
-      feat({ id: 'd', need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) }),
+      feat({ id: 'd', need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) }),
     ])
     expect(s.needsYou).toBe(1)
     expect(s.working).toBe(1)

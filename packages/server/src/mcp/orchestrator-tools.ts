@@ -23,6 +23,7 @@ import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { holderName, requireHold, takeHold } from '../services/holding'
+import { clearHandback } from '../services/lead-status'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
   getFeatureRow,
@@ -95,6 +96,9 @@ export function orchestratorTool<A extends unknown[], R>(
  * Record in the calling chat's log that a tool changed a feature, so the chat
  * shows it as a row of the turn's features card. Called once the change landed:
  * a refused or failed call never reaches it. The title is the feature's now.
+ * Only tools that change something call it, so it is also where the
+ * orchestrator answers the lead's outstanding handback (the-status-tells-the-
+ * truth decision 7); a tool that only reads leaves the handback standing.
  */
 export function recordFeatureAction(
   ctx: AppCtx,
@@ -111,6 +115,7 @@ export function recordFeatureAction(
     action,
     ...extra,
   })
+  clearHandback(ctx, featureId, 'orchestrator')
 }
 
 /** Make this thread the holder of a feature, held or not, waking nothing on it. */
