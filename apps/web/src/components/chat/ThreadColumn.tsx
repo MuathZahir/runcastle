@@ -223,7 +223,7 @@ export function ThreadColumn({
           state={view.state}
           // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
           {...(closed ? {} : { actions: { onEdit: t.edit, ...(onOpenThread ? { onBranch: (id: string) => void branch(id) } : {}), canUndoFiles: onRuntime === 'claude-code' } })}
-          onDropImages={t.attach}
+          {...(locked ? {} : { onDropImages: t.attach })}
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}
           loading={t.loading}

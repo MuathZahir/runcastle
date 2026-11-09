@@ -120,7 +120,7 @@ export function Composer({
     : at
       ? { kind: 'file', query: at[1], items: rankPaths(files, at[1], 8) }
       : null
-  const listing = !!suggest && suggest.items.length > 0
+  const listing = !locked && !!suggest && suggest.items.length > 0
   const count = suggest?.items.length ?? 0
   useEffect(() => setActive(0), [suggest?.kind, suggest?.query])
 
