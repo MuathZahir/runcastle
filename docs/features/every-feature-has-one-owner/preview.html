@@ -187,11 +187,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><b>You talk in</b>the feature's own chat <a class="pin" data-d="2">2</a></li>
         <li><b>Yellow dot on</b>the feature row <span class="yd"></span></li>
         <li><b>Who merges</b>you</li>
-        <li><b>Beyond it</b>its lead asks the chat it came from, then asks you in the feature <a class="pin" data-d="6">6</a> <a class="pin" data-d="20">20</a></li>
+        <li><b>Beyond it</b>its lead asks the chat it came from (the row reads "Asking Notes triage · …", never yellow), then asks you in the feature <a class="pin" data-d="6">6</a> <a class="pin" data-d="20">20</a></li>
       </ul>
     </div>
     <div class="own">
-      <h3><span class="chip">Notes triage · shows you before merging</span></h3>
+      <h3><span class="chip">Notes triage · you merge</span></h3>
       <ul>
         <li><b>You talk in</b>the Notes triage chat, on the same plan and design cards <a class="pin" data-d="3">3</a></li>
         <li><b>Yellow dot on</b>the Notes triage row, naming the feature; the feature reads "With Notes triage · asking you" <a class="pin" data-d="8">8</a> <a class="pin" data-d="17">17</a></li>
@@ -215,7 +215,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- screen:feature-owner -->
 <div class="designed">
   <h3>Feature header: who owns it</h3>
-  <p>The owner control and the strip above the composer are real components; the feature, chat and messages are sample words. A Tweak switches between two sets of words.</p>
+  <p>The owner control and the strip above the composer are real components; the feature, chat and messages are sample words. The header uses the short words ("Notes triage · you merge"); the menu keeps the long sentences.</p>
   <p>States: yours · planning · shows · merges · asking · menu · no-chat.</p>
   <p class="mono">src/components/workspace/OwnerControl.tsx · src/components/chat/OwnerStrip.tsx · design page /preview/feature-owner.html</p>
 </div>
@@ -235,7 +235,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <p class="hint">First I merge the status feature's latest tip into this branch, so the build sees its handback mark. Workers start once you approve the screens.</p>
   <div class="workers">
     <div class="w"><b>Owner rules</b><span>The owner, its chat and the finish choice on the feature; every way the owner changes; which tools each side may use; moving today's features.</span><span class="tag k">on its own</span></div>
-    <div class="w"><b>Who to answer</b><span>The status words and dots: "With &lt;Chat&gt; · …", the chat row's "Asking about …", the hour rule. Starts after Owner rules.</span><span class="tag k">on its own</span></div>
+    <div class="w"><b>Who to answer</b><span>The status words and dots: "With &lt;Chat&gt; · …", "Asking &lt;Chat&gt; · …", which features a chat is asking about (from the cards it showed), the chat row's plain "Asking about …" line, the hour rule. Starts after Owner rules.</span><span class="tag k">on its own</span></div>
     <div class="w"><b>Owner control</b><span>Wires the approved owner control, row menu and composer strip to the server. Starts after Owner rules.</span><span class="tag k">on its own</span></div>
     <div class="w"><b>Me</b><span>The lead and project skill lines ("talk to your owner"), the base merge, landing each worker.</span><span class="tag k">myself</span></div>
     <div class="w"><b>Review</b><span>Drives the app through each owner change and dot, and runs the checks.</span><span class="tag k">at the end</span></div>
@@ -277,7 +277,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <div class="step"><span class="who">Owner changes</span><span class="arrow">·</span><span class="how">one service: owner control mutation, first typed message in the lead's chat, <span class="mono">take_feature</span>, <span class="mono">create_feature</span>, a plan-agreed <span class="mono">hand_back</span>, a replacement chat. Each emits an event and clears the handback.</span></div>
         <div class="step"><span class="who">Tool rules</span><span class="arrow">·</span><span class="how"><span class="mono">wait_for_you</span> refused under a chat; <span class="mono">hand_back</span> reaches the owner, else its chat; orchestrator acting tools refuse human-owned features except <span class="mono">send_to_feature</span>; <span class="mono">show_plan</span>/<span class="mono">show_design</span> take a slug from a chat.</span></div>
         <div class="step"><span class="who">Status</span><span class="arrow">·</span><span class="how">the pure feature-need function learns the owner chat's name and whether it is asking; "With the orchestrator" becomes "With &lt;Chat&gt;".</span></div>
-        <div class="step"><span class="who">Today's features</span><span class="arrow">·</span><span class="how">a one-time boot step: held stay held with "shows you before merging"; unheld are yours.</span></div>
+        <div class="step"><span class="who">Today's features</span><span class="arrow">·</span><span class="how">a one-time boot step: held stay held with "you merge"; unheld are yours, and get their chat back from their creation record. I list every moved feature when I hand it back ready.</span></div>
       </div>
     </div>
   </details>
@@ -305,34 +305,35 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A chat\'s news about a feature you own is posted in that feature\'s chat', 'You are talking about that feature there.'],
     ['Several orchestrator chats stay', 'Unrelated work would crowd one context.'],
     ['One owner control on the header does both jobs', 'Who owns it and how far the chat goes are one fact; two controls would be two things to learn.', 'assumed'],
-    ['The words of the owner control', 'Each option names who does the last step, merging.', 'assumed'],
+    ['The words of the owner control: short on the header, long in the menu', 'Each option names who does the last step, merging; the header must fit any chat name.', 'by the orchestrator'],
     ['How it is planned is chosen once, in the chat, and is not on the feature', 'A choice spent after one step should not take room on every header.', 'assumed'],
     ['A grilled feature the chat takes after the plan says so while grilled', 'The one built-in owner change should never surprise you.', 'assumed'],
     ['The feature row names its chat whenever the chat owns the next move', 'The name tells you which chat to open; while an agent works there is nothing to open.', 'assumed'],
     ['Under a chat owner, the feature row goes yellow only for what only the feature can answer', 'A permission prompt or a worker\'s question can only be answered inside the feature.', 'assumed'],
-    ['"Asking you" is read from facts runcastle already has', 'No new tool and no guess; the hour still catches a chat gone quiet.', 'assumed'],
+    ['"Asking you" marks only the feature whose cards the asking chat showed', 'A chat holding five handbacks that asks about one must mark only that one.', 'by the orchestrator'],
     ['A lead under a chat owner cannot wait on you', 'A rule the server keeps cannot drift with habit; the skills get shorter.', 'assumed'],
     ['An orchestrator chat acts only on features it owns', 'The owner changes only when you change it; the silent claim goes.', 'assumed'],
-    ['A feature you own asks its chat with the same handback', 'One tool for "talk to the chat" keeps the lead\'s rules short.', 'assumed'],
-    ['The chat a feature came from is remembered on the feature', '"Its chat" should be the chat that knows it best now.', 'assumed'],
+    ['A feature you own asks its chat with the same handback, reading "Asking <Chat>"', 'One tool keeps the lead\'s rules short; "With <Chat>" only ever means the chat owns it.', 'by the orchestrator'],
+    ['The chat a feature came from is remembered on the feature; with none, the control does not open', '"Its chat" should be the chat that knows it best now; a one-item menu is a dead end.', 'by the orchestrator'],
     ['A chat that has ended still owns its features', 'The process ending is routine; it is not you changing the owner.', 'assumed'],
     ['Taking a feature by typing shows a strip first, and the chat learns quietly', 'One line of warning; no turn spent waking a chat for news it cannot act on.', 'assumed'],
-    ['Today\'s features move over once, and nothing merges without you', 'Old prose is fragile to parse; the cautious default is one click to change.', 'assumed'],
+    ['Today\'s features move over once, keep their chat, and nothing merges without you', 'Old prose is fragile to parse; the creation record still names a feature\'s chat.', 'by the orchestrator'],
     ['The orchestrator reads the choice from the feature, not the brief', 'One source of truth you can see and change on the feature.', 'assumed'],
     ['This feature\'s place against earlier decisions', 'Earlier docs record what was true when they shipped.', 'assumed'],
     ['Designs always wait for your own yes', 'You want to see the options and choose; a chat that merges should not also pick the look.', 'assumed'],
     ['The strip above the composer always offers the way to the chat', 'Clicking a plain "asking you" row must be one click from the chat, never a takeover.', 'assumed'],
-    ['Taking one feature leaves the rest of the cut with its chat', 'Taking one feature is not stopping the cut.', 'assumed']
+    ['Taking one feature leaves the rest of the cut with its chat', 'Taking one feature is not stopping the cut.', 'assumed'],
+    ['The chat row\'s look belongs to "Orchestrator chats become epics"', 'That feature is redesigning chat rows now; this one supplies only the fact and a plain line.', 'by the orchestrator']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [11, 'A "Hand back to <chat>" button plus a separate how-far setting in the details', 'It forces the shape of the header and the menu everything else hangs on', 'forces others'],
-    [12, 'Compact words: "Notes triage · you merge" / "· merges it" (the Tweak shows them)', 'The words are the part you said was vague; the challenger thinks the long ones will not fit', 'challenged'],
+    [12, 'The long words on the header too: "Notes triage · shows you before merging"', 'The words are the part you said was vague; the orchestrator chose the short ones for fit', 'changed by the orchestrator'],
     [13, 'One cut-time question on one scale: grill me / plan and show me / plan, build and merge', 'Your words read like one scale, but your decision 7 keeps planning separate', 'challenged'],
-    [17, 'The chat names the feature it is asking about when it waits on you', 'A chat holding five handbacks that asks about one would mark all five "asking you"', 'challenged'],
-    [24, 'Recover each feature\'s chat from its creation record and list what changed for you', 'Features a chat cut that you are grilling now would lose their chat', 'challenged']
+    [17, 'Every handed-back feature of an asking chat reads "asking you"', 'The orchestrator chose correct dots; it rests on the chat showing a card when it asks', 'changed by the orchestrator'],
+    [24, 'Unheld features lose their chat; or a summary screen of what moved', 'The orchestrator chose to recover chats and list the moves in its report to you', 'changed by the orchestrator']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

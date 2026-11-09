@@ -4,6 +4,8 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–10 we
 
 Check first: 11, 12, 13, 17, 24
 
+The orchestrator agreed the plan on 2026-11-09 with changes to 12, 17, 20, 21 and 24 and a new 30, each marked where it changed; the human checks them in the morning.
+
 ## 1. One owner per feature: the human, or one orchestrator chat
 **Decision:** Every feature has exactly one owner at a time: the human, or one orchestrator chat. The feature's sidebar row and header say which. Under the hood this is today's holder (ADR-0016): held by an orchestrator chat means that chat owns it; no holder means the human does.
 **Why:** Nothing decided where a feature's conversation lives, so the same questions reached the human in two places.
@@ -56,6 +58,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: "You finish it / Built, you merge / Built and merged".
 **For the human.**
 **Challenged:** "<long chat title> · shows you before merging" will not fit the header; show "<Chat> · you merge" / "<Chat> · merges" there and keep the long sentences in the menu. (The design's Tweak switches to exactly that.)
+**Changed by the orchestrator (2026-11-09, on the human's delegation):** the header takes the short words: "Yours" / "<Chat> · you merge" / "<Chat> · merges it". The menu keeps the long sentences. The header must fit whatever the chat's name is long or short; it truncates the name, never the "· you merge" part. The design's long header set is dropped; the build follows the short set.
 
 ## 13. How it is planned is chosen once, in the orchestrator chat, and is not on the feature
 **Decision:** The planning choice ("Plan it with me" or "Plan it yourself and show me") is asked when the chat cuts the feature, as today, and is not shown or changed on the feature. Once the plan has its yes it no longer matters.
@@ -63,6 +66,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: a second control on the header for the planning mode.
 **For the human.**
 **Challenged:** the human's own words read like one scale (grilled for the plan, plans and shows, also merges); one cut-time question with three steps would halve the choices. Kept separate because decision 7, the human's, keeps planning a separate choice.
+**Kept by the orchestrator (2026-11-09):** kept as planned, because the one scale would change the human's decision 7; the orchestrator puts it to the human in the morning. The build keeps the planning choice in one place (the cut's question and the launch), so folding it into one three-step question later is a small change.
 
 ## 14. A grilled feature the chat takes after the plan says so while it is grilled
 **Decision:** While the human grills a feature whose choice is a chat's, the owner control reads "Yours to plan · then <Chat>". At the human's plan yes the lead passes it to that chat with its handback, and the control changes to the chat. The lead says so in its chat in one line.
@@ -88,6 +92,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: a tool the chat calls to say which feature it is asking about.
 **For the human.**
 **Challenged:** a chat that owns five handed-back features and asks about one would mark all five "asking you"; the chat should name the feature it asks about (a field on a tool it already has, or a small new one). Correct dots matter more than one tool fewer.
+**Changed by the orchestrator (2026-11-09, on the human's delegation):** the challenger's way. A chat that holds five handbacks and asks about one marks only that one. The feature it asks about is read from a fact the chat already produces: the features whose plan, design or review card the chat showed in the turn that ended on a question. Only if that fact is not enough (a question asked in words, with no card) does the build add an optional feature field to a tool the chat already has. The hour safety net stays as above.
 
 ## 18. A lead under a chat owner cannot wait on the human
 **Decision:** When a chat owns the feature, the server refuses the lead's `wait_for_you` with a line telling it to `hand_back` instead, and the lead and project skills each say "talk to your owner" in one rule.
@@ -106,6 +111,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: a separate ask-the-chat tool.
 **For the human.**
 **Challenged:** "With <Chat>" is the phrase that means the chat owns it; a human-owned feature asking its chat should read "Asking <Chat> · …" so ownership never blurs.
+**Changed by the orchestrator (2026-11-09, on the human's delegation):** the challenger's way. "With <Chat>" means only that the chat owns the feature. A human-owned feature whose lead is asking its chat reads "Asking <Chat> · <the question's first line>", in the working colour, never yellow.
 
 ## 21. The chat a feature came from is remembered on the feature
 **Decision:** A feature remembers its chat: the orchestrator chat that created it, replaced by any chat the human later gives it to. It moves to a replacement chat when its chat is too long to reopen, as holds do (ADR-0016). A feature made with the sidebar's New feature button has none; its owner control then offers only "I'll finish it", with a line saying to ask an orchestrator chat "run <feature> for me".
@@ -113,6 +119,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: the creating chat only, never changed.
 **For the human.**
 **Challenged:** a one-item menu is a dead end; with no chat the control should read "Yours", not open, and carry the "run X for me" line as its hover.
+**Changed by the orchestrator (2026-11-09, on the human's delegation):** the challenger's way. With no chat the control reads "Yours" and does not open; hovering it says to ask an orchestrator chat "run <feature> for me". The row's "…" menu shows no owner choices for such a feature.
 
 ## 22. A chat that has ended still owns its features
 **Decision:** An orchestrator chat whose process ended keeps its features; a handback wakes it again, as today. Ownership never lapses with time.
@@ -131,6 +138,7 @@ Check first: 11, 12, 13, 17, 24
 **Assumed.** Alternative: read each brief's working agreement and set "merges it" where it said autonomous.
 **For the human.**
 **Challenged:** unheld features a chat cut (being grilled now) would lose their chat; recover it from the feature's creation record where one exists, and list every feature whose behaviour changed in a summary the human sees.
+**Changed by the orchestrator (2026-11-09, on the human's delegation):** an unheld feature gets its chat back from its creation record where that record names a chat; it stays the human's, with finish "I'll finish it". Held features move as above. There is no summary screen: the lead lists every feature that moved, and how, in its ready handback, and the orchestrator puts that list in its report to the human.
 
 ## 25. The orchestrator reads the choice from the feature, not the brief
 **Decision:** The project skill drops working agreements and checkpoints. When it cuts a feature it asks the two choices in plain words and passes them to `create_feature`; afterwards it reads the feature's choice from the feature, and changes it only on the human's words. Briefs stop carrying a working-agreement line.
@@ -160,3 +168,8 @@ Check first: 11, 12, 13, 17, 24
 **Why:** Taking one feature is not stopping the cut; and decision 5 says only the human moves the owner.
 **Assumed.** Alternative: taking one feature pauses the chat's cut until the human says to go on.
 **For the human.**
+
+## 30. The chat row's look belongs to "Orchestrator chats become epics"
+**Decision:** This feature supplies the fact (which features a chat is asking about) and one plain line on today's chat row. Where "Asking about <feature>" sits, how it truncates at sidebar width, and the rest of the chat row's look belong to the sibling "Orchestrator chats become epics", which is redesigning chat rows now. The row is not polished further here.
+**Why:** Two features designing the same row at once would clash.
+**Decided by the orchestrator (2026-11-09, on the human's delegation).**
