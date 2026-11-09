@@ -1295,6 +1295,10 @@ describe('featuresAskedAbout (every-feature-has-one-owner decision 17)', () => {
     expect(asked(prompt('p1'), ...turn('Which should go first?'))).toEqual([])
   })
 
+  it('reads a question followed by a recommendation as asking', () => {
+    expect(asked(prompt('p1'), ...turn('Should I start that drive when it is ready? I recommend yes.', review('f1')))).toEqual(['f1'])
+  })
+
   it('reads a question with no question mark as asking nothing', () => {
     expect(asked(prompt('p1'), ...turn('Approve the plan in the card, or tell me what to change.', plan('f1')))).toEqual([])
   })

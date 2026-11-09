@@ -812,8 +812,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
  * Which features an orchestrator chat is asking the human about
  * (every-feature-has-one-owner decision 17): when the chat waits on the human
  * with a question — an ask still open while its process runs, or its last turn
- * ended on words that end on a question mark ({@link threadActivity} reads both
- * the same way) — the features whose plan, design or review card it showed in
+ * ended on a message holding a question mark anywhere (real orchestrator turns
+ * often ask, then add a recommendation: "Start it now? I recommend yes.") — the features whose plan, design or review card it showed in
  * that turn, in the order first shown. Otherwise none: a chat that is working,
  * idle, or ended its turn on words that ask nothing is asking about nothing. A
  * card from an earlier turn never counts, nor one shown before the human last
@@ -839,7 +839,7 @@ export function featuresAskedAbout(events: readonly ThreadEvent[], running: bool
       if (e.featureId && !shown.includes(e.featureId)) shown.push(e.featureId)
     }
   }
-  if (activity === 'replied' && !ENDS_ASKING.test(lastSaid.trimEnd())) return []
+  if (activity === 'replied' && !/[?？؟]/.test(lastSaid)) return []
   return shown
 }
 
