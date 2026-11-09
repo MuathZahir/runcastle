@@ -2939,10 +2939,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           finish: z
             .enum(['you', 'show', 'merge'])
             .optional()
-            .describe(
-              'The human’s choice: `you` (they finish it), `show` (you build it and show them before merging), `merge` ' +
-                '(you build and merge it). You own it from the start only with `planning: self` and not `you`.',
-            ),
+            .describe('The human’s choice: `you` finish it, `show` (build, show them, they merge) or `merge` (build and merge).'),
         },
       },
       async (args, extra) => {
