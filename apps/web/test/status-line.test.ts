@@ -78,8 +78,17 @@ describe('featureStatus', () => {
 
   it('reads a held need “With the orchestrator · …”, marked held for its quiet dot', () => {
     expect(
-      featureStatus(input({ need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) })),
-    ).toEqual({ kind: 'waiting', label: 'With the orchestrator', why: 'Plan to approve', held: true, primary: 'openPlan' })
+      featureStatus(input({ need: need('test', 'With the orchestrator · Ready to test · Checkout', { held: true, scenario: 'Checkout' }) })),
+    ).toEqual({ kind: 'ready', label: 'With the orchestrator', why: 'Ready to test · Checkout', scenario: 'Checkout', held: true, primary: 'testDriveStart' })
+  })
+
+  it('reads the handback itself by its first line, held or handed back to the human (the-status-tells-the-truth decision 5)', () => {
+    expect(
+      featureStatus(input({ need: need('handback', 'With the orchestrator · Ready to merge', { held: true, why: 'Ready to merge' }) })),
+    ).toEqual({ kind: 'waiting', label: 'With the orchestrator', why: 'Ready to merge', held: true, primary: 'chat' })
+    expect(
+      featureStatus(input({ need: need('handback', 'Handed back · Ready to merge', { why: 'Ready to merge' }) })),
+    ).toEqual({ kind: 'waiting', label: 'Handed back', why: 'Ready to merge', primary: 'chat' })
   })
 
   it('reads Working, not the need, while workers work or a self-planning run is live — but keeps Stop', () => {
