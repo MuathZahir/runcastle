@@ -1,0 +1,15 @@
+{
+  // Typechecks the project-switching design pages: apps/web's own tsconfig
+  // covers src and test only. Run: bunx tsc --noEmit -p preview/project-switching
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "paths": {
+      "@runcastle/server": ["../../../../packages/server/src/trpc/router.ts"],
+      "@tanstack/react-query": ["../../node_modules/@tanstack/react-query"]
+    }
+  },
+  "include": ["./*.ts", "./*.tsx", "../project-switching.tsx", "../all-projects.tsx"]
+}
