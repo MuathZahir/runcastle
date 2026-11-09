@@ -173,3 +173,8 @@ The orchestrator agreed the plan on 2026-11-09 with changes to 12, 17, 20, 21 an
 **Decision:** This feature supplies the fact (which features a chat is asking about) and one plain line on today's chat row. Where "Asking about <feature>" sits, how it truncates at sidebar width, and the rest of the chat row's look belong to the sibling "Orchestrator chats become epics", which is redesigning chat rows now. The row is not polished further here.
 **Why:** Two features designing the same row at once would clash.
 **Decided by the orchestrator (2026-11-09, on the human's delegation).**
+
+## 31. The build goes ahead of the design approval
+**Decision:** On the human's own words, relayed by the orchestrator ("I want you to finish both features. Don't merge them. I'll check them before (designs and logic)"), the designed owner control, owner strip and their design pages are committed so workers can wire them, before the human has approved them. Committing is not approving: both designs stay recorded as waiting, and the human approves or changes them in the morning, before merge. A change they ask for then is made on the wired components.
+**Why:** The human asked for both features finished before they check; the designs cannot be wired from an uncommitted checkout.
+**Decided by the orchestrator, on the human's relayed words (2026-11-09).**
