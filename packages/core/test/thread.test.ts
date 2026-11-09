@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { BACKGROUND_WINDOW_MS, foldThread, lastPickedModel, liveEvents, threadActivity, ThreadEvent, type ShownFile, type ThreadEventBody, type ThreadItem } from '../src/thread'
+import {
+  BACKGROUND_WINDOW_MS,
+  foldThread,
+  lastPickedModel,
+  liveEvents,
+  runningSubagents,
+  threadActivity,
+  ThreadEvent,
+  type ShownFile,
+  type ThreadEventBody,
+  type ThreadItem,
+} from '../src/thread'
 
 /** A log from bodies, one second apart unless an `at` is given. */
 function log(...bodies: Array<ThreadEventBody | [number, ThreadEventBody]>): ThreadEvent[] {
@@ -319,6 +330,88 @@ describe('foldThread: subagents across turns and late updates', () => {
   it('a subagent that runs again in a later turn gets a card there', () => {
     const v = foldThread(log(...turnOf('p1', opened('s1', 'Find it')), ...turnOf('p2', { type: 'subagent', id: 's1', status: 'in_progress' })))
     expect(work(v, 1).steps).toMatchObject([{ kind: 'subagent', status: 'completed' }])
+  })
+
+  describe('what still runs (the-status-tells-the-truth decision 4)', () => {
+    const say = (id: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId: id, text })
+    const call = (id: string, title: string): ThreadEventBody => ({ type: 'tool', call: { id, kind: 'other', title, status: 'completed' } })
+    const listing = (...agents: Array<{ id: string; title: string; startedAt?: number }>): ThreadEventBody => ({
+      type: 'tasks',
+      tasks: [],
+      agents: agents.map((a) => ({ startedAt: 0, ...a })),
+    })
+    const works = (v: ReturnType<typeof foldThread>) => v.items.filter((x): x is Extract<ThreadItem, { kind: 'work' }> => x.kind === 'work')
+
+    it('puts the running line on the fold that holds its card, and keeps the card running past the turn', () => {
+      const v = foldThread(
+        log(
+          ...turnOf('p1', call('c0', 'Read spec.md'), say('m1', 'Reading.'), opened('a1', 'Build switcher mocks'), listing({ id: 'a1', title: 'Build switcher mocks' }), say('m2', 'Started it.')),
+        ),
+      )
+      expect(works(v).map((w) => w.running)).toEqual([undefined, { title: 'Build switcher mocks', count: 1 }])
+      expect(works(v)[1].steps).toMatchObject([{ kind: 'subagent', id: 'a1', status: 'in_progress' }])
+    })
+
+    it("matches a resumed run's card to its task id", () => {
+      const v = foldThread(log(...turnOf('p1', opened('a1:generation:2', 'Mocks again'), listing({ id: 'a1', title: '' }), say('m1', 'Resumed.'))))
+      expect(work(v).running).toEqual({ title: 'Mocks again', count: 1 })
+      expect(work(v).steps).toMatchObject([{ status: 'in_progress' }])
+    })
+
+    it('finds the fold by the launching call when no card names it', () => {
+      const v = foldThread(
+        log(
+          ...turnOf('p1', call('c1', 'Agent: Build switcher mocks'), say('m1', 'Launched.'), call('c2', 'Read notes.md'), say('m2', 'Waiting.')),
+          [99_000, listing({ id: 'task-9', title: 'Build switcher mocks', startedAt: 99_000 })],
+        ),
+      )
+      expect(works(v).map((w) => w.running)).toEqual([{ title: 'Build switcher mocks', count: 1 }, undefined])
+    })
+
+    it('falls back to the newest fold at or before the start, and counts several', () => {
+      const v = foldThread(
+        log(
+          [1_000, prompt('p1')],
+          [1_000, { type: 'turn_started' }],
+          [2_000, call('c1', 'Read a')],
+          [3_000, say('m1', 'One.')],
+          [4_000, call('c2', 'Read b')],
+          [5_000, say('m2', 'Two.')],
+          [9_000, call('c3', 'Read c')],
+          [10_000, say('m3', 'Three.')],
+          [11_000, { type: 'turn_ended', reason: 'end_turn' }],
+          [12_000, listing({ id: 'x', title: 'Draft copy', startedAt: 6_000 }, { id: 'y', title: 'Check links', startedAt: 7_000 })],
+        ),
+      )
+      expect(works(v).map((w) => w.running)).toEqual([undefined, { title: 'Draft copy', count: 2 }, undefined])
+    })
+
+    it('completes the card, and drops the line, when the list drops the subagent', () => {
+      const events = log(...turnOf('p1', opened('a1', 'Build mocks'), listing({ id: 'a1', title: 'Build mocks' }), say('m1', 'Started it.')))
+      const later = log(...turnOf('p1', opened('a1', 'Build mocks'), listing({ id: 'a1', title: 'Build mocks' }), say('m1', 'Started it.')), listing())
+      expect(work(foldThread(events)).steps).toMatchObject([{ status: 'in_progress' }])
+      const v = foldThread(later)
+      expect(work(v).running).toBeUndefined()
+      expect(work(v).steps).toMatchObject([{ status: 'completed' }])
+    })
+
+    it("hears a held subagent's own end and its calls under its card, with no turn of their own", () => {
+      const v = foldThread(
+        log(
+          ...turnOf('p1', opened('a1', 'Build mocks'), listing({ id: 'a1', title: 'Build mocks' }), say('m1', 'Started it.')),
+          { type: 'tool', parentId: 'a1', call: { id: 'g1', kind: 'search', title: 'grep switcher', status: 'completed' } },
+          finished('a1'),
+        ),
+      )
+      expect(kinds(v.items)).toEqual(['user', 'work', 'agent'])
+      expect(work(v).steps).toMatchObject([{ status: 'completed', calls: [{ id: 'g1', title: 'grep switcher' }] }])
+    })
+
+    it('ends a held card when its process stops', () => {
+      const v = foldThread(log(...turnOf('p1', opened('a1', 'Build mocks'), listing({ id: 'a1', title: 'Build mocks' }), say('m1', 'Ok.')), { type: 'process', state: 'stopped' }))
+      expect(work(v).running).toBeUndefined()
+      expect(work(v).steps).toMatchObject([{ status: 'failed' }])
+    })
   })
 
   it('a call finishing after a steered message stays on its row, and the answer stays in view', () => {
@@ -1034,6 +1127,43 @@ describe('threadActivity with background work', () => {
   it('counts a sub-agent left running in the background', () => {
     const log = reply('Running.').map((e) => (e.type === 'tasks' ? { ...e, tasks: [], agents: 1 } : e))
     expect(threadActivity(log, true, soon)).toBe('background')
+  })
+
+  describe('a listed subagent (the-status-tells-the-truth decision 3)', () => {
+    const AGENT = { id: 'a1', title: 'Build switcher direction mocks', startedAt: at }
+    const withAgents = (agents: Extract<ThreadEventBody, { type: 'tasks' }>['agents'], tasks: boolean) =>
+      reply('Waiting on the subagent.').map((e) => (e.type === 'tasks' ? { ...e, ...(tasks ? {} : { tasks: [] }), agents } : e))
+
+    it('keeps the thread working past the 10-minute window, for as long as it is listed', () => {
+      const log = withAgents([AGENT], false)
+      expect(threadActivity(log, true, at + BACKGROUND_WINDOW_MS)).toBe('background')
+      expect(threadActivity(log, true, at + 6 * BACKGROUND_WINDOW_MS)).toBe('background')
+      expect(threadActivity([...log, line({ type: 'tasks', tasks: [], agents: [] }, 6)], true, at + BACKGROUND_WINDOW_MS)).toBe('replied')
+    })
+
+    it('leaves a background command alone capped at the window', () => {
+      const log = withAgents([], true)
+      expect(threadActivity(log, true, at + BACKGROUND_WINDOW_MS - 1)).toBe('background')
+      expect(threadActivity(log, true, at + BACKGROUND_WINDOW_MS)).toBe('replied')
+    })
+
+    it('loses to a question: an open ask, or a reply ending on one', () => {
+      const ask: ThreadEventBody = { type: 'ask', ask: { kind: 'question', id: 'q1', questions: [] } }
+      expect(threadActivity([...withAgents([AGENT], false), line(ask, 6)], true, at + BACKGROUND_WINDOW_MS)).toBe('asking')
+      const asked = reply('Mocks are building. Want the dark one too?').map((e) => (e.type === 'tasks' ? { ...e, agents: [AGENT] } : e))
+      expect(threadActivity(asked, true, soon)).toBe('replied')
+    })
+
+    it("reads an older log's bare count as that many running, with no cap", () => {
+      const log = withAgents(3, false)
+      expect(runningSubagents(log.find((e) => e.type === 'tasks') as Extract<ThreadEvent, { type: 'tasks' }>)).toHaveLength(3)
+      expect(threadActivity(log, true, at + 2 * BACKGROUND_WINDOW_MS)).toBe('background')
+    })
+
+    it('stops counting when the process stops', () => {
+      const stopped = line({ type: 'process', state: 'stopped' }, 6)
+      expect(threadActivity([...withAgents([AGENT], false), stopped], true, soon)).toBe('replied')
+    })
   })
 
   it('takes no background work from a process that is not running', () => {
