@@ -261,6 +261,7 @@ export function SidebarFeatureRow({
   onToggleThreads,
   needsYou = false,
   workers,
+  words: wordsProp,
 }: {
   f: FeatureListItem
   active: boolean
@@ -286,11 +287,13 @@ export function SidebarFeatureRow({
    * (clicking-a-feature-opens-its-lead decisions 2, 4, 5).
    */
   workers?: { live: number; onOpen: () => void }
+  /** The second line's words in place of the feature's own: a row under its epic, a shelf row naming its epic. */
+  words?: string
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
   const nm = lane === 'needsYou' ? needsMe(f) : null
-  const words = featureStateWords(f)
+  const words = wordsProp ?? featureStateWords(f)
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
   const row = (
     <TwoLineRow
