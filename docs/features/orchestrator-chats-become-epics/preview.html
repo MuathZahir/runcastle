@@ -188,7 +188,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="screen"><div class="sb">
         <div class="lbl">Epics <a class="pin" data-d="14">14</a></div>
         <div class="r e"><i class="g"></i>Payment System<span class="w y"><i class="dot y"></i> Asking about Checkout <a class="pin" data-d="11">11</a></span></div>
-        <div class="r n"><i class="ring"></i>Checkout<span class="w">asking you <a class="pin" data-d="10">10</a></span></div>
+        <div class="r n"><i class="ring"></i>Checkout<span class="w">Question above <a class="pin" data-d="10">10</a></span></div>
         <div class="r n"><i class="ring"></i>Refund flow<span class="w">Yours · building</span></div>
         <div class="r e"><i class="g"></i>Feature Ownership</div>
         <div class="r n"><i class="ring"></i>Owner button<span class="w">Agent working</span></div>
@@ -207,7 +207,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="designed">
     <h3>Sidebar of epics</h3>
     <p>Layout, rows and ordering are the real new component; epics, features and chats are sample data.</p>
-    <p>States: busy · asking · taken-over · new-chat · many · quiet. Tweaks: Shape (A Epics, recommended · B Lanes + tags · C Hybrid) and Naming (Epics named at first cut, recommended · Epics, every chat named · Chats).</p>
+    <p>States: busy · asking · taken-over · new-chat · many · quiet. Tweaks: Shape (A Epics, recommended · B Lanes + tags · C Hybrid) and Naming (Epics, every chat named, recommended · Epics named at first cut · Chats).</p>
     <p class="mono">apps/web/src/components/SidebarEpics.tsx · apps/web/src/lib/feature-ui/epics.ts · design page /preview/epics.html</p>
   </div>
 <!-- /screen:sidebar-of-epics -->
@@ -215,17 +215,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h3>How an epic gets its name <a class="pin" data-d="12">12</a></h3>
   <div class="flow">
     <span class="st">New epic: "I want refunds and…"</span><span class="ar">→</span>
-    <span class="st">The orchestrator cuts its first feature</span><span class="ar">→</span>
-    <span class="st">It names the chat: <b>Payment System</b></span><span class="ar">→</span>
+    <span class="st">The orchestrator's first reply names the chat: <b>Payment System</b></span><span class="ar">→</span>
+    <span class="st">It may rename while young, say when it cuts its first feature</span><span class="ar">→</span>
     <span class="st">Your rename always wins</span>
   </div>
-  <p class="hint">Chats that already have features in motion name themselves on their next turn <a class="pin" data-d="13">13</a>. A request that does not fit the name gets "start a new epic?" <a class="pin" data-d="19">19</a></p>
+  <p class="hint">On ship day, one short model run names each chat listed then, once <a class="pin" data-d="13">13</a>. A request that does not fit the name gets "start a new epic?" <a class="pin" data-d="19">19</a></p>
 
   <h3>Who builds what</h3>
-  <p class="hint">First, the latest "Every feature has one owner" is merged into this branch (it brings the origin chat field this list reads).</p>
+  <p class="hint">Epic names and the new-chat fix start at once. The epic list waits until the orchestrator says "Every feature has one owner" has landed its origin chat field; then that branch is merged in here and the list starts.</p>
   <div class="who">
-    <div class="w1"><b>Epic list</b><span>Wires the designed list into the sidebar on every page and the phone, the shelves' epic names, the "epic" words, the epic crumb.</span><span class="k">on its own</span></div>
-    <div class="w1"><b>Epic names</b><span>The orchestrator's naming tool, the naming order (your rename first), the project skill's lines.</span><span class="k">on its own</span></div>
+    <div class="w1"><b>Epic list</b><span>Wires the designed list into the sidebar on every page and the phone, the shelves' epic names, the epic crumb. Starts once the owner feature's field is in.</span><span class="k">on its own</span></div>
+    <div class="w1"><b>Epic names</b><span>The orchestrator's naming tool, the naming order (your rename first), the one-off naming pass, the project skill's lines, and "Orchestrator" to "epic" in the words on screen.</span><span class="k">on its own</span></div>
     <div class="w1"><b>Me</b><span>Reproduce and fix the new chat that drops out of the list; land both workers; run the checks.</span><span class="k">myself</span></div>
     <div class="w1"><b>Review</b><span>Drives the sidebar and checks the work at the end.</span><span class="k">on its own</span></div>
   </div>
@@ -251,7 +251,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div><h3>Not this feature</h3><ul>
       <li><i class="dot"></i>Who owns a feature, the hand-back button, the typing warning ("Every feature has one owner")</li>
       <li><i class="dot"></i>Status words and need rules ("The status tells the truth about who and what")</li>
-      <li><i class="dot"></i>Folding an epic, or a bulk rename of today's chats</li>
+      <li><i class="dot"></i>Folding an epic</li>
     </ul></div>
   </div>
 </section>
@@ -298,10 +298,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Features with no epic sit together after the epics', 'One labelled "Other features" group keeps clear where an epic ends.', 'assumed'],
     ['Yellow floats to the top; otherwise the order holds still', 'The next step is always the top row, and nothing else reshuffles.', 'assumed'],
     ['Backlog, Shipped and Archived stay as shelves at the foot', 'The epic list is about what is moving.', 'assumed'],
-    ['Inside its epic, a feature row does not repeat who runs it', 'The epic name is right above; only "Yours" or another chat is worth saying.', 'assumed'],
+    ['Inside its epic, a feature row does not repeat who runs it', 'The epic name is right above; the epic\'s question reads "Question above" so only one thing is yellow. Changed by the orchestrator.', 'assumed'],
     ['An epic\'s row says what it asks and what it is doing', 'Amber "Asking about <feature>", a working shimmer, or nothing. The hold rings go; epics do not fold.', 'assumed'],
-    ['Epic names are 1–3 words, Title Case, set by the orchestrator at its first cut', 'A short noun scans; the first cut is when the chat knows its topic. Your rename wins.', 'assumed'],
-    ['Today\'s chats with features in motion get their names on their next turn', 'Only the chat\'s own agent knows what the cut was about; no bulk rename.', 'assumed'],
+    ['Every epic names itself on its first reply: 1–3 words, Title Case', 'Short names in one style scan, question chats included. Your rename wins. Changed by the orchestrator.', 'assumed'],
+    ['A one-off naming pass names today\'s listed chats when this ships', 'A chat that never runs again would keep its sentence title. One short model run per chat, once. Changed by the orchestrator.', 'assumed'],
     ['The screens say "epic"; "Orchestrator" leaves them', 'Epics hold features, features hold workers: three nouns, one chain.', 'assumed'],
     ['A feature\'s page names its epic as the first crumb', 'The crumb says where the feature lives; who runs it is in its status words.', 'assumed'],
     ['An epic stays listed while it has work in motion', 'A finished epic folds away by itself; one whose feature you took over stays.', 'assumed'],
@@ -316,10 +316,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [4, 'B: keep today\'s lanes and tag each feature row with its epic; or C: a Needs-you strip on top, then epics.', 'At 10 epics the list runs long and a third yellow epic sits below the screen\'s fold; C keeps every yellow item on the first phone screen. All three are on the design\'s Tweaks.', 'forces 7–11'],
-    [14, 'Keep "Orchestrator" as the list\'s title and "New chat", and let the nesting carry the epic idea.', '"New epic" to ask a quick question reads oddly unless every chat gets an epic-style name.', 'challenged'],
-    [12, 'Every chat names itself in epic style on its first reply, question chats included.', 'With question chats in the same list, sentence titles stay beside short names. Try the Naming tweak.', 'challenged'],
+    [14, 'Keep "Orchestrator" as the list\'s title and "New chat", and let the nesting carry the epic idea.', 'Reads right now that every chat gets an epic-style name; the orchestrator kept it.', 'kept by orchestrator'],
+    [12, 'Name a chat only when it cuts its first feature, with the runtime\'s title until then.', 'The orchestrator changed this to every chat named on its first reply, as you asked. Try the Naming tweak.', 'changed by orchestrator'],
     [6, 'Nest under the chat that holds the feature, so a feature you take over leaves its epic.', 'A guess at what "belongs to" means to you.', 'forces 15, 16'],
-    [13, 'A one-off naming pass over the chats listed now, at ship time.', 'A chat whose features you took over may never run again and keeps its sentence title.', 'challenged']
+    [13, 'No pass: each chat names itself on its next turn, and one that never runs again keeps its sentence title.', 'The orchestrator added the pass. It runs a model on your chats by itself, once, so it is yours to confirm.', 'changed by orchestrator']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

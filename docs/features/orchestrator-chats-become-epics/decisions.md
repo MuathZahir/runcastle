@@ -2,6 +2,8 @@
 
 Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 were settled with the human in the orchestrator's chat (the brief's "Decided with the human"); the rest are this run's own, each marked **Assumed.** with the main alternative. An independent challenger read the brief and these decisions; its disagreements are marked **Challenged:**, and decisions 19–21 answer the branches it raised.
 
+On 2026-11-09 the project's orchestrator read the plan on the human's delegation and changed decisions 10, 12 and 13 (each marked **Changed by the orchestrator:**); the human has not confirmed them yet.
+
 Check first: 4, 6, 12, 13, 14
 
 ## 1. Several orchestrator chats stay
@@ -52,10 +54,11 @@ Check first: 4, 6, 12, 13, 14
 **For the human.**
 
 ## 10. Inside its epic, a feature row does not repeat who runs it
-**Decision:** A nested feature held by its own epic's chat drops the "With <chat name> ·" part of its words and reads the rest ("asking you", "Agent working"). Only a feature run by someone else says so: the human ("Yours") or a different chat ("With <that chat>"). Outside an epic (Other features, the shelves), rows keep the full words "Every feature has one owner" builds.
-**Why:** The epic's name sits right above; repeating it on every row is noise, and the exception is what the human needs to notice.
+**Decision:** A nested feature held by its own epic's chat drops the "With <chat name> ·" part of its words and reads the rest ("Agent working"). When the epic's question is about that feature, the row reads "Question above" in the quiet colour, never a second yellow-looking cue: the epic row is the one yellow thing to click. Only a feature run by someone else says who: the human ("Yours · …") or a different chat ("With <that chat> · …"). A feature the human owns that is consulting its epic's chat reads "Asking above · <first line>" in the working colour (outside the epic, "Asking <chat> · <first line>", from "Every feature has one owner"). Outside an epic (Other features, the shelves), rows keep the full words "Every feature has one owner" builds.
+**Why:** The epic's name sits right above; repeating it on every row is noise, and the exception is what the human needs to notice. A plain "asking you" under a yellow epic row read as a second thing to do.
 **Assumed.** Alternative: every row keeps the full owner words.
 **Challenged:** A plain "asking you" right under a yellow epic row can read as a second thing to do; words that point up ("question above"), or none, keep one yellow thing to click.
+**Changed by the orchestrator:** it took the challenger's side (2026-11-09, on the human's delegation): "Question above" in the quiet colour, and "Asking above" for a human-owned feature consulting its epic.
 **For the human.**
 
 ## 11. An epic's row says what it asks and what it is doing
@@ -64,24 +67,28 @@ Check first: 4, 6, 12, 13, 14
 **Assumed.** Alternative: each epic can fold its features away.
 **For the human.**
 
-## 12. Epic names are 1–3 words, Title Case, set by the orchestrator when it cuts its first feature
-**Decision:** The orchestrator names its own chat, in one style: 1 to 3 words, Title Case, a noun phrase ("Payment System", "Feature Ownership"). It does so with a new tool when it cuts the first feature, and may rename while the chat is young. Until then a chat keeps the runtime's generated title. The human's rename (the row menu's Rename, as today) always wins: once the human named a chat, the tool leaves the name alone and says so. The server caps a name's length; the style lives in the project skill as one line.
+## 12. Every epic names itself on its first reply: 1–3 words, Title Case
+**Decision:** The orchestrator names its own chat, in one style: 1 to 3 words, Title Case, a noun phrase ("Payment System", "Feature Ownership", "Monday Burn"). It does so with a new tool on its first reply, question chats included, and may rename while the chat is young (for example when it cuts its first feature and the topic is clearer). The human's rename (the row menu's Rename, as today) always wins: once the human named a chat, the tool leaves the name alone and says so. The server caps a name's length; the style lives in the project skill as one line.
 **Why:** A short noun scans; the moment of the first cut is when the chat knows what it is about. The human keeps the last word on names.
 **Assumed.** Alternative: name every chat in epic style from its first reply, question chats included.
 **Challenged:** With question chats in the same list (decision 5), naming only at the first cut leaves sentence titles beside short names, the hard-to-read list the brief complains about; every chat should name itself in epic style on its first reply.
+**Changed by the orchestrator:** it took the challenger's side (2026-11-09, on the human's delegation), saying the human asked for exactly this: short names in one style, easy to scan. This run first planned naming at the first cut, with the runtime's title until then.
 **For the human.**
 
-## 13. Today's chats with features in motion get their names on their next turn
-**Decision:** A chat that already cut features still in motion, and whose name the orchestrator never set, names itself the next time it runs (the same skill line covers it). Nothing renames chats in bulk when this ships; the human can rename any by hand.
-**Why:** Only the chat's own agent knows what the cut was about; a bulk rename would need a model run per chat for chats that may never run again.
-**Assumed.** Alternative: a one-off pass at ship time that names every listed chat.
+## 13. A one-off naming pass names today's listed chats when this ships
+**Decision:** Once, when this ships, each chat listed at that moment whose name neither the orchestrator nor the human set gets an epic-style name from one short headless model run, given only its title and its first messages. The pass is recorded so it never repeats. Chats not listed then name themselves on their next reply (decision 12). If the pass turns out to need machinery out of proportion, it falls back to "name yourself on your next turn" and the ready handback says why.
+**Why:** A chat whose features the human took over may never run again and would keep its sentence title on ship day; the listed chats are a handful of short runs, done once.
+**Assumed.** Alternative: no pass; each chat names itself on its next turn, and a chat that never runs again keeps its sentence title.
 **Challenged:** A chat whose features the human took over may never run again and keeps its sentence title on ship day; a one-off naming pass over the chats now listed is a handful of short runs, done once.
+**Changed by the orchestrator:** it took the challenger's side (2026-11-09, on the human's delegation). This run first planned no pass. The pass runs models on the human's chats by itself, so it is the human's to confirm.
+**For the human.**
 
 ## 14. The screens say "epic"; "Orchestrator" leaves them
 **Decision:** Everywhere the app names an orchestrator chat it says epic: the sidebar's list, "New epic" in the create menu and on the list's "+", "All N epics" and the page it opens (today's Conversations page), the command palette, the chat's header (the epic's glyph and name, with no "Orchestrator ›" before it). "Orchestrator" no longer appears on screen; it stays the agent's name in the skills and the docs. What the human sees is one chain: epics hold features, features hold workers, and each has its chat and its agent.
 **Why:** Three nouns in one chain, each holding the next, is the smallest model that covers the app. "Orchestrator", "chat", "conversation" and "thread" today name overlapping things.
 **Assumed.** Alternative: keep "Orchestrator" as the list's title and let the nesting alone carry the epic idea, with no new word.
 **Challenged:** "New epic" to ask a quick question, and a triage chat called an epic, only reads right if every chat is named in epic style (the challenge on decision 12); otherwise keep "New chat" and let the nesting carry the idea.
+**Answered by decision 12's change:** every chat now names itself in epic style, so "New epic" reads right for a question too. The orchestrator kept this decision as planned.
 **For the human.**
 
 ## 15. A feature's page names its epic as the first crumb
