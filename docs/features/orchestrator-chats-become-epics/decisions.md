@@ -1,6 +1,8 @@
 # Decisions — Orchestrator chats become epics
 
-Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 were settled with the human in the orchestrator's chat (the brief's "Decided with the human"); the rest are this run's own, each marked **Assumed.** with the main alternative.
+Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 were settled with the human in the orchestrator's chat (the brief's "Decided with the human"); the rest are this run's own, each marked **Assumed.** with the main alternative. An independent challenger read the brief and these decisions; its disagreements are marked **Challenged:**, and decisions 19–21 answer the branches it raised.
+
+Check first: 4, 6, 12, 13, 14
 
 ## 1. Several orchestrator chats stay
 **Decision:** The project keeps several orchestrator chats; each chat is the home of one cut. One main chat was rejected.
@@ -53,6 +55,7 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 wer
 **Decision:** A nested feature held by its own epic's chat drops the "With <chat name> ·" part of its words and reads the rest ("asking you", "Agent working"). Only a feature run by someone else says so: the human ("Yours") or a different chat ("With <that chat>"). Outside an epic (Other features, the shelves), rows keep the full words "Every feature has one owner" builds.
 **Why:** The epic's name sits right above; repeating it on every row is noise, and the exception is what the human needs to notice.
 **Assumed.** Alternative: every row keeps the full owner words.
+**Challenged:** A plain "asking you" right under a yellow epic row can read as a second thing to do; words that point up ("question above"), or none, keep one yellow thing to click.
 **For the human.**
 
 ## 11. An epic's row says what it asks and what it is doing
@@ -65,17 +68,20 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 wer
 **Decision:** The orchestrator names its own chat, in one style: 1 to 3 words, Title Case, a noun phrase ("Payment System", "Feature Ownership"). It does so with a new tool when it cuts the first feature, and may rename while the chat is young. Until then a chat keeps the runtime's generated title. The human's rename (the row menu's Rename, as today) always wins: once the human named a chat, the tool leaves the name alone and says so. The server caps a name's length; the style lives in the project skill as one line.
 **Why:** A short noun scans; the moment of the first cut is when the chat knows what it is about. The human keeps the last word on names.
 **Assumed.** Alternative: name every chat in epic style from its first reply, question chats included.
+**Challenged:** With question chats in the same list (decision 5), naming only at the first cut leaves sentence titles beside short names, the hard-to-read list the brief complains about; every chat should name itself in epic style on its first reply.
 **For the human.**
 
 ## 13. Today's chats with features in motion get their names on their next turn
 **Decision:** A chat that already cut features still in motion, and whose name the orchestrator never set, names itself the next time it runs (the same skill line covers it). Nothing renames chats in bulk when this ships; the human can rename any by hand.
 **Why:** Only the chat's own agent knows what the cut was about; a bulk rename would need a model run per chat for chats that may never run again.
 **Assumed.** Alternative: a one-off pass at ship time that names every listed chat.
+**Challenged:** A chat whose features the human took over may never run again and keeps its sentence title on ship day; a one-off naming pass over the chats now listed is a handful of short runs, done once.
 
 ## 14. The screens say "epic"; "Orchestrator" leaves them
 **Decision:** Everywhere the app names an orchestrator chat it says epic: the sidebar's list, "New epic" in the create menu and on the list's "+", "All N epics" and the page it opens (today's Conversations page), the command palette, the chat's header (the epic's glyph and name, with no "Orchestrator ›" before it). "Orchestrator" no longer appears on screen; it stays the agent's name in the skills and the docs. What the human sees is one chain: epics hold features, features hold workers, and each has its chat and its agent.
 **Why:** Three nouns in one chain, each holding the next, is the smallest model that covers the app. "Orchestrator", "chat", "conversation" and "thread" today name overlapping things.
 **Assumed.** Alternative: keep "Orchestrator" as the list's title and let the nesting alone carry the epic idea, with no new word.
+**Challenged:** "New epic" to ask a quick question, and a triage chat called an epic, only reads right if every chat is named in epic style (the challenge on decision 12); otherwise keep "New chat" and let the nesting carry the idea.
 **For the human.**
 
 ## 15. A feature's page names its epic as the first crumb
@@ -94,4 +100,28 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–3 wer
 **Decision:** The phone's sidebar drawer shows the same list as the desktop: epics with their features nested, Other features, then the shelves. Tapping an epic opens its chat.
 **Why:** One shape on every screen; on the phone today the chats are not listed at all, so this is also a gain.
 **Assumed.** Alternative: the phone keeps a flat feature list and reaches epics through a separate page.
+**For the human.**
+
+## 18. The epic list stays in the sidebar whatever is open
+**Decision:** The epics, with their features, show in the sidebar on every page: an epic's chat, a feature, a worker, Settings. Today the chats are listed only while the Orchestrator is in front, and opening any feature hides them.
+**Why:** The list is now the sidebar itself; it cannot depend on which page is open. It also takes away one way a chat seems to vanish (decision 3).
+**Assumed.** Alternative: none worth keeping; it follows from decision 4.
+**For the human.**
+
+## 19. A chat that drifts suggests a new epic; features never move between epics
+**Decision:** When a request in an epic's chat does not fit the epic's name, the orchestrator says so and suggests starting a new epic for it (one skill line). There is no way to move a feature to another epic; a misfiled feature stays where it is, and the human can rename the epic.
+**Why:** One topic per epic keeps the list true without a new control to learn.
+**Assumed.** Alternative: a "Move to epic" action on feature rows.
+**For the human.**
+
+## 20. Work joins an epic through its chat, not a button
+**Decision:** Epic rows get no "+" for adding a feature by hand. To add to an epic, the human asks in its chat. New feature in the create menu still makes a feature with no epic (decision 7).
+**Why:** One path to add work, one less button.
+**Assumed.** Alternative: a "+" on each epic row that opens New feature already set to that epic.
+**For the human.**
+
+## 21. Rows on the shelves name their epic quietly
+**Decision:** A feature row in Backlog, Shipped or Archived shows its epic's name in the quiet secondary line, so a parked or finished feature still says where it came from. Rows nested under an epic do not, since the nesting says it.
+**Why:** Decision 9 takes parked and finished features out of their epic; this keeps "what belongs to what" true on every row at no cost to learn.
+**Assumed.** Alternative: shelf rows stay as today, with no epic shown.
 **For the human.**
