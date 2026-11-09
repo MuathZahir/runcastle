@@ -300,28 +300,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The hour stays as a safety net on a handed-back wait', 'An orchestrator that never answers must not hide a feature for good.'],
     ['A running subagent keeps the feature working for as long as it runs', 'The runtime reports subagents apart from commands; the 10-minute cap stays for commands.'],
     ['The fold stays closed while something in it runs, but its line tells the truth', 'A live subagent hid in "Worked for 50s"; words already shown never move.'],
-    ['A handback is a need of its own until it is answered', 'Today a handback leaves no trace, so the feature reads "Talking with you" while the orchestrator owes the next move.', 'assumed'],
-    ['An outstanding handback holds machine states, never a question to the human', 'The usual handback is "ready" or "blocked"; the orchestrator carries those next.', 'assumed'],
-    ['What ends a handback', 'Any orchestrator action that changes the feature, your message, a newer handback, release; reading does not count.', 'assumed'],
-    ['A held, self-planned feature asks the orchestrator for its plan yes by handing back', 'A wait_for_you would ping you for a yes the orchestrator gives, and it would never hear of it.', 'assumed'],
-    ['Where "a subagent is running" comes from', 'Claude Code: its live list, now with titles. Codex: start and end reports. No time cap.', 'assumed'],
-    ['The fold speaks for subagents only', 'A dev server can run all day; the strip above the composer already names commands.', 'assumed'],
-    ['This feature\'s place against shipped decisions', 'Recorded here; shipped features\' docs stay as they shipped.', 'assumed'],
-    ['The sidebar and header words stay as they are', 'The bug was leaving Working, not what Working said.', 'assumed'],
-    ['Under a holder, anything the orchestrator can settle goes by handback', 'Every wait_for_you now pings you; habit would ping you for the orchestrator\'s questions.', 'assumed'],
-    ['An orchestrator waiting on you about a held feature is the orchestrator\'s to show', 'One wait, one ping, in the chat where you answer it.', 'assumed'],
-    ['A handback holds only what stood when the lead handed back', 'A conflict or stop arriving later reaches no orchestrator, so it must reach you.', 'assumed']
+    ['A handback is a need of its own until it is answered', 'Today a handback leaves no trace, so the feature reads "Talking with you" while the orchestrator owes the next move.'],
+    ['An outstanding handback holds machine states, never a question to the human', 'The usual handback is "ready" or "blocked"; the orchestrator carries those next.'],
+    ['What ends a handback', 'Any orchestrator action that changes the feature, your message, a newer handback, release; reading does not count.'],
+    ['A held, self-planned feature asks the orchestrator for its plan yes by handing back', 'A wait_for_you would ping you for a yes the orchestrator gives, and it would never hear of it.'],
+    ['Where "a subagent is running" comes from', 'Claude Code: its live list, now with titles. Codex: start and end reports. No time cap.'],
+    ['The fold speaks for subagents only', 'A dev server can run all day; the strip above the composer already names commands.'],
+    ['This feature\'s place against shipped decisions', 'Recorded here; shipped features\' docs stay as they shipped.'],
+    ['The sidebar and header words stay as they are', 'The bug was leaving Working, not what Working said.'],
+    ['Under a holder, anything the orchestrator can settle goes by handback', 'Every wait_for_you now pings you; habit would ping you for the orchestrator\'s questions.'],
+    ['An orchestrator waiting on you about a held feature is the orchestrator\'s to show', 'One wait, one ping, in the chat where you answer it.'],
+    ['A handback holds only what stood when the lead handed back', 'A conflict or stop arriving later reaches no orchestrator, so it must reach you.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [6, 'Hold only the handback\'s own words; Ready to test after a handback goes straight to Needs you.', 'The challenger saw it bring back four of the old held kinds; decision 15 already narrows it to states that stood at the handback.', 'challenged'],
-    [7, 'Only an orchestrator message ends a handback.', 'Your message in the lead\'s chat also ends it; you may want it to stay with the orchestrator.'],
-    [8, 'The lead both hands back and waits, so you are pinged too.', 'It changes the shipped rule that a plan\'s yes is human-only, and you stop being pinged for held self-planned plans.'],
-    [10, 'The fold also says "Command running · …" for a background command in its 10 minutes.', 'The challenger noted a running test would still read "Worked for …".', 'challenged'],
-    [13, 'Only the plan\'s yes moves to a handback; other questions under a holder still ping you.', 'A guess about how much you want to hear while an orchestrator holds a feature.']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
