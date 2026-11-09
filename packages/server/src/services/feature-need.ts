@@ -15,6 +15,7 @@ import { events, readyDeclarations, workers } from '../db/schema'
 import { leadState, NO_LEAD, openAskOf, type LeadState } from '../threads/read'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { designsWaiting } from './designs'
+import { HANDBACK_CLEARED } from './lead-status'
 import { getProjectById, hasActiveRun } from './repo'
 import { latestBurn } from './runs'
 
@@ -41,6 +42,9 @@ const NEED_EVENT_TYPES = [
   // the lead's wakes
   'lead.message_queued',
   LEAD_WAKE_FAILED,
+  // the handback mark on the row, and what sets or clears it (the-status-tells-the-truth decision 7)
+  'lead.handed_back',
+  HANDBACK_CLEARED,
 ]
 
 /** A feature's need events, oldest first. */
@@ -150,6 +154,7 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     designsWaiting: designs.count,
     oldestDesignWaitingSince: designs.since,
     workerNeedsYou: workerNeedsYou(ctx, feature.id),
+    handback: feature.handback,
   }
 }
 

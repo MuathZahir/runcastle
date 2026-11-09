@@ -6,6 +6,7 @@ import { retireShippedWorktree } from './feature-worktrees'
 import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
+import { clearHandback } from './lead-status'
 import { getFeatureRow, projectForFeature, setFeatureStatus } from './repo'
 import { startUpNextDependents } from './up-next'
 import { removeFeatureWorkers } from '../workers/service'
@@ -54,6 +55,7 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
     emit(ctx, featureId, { type: 'feature.shipped', message: `merged to ${res.target}` })
     setFeatureStatus(ctx, featureId, 'shipped')
+    clearHandback(ctx, featureId, 'closed')
     // Best-effort: the merge has landed, so a start that fails is an event on
     // the dependent (startUpNextDependents records them), never a failed ship.
     try {

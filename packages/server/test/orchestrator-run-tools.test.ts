@@ -9,7 +9,8 @@ import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolReadFeatureChat, toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
-import { humanTypedAt, markHumanMessage } from '../src/services/lead-status'
+import { HANDBACK_CLEARED, humanTypedAt, markHumanMessage, setHandback } from '../src/services/lead-status'
+import { toolGetProjectContext } from '../src/mcp/server'
 import { getFeatureRow } from '../src/services/repo'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -130,6 +131,23 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     expect(humanTypedAt(ctx, f.id)).toBeNull()
     markHumanMessage(ctx, f.id, { typed: true })
     expect(humanTypedAt(ctx, f.id)).toEqual(expect.any(Number))
+  })
+
+  /** the-status-tells-the-truth-about-who-and-what decision 7: an action answers a handback, a read does not. */
+  it('send_to_feature answers an outstanding handback; reading the feature leaves it standing', async () => {
+    const me = orchestrator()
+    const f = await feature('handed', { heldBy: me.id })
+    setHandback(ctx, f.id, 'Ready to merge.')
+    const cleared = () => listAfter(ctx, f.id, 0).filter((e) => e.type === HANDBACK_CLEARED)
+
+    toolReadFeatureChat(ctx, me, { slug: f.slug })
+    await toolGetProjectContext(ctx, me, {})
+    expect(getFeatureRow(ctx, f.id).handback?.summary).toBe('Ready to merge.')
+    expect(cleared()).toHaveLength(0)
+
+    await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Merging it now.' })
+    expect(getFeatureRow(ctx, f.id).handback).toBeNull()
+    expect(cleared()).toHaveLength(1)
   })
 
   it('read_feature_chat gives a null quote with a reason when the feature has no chat', async () => {

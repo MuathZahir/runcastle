@@ -40,6 +40,7 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
+import { clearHandback } from './lead-status'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import { needEventsByProject, needOf } from './feature-need'
@@ -686,6 +687,7 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
   endLiveSessions(ctx, featureId)
 
   ctx.db.update(features).set({ status: 'archived' }).where(eq(features.id, featureId)).run()
+  clearHandback(ctx, featureId, 'closed')
   emit(ctx, featureId, {
     type: 'feature.archived',
     message: `feature ${feature.slug} archived`,
