@@ -96,7 +96,10 @@ describe('the epic naming pass', () => {
     expect(prompt).toContain('Title: A title')
     expect(prompt).toContain('message 1')
     expect(prompt).not.toContain('message 4')
-    expect(prompt.split('\n\n').at(-1)?.length).toBeLessThanOrEqual(1500)
+    // The excerpt sits fenced as data between lines of ===.
+    const excerpt = prompt.split('===\n')[1]?.split('\n===')[0] ?? ''
+    expect(excerpt.startsWith('Title: A title')).toBe(true)
+    expect(excerpt.length).toBeLessThanOrEqual(1500)
   })
 
   it('ignores an odd answer and a failed run, with one log line each', async () => {
