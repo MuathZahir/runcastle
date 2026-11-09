@@ -37,4 +37,4 @@ Opening a started feature whose lead has never run launches the lead at once: it
 
 ## Open questions
 
-- Decisions 3 and 6–11 were made without the human and wait for their check. The human approved the design with Start in the middle and the composer locked; its Tweaks (foot placement, hidden composer) were removed on approval.
+- None. The human confirmed every decision and approved the design with Start in the middle and the composer locked; its Tweaks (foot placement, hidden composer) were removed on approval.

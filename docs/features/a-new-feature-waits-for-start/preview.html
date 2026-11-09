@@ -241,26 +241,20 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['Opening a never-run started feature launches nothing', 'Clicking a feature to look spent tokens and set an agent going; the human chose a Start button.'],
     ['Start is the only way in; no typing first', '\u201cThe agent has to explore\u201d: the human does not open the conversation.'],
-    ['Plan it yourself sits beside Start', 'The brief keeps it beside Start, but a started feature does not offer it today; this brings it back there.', 'assumed'],
+    ['Plan it yourself sits beside Start', 'The brief keeps it beside Start, but a started feature does not offer it today; this brings it back there.'],
     ['A backlog draft\'s Start is untouched', 'The human counts that click as their start, so it lands on a running agent.'],
     ['\u201cNever run\u201d keeps decision 14\'s meaning', 'No sessions, tickets or runs; work already under way never gets a fresh kickoff.'],
-    ['Start sits in the middle of the empty chat', 'Where the eye lands and where the app\'s empty states carry their action.', 'assumed'],
-    ['The composer stays visible but locked until Start', 'Hiding it would hide the model picker, the one choice worth making first.', 'assumed'],
-    ['A refused start says why and waits for another press', 'Nothing starts by itself, so nothing retries; a line stays in view, a toast does not.', 'assumed'],
-    ['The feature\'s status line is unchanged', 'The brief rules out redesign beyond Start.', 'assumed'],
-    ['A model picked before Start is the one the agent starts on', 'Without it the visible picker would mislead; needs the launch to take the pick.', 'assumed'],
-    ['A backlog Start whose launch is refused lands on Start', 'The old retry on open is gone, so the refusal must stay in view.', 'assumed']
+    ['Start sits in the middle of the empty chat', 'Where the eye lands and where the app\'s empty states carry their action.'],
+    ['The composer stays visible but locked until Start', 'Hiding it would hide the model picker, the one choice worth making first.'],
+    ['A refused start says why and waits for another press', 'Nothing starts by itself, so nothing retries; a line stays in view, a toast does not.'],
+    ['The feature\'s status line is unchanged', 'The brief rules out redesign beyond Start.'],
+    ['A model picked before Start is the one the agent starts on', 'Without it the visible picker would mislead; needs the launch to take the pick.'],
+    ['A backlog Start whose launch is refused lands on Start', 'The old retry on open is gone, so the refusal must stay in view.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [3, 'Only Start; leave self-planning to the orchestrator', 'Reads \u201cstays where it is today\u201d against code that has no such button; the challenger disagreed', 'challenged'],
-    [6, 'Start at the foot, in the composer\'s place', 'A matter of taste; the design page has a Tweak for it'],
-    [7, 'Hide the composer until Start', 'A matter of taste; locked keeps the model picker, hidden is quieter'],
-    [9, 'A \u201cNot started\u201d status', 'The challenger expects you to want it, so unstarted features stand out', 'challenged'],
-    [10, 'Hide the pickers and leave the server alone', 'It adds the plan\'s only server change']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
