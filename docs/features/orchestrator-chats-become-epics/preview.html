@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Orchestrator chats become epics preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba h3{font-size:12px;font-weight:400;color:var(--color-text-tertiary);margin:0 0 6px}
+.sb{padding:10px 8px;display:grid;gap:2px;font-size:13px}
+.sb .lbl{font-size:11px;color:var(--color-text-tertiary);padding:8px 8px 2px;text-transform:none}
+.sb .r{display:flex;align-items:center;gap:8px;min-height:28px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-text-secondary)}
+.sb .r.e{color:var(--color-text);font-weight:500}
+.sb .r.n{padding-left:26px}
+.sb .r .w{margin-left:auto;font-size:11px;color:var(--color-text-tertiary);white-space:nowrap}
+.sb .r .w.y{color:var(--color-warning)}
+.sb .r .g{width:12px;height:12px;border-radius:3px;background:var(--color-accent-subtle);border:1px solid var(--color-accent);flex:none}
+.sb .r .ring{width:12px;height:12px;border-radius:999px;border:2px solid var(--color-border-strong);flex:none}
+.dot.y{background:var(--color-warning)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.flow .st{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.flow .ar{color:var(--color-text-tertiary)}
+.who{display:grid;gap:8px;margin-top:10px}
+.who .w1{display:grid;grid-template-columns:150px 1fr 90px;gap:10px;align-items:baseline;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.who .k{font-size:11px;color:var(--color-text-tertiary)}
+.show h3{margin-top:22px}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.who .w1{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Orchestrator chats become epics</h1>
+  <p class="lede">The sidebar becomes one list of epics: each orchestrator chat, with a short name like "Payment System", holds the features it cut. What needs you floats to the top.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/orchestrator-chats-become-epics/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Before and after, in outline. The real screen is the design below.</p>
+  <div class="ba">
+    <div>
+      <h3>Today: chats in one card, features in lanes</h3>
+      <div class="screen"><div class="sb">
+        <div class="lbl">Orchestrator</div>
+        <div class="r">Feature status showing Working while waiting…</div>
+        <div class="r">Runcastle orchestrator feature workflow confusion</div>
+        <div class="r">I published the package but I'm getting github…</div>
+        <div class="lbl">Needs you</div>
+        <div class="r"><i class="ring"></i>Refund flow<span class="w"><i class="dot y"></i></span></div>
+        <div class="r"><i class="ring"></i>Owner button</div>
+        <div class="lbl">Agent working</div>
+        <div class="r"><i class="ring"></i>Checkout</div>
+        <div class="r"><i class="ring"></i>Release workflow</div>
+      </div></div>
+      <p class="hint">Which chat cut "Checkout"? Nothing says.</p>
+    </div>
+    <div>
+      <h3>After: epics, features under them <a class="pin" data-d="4">4</a></h3>
+      <div class="screen"><div class="sb">
+        <div class="lbl">Epics <a class="pin" data-d="14">14</a></div>
+        <div class="r e"><i class="g"></i>Payment System<span class="w y"><i class="dot y"></i> Asking about Checkout <a class="pin" data-d="11">11</a></span></div>
+        <div class="r n"><i class="ring"></i>Checkout<span class="w">asking you <a class="pin" data-d="10">10</a></span></div>
+        <div class="r n"><i class="ring"></i>Refund flow<span class="w">Yours · building</span></div>
+        <div class="r e"><i class="g"></i>Feature Ownership</div>
+        <div class="r n"><i class="ring"></i>Owner button<span class="w">Agent working</span></div>
+        <div class="r e"><i class="g"></i>Release Pipeline</div>
+        <div class="r n"><i class="ring"></i>Release workflow<span class="w">In progress</span></div>
+        <div class="lbl">Other features <a class="pin" data-d="7">7</a></div>
+        <div class="r"><i class="ring"></i>Dark mode toggle</div>
+        <div class="lbl">Backlog · Shipped · Archived <a class="pin" data-d="9">9</a></div>
+      </div></div>
+      <p class="hint">Yellow epics on top <a class="pin" data-d="8">8</a>. The same list on every page and the phone <a class="pin" data-d="17">17</a> <a class="pin" data-d="18">18</a>.</p>
+    </div>
+  </div>
+
+<!-- screen:sidebar-of-epics -->
+  <h3>The designed screen</h3>
+  <div class="designed">
+    <h3>Sidebar of epics</h3>
+    <p>Layout, rows and ordering are the real new component; epics, features and chats are sample data.</p>
+    <p>States: busy · asking · taken-over · new-chat · many · quiet. Tweaks: Shape (A Epics, recommended · B Lanes + tags · C Hybrid) and Naming (Epics named at first cut, recommended · Epics, every chat named · Chats).</p>
+    <p class="mono">apps/web/src/components/SidebarEpics.tsx · apps/web/src/lib/feature-ui/epics.ts · design page /preview/epics.html</p>
+  </div>
+<!-- /screen:sidebar-of-epics -->
+
+  <h3>How an epic gets its name <a class="pin" data-d="12">12</a></h3>
+  <div class="flow">
+    <span class="st">New epic: "I want refunds and…"</span><span class="ar">→</span>
+    <span class="st">The orchestrator cuts its first feature</span><span class="ar">→</span>
+    <span class="st">It names the chat: <b>Payment System</b></span><span class="ar">→</span>
+    <span class="st">Your rename always wins</span>
+  </div>
+  <p class="hint">Chats that already have features in motion name themselves on their next turn <a class="pin" data-d="13">13</a>. A request that does not fit the name gets "start a new epic?" <a class="pin" data-d="19">19</a></p>
+
+  <h3>Who builds what</h3>
+  <p class="hint">First, the latest "Every feature has one owner" is merged into this branch (it brings the origin chat field this list reads).</p>
+  <div class="who">
+    <div class="w1"><b>Epic list</b><span>Wires the designed list into the sidebar on every page and the phone, the shelves' epic names, the "epic" words, the epic crumb.</span><span class="k">on its own</span></div>
+    <div class="w1"><b>Epic names</b><span>The orchestrator's naming tool, the naming order (your rename first), the project skill's lines.</span><span class="k">on its own</span></div>
+    <div class="w1"><b>Me</b><span>Reproduce and fix the new chat that drops out of the list; land both workers; run the checks.</span><span class="k">myself</span></div>
+    <div class="w1"><b>Review</b><span>Drives the sidebar and checks the work at the end.</span><span class="k">on its own</span></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>"Orchestrator" wording on the docs site, README and landing page</li>
+      <li><i class="dot"></i>Moving a feature to another epic, or adding one to an epic by hand</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Who owns a feature, the hand-back button, the typing warning ("Every feature has one owner")</li>
+      <li><i class="dot"></i>Status words and need rules ("The status tells the truth about who and what")</li>
+      <li><i class="dot"></i>Folding an epic, or a bulk rename of today's chats</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow">
+        <span class="st">feature.list + thread.list<br><span class="hint">already polled by the sidebar</span></span><span class="ar">→</span>
+        <span class="st">epic ordering (pure)<br><span class="hint">group by origin chat · listed? · yellow first</span></span><span class="ar">→</span>
+        <span class="st">SidebarEpics<br><span class="hint">replaces the Orchestrator card + in-motion lanes</span></span>
+      </div>
+      <ul>
+        <li>Membership reads the origin chat field from "Every feature has one owner"; this feature adds no field. A chat is listed while active by today's rule or while any feature it cut is in motion or up next (origin replaces holding).</li>
+        <li>A new MCP tool, for orchestrator sessions only, sets the chat's own title as a <span class="mono">title</span> event marked as the orchestrator's. Naming order: your rename, the orchestrator's name, the runtime's title, the first message. Refused once you renamed.</li>
+        <li>"Asking about &lt;feature&gt;" reads the link from the owner feature's chat-asks rule; with none it reads "Asking you".</li>
+        <li>The new-chat fix starts from a reproduction: the likely causes are a first send that never logged a prompt on that chat, or the list hiding chats while a feature is open.</li>
+        <li>Seams: the epic ordering and <span class="mono">SidebarEpics</span> (new, tier-1 tests); the listed-chat rule and thread naming (existing tests extended); the naming tool via MCP; <span class="mono">thread.list</span>; the feature header crumb.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Several orchestrator chats stay', 'Unrelated work would crowd one context. Settled with you.'],
+    ['A chat row goes yellow only when the chat asks you, and names the feature', 'One ping, on the place where you answer it. Settled with you.'],
+    ['A new chat you wrote in stays listed', 'Your note: today you dig it out of "All N chats". Settled with you.'],
+    ['The sidebar is a list of epics, each with its features nested under it', 'One place per item; the nesting is the link, and yellow-first order keeps the next step on top. Lanes + tags (B) and a hybrid (C) are on the design\'s Tweaks.', 'assumed'],
+    ['Every orchestrator chat is an epic; one with no features is a quiet row', 'One kind of row, no moment where a row changes kind; question chats fade within the day.', 'assumed'],
+    ['A feature belongs to the chat it came from, not the chat that holds it', 'What a feature belongs to should not move when who runs it changes.', 'assumed'],
+    ['Features with no epic sit together after the epics', 'One labelled "Other features" group keeps clear where an epic ends.', 'assumed'],
+    ['Yellow floats to the top; otherwise the order holds still', 'The next step is always the top row, and nothing else reshuffles.', 'assumed'],
+    ['Backlog, Shipped and Archived stay as shelves at the foot', 'The epic list is about what is moving.', 'assumed'],
+    ['Inside its epic, a feature row does not repeat who runs it', 'The epic name is right above; only "Yours" or another chat is worth saying.', 'assumed'],
+    ['An epic\'s row says what it asks and what it is doing', 'Amber "Asking about <feature>", a working shimmer, or nothing. The hold rings go; epics do not fold.', 'assumed'],
+    ['Epic names are 1–3 words, Title Case, set by the orchestrator at its first cut', 'A short noun scans; the first cut is when the chat knows its topic. Your rename wins.', 'assumed'],
+    ['Today\'s chats with features in motion get their names on their next turn', 'Only the chat\'s own agent knows what the cut was about; no bulk rename.', 'assumed'],
+    ['The screens say "epic"; "Orchestrator" leaves them', 'Epics hold features, features hold workers: three nouns, one chain.', 'assumed'],
+    ['A feature\'s page names its epic as the first crumb', 'The crumb says where the feature lives; who runs it is in its status words.', 'assumed'],
+    ['An epic stays listed while it has work in motion', 'A finished epic folds away by itself; one whose feature you took over stays.', 'assumed'],
+    ['The phone shows the same epic list', 'One shape everywhere; the phone lists no chats today.', 'assumed'],
+    ['The epic list stays in the sidebar whatever is open', 'Today opening a feature hides every chat.', 'assumed'],
+    ['A chat that drifts suggests a new epic; features never move between epics', 'One topic per epic, with no new control to learn.', 'assumed'],
+    ['Work joins an epic through its chat, not a button', 'One path to add work, one less button.', 'assumed'],
+    ['Rows on the shelves name their epic quietly', 'Parked and finished features still say where they came from.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [4, 'B: keep today\'s lanes and tag each feature row with its epic; or C: a Needs-you strip on top, then epics.', 'At 10 epics the list runs long and a third yellow epic sits below the screen\'s fold; C keeps every yellow item on the first phone screen. All three are on the design\'s Tweaks.', 'forces 7–11'],
+    [14, 'Keep "Orchestrator" as the list\'s title and "New chat", and let the nesting carry the epic idea.', '"New epic" to ask a quick question reads oddly unless every chat gets an epic-style name.', 'challenged'],
+    [12, 'Every chat names itself in epic style on its first reply, question chats included.', 'With question chats in the same list, sentence titles stay beside short names. Try the Naming tweak.', 'challenged'],
+    [6, 'Nest under the chat that holds the feature, so a feature you take over leaves its epic.', 'A guess at what "belongs to" means to you.', 'forces 15, 16'],
+    [13, 'A one-off naming pass over the chats listed now, at ship time.', 'A chat whose features you took over may never run again and keeps its sentence title.', 'challenged']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
