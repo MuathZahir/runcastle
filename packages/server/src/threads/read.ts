@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs'
 import {
   DEFAULT_RUNTIME,
+  featuresAskedAbout,
   foldThread,
   lastHumanAt,
   outsideCompactions,
@@ -174,12 +175,15 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiti
   const running = agentHost(ctx).isRunning(row.id)
   // A lead that said it waits on the human (`wait_for_you`, declared ready) has handed over, whatever still runs.
   const background = running && !(leadWaiting && row.kind === 'chat') && threadActivity(events, true, Date.now()) === 'background'
+  const askingAbout = row.kind === 'project' ? featuresAskedAbout(events, running, Date.now()) : []
   return {
     id: row.id,
     title: threadName(row, events, about),
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
-    state: background ? 'working' : running ? view.state : 'idle',
+    // A chat asking about a feature waits on the human, its process up or not (decision 17).
+    state: askingAbout.length ? 'waiting' : background ? 'working' : running ? view.state : 'idle',
+    ...(askingAbout.length ? { askingAbout } : {}),
     createdAt: row.createdAt ?? 0,
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
     lastHumanAt: lastHumanAt(events),
@@ -233,6 +237,30 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
     }
   }
   return newest?.state ?? NO_LEAD
+}
+
+/** What an orchestrator chat is doing, as a feature it owns reads it (every-feature-has-one-owner decision 17). */
+export interface ChatActivity {
+  /** The features it is asking the human about now ({@link featuresAskedAbout}). */
+  askingAbout: string[]
+  /** Its process runs and it is mid-turn or its background work still runs. */
+  working: boolean
+}
+
+/** A chat with no log (or none at all) asks nothing and does nothing. */
+export const QUIET_CHAT: ChatActivity = { askingAbout: [], working: false }
+
+/** What the orchestrator chat `threadId` is doing; {@link QUIET_CHAT} when it has no log. */
+export function chatActivity(ctx: AppCtx, threadId: string): ChatActivity {
+  if (!hasThreadLog(threadId)) return QUIET_CHAT
+  const { events } = foldedLog(threadId)
+  const running = agentHost(ctx).isRunning(threadId)
+  const now = Date.now()
+  const activity = threadActivity(events, running, now)
+  return {
+    askingAbout: featuresAskedAbout(events, running, now),
+    working: running && (activity === 'turn' || activity === 'background'),
+  }
 }
 
 /** An ask the human has not answered, in the thread it waits in. */
