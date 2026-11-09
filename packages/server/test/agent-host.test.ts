@@ -446,6 +446,27 @@ describe('idle stop', () => {
     // Nor is it compacted: an open ask is the human's to answer (lead-chats-stay-small decision 13).
     expect(prompts()).toHaveLength(1)
   })
+
+  it('never stops a process while a subagent is listed as running (the-status-tells-the-truth decision 3)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const agent = { task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Find the auth code' }
+    setup({
+      turn: (t) =>
+        t.sdkMessage({
+          type: 'system',
+          subtype: 'background_tasks_changed',
+          tasks: [agent],
+          uuid: '00000000-0000-0000-0000-000000000000',
+          session_id: 'acp-session-1',
+        }),
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Look it up in the background' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    vi.advanceTimersByTime(IDLE_MS * 3)
+    expect(host.isRunning(id)).toBe(true)
+    expect(fake.last().killed).toBe(false)
+  })
 })
 
 /**
