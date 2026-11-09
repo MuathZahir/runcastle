@@ -1,8 +1,8 @@
 # Decisions — Every feature has one owner
 
-Planned without the human (a self-planning run, 2026-11-09). Decisions 1–10 were settled with the human in the orchestrator's chat (the brief's "Decided with the human"); the rest are the planner's, each marked assumed.
+Planned without the human (a self-planning run, 2026-11-09). Decisions 1–10 were settled with the human in the orchestrator's chat (the brief's "Decided with the human"); the rest are the planner's, each marked assumed. One independent challenger read the brief and these decisions; 27–29 answer the branches it raised, and its disagreements are marked **Challenged**.
 
-Check first: 11, 12, 16, 19, 24
+Check first: 11, 12, 13, 17, 24
 
 ## 1. One owner per feature: the human, or one orchestrator chat
 **Decision:** Every feature has exactly one owner at a time: the human, or one orchestrator chat. The feature's sidebar row and header say which. Under the hood this is today's holder (ADR-0016): held by an orchestrator chat means that chat owns it; no holder means the human does.
@@ -55,12 +55,14 @@ Check first: 11, 12, 16, 19, 24
 **Why:** Each option names who does the last step, merging, which is what the human said was vague.
 **Assumed.** Alternative: "You finish it / Built, you merge / Built and merged".
 **For the human.**
+**Challenged:** "<long chat title> · shows you before merging" will not fit the header; show "<Chat> · you merge" / "<Chat> · merges" there and keep the long sentences in the menu. (The design's Tweak switches to exactly that.)
 
 ## 13. How it is planned is chosen once, in the orchestrator chat, and is not on the feature
 **Decision:** The planning choice ("Plan it with me" or "Plan it yourself and show me") is asked when the chat cuts the feature, as today, and is not shown or changed on the feature. Once the plan has its yes it no longer matters.
 **Why:** A choice that is spent after one step should not take room on every feature's header.
 **Assumed.** Alternative: a second control on the header for the planning mode.
 **For the human.**
+**Challenged:** the human's own words read like one scale (grilled for the plan, plans and shows, also merges); one cut-time question with three steps would halve the choices. Kept separate because decision 7, the human's, keeps planning a separate choice.
 
 ## 14. A grilled feature the chat takes after the plan says so while it is grilled
 **Decision:** While the human grills a feature whose choice is a chat's, the owner control reads "Yours to plan · then <Chat>". At the human's plan yes the lead passes it to that chat with its handback, and the control changes to the chat. The lead says so in its chat in one line.
@@ -85,6 +87,7 @@ Check first: 11, 12, 16, 19, 24
 **Why:** No new tool and no guess: an owner chat that is asking has the human's attention already, and the hour still catches a chat that went quiet.
 **Assumed.** Alternative: a tool the chat calls to say which feature it is asking about.
 **For the human.**
+**Challenged:** a chat that owns five handed-back features and asks about one would mark all five "asking you"; the chat should name the feature it asks about (a field on a tool it already has, or a small new one). Correct dots matter more than one tool fewer.
 
 ## 18. A lead under a chat owner cannot wait on the human
 **Decision:** When a chat owns the feature, the server refuses the lead's `wait_for_you` with a line telling it to `hand_back` instead, and the lead and project skills each say "talk to your owner" in one rule.
@@ -102,12 +105,14 @@ Check first: 11, 12, 16, 19, 24
 **Why:** One tool for "talk to the chat" keeps the lead's rules short.
 **Assumed.** Alternative: a separate ask-the-chat tool.
 **For the human.**
+**Challenged:** "With <Chat>" is the phrase that means the chat owns it; a human-owned feature asking its chat should read "Asking <Chat> · …" so ownership never blurs.
 
 ## 21. The chat a feature came from is remembered on the feature
 **Decision:** A feature remembers its chat: the orchestrator chat that created it, replaced by any chat the human later gives it to. It moves to a replacement chat when its chat is too long to reopen, as holds do (ADR-0016). A feature made with the sidebar's New feature button has none; its owner control then offers only "I'll finish it", with a line saying to ask an orchestrator chat "run <feature> for me".
 **Why:** "The chat it came from" should mean the chat that knows it best now, not one the human has moved on from.
 **Assumed.** Alternative: the creating chat only, never changed.
 **For the human.**
+**Challenged:** a one-item menu is a dead end; with no chat the control should read "Yours", not open, and carry the "run X for me" line as its hover.
 
 ## 22. A chat that has ended still owns its features
 **Decision:** An orchestrator chat whose process ended keeps its features; a handback wakes it again, as today. Ownership never lapses with time.
@@ -115,7 +120,7 @@ Check first: 11, 12, 16, 19, 24
 **Assumed.** Alternative: features of an ended chat become the human's.
 
 ## 23. Taking a feature by typing shows a strip, and the chat learns quietly
-**Decision:** While a chat owns the feature, a strip above the lead's composer reads "<Chat> runs this feature. Sending makes it yours." Sending the first message makes it the human's and the strip goes. The chat is not woken; it is told when it next runs, and its tools refuse the feature from then on. Only the lead's main chat does this: writing to a worker or a side chat changes nothing.
+**Decision:** While a chat owns the feature, a strip above the lead's composer reads "<Chat> runs this feature. Sending makes it yours." Sending the first message makes it the human's and the strip goes. The chat is not woken; it is told when it next runs, and its tools refuse the feature from then on. Only a typed message in the lead's main chat does this: testing, merging, approving a design, answering a permission prompt, or writing to a worker or a side chat never take the feature. Taking it drops the outstanding handback, and the chat's question about it stops counting at once.
 **Why:** The warning costs one line; waking a chat for news it cannot act on costs a turn.
 **Assumed.** Alternative: wake the chat with the news at once.
 **For the human.**
@@ -125,6 +130,7 @@ Check first: 11, 12, 16, 19, 24
 **Why:** Parsing old prose is fragile, and the cautious default never merges without the human; they can change any feature with one click.
 **Assumed.** Alternative: read each brief's working agreement and set "merges it" where it said autonomous.
 **For the human.**
+**Challenged:** unheld features a chat cut (being grilled now) would lose their chat; recover it from the feature's creation record where one exists, and list every feature whose behaviour changed in a summary the human sees.
 
 ## 25. The orchestrator reads the choice from the feature, not the brief
 **Decision:** The project skill drops working agreements and checkpoints. When it cuts a feature it asks the two choices in plain words and passes them to `create_feature`; afterwards it reads the feature's choice from the feature, and changes it only on the human's words. Briefs stop carrying a working-agreement line.
@@ -136,3 +142,21 @@ Check first: 11, 12, 16, 19, 24
 **Decision:** It supersedes in part `the-status-tells-the-truth-about-who-and-what` decisions 6 (what a chat-owned feature holds), 8 and 13 (under a chat owner `wait_for_you` is refused, not merely avoided), `one-orchestrator-no-mode` decision 11 (the working agreement stays), and ADR-0016's silent claim on first act. Those docs are not edited.
 **Why:** Shipped features' docs record what was true when they shipped.
 **Assumed.** Alternative: none; recorded for the trail.
+
+## 27. Designs always wait for the human's own yes
+**Decision:** Whatever the finish choice, a design is approved only by the human (the Approve button, or their own words relayed). "Merges it" lets the chat give the plan's yes and merge after a clean review; it never approves a design.
+**Why:** The human said they want to see the options and choose; a chat that merges should not also pick the look.
+**Assumed.** Alternative: under "merges it" the chat approves designs too.
+**For the human.**
+
+## 28. The strip above the composer always offers the way to the chat
+**Decision:** While a chat owns the feature, the strip reads "<Chat> runs this feature. Sending makes it yours." with an "Open <Chat>" link; while the chat is asking the human about it, it reads "<Chat> is asking you about this feature." with the same link. It is neutral, never amber.
+**Why:** A human who clicks the plain "With <Chat> · asking you" row lands in the lead; the next step must be one click to the chat, never a takeover.
+**Assumed.** Alternative: the strip only warns, and the human finds the chat in the sidebar.
+**For the human.**
+
+## 29. Taking one feature leaves the rest of the cut with its chat
+**Decision:** When the human takes a feature, its chat keeps the rest of the cut and its order; a sibling that waits on the taken feature starts when that feature merges, which the chat hears about from runcastle's events. The chat never takes the feature back by itself.
+**Why:** Taking one feature is not stopping the cut; and decision 5 says only the human moves the owner.
+**Assumed.** Alternative: taking one feature pauses the chat's cut until the human says to go on.
+**For the human.**
