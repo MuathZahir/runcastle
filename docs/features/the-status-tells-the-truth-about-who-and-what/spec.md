@@ -16,7 +16,8 @@ The human reads a feature's status to know whether it needs them. Runcastle gues
 
 - with nothing else waiting and the lead idle, the feature's need is the handback itself: "With the orchestrator · <the summary's first line>", Working lane, no count, no ping (decision 5);
 - a machine state that already stood when the lead handed back (merge conflict, Ready to test, Ready to merge, stopped) reads "With the orchestrator · <its words>" (decisions 6 and 15); one that appears after the handback is not held;
-- a held need never outranks an unheld one: a question to the human that arrives after a handback always shows, whatever the usual order of need kinds.
+- a held need never outranks an unheld one: a question to the human that arrives after a handback always shows, whatever the usual order of need kinds;
+- the lead's chat reply ending in "?" is not read as a question while the mark stands (decision 16); `wait_for_you` and open questions still are.
 
 After the hour the mark still stands but nothing is held: the handback reads "Handed back · <first line>" under Needs you, counts and pings, and held machine states read their plain words (decision 2). The existing need watcher already treats "held → not held" as news and pings; it keeps doing so.
 
