@@ -469,8 +469,10 @@ describe('a feature’s launch carries the composer’s pick (a-new-feature-wait
       fast: true,
     })
 
-    // The row is made on the pick, so the launch event names it; the host then
-    // applies the pick to the session as it does a first Send's.
+    // The row is made on the pick, and keeps it once the agent has started
+    // (the host's follow-Settings step leaves a waiting pick alone).
+    await vi.waitFor(() => expect(readThreadEvents(sessionId).some((e) => e.type === 'process' && e.state === 'running')).toBe(true))
+    expect(getSessionRow(ctx, sessionId)?.model).toBe('claude-haiku-5')
     const launching = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.launching')
     expect(JSON.stringify(launching?.data)).toContain('claude-haiku-5')
     expect(prompt).toHaveBeenCalledWith(
