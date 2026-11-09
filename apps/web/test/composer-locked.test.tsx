@@ -62,7 +62,7 @@ describe('a locked composer', () => {
   it('takes no input and says why', () => {
     const { onChange, onAttach } = locked()
     expect(box().disabled).toBe(true)
-    expect(box().placeholder).toBe('Start the agent first — it opens the conversation')
+    expect(box().placeholder).toBe('Start the agent first — it opens the chat')
     fireEvent.paste(box(), { clipboardData: { files: [new File(['png'], 'shot.png', { type: 'image/png' })] } })
     expect(onAttach).not.toHaveBeenCalled()
     expect(onChange).not.toHaveBeenCalled()

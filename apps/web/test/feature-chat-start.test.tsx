@@ -109,7 +109,7 @@ describe('a never-run feature’s chat', () => {
     expect(await screen.findByRole('button', { name: 'Start' })).toBeTruthy()
     expect(planButton()).toBeTruthy()
     expect(box().disabled).toBe(true)
-    expect(box().placeholder).toBe('Start the agent first — it opens the conversation')
+    expect(box().placeholder).toBe('Start the agent first — it opens the chat')
 
     rerender(<Chat start={start} planAlone={planAlone} />)
     act(() => setTabVisible(false))

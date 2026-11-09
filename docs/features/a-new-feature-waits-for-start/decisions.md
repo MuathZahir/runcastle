@@ -27,7 +27,8 @@ Planned without the human in a self-planning run (2026-11-09); an independent ch
 **Why:** The middle of an empty chat is where the eye lands, and the app's empty states already carry their one action there (STYLE.md). The status row stays as it is, so nothing in the header moves.
 
 ## 7. The composer stays visible but locked until Start
-**Decision:** Until the agent is started, the composer shows with its text box locked and its placeholder saying why ("Start the agent first — it opens the conversation"). Send is off. The model and effort pickers under it still work, so the human can choose them before pressing Start.
+**Decision:** Until the agent is started, the composer shows with its text box locked and its placeholder saying why ("Start the agent first — it opens the chat"). Send is off. The model and effort pickers under it still work, so the human can choose them before pressing Start.
+The placeholder says "chat" rather than the "conversation" first approved, because "conversation" is a retired word in the app's copy (the web's vocabulary guard).
 **Why:** Hiding the composer would also hide the model picker, which today already works before the first message and is the one choice worth making before an agent starts spending. A locked box also tells the human where they will type.
 
 ## 8. A refused start says why and waits for another press

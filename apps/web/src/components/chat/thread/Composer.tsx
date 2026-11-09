@@ -134,7 +134,7 @@ export function Composer({
   const canSend = !locked && (value.trim() !== '' || attachments.length > 0)
   const working = state === 'working'
   const prompt = locked
-    ? (placeholder ?? 'Start the agent first — it opens the conversation')
+    ? (placeholder ?? 'Start the agent first — it opens the chat')
     : working
     ? phone
       ? 'Steer the agent'
