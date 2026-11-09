@@ -216,7 +216,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <div class="designed">
   <h3>Feature header: who owns it</h3>
   <p>The owner control and the strip above the composer are real components; the feature, chat and messages are sample words. The header uses the short words ("Notes triage · you merge"); the menu keeps the long sentences.</p>
-  <p>States: yours · planning · shows · merges · asking · menu · no-chat.</p>
+  <p>States: yours · planning · shows · merges (a long chat name) · asking · menu · no-chat (does not open; its hover says how to get a chat).</p>
   <p class="mono">src/components/workspace/OwnerControl.tsx · src/components/chat/OwnerStrip.tsx · design page /preview/feature-owner.html</p>
 </div>
 <!-- /screen:feature-owner -->
@@ -225,7 +225,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <div class="designed">
   <h3>Sidebar: where the yellow dot goes</h3>
   <p>Real sidebar rows over sample features and chats; the asking chat's two-line row is drawn on the design page, since the real two-line row is private to the sidebar.</p>
-  <p>States: asking · handed-back · yours · quiet-hour.</p>
+  <p>States: asking (only the asked-about feature is marked) · handed-back · yours · yours, asking its chat · quiet-hour.</p>
   <p class="mono">src/components/SidebarParts.tsx (words only) · design page /preview/owner-sidebar.html</p>
 </div>
 <!-- /screen:owner-sidebar -->
