@@ -191,8 +191,22 @@ function Fold({
  * a thread reads as the conversation it was: every word in order, the work
  * folded between them. A run that is only thinking is one "Thought for …"
  * fold, not a fold inside a fold.
+ *
+ * While a subagent it started still runs (`running`), the fold stays closed
+ * but its line says so, with a spinner: "Subagent running · <title>"
+ * (the-status-tells-the-truth decision 4). Background commands never change it.
  */
-export function WorkBlock({ steps, seconds, live }: { steps: WorkStep[]; seconds: number; live?: boolean }) {
+export function WorkBlock({
+  steps,
+  seconds,
+  live,
+  running,
+}: {
+  steps: WorkStep[]
+  seconds: number
+  live?: boolean
+  running?: { title: string; count: number }
+}) {
   const [open, setOpen] = useState(false)
   if (live) return <Steps steps={steps} />
   const thoughts = steps.filter((s): s is Extract<WorkStep, { kind: 'thought' }> => s.kind === 'thought')
@@ -200,12 +214,32 @@ export function WorkBlock({ steps, seconds, live }: { steps: WorkStep[]; seconds
     return <Thought seconds={Math.max(1, seconds)} text={thoughts.map((t) => t.text.trim()).join('\n\n')} />
   }
   return (
-    <Fold open={open} onToggle={() => setOpen(!open)} head={<span>Worked for {duration(seconds)}</span>}>
+    <Fold
+      open={open}
+      onToggle={() => setOpen(!open)}
+      head={
+        running && running.count > 0 ? (
+          <>
+            <Spinner size="sm" />
+            <span className="min-w-0 truncate">{stillRunning(running)}</span>
+          </>
+        ) : (
+          <span>Worked for {duration(seconds)}</span>
+        )
+      }
+    >
       <div className="border-l border-border-subtle pl-4">
         <Steps steps={steps} />
       </div>
     </Fold>
   )
+}
+
+/** A fold's line while subagents from it run: "Subagent running · Build mocks", "2 subagents running · Build mocks +1". */
+function stillRunning({ title, count }: { title: string; count: number }): string {
+  const what = count === 1 ? 'Subagent running' : `${count} subagents running`
+  if (!title) return what
+  return `${what} · ${title}${count > 1 ? ` +${count - 1}` : ''}`
 }
 
 function Steps({ steps }: { steps: WorkStep[] }) {

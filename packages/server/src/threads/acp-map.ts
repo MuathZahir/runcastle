@@ -395,14 +395,40 @@ export function backgroundTasks(message: unknown, listed: readonly BackgroundTas
 }
 
 /**
- * How many sub-agents a Claude session runs in the background now, from the same
- * message; null when the message is not that. They have rows of their own in the
- * chat, so they stay off the strip, but a lead left waiting on one is still at work.
+ * The sub-agents a Claude session runs in the background now, from the same
+ * message, each with its task id (claude-agent-acp's id for its subagent card)
+ * and its task's description; null when the message is not that. They have rows
+ * of their own in the chat, so they stay off the strip, but a lead left waiting
+ * on one is still at work. One already listed keeps its `startedAt`.
  */
-export function backgroundAgents(message: unknown): number | null {
+export function backgroundAgents(message: unknown, listed: readonly BackgroundTask[], now: number): BackgroundTask[] | null {
   const m = message as Partial<SDKBackgroundTasksChangedMessage> | null
   if (m?.type !== 'system' || m.subtype !== 'background_tasks_changed' || !Array.isArray(m.tasks)) return null
-  return m.tasks.filter((task) => task.task_type === 'local_agent' && task.ambient !== true).length
+  return m.tasks
+    .filter((task) => task.task_type === 'local_agent' && task.ambient !== true)
+    .map((task) => ({ id: task.task_id, title: task.description, startedAt: listed.find((a) => a.id === task.task_id)?.startedAt ?? now }))
+}
+
+/** Whether two lists of background work name the same things, in the same order. */
+export function sameWork(a: readonly BackgroundTask[], b: readonly BackgroundTask[]): boolean {
+  return a.length === b.length && a.every((t, n) => t.id === b[n].id && t.title === b[n].title)
+}
+
+/**
+ * The subagents a Codex session runs now, after one `subagent_update` on its own
+ * session (codex-acp's start and end reports, in the RFD's form): one that runs
+ * (or waits on an approval) joins the list, any other state (finished, failed,
+ * cancelled, no longer observable) leaves it. Null when the update changes nothing.
+ */
+export function codexSubagents(update: acp.SessionUpdate, listed: readonly BackgroundTask[], now: number): BackgroundTask[] | null {
+  if (update.sessionUpdate !== 'subagent_update' || !update.state) return null
+  const id = update.sessionId
+  const known = listed.find((a) => a.id === id)
+  if (update.state.state === 'running' || update.state.state === 'requires_action') {
+    if (known) return null
+    return [...listed, { id, title: update.description ?? update.title ?? '', startedAt: now }]
+  }
+  return known ? listed.filter((a) => a !== known) : null
 }
 
 /** A forwarded SDK message saying the Claude session went idle (`session_state_changed`): no model turn runs. */

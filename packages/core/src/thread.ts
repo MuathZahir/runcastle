@@ -376,8 +376,16 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   /** A subagent the turn delegated to, first seen or updated. */
   z.object({ type: z.literal('subagent'), id: z.string(), title: z.string().optional(), status: ToolStatus.optional() }),
   z.object({ type: z.literal('plan'), entries: z.array(PlanEntry) }),
-  /** `agents`: how many sub-agents run in the background beside the commands. */
-  z.object({ type: z.literal('tasks'), tasks: z.array(BackgroundTask), agents: z.number().int().nonnegative().optional() }),
+  /**
+   * The background work running now (the whole live set each time): `tasks` the
+   * commands, `agents` the subagents. An older log's `agents` is a bare count
+   * ({@link runningSubagents} reads it as that many untitled ones).
+   */
+  z.object({
+    type: z.literal('tasks'),
+    tasks: z.array(BackgroundTask),
+    agents: z.union([z.number().int().nonnegative(), z.array(BackgroundTask)]).optional(),
+  }),
   z.object({ type: z.literal('ask'), ask: Ask }),
   /**
    * An ask answered — by the human, by the host on an unattended thread, or
@@ -501,7 +509,15 @@ export type ThreadItem =
    * words follow it, or the turn ends, it folds to one line with its own time
    * ("Worked for 46s").
    */
-  | { kind: 'work'; id: string; steps: WorkStep[]; seconds: number; live?: boolean }
+  | {
+      kind: 'work'
+      id: string
+      steps: WorkStep[]
+      seconds: number
+      live?: boolean
+      /** The subagents from this run of work that still run: how many, and the first one's title ('' when untitled). */
+      running?: { title: string; count: number }
+    }
   /**
    * A stretch of the agent's words. A turn has one per stretch, in the order
    * written. Its last carries the turn's whole time once the turn has ended.
@@ -663,12 +679,32 @@ export function contextUsed(events: readonly ThreadEvent[]): number | undefined 
 }
 
 /**
- * How long after its turn ended a thread's background work keeps it reading as
- * working (threads-open-fast decision 2). Nothing reported tells a test run the
- * agent waits for from a dev server it left up, and a false "working" hides a
- * question, so past this the thread waits on the human whatever still runs.
+ * How long after its turn ended a thread's background commands keep it reading
+ * as working (threads-open-fast decision 2). Nothing reported tells a test run
+ * the agent waits for from a dev server it left up, and a false "working" hides
+ * a question, so past this the thread waits on the human whatever command still
+ * runs. A listed subagent has no such cap: it counts for as long as it is listed
+ * (the-status-tells-the-truth decision 3).
  */
 export const BACKGROUND_WINDOW_MS = 10 * 60_000
+
+/**
+ * The subagents a `tasks` event lists as running. An older log's bare count
+ * reads as that many untitled ones, started when the event was logged.
+ */
+export function runningSubagents(e: Extract<ThreadEvent, { type: 'tasks' }>): BackgroundTask[] {
+  if (typeof e.agents !== 'number') return e.agents ?? []
+  return Array.from({ length: e.agents }, (_, n) => ({ id: `agents:${e.i}:${n}`, title: '', startedAt: e.at }))
+}
+
+/**
+ * Whether a subagent card is the listed subagent `listedId`: the same id, or a
+ * later run of it (claude-agent-acp names a resumed subagent's session
+ * `<task id>:generation:<n>`).
+ */
+function sameSubagent(cardId: string, listedId: string): boolean {
+  return cardId === listedId || cardId.startsWith(`${listedId}:generation:`)
+}
 
 /** A message that ends on a question, closing marks after it aside, in any script's question mark. */
 const ENDS_ASKING = /[?？؟][\s*_`'"”’)\]]*$/
@@ -695,9 +731,10 @@ export type ThreadActivity =
  * the lead's reply before it still waits on the human after it.
  *
  * A reply with background work still running is not waiting yet
- * (threads-open-fast decisions 1 to 3), unless it ends on a question, the work is
- * no longer running with its process, or {@link BACKGROUND_WINDOW_MS} has passed
- * since the turn ended. The chat's own `foldThread` state knows none of this: the
+ * (threads-open-fast decisions 1 to 3), unless it ends on a question or the work
+ * is no longer running with its process. A listed subagent counts for as long as
+ * it is listed; a background command only until {@link BACKGROUND_WINDOW_MS} has
+ * passed since the turn ended. The chat's own `foldThread` state knows none of this: the
  * turn is over, and the composer treats it so.
  */
 export function threadActivity(events: readonly ThreadEvent[], running: boolean, now: number): ThreadActivity {
@@ -705,7 +742,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   let replied = false
   let asking = false
   let inTurn = false
-  let background = 0
+  let commands = 0
+  let subagents = 0
   let endedAt = 0
   let lastSaid = ''
   let lastMessage: string | undefined
@@ -729,7 +767,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
       lastSaid = e.messageId === lastMessage ? lastSaid + e.text : e.text
       lastMessage = e.messageId
     } else if (e.type === 'tasks') {
-      background = e.tasks.length + (e.agents ?? 0)
+      commands = e.tasks.length
+      subagents = runningSubagents(e).length
     } else if (e.type === 'ask') {
       asking = true
     } else if (e.type === 'ask_resolved') {
@@ -737,13 +776,14 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
     } else if (e.type === 'process' && e.state === 'stopped') {
       asking = false
       inTurn = false
-      background = 0
+      commands = 0
+      subagents = 0
     }
   }
   if (running && asking) return 'asking'
   if (inTurn) return 'turn'
   if (!replied) return 'idle'
-  const stillWorking = running && background > 0 && now - endedAt < BACKGROUND_WINDOW_MS
+  const stillWorking = running && (subagents > 0 || (commands > 0 && now - endedAt < BACKGROUND_WINDOW_MS))
   return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
 }
 
@@ -844,6 +884,34 @@ function markOlderCards(items: ThreadItem[]): void {
 }
 
 /**
+ * Mark each run of work with the listed subagents still running from it
+ * (the-status-tells-the-truth decision 4): the run whose steps hold the
+ * subagent's card (by id, then by title) or the call that launched it (its title
+ * the subagent's); when none does, the newest run that began at or before the
+ * subagent started. A subagent no run takes shows nowhere.
+ */
+function markRunning(items: ThreadItem[], listed: readonly BackgroundTask[], startOf: (work: ThreadItem) => number | undefined): void {
+  if (!listed.length) return
+  const works = items.filter((x): x is Extract<ThreadItem, { kind: 'work' }> => x.kind === 'work')
+  const byId = (a: BackgroundTask) => (s: WorkStep) => s.kind === 'subagent' && sameSubagent(s.id, a.id)
+  const byTitle = (a: BackgroundTask) => (s: WorkStep) =>
+    !!a.title.trim() &&
+    ((s.kind === 'subagent' && s.title.trim() === a.title.trim()) || (s.kind === 'tools' && s.calls.some((c) => c.title.includes(a.title.trim()))))
+  const running = new Map<Extract<ThreadItem, { kind: 'work' }>, string[]>()
+  for (const a of listed) {
+    const home =
+      works.findLast((w) => w.steps.some(byId(a))) ??
+      works.findLast((w) => w.steps.some(byTitle(a))) ??
+      works.findLast((w) => (startOf(w) ?? Infinity) <= a.startedAt)
+    if (!home) continue
+    const card = home.steps.find(byId(a))
+    const title = a.title.trim() || (card?.kind === 'subagent' ? card.title : '')
+    running.set(home, [...(running.get(home) ?? []), title])
+  }
+  for (const [work, titles] of running) work.running = { title: titles.find((t) => t) ?? '', count: titles.length }
+}
+
+/**
  * Fold a thread's log into what the web renders. Pure, total and deterministic:
  * unknown orderings (an update before its call, a turn end with no start) are
  * absorbed, never thrown on, because a log written by a crashed process still
@@ -864,6 +932,9 @@ function markOlderCards(items: ThreadItem[]): void {
  *   here unless it says it is running again, and one never seen makes none
  *   from an untitled "finished". A relaunched adapter re-announces every past
  *   subagent that way as its first turn starts.
+ * - A subagent the live list (`tasks`) still holds runs on past its turn: its
+ *   card stays running until the list drops it, its calls join it there, and
+ *   the run of work it came from says so (`running`, {@link markRunning}).
  * - A late update belongs to its row: a call or subagent from before a steered
  *   message updates where it sits, and adds nothing after the agent's words.
  *   An untitled update for a call of an earlier turn shows nothing.
@@ -901,6 +972,29 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   /** Every subagent and call the thread has shown, in any turn. */
   const shownSubagents = new Set<string>()
   const shownCalls = new Set<string>()
+  /** Every subagent card shown, in any turn: one a settled turn left running completes when the live list drops it. */
+  const subagentCards = new Map<string, Extract<Segment, { kind: 'subagent' }>>()
+  /** The subagents the latest `tasks` event lists as running. */
+  let listed: BackgroundTask[] = []
+  /** When each laid-out run of work began, for placing a running subagent no step names. */
+  const workStart = new WeakMap<ThreadItem, number>()
+  /** The calls under such a card, by id, for their updates. */
+  const heldCalls = new Map<string, ToolCall>()
+  const isListed = (cardId: string): boolean => listed.some((a) => sameSubagent(cardId, a.id))
+  const unfinished = (s: { status: ToolStatus }): boolean => s.status === 'in_progress' || s.status === 'pending'
+  /** The card of a subagent an earlier turn left running, outside the open turn. */
+  const heldCard = (id: string): Extract<Segment, { kind: 'subagent' }> | undefined => {
+    const card = subagentCards.get(id)
+    return card && unfinished(card) && !(turn as Turn | null)?.subagents.has(id) ? card : undefined
+  }
+  /** End the cards of subagents the live list no longer holds (and their unfinished calls), `as` given. */
+  const endUnlisted = (before: readonly BackgroundTask[], as: ToolStatus) => {
+    for (const card of subagentCards.values()) {
+      if (!unfinished(card) || !before.some((a) => sameSubagent(card.id, a.id)) || isListed(card.id)) continue
+      card.status = as
+      for (const call of card.calls) if (unfinished(call)) call.status = as
+    }
+  }
   let ask: Ask | undefined
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
@@ -963,7 +1057,9 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       })
       const seconds = until === undefined ? 0 : Math.max(0, Math.round((until - run[0].at) / 1000))
       const first = run[0] as Exclude<Segment, { kind: 'item' }>
-      out.push({ kind: 'work', id: unique(`work:${first.id}`), steps, seconds, ...(until === undefined ? { live: true } : {}) })
+      const work: ThreadItem = { kind: 'work', id: unique(`work:${first.id}`), steps, seconds, ...(until === undefined ? { live: true } : {}) }
+      workStart.set(work, first.at)
+      out.push(work)
       out.push(...after)
       run = []
       after = []
@@ -1042,7 +1138,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     if (turn) {
       const t: Turn = turn
       for (const c of t.calls.values()) if (c.status === 'in_progress' || c.status === 'pending') c.status = reason === 'end_turn' ? 'completed' : 'failed'
-      for (const s of t.subagents.values()) if (s.status === 'in_progress' || s.status === 'pending') s.status = reason === 'end_turn' ? 'completed' : 'failed'
+      // A subagent still listed as running runs on past its turn: its card ends when the list drops it.
+      for (const s of t.subagents.values()) {
+        if ((s.status === 'in_progress' || s.status === 'pending') && !isListed(s.id)) s.status = reason === 'end_turn' ? 'completed' : 'failed'
+      }
       render(false, e.at)
       // The turn's last words carry its whole time, beside the model they name. A
       // turn with no time to tell (an old chat read back from its transcript, all
@@ -1143,6 +1242,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           startingPrompt = null
         }
         if (e.state === 'stopped') {
+          // Nothing runs on past its process.
+          const before = listed
+          listed = []
+          endUnlisted(before, 'failed')
           if (turn) closeTurn(e, e.error ? 'error' : e.restarted ? 'restarted' : 'cancelled', undefined, e.error)
           if (e.error && !items.some((x) => x.id === `error:${e.i}`)) items.push({ kind: 'error', id: `error:${e.i}`, message: e.error })
           ask = undefined
@@ -1184,6 +1287,20 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'tool': {
+        // A call of a subagent an earlier turn left running sits under its card, not in a turn of its own.
+        const heldCall = heldCalls.get(e.call.id)
+        const heldParent = heldCall || !e.parentId || (turn as Turn | null)?.subagents.has(e.parentId) ? undefined : heldCard(e.parentId)
+        if (heldCall || heldParent) {
+          const call = heldCall ?? { ...BLANK_CALL, id: e.call.id }
+          Object.assign(call, Object.fromEntries(Object.entries(e.call).filter(([, v]) => v !== undefined && v !== '')))
+          if (e.outputAppend) call.output = (call.output ?? '') + e.outputAppend
+          if (heldParent) {
+            heldCalls.set(call.id, call)
+            shownCalls.add(call.id)
+            heldParent.calls.push(call)
+          }
+          break
+        }
         if (!e.call.title && shownCalls.has(e.call.id) && !(turn as Turn | null)?.calls.has(e.call.id)) break
         const t = openTurn(e)
         const known = t.calls.get(e.call.id)
@@ -1199,6 +1316,13 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       }
       case 'subagent': {
         const known = (turn as Turn | null)?.subagents.get(e.id)
+        const held = known ? undefined : heldCard(e.id)
+        if (held) {
+          // A subagent an earlier turn left running: its card, where it stands, hears how it goes.
+          if (e.title !== undefined) held.title = e.title
+          if (e.status !== undefined) held.status = e.status
+          break
+        }
         if (known) {
           if (e.title !== undefined) known.title = e.title
           if (e.status !== undefined) known.status = e.status
@@ -1208,6 +1332,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           const t = openTurn(e)
           const seg: Extract<Segment, { kind: 'subagent' }> = { kind: 'subagent', id: e.id, title: e.title ?? 'Subagent', status: e.status ?? 'in_progress', calls: [], at: e.at }
           shownSubagents.add(e.id)
+          subagentCards.set(e.id, seg)
           t.subagents.set(e.id, seg)
           t.segments.push(seg)
         }
@@ -1217,9 +1342,13 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'plan':
         view.plan = e.entries
         break
-      case 'tasks':
+      case 'tasks': {
         view.tasks = e.tasks
+        const before = listed
+        listed = runningSubagents(e)
+        endUnlisted(before, 'completed')
         break
+      }
       case 'ask': {
         ask = e.ask
         if (e.ask.kind !== 'approval') break
@@ -1359,6 +1488,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     closeTurn(events[events.length - 1], 'end_turn')
     ask = open
   }
+  markRunning(items, listed, (work) => workStart.get(work))
   markOlderCards(items)
   view.ask = ask
   view.state = ask ? 'waiting' : turn ? 'working' : 'idle'
