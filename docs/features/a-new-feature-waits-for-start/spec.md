@@ -37,4 +37,4 @@ Opening a started feature whose lead has never run launches the lead at once: it
 
 ## Open questions
 
-- Decisions 3 and 6–11 were made without the human and wait for their check; the design page's Tweaks hold the two open looks (placement, and locked versus hidden composer).
+- Decisions 3 and 6–11 were made without the human and wait for their check. The human approved the design with Start in the middle and the composer locked; its Tweaks (foot placement, hidden composer) were removed on approval.
