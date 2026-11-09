@@ -241,23 +241,27 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
 
 /** What an orchestrator chat is doing, as a feature it owns reads it (every-feature-has-one-owner decision 17). */
 export interface ChatActivity {
+  /** The name the thread list shows for it. */
+  name: string
   /** The features it is asking the human about now ({@link featuresAskedAbout}). */
   askingAbout: string[]
   /** Its process runs and it is mid-turn or its background work still runs. */
   working: boolean
 }
 
-/** A chat with no log (or none at all) asks nothing and does nothing. */
-export const QUIET_CHAT: ChatActivity = { askingAbout: [], working: false }
-
-/** What the orchestrator chat `threadId` is doing; {@link QUIET_CHAT} when it has no log. */
+/**
+ * What the orchestrator chat `threadId` is doing, and its name. A chat with no
+ * log asks nothing and does nothing; an unknown one is named by its id.
+ */
 export function chatActivity(ctx: AppCtx, threadId: string): ChatActivity {
-  if (!hasThreadLog(threadId)) return QUIET_CHAT
+  const row = getSessionRow(ctx, threadId)
+  if (!row || !hasThreadLog(threadId)) return { name: row ? threadName(row, []) : threadId, askingAbout: [], working: false }
   const { events } = foldedLog(threadId)
   const running = agentHost(ctx).isRunning(threadId)
   const now = Date.now()
   const activity = threadActivity(events, running, now)
   return {
+    name: threadName(row, events),
     askingAbout: featuresAskedAbout(events, running, now),
     working: running && (activity === 'turn' || activity === 'background'),
   }

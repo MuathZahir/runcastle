@@ -45,8 +45,21 @@ export const READY_TO_TEST = 'ready to test'
 /** The words after "Stopped ·" when the human pressed Stop themselves — the one stop that never pings. */
 export const YOU_STOPPED_IT = 'you stopped it'
 
-/** The words before a held need's own words. */
-export const HELD_PREFIX = 'With the orchestrator · '
+/**
+ * The words before a held need's own words: the chat that owns the feature
+ * (every-feature-has-one-owner decision 15). "With <Chat>" only ever means the
+ * chat owns it.
+ */
+export const heldPrefix = (chat: string): string => `With ${chat} · `
+
+/**
+ * The words before a human-owned feature's handback line while it is out to its
+ * chat (every-feature-has-one-owner decision 20).
+ */
+export const askingPrefix = (chat: string): string => `Asking ${chat} · `
+
+/** What a chat-owned feature reads while its chat asks the human about it, after {@link heldPrefix} (decision 17). */
+export const ASKING_YOU = 'asking you'
 
 /** The words before an outstanding handback's line once nothing holds it. */
 export const HANDED_BACK_PREFIX = 'Handed back · '
@@ -66,7 +79,7 @@ export function handbackLine(summary: string): string {
   return sentence.length > HANDBACK_LINE_MAX ? `${sentence.slice(0, HANDBACK_LINE_MAX - 1).trimEnd()}…` : sentence
 }
 
-/** A prefix's words alone, for a line with nothing after it ("With the orchestrator"). */
+/** A prefix's words alone, for a line with nothing after it ("Handed back"). */
 const alone = (prefix: string): string => prefix.slice(0, -' · '.length)
 
 /** The reason when the lead's latest wake failed to launch or died in its turn. */
@@ -77,8 +90,17 @@ export function wakeFailedWhy(exitCode: number | null): string {
 /** Everything {@link featureNeed} decides from. Every `since`/`at` is ms since the epoch. */
 export interface NeedFacts {
   status: FeatureStatus
-  /** An orchestrator thread holds the feature. */
-  held: boolean
+  /**
+   * The orchestrator chat that owns the feature (holds it); null when the human
+   * does (every-feature-has-one-owner decisions 15–17): its name, whether it is
+   * asking the human about this feature now, and whether it is working.
+   */
+  owner: { chat: string; asking: boolean; working: boolean } | null
+  /**
+   * A human-owned feature's chat, by name, while its lead's handback is out to
+   * it (decision 20); null otherwise.
+   */
+  askingChat: string | null
   /** A round runs, or the lead is mid-turn: nothing is waited on but a permission prompt. */
   agentWorking: boolean
   /** The feature's waiting reason, its kind, and when it was set. */
@@ -113,8 +135,9 @@ export interface NeedFacts {
    */
   workerNeedsYou: { label: string; threadId: string; since: number } | null
   /**
-   * The lead's outstanding handback to the orchestrator that holds the feature
-   * (the-status-tells-the-truth decisions 5, 7): when it handed back and what it
+   * The lead's outstanding handback to its owner chat, or to its chat when the
+   * human owns it (the-status-tells-the-truth decisions 5, 7;
+   * every-feature-has-one-owner decision 20): when it handed back and what it
    * said. Null when it never did, or something has answered it since.
    */
   handback: { at: number; summary: string } | null
@@ -123,14 +146,15 @@ export interface NeedFacts {
 /** The one thing a feature waits on the human for. */
 export interface FeatureNeed {
   kind: NeedKind
-  /** What the sidebar row, the status line and the ping say: "Plan to approve", "With the orchestrator · Merge conflict". */
+  /** What the sidebar row, the status line and the ping say: "Plan to approve", "With Notes triage · Merge conflict". */
   words: string
   /** The words after "·": the reason, the call's title, the scenario. */
   why?: string
   /**
-   * Its orchestrator handles it: not Needs you, no ping, until
-   * {@link HELD_NEED_GRACE_MS} has passed since the handback. Only an outstanding
-   * handback holds anything (the-status-tells-the-truth decisions 1, 6, 15).
+   * A chat has it, not the human: it reads in Working, not Needs you, never
+   * counts and never pings (every-feature-has-one-owner decisions 15–17, 20).
+   * Everything a chat-owned feature needs, but a permission prompt and a
+   * worker's question; and a human-owned feature's handback to its chat.
    */
   held: boolean
   /** When this need began. */
@@ -148,11 +172,11 @@ export interface FeatureNeed {
 }
 
 /**
- * The machine states a handback holds when they already stood at the handback
- * (the-status-tells-the-truth decisions 6, 15). A question to the human — a
- * permission prompt, a worker's, an answer, a plan, a design — is never held.
+ * What only the feature itself can answer: never held, whoever owns it
+ * (every-feature-has-one-owner decision 16) — a permission prompt in its
+ * terminal and a "with you" worker's question.
  */
-const MACHINE_STATES: ReadonlySet<NeedKind> = new Set(['conflict', 'stopped', 'test', 'merge'])
+const NEVER_HELD: ReadonlySet<NeedKind> = new Set(['permission', 'worker'])
 
 type Bare = Omit<FeatureNeed, 'words' | 'held'>
 
@@ -274,18 +298,39 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
   ]
 }
 
-/** Whether an outstanding handback holds this need now (the-status-tells-the-truth decisions 1, 2, 5, 6, 15). */
-function isHeld(facts: NeedFacts, need: Bare, now: number): boolean {
-  const mark = facts.handback
-  if (!mark || !facts.held || now - mark.at >= HELD_NEED_GRACE_MS) return false
-  return need.kind === 'handback' || (MACHINE_STATES.has(need.kind) && need.since <= mark.at)
+/**
+ * The hour safety net (the-status-tells-the-truth decision 2;
+ * every-feature-has-one-owner decision 17): an outstanding handback its owner
+ * chat has left for {@link HELD_NEED_GRACE_MS}, while the chat neither asks the
+ * human about this feature nor works, comes back to the human.
+ */
+function lapsed(facts: NeedFacts, now: number): boolean {
+  const { owner, handback } = facts
+  return !!owner && !!handback && !owner.asking && !owner.working && now - handback.at >= HELD_NEED_GRACE_MS
 }
 
-/** A need's words: a held one behind the orchestrator's prefix, a held handback by its own line. */
-function wordsAs(need: Bare, held: boolean): string {
-  if (!held) return wordsOf(need)
-  if (need.kind === 'handback') return need.why ? `${HELD_PREFIX}${need.why}` : alone(HELD_PREFIX)
-  return `${HELD_PREFIX}${wordsOf(need)}`
+/**
+ * Whether a chat has this need now, not the human (every-feature-has-one-owner
+ * decisions 16, 20): under an owner chat everything but what only the feature
+ * can answer, until the safety net lapses; under the human only the handback
+ * that is out to the feature's chat.
+ */
+function isHeld(facts: NeedFacts, need: Bare, now: number): boolean {
+  if (NEVER_HELD.has(need.kind)) return false
+  if (facts.owner) return !lapsed(facts, now)
+  return need.kind === 'handback' && !!facts.askingChat
+}
+
+/** A held need's words: behind its owner chat's name, or, for a handback out to a human-owned feature's chat, asking it. */
+function heldWords(facts: NeedFacts, need: Bare): string {
+  if (!facts.owner) {
+    const prefix = askingPrefix(facts.askingChat ?? '')
+    return need.why ? `${prefix}${need.why}` : alone(prefix)
+  }
+  const prefix = heldPrefix(facts.owner.chat)
+  if (facts.handback && facts.owner.asking) return `${prefix}${ASKING_YOU}`
+  if (need.kind === 'handback') return need.why ? `${prefix}${need.why}` : alone(prefix)
+  return `${prefix}${wordsOf(need)}`
 }
 
 /**
@@ -294,12 +339,16 @@ function wordsAs(need: Bare, held: boolean): string {
  * lead is mid-turn, only an open ask (it halts the agent where it stands), a
  * standing merge conflict or a worker that needs the human counts.
  *
- * Only an outstanding handback holds a need (the-status-tells-the-truth
- * decisions 1, 5, 6, 15): the handback itself, and a machine state that already
- * stood when the lead handed back, read "With the orchestrator · …" while an
- * orchestrator holds the feature and less than {@link HELD_NEED_GRACE_MS} has
- * passed since the handback. A question to the human is never held, and a held
- * need never outranks one that is not: precedence orders each group.
+ * Who owns the feature decides who has the need (every-feature-has-one-owner
+ * decisions 15–17, 20). Under an orchestrator chat every need but a permission
+ * prompt and a worker's question is held: it reads "With <Chat> · <its words>"
+ * — "With <Chat> · asking you" while the chat asks the human about it with a
+ * handback out — and comes back to the human as its plain words ("Handed back
+ * · …") only once a handback has waited {@link HELD_NEED_GRACE_MS} on a chat
+ * that neither asks nor works. Under the human every need reads as it always
+ * did, but a handback out to the feature's chat, which reads "Asking <Chat> ·
+ * <its first line>", held. A held need never outranks one that is not:
+ * precedence orders each group.
  */
 export function featureNeed(facts: NeedFacts, now: number): FeatureNeed | null {
   if (facts.status !== 'active') return null
@@ -307,10 +356,10 @@ export function featureNeed(facts: NeedFacts, now: number): FeatureNeed | null {
   for (const candidate of candidates(facts)) {
     const need = candidate()
     if (!need) continue
-    if (!isHeld(facts, need, now)) return { ...need, words: wordsAs(need, false), held: false }
+    if (!isHeld(facts, need, now)) return { ...need, words: wordsOf(need), held: false }
     firstHeld ??= need
   }
-  return firstHeld ? { ...firstHeld, words: wordsAs(firstHeld, true), held: true } : null
+  return firstHeld ? { ...firstHeld, words: heldWords(facts, firstHeld), held: true } : null
 }
 
 /**
