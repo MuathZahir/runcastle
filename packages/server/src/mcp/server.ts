@@ -26,6 +26,7 @@ import type {
   DependencyRef,
   DesignState,
   DriveCallResult,
+  FeatureFinish,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   PreparedKey as PreparedKeyT,
@@ -91,13 +92,14 @@ import {
   type LeadDesign,
   copyDesignPicture,
   leadDesigns,
+  listDesigns,
   markPlanShown,
   recordDesign,
   setDesignState,
 } from '../services/designs'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
-import { claimHold, holderName, holderOf, requireHold } from '../services/holding'
+import { type ChatFinish, chatNameOf, giveToChat, holderName, holderOf, releasedFrom, requireHold } from '../services/holding'
 import { handBackToOrchestrator } from '../services/lead-handback'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
@@ -133,7 +135,7 @@ import { NOTIFY_MAX_CHARS, toolNotifyHuman } from './notify-tool'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { recordFeatureAction, registerOrchestratorTools, requireProjectFeature } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
-import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha } from './sent-memory'
+import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha, tellOnce } from './sent-memory'
 
 /**
  * runcastle MCP server (SPEC §6) — zod-validated tools over Streamable HTTP
@@ -834,17 +836,36 @@ export function toolDeclareReady(
   return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
 }
 
-/** A lead hands back to the orchestrator that holds its feature (agents-are-woken-only-when-it-matters decisions 20–22). */
-export async function toolHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): Promise<{ deliveredTo: string; state: string }> {
-  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary)
+/**
+ * A lead hands back to its owner chat, or on a human-owned feature to its chat
+ * (agents-are-woken-only-when-it-matters decisions 20–22; every-feature-has-one-owner
+ * decisions 14, 20). `planAgreed` at the human's plan yes passes a feature its
+ * chat finishes to that chat first.
+ */
+export async function toolHandBack(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { summary: string; planAgreed?: boolean },
+): Promise<{ deliveredTo: string; state: string; passed?: true }> {
+  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, {
+    planAgreed: input.planAgreed === true,
+  })
 }
 
+/**
+ * The lead waits on the human. Refused under a chat owner (every-feature-has-one-owner
+ * decision 18): that lead talks to its chat with `hand_back`.
+ */
 export function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
   input: { why: string; kind?: WaitingKind },
 ): { ok: true; waitingReason: string | null; waitingKind: WaitingKind | null } {
   const featureId = requireLeadFeatureId(session)
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.heldBy && feature.status !== 'shipped') {
+    throw new GateError(`"${chatNameOf(ctx, feature.heldBy)}" owns this feature: bring it to them with hand_back.`)
+  }
   setWaiting(ctx, featureId, input.why, input.kind)
   const { waitingReason, waitingKind } = getFeatureRow(ctx, featureId)
   return { ok: true, waitingReason, waitingKind }
@@ -925,9 +946,12 @@ export function toolShowPanel(ctx: AppCtx, session: SessionRow, input: { view: P
 export function toolShowDesign(
   ctx: AppCtx,
   session: SessionRow,
-  input: { path: string; title: string; width?: number; picture?: string },
+  input: { path: string; title?: string; width?: number; picture?: string; slug?: string },
 ): { recorded: true; state: DesignState } {
+  if (!session.featureId) return showRecordedDesign(ctx, session, { slug: input.slug ?? '', path: input.path })
   const featureId = requireChatFeatureId(session)
+  const title = input.title?.trim()
+  if (!title) throw new InvalidInputError('show_design needs a `title`: the screen the design is, in a few words.')
   // A design nobody can serve later is a dead card: as the skill says, it needs
   // a running server or a recorded command to open from.
   const server = designServerStatus(ctx, featureId)
@@ -937,9 +961,9 @@ export function toolShowDesign(
   const picture = input.picture
     ? copyDesignPicture(featureId, showableFile(ctx, session, input.picture, 'show_design').real)
     : undefined
-  const design = recordDesign(ctx, featureId, { path: input.path, title: input.title, width: input.width, picture })
+  const design = recordDesign(ctx, featureId, { path: input.path, title, width: input.width, picture })
   seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'design_shown', designId: design.id })
+  appendThreadEvent(session.id, { type: 'design_shown', designId: design.id, featureId })
   if (!unattended(session)) {
     rememberDesignPath(featureId, design.path)
     emitPanelShow(ctx, featureId, { view: 'design', path: design.path, ...(input.width ? { width: input.width } : {}) })
@@ -954,20 +978,51 @@ const PLAN_DOCS = ['preview.html', 'decisions.md', 'spec.md']
  * Show the feature's plan (decisions 2, 15): post a plan card in this chat, make
  * the plan new to the human, and, with a human watching, open the Plan view.
  */
-export function toolShowPlan(ctx: AppCtx, session: SessionRow): { shown: true } {
-  const featureId = requireChatFeatureId(session)
-  const feature = getFeatureRow(ctx, featureId)
+export function toolShowPlan(ctx: AppCtx, session: SessionRow, input: { slug?: string } = {}): { shown: true } {
+  // An orchestrator chat posts a feature's plan card in its own chat (every-feature-has-one-owner
+  // decision 3): the same card, opening the feature's Plan tab. It reads, so it needs no hold,
+  // and it leaves the plan's "new to the human" mark to the lead.
+  const fromChat = !session.featureId
+  const feature = fromChat
+    ? requireProjectFeature(ctx, session, input.slug ?? '')
+    : getFeatureRow(ctx, requireChatFeatureId(session))
+  const featureId = feature.id
   const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
   if (!PLAN_DOCS.some((doc) => existsSync(join(docsDir, doc)))) {
     throw new GateError(
       `${feature.slug} has no plan yet: write its plan page (preview.html), decisions.md or spec.md in ${docsDir} first`,
     )
   }
-  markPlanShown(ctx, featureId)
+  if (!fromChat) markPlanShown(ctx, featureId)
   seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'plan_shown' })
-  if (!unattended(session)) emitPanelShow(ctx, featureId, { view: 'plan' })
+  appendThreadEvent(session.id, { type: 'plan_shown', featureId })
+  if (!fromChat && !unattended(session)) emitPanelShow(ctx, featureId, { view: 'plan' })
   return { shown: true }
+}
+
+/**
+ * `show_design` from an orchestrator chat (decisions 3, 27): post the card of a
+ * design the feature's lead already recorded, found by its path, in this chat.
+ * It records nothing and never approves: a design waits for the human's own yes.
+ */
+function showRecordedDesign(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { slug: string; path: string },
+): { recorded: true; state: DesignState } {
+  const feature = requireProjectFeature(ctx, session, input.slug)
+  const path = input.path.trim().startsWith('/') ? input.path.trim() : `/${input.path.trim()}`
+  const design = listDesigns(ctx, feature.id).find((d) => d.path === path)
+  if (!design) {
+    const known = listDesigns(ctx, feature.id).map((d) => d.path)
+    throw new GateError(
+      `${feature.slug}'s lead has recorded no design at ${path}` +
+        (known.length ? `; its designs: ${known.join(', ')}` : '; it has recorded none yet'),
+    )
+  }
+  seedFromTranscript(ctx, session.id)
+  appendThreadEvent(session.id, { type: 'design_shown', designId: design.id, featureId: feature.id })
+  return { recorded: true, state: design.state }
 }
 
 /** Record a yes or a rejection the human gave in words for a design (decisions 8, 20). */
@@ -1680,12 +1735,47 @@ export async function toolCreateFeature(
     session.kind !== 'project'
       ? await createFeatureFor(ctx, session, input)
       : await runAsActor('orchestrator', async () => {
-          const made = await createFeatureFor(ctx, session, input)
-          claimHold(ctx, made.id, session.id)
+          const choice = cutChoice(input)
+          const made = await createFeatureFor(
+            ctx,
+            session,
+            { ...input, brief: choice.brief },
+            { threadId: session.id, finish: choice.finish },
+          )
+          if (choice.chatOwns) giveToChat(ctx, made.id, session.id, choice.chatOwns, 'create')
           return made
         })
   recordFeatureAction(ctx, session, created.id, input.draft ? 'parked' : 'created')
   return created
+}
+
+/** How a cut feature is planned (decision 13): with the human in its chat, or by itself. */
+export type PlanningChoice = 'with-me' | 'self'
+
+const PLANNING_LINE: Record<PlanningChoice, string> = {
+  'with-me': 'Planning mode: grill with you',
+  self: 'Planning mode: plans itself',
+}
+
+/**
+ * The two cut-time choices (`every-feature-has-one-owner` decisions 4, 7, 13),
+ * read in this one place so they can later fold into one three-step question.
+ * Planning is not stored on the feature: it travels as today, in the brief
+ * (a "Planning mode:" line, added when the brief has none) and in the
+ * self-planning launch the chat starts later. The chat owns the feature from
+ * the start only when it plans itself and the chat takes it on; a grilled
+ * feature starts as the human's, with its finish recorded for the plan's yes.
+ * Omitted, a feature is planned with the human and finished by them.
+ */
+function cutChoice(input: CreateFeatureInput): { finish: FeatureFinish; chatOwns: ChatFinish | null; brief?: string } {
+  const planning = input.planning ?? 'with-me'
+  const finish = input.finish ?? 'you'
+  const chatOwns = planning === 'self' && finish !== 'you' ? finish : null
+  const brief =
+    input.planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
+      ? input.brief
+      : [input.brief?.trimEnd(), PLANNING_LINE[planning]].filter(Boolean).join('\n\n') + '\n'
+  return { finish, chatOwns, ...(brief !== undefined ? { brief } : {}) }
 }
 
 interface CreateFeatureInput {
@@ -1696,12 +1786,17 @@ interface CreateFeatureInput {
   draft?: boolean
   dependsOn?: string[]
   upNext?: boolean
+  /** From an orchestrator chat: how it is planned. */
+  planning?: PlanningChoice
+  /** From an orchestrator chat: how far the chat takes it. */
+  finish?: FeatureFinish
 }
 
 async function createFeatureFor(
   ctx: AppCtx,
   session: SessionRow,
   input: CreateFeatureInput,
+  chat?: { threadId: string; finish: FeatureFinish },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
   const dependsOn = input.dependsOn ?? []
@@ -1740,6 +1835,7 @@ async function createFeatureFor(
     baseBranch: input.baseBranch,
     brief: input.brief,
     draft: input.draft,
+    ...(chat ? { chat } : {}),
   })
   if (dependencyIds.length === 0) {
     return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
@@ -1857,6 +1953,23 @@ export interface ProjectContext {
   featureIndex: string[]
   /** Says where shipped features' docs live and how to reach an unlisted one. */
   featureIndexNote: string
+  /** The features the human took from this chat since it was last told, once each; see {@link takenByHumanNews}. */
+  takenByHuman?: string[]
+}
+
+/**
+ * The features the human took from this chat that it has not been told about
+ * yet, one line each (every-feature-has-one-owner decision 23): the chat is not
+ * woken for it; it reads this on its next turn, once. Empty when there is none.
+ */
+export function takenByHumanNews(ctx: AppCtx, sessionId: string): string[] {
+  return releasedFrom(ctx, sessionId)
+    .filter((r) => tellOnce(sessionId, `released:${r.featureId}:${r.at}`))
+    .map(
+      (r) =>
+        `The human took \`${r.slug}\` (${r.title}) from you on ${new Date(r.at).toISOString().slice(0, 16).replace('T', ' ')}: ` +
+        'it is theirs now. You may still send_to_feature and read it; do not act on it otherwise.',
+    )
 }
 
 /**
@@ -1924,6 +2037,7 @@ export async function toolGetProjectContext(
   const baseBranches = await readBaseBranches(project)
   const charter = projectCharter(session, input.full === true)
   const { selectable: _selectable, ...defaultBranches } = baseBranches
+  const taken = session.kind === 'project' ? takenByHumanNews(ctx, session.id) : []
   return {
     project: input.full
       ? project
@@ -1934,6 +2048,7 @@ export async function toolGetProjectContext(
     adrsNote: ADRS_NOTE,
     featureIndex: featureIndex(ctx, project.id, session.id),
     featureIndexNote: FEATURE_INDEX_NOTE,
+    ...(taken.length > 0 ? { takenByHuman: taken } : {}),
   }
 }
 
@@ -2493,9 +2608,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
-  // The plan and the designs (`designs-and-the-plan-get-their-own-place`): the feature's chat.
-  show_plan: ['chat'],
-  show_design: ['chat'],
+  // The plan and the designs (`designs-and-the-plan-get-their-own-place`): the feature's chat;
+  // an orchestrator chat posts their cards by slug (every-feature-has-one-owner decision 3).
+  show_plan: ['chat', 'project'],
+  show_design: ['chat', 'project'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
   show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'review', 'fix-drive-worker', 'scenario-worker'],
@@ -2816,6 +2932,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           draft: z.boolean().optional().describe('Park it as a draft instead of starting it.'),
           dependsOn: DEPENDS_ON_SCHEMA,
           upNext: z.boolean().optional().describe('With `draft` and `dependsOn`: start by itself once they ship.'),
+          planning: z
+            .enum(['with-me', 'self'])
+            .optional()
+            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (it plans itself and shows them).'),
+          finish: z
+            .enum(['you', 'show', 'merge'])
+            .optional()
+            .describe('The human’s choice: `you` finish it, `show` (build, show them, they merge) or `merge` (build and merge).'),
         },
       },
       async (args, extra) => {
@@ -3333,15 +3457,18 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Hand back to the orchestrator',
         description:
-          'Tell the orchestrator that holds this feature something it should act on, as a worker hands back to you: ' +
-          'the work is ready, you finished what it asked, or you are blocked on something it can settle. Not for a ' +
-          'question only the human can answer. Wakes it once with your summary and a line of the feature’s state. ' +
-          'Refused when no orchestrator holds the feature.',
+          'Bring something to the orchestrator chat that owns this feature (everything: plan yes, designs, ready, ' +
+          'conflicts, questions), or, when the human owns it, ask its chat about what reaches beyond the feature. ' +
+          'Wakes it once with your summary and a line of the feature’s state. Refused when the feature has no chat.',
         inputSchema: {
           summary: z
             .string()
             .min(1)
             .describe("Done, left, what you need, and what the human told you: the orchestrator never reads your chat."),
+          planAgreed: z
+            .boolean()
+            .optional()
+            .describe('True at the human’s plan yes on a feature its chat finishes: the feature passes to that chat.'),
         },
       },
       async (args, extra) => {
@@ -3398,10 +3525,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human a design',
         description:
           'Record a design page from the design server and post its card in the chat. Showing it ' +
-          'again resets it to waiting; start the server first. Returns { recorded, state }.',
+          'again resets it to waiting; start the server first. Returns { recorded, state }. From an ' +
+          'orchestrator chat: post the card of a design the feature’s lead recorded (`slug`, `path`); it never approves it.',
         inputSchema: {
           path: z.string().min(1).describe('The page path on the design server, no `?state=`.'),
-          title: z.string().min(1).max(120).describe('The screen the design is, in a few words.'),
+          title: z.string().min(1).max(120).optional().describe('The screen the design is, in a few words. Required in a feature’s chat.'),
+          slug: z.string().optional().describe("The feature's slug. A feature's own chat leaves it out."),
           width: z.number().int().min(200).max(3840).optional().describe('Layout width in CSS pixels.'),
           picture: z.string().min(1).optional().describe('A screenshot (png, jpg, gif, webp, svg) for its card.'),
         },
@@ -3421,12 +3550,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human the plan',
         description:
           'Post the plan card (plan page, decisions, spec) in this chat; call it when asking for the yes and after every redraw.',
-        inputSchema: {},
+        inputSchema: {
+          slug: z.string().optional().describe("The feature's slug. A feature's own chat leaves it out."),
+        },
       },
-      async (_args, extra) => {
+      async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolShowPlan(rs.ctx, rs.session))
+        return ok(toolShowPlan(rs.ctx, rs.session, args))
       },
     )
   }

@@ -32,7 +32,7 @@ import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { onDriveEnded, recoverCutOffDrives } from './services/git'
 import { handBackDriveWorkers, handBackOrphanedDriveWorkers } from './workers/drive'
 import { startModelDiscovery } from './services/model-discovery'
-import { sweepHolders } from './services/holding'
+import { moveOwners, sweepHolders } from './services/holding'
 import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
@@ -253,6 +253,8 @@ export async function startServer(): Promise<void> {
 
   // Give features in flight their holder, once, before any news goes out.
   sweepHolders(ctx)
+  // …then move them to one owner each, once (every-feature-has-one-owner decision 24).
+  moveOwners(ctx)
 
   // Tell a feature's holder when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).

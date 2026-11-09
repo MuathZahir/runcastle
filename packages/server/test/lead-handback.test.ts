@@ -7,6 +7,7 @@ import { recordFeatureAction, toolTakeFeature } from '../src/mcp/orchestrator-to
 import { toolHandBack } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
+import { OWNER_CHANGED } from '../src/services/holding'
 import { handbackStateLine, LEAD_HANDED_BACK } from '../src/services/lead-handback'
 import { HANDBACK_CLEARED, markHumanMessage } from '../src/services/lead-status'
 import { getFeatureRow } from '../src/services/repo'
@@ -69,15 +70,61 @@ describe('hand_back from a lead', () => {
     expect(listAfter(ctx, f.id, 0).find((e) => e.type === LEAD_HANDED_BACK)?.data).toMatchObject({ holderId: holder })
   })
 
-  it('is refused when no orchestrator holds the feature', async () => {
+  it('is refused when the feature has neither an owner chat nor a chat, pointing to wait_for_you', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'alone' })
     await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(GateError)
-    await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/no orchestrator holds this feature/)
+    await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/no orchestrator chat .*wait_for_you/)
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === LEAD_HANDED_BACK)).toBe(false)
   })
 
   it('is refused once the feature has shipped', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'done', heldBy: orchestrator(), status: 'shipped' })
-    await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/no orchestrator holds/)
+    await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/no orchestrator chat/)
+  })
+
+  it('goes to the owner chat, not the feature’s older chat', async () => {
+    const owner = orchestrator()
+    const origin = orchestrator()
+    const f = seedFeature(ctx, projectId, { slug: 'owned', heldBy: owner, chatId: origin, finish: 'show' })
+
+    await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready.' })
+
+    expect(promptsOf(owner)).toHaveLength(1)
+    expect(promptsOf(origin)).toHaveLength(0)
+  })
+
+  it('on a human-owned feature asks its chat: the handback mark is set, the owner stays the human', async () => {
+    const chat = orchestrator()
+    const f = seedFeature(ctx, projectId, { slug: 'asking', chatId: chat, finish: 'show' })
+
+    const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Does this touch the sidebar feature?' })
+
+    expect(result.passed).toBeUndefined()
+    const [prompt] = promptsOf(chat)
+    expect(prompt.text).toContain('The human owns this feature')
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: chat, finish: 'show' })
+    expect(getFeatureRow(ctx, f.id).handback?.summary).toBe('Does this touch the sidebar feature?')
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
+  })
+
+  it('at the plan yes on a feature its chat finishes, passes the feature to the chat first, then delivers', async () => {
+    const chat = orchestrator()
+    const f = seedFeature(ctx, projectId, { slug: 'grilled', chatId: chat, finish: 'merge' })
+
+    const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Plan agreed.', planAgreed: true })
+
+    expect(result.passed).toBe(true)
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: chat, finish: 'merge', handback: { summary: 'Plan agreed.' } })
+    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
+    expect(types.indexOf(OWNER_CHANGED)).toBeLessThan(types.indexOf(LEAD_HANDED_BACK))
+    expect(promptsOf(chat)[0]?.text).toContain('you own it now')
+  })
+
+  it('a plan yes on a feature the human finishes changes no owner', async () => {
+    const chat = orchestrator()
+    const f = seedFeature(ctx, projectId, { slug: 'mine', chatId: chat, finish: 'you' })
+    await toolHandBack(ctx, leadOf(f.id), { summary: 'Plan agreed.', planAgreed: true })
+    expect(getFeatureRow(ctx, f.id).heldBy).toBeUndefined()
   })
 
   it('is no tool for a side chat or a worker', async () => {

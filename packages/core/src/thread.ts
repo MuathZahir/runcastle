@@ -434,12 +434,17 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
   /** An agent showed the human a file (`show_file`). */
   z.object({ type: z.literal('file_shown'), file: ShownFile }),
-  /** What a review pass left, shown as one package (`show_review_package`, or the pass's end). */
-  z.object({ type: z.literal('review_package'), ticketId: z.string() }),
+  /**
+   * What a review pass left, shown as one package (`show_review_package`, or the pass's end).
+   * The three card events carry `featureId`, the feature the card belongs to, so an
+   * orchestrator chat's log says which feature it showed (every-feature-has-one-owner
+   * decision 17: which feature a chat asks about). Absent in logs written before.
+   */
+  z.object({ type: z.literal('review_package'), ticketId: z.string(), featureId: z.string().optional() }),
   /** The agent showed the feature's plan (`show_plan`): a plan card. */
-  z.object({ type: z.literal('plan_shown') }),
+  z.object({ type: z.literal('plan_shown'), featureId: z.string().optional() }),
   /** The agent showed one recorded design (`show_design`): a design card, which reads the record by id. */
-  z.object({ type: z.literal('design_shown'), designId: z.string() }),
+  z.object({ type: z.literal('design_shown'), designId: z.string(), featureId: z.string().optional() }),
   /** An orchestrator tool changed a feature (`create_feature`, `merge_feature`…): a row of the turn's features card. */
   z.object({
     type: z.literal('feature_acted'),
@@ -527,9 +532,12 @@ export type ThreadItem =
   /** The files a turn showed. It stays in view when the turn's work folds. */
   | { kind: 'shown'; id: string; files: ShownFile[] }
   /** A review pass's package: one attachment that opens everything the pass left. */
-  | { kind: 'review_package'; id: string; ticketId: string }
-  /** The plan, shown as a card; `older` when a later plan card follows it (it still opens the current plan). */
-  | { kind: 'plan_card'; id: string; older?: boolean }
+  | { kind: 'review_package'; id: string; ticketId: string; featureId?: string }
+  /**
+   * The plan, shown as a card; `older` when a later plan card of the same feature follows it
+   * (it still opens the current plan). `featureId`: the feature, when an orchestrator chat showed it.
+   */
+  | { kind: 'plan_card'; id: string; older?: boolean; featureId?: string }
   /**
    * The designs a turn showed, one card each, in order. `older` names the
    * designs a later card for the same design follows (decision 19).
@@ -871,13 +879,15 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
  * card for each stays unmarked.
  */
 function markOlderCards(items: ThreadItem[]): void {
-  let planSeen = false
+  // Per feature: an orchestrator chat can show several features' plans.
+  const plansSeen = new Set<string>()
   const designsSeen = new Set<string>()
   for (let n = items.length - 1; n >= 0; n--) {
     const item = items[n]
     if (item.kind === 'plan_card') {
-      if (planSeen) item.older = true
-      planSeen = true
+      const key = item.featureId ?? ''
+      if (plansSeen.has(key)) item.older = true
+      plansSeen.add(key)
     } else if (item.kind === 'design_cards') {
       const older = new Set<string>()
       for (let d = item.designIds.length - 1; d >= 0; d--) {
@@ -1455,10 +1465,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'review_package':
-        add({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId }, e.at)
+        add({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId, ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
         break
       case 'plan_shown':
-        add({ kind: 'plan_card', id: `plan_card:${e.i}` }, e.at)
+        add({ kind: 'plan_card', id: `plan_card:${e.i}`, ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
         break
       case 'design_shown': {
         // Designs shown one after another in a turn are one group of cards, as shown files are.

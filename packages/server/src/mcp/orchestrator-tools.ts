@@ -22,7 +22,7 @@ import { featureDocPath } from '../services/feature-docs'
 import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
-import { holderName, requireHold, takeHold } from '../services/holding'
+import { type ChatFinish, chatNameOf, holderName, requireHold, takeFeature } from '../services/holding'
 import { clearHandback } from '../services/lead-status'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
@@ -39,8 +39,9 @@ import type { HeaderCarrier } from './server'
  * The orchestrator's tools (`one-orchestrator-no-mode`): every orchestrator
  * is the orchestrator. What it may act on is drawn by its instructions (decision
  * 2), and by one server rule (`threads-hold-features`): every acting tool goes
- * through {@link requireHeldFeature}, so a thread cannot act on a feature another
- * thread holds. Beyond that each tool refuses what its service already refuses,
+ * through {@link requireHeldFeature}, so a chat acts only on features it owns
+ * (`every-feature-has-one-owner` decision 19; `send_to_feature` alone also
+ * reaches a human-owned one). Beyond that each tool refuses what its service already refuses,
  * with a sentence saying why, as the human's buttons do.
  */
 
@@ -118,17 +119,27 @@ export function recordFeatureAction(
   clearHandback(ctx, featureId, 'orchestrator')
 }
 
-/** Make this thread the holder of a feature, held or not, waking nothing on it. */
+/**
+ * On the human's words ("run X for me"), make this chat the feature's owner and
+ * its chat, taking it as far as `finish` says (default: shows the human before
+ * merging), whoever owned it. Wakes nothing on it.
+ */
 export const toolTakeFeature = orchestratorTool(
   (
     ctx: AppCtx,
     session: SessionRow,
-    input: { slug: string },
-  ): { slug: string; heldBy: string; takenFrom: string | null } => {
+    input: { slug: string; finish?: ChatFinish },
+  ): { slug: string; heldBy: string; takenFrom: string | null; finish: ChatFinish } => {
     const feature = requireProjectFeature(ctx, session, input.slug)
-    const { from } = takeHold(ctx, session, feature)
+    const finish = input.finish ?? 'show'
+    const { from } = takeFeature(ctx, session, feature, finish)
     recordFeatureAction(ctx, session, feature.id, 'taken')
-    return { slug: input.slug, heldBy: holderName(session), takenFrom: from }
+    return {
+      slug: input.slug,
+      heldBy: holderName(session),
+      takenFrom: from && from !== session.id ? chatNameOf(ctx, from) : null,
+      finish,
+    }
   },
 )
 
@@ -337,9 +348,15 @@ export function registerOrchestratorTools(
     {
       title: 'Take a feature',
       description:
-        'Make this thread the holder of a feature: you hear its news and may act on it. Use it only ' +
-        'when the human asked you to act on this feature here.',
-      inputSchema: { slug: SlugInput },
+        'Make this chat the owner of a feature and its chat: you hear its news and may act on it. Use it only ' +
+        'on the human’s words ("run X for me"), never on your own judgement.',
+      inputSchema: {
+        slug: SlugInput,
+        finish: z
+          .enum(['show', 'merge'])
+          .optional()
+          .describe('`show` (default): build it and show the human before merging. `merge`: build and merge it.'),
+      },
     },
     toolTakeFeature,
   )
