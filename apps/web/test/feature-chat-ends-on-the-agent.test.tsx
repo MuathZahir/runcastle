@@ -42,7 +42,7 @@ let column: ReturnType<typeof useFeatureChatColumn> | undefined
 function Chat({ waits }: { waits: FeatureNeed | null }) {
   const full = { ...fixture({ id: 'feat_1' }), sessions: [], need: waits } as FeatureFull
   column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
-  return <FeatureChat full={full} column={column} events={[]} hidden={false} holdStart start={async () => 'th_main'} onView={() => {}} />
+  return <FeatureChat full={full} column={column} events={[]} hidden={false} holdStart start={async () => 'th_main'} onPlanItYourself={async () => undefined} onView={() => {}} />
 }
 
 afterEach(() => {
