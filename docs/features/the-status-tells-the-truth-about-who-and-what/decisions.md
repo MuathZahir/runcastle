@@ -61,3 +61,7 @@ Planned without the human (a self-planning run, 2026-11-09). Decisions 1–4 wer
 ## 15. A handback holds only what stood when the lead handed back
 **Decision:** A machine state (merge conflict, Ready to test, Ready to merge, stopped) is held only when it already stood at the moment the lead called `hand_back`; that is what the handback addressed to the orchestrator. One that appears after the handback reads Needs you and pings, as without a holder. Narrows decision 6.
 **Why:** The orchestrator hears of a feature only through the lead's handback and a few machine events; a conflict or stop arriving later would otherwise be hidden from the human for an hour while no orchestrator knew of it — the bug this feature exists to fix.
+
+## 16. While a handback stands, a lead's chat reply ending in "?" does not count as a question
+**Decision:** The quiet "the lead replied with a question" answer is skipped while a handback mark stands; an explicit `wait_for_you` or an open question still shows as Needs you. Decided by the lead while building (the "Who a wait is for" worker's call), 2026-11-09.
+**Why:** A lead's turn ends right after `hand_back`, usually on words that report to the human; without this, those closing words would always outrank the handback and the feature would never read "With the orchestrator". The quiet answer never pinged anyway.
