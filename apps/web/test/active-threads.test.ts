@@ -48,6 +48,13 @@ describe('which threads the Orchestrator lists', () => {
     expect(active(thread('a', { lastHumanAt: now - WRITTEN_KEEPS_LISTED_MS }))).toBe(false)
   })
 
+  it('lists a thread with words typed and not sent (leaving a new chat must not lose it)', () => {
+    const drafted = (id: string) => id === 'a'
+    expect(active(thread('a'))).toBe(false)
+    expect(threadIsActive(thread('a'), { current: null, features: [], now, drafted })).toBe(true)
+    expect(threadIsActive(thread('b'), { current: null, features: [], now, drafted })).toBe(false)
+  })
+
   it('lists a thread holding a feature in flight or up next', () => {
     expect(active(thread('a'), [held('f', 'a')])).toBe(true)
     expect(active(thread('a'), [held('f', 'a', { status: 'draft', upNext: true })])).toBe(true)

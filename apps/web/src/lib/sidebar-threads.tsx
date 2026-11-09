@@ -82,16 +82,29 @@ export function heldFeatures(threadId: string, features: readonly FeatureListIte
 /**
  * Whether the Orchestrator's list shows a thread (the-sidebar-shows-only-active-threads):
  * it is working or asking, it holds something, it is in front, or the human wrote
- * in it lately. Everything else lives on the Conversations page.
+ * in it lately, or left words unsent in it. Everything else lives on the Conversations page.
  */
 export function threadIsActive(
   thread: ThreadEntry,
-  { current, features, now }: { current: string | null; features: readonly FeatureListItem[]; now: number },
+  {
+    current,
+    features,
+    now,
+    drafted = () => false,
+  }: {
+    current: string | null
+    features: readonly FeatureListItem[]
+    now: number
+    /** Whether the human left words unsent in a thread's composer (`hasDraft`). */
+    drafted?: (threadId: string) => boolean
+  },
 ): boolean {
   return (
     thread.state !== 'idle' ||
     thread.id === current ||
     heldFeatures(thread.id, features).length > 0 ||
+    // Words typed and not yet sent: leaving a new chat must not lose the place they wait in.
+    drafted(thread.id) ||
     (thread.lastHumanAt !== undefined && now - thread.lastHumanAt < WRITTEN_KEEPS_LISTED_MS)
   )
 }

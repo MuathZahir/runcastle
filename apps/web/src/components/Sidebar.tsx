@@ -21,7 +21,7 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
 import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { FeatureSidebar } from './workers/FeatureSidebar'
-import { useThreadActions } from '../lib/use-thread'
+import { hasDraft, useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT, standIn } from '../lib/chat-sessions'
 import {
   IconArchive,
@@ -446,7 +446,7 @@ export function Sidebar(props: SidebarProps) {
                       keep={(t) =>
                         // An open errand's chat keeps its row, which is how it is closed.
                         t.id === projectThreads.errand?.threadId ||
-                        threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
+                        threadIsActive(t, { current: projectThreads.current, features, now: Date.now(), drafted: hasDraft })
                       }
                       markFor={(t) => {
                         const held = heldFeatures(t.id, features)

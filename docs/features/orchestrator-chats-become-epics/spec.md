@@ -23,7 +23,7 @@ Every orchestrator chat names itself (1–3 words, Title Case, a noun phrase) on
 - **The one-off naming pass.** Once, on the first server start with this feature, each orchestrator chat listed at that moment (by the listing rule above) whose name neither the orchestrator nor the human set gets a name from one short headless model run, given only its title and its first messages, in the way the token check already calls `claude -p`. The result is written as the orchestrator's `title` event, and a project-level record says the pass ran, so it never repeats. A failed run leaves that chat to name itself on its next reply. If this needs machinery out of proportion, it falls back to that alone and the ready handback says why.
 - **Skill lines** (project skill, kept short): name your epic in your first reply, 1–3 words, Title Case, a noun phrase, or on your next reply if your chat has no name of yours yet; suggest a new epic when a request does not fit the name; call it the epic when you speak to the human.
 - **Words.** Each visible "Orchestrator" (the sidebar, the chat header, the Conversations page title and the "All N" link, the command palette, the create menu's "New chat") becomes epic wording. The feature header's first crumb comes from the origin chat, not the holder, and stays after the feature ships.
-- **The new-chat fix.** First reproduce it: create a chat, send a first message, open a feature, come back. The code keeps a chat listed for a day once a human prompt is logged in it, so the likely causes are a first send that never logged a prompt on that chat (it was still titled "New chat"), or the list hiding all chats when a feature is open, which the always-on list removes. The fix makes a chat count as written in from the moment its first message is sent.
+- **The new-chat fix.** Traced: a sent first message is logged as the human's and keeps the chat listed (a server test now guards it). The chat that dropped had words typed in its box and not sent: it had no log yet, so it was idle with no human message, and leaving it dropped it (it was still called "New chat", which only an unsent chat is). The rule that decides whether a chat is listed now also keeps a chat whose box holds unsent words (the draft the browser already keeps per chat).
 
 ## Seams
 
@@ -33,7 +33,8 @@ Every orchestrator chat names itself (1–3 words, Title Case, a noun phrase) on
 - **Thread naming (existing, server).** The precedence with the orchestrator's name added. Extend the thread-naming tests.
 - **The naming pass (new, server).** With the model call stubbed: names only listed chats with no orchestrator or human name, writes the orchestrator's `title` event, and does nothing on a second start.
 - **The naming tool (new, MCP).** Called by an orchestrator session: the chat list returns the new title; a human-renamed chat refuses and keeps its name; a lead session does not see the tool.
-- **The chat list (existing, tRPC `thread.list`).** A chat with a sent first message reports that the human wrote in it, whether or not its log has caught up.
+- **The chat list (existing, tRPC `thread.list`).** A chat with a sent first message reports that the human wrote in it.
+- **Whether a chat is listed, drafts (existing, web).** A chat with unsent words in its box is listed.
 - **The feature header crumb (existing, web).** It names the origin chat.
 
 ## Out of scope
