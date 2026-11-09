@@ -825,6 +825,8 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__show_plan',
   'mcp__runcastle__show_design',
   'mcp__runcastle__set_design_state',
+  // An orchestrator names its epic on its first reply, a headless wake's included.
+  'mcp__runcastle__name_epic',
 ]
 
 /**

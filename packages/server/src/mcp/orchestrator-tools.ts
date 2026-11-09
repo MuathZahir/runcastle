@@ -30,6 +30,7 @@ import {
   requireProjectById,
   rowToFeature,
 } from '../services/repo'
+import { EPIC_NAME_MAX, writeEpicName } from '../threads/epic-name'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import type { HeaderCarrier } from './server'
@@ -126,6 +127,24 @@ export const toolTakeFeature = orchestratorTool(
     return { slug: input.slug, heldBy: holderName(session), takenFrom: from }
   },
 )
+
+/**
+ * Name this chat's epic (orchestrator-chats-become-epics decision 12): trimmed,
+ * non-empty, at most {@link EPIC_NAME_MAX} characters. Refused, with nothing
+ * changed, once the human renamed the chat.
+ */
+export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: string }): { name: string } {
+  requireOrchestratorSession(session)
+  const name = input.name.replace(/\s+/g, ' ').trim()
+  if (!name) throw new InvalidInputError('name the epic: the name is empty.')
+  if (name.length > EPIC_NAME_MAX) {
+    throw new InvalidInputError(`an epic's name is at most ${EPIC_NAME_MAX} characters; "${name}" has ${name.length}. Use 1–3 words.`)
+  }
+  seedFromTranscript(ctx, session.id)
+  const out = writeEpicName(session.id, name)
+  if (!out.named) throw new GateError(`The human named this chat "${out.humanName}"; keep it.`)
+  return { name: out.name }
+}
 
 /**
  * Start a draft, as Start does: refused where Start is. The orchestrator's own
@@ -326,6 +345,18 @@ export function registerOrchestratorTools(
       return ok(await tool(rs.ctx, rs.session, args))
     }) as never)
   }
+
+  acting(
+    'name_epic',
+    {
+      title: 'Name your epic',
+      description:
+        'Name this chat, your epic: 1–3 words, Title Case, a noun phrase ("Payment System"). ' +
+        'Refused once the human renamed it.',
+      inputSchema: { name: z.string().describe(`The epic's name, at most ${EPIC_NAME_MAX} characters.`) },
+    },
+    toolNameEpic,
+  )
 
   acting(
     'take_feature',

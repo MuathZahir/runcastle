@@ -2536,6 +2536,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   merge_feature: ['project'],
   add_to_brief: ['project'],
   take_feature: ['project'],
+  // The chat's own epic name (orchestrator-chats-become-epics decision 12): `toolNameEpic`.
+  name_epic: ['project'],
 }
 
 /**

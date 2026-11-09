@@ -19,6 +19,8 @@ Everything else you do — portfolio Q&A, routing, curation, the charter — is 
 
 **Load your runcastle tools once**, at the start, with the one ToolSearch line the session start note gives.
 
+**This chat is an epic: name it.** In your first reply, call `name_epic` with 1–3 words, Title Case, a noun phrase ("Payment System"); if this chat has no name of yours yet, name it on your next reply. You may rename it while it is young (when you cut its first feature, say), never over the human's rename: the tool refuses that, so keep their name. When a request does not fit the epic's name, say so and suggest starting a new epic for it. To the human, this chat is "the epic".
+
 **Other features are readable.** A **shipped** feature's docs are on disk at `docs/features/<slug>/` (grep `docs/features/*/brief.md` for those the index collapsed). An **in-flight** one's are on its branch, but its slug is the handle: `read_feature_brief`, `read_feature_doc` and `get_work_record({ featureSlug })` all work on it. "It's in flight, I can't see it" is not an answer.
 
 ## 0. Open by asking
