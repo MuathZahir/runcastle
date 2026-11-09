@@ -20,3 +20,7 @@ The brief's "every project's features shown at once" form is dropped: at seven p
 ## 4. The approved rail look
 **Decision:** The human approved both design pages (`apps/web/preview/project-switching.html`, `apps/web/preview/all-projects.html`) as the look to build. Tiles show two letters (one for a one-word name) and the needs-you mark is a dot. Unselected tiles sit slightly left in a dimmer grey; the selected tile alone is bright, on a quiet filled surface that glides to the new tile on switch (~¼ s ease-out, instant under reduced motion); no edge bar. The focus ring shows for keyboard focus only. "All projects" is the rail's top icon; "+" (open a project) its foot. The "All projects" page gives a card only to projects with something waiting or running, and one line to each quiet project.
 **Why:** Approved by the human in the Design tab after four passes (calmer tiles, receding unselected tiles with a gliding selection, no hover card).
+
+## 5. Rail order: fixed, drag to reorder
+**Decision:** The rail keeps a fixed order the human sets by dragging tiles, on desktop and on the phone strip. The order is saved on the server, per project, so every device shows the same order. A newly opened project goes to the end. The "All projects" page and the Ctrl+K palette's project group follow the same order.
+**Why:** A rail is fast because each project stays in the same spot; recency would move tiles on every switch. The human chose drag over the insertion order so they can put the projects they use most on top.
