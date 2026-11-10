@@ -38,6 +38,13 @@ import { appendThreadEvent } from '../../../packages/server/src/threads/log.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
 const PROJECT = process.env.SCENARIO_PROJECT || 'runcastle-demo'
+/**
+ * Set by lead-replied-workers-at-work.ts: only the workers at work (working,
+ * queued), so the lead's last word is a plain reply while nobody waits on the
+ * human — the state that read "Needs your answer" before calmer-worker-chats
+ * decision 13.
+ */
+const AT_WORK_ONLY = process.env.SCENARIO_WORKERS_AT_WORK === '1'
 const MODEL = 'claude-opus-5-5'
 const MINUTE = 60_000
 
@@ -54,7 +61,7 @@ interface SeededWorker {
   outcome?: { kind: 'landed' | 'sent-back' | 'dropped'; note?: string }
 }
 
-const WORKERS: SeededWorker[] = [
+const ALL_WORKERS: SeededWorker[] = [
   { label: 'Header', purpose: 'The sidebar header: back, title and "+"', kind: 'with-you', status: 'needs-you', ago: 40 },
   { label: 'Thread list', purpose: 'Rows grouped by status, done folded', kind: 'with-you', status: 'needs-you', ago: 38 },
   { label: 'Worker list data', purpose: 'Group and order workers by status', kind: 'on-its-own', status: 'working', ago: 36 },
@@ -103,6 +110,8 @@ const WORKERS: SeededWorker[] = [
   },
   { label: 'Search box', purpose: 'Filter the worker list', kind: 'on-its-own', status: 'failed', ago: 60, failure: 'its container stopped unexpectedly' },
 ]
+
+const WORKERS = AT_WORK_ONLY ? ALL_WORKERS.filter((w) => w.status === 'working' || w.status === 'queued') : ALL_WORKERS
 
 /**
  * Only ever the drive's own tree. Every path helper reads `RUNCASTLE_DATA_DIR`
@@ -207,8 +216,8 @@ async function main(): Promise<void> {
     const run = process.env.RUNCASTLE_SCENARIO_RUN || randomBytes(3).toString('hex')
     const feature = await createFeature(ctx, {
       projectId: project.id,
-      title: `Workers feature ${run}`,
-      oneLiner: 'Seeded by the Feature with workers scenario.',
+      title: AT_WORK_ONLY ? `Workers at work ${run}` : `Workers feature ${run}`,
+      oneLiner: AT_WORK_ONLY ? 'Seeded by the Lead replied, workers at work scenario.' : 'Seeded by the Feature with workers scenario.',
     })
     const worktree = worktreeDir(project.id, feature.slug)
     const now = Date.now()
@@ -242,6 +251,10 @@ async function main(): Promise<void> {
     }
     leadStarts(lead.id, 2, 'What about the empty page?', 'Started one more worker for the empty states; it waits for a slot.', later)
 
+    if (AT_WORK_ONLY) {
+      console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/f/${encodeURIComponent(feature.slug)}`)
+      return
+    }
     // A side chat from before workers: listed in Done, read-only (decision 23).
     const side = createSessionRow(ctx, { featureId: feature.id, kind: 'side', worktreePath: worktree, openedBeside: lead.id })
     setSessionTitle(ctx, side.id, 'Why is the PDF font blurry?')
