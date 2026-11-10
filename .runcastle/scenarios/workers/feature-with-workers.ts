@@ -4,7 +4,8 @@
  * handed back, one landed, one dropped, one failed — beside one old side chat
  * from before workers. The lead's chat holds the handbacks and the failure as
  * runcastle's lines, so its cards draw (interactive-workers decisions 3, 21, 23,
- * 24).
+ * 24), and the turns that started the workers, so its "Started N workers" cards
+ * draw with each worker's live status (calmer-worker-chats decision 6).
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle, with the drive identity, the `.runcastle/drive.env` overlay and a
@@ -118,6 +119,24 @@ function exchange(threadId: string, n: number, human: string, agent: string): vo
   appendThreadEvent(threadId, { type: 'turn_ended', reason: 'end_turn' })
 }
 
+/**
+ * A lead's turn that starts workers: its `start_worker` calls, its words, then a
+ * `worker_started` event per worker, as the worker service appends them — the
+ * chat folds them into one "Started N workers" card (calmer-worker-chats decision 6).
+ */
+function leadStarts(leadId: string, n: number, human: string, agent: string, started: { id: string; w: SeededWorker }[]): void {
+  appendThreadEvent(leadId, { type: 'prompt', id: `p_${n}`, text: human, source: 'human' })
+  appendThreadEvent(leadId, { type: 'turn_started' })
+  for (const { id } of started) {
+    appendThreadEvent(leadId, { type: 'tool', call: { id: `start_${id}`, kind: 'other', title: 'mcp__runcastle__start_worker', status: 'completed' } })
+  }
+  appendThreadEvent(leadId, { type: 'agent_text', messageId: `m_${n}`, text: agent })
+  for (const { id, w } of started) {
+    appendThreadEvent(leadId, { type: 'worker_started', workerId: id, label: w.label, purpose: w.purpose, kind: w.kind })
+  }
+  appendThreadEvent(leadId, { type: 'turn_ended', reason: 'end_turn' })
+}
+
 /** Runcastle's line to the lead, as the worker service delivers it. */
 function toLead(leadId: string, n: number, text: string, display: PromptDisplay): void {
   appendThreadEvent(leadId, { type: 'prompt', id: `r_${n}`, text: `[runcastle] ${text}`, source: 'runcastle', display })
@@ -190,16 +209,19 @@ async function main(): Promise<void> {
     // The lead's chat: the plan the human said yes to, which started the workers.
     const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, model: { id: MODEL, runtime: 'claude-code' } })
     markSessionEnded(ctx, lead.id)
-    exchange(
+    const seeded = WORKERS.map((w) => ({ id: seedWorker(ctx, feature, lead.id, w, now), w }))
+    // The plan's turn started all but the newest; a later turn, after the handbacks, started that one.
+    const later = seeded.filter(({ w }) => w.status === 'queued')
+    leadStarts(
       lead.id,
       1,
       'The plan looks right. Go.',
       'Started the workers: the header and the thread list with you, the data changes on their own. I will land each handback as it comes.',
+      seeded.filter((s) => !later.includes(s)),
     )
 
     let line = 0
-    for (const w of WORKERS) {
-      const id = seedWorker(ctx, feature, lead.id, w, now)
+    for (const { id, w } of seeded) {
       if (w.handback) {
         toLead(lead.id, ++line, `Worker "${w.label}" handed back.`, {
           handback: { workerId: id, label: w.label, kind: w.kind, ...w.handback, threadId: id },
@@ -211,6 +233,7 @@ async function main(): Promise<void> {
         })
       }
     }
+    leadStarts(lead.id, 2, 'What about the empty page?', 'Started one more worker for the empty states; it waits for a slot.', later)
 
     // A side chat from before workers: listed in Done, read-only (decision 23).
     const side = createSessionRow(ctx, { featureId: feature.id, kind: 'side', worktreePath: worktree, openedBeside: lead.id })
