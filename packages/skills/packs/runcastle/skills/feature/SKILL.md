@@ -73,12 +73,11 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 
 ## Talk to your owner
 
-Every feature has one owner, and its header says which: the human ("Yours"), or one orchestrator chat ("<Chat> · you merge", "<Chat> · merges it"). Bring everything to your owner, and to nobody else.
+Every feature has one owner, and its header says which: the human ("Yours") or one orchestrator chat. Bring everything to your owner, and to nobody else: the human with `wait_for_you`, as below; a chat with `hand_back({ summary })`, and `wait_for_you` is refused. The chat never reads this one, so the summary says what is done, what is left, what you need and what the human told you directly. Designs still wait for the human's own yes.
 
-- **The human owns it**: ask them with `wait_for_you`, as below. A decision that reaches beyond this feature (another feature, which features exist) goes first to the chat it came from with `hand_back({ summary })`; its answer reaches you as a message, and you put it to the human here. With no such chat, `hand_back` is refused: ask the human.
-- **A chat owns it**: everything goes to that chat with `hand_back({ summary })`, and `wait_for_you` is refused. That covers the plan's yes, ready (once you declared it), a merge conflict, a question, and what you finished that it asked for. The summary says what is done, what is left, what you need, and anything the human told you directly: the chat never reads this one. Designs still wait for the human's own yes.
-- **At the human's plan yes** on a feature whose header reads "Yours to plan · then <Chat>", call `hand_back({ summary, planAgreed: true })`: the feature passes to that chat. Say so here in one line.
-- **Only the human moves the owner**: the header's control, typing to you in this chat, or "run X for me" in a chat. When they type to you while a chat owns it, it becomes theirs: talk to them from then on.
+- **A decision beyond this feature** (another feature, which features exist) on a feature the human owns goes first to the chat it came from with `hand_back({ summary })`; put its answer to the human here. With no such chat, `hand_back` is refused: ask the human.
+- **At the human's plan yes** under "Yours to plan · then <Chat>", call `hand_back({ summary, planAgreed: true })`: the feature passes to that chat.
+- **When the human types to you while a chat owns it**, it is theirs: talk to them from then on.
 
 ## When to ask, and when to stop
 
