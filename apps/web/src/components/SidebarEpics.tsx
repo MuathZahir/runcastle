@@ -182,6 +182,8 @@ export interface SidebarEpicsProps {
   featureActions?: (f: FeatureListItem) => FeatureAction[]
   /** A feature's way down to its workers, when it has some. */
   workersFor?: (f: FeatureListItem) => { live: number; onOpen: () => void } | undefined
+  /** The owner choices a feature row's menu carries (every-feature-has-one-owner decision 11); none for a feature with no chat. */
+  ownerChoicesFor?: (f: FeatureListItem) => ReactNode
   /** What the list calls a chat: "epic" (decision 14), or "chat". */
   noun?: 'epic' | 'chat'
 }
@@ -204,12 +206,14 @@ export function SidebarEpics({
   epicActions,
   featureActions,
   workersFor,
+  ownerChoicesFor,
   noun = 'epic',
 }: SidebarEpicsProps) {
   const groups = orderEpicList(epics, other)
   const many = noun === 'epic' ? 'Epics' : 'Chats'
   const row = (f: FeatureListItem, words: string) => {
     const workers = workersFor?.(f)
+    const ownerChoices = ownerChoicesFor?.(f)
     return (
       <SidebarFeatureRow
         key={f.id}
@@ -219,6 +223,7 @@ export function SidebarEpics({
         actions={featureActions?.(f) ?? []}
         nested
         words={words}
+        {...(ownerChoices ? { ownerChoices } : {})}
         {...(workers ? { workers } : {})}
       />
     )

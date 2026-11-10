@@ -262,11 +262,14 @@ export function SidebarFeatureRow({
   needsYou = false,
   workers,
   words: wordsProp,
+  ownerChoices,
 }: {
   f: FeatureListItem
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
+  /** The owner choices atop the row's "…" menu (every-feature-has-one-owner decision 11); none for a feature with no chat. */
+  ownerChoices?: ReactNode
   nested?: boolean
   /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
   onNewThread?: () => void
@@ -294,7 +297,7 @@ export function SidebarFeatureRow({
   const lane = triageOf(f)
   const nm = lane === 'needsYou' ? needsMe(f) : null
   const words = wordsProp ?? featureStateWords(f)
-  const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
+  const menu = actions.length > 0 || ownerChoices ? <FeatureActionsMenu actions={actions} {...(ownerChoices ? { choices: ownerChoices } : {})} /> : undefined
   const row = (
     <TwoLineRow
       title={f.title}

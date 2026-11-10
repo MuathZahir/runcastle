@@ -20,7 +20,9 @@ describe('FeatureSkeleton', () => {
     expect(html).toContain('aria-hidden="true"')
   })
 
-  it('is shaped like the feature page: title, branch, one step per phase, three summary rows', () => {
+  it('is shaped like the feature page: owner, title, branch, one step per phase, three summary rows', () => {
+    // The header's trail starts with the owner control (every-feature-has-one-owner decision 11).
+    expect(count('owner')).toBe(1)
     expect(count('title')).toBe(1)
     expect(count('branch')).toBe(1)
     expect(count('step')).toBe(PHASE_ORDER.length)

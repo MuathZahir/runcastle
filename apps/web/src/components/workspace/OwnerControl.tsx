@@ -135,18 +135,41 @@ export function OwnerControl({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-80">
-        <DropdownMenuPrimitive.RadioGroup
-          value={current}
-          onValueChange={(v) => {
-            if (v !== current) onChoose(v as OwnerChoice)
-          }}
-        >
-          <OwnerOption value="you" label={w.chooseYou} hint={w.hintYou} />
-          <OwnerOption value="show" label={w.chooseShow(chat)} hint={w.hintShow} />
-          <OwnerOption value="merge" label={w.chooseMerge(chat)} hint={w.hintMerge} />
-        </DropdownMenuPrimitive.RadioGroup>
+        <OwnerChoices current={current} chat={chat} labels={w} onChoose={onChoose} />
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/**
+ * The menu's three choices, the held one checked: the owner control's whole
+ * menu, and the same choices in the feature row's "…" menu (decision 11). Must
+ * sit inside a `DropdownMenuContent`.
+ */
+export function OwnerChoices({
+  current,
+  chat,
+  labels,
+  onChoose,
+}: {
+  current: OwnerChoice
+  /** The feature's chat, which the two chat choices name. */
+  chat: string
+  labels?: Partial<OwnerLabels>
+  onChoose: (choice: OwnerChoice) => void
+}) {
+  const w: OwnerLabels = { ...OWNER_LABELS, ...labels }
+  return (
+    <DropdownMenuPrimitive.RadioGroup
+      value={current}
+      onValueChange={(v) => {
+        if (v !== current) onChoose(v as OwnerChoice)
+      }}
+    >
+      <OwnerOption value="you" label={w.chooseYou} hint={w.hintYou} />
+      <OwnerOption value="show" label={w.chooseShow(chat)} hint={w.hintShow} />
+      <OwnerOption value="merge" label={w.chooseMerge(chat)} hint={w.hintMerge} />
+    </DropdownMenuPrimitive.RadioGroup>
   )
 }
 
