@@ -10,6 +10,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import hooksApp from '../src/routes/hooks'
 import { listDesigns, recordDesign } from '../src/services/designs'
 import { HANDBACK_CLEARED, setHandback } from '../src/services/lead-status'
+import { heldOpening } from '../src/launcher/launcher'
 import { tagRuncastlePrompt } from '../src/services/lead-prompt'
 import { readThreadEvents } from '../src/threads/log'
 import { createCallerFactory } from '../src/trpc/context'
@@ -437,6 +438,20 @@ describe('threads hold features', () => {
         expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you' })
         expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: null, cause: 'typed', from: a.id })])
         expect(cleared(feature).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
+      })
+
+      it('the first message to a lead nobody started takes it, though it rides behind runcastle’s held opening', async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: 'idle', heldBy: a.id, chatId: a.id, finish: 'show' })
+        const opening = heldOpening(tagRuncastlePrompt('Proceed with your task.'))
+
+        // A relay carried behind the opening is still runcastle's, and takes nothing.
+        await prompt(lead(feature), `${opening}\n\n${tagRuncastlePrompt('From the orchestrator: carry on')}`)
+        expect(holderOfSlug(feature)).toBe(a.id)
+
+        await prompt(lead(feature), `${opening}\n\nThis is mine now`)
+        expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: undefined, finish: 'you' })
+        expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: null, cause: 'typed', from: a.id })])
       })
 
       it('runcastle’s own prompt, a side chat, and the chat’s send_to_feature never take it', async () => {
