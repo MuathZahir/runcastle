@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { newId, type DesignApprover, type DesignEntry, type DesignState } from '@runcastle/core'
+import { newId, parseDesignReport, type DesignApprover, type DesignEntry, type DesignReport, type DesignState } from '@runcastle/core'
 import { designPicturesDir } from '@runcastle/core/paths'
 import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -76,6 +76,16 @@ function opened(row: Pick<DesignRow, 'seenAt' | 'shownAt'>): boolean {
   return row.seenAt !== null && row.seenAt >= row.shownAt
 }
 
+/** A stored report column read back; null for none or one that no longer parses. */
+function readReport(json: string | null): DesignReport | null {
+  if (json === null) return null
+  try {
+    return parseDesignReport(JSON.parse(json))
+  } catch {
+    return null
+  }
+}
+
 function toEntry(row: DesignRow): DesignEntry {
   return {
     id: row.id,
@@ -86,6 +96,7 @@ function toEntry(row: DesignRow): DesignEntry {
     state: row.state,
     isNew: !opened(row),
     shownAt: row.shownAt,
+    report: readReport(row.report),
   }
 }
 
@@ -169,14 +180,54 @@ export function setDesignState(
   return toEntry(updated)
 }
 
-/** The one line the lead hears when the human's click approves the last waiting design (decision 25). */
-export function allApprovedLine(approved: readonly Pick<DesignRow, 'title' | 'path'>[]): string {
-  const named = approved.map((d) => `“${d.title}” (${d.path})`).join(', ')
-  const count = approved.length === 1 ? 'the 1 design' : `all ${approved.length} designs`
-  return (
-    `[runcastle] The human approved ${count} in the Design tab: ${named}. ` +
-    'Commit each one not yet committed as "design: <title>".'
-  )
+/**
+ * What a design's report at its Approve click says of its tweaks
+ * (agents-see-the-tweaks-you-picked decisions 4, 7, 10): the values, "no Tweaks
+ * menu" for an empty set, and plainly that it said nothing otherwise.
+ */
+function tweaksWords(report: DesignReport | null): string {
+  if (!report?.tweaks) return '(this design reported no tweak values)'
+  const pairs = Object.entries(report.tweaks)
+  if (!pairs.length) return '(no Tweaks menu)'
+  return `with tweaks ${pairs.map(([key, value]) => `${key} = ${String(value)}`).join(', ')}`
+}
+
+/**
+ * The one line the lead hears when the human's click approves the last waiting
+ * design (decision 25), naming each design's tweak values as they stood at its
+ * click (agents-see-the-tweaks-you-picked decision 7).
+ */
+export function allApprovedLine(approved: readonly Pick<DesignRow, 'title' | 'path' | 'approvedReport'>[]): string {
+  const named = approved.map((d) => `“${d.title}” (${d.path}) ${tweaksWords(readReport(d.approvedReport))}`).join('; ')
+  const only = approved.length === 1 ? approved[0] : undefined
+  const count = only ? 'the 1 design' : `all ${approved.length} designs`
+  const after = only
+    ? `Write those values into the code, delete its Tweaks menu, and commit it as "design: ${only.title}".`
+    : 'Write each one’s values into the code, delete its Tweaks menu, and commit each one not yet committed as "design: <title>".'
+  return `[runcastle] The human approved ${count} in the Design tab: ${named}. ${after}`
+}
+
+/**
+ * A design page's report, relayed by the Design tab (agents-see-the-tweaks-you-picked
+ * decisions 5, 6): kept on the design, capped, replacing the last one. Tells
+ * nobody and wakes nobody: the lead hears it only in the approval line.
+ */
+export function reportDesign(ctx: AppCtx, designId: string, report: DesignReport): DesignEntry {
+  const row = designRow(ctx, designId)
+  const capped = parseDesignReport(report)
+  if (!capped) throw new GateError('not a design report')
+  ctx.db
+    .update(designs)
+    .set({ report: JSON.stringify(capped), reportedAt: Date.now() })
+    .where(eq(designs.id, designId))
+    .run()
+  const updated = designRow(ctx, designId)
+  emit(ctx, row.featureId, {
+    type: 'design.reported',
+    message: `design reported its state and tweaks: ${row.title}`,
+    data: { ...designData(updated), report: capped },
+  })
+  return toEntry(updated)
 }
 
 /**
@@ -189,7 +240,12 @@ export function allApprovedLine(approved: readonly Pick<DesignRow, 'title' | 'pa
 export async function approveDesign(ctx: AppCtx, designId: string): Promise<{ approved: boolean }> {
   const row = designRow(ctx, designId)
   if (row.state !== 'waiting') return { approved: false }
-  ctx.db.update(designs).set({ state: 'approved', approvedBy: 'human' }).where(eq(designs.id, designId)).run()
+  // The report as it stands at the click is what was approved (agents-see-the-tweaks-you-picked decision 7).
+  ctx.db
+    .update(designs)
+    .set({ state: 'approved', approvedBy: 'human', approvedReport: row.report })
+    .where(eq(designs.id, designId))
+    .run()
   emit(ctx, row.featureId, {
     type: 'design.approved',
     message: `design approved by the human: ${row.title}`,
@@ -252,6 +308,8 @@ export interface LeadDesign {
   approvedBy: DesignApprover | null
   /** The human opened it since it was last shown. */
   opened: boolean
+  /** The page's last report: its state and tweak values; null until it sent one. */
+  report: DesignReport | null
 }
 
 export function leadDesigns(ctx: AppCtx, featureId: string): LeadDesign[] {
@@ -261,6 +319,7 @@ export function leadDesigns(ctx: AppCtx, featureId: string): LeadDesign[] {
     state: row.state,
     approvedBy: row.approvedBy,
     opened: opened(row),
+    report: readReport(row.report),
   }))
 }
 

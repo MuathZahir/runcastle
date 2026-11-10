@@ -7,7 +7,16 @@ import {
   startDesignServer,
   stopDesignServer,
 } from '../../services/design'
-import { approveDesign, listDesigns, markDesignSeen, markPlanSeen, planFigures, planIsNew } from '../../services/designs'
+import { DesignReport } from '@runcastle/core'
+import {
+  approveDesign,
+  listDesigns,
+  markDesignSeen,
+  markPlanSeen,
+  planFigures,
+  planIsNew,
+  reportDesign,
+} from '../../services/designs'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
 
@@ -77,6 +86,17 @@ export const designRouter = router({
   approve: publicProcedure
     .input(z.object({ designId: z.string() }))
     .mutation(({ ctx, input }) => approveDesign(ctx, input.designId)),
+
+  /**
+   * A design page's state and tweak values, relayed by the Design tab
+   * (agents-see-the-tweaks-you-picked decisions 5, 6): kept on the design, told to nobody.
+   */
+  report: publicProcedure
+    .input(z.object({ designId: z.string(), report: DesignReport }))
+    .mutation(({ ctx, input }) => {
+      reportDesign(ctx, input.designId, input.report)
+      return { ok: true as const }
+    }),
 
   /** The human opened a design in the Design tab. */
   seen: publicProcedure
