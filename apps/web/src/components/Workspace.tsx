@@ -17,7 +17,8 @@ import { Button,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconOrchestrator, IconPlay, IconX, ProgressIcon } from '../icons'
+import { IconPlay, IconX, ProgressIcon } from '../icons'
+import { epicCrumb } from './SidebarEpics'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -50,7 +51,7 @@ import {
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
-import { featureHolder, usePublishSidebarThreads } from '../lib/sidebar-threads'
+import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -215,7 +216,7 @@ export function Workspace({
   // drive slot (decision 9), which only the server's drive info knows; the
   // chat's standing warnings read this same answer.
   const projectId = q.data?.feature.projectId
-  // Same key the sidebar polls: the name of the thread holding this feature.
+  // Same key the sidebar polls: the name of the epic this feature came from.
   const projectThreads = trpc.thread.list.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: poll },
@@ -616,7 +617,7 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  const holder = onOpenThread ? featureHolder(feature, projectThreads.data ?? []) : null
+  const epic = onOpenThread ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread) : null
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -1164,19 +1165,7 @@ export function Workspace({
       ) : (
       <PageTopbar
         crumbs={[
-          ...(holder
-            ? [
-                {
-                  label: (
-                    <span className="block max-w-44 truncate" title={`Held by the orchestrator chat "${holder.title}"`}>
-                      {holder.title}
-                    </span>
-                  ),
-                  icon: <IconOrchestrator size={14} />,
-                  onClick: () => onOpenThread?.(holder.id),
-                },
-              ]
-            : []),
+          ...(epic ? [epic] : []),
           {
             label: feature.title,
             icon: (
@@ -1190,7 +1179,7 @@ export function Workspace({
           },
           ...(threadCrumb ? [{ label: threadCrumb }] : []),
         ]}
-        // With the holder first, a feature with no thread after it is still the page.
+        // With the epic first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
         status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} />}
         actions={

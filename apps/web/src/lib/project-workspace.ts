@@ -101,7 +101,7 @@ export function workspaceView(state: {
  * words for having a conversation, not only to its own name.
  */
 const PROJECT_CHAT_TERMS =
-  'orchestrator project chat talk ask conversation conversations idea intake discuss advice new chat'
+  'epic epics orchestrator project chat talk ask conversation conversations idea intake discuss advice new chat'
 
 /**
  * Whether the palette shows the project chat's row for `q` (already

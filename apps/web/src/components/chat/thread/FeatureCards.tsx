@@ -427,7 +427,7 @@ export function OrchestratorMessage({ text, relayed = false }: { text: string; r
         <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{text}</div>
         <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
           <IconOrchestrator size={12} className="text-icon" />
-          Your answer, relayed by the orchestrator
+          Your answer, relayed by the epic
         </span>
       </div>
     )
@@ -436,7 +436,7 @@ export function OrchestratorMessage({ text, relayed = false }: { text: string; r
     <div className="flex flex-col items-start gap-1.5 animate-rise-in">
       <span className="flex items-center gap-2 text-sm">
         <RuncastleMark />
-        <span className="font-medium text-text-secondary">Orchestrator</span>
+        <span className="font-medium text-text-secondary">Epic</span>
       </span>
       <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{text}</div>
     </div>

@@ -74,15 +74,29 @@ export function sidebarThreadOrder(threads: readonly ThreadEntry[]): ThreadEntry
 /** How long writing in a thread keeps it listed: a talk-only thread must not vanish on clicking away. */
 export const WRITTEN_KEEPS_LISTED_MS = 24 * 60 * 60 * 1000
 
-/** What a thread holds, as the Orchestrator's list counts it: held, and in flight or up next. */
+/** In flight, or a draft marked up next: what keeps a chat's epic in the list. */
+function inMotionOrUpNext(f: FeatureListItem): boolean {
+  return f.status === 'active' || (f.status === 'draft' && f.upNext)
+}
+
+/** The features a thread holds, in flight or up next. The app lists by origin now ({@link originFeatures}); old design pages still read this. */
 export function heldFeatures(threadId: string, features: readonly FeatureListItem[]): FeatureListItem[] {
-  return features.filter((f) => f.heldBy === threadId && (f.status === 'active' || (f.status === 'draft' && f.upNext)))
+  return features.filter((f) => f.heldBy === threadId && inMotionOrUpNext(f))
 }
 
 /**
- * Whether the Orchestrator's list shows a thread (the-sidebar-shows-only-active-threads):
- * it is working or asking, it holds something, it is in front, or the human wrote
- * in it lately, or left words unsent in it. Everything else lives on the Conversations page.
+ * The features a chat cut that are in flight or up next: by origin (`chatId`),
+ * whoever runs them now (orchestrator-chats-become-epics decisions 6, 16).
+ */
+export function originFeatures(threadId: string, features: readonly FeatureListItem[]): FeatureListItem[] {
+  return features.filter((f) => f.chatId === threadId && inMotionOrUpNext(f))
+}
+
+/**
+ * Whether the sidebar lists a chat (the-sidebar-shows-only-active-threads, with
+ * orchestrator-chats-become-epics decision 16): it is working or asking, a
+ * feature it cut is in flight or up next, it is in front, or the human wrote in
+ * it lately, or left words unsent in it. Everything else lives on the Epics page.
  */
 export function threadIsActive(
   thread: ThreadEntry,
@@ -102,7 +116,7 @@ export function threadIsActive(
   return (
     thread.state !== 'idle' ||
     thread.id === current ||
-    heldFeatures(thread.id, features).length > 0 ||
+    originFeatures(thread.id, features).length > 0 ||
     // Words typed and not yet sent: leaving a new chat must not lose the place they wait in.
     drafted(thread.id) ||
     (thread.lastHumanAt !== undefined && now - thread.lastHumanAt < WRITTEN_KEEPS_LISTED_MS)
@@ -128,13 +142,17 @@ export function orchestratorLanding(
   return threadId ? { kind: 'chat', threadId } : { kind: 'conversations' }
 }
 
-/** The thread to name on a feature's page: its holder, while it has not shipped and the list knows it. */
-export function featureHolder(
-  feature: { status: string; heldBy?: string | undefined },
+/**
+ * A feature's epic, its page's first crumb (orchestrator-chats-become-epics
+ * decision 15): the orchestrator chat it came from (`chatId`), shipped or not.
+ * Null with no origin chat, or one the list does not hold.
+ */
+export function featureEpic(
+  feature: { chatId?: string | null | undefined },
   threads: readonly ThreadEntry[],
 ): ThreadEntry | null {
-  if (feature.status === 'shipped' || !feature.heldBy) return null
-  return threads.find((t) => t.id === feature.heldBy) ?? null
+  if (!feature.chatId) return null
+  return threads.find((t) => t.id === feature.chatId && t.role === 'project') ?? null
 }
 
 /** localStorage key for the rows whose threads the human folded away (decision 10). */

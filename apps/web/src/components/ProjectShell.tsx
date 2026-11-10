@@ -375,6 +375,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onSelect={openChosen}
             onSelectProject={ws.selectProject}
             onNewChat={newChat}
+            onOpenChat={(threadId) => {
+              setThreadRequest(threadId)
+              ws.selectProject()
+            }}
+            onOpenConversations={ws.openConversations}
             onDraft={ws.startDraft}
             onOpenNote={jot}
             onOpenCmdk={() => setCmdk(true)}

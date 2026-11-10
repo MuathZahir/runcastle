@@ -56,7 +56,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'chat',
     term: 'Chat',
     group: 'work',
-    definition: 'A conversation with an agent. Every feature has one, and the orchestrator has its own.',
+    definition: 'A conversation with an agent. Every feature has one, and so does every epic.',
     onceCalled: ['thread', 'session', 'conversation'],
   },
   {
@@ -130,15 +130,15 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     id: 'orchestrator',
-    term: 'Orchestrator',
+    term: 'Epic',
     group: 'project',
-    definition: 'The project’s own agent. Bring it a raw idea and it checks what exists, cuts the idea into features, and can start, message and merge them when you ask.',
+    definition: 'A chat with the project’s own agent about one topic, named in a few words. Bring it a raw idea and it checks what exists, cuts the idea into features (listed under it in the sidebar), and can start, message and merge them when you ask.',
   },
   {
     id: 'held-by',
     term: 'Held by',
     group: 'project',
-    definition: 'The orchestrator chat looking after a feature. It hears when the feature needs you and can act on it for you.',
+    definition: 'The epic looking after a feature. It hears when the feature needs you and can act on it for you.',
   },
 ]
 

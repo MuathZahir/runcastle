@@ -102,10 +102,12 @@ const capital = (s: string) => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) 
  */
 export function nestedFeatureWords(words: string, holder: EpicHolder, epic: string): string {
   const rest = words.replace(WITH_PREFIX, '')
-  if (holder.kind === 'epic') return rest.toLowerCase() === 'asking you' ? 'Question above' : capital(rest)
+  if (holder.kind === 'epic') return rest.trim().toLowerCase() === 'asking you' ? 'Question above' : capital(rest)
   if (holder.kind === 'you') {
     const consulting = `Asking ${epic} · `
-    return words.startsWith(consulting) ? `Asking above · ${words.slice(consulting.length)}` : `Yours · ${rest}`
+    return words.toLowerCase().startsWith(consulting.toLowerCase())
+      ? `Asking above · ${words.slice(consulting.length)}`
+      : `Yours · ${rest}`
   }
   return `With ${holder.title} · ${rest}`
 }
@@ -119,4 +121,69 @@ export function shelfFeatureWords(f: FeatureListItem, words: string, epic: strin
   if (!epic) return words
   if (f.status === 'shipped' || f.status === 'archived') return epic
   return `${epic} · ${words}`
+}
+
+/**
+ * Who runs a feature, as its row under `epicId` says it (decision 10): the
+ * epic's own chat, the human (no holding chat), or another chat, named.
+ */
+export function epicHolder(
+  f: Pick<FeatureListItem, 'heldBy'>,
+  epicId: string | null,
+  chats: readonly ThreadEntry[],
+): EpicHolder {
+  if (!f.heldBy) return { kind: 'you' }
+  if (f.heldBy === epicId) return { kind: 'epic' }
+  return { kind: 'chat', title: chats.find((t) => t.id === f.heldBy)?.title ?? 'another chat' }
+}
+
+/**
+ * What a waiting chat asks about, for its epic row's "Asking about <feature>"
+ * (decision 11): the first feature it names, then "+N" for the rest. Null when
+ * the chat is not waiting or its question names no feature it can find, and the
+ * row reads "Asking you".
+ *
+ * TODO(every-feature-has-one-owner): the owner feature's thread-list fact
+ * `askingAbout` (feature ids, `featuresAskedAbout` in packages/core/src/thread.ts)
+ * and its words (`askingAboutLine` in lib/sidebar-threads.tsx) were not on this
+ * branch when this was written. This reads the field if the list carries it;
+ * once merged, type it on `ThreadEntry` and share `askingAboutLine`'s words.
+ */
+export function asksAboutOf(chat: ThreadEntry, features: readonly FeatureListItem[]): string | null {
+  if (chat.state !== 'waiting') return null
+  const ids = (chat as ThreadEntry & { askingAbout?: readonly string[] }).askingAbout ?? []
+  const titles = ids.flatMap((id) => features.find((f) => f.id === id)?.title ?? [])
+  if (titles.length === 0) return null
+  return titles.length === 1 ? titles[0]! : `${titles[0]!} +${titles.length - 1}`
+}
+
+/**
+ * The epic list's input from wire data (decisions 4–7, 16): every orchestrator
+ * chat `listed` says is listed becomes an epic with the features it cut
+ * (`chatId`) that are in motion or up next, each with who runs it. A feature
+ * with no origin chat, or one not listed as an epic, goes to "Other features".
+ */
+export function epicsFrom(
+  chats: readonly ThreadEntry[],
+  features: readonly FeatureListItem[],
+  listed: (chat: ThreadEntry) => boolean,
+): { epics: Epic[]; other: FeatureListItem[] } {
+  const epicChats = chats.filter((t) => t.role === 'project' && listed(t))
+  const ids = new Set(epicChats.map((t) => t.id))
+  const moving = features.filter(inEpic)
+  const epics = epicChats.map((chat) => ({
+    chat,
+    asksAbout: asksAboutOf(chat, features),
+    features: moving
+      .filter((f) => f.chatId === chat.id)
+      .map((feature) => ({ feature, holder: epicHolder(feature, chat.id, chats) })),
+  }))
+  const other = moving.filter((f) => !f.chatId || !ids.has(f.chatId))
+  return { epics, other }
+}
+
+/** A shelf row's epic: its origin chat's name, when the chat list holds it (decision 21). */
+export function epicNameOf(f: Pick<FeatureListItem, 'chatId'>, chats: readonly ThreadEntry[]): string | null {
+  if (!f.chatId) return null
+  return chats.find((t) => t.id === f.chatId && t.role === 'project')?.title ?? null
 }

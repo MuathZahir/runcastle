@@ -4,6 +4,8 @@ import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
 import { IconArrowRight, IconList, IconOrchestrator, IconPlus } from '../icons'
 import { nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
+import { featureEpic } from '../lib/sidebar-threads'
+import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore } from './SidebarParts'
 
@@ -25,20 +27,45 @@ const CONCEAL = 'group-hover/nav:opacity-0 group-has-[:focus-visible]/nav:opacit
  * the column of tiles down the list reads as the epics. `quiet` is the
  * neutral tile of "Other features", which is not a chat.
  */
-export function EpicGlyph({ quiet = false }: { quiet?: boolean }) {
+export function EpicGlyph({ quiet = false, small = false }: { quiet?: boolean; small?: boolean }) {
   return (
     <span
       aria-hidden
       className={cx(
-        'inline-flex size-5 shrink-0 items-center justify-center rounded-md',
+        'inline-flex shrink-0 items-center justify-center',
+        // `small`: the 16px tile a header crumb wears, beside 14px glyphs.
+        small ? 'size-4 rounded-sm' : 'size-5 rounded-md',
         quiet
           ? 'bg-fill-well text-icon'
           : 'bg-[color-mix(in_oklab,var(--color-accent)_16%,transparent)] text-accent-text ring-1 ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)] ring-inset',
       )}
     >
-      {quiet ? <IconList size={12} /> : <IconOrchestrator size={13} />}
+      {quiet ? <IconList size={small ? 10 : 12} /> : <IconOrchestrator size={small ? 11 : 13} />}
     </span>
   )
+}
+
+/**
+ * A feature page's first crumb (decision 15): its epic, the chat it came from
+ * (`chatId`), as the epic's glyph and name; clicking opens that chat. It stays
+ * after the feature ships. Null when the feature has no epic the list holds.
+ */
+export function epicCrumb(
+  feature: { chatId?: string | null | undefined },
+  threads: readonly ThreadEntry[],
+  onOpen: (chatId: string) => void,
+): Crumb | null {
+  const epic = featureEpic(feature, threads)
+  if (!epic) return null
+  return {
+    label: (
+      <span className="block max-w-44 truncate" title={`Epic: ${epic.title}`}>
+        {epic.title}
+      </span>
+    ),
+    icon: <EpicGlyph small />,
+    onClick: () => onOpen(epic.id),
+  }
 }
 
 /** What an epic's row says under its name (decision 11): what its chat asks, that it works, or nothing. */

@@ -31,7 +31,7 @@ export function DraftBody({ full }: { full: FeatureFull }) {
           </p>
         )}
       </PageSection>
-      {phone && <p className="mt-10 mb-0 text-sm text-text-tertiary">Ask the Orchestrator to start this.</p>}
+      {phone && <p className="mt-10 mb-0 text-sm text-text-tertiary">Ask an epic to start this.</p>}
     </>
   )
 }

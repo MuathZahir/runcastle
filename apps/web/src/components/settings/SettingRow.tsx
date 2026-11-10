@@ -405,7 +405,7 @@ export function SettingRow({
                 // prepared setting whenever it is asked to.
                 <span
                   className="inline-flex items-center gap-1.5 text-xs text-warning-text"
-                  title="Measured a long time ago — ask the Orchestrator to check it again"
+                  title="Measured a long time ago — ask an epic to check it again"
                 >
                   <StatusDot tone="warning" />
                   Stale

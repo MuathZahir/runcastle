@@ -1,12 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { epicCrumb } from '../src/components/SidebarEpics'
 import { HoldMark, SidebarThreadList } from '../src/components/SidebarParts'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
+import { Crumbs } from '../src/ui/page'
 import {
-  featureHolder,
-  heldFeatures,
+  featureEpic,
+  originFeatures,
   orchestratorLanding,
   threadIsActive,
   WRITTEN_KEEPS_LISTED_MS,
@@ -29,6 +31,10 @@ const thread = (id: string, over: Partial<ThreadEntry> = {}): ThreadEntry => ({
 
 const held = (title: string, heldBy: string, over: Partial<FeatureListItem> = {}): FeatureListItem =>
   ({ ...listItem(), id: title, title, heldBy, status: 'active', ...over }) as FeatureListItem
+
+/** A feature cut by chat `chatId` (its origin), held by that chat unless `over` says otherwise. */
+const cut = (title: string, chatId: string, over: Partial<FeatureListItem> = {}): FeatureListItem =>
+  ({ ...listItem(), id: title, title, chatId, heldBy: chatId, status: 'active', ...over }) as FeatureListItem
 
 const active = (t: ThreadEntry, features: FeatureListItem[] = [], current: string | null = null) =>
   threadIsActive(t, { current, features, now })
@@ -55,19 +61,32 @@ describe('which threads the Orchestrator lists', () => {
     expect(threadIsActive(thread('b'), { current: null, features: [], now, drafted })).toBe(false)
   })
 
-  it('lists a thread holding a feature in flight or up next', () => {
-    expect(active(thread('a'), [held('f', 'a')])).toBe(true)
-    expect(active(thread('a'), [held('f', 'a', { status: 'draft', upNext: true })])).toBe(true)
+  it('lists a chat that cut a feature in flight or up next, by origin', () => {
+    expect(active(thread('a'), [cut('f', 'a')])).toBe(true)
+    expect(active(thread('a'), [cut('f', 'a', { status: 'draft', upNext: true })])).toBe(true)
   })
 
-  it('does not count backlog, shipped or archived holds, or another thread\'s', () => {
+  it('keeps an epic listed while the human runs a feature it cut (decision 16)', () => {
+    // Taken by typing: nothing holds it, the origin stays.
+    expect(active(thread('a'), [cut('f', 'a', { heldBy: undefined })])).toBe(true)
+    expect(originFeatures('a', [cut('f', 'a', { heldBy: undefined })]).map((f) => f.id)).toEqual(['f'])
+  })
+
+  it('does not count a hold without the origin: holding is not cutting', () => {
+    expect(active(thread('a'), [held('f', 'a')])).toBe(false)
+    // Given to another chat, it moves with its origin.
+    expect(active(thread('a'), [cut('f', 'b', { heldBy: 'b' })])).toBe(false)
+    expect(active(thread('b'), [cut('f', 'b', { heldBy: 'b' })])).toBe(true)
+  })
+
+  it('does not count backlog, shipped or archived features, or another chat\'s', () => {
     const features = [
-      held('backlog', 'a', { status: 'draft', upNext: false }),
-      held('shipped', 'a', { status: 'shipped' }),
-      held('archived', 'a', { status: 'archived' }),
-      held('theirs', 'b'),
+      cut('backlog', 'a', { status: 'draft', upNext: false }),
+      cut('shipped', 'a', { status: 'shipped' }),
+      cut('archived', 'a', { status: 'archived' }),
+      cut('theirs', 'b'),
     ]
-    expect(heldFeatures('a', features)).toEqual([])
+    expect(originFeatures('a', features)).toEqual([])
     expect(active(thread('a'), features)).toBe(false)
   })
 
@@ -103,18 +122,35 @@ describe('arriving at the Orchestrator', () => {
   })
 })
 
-describe('the thread a feature names', () => {
-  const threads = [thread('a')]
+describe('the epic a feature names (decision 15)', () => {
+  const threads = [thread('a', { title: 'Payment System' }), thread('w', { role: 'worker' })]
+  const open = vi.fn()
 
-  it('is its holder while it has not shipped', () => {
-    expect(featureHolder({ status: 'active', heldBy: 'a' }, threads)?.id).toBe('a')
-    expect(featureHolder({ status: 'draft', heldBy: 'a' }, threads)?.id).toBe('a')
+  it('is its origin chat, whoever holds it', () => {
+    expect(featureEpic({ chatId: 'a' }, threads)?.id).toBe('a')
+    expect(featureEpic({ chatId: 'a', ...{ heldBy: 'other' } }, threads)?.id).toBe('a')
   })
 
-  it('is nothing once shipped, unheld, or when the list lacks it', () => {
-    expect(featureHolder({ status: 'shipped', heldBy: 'a' }, threads)).toBeNull()
-    expect(featureHolder({ status: 'active' }, threads)).toBeNull()
-    expect(featureHolder({ status: 'active', heldBy: 'gone' }, threads)).toBeNull()
+  it('is nothing with no origin chat, one the list lacks, or a chat that is not an epic', () => {
+    expect(featureEpic({ chatId: null }, threads)).toBeNull()
+    expect(featureEpic({}, threads)).toBeNull()
+    expect(featureEpic({ chatId: 'gone' }, threads)).toBeNull()
+    expect(featureEpic({ chatId: 'w' }, threads)).toBeNull()
+  })
+
+  it('leads the header with the epic glyph and name, and stays after ship', () => {
+    const shipped = cut('f', 'a', { status: 'shipped', heldBy: undefined })
+    const crumb = epicCrumb(shipped, threads, open)
+    expect(crumb).not.toBeNull()
+    const html = renderToStaticMarkup(createElement(Crumbs, { items: [crumb!, { label: 'f' }] }))
+    expect(html).toContain('Payment System')
+    expect(html).not.toContain('Orchestrator')
+    ;(crumb!.onClick as () => void)()
+    expect(open).toHaveBeenCalledWith('a')
+  })
+
+  it('gives a feature with no epic no crumb', () => {
+    expect(epicCrumb(listItem({ chatId: null }), threads, open)).toBeNull()
   })
 })
 

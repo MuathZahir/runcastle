@@ -180,7 +180,7 @@ export function CommandPalette(props: CommandPaletteProps) {
         kind: 'projectChat',
         shows: matchesProjectChat(q),
         glyph: <IconOrchestrator />,
-        label: 'Orchestrator',
+        label: 'Epics',
         run: onOpenProjectChat,
       },
       {

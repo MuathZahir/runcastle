@@ -846,7 +846,7 @@ export function OrchestratorCard({
   threads,
   folded = false,
   onToggleThreads,
-  name = 'Orchestrator',
+  name = 'Epics',
   tile,
 }: {
   /** The card's name: "Orchestrator", or "Lead" on a feature's own page, one level down. */
@@ -925,7 +925,7 @@ export function OrchestratorCard({
             )}
           >
             {onNewThread && <NewThreadButton onClick={onNewThread} />}
-            <FeatureActionsMenu actions={actions} label={name === 'Orchestrator' ? 'Project actions' : `${name} actions`} />
+            <FeatureActionsMenu actions={actions} label={name === 'Epics' ? 'Project actions' : `${name} actions`} />
           </span>
         )}
         {toggles && onToggleThreads && (
