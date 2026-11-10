@@ -7,6 +7,7 @@ import { mainChatInbox } from '../../lib/composer-inbox'
 import { READY_TO_TEST } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
+import { OwnerStrip } from '../chat/OwnerStrip'
 import { scenarioErrandHint } from '../chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
@@ -52,6 +53,7 @@ export function FeatureChat({
   holdStart,
   start,
   onView,
+  ownedBy,
 }: {
   full: FeatureFull
   column: FeatureChatColumn
@@ -69,6 +71,12 @@ export function FeatureChat({
   start: (opts: { holdOpening: boolean }) => Promise<string>
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
+  /**
+   * The orchestrator chat that owns the feature, while one does: the owner
+   * strip on the lead's composer, never a worker's or a side chat's
+   * (every-feature-has-one-owner decisions 23, 28).
+   */
+  ownedBy?: { chat: string; onOpenChat: () => void } | null
 }) {
   const { inFront, main, scenario } = column
   const isMain = inFront === main
@@ -122,6 +130,10 @@ export function FeatureChat({
         emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
         {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
         notices={alerts}
+        // Sending here takes the feature from its chat; the server releases the hold and its event drops the strip.
+        {...(isMain && ownedBy
+          ? { composerStrip: <OwnerStrip chat={ownedBy.chat} asking={false} onOpenChat={ownedBy.onOpenChat} /> }
+          : {})}
       >
         <FeatureNoticeDeck
           events={events}
