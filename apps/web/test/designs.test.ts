@@ -12,6 +12,7 @@ const design = (id: string, shownAt: number, state: DesignEntry['state'] = 'wait
   state,
   isNew: false,
   shownAt,
+  report: null,
 })
 
 // The list's order: waiting newest first (c, b, a), then approved (d), then dropped (e).

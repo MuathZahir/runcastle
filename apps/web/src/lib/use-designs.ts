@@ -3,6 +3,7 @@ import { trpc } from '../trpc'
 import { useLivePoll } from './live'
 import { nextWaiting, type DesignEntry } from './feature-ui/designs'
 import { useToast } from './toast'
+import { flushDesignReport } from './use-design-report'
 
 /**
  * A feature's design record as the web reads it
@@ -39,6 +40,9 @@ export function useApproveAndNext(
     const next = nextWaiting(designs, design.id)
     setApproving(true)
     try {
+      // A tweak picked just before the click is still settling: send it first,
+      // so the approval keeps what the human saw.
+      await flushDesignReport(design.id)
       await approve.mutateAsync({ designId: design.id })
       await utils.design.list.invalidate({ featureId })
       if (next) onNext(next.path)

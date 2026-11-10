@@ -269,6 +269,19 @@ describe('the feature skill, planning with no human present', () => {
     expect(read('SKILL.md')).toContain('It never approves a design')
   })
 
+  it('has every design page report its state and tweaks, kept by path, for Approve (agents-see-the-tweaks-you-picked)', () => {
+    const design = flat(read('references', 'design.md'))
+    expect(design).not.toMatch(/paste/i)
+    expect(design).not.toContain('one line of text')
+    expect(design).toContain('**Every design page reports**, single-state ones and pages without Tweaks included')
+    expect(design).toContain("window.parent.postMessage(report, '*')")
+    expect(design).toContain("{ type: 'runcastle-design-report', state, tweaks }")
+    expect(design).toContain('`{}` when the page has no Tweaks menu')
+    expect(design).toContain('in `localStorage` under a key that includes the design\'s path')
+    expect(design).toContain('restores them on load')
+    expect(design).toContain('The chosen tweak values arrive in the approval line')
+  })
+
   it('keeps the "design" wait for designs recorded with show_design (small-fixes decision 5)', () => {
     expect(skill()).toContain('`"design"` only for designs recorded with `show_design`')
     expect(read('references', 'design.md')).toContain('anything else you show for a yes\n(a file, a picture) is an answer')

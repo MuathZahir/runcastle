@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { IconCheck } from '../../icons'
 import { designAddress, usePassReachable, type PageAddress } from '../../lib/design-address'
 import { DEFAULT_PREVIEW_WIDTH, frameSize } from '../../lib/preview-width'
+import { useDesignReport } from '../../lib/use-design-report'
 import { useApproveAndNext, useDesignRecord, useMarkSeen } from '../../lib/use-designs'
 import { trpc } from '../../trpc'
 import { Button } from '../../ui'
@@ -60,6 +61,9 @@ export function PhoneDesignView({
   useMarkSeen(open?.id, open?.isNew === true, () => open && markSeen({ designId: open.id }))
   const { approve, approving } = useApproveAndNext(featureId, designs, { onNext: onOpen, onDone: onBack })
   const othersWaiting = designs?.filter((d) => d.state === 'waiting' && d.id !== open?.id).length ?? 0
+  // The page's state and tweaks, kept on the design it shows (agents-see-the-tweaks-you-picked decision 5).
+  const frame = useRef<HTMLIFrameElement>(null)
+  useDesignReport(frame, open?.id)
 
   const [wide, setWide] = useState(true)
   const stage = useRef<HTMLDivElement>(null)
@@ -103,6 +107,7 @@ export function PhoneDesignView({
         <>
           <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden bg-surface-inset">
             <iframe
+              ref={frame}
               title="The design"
               src={phoneDesignSrc(window.location, server.passPort, featureId, server.shownPath)}
               className="absolute top-0 left-0 origin-top-left border-0 bg-surface"

@@ -15,7 +15,7 @@ const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle
 function beforeLookDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'runcastle-epic-look-migrate-'))
   for (const file of readdirSync(DRIZZLE_DIR)) {
-    if (file.endsWith('.sql') && file < '0070') copyFileSync(join(DRIZZLE_DIR, file), join(dir, file))
+    if (file.endsWith('.sql') && file < '0071') copyFileSync(join(DRIZZLE_DIR, file), join(dir, file))
   }
   return dir
 }
@@ -34,7 +34,7 @@ function session(db: Db, id: string, kind: string, project: string | null, creat
   )
 }
 
-describe('epic look migration (0070, epics-that-look-alive decision 6)', () => {
+describe('epic look migration (0071, epics-that-look-alive decision 6)', () => {
   it('gives every old project chat a colour in turn by creation order, per project, and leaves icons unset', async () => {
     const db = await freshDb()
     runMigrations(db, beforeLookDir())

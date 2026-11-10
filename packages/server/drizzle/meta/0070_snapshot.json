@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "45b43d2b-5c96-4db8-8ec8-1ee0f951bc44",
+  "id": "b29fb4c0-6e1c-428e-a898-aabf48ab8386",
   "prevId": "3ce7ade5-4e72-4b22-99cb-587c7234a040",
   "tables": {
     "designs": {
@@ -82,6 +82,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "report": {
+          "name": "report",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reported_at": {
+          "name": "reported_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "approved_report": {
+          "name": "approved_report",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -1201,28 +1222,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "epic_color": {
-          "name": "epic_color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "epic_icon": {
-          "name": "epic_icon",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "epic_icon_by_human": {
-          "name": "epic_icon_by_human",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         }
       },
       "indexes": {},
