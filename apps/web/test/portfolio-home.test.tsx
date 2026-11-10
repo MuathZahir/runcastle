@@ -158,12 +158,11 @@ describe('PortfolioHome', () => {
     expect(nav.showOpen).toHaveBeenCalled()
   })
 
-  it('sits in the frame beside a minimal sidebar with no project switcher', () => {
+  it('sits in the frame with no sidebar, as designed', () => {
     page()
 
-    const sidebar = screen.getByRole('navigation', { name: 'Projects' })
-    expect(sidebar.textContent).toContain('All projects')
-    expect(within(sidebar).queryByRole('button', { name: /switch project|runcastle/i })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull()
+    expect(document.querySelector('[data-sidebar]')).toBeNull()
     expect(screen.getByRole('main')).toBeTruthy()
   })
 })

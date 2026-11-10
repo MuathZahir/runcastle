@@ -168,17 +168,24 @@ const clampDrag = (px: number) => Math.min(px, SIDEBAR_MAX_W)
  */
 export function Frame({
   sidebar,
+  rail = sidebar !== undefined,
   phoneShows = 'page',
   children,
 }: {
   sidebar?: ReactNode
+  /** Show the project rail on desktop: on by default wherever there is a sidebar; All projects asks for it without one. */
+  rail?: boolean
   /** On a phone, one thing at a time: the sidebar's content as the list, or the page. */
   phoneShows?: 'list' | 'page'
   children: ReactNode
 }) {
   const phone = useIsPhone()
   if (phone) return <PhoneFrame list={sidebar !== undefined && phoneShows === 'list' ? sidebar : null}>{children}</PhoneFrame>
-  return <DesktopFrame sidebar={sidebar}>{children}</DesktopFrame>
+  return (
+    <DesktopFrame sidebar={sidebar} rail={rail}>
+      {children}
+    </DesktopFrame>
+  )
 }
 
 /**
@@ -203,7 +210,7 @@ function PhoneFrame({ list, children }: { list: ReactNode; children: ReactNode }
   )
 }
 
-function DesktopFrame({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
+function DesktopFrame({ sidebar, rail, children }: { sidebar?: ReactNode; rail: boolean; children: ReactNode }) {
   const { width, setWidth, closed, toggleSidebar, closeSidebar, notices } = useFrame()
   const [resizing, setResizing] = useState(false)
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -231,37 +238,39 @@ function DesktopFrame({ sidebar, children }: { sidebar?: ReactNode; children: Re
       className="flex h-full min-h-0 bg-canvas text-text"
       style={{ '--sidebar-w': `${width}px` } as CSSProperties}
     >
-      {hasSidebar && (
+      {(hasSidebar || rail) && (
         // One ground for the rail and the sidebar: one halftone behind both,
         // and the rail stays when the sidebar closes.
         <div className="relative isolate flex h-full min-h-0 shrink-0">
           <SidebarBackdrop />
-          <DesktopRail />
-          <SidebarBackdropDrawn.Provider value>
-            <div
-              data-sidebar={closed ? 'closed' : 'open'}
-              className={cx(
-                'relative h-full shrink-0 overflow-hidden',
-                !resizing && 'transition-[width] duration-(--dur-3) ease-out-app motion-reduce:transition-none',
-              )}
-              style={{ width: closed ? 0 : width }}
-            >
+          {rail && <DesktopRail />}
+          {hasSidebar && (
+            <SidebarBackdropDrawn.Provider value>
               <div
-                inert={closed}
-                aria-hidden={closed || undefined}
+                data-sidebar={closed ? 'closed' : 'open'}
                 className={cx(
-                  'absolute inset-y-0 left-0 flex w-(--sidebar-w) flex-col',
-                  'transition-opacity duration-(--dur-2) ease-app',
-                  closed ? 'pointer-events-none opacity-0' : 'opacity-100',
+                  'relative h-full shrink-0 overflow-hidden',
+                  !resizing && 'transition-[width] duration-(--dur-3) ease-out-app motion-reduce:transition-none',
                 )}
+                style={{ width: closed ? 0 : width }}
               >
-                {sidebar}
+                <div
+                  inert={closed}
+                  aria-hidden={closed || undefined}
+                  className={cx(
+                    'absolute inset-y-0 left-0 flex w-(--sidebar-w) flex-col',
+                    'transition-opacity duration-(--dur-2) ease-app',
+                    closed ? 'pointer-events-none opacity-0' : 'opacity-100',
+                  )}
+                >
+                  {sidebar}
+                </div>
+                {!closed && (
+                  <RailResizeHandle width={width} side="left" label="Resize the sidebar" clamp={clampDrag} onResize={onResize} />
+                )}
               </div>
-              {!closed && (
-                <RailResizeHandle width={width} side="left" label="Resize the sidebar" clamp={clampDrag} onResize={onResize} />
-              )}
-            </div>
-          </SidebarBackdropDrawn.Provider>
+            </SidebarBackdropDrawn.Provider>
+          )}
         </div>
       )}
       <main

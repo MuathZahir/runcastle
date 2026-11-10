@@ -131,11 +131,11 @@ describe('Frame — the project rail', () => {
   })
   afterEach(cleanup)
 
-  function mountWithRail(sidebar = true) {
+  function mountWithRail(sidebar = true, withRail?: boolean) {
     return render(
       <ProjectRailContext.Provider value={rail}>
         <FrameProvider>
-          <Frame sidebar={sidebar ? <div>sidebar body</div> : undefined}>
+          <Frame sidebar={sidebar ? <div>sidebar body</div> : undefined} rail={withRail}>
             <div>panel body</div>
           </Frame>
         </FrameProvider>
@@ -157,6 +157,15 @@ describe('Frame — the project rail', () => {
     expect(state()).toBe('closed')
     expect(railNav()).not.toBeNull()
     expect(tile('clawflow')).toBeTruthy()
+  })
+
+  it('All projects asks for the rail with no sidebar; a bare frame has neither', () => {
+    mountWithRail(false, true)
+    expect(railNav()).not.toBeNull()
+    expect(document.querySelector('[data-sidebar]')).toBeNull()
+    cleanup()
+    mountWithRail(false)
+    expect(railNav()).toBeNull()
   })
 
   it('dots a project that needs you', () => {

@@ -1,16 +1,11 @@
 import { portfolioEntries, portfolioTotals, type PortfolioEntry } from '../lib/portfolio'
-import { useLiveStatus } from '../lib/live'
 import { useProjectFeatureLists } from '../lib/use-notifications'
-import { SANDBOX_MODE } from '../lib/env'
-import { useTheme } from '../lib/theme'
 import { useIsPhone } from '../lib/use-phone'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { Button, cx, Page, PageHeader, PageTopbar } from '../ui'
 import { IconHome, IconPlus } from '../icons'
 import { ProjectCard, QuietProject } from './ProjectCard'
-import { CollapseSidebarButton, Frame } from './Frame'
-import { SidebarFootChrome } from './Sidebar'
-import { useOpenGlossary } from './GlossaryDialog'
+import { Frame } from './Frame'
 import { SidebarBackdrop } from './SidebarParts'
 import { PhoneRail } from './ProjectRail'
 
@@ -22,8 +17,9 @@ import { PhoneRail } from './ProjectRail'
  * project. Everything stays in the rail's order — the order `project.list`
  * returns — so a project sits in the same spot here as on the rail.
  *
- * It sits in the same frame as every project (DESIGN.md §Frame), beside the
- * rail and a minimal sidebar: the page's name and the status foot.
+ * It sits in the same frame as every project (DESIGN.md §Frame), right beside
+ * the rail with no sidebar, as designed (the human dropped the slim sidebar it
+ * once had; the theme toggle and status foot live in every project's sidebar).
  *
  * "Open a project" is the page's one primary (decision 7). Home is never reached
  * with no projects open (decision 3), so it has no empty state: the shell lands
@@ -54,7 +50,7 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
   }
 
   return (
-    <Frame sidebar={<PortfolioSidebar />}>
+    <Frame rail>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PageTopbar crumbs={[{ label: 'Projects', icon: <IconHome /> }]} />
         <Page routeKey="portfolio" width="wide" className="relative isolate">
@@ -115,36 +111,5 @@ function PortfolioContent({ entries, nav, phone }: { entries: PortfolioEntry[]; 
         </section>
       )}
     </>
-  )
-}
-
-/**
- * The home's sidebar: the page's name where a project's sidebar names the
- * project, and the status foot. Switching project is the rail's, beside it.
- */
-function PortfolioSidebar() {
-  const live = useLiveStatus()
-  const theme = useTheme()
-  const openGlossary = useOpenGlossary()
-  return (
-    <nav aria-label="Projects" className="relative isolate flex h-full min-h-0 flex-col p-2">
-      <SidebarBackdrop />
-      <div className="flex h-10 shrink-0 items-center gap-0.5">
-        <h2 className="m-0 min-w-0 flex-1 truncate px-2 text-md font-medium text-text">All projects</h2>
-        <CollapseSidebarButton />
-      </div>
-      <div className="flex-1" />
-      <SidebarFootChrome
-        health={live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'}
-        origin={typeof window === 'undefined' ? 'this machine' : window.location.origin}
-        sandbox={SANDBOX_MODE}
-        notify={null}
-        theme={theme.resolved}
-        onToggleTheme={theme.toggle}
-        // The help menu's Glossary only: Settings, where the phone entry
-        // leads, opens inside a project and this level has none.
-        onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
-      />
-    </nav>
   )
 }
