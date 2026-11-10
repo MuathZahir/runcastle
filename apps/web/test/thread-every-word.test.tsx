@@ -32,11 +32,11 @@ function renderTurn(items: ThreadItem[] = TURN) {
 const message = (text: string) => within(screen.getByText(text).closest('.group\\/msg') as HTMLElement)
 
 describe('a turn with several stretches of words', () => {
-  it('shows every stretch in order, the run between them folded with its own time', () => {
+  it('shows every stretch in order, the run between them folded to what ran and its own time', () => {
     renderTurn()
     expect(screen.getByText('Looking at the export first.')).toBeTruthy()
     expect(screen.getByText('Fixed: the body is parsed now.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Worked for 46s/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Read 1 file\s*· 46s/ })).toBeTruthy()
   })
 
   it('offers Branch, the model and the turn time only on the last words', () => {

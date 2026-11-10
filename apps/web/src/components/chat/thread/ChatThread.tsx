@@ -21,7 +21,7 @@ import { Markdown } from '../../Markdown'
 import { ShownFiles } from './ShownFiles'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
-import { FeaturesCardItem, RuncastleDisplay } from './FeatureCardItems'
+import { FeaturesCardItem, RuncastleDisplay, WorkersCardItem } from './FeatureCardItems'
 import { RAISED, WELL } from './surfaces'
 import { k } from './ComposerParts'
 import { ChangesCard, WorkBlock, duration } from './Work'
@@ -282,6 +282,8 @@ function Item({
       return <DesignCardsItem designIds={item.designIds} older={item.older} {...(item.featureId ? { featureId: item.featureId } : {})} />
     case 'features_card':
       return <FeaturesCardItem rows={item.rows} />
+    case 'workers_card':
+      return <WorkersCardItem rows={item.rows} />
     case 'answered':
       return (
         <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary">

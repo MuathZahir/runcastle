@@ -414,6 +414,9 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     await waitFor(() => expect(lane('Needs you')).toEqual(['Header']))
     pickWorker('Header')
     const card = await within(column()).findByRole('region', { name: 'Assignment: Header' })
+    // It starts folded to its name and purpose line; a click opens the rest.
+    expect(card.textContent).not.toContain('Build Header')
+    fireEvent.click(within(card).getByRole('button', { name: 'Show the assignment: Header' }))
     expect(card.textContent).toContain('Build Header')
     expect(card.textContent).toContain('The human is happy')
     expect(card.textContent).toContain('Started by the lead')
@@ -644,6 +647,8 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     render(<Page scenario={FAILED} />, { wrapper: api.Wrapper })
     fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
     const card = await within(column()).findByRole('region', { name: 'Assignment: Scenarios' })
+    expect(card.textContent).not.toContain('Started by you')
+    fireEvent.click(within(card).getByRole('button', { name: 'Show the assignment: Scenarios' }))
     expect(card.textContent).toContain('Started by you')
     expect(card.textContent).not.toContain('Goal')
     await waitFor(() => expect(within(header()).getByRole('status').textContent).toContain('Needs you'))
