@@ -67,7 +67,14 @@ const WORKERS: SeededWorker[] = [
     status: 'handed-back',
     ago: 90,
     handback: {
-      summary: 'The card shows the summary, the commit count and the files, folded. **You asked** for the link to the worker on the right.',
+      // Several paragraphs, so the card shows its first and folds the rest behind "Show more" (calmer-worker-chats decision 2).
+      summary: [
+        'The card shows the summary, the commit count and the files, folded. **You asked** for the link to the worker on the right.',
+        '## What I built',
+        '- The card itself, in `WorkerParts.tsx`, with its header, summary and files.\n- The link to the worker, on the right of the header.',
+        '## What I tested',
+        '- A handback with no files, one file and many.\n- The link opens the worker’s chat.',
+      ].join('\n\n'),
       commits: ['a1b2c3d Handback card layout', 'd4e5f6a Link to the worker'],
       files: ['apps/web/src/components/workers/WorkerParts.tsx', 'apps/web/test/worker-cards.test.tsx'],
     },
