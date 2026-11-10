@@ -96,13 +96,3 @@ export function portfolioTotals(entries: PortfolioEntry[]): { projects: number; 
     waiting: entries.reduce((n, e) => n + e.stats.needsYou, 0),
   }
 }
-
-/** "JanaLearn_Updated" → "JL", "runcastle-demo" → "RD", "runcastle" → "R" (the rail's rule). */
-export function projectInitials(name: string): string {
-  const words = name
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .split(/[\s_\-.]+/)
-    .filter(Boolean)
-  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase()
-  return (words[0]?.[0] ?? '?').toUpperCase()
-}

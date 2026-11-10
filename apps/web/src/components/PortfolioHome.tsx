@@ -1,6 +1,6 @@
-import { trpc } from '../trpc'
 import { portfolioEntries, portfolioTotals, type PortfolioEntry } from '../lib/portfolio'
-import { useLivePoll, useLiveStatus } from '../lib/live'
+import { useLiveStatus } from '../lib/live'
+import { useProjectFeatureLists } from '../lib/use-notifications'
 import { SANDBOX_MODE } from '../lib/env'
 import { useTheme } from '../lib/theme'
 import { useIsPhone } from '../lib/use-phone'
@@ -12,6 +12,7 @@ import { CollapseSidebarButton, Frame } from './Frame'
 import { SidebarFootChrome } from './Sidebar'
 import { useOpenGlossary } from './GlossaryDialog'
 import { SidebarBackdrop } from './SidebarParts'
+import { PhoneRail } from './ProjectRail'
 
 /**
  * All projects, the portfolio home (route `/`), as approved in
@@ -34,14 +35,8 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
 
   // One feature.list per project — the same queries the tab title and the
   // rail read, so nothing here polls twice.
-  const poll = useLivePoll()
-  const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
-  )
-  const entries = portfolioEntries(
-    projects,
-    projects.map((_, i) => featureQueries[i]?.data),
-  )
+  const featureLists = useProjectFeatureLists(projects)
+  const entries = portfolioEntries(projects, featureLists)
 
   const content = <PortfolioContent entries={entries} nav={nav} phone={phone} />
 
@@ -52,6 +47,7 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
     return (
       <div className="relative isolate flex h-dvh min-h-0 flex-col bg-canvas p-2">
         <SidebarBackdrop />
+        <PhoneRail />
         <main className="-mx-2 min-h-0 flex-1 overflow-y-auto px-3 pt-4 pb-6">{content}</main>
       </div>
     )

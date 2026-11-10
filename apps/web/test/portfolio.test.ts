@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardLines, needWords, portfolioEntries, portfolioTotals, projectInitials } from '../src/lib/portfolio'
+import { cardLines, needWords, portfolioEntries, portfolioTotals } from '../src/lib/portfolio'
 import { listItem, need } from './fixtures'
 
 /**
@@ -88,15 +88,5 @@ describe('needWords', () => {
   it('keeps the reason and drops its detail', () => {
     expect(needWords('Ready to test · Streak resets at midnight')).toBe('Ready to test')
     expect(needWords('Plan to approve')).toBe('Plan to approve')
-  })
-})
-
-describe('projectInitials', () => {
-  it('takes two letters from the first two words, one for a one-word name', () => {
-    expect(projectInitials('runcastle')).toBe('R')
-    expect(projectInitials('runcastle-demo')).toBe('RD')
-    expect(projectInitials('JanaLearn_Updated')).toBe('JL')
-    expect(projectInitials('jev-browser-extension')).toBe('JB')
-    expect(projectInitials('mlNotebookSync')).toBe('MN')
   })
 })

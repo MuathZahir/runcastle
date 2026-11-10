@@ -3,7 +3,8 @@ import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useIsPhone } from '../lib/use-phone'
-import { cardLines, projectInitials, type PortfolioEntry } from '../lib/portfolio'
+import { cardLines, type PortfolioEntry } from '../lib/portfolio'
+import { initialsOf } from '../lib/project-rail'
 import type { Project } from '../lib/api'
 import { Button, cx, ListRow, MetaLine, StatusDot, TEXT_INPUT } from '../ui'
 import { IconTrash } from '../icons'
@@ -50,7 +51,7 @@ export function ProjectTile({ name, size, tone }: { name: string; size: keyof ty
         tone === 'well' && 'bg-fill-well text-text-secondary',
       )}
     >
-      {projectInitials(name)}
+      {initialsOf(name)}
     </span>
   )
 }
