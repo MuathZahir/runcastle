@@ -76,7 +76,9 @@ them instead of dropping them. Then:
 - the human's own Test drive, refused while the slot is held, gives a reason naming the worker, with
   a way to open its chat.
 
-The one-drive-slot rule (ADR-0014) is untouched. The phone has no drive slot and gains none.
+The one-drive-slot rule (ADR-0014) is untouched. The phone has no drive slot and cannot start a
+drive; its chat bar's status words and the chat banner read the same feature status, so they follow
+the desktop with no phone-only work.
 
 **Designs.** Two design pages hold the look of the chat pieces, waiting for the human's approval:
 "Worker chat" (states: folded, assignment-open) and "Lead chat — worker cards" (states: started,

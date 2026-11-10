@@ -6,6 +6,10 @@ rest were made by the lead alone and carry an **Assumed.** line. The challenge w
 
 Check first: 9, 10, 13, 14, 15
 
+The orchestrator read the plan against the triage grill and agreed with 7, 9, 10, 12, 13, 14 and 15,
+and asked how decision 15 covers the phone; its wording now says so. That is the orchestrator's
+read, not the human's yes: every **Assumed.** decision still waits on the human.
+
 ## 1. "Worked for" rows say what ran
 **Decision:** Every word the agent writes stays in view and each stretch of tool calls keeps its own row, but the row's label becomes a mechanical summary of what ran in that stretch, e.g. "Ran 5 commands, read 2 files, edited 1 file", built from the tool-call kinds runcastle already records. No agent writes it.
 **Why:** The rows carried no information; a count of what ran says something at a glance without hiding any words (decision 12 of `every-word-the-agent-writes-stays-in-view` stands).
@@ -78,7 +82,7 @@ Phone and desktop alerts read the same need, so they stop firing for it too.
 **Assumed.** Alternative: clear the wait when the lead starts a worker, as the description promised.
 
 ## 15. The agent's drive in the slot: named, opens its chat, Stop asks first
-**Decision:** While the Review worker drives, the sidebar's drive slot names it ("Review worker is trying this feature", the feature's title beneath) and a click opens the Review worker's chat on the feature's page. Its Stop button stays, but asks first, saying it ends the review's drive. The feature's header reads as a worker at work and offers no "Stop drive" of its own, and the "can't land its own edits" banner stays away (decision 5). The phone has no drive slot today and gains none.
+**Decision:** While the Review worker drives, the sidebar's drive slot names it ("Review worker is trying this feature", the feature's title beneath) and a click opens the Review worker's chat on the feature's page. Its Stop button stays, but asks first, saying it ends the review's drive. The feature's header reads as a worker at work and offers no "Stop drive" of its own, and the "can't land its own edits" banner stays away (decision 5). The phone has no drive slot and cannot start a drive, so it never meets a busy slot. It does show the human's drive, in its chat bar's status words and the chat's banner. Both come from the same shared feature status, so during an agent's drive the phone reads as a worker at work, the same as the desktop.
 **Why:** The slot is the human's, so they must be able to take it back without dropping the whole review; the confirm keeps a stray click from breaking a running review. The banner is technically true during a review drive too (the lead's own commits wait), but the lead is idle while the review runs, so it only adds noise.
 **Assumed.** Alternative: no Stop on the agent's drive, so the only way to end it is to drop the Review worker from its chat.
 **For the human.** The drive slot and the header behave differently during a review.
