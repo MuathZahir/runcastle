@@ -95,6 +95,15 @@ describe('foldThread: shown files', () => {
     expect(v.items[2]).toEqual({ kind: 'plan_card', id: expect.any(String) })
   })
 
+  it('keeps the feature on a group of design cards, and groups one feature’s designs only', () => {
+    const design = (designId: string, featureId: string): ThreadEventBody => ({ type: 'design_shown', designId, featureId })
+    const v = foldThread(log(...running, design('d1', 'fa'), design('d2', 'fa'), design('d3', 'fb'), { type: 'turn_ended', reason: 'end_turn' }))
+    expect(v.items.filter((x) => x.kind === 'design_cards')).toEqual([
+      { kind: 'design_cards', id: expect.any(String), designIds: ['d1', 'd2'], older: [], featureId: 'fa' },
+      { kind: 'design_cards', id: expect.any(String), designIds: ['d3'], older: [], featureId: 'fb' },
+    ])
+  })
+
   it('starts a new group of design cards in the next turn, and marks the earlier cards of a design and the plan shown again as older', () => {
     const design = (designId: string): ThreadEventBody => ({ type: 'design_shown', designId })
     const end: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }

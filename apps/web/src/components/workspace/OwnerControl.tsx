@@ -116,8 +116,9 @@ export function OwnerControl({
   const words = lead + tail
   const icon = nameless ? null : owner.kind === 'chat' && !planning ? <IconOrchestrator size={14} /> : <IconUser size={14} />
   // The crumb that holds the control clips its overflow, so the focus ring is drawn inside the control's edge.
+  // It keeps its width while the title and thread give way; its own cap is what truncates the chat's name.
   const look =
-    'inline-flex h-6 max-w-96 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm text-text-tertiary focus-visible:outline-offset-[-2px]!'
+    'inline-flex h-6 max-w-56 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm text-text-tertiary focus-visible:outline-offset-[-2px]!'
 
   if (!chat) {
     return (

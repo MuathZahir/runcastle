@@ -38,6 +38,22 @@ export function isRuncastlePrompt(prompt: string): boolean {
   return text.startsWith(RUNCASTLE_PROMPT_TAG) || HOOK_FEEDBACK_LINE.test(text)
 }
 
+/** How an opening held for the human's first message ends: that message follows it, in the same prompt. */
+export const HELD_OPENING_END = "The human's message follows."
+
+/**
+ * The words the human typed under a held opening (every-feature-has-one-owner
+ * decision 23): a chat nobody started opens on their first message, which rides
+ * in one prompt behind runcastle's tagged opening. Null when the prompt holds no
+ * such opening, or when what follows it is runcastle's own (a relay, a wake).
+ */
+export function typedAfterOpening(prompt: string): string | null {
+  const at = prompt.indexOf(HELD_OPENING_END)
+  if (at < 0 || !isRuncastlePrompt(prompt)) return null
+  const rest = prompt.slice(at + HELD_OPENING_END.length).trim()
+  return rest && !isRuncastlePrompt(rest) ? rest : null
+}
+
 /** A runcastle prompt's own lines: the hook feedback's wrapper around them, if any, taken off. */
 export function runcastleLines(prompt: string): string {
   const text = prompt.trim()

@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DesignEntry } from '@runcastle/core'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { ThreadCardsContext, type ThreadCardsTarget } from '../src/components/design/ThreadCards'
+import { FeatureLinksContext, type FeatureLinks } from '../src/components/chat/thread/FeatureCardItems'
+import { listItem } from './fixtures'
 import type { ThreadItem } from '../src/lib/chat-thread'
 import { fakeTrpc } from './fake-trpc'
 
@@ -76,6 +78,32 @@ describe('the plan and design cards in a thread', () => {
     expect(screen.getByText('1 of 2 approved')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Design tab/ }))
     expect(t.onOpenDesignList).toHaveBeenCalledTimes(1)
+  })
+
+  it('in an orchestrator chat, draws the cards of the feature each names and opens that feature on its view', async () => {
+    const links: FeatureLinks = {
+      features: [{ ...listItem({ id: 'f9', slug: 'f9-slug' }), oneLiner: 'The chat owns this one.' }],
+      openFeature: vi.fn(),
+    }
+    const items: ThreadItem[] = [
+      { kind: 'plan_card', id: 'plan_card:1', featureId: 'f9' },
+      { kind: 'design_cards', id: 'design_cards:2', designIds: ['cart'], older: [], featureId: 'f9' },
+      // A card naming a feature the list does not hold draws nothing.
+      { kind: 'plan_card', id: 'plan_card:3', featureId: 'gone' },
+    ]
+    render(
+      <FeatureLinksContext.Provider value={links}>
+        <ChatThread items={items} state="idle" footer={null} />
+      </FeatureLinksContext.Provider>,
+      { wrapper: server().Wrapper },
+    )
+    const plans = await screen.findAllByRole('button', { name: 'Open the plan' })
+    expect(plans).toHaveLength(1)
+    expect(plans[0]!.textContent).toContain('The chat owns this one.')
+    fireEvent.click(plans[0]!)
+    expect(links.openFeature).toHaveBeenCalledWith('f9', 'plan')
+    fireEvent.click(await screen.findByRole('button', { name: 'Open the design Cart' }))
+    expect(links.openFeature).toHaveBeenCalledWith('f9', 'design')
   })
 
   it('draws nothing for them in a thread outside a feature page', async () => {

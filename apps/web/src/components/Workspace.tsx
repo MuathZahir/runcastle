@@ -1171,7 +1171,7 @@ export function Workspace({
         crumbs={[
           // Its epic, then who owns it and how far its chat takes it: one crumb when the
           // epic's chat owns it (every-feature-has-one-owner decisions 11, 12, 14, 21;
-          // orchestrator-chats-become-epics decision 15).
+          // orchestrator-chats-become-epics decision 15). Each gives way down to its floor.
           ...epicOwnerCrumbs(feature, projectThreads.data ?? [], onOpenThread, owner, (inEpic) => (
             <OwnerControl
               owner={owner.owner}
@@ -1184,6 +1184,8 @@ export function Workspace({
           )),
           {
             label: feature.title,
+            shrink: true,
+            ...(feature.title.length > 12 ? { floor: 'min-w-22' } : {}),
             icon: (
               <ProgressIcon
                 state={isDraft ? 'draft' : shipped ? 'shipped' : 'active'}
@@ -1289,7 +1291,7 @@ export function Workspace({
                   }}
                   ownedBy={
                     owner.holderId && owner.chatName
-                      ? { chat: owner.chatName, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
+                      ? { chat: owner.chatName, asking: owner.asking, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
                       : null
                   }
                 />

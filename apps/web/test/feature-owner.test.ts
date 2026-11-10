@@ -109,6 +109,16 @@ describe('the owner reading', () => {
     expect(ownerReading(feature({ chatId: 'chat-1' }), threads).holderId).toBeUndefined()
     expect(ownerReading(feature({ chatId: 'chat-1', finish: 'merge' }), threads).holderId).toBeUndefined()
   })
+
+  it('reads asking only while the owning chat asks the human about this very feature', () => {
+    const held = { id: 'feat-a', ...feature({ heldBy: 'chat-1', chatId: 'chat-1', finish: 'show' }) }
+    const asking = (askingAbout: string[]) => [{ ...threads[0]!, askingAbout }, threads[1]!]
+    expect(ownerReading(held, asking(['feat-a'])).asking).toBe(true)
+    expect(ownerReading(held, asking(['feat-b'])).asking).toBe(false)
+    expect(ownerReading(held, threads).asking).toBe(false)
+    // Its chat asking does not make a human-owned feature read asking: the strip is not there.
+    expect(ownerReading({ ...held, heldBy: null }, asking(['feat-a'])).asking).toBe(false)
+  })
 })
 
 describe('OwnerStrip', () => {

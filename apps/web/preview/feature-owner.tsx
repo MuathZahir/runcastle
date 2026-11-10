@@ -159,8 +159,14 @@ function Page() {
           onChoose={(c) => setOwner(c === 'you' ? { kind: 'you' } : { kind: 'chat', name: chatName ?? CHAT, finish: c })}
         />
       ),
+      ...(owner.kind === 'chat' ? { shrink: true, floor: 'min-w-44' } : {}),
     },
-    { label: state.title, icon: <ProgressIcon state="active" progress={0.35} size={14} label="" /> },
+    {
+      label: state.title,
+      icon: <ProgressIcon state="active" progress={0.35} size={14} label="" />,
+      shrink: true,
+      ...(state.title.length > 12 ? { floor: 'min-w-22' } : {}),
+    },
   ]
 
   return (

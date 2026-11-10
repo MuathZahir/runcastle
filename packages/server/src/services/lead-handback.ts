@@ -63,7 +63,7 @@ export async function handBackToOrchestrator(
     `State: ${state}. ` +
     (feature.heldBy === holder.id
       ? `${passed ? 'Its plan has the yes, so you own it now. ' : ''}Reply with send_to_feature({ slug: "${feature.slug}" }), or merge it when it is ready.`
-      : `The human owns this feature: answer its lead with send_to_feature({ slug: "${feature.slug}" }); nothing else changes it.`)
+      : `The human owns this feature: answer its lead with send_to_feature({ slug: "${feature.slug}" }), giving facts and your recommendation even when the call is the human's. The lead asks them in the feature's chat; do not ask them here. Nothing else changes it.`)
   await agentHost(ctx).prompt(
     holder.id,
     { text },

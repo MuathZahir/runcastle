@@ -179,3 +179,8 @@ The orchestrator agreed the plan on 2026-11-09 with changes to 12, 17, 20, 21 an
 **Decision:** On the human's own words, relayed by the orchestrator ("I want you to finish both features. Don't merge them. I'll check them before (designs and logic)"), the designed owner control, owner strip and their design pages are committed so workers can wire them, before the human has approved them. Committing is not approving: both designs stay recorded as waiting, and the human approves or changes them in the morning, before merge. A change they ask for then is made on the wired components.
 **Why:** The human asked for both features finished before they check; the designs cannot be wired from an uncommitted checkout.
 **Decided by the orchestrator, on the human's relayed words (2026-11-09).**
+
+## 32. A never-run lead's Start does not take the feature
+**Decision:** With "A new feature waits for Start" merged, a never-run lead's composer is locked until the human presses Start. A locked composer sends nothing, so it takes nothing. Start and "Plan it yourself" launch with runcastle's opening and no words of the human's, so they leave the owner as it is: only a typed message takes a feature (decision 23), including the first message behind a held opening on a feature that has history but no main chat. The owner strip still shows above the locked composer: it says who runs the feature, and once Start has run, sending does make it yours.
+**Why:** Pressing Start is starting the agent, not taking the work from a chat; one rule (a typed message takes it) is simpler to hold in mind than a list of buttons that also take.
+**Decided by the orchestrator (2026-11-10), at the merge of main; the human may overrule.**

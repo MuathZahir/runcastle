@@ -60,12 +60,15 @@ export function epicCrumb(
   if (!epic) return null
   return {
     label: (
-      <span className="block max-w-44 truncate" title={`Epic: ${epic.title}`}>
+      <span className="block max-w-44 min-w-0 truncate" title={`Epic: ${epic.title}`}>
         {epic.title}
       </span>
     ),
     icon: <EpicGlyph small />,
     onClick: () => onOpen(epic.id),
+    // It gives way with the owner and the title, down to a few letters.
+    shrink: true,
+    ...(epic.title.length > 6 ? { floor: 'min-w-24' } : {}),
   }
 }
 
@@ -81,15 +84,24 @@ export function epicOwnerCrumbs(
   feature: { chatId?: string | null | undefined },
   threads: readonly ThreadEntry[],
   onOpen: ((chatId: string) => void) | undefined,
-  owner: Pick<OwnerReading, 'owner' | 'holderId' | 'chatId'>,
+  owner: Pick<OwnerReading, 'owner' | 'holderId' | 'chatId'> & { planning?: boolean },
   control: (inEpic: boolean) => ReactNode,
 ): Crumb[] {
   const epic = onOpen ? featureEpic(feature, threads) : null
   const join = epicOwnerJoin(epic?.id ?? null, owner)
-  if (!epic || !onOpen || join === 'owner') return [{ label: control(false) }]
-  if (join === 'two') return [epicCrumb(feature, threads, onOpen)!, { label: control(false) }]
+  // A chat's control gives way down to "Runc… · merges it"; "Yours" is narrow and never does
+  // (every-feature-has-one-owner's header floors).
+  const alone: Crumb = {
+    label: control(false),
+    ...(owner.owner.kind === 'chat' ? { shrink: true, floor: 'min-w-44' } : {}),
+  }
+  if (!epic || !onOpen || join === 'owner') return [alone]
+  if (join === 'two') return [epicCrumb(feature, threads, onOpen)!, alone]
   return [
     {
+      // The epic's name gives way down to a few letters; the finish words after it never do.
+      shrink: true,
+      ...(epic.title.length > 6 ? { floor: owner.planning ? 'min-w-56' : 'min-w-44' } : {}),
       icon: <EpicGlyph small />,
       label: (
         <span className="inline-flex min-w-0 items-center">
@@ -97,14 +109,14 @@ export function epicOwnerCrumbs(
             type="button"
             onClick={() => onOpen(epic.id)}
             title={`Epic: ${epic.title}`}
-            className="block max-w-44 cursor-pointer truncate rounded-md hover:text-text"
+            className="block max-w-44 min-w-0 cursor-pointer truncate rounded-md hover:text-text"
           >
             {epic.title}
           </button>
           <span aria-hidden="true" className="pl-1 text-text-tertiary">
             ·
           </span>
-          {control(true)}
+          <span className="inline-flex shrink-0">{control(true)}</span>
         </span>
       ),
     },

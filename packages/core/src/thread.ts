@@ -546,7 +546,7 @@ export type ThreadItem =
    * The designs a turn showed, one card each, in order. `older` names the
    * designs a later card for the same design follows (decision 19).
    */
-  | { kind: 'design_cards'; id: string; designIds: string[]; older: string[] }
+  | { kind: 'design_cards'; id: string; designIds: string[]; older: string[]; featureId?: string }
   /** What a turn's orchestrator tools did to features: one row per feature. */
   | {
       kind: 'features_card'
@@ -1521,11 +1521,14 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       case 'design_shown': {
         // Designs shown one after another in a turn are one group of cards, as shown files are.
+        // An orchestrator chat may show several features' designs: a group holds one feature's.
         const group = groupWith('design_cards')
-        if (group) {
+        if (group && group.featureId === e.featureId) {
           group.designIds.push(e.designId)
           render(true)
-        } else add({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] }, e.at)
+        } else {
+          add({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [], ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
+        }
         break
       }
       case 'feature_acted': {
