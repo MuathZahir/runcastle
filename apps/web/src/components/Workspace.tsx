@@ -607,6 +607,27 @@ export function Workspace({
     onError: (e) => toast.push(e.message),
   })
 
+  /**
+   * Bring one of the feature's threads to the front of the chat column, giving
+   * the column back if the panel or the drive has the whole page.
+   */
+  const bringForward = (threadId: string) => {
+    column.pick(threadId)
+    const v = panel.state.view
+    if (v === 'drive' || (v && !panel.state.collapsed && panel.state.share >= 1)) panel.dispatch({ type: 'close' })
+  }
+
+  // The shell asked for one of this feature's workers (the drive slot's agent
+  // card): it comes to the front once the thread list holds it. Above the
+  // loading return, so the hook runs on every render.
+  const requestedWorker = workerRequest?.featureId === featureId ? workerRequest.workerId : null
+  const requestedListed = !!requestedWorker && column.threads.some((t) => t.id === requestedWorker)
+  useEffect(() => {
+    if (!requestedWorker || !requestedListed) return
+    bringForward(requestedWorker)
+    onConsumeWorkerRequest?.()
+    // bringForward is rebuilt each render; the request is what this answers.
+  }, [requestedWorker, requestedListed])
   if (q.isLoading) {
     return (
       <section className={FRAME}>
@@ -719,26 +740,6 @@ export function Workspace({
       if (panel.state.view === 'drive') panel.dispatch({ type: 'close' })
     })
 
-  /**
-   * Bring one of the feature's threads to the front of the chat column, giving
-   * the column back if the panel or the drive has the whole page.
-   */
-  const bringForward = (threadId: string) => {
-    column.pick(threadId)
-    const v = panel.state.view
-    if (v === 'drive' || (v && !panel.state.collapsed && panel.state.share >= 1)) panel.dispatch({ type: 'close' })
-  }
-
-  // The shell asked for one of this feature's workers (the drive slot's agent
-  // card): it comes to the front once the thread list holds it.
-  const requestedWorker = workerRequest?.featureId === featureId ? workerRequest.workerId : null
-  const requestedListed = !!requestedWorker && column.threads.some((t) => t.id === requestedWorker)
-  useEffect(() => {
-    if (!requestedWorker || !requestedListed) return
-    bringForward(requestedWorker)
-    onConsumeWorkerRequest?.()
-    // bringForward is rebuilt each render; the request is what this answers.
-  }, [requestedWorker, requestedListed])
   /** Open a worker's chat: in this page's column when it is this feature's, else on its own feature's page. */
   const openWorkerChat = (ownerFeatureId: string, workerId: string) => {
     if (ownerFeatureId === featureId) bringForward(workerId)
