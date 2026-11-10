@@ -54,3 +54,11 @@ When a lead starts a worker, its chat shows nothing clickable; the human has to 
 - The retired draft `open-a-worker-while-it-works` (superseded; the human may delete it).
 
 Planning mode: plans itself
+
+## Added by the orchestrator, 2026-11-10
+
+## 7. Background-helper results count as the human typing (bug, added by the human's yes, 2026-11-10)
+
+During this feature's own self-planning run, runcastle moved the feature from the orchestrator chat to the human ("cause: typed" at 16:23 UTC) although the human never typed in it. The cause: when a lead's background subagent finishes, Claude Code delivers its result to the lead as a new prompt beginning `<task-notification>`. The lead's UserPromptSubmit hook (`handleLeadPrompt`, packages/server/src/routes/hooks.ts ~395) treats any prompt without runcastle's tag as typed by the human, so it calls `releaseOnTyped` (takes a chat-owned feature for the human) and `markHumanMessage({ typed: true })`, which also clears the feature's waiting reason, stopped mark and outstanding handback. This run logged seven false `lead.human_message {typed:true}` events (16:23–16:35); the transcript confirms the ones at 16:33:27 and 16:35:27 were task-notifications.
+
+**Decision (the human's): fix it in this feature.** Prompts Claude Code injects on its own (background task notifications, and any similar machine-made prompt you find) never count as the human typing: no owner change, no human-message mark. Cover it with a test. Check the Codex runtime's equivalent if it has one. This is the same "statuses tell the truth" family as item 4.
