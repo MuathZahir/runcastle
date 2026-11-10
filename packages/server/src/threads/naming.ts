@@ -74,8 +74,29 @@ function firstMessage(row: SessionRow, events: readonly ThreadEvent[]): string |
   return deriveTitle(said, row.runtime ?? DEFAULT_RUNTIME, row.kind)
 }
 
+/** The names someone gave a thread on purpose: the human's rename, and the Orchestrator's own (its epic's name). */
+export interface GivenNames {
+  renamed?: string
+  epicName?: string
+}
+
 /**
- * A logged thread's name: the human's rename, which wins over everything; a
+ * The latest rename the human gave, and the latest name the Orchestrator gave
+ * its own chat (`name_epic`, the one-off naming pass). A branch's log begins
+ * with its parent's, whose names are the parent's.
+ */
+export function givenNames(events: readonly ThreadEvent[]): GivenNames {
+  const branchAt = events.map((e) => e.type).lastIndexOf('branched')
+  const own = events.slice(branchAt + 1)
+  const titles = own.flatMap((e) => (e.type === 'title' ? [e] : []))
+  const renamed = titles.findLast((e) => e.renamed)?.title
+  const epicName = titles.findLast((e) => e.by === 'orchestrator')?.title
+  return { ...(renamed ? { renamed } : {}), ...(epicName ? { epicName } : {}) }
+}
+
+/**
+ * A logged thread's name: the human's rename, which wins over everything; then
+ * the name the Orchestrator gave its own chat (no generated title outranks it); a
  * branch's "Branch of <parent>" until the human writes in it, then its own
  * first message; else the runtime's generated title when {@link runtimeMayName},
  * else the human's first message, else what it is doing, else {@link NEW_CHAT_NAME}.
@@ -85,11 +106,11 @@ function firstMessage(row: SessionRow, events: readonly ThreadEvent[]): string |
  * may not give, which an earlier host stored on the row.
  */
 export function threadName(row: SessionRow, events: readonly ThreadEvent[], about: ThreadAbout = {}): string {
-  // A branch's log begins with its parent's, whose rename is the parent's.
+  const { renamed, epicName } = givenNames(events)
+  if (renamed) return renamed
+  if (epicName) return epicName
   const branchAt = events.map((e) => e.type).lastIndexOf('branched')
   const own = events.slice(branchAt + 1)
-  const renamed = own.flatMap((e) => (e.type === 'title' && e.renamed ? [e.title] : [])).at(-1)
-  if (renamed) return renamed
   const branched = events[branchAt]
   if (branched?.type === 'branched') return firstMessage(row, own) ?? `Branch of ${branched.from}`
   const mayName = runtimeMayName(row, events)

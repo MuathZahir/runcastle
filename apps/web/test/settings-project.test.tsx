@@ -144,7 +144,7 @@ describe('Settings — This project', () => {
   it('shows the eleven fields in three groups, with example placeholders and no retired text', () => {
     open()
 
-    for (const title of ['Model & sandbox', 'Commands', 'Orchestrator']) {
+    for (const title of ['Model & sandbox', 'Commands', 'Epics']) {
       expect(screen.getByText(title)).toBeTruthy()
     }
     const labels = [
@@ -276,7 +276,7 @@ describe('Settings — This project', () => {
     open()
 
     const stale = screen.getByText('Stale')
-    expect(stale.getAttribute('title')).toContain('ask the Orchestrator')
+    expect(stale.getAttribute('title')).toContain('ask an epic')
     // The setup finding is the stale one; the fresher two carry no flag.
     expect(screen.getAllByText('Stale').length).toBe(1)
   })
@@ -353,7 +353,7 @@ describe('Settings — This project', () => {
 
     expect(screen.getByLabelText('Verify')).toBeTruthy()
     expect(screen.queryByLabelText('Setup')).toBeNull()
-    expect(screen.queryByText('Orchestrator')).toBeNull()
+    expect(screen.queryByText('Epics')).toBeNull()
   })
 })
 

@@ -84,7 +84,7 @@ describe('the needs watcher', () => {
     emit(ctx, f.id, { type: 'lead.handed_back', message: 'handed back' })
     await settle()
     expect(pings(f.id).map((e) => e.data)).toEqual([
-      { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
+      { kind: 'handback', words: 'With sess_orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
     ])
 
     watch.sweep()
@@ -94,16 +94,16 @@ describe('the needs watcher', () => {
     watch.sweep()
     watch.sweep()
     expect(pings(f.id).map((e) => e.data)).toEqual([
-      { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
+      { kind: 'handback', words: 'With sess_orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
       { kind: 'handback', words: 'Handed back · Ready to merge', held: false, why: 'Ready to merge' },
     ])
   })
 
-  it('pings a plan on a held feature with no handback at once (the-status-tells-the-truth decision 1)', async () => {
+  it('holds a plan on a chat-owned feature with no handback: no ping (every-feature-has-one-owner decision 16)', async () => {
     const f = seedFeature(ctx, projectId, { heldBy: 'sess_orchestrator' })
     watch = startNeedWatch(ctx, { now: () => clock })
     setWaiting(ctx, f.id, 'go?', 'plan')
     await settle()
-    expect(pings(f.id).map((e) => e.data)).toEqual([{ kind: 'plan', words: 'Plan to approve', held: false, why: null }])
+    expect(pings(f.id).map((e) => e.data)).toEqual([{ kind: 'plan', words: 'With sess_orchestrator · Plan to approve', held: true, why: null }])
   })
 })

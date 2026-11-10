@@ -17,7 +17,8 @@ import { Button,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconOrchestrator, IconPlay, IconX, ProgressIcon } from '../icons'
+import { IconPlay, IconX, ProgressIcon } from '../icons'
+import { epicOwnerCrumbs } from './SidebarEpics'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -50,7 +51,7 @@ import {
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
-import { featureHolder, usePublishSidebarThreads } from '../lib/sidebar-threads'
+import { usePublishSidebarThreads } from '../lib/sidebar-threads'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -79,6 +80,9 @@ import { usePanelShow } from './workspace/use-panel-show'
 import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
+import { OwnerControl } from './workspace/OwnerControl'
+import { ownerReading } from '../lib/feature-owner'
+import { useSetOwner } from '../lib/use-set-owner'
 import { ACTION_ICON, NextStepBar } from './workspace/NextStepBar'
 import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
@@ -170,6 +174,7 @@ export function Workspace({
 }) {
   const phone = useIsPhone()
   const utils = trpc.useUtils()
+  const setOwner = useSetOwner()
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
@@ -215,7 +220,7 @@ export function Workspace({
   // drive slot (decision 9), which only the server's drive info knows; the
   // chat's standing warnings read this same answer.
   const projectId = q.data?.feature.projectId
-  // Same key the sidebar polls: the name of the thread holding this feature.
+  // Same key the sidebar polls: the name of the epic this feature came from.
   const projectThreads = trpc.thread.list.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: poll },
@@ -616,7 +621,7 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  const holder = onOpenThread ? featureHolder(feature, projectThreads.data ?? []) : null
+  const owner = ownerReading(feature, projectThreads.data ?? [])
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -1164,21 +1169,23 @@ export function Workspace({
       ) : (
       <PageTopbar
         crumbs={[
-          ...(holder
-            ? [
-                {
-                  label: (
-                    <span className="block max-w-44 truncate" title={`Held by the orchestrator chat "${holder.title}"`}>
-                      {holder.title}
-                    </span>
-                  ),
-                  icon: <IconOrchestrator size={14} />,
-                  onClick: () => onOpenThread?.(holder.id),
-                },
-              ]
-            : []),
+          // Its epic, then who owns it and how far its chat takes it: one crumb when the
+          // epic's chat owns it (every-feature-has-one-owner decisions 11, 12, 14, 21;
+          // orchestrator-chats-become-epics decision 15). Each gives way down to its floor.
+          ...epicOwnerCrumbs(feature, projectThreads.data ?? [], onOpenThread, owner, (inEpic) => (
+            <OwnerControl
+              owner={owner.owner}
+              {...(owner.chatName ? { chatName: owner.chatName } : {})}
+              planning={owner.planning}
+              feature={feature.title}
+              inEpic={inEpic}
+              onChoose={(choice) => setOwner(featureId, choice)}
+            />
+          )),
           {
             label: feature.title,
+            shrink: true,
+            ...(feature.title.length > 12 ? { floor: 'min-w-22' } : {}),
             icon: (
               <ProgressIcon
                 state={isDraft ? 'draft' : shipped ? 'shipped' : 'active'}
@@ -1190,7 +1197,7 @@ export function Workspace({
           },
           ...(threadCrumb ? [{ label: threadCrumb }] : []),
         ]}
-        // With the holder first, a feature with no thread after it is still the page.
+        // With the epic and the owner first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
         status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} />}
         actions={
@@ -1282,6 +1289,11 @@ export function Workspace({
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
+                  ownedBy={
+                    owner.holderId && owner.chatName
+                      ? { chat: owner.chatName, asking: owner.asking, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
+                      : null
+                  }
                 />
               }
               panel={

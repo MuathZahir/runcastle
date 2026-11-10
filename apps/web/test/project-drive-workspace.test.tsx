@@ -174,6 +174,7 @@ vi.mock('../src/trpc', () => {
         testDrive: { useMutation: mutation },
         archive: { useMutation: mutation },
         unarchive: { useMutation: mutation },
+        setOwner: { useMutation: mutation },
         delete: { useMutation: mutation },
       },
     },
@@ -332,14 +333,14 @@ const SidebarFor = () => (
 )
 
 const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
-/** The Orchestrator's chats as its card lists them: each row's title, in order. */
-const orchestratorChats = (): string[] => {
-  const list = within(sidebar()).queryByRole('list', { name: 'Chats' })
-  return list ? within(list).getAllByRole('button').flatMap((b) => (b.title ? [b.title] : [])) : []
-}
-/** A chat's row in the Orchestrator's card. */
+/** The epics as the sidebar lists them: each epic row's name, in order. */
+const orchestratorChats = (): string[] =>
+  [...sidebar().querySelectorAll<HTMLElement>('[data-epic] > button')].map((b) => b.title.split(' — ')[0] ?? '')
+/** An epic's row in the sidebar. */
 const chatRow = (title: string): HTMLElement =>
-  within(within(sidebar()).getByRole('list', { name: 'Chats' })).getByTitle(title).parentElement as HTMLElement
+  [...sidebar().querySelectorAll<HTMLElement>('[data-epic]')].find(
+    (row) => row.querySelector('button')?.title.split(' — ')[0] === title,
+  ) as HTMLElement
 /** The header's name for the chat in front: the breadcrumb's last item. */
 const chatName = (): string => document.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent ?? ''
 
@@ -493,7 +494,7 @@ describe('driving from the project page', () => {
     expect(screen.getByText('port in use')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Fix drive' })).toBeNull()
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Ask the Orchestrator' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask an epic' }))
     expect(talkToProject).toHaveBeenCalledWith({ projectId: 'proj_1', fresh: true })
     expect(onDrive()).toBe(false)
     expect(chatInFront()?.dataset.thread).toBe('sess_orch')
@@ -521,7 +522,7 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
 })
 
 /** The chat in front of the column: its region, and which thread it shows. */
-const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Orchestrator chat' })
+const chatInFront = (): HTMLElement | null => screen.queryByRole('region', { name: 'Epic chat' })
 
 /**
  * The Orchestrator is its chat (the-orchestrator-s-page decisions 10, 13, 14):
@@ -554,10 +555,10 @@ describe('opening the Orchestrator', () => {
     const idle = { ...entry('sess_a', 'An older idea'), lastHumanAt: undefined }
     threads = [idle]
     const { rerender } = mount()
-    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Epics' })).toBeTruthy()
     threads = [{ ...idle, state: 'working' }]
     rerender()
-    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Epics' })).toBeTruthy()
   })
 
   it('waits for the list, showing no chat until it knows the latest', () => {
@@ -610,15 +611,14 @@ describe('opening the Orchestrator', () => {
 
 /** the-orchestrator-s-page decisions 12, 18: every chat, on a page of its own. */
 describe('the Conversations page', () => {
-  it('replaces the chat, named in the header, and Orchestrator goes back to it', () => {
+  it('replaces the chat, named "Epics" in the header, with no "Orchestrator" crumb', () => {
     threads = [entry('sess_a', 'Plan the audit')]
     const onCloseConversations = vi.fn()
     mount(talk(), { conversations: true, onCloseConversations })
-    expect(screen.getByRole('heading', { name: 'Chats' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Epics' })).toBeTruthy()
     expect(chatInFront()).toBeNull()
-    expect(chatName()).toBe('Chats')
-    fireEvent.click(screen.getByRole('button', { name: 'Orchestrator' }))
-    expect(onCloseConversations).toHaveBeenCalledTimes(1)
+    expect(chatName()).toBe('Epics')
+    expect(screen.queryByRole('button', { name: 'Orchestrator' })).toBeNull()
   })
 
   it('leaves for the chat a row opens', () => {
@@ -649,7 +649,7 @@ describe('the Conversations page', () => {
         <ProjectWorkspace projectId="proj_1" talk={talk()} onOpenConversations={onOpenConversations} />
       </SidebarThreadsProvider>,
     )
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'All 7 chats' }))
+    fireEvent.click(within(sidebar()).getByRole('button', { name: 'All 7 epics' }))
     expect(onOpenConversations).toHaveBeenCalledTimes(1)
   })
 })
@@ -673,28 +673,17 @@ describe('New chat with a chat running', () => {
     expect(consumed).toHaveBeenCalled()
   })
 
-  it('opens an empty new thread from the Orchestrator’s "+" the same way, with no notice', () => {
-    running()
-    mountWithSidebar(talk({ session: liveChat }))
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New chat' }))
-    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(chatInFront()?.dataset.thread).toBe('th_new')
-    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
-    // named "New chat" until something is said in it, never by its kind
-    expect(chatName()).toBe('New chat')
-  })
-
-  it('lists the same threads, names and states on Conversations as in the Orchestrator’s card', () => {
+  it('lists the same chats, names and states on the Epics page as in the sidebar', () => {
     threads = [
       { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
       { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting' },
       entry('sess_old', 'An older idea'),
     ]
     mountWithSidebar(talk({ session: liveChat }), { conversations: true })
-    // Newest started first (decision 3): these were started in the order of their last move.
-    expect(orchestratorChats()).toEqual(['Audit the journal', 'Cut the export idea', 'An older idea'])
-    expect(chatRow('Audit the journal').querySelector('[data-progress]')).not.toBeNull()
-    expect(within(chatRow('Cut the export idea')).getByLabelText('Waiting for you')).toBeTruthy()
+    // The asking epic first, then newest started first (epics decision 8).
+    expect(orchestratorChats()).toEqual(['Cut the export idea', 'Audit the journal', 'An older idea'])
+    expect(chatRow('Audit the journal').textContent).toContain('Working')
+    expect(chatRow('Cut the export idea').textContent).toContain('Asking you')
     const groups = ['Active', 'Earlier'].flatMap((name) => screen.queryAllByRole('region', { name }))
     const rows = groups.flatMap((g) => within(g).getAllByRole('button')).map((b) => b.textContent ?? '')
 
@@ -730,7 +719,7 @@ describe('a live project chat', () => {
     expect(shown(chatInFront()!)).toBe(true)
   })
 
-  it('lists every chat of the project in the Orchestrator’s card, each opening its thread, and "+" selects a new one', () => {
+  it('lists the project’s epics in the sidebar, each opening its thread', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
     mountWithSidebar(talk({ session: liveChat }))
     expect(chatName()).toBe('Audit the journal')
@@ -739,17 +728,13 @@ describe('a live project chat', () => {
     fireEvent.click(within(sidebar()).getByTitle('An older idea'))
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
     expect(chatName()).toBe('An older idea')
-
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New chat' }))
-    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
 
-  it('leaves idle chats out of the card, for the Conversations page', () => {
+  it('leaves idle epics out of the sidebar, for the Epics page', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), { ...entry('sess_old', 'An older idea'), lastHumanAt: undefined }]
     mountWithSidebar(talk(), { onOpenConversations: () => {} })
     expect(orchestratorChats()).toEqual(['Audit the journal'])
-    expect(within(sidebar()).getByText('All 2 chats')).toBeTruthy()
+    expect(within(sidebar()).getByText('All 2 epics')).toBeTruthy()
   })
 
   it('keeps the chat in front in the address, and a reload reopens it', async () => {
@@ -803,10 +788,10 @@ describe('a live project chat', () => {
     await waitFor(() => expect(window.location.search).toBe('?thread=sess_1'))
   })
 
-  it('renames a chat from its row’s menu in the Orchestrator’s card: Enter saves through thread.rename, Escape cancels', () => {
+  it('renames an epic from its row’s menu: Enter saves through thread.rename, Escape cancels', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000)]
     mountWithSidebar(talk({ session: liveChat }))
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Epic actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const field = screen.getByRole('textbox', { name: 'Chat name' }) as HTMLInputElement
     expect(field.value).toBe('Audit the journal')
@@ -814,7 +799,7 @@ describe('a live project chat', () => {
     expect(screen.queryByRole('dialog', { name: 'Rename chat' })).toBeNull()
     expect(threadRename).not.toHaveBeenCalled()
 
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Epic actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     const again = screen.getByRole('textbox', { name: 'Chat name' })
     fireEvent.change(again, { target: { value: 'Journal audit' } })
@@ -829,7 +814,7 @@ describe('a live project chat', () => {
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     mountWithSidebar(talk({ session: liveChat }))
-    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Chat actions' }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Epic actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export as Markdown' }))
     await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
     expect(threadExport).toHaveBeenCalledWith({ threadId: 'sess_1' })

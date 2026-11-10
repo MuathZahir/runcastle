@@ -60,6 +60,8 @@ export function seedFeature(
       title: overrides.title ?? 'Demo feature',
       oneLiner: overrides.oneLiner ?? 'a demo feature',
       heldBy: overrides.heldBy ?? null,
+      chatId: overrides.chatId ?? null,
+      finish: overrides.finish ?? 'you',
       brief: overrides.brief ?? null,
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,

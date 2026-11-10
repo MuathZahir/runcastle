@@ -50,6 +50,9 @@ describe('feature dependencies over MCP', () => {
 
   const draft = (slug: string): Feature =>
     seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null })
+  /** A draft the orchestrator chat under test owns: it acts only on what it owns. */
+  const ownDraft = (slug: string): Feature =>
+    seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null, heldBy: session.id })
   const shipped = (slug: string): Feature =>
     seedFeature(ctx, projectId, { slug, status: 'shipped' })
   const rowCount = (): number => ctx.db.select().from(features).all().length
@@ -146,7 +149,7 @@ describe('feature dependencies over MCP', () => {
   // --- set_feature_dependencies ---------------------------------------------
 
   it('set_feature_dependencies replaces a draft’s whole set through the shared service', () => {
-    const billing = draft('billing')
+    const billing = ownDraft('billing')
     draft('auth-rework')
     draft('ledger')
     setDependencies(ctx, billing.id, [])
@@ -210,6 +213,8 @@ describe('feature dependencies over MCP', () => {
       draft: true,
       dependsOn: ['auth-rework'],
       upNext: true,
+      planning: 'self',
+      finish: 'show',
     })
 
     expect(out.upNext).toBe(true)
@@ -269,7 +274,7 @@ describe('feature dependencies over MCP', () => {
 
   it('set_feature_dependencies sets, clears and leaves the mark, in one call with the set', () => {
     const auth = seedFeature(ctx, projectId, { slug: 'auth-rework' })
-    const billing = draft('billing')
+    const billing = ownDraft('billing')
 
     const set = toolSetFeatureDependencies(ctx, session, {
       slug: 'billing',

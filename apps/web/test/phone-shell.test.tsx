@@ -114,10 +114,10 @@ function Root({ path, threads = [], extra, over }: { path: string; threads?: Thr
 const LIST = `/p/${PROJECT_ID}`
 const CHAT = `/p/${PROJECT_ID}/f/${SLUG}/chat`
 
-/** The list has arrived: its Orchestrator door and the feature's row. */
+/** The list has arrived: its epic list and the feature's row. */
 async function onList() {
   await screen.findByRole('button', { name: /Export notes as PDF/ })
-  expect(screen.getByRole('button', { name: /^Orchestrator/ })).toBeTruthy()
+  expect(screen.getByRole('region', { name: 'Epics' })).toBeTruthy()
 }
 
 /** happy-dom keeps no back stack, so the browser's Back is the address it lands on and a popstate. */
@@ -250,7 +250,7 @@ describe('runcastle on a phone', () => {
     expect(screen.queryByRole('region', { name: 'Details' })).toBeNull()
   })
 
-  it('switches the Orchestrator’s threads from its title, which also offers New chat', async () => {
+  it('switches epics from its title, which also offers New epic', async () => {
     const thread = (id: string, title: string, createdAt: number): ThreadEntry => ({
       id,
       title,
@@ -261,19 +261,19 @@ describe('runcastle on a phone', () => {
       runtime: 'claude-code',
     })
     render(<Root path={`/p/${PROJECT_ID}/chat`} threads={[thread('th_new', 'Plan the export', 2), thread('th_old', 'Audit the journal', 1)]} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Orchestrator — switch chat' }))
-    const sheet = screen.getByRole('dialog', { name: 'Chats' })
+    fireEvent.click(await screen.findByRole('button', { name: /— switch chat$/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Epics' })
     // First, above every thread, so it needs no scroll (phone-fixes decision 1).
-    expect(within(sheet).getAllByRole('button')[0]?.textContent).toBe('New chat')
+    expect(within(sheet).getAllByRole('button')[0]?.textContent).toBe('New epic')
     fireEvent.click(within(sheet).getByRole('button', { name: 'Audit the journal' }))
-    expect(screen.queryByRole('dialog', { name: 'Chats' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Epics' })).toBeNull()
     await waitFor(() => expect(window.location.search).toBe('?thread=th_old'))
   })
 
   it.each([
     ['a thread that no longer exists', `/p/${PROJECT_ID}/chat?thread=sess_gone`],
     ['no thread, with none active', `/p/${PROJECT_ID}/chat`],
-  ])('lists the conversations for an Orchestrator address naming %s', async (_name, path) => {
+  ])('lists the epics for a chats address naming %s', async (_name, path) => {
     const old: ThreadEntry = {
       id: 'th_old',
       title: 'Audit the journal',
@@ -288,7 +288,7 @@ describe('runcastle on a phone', () => {
     expect(screen.queryByText('Loading feature…')).toBeNull()
   })
 
-  it('starts a new Orchestrator chat and opens note capture from the list’s +', async () => {
+  it('starts a new epic and opens note capture from the list’s +', async () => {
     render(<Root path={LIST} />)
     await onList()
     fireEvent.click(screen.getByRole('button', { name: 'New' }))
@@ -299,7 +299,7 @@ describe('runcastle on a phone', () => {
     render(<Root path={LIST} />)
     await onList()
     fireEvent.click(screen.getByRole('button', { name: 'New' }))
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'New' })).getByRole('button', { name: /New chat/ }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'New' })).getByRole('button', { name: /New epic/ }))
     await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/chat`))
     expect(await screen.findByRole('button', { name: 'Back to the list' })).toBeTruthy()
   })

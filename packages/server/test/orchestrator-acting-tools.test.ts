@@ -82,6 +82,7 @@ describe('the orchestrator’s acting tools', () => {
   })
 
   afterEach(() => {
+    owner = null
     __resetTestDriveState()
     clearRuntimeCtx()
     for (const d of cleanup.splice(0)) rmSync(d, { recursive: true, force: true })
@@ -89,16 +90,23 @@ describe('the orchestrator’s acting tools', () => {
     rmTemp(repoPath)
   })
 
+  /** The newest orchestrator, which owns the features `started` seeds after it. */
+  let owner: string | null = null
+
   /** A live orchestrator — the orchestrator. */
   function orchestrator(): SessionRow {
     const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
+    owner = row.id
     return getSessionRow(ctx, row.id) as SessionRow
   }
 
-  /** A started feature with its branch cut — one the orchestrator did not create. */
+  /**
+   * A started feature with its branch cut — one the orchestrator did not
+   * create, but owns: acting tools refuse a feature the human owns.
+   */
   async function started(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
-    const f = seedFeature(ctx, projectId, { slug, ...overrides })
+    const f = seedFeature(ctx, projectId, { slug, heldBy: owner, ...overrides })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return f
@@ -148,7 +156,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('start_feature starts a draft it did not create, and passes Start’s refusal through', async () => {
     const session = orchestrator()
-    const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+    const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', heldBy: session.id })
     cleanup.push(worktreeDir(projectId, 'parked'))
 
     const out = await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' })
@@ -178,7 +186,7 @@ describe('the orchestrator’s acting tools', () => {
 
     it('cuts the feature from a base that has them', async () => {
       const session = orchestrator()
-      seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', heldBy: session.id })
       cleanup.push(worktreeDir(projectId, 'parked'))
       await orchestratorCommits('drive-setup.ts', '// prepared\n')
 
@@ -190,7 +198,7 @@ describe('the orchestrator’s acting tools', () => {
 
     it('refuses the start, cutting nothing, when the checkout is on another branch', async () => {
       const session = orchestrator()
-      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', heldBy: session.id })
       await orchestratorCommits('drive-setup.ts', '// prepared\n')
       await g.checkoutLocalBranch('elsewhere')
 
@@ -203,7 +211,7 @@ describe('the orchestrator’s acting tools', () => {
 
     it('refuses the start on a conflict', async () => {
       const session = orchestrator()
-      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', heldBy: session.id })
       await orchestratorCommits('README.md', 'the orchestrator\n')
       writeFileSync(join(repoPath, 'README.md'), 'the human\n')
       await g.add(['README.md']).commit('human edit')
@@ -360,6 +368,7 @@ describe('the orchestrator’s acting tools', () => {
     const draft = seedFeature(ctx, projectId, {
       slug: 'waiting',
       status: 'draft',
+      heldBy: session.id,
       brief: 'The human wants a changelog.',
     })
     cleanup.push(worktreeDir(projectId, 'waiting'))

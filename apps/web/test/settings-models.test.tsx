@@ -367,7 +367,7 @@ describe('Models page', () => {
 
     const steps = [
       'Chat',
-      'Orchestrator chat',
+      'Epic chat',
       'Implement',
       'Review',
       'Drive chats',

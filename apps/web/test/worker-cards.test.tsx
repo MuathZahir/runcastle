@@ -191,8 +191,8 @@ describe('a drive worker (drive-chats-become-workers decisions 3, 5)', () => {
   })
 
   it('ends its own chat on a handed-back line naming the branch its commits landed on', () => {
-    render(<HandedBackLine commits={1} files={1} to="the orchestrator" branch="main" />)
-    expect(document.body.textContent).toContain('Handed back to the orchestrator · 1 commit · 1 file · on main')
+    render(<HandedBackLine commits={1} files={1} to="its epic" branch="main" />)
+    expect(document.body.textContent).toContain('Handed back to its epic · 1 commit · 1 file · on main')
   })
 })
 

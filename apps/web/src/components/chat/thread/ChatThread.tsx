@@ -277,9 +277,9 @@ function Item({
     case 'review_package':
       return <ReviewPackageItem ticketId={item.ticketId} />
     case 'plan_card':
-      return <PlanCardItem {...(item.older ? { older: true } : {})} />
+      return <PlanCardItem {...(item.older ? { older: true } : {})} {...(item.featureId ? { featureId: item.featureId } : {})} />
     case 'design_cards':
-      return <DesignCardsItem designIds={item.designIds} older={item.older} />
+      return <DesignCardsItem designIds={item.designIds} older={item.older} {...(item.featureId ? { featureId: item.featureId } : {})} />
     case 'features_card':
       return <FeaturesCardItem rows={item.rows} />
     case 'answered':

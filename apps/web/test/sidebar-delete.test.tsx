@@ -17,6 +17,7 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: [], isLoading: false }) },
       archive: { useMutation: () => ({ mutate: vi.fn() }) },
       unarchive: { useMutation: () => ({ mutate: vi.fn() }) },
+      setOwner: { useMutation: () => ({ mutate: vi.fn() }) },
       delete: {
         useMutation: (options: typeof deleteMutation) => {
           deleteMutation.onSuccess = options.onSuccess

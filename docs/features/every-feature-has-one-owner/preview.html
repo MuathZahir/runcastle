@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Every feature has one owner preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.own{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px 16px;background:var(--color-surface-raised)}
+.own h3{display:flex;align-items:center;gap:8px;font-size:14px}
+.own .chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--radius-md);background:var(--color-surface-selected);font-size:12px;font-weight:500}
+.own ul{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.own li{display:flex;gap:10px;align-items:baseline;color:var(--color-text-secondary)}
+.own li b{min-width:92px;font-weight:400;color:var(--color-text-tertiary);font-size:12px}
+.yd{display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--color-warning);vertical-align:1px}
+.flow{display:grid;gap:8px;margin-top:12px}
+.step{display:grid;grid-template-columns:200px 24px 1fr;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md)}
+.step .arrow{color:var(--color-text-tertiary);text-align:center}
+.step .who{font-weight:500}
+.step .how{color:var(--color-text-secondary)}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.ba > div{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:10px 12px}
+.ba h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:6px}
+.ba p + p{margin-top:4px}
+.workers{display:grid;gap:8px;margin-top:12px}
+.w{display:grid;grid-template-columns:150px 1fr 96px;gap:10px;align-items:baseline;padding:8px 12px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md)}
+.w .k{justify-self:end}
+@media (max-width:760px){.two,.ba{grid-template-columns:1fr}.step{grid-template-columns:1fr}.step .arrow{display:none}.w{grid-template-columns:1fr}.w .k{justify-self:start}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Every feature has one owner</h1>
+  <p class="lede">Each feature is either yours or one orchestrator chat's. Its header says which, and its questions reach you in exactly one place: where the yellow dot is.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span>planned without you, 2026-11-09</span><span class="mono">docs/features/every-feature-has-one-owner/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="ba">
+    <div><h3>Before</h3>
+      <p>The same question in the feature <i>and</i> in an orchestrator chat.</p>
+      <p>"Plan to approve" on the feature while the chat also has the plan.</p>
+      <p>Three chats hold three features; nothing says which one to answer in.</p>
+    </div>
+    <div><h3>After</h3>
+      <p>One owner per feature, named on its header. <a class="pin" data-d="1">1</a> <a class="pin" data-d="11">11</a></p>
+      <p>Its questions come to one place, and the yellow dot sits on that place. <a class="pin" data-d="8">8</a></p>
+      <p>The owner moves only when you move it. <a class="pin" data-d="5">5</a></p>
+    </div>
+  </div>
+
+  <div class="sub"><h3>Two kinds of feature</h3>
+  <div class="two">
+    <div class="own">
+      <h3><span class="chip">Yours</span></h3>
+      <ul>
+        <li><b>You talk in</b>the feature's own chat <a class="pin" data-d="2">2</a></li>
+        <li><b>Yellow dot on</b>the feature row <span class="yd"></span></li>
+        <li><b>Who merges</b>you</li>
+        <li><b>Beyond it</b>its lead asks the chat it came from (the row reads "Asking Notes triage · …", never yellow), then asks you in the feature <a class="pin" data-d="6">6</a> <a class="pin" data-d="20">20</a></li>
+      </ul>
+    </div>
+    <div class="own">
+      <h3><span class="chip">Notes triage · you merge</span></h3>
+      <ul>
+        <li><b>You talk in</b>the Notes triage chat, on the same plan and design cards <a class="pin" data-d="3">3</a></li>
+        <li><b>Yellow dot on</b>the Notes triage row, naming the feature; the feature reads "With Notes triage · asking you" <a class="pin" data-d="8">8</a> <a class="pin" data-d="17">17</a></li>
+        <li><b>Who merges</b>you, or the chat if you chose "merges it" <a class="pin" data-d="7">7</a> <a class="pin" data-d="12">12</a></li>
+        <li><b>Designs</b>always wait for your own yes <a class="pin" data-d="27">27</a></li>
+      </ul>
+    </div>
+  </div></div>
+
+  <div class="sub"><h3>How the owner changes</h3>
+  <p class="hint">Only through you. Nothing lapses with time. <a class="pin" data-d="22">22</a></p>
+  <div class="flow">
+    <div class="step"><span class="who">You pick in the owner control</span><span class="arrow">→</span><span class="how">"I'll finish it" takes it; a chat option hands it back. <a class="pin" data-d="11">11</a></span></div>
+    <div class="step"><span class="who">You type in its lead's chat</span><span class="arrow">→</span><span class="how">It becomes yours. A strip above the composer said so first, with a link to the chat. <a class="pin" data-d="23">23</a> <a class="pin" data-d="28">28</a></span></div>
+    <div class="step"><span class="who">"Run X for me" in a chat</span><span class="arrow">→</span><span class="how">That chat owns it from now on. <a class="pin" data-d="5">5</a></span></div>
+    <div class="step"><span class="who">You say yes to a grilled plan</span><span class="arrow">→</span><span class="how">If you chose a chat to take it further, it passes to that chat. The header said "Yours to plan · then Notes triage". <a class="pin" data-d="4">4</a> <a class="pin" data-d="14">14</a></span></div>
+  </div></div>
+
+  <div class="sub"><h3>The screens</h3>
+  <p class="hint">Designed live with real components and sample words. Open them from their cards in the chat or the Design tab; none is approved yet.</p>
+<!-- screen:feature-owner -->
+<div class="designed">
+  <h3>Feature header: who owns it</h3>
+  <p>The owner control and the strip above the composer are real components; the feature, chat and messages are sample words. The header uses the short words ("Notes triage · you merge"); the menu keeps the long sentences.</p>
+  <p>States: yours · planning · shows · merges (a long chat name) · asking · menu · no-chat (does not open; its hover says how to get a chat).</p>
+  <p class="mono">src/components/workspace/OwnerControl.tsx · src/components/chat/OwnerStrip.tsx · design page /preview/feature-owner.html</p>
+</div>
+<!-- /screen:feature-owner -->
+<div style="height:8px"></div>
+<!-- screen:owner-sidebar -->
+<div class="designed">
+  <h3>Sidebar: where the yellow dot goes</h3>
+  <p>Real sidebar rows over sample features and chats; the asking chat's two-line row is drawn on the design page, since the real two-line row is private to the sidebar.</p>
+  <p>States: asking (only the asked-about feature is marked) · handed-back · yours · yours, asking its chat · quiet-hour.</p>
+  <p class="mono">src/components/SidebarParts.tsx (words only) · design page /preview/owner-sidebar.html</p>
+</div>
+<!-- /screen:owner-sidebar -->
+  </div>
+
+  <div class="sub"><h3>Who builds what</h3>
+  <p class="hint">First I merge the status feature's latest tip into this branch, so the build sees its handback mark. Workers start once you approve the screens.</p>
+  <div class="workers">
+    <div class="w"><b>Owner rules</b><span>The owner, its chat and the finish choice on the feature; every way the owner changes; which tools each side may use; moving today's features.</span><span class="tag k">on its own</span></div>
+    <div class="w"><b>Who to answer</b><span>The status words and dots: "With &lt;Chat&gt; · …", "Asking &lt;Chat&gt; · …", which features a chat is asking about (from the cards it showed), the chat row's plain "Asking about …" line, the hour rule. Starts after Owner rules.</span><span class="tag k">on its own</span></div>
+    <div class="w"><b>Owner control</b><span>Wires the approved owner control, row menu and composer strip to the server. Starts after Owner rules.</span><span class="tag k">on its own</span></div>
+    <div class="w"><b>Me</b><span>The lead and project skill lines ("talk to your owner"), the base merge, landing each worker.</span><span class="tag k">myself</span></div>
+    <div class="w"><b>Review</b><span>Drives the app through each owner change and dot, and runs the checks.</span><span class="tag k">at the end</span></div>
+  </div></div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>How the chat list looks, epic titles, features grouped under chats ("Orchestrator chats become epics")</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Status rules beyond who owns a feature</li>
+      <li><i class="dot"></i>Showing or changing the planning choice on a feature</li>
+      <li><i class="dot"></i>Picking any chat from the owner control</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow">
+        <div class="step"><span class="who">On the feature</span><span class="arrow">·</span><span class="how">the existing holder (null = yours), plus two new fields: <span class="mono">its chat</span> and <span class="mono">finish: you | show | merge</span></span></div>
+        <div class="step"><span class="who">Owner changes</span><span class="arrow">·</span><span class="how">one service: owner control mutation, first typed message in the lead's chat, <span class="mono">take_feature</span>, <span class="mono">create_feature</span>, a plan-agreed <span class="mono">hand_back</span>, a replacement chat. Each emits an event and clears the handback.</span></div>
+        <div class="step"><span class="who">Tool rules</span><span class="arrow">·</span><span class="how"><span class="mono">wait_for_you</span> refused under a chat; <span class="mono">hand_back</span> reaches the owner, else its chat; orchestrator acting tools refuse human-owned features except <span class="mono">send_to_feature</span>; <span class="mono">show_plan</span>/<span class="mono">show_design</span> take a slug from a chat.</span></div>
+        <div class="step"><span class="who">Status</span><span class="arrow">·</span><span class="how">the pure feature-need function learns the owner chat's name and whether it is asking; "With the orchestrator" becomes "With &lt;Chat&gt;".</span></div>
+        <div class="step"><span class="who">Today's features</span><span class="arrow">·</span><span class="how">a one-time boot step: held stay held with "you merge"; unheld are yours, and get their chat back from their creation record. I list every moved feature when I hand it back ready.</span></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['One owner per feature: the human, or one orchestrator chat', 'Nothing decided where a feature\'s conversation lives, so questions reached you in two places.'],
+    ['A feature you own talks only to you, in its own chat', 'One place to answer.'],
+    ['A feature a chat owns talks only to that chat, on the same plan and design cards', 'One place to answer, and the same cards wherever you meet them.'],
+    ['A feature you grill is yours while you grill it', 'The grill happens in the feature\'s chat, with you.'],
+    ['The owner changes only when you change it', 'Ownership never moves behind your back.'],
+    ['Decisions beyond the feature go to the chat it came from', 'That chat knows the cut; you still answer in one place.'],
+    ['Working agreements become a per-feature choice of how far the chat takes it', '"You run it" was too vague to know whether you get grilled, shown, or skipped.'],
+    ['A yellow dot sits on the thing you click to answer', 'You follow the yellow dots; each must lead to where the answer goes.'],
+    ['A chat\'s news about a feature you own is posted in that feature\'s chat', 'You are talking about that feature there.'],
+    ['Several orchestrator chats stay', 'Unrelated work would crowd one context.'],
+    ['One owner control on the header does both jobs', 'Who owns it and how far the chat goes are one fact; two controls would be two things to learn.', 'assumed'],
+    ['The words of the owner control: short on the header, long in the menu', 'Each option names who does the last step, merging; the header must fit any chat name.', 'by the orchestrator'],
+    ['How it is planned is chosen once, in the chat, and is not on the feature', 'A choice spent after one step should not take room on every header.', 'assumed'],
+    ['A grilled feature the chat takes after the plan says so while grilled', 'The one built-in owner change should never surprise you.', 'assumed'],
+    ['The feature row names its chat whenever the chat owns the next move', 'The name tells you which chat to open; while an agent works there is nothing to open.', 'assumed'],
+    ['Under a chat owner, the feature row goes yellow only for what only the feature can answer', 'A permission prompt or a worker\'s question can only be answered inside the feature.', 'assumed'],
+    ['"Asking you" marks only the feature whose cards the asking chat showed', 'A chat holding five handbacks that asks about one must mark only that one.', 'by the orchestrator'],
+    ['A lead under a chat owner cannot wait on you', 'A rule the server keeps cannot drift with habit; the skills get shorter.', 'assumed'],
+    ['An orchestrator chat acts only on features it owns', 'The owner changes only when you change it; the silent claim goes.', 'assumed'],
+    ['A feature you own asks its chat with the same handback, reading "Asking <Chat>"', 'One tool keeps the lead\'s rules short; "With <Chat>" only ever means the chat owns it.', 'by the orchestrator'],
+    ['The chat a feature came from is remembered on the feature; with none, the control does not open', '"Its chat" should be the chat that knows it best now; a one-item menu is a dead end.', 'by the orchestrator'],
+    ['A chat that has ended still owns its features', 'The process ending is routine; it is not you changing the owner.', 'assumed'],
+    ['Taking a feature by typing shows a strip first, and the chat learns quietly', 'One line of warning; no turn spent waking a chat for news it cannot act on.', 'assumed'],
+    ['Today\'s features move over once, keep their chat, and nothing merges without you', 'Old prose is fragile to parse; the creation record still names a feature\'s chat.', 'by the orchestrator'],
+    ['The orchestrator reads the choice from the feature, not the brief', 'One source of truth you can see and change on the feature.', 'assumed'],
+    ['This feature\'s place against earlier decisions', 'Earlier docs record what was true when they shipped.', 'assumed'],
+    ['Designs always wait for your own yes', 'You want to see the options and choose; a chat that merges should not also pick the look.', 'assumed'],
+    ['The strip above the composer always offers the way to the chat', 'Clicking a plain "asking you" row must be one click from the chat, never a takeover.', 'assumed'],
+    ['Taking one feature leaves the rest of the cut with its chat', 'Taking one feature is not stopping the cut.', 'assumed'],
+    ['The chat row\'s look belongs to "Orchestrator chats become epics"', 'That feature is redesigning chat rows now; this one supplies only the fact and a plain line.', 'by the orchestrator']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [11, 'A "Hand back to <chat>" button plus a separate how-far setting in the details', 'It forces the shape of the header and the menu everything else hangs on', 'forces others'],
+    [12, 'The long words on the header too: "Notes triage · shows you before merging"', 'The words are the part you said was vague; the orchestrator chose the short ones for fit', 'changed by the orchestrator'],
+    [13, 'One cut-time question on one scale: grill me / plan and show me / plan, build and merge', 'Your words read like one scale, but your decision 7 keeps planning separate', 'challenged'],
+    [17, 'Every handed-back feature of an asking chat reads "asking you"', 'The orchestrator chose correct dots; it rests on the chat showing a card when it asks', 'changed by the orchestrator'],
+    [24, 'Unheld features lose their chat; or a summary screen of what moved', 'The orchestrator chose to recover chats and list the moves in its report to you', 'changed by the orchestrator']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

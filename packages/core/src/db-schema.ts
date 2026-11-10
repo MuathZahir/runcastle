@@ -173,6 +173,22 @@ export const features = sqliteTable('features', {
    */
   heldBy: text('held_by'),
   /**
+   * The feature's chat (`every-feature-has-one-owner` decision 21): the
+   * orchestrator thread it came from, replaced when the human gives it to
+   * another chat, moved with holds to a replacement chat. Null for a feature
+   * made with New feature. Unlike `heldBy` it stays when the human takes the
+   * feature: the lead's handback goes there, and the owner control offers to
+   * give the feature back to it.
+   */
+  chatId: text('chat_id'),
+  /**
+   * How far its chat takes the feature (decision 7): `you` the human finishes
+   * it, `show` the chat builds it and shows the human before merging, `merge`
+   * the chat builds and merges it. On a human-owned feature with a chat's
+   * choice, the chat takes it at the plan's yes (decision 14).
+   */
+  finish: text('finish', { enum: ['you', 'show', 'merge'] }).notNull().default('you'),
+  /**
    * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
    * null when not stopped. Dispatch is refused while it is set and no human
    * message has arrived since; that message clears it.

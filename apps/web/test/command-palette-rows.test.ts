@@ -72,7 +72,7 @@ function palette(features: FeatureListItem[] = [], selectedFeatureId: string | n
 
 /** The rows that are not a feature or a project. */
 const ACTIONS = [
-  'Orchestrator',
+  'Epics',
   'New note',
   'Settings',
   'Switch to light theme',

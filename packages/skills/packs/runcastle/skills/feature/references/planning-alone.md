@@ -151,8 +151,8 @@ nothing.
    is needed.) Write nothing after step 6's question, so the turn ends on
    it, and then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.
-   **When an orchestrator holds the feature**, its yes is the orchestrator's
-   to give: call `hand_back({ summary })` in place of `wait_for_you`, with the
-   plan, its check-first decisions and every **For the human** decision, which
-   the orchestrator puts to the human before its yes. Close the message by
-   saying the plan went to the orchestrator for its yes.
+   **When a chat owns the feature** (talk to your owner, SKILL.md), its yes
+   is that chat's to give: call `hand_back({ summary })` in place of
+   `wait_for_you`, with the plan, its check-first decisions and every **For
+   the human** decision, which the chat puts to the human before its yes.
+   Close the message by saying the plan went to that chat for its yes.

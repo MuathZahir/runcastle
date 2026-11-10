@@ -198,7 +198,7 @@ const STEP_META: readonly {
 }[] = [
   // Sessions — you are in the terminal.
   { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature chat' },
-  { step: 'project', label: 'Orchestrator chat', group: 'sessions', description: 'The project-level chat' },
+  { step: 'project', label: 'Epic chat', group: 'sessions', description: 'The project-level chat' },
   // Unattended — burns and scripted runs.
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
@@ -444,7 +444,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   driveInstructions: {
     label: 'How to drive this app',
     tooltip:
-      'How to exercise this app once it is up: the sample project or scratch data a driver should use and may change, how to reach the states worth reviewing, and what to leave alone. Written by the Orchestrator, edited here, and injected verbatim into every drive-mode review and verification prompt.',
+      'How to exercise this app once it is up: the sample project or scratch data a driver should use and may change, how to reach the states worth reviewing, and what to leave alone. Written by an epic, edited here, and injected verbatim into every drive-mode review and verification prompt.',
     control: 'textarea',
     page: 'project',
     group: 'commands',
@@ -464,7 +464,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sessionBranch: {
     label: 'Commits land on',
     tooltip:
-      'The branch the orchestrator’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
+      'The branch an epic’s commits (charter, ADRs) land on when its chat’s terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
     control: 'text',
     page: 'project',
     group: 'chat',

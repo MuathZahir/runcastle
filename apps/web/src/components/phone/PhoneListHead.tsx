@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconList, IconMessage, IconPencil, IconPlus } from '../../icons'
+import { IconList, IconOrchestrator, IconPencil, IconPlus } from '../../icons'
 import { relTimeAgo } from '../../lib/format'
 import { useLiveStatus } from '../../lib/live'
 import type { ProjectNavApi } from '../../lib/use-project-nav'
@@ -38,7 +38,7 @@ export function PhoneListHead({
         </div>
         <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
         <Sheet open={creating} onClose={() => setCreating(false)} label="New">
-          <SheetRow icon={<IconMessage />} label="New chat" hint="A new chat with the orchestrator — talk an idea through before it becomes a feature" onClick={pick(onNewChat)} />
+          <SheetRow icon={<IconOrchestrator />} label="New epic" hint="A new chat for one topic — talk an idea through, and it cuts the features" onClick={pick(onNewChat)} />
           {onOpenNote && (
             <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
           )}

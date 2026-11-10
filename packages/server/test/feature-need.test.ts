@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { projects } from '../src/db/schema'
+import { eq } from 'drizzle-orm'
+import { features, projects } from '../src/db/schema'
 import { createSessionRow } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { declareReady, markHumanMessage, setWaiting } from '../src/services/features'
@@ -116,12 +117,47 @@ describe('feature.list and feature.get carry the need', () => {
     expect((await needs()).get('nodrive')).toMatchObject({ kind: 'merge' })
   })
 
-  it('holds only an outstanding handback for the orchestrator holding the feature (the-status-tells-the-truth decisions 1, 5)', async () => {
+  it('holds every need but the feature’s own questions for the chat that owns it (every-feature-has-one-owner decision 16)', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'held', heldBy: 'sess_orchestrator' })
     setWaiting(ctx, f.id, 'start round 1?', 'plan')
-    expect((await needs()).get('held')).toMatchObject({ kind: 'plan', held: false, words: 'Plan to approve' })
+    expect((await needs()).get('held')).toMatchObject({ kind: 'plan', held: true, words: 'With sess_orchestrator · Plan to approve' })
     setWaiting(ctx, f.id, null)
     setHandback(ctx, f.id, 'Plan is ready for your yes.')
-    expect((await needs()).get('held')).toMatchObject({ kind: 'handback', held: true, words: 'With the orchestrator · Plan is ready for your yes' })
+    expect((await needs()).get('held')).toMatchObject({ kind: 'handback', held: true, words: 'With sess_orchestrator · Plan is ready for your yes' })
+  })
+
+  /** An orchestrator chat named "Notes triage" whose last turn showed `featureId`'s plan and ended on `words`. */
+  function chatThatShowed(featureId: string, words: string): string {
+    const id = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' }).id
+    appendThreadEvent(id, { type: 'title', title: 'Notes triage', renamed: true })
+    appendThreadEvent(id, { type: 'prompt', id: 'p', text: 'run it for me', source: 'human' })
+    appendThreadEvent(id, { type: 'turn_started' })
+    appendThreadEvent(id, { type: 'plan_shown', featureId })
+    appendThreadEvent(id, { type: 'agent_text', messageId: 'm', text: words })
+    appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
+    return id
+  }
+
+  it('reads With <Chat> · asking you while the owner chat asks about it, and only that feature (decision 17)', async () => {
+    const asked = seedFeature(ctx, projectId, { slug: 'asked' })
+    const other = seedFeature(ctx, projectId, { slug: 'other' })
+    const chat = chatThatShowed(asked.id, 'Does this plan look right?')
+    for (const f of [asked, other]) {
+      ctx.db.update(features).set({ heldBy: chat, chatId: chat }).where(eq(features.id, f.id)).run()
+      setHandback(ctx, f.id, 'Plan is ready for your yes.')
+    }
+    const all = await needs()
+    expect(all.get('asked')).toMatchObject({ kind: 'handback', held: true, words: 'With Notes triage · asking you' })
+    expect(all.get('other')).toMatchObject({ kind: 'handback', held: true, words: 'With Notes triage · Plan is ready for your yes' })
+  })
+
+  it('reads a human-owned feature whose lead asks its chat as Asking <Chat> · its line, held (decision 20)', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'mine' })
+    const chat = chatThatShowed('elsewhere', 'Done.')
+    ctx.db.update(features).set({ chatId: chat }).where(eq(features.id, f.id)).run()
+    setHandback(ctx, f.id, 'Should the notes feature own the inbox?')
+    expect((await caller.feature.get({ id: f.id })).need).toMatchObject({
+      kind: 'handback', held: true, words: 'Asking Notes triage · Should the notes feature own the inbox?',
+    })
   })
 })

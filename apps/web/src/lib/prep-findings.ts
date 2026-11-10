@@ -229,7 +229,7 @@ export interface FindingLike {
  */
 export function findingSource(f: { key: string; source: string }): { label: string; title: string } {
   if (f.source === 'human')
-    return { label: 'Yours', title: 'You set this by hand — the Orchestrator will never overwrite it' }
+    return { label: 'Yours', title: 'You set this by hand — no epic will ever overwrite it' }
   if (f.source === 'build')
     return { label: 'Built', title: "Built by runcastle from this repo's own Dockerfile" }
   if (f.source === 'session')

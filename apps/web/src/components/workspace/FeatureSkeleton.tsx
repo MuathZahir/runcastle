@@ -21,7 +21,13 @@ export function FeatureSkeleton() {
       <PageTopbar
         leading={
           <Skeleton>
-            <SkeletonBar className="h-3 w-40" />
+            {/* The trail: the owner control ("Yours"), then the feature's crumb. */}
+            <div className="flex items-center gap-4 px-1.5">
+              <span data-skeleton="owner">
+                <SkeletonBar className="h-3 w-14" />
+              </span>
+              <SkeletonBar className="h-3 w-40" />
+            </div>
           </Skeleton>
         }
       />

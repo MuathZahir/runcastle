@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1a9c1ecf-9f85-472b-bf64-bf532240769d",
+  "id": "62f4ec70-978c-4f4e-a712-652680f48184",
   "prevId": "3db237b2-bdf6-44d5-a344-e05abd66db24",
   "tables": {
     "designs": {
@@ -350,6 +350,21 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "finish": {
+          "name": "finish",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'you'"
         },
         "stopped_at": {
           "name": "stopped_at",
@@ -703,14 +718,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         }
       },
       "indexes": {},
