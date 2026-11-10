@@ -146,3 +146,26 @@ describe('mapTerminalKey — the note hotkey', () => {
     })
   })
 })
+
+/**
+ * Alt+1…9 switches project from anywhere, a chat included (the project rail):
+ * the terminal sends nothing, and leaves the event uncancelled for the shell.
+ */
+describe('mapTerminalKey — the project shortcut', () => {
+  it('swallows Alt+digit on keydown and keypress with no bytes, by physical key (macOS Option composes "¡")', () => {
+    expect(mapTerminalKey(ev({ key: '2', code: 'Digit2', altKey: true }))).toEqual({ intercept: true, bytes: '' })
+    expect(mapTerminalKey(ev({ key: '¡', code: 'Digit1', altKey: true }))).toEqual({ intercept: true, bytes: '' })
+    expect(mapTerminalKey(ev({ type: 'keypress', key: '9', code: 'Digit9', altKey: true }))).toEqual({
+      intercept: true,
+      bytes: '',
+    })
+  })
+
+  it('leaves Alt+0, a plain digit, Ctrl+Alt+digit (AltGr) and other Alt keys to xterm', () => {
+    expect(mapTerminalKey(ev({ key: '0', code: 'Digit0', altKey: true }))).toEqual({ intercept: false })
+    expect(mapTerminalKey(ev({ key: '1', code: 'Digit1' }))).toEqual({ intercept: false })
+    expect(mapTerminalKey(ev({ key: '1', code: 'Digit1', altKey: true, ctrlKey: true }))).toEqual({ intercept: false })
+    expect(mapTerminalKey(ev({ key: 'b', code: 'KeyB', altKey: true }))).toEqual({ intercept: false })
+    expect(mapTerminalKey(ev({ key: 'v', code: 'KeyV', altKey: true }))).toEqual({ intercept: true, bytes: IMAGE_PASTE_BYTES })
+  })
+})

@@ -40,6 +40,7 @@
  */
 
 import { isNoteHotkey } from './project-notes'
+import { railShortcutIndex } from './project-rail'
 
 /** Minimal subset of `KeyboardEvent` the mapping reads. */
 export interface TerminalKeyEvent {
@@ -102,6 +103,11 @@ export function mapTerminalKey(ev: TerminalKeyEvent): TerminalKeyAction {
 
   // The note chord belongs to the shell, never to the PTY — send nothing.
   if (isNoteHotkey(ev)) return { intercept: true, bytes: '' }
+
+  // Alt+1…9 switches project from anywhere (the project rail): swallowed, not
+  // cancelled, so it reaches the shell's window listener instead of reaching
+  // the session as ESC+digit.
+  if (railShortcutIndex(ev) !== null) return { intercept: true, bytes: '' }
 
   if (isVKey(ev) && !ev.shiftKey && !ev.metaKey) {
     // Ctrl+V — send nothing at all; the browser's paste event does the work.
