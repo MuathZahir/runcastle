@@ -91,7 +91,8 @@ delivers a finished background helper's result to the lead as a prompt opening w
 the same way it already skips runcastle's compaction command. The builder lists any other
 machine-made prompt shapes it finds and checks the Codex runtime's prompt path for the same flaw.
 
-**Designs.** Two design pages hold the look of the chat pieces, waiting for the human's approval:
+**Designs.** Two design pages hold the look of the chat pieces, approved by the human and committed
+(their defaults: time shown on rows, the tall report box):
 "Worker chat" (states: folded, assignment-open) and "Lead chat — worker cards" (states: started,
 handed-back, report-open). They change the real work-row, assignment-card and handback-card
 components and add the workers-card component; a builder wires them to real data and does not
@@ -103,7 +104,9 @@ restyle. The drive slot change is a label and a click and was not designed.
   events, and observe one card item per turn with its rows; observe that the card is not swallowed by
   a work item.
 - **The work-row summary** (new, pure, web): steps in, label out; plus the existing component tests
-  that render a chat (they assert the old "Worked for" words and must be updated).
+  that render a chat. Four web tests fail since the designs landed and must be updated: two assert the
+  old "Worked for" words (`thread-every-word.test.tsx`, `work-running.test.ts`) and two expect the
+  assignment card to start open (`chat-column.test.tsx`).
 - **The feature need** (existing, core): need facts in, need out — a lead that replied with a worker
   working yields no need; with its own `wait_for_you`, an open question box or a worker needing the
   human, it still does. The sidebar's state words and the header's status line are checked against
