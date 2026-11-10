@@ -189,7 +189,7 @@ export function HandedBackLine({
   commits: number
   files: number
   by?: 'you' | 'worker'
-  to?: 'the lead' | 'the orchestrator'
+  to?: 'the lead' | 'its epic'
   /** The branch a drive worker's commits landed on (decision 3): named so a commit on main is never a surprise. */
   branch?: string
 }) {

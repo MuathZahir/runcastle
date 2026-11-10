@@ -56,6 +56,11 @@ export const OPEN_RETRY_MS = 2_000
 const DRAFT_KEY = 'runcastle.thread.draft:'
 const AT_FILE = /(?:^|\s)@(\S*)$/
 
+/** Whether the human left words unsent in the thread's composer: such a thread is not an empty one to forget. */
+export function hasDraft(threadId: string): boolean {
+  return readDraft(threadId).trim() !== ''
+}
+
 function readDraft(key: string): string {
   try {
     return localStorage.getItem(DRAFT_KEY + key) ?? ''

@@ -1,10 +1,20 @@
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, SessionRow, ThreadEvent } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
+import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { events, sessions } from '../src/db/schema'
+import { events, features, sessions } from '../src/db/schema'
+import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
+import hooksApp from '../src/routes/hooks'
+import { listDesigns, recordDesign } from '../src/services/designs'
+import { HANDBACK_CLEARED, setHandback } from '../src/services/lead-status'
+import { heldOpening } from '../src/launcher/launcher'
+import { tagRuncastlePrompt } from '../src/services/lead-prompt'
+import { readThreadEvents } from '../src/threads/log'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import type { AppCtx } from '../src/db/types'
 import { launchProjectSession } from '../src/launcher/launcher'
 import {
@@ -30,9 +40,22 @@ import {
   toolCreateFeature,
   toolGetProjectContext,
   toolSetFeatureDependencies,
+  toolShowDesign,
+  toolShowPlan,
+  toolWaitForYou,
 } from '../src/mcp/server'
 import { emit, listByProject, listAfter, runAsActor } from '../src/services/events'
-import { HOLDERS_SWEPT, inheritHolds, sweepHolders } from '../src/services/holding'
+import {
+  HOLDERS_SWEPT,
+  inheritHolds,
+  moveOwners,
+  OWNER_CHANGED,
+  OWNERS_MOVED,
+  passAtPlanYes,
+  planOwnerMove,
+  releaseToHuman,
+  sweepHolders,
+} from '../src/services/holding'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow } from '../src/services/repo'
 import { seedThreadLog } from '../src/threads/log'
@@ -88,14 +111,44 @@ describe('threads hold features', () => {
   const typesOn = (feature: Feature): string[] => listAfter(ctx, feature.id, 0).map((e) => e.type)
 
   describe('acting', () => {
-    it('gives a feature nobody holds to the first thread that acts on it', async () => {
+    it('refuses every acting tool on a human-owned feature, claiming nothing, and says how the human hands it over', async () => {
       const a = thread('A')
-      const feature = seedFeature(ctx, projectId, { slug: 'free', status: 'draft' })
+      const free = seedFeature(ctx, projectId, { slug: 'free', status: 'draft', chatId: a.id })
+      const calls: [string, () => unknown][] = [
+        ['start_feature', () => toolStartFeature(ctx, a, { slug: 'free' })],
+        ['plan_feature', () => toolPlanFeature(ctx, a, { slug: 'free' })],
+        ['stop_feature_run', () => toolStopFeatureRun(ctx, a, { slug: 'free' })],
+        ['drive', () => toolDrive(ctx, a, { slug: 'free', action: 'start' })],
+        ['merge_feature', () => toolMergeFeature(ctx, a, { slug: 'free' })],
+        ['add_to_brief', () => toolAddToBrief(ctx, a, { slug: 'free', text: 'x' })],
+        ['set_feature_dependencies', () => toolSetFeatureDependencies(ctx, a, { slug: 'free', dependsOn: [] })],
+      ]
+      for (const [name, call] of calls) {
+        await expect((async () => call())(), name).rejects.toThrow(/the human owns `free`.*"run free for me"/)
+      }
+      expect(holderOfSlug(free)).toBeUndefined()
+      expect(typesOn(free)).toEqual([])
+    })
 
-      await toolAddToBrief(ctx, a, { slug: 'free', text: 'more' })
+    it('says when the human took the feature from this chat', async () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'taken', heldBy: a.id, chatId: a.id, finish: 'show' })
+      releaseToHuman(ctx, feature.id, 'typed')
+      const day = new Date().toISOString().slice(0, 10)
 
-      expect(holderOfSlug(feature)).toBe(a.id)
-      expect(listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.held')?.message).toBe('held by the orchestrator chat "A"')
+      await expect(toolAddToBrief(ctx, a, { slug: 'taken', text: 'x' })).rejects.toThrow(
+        new RegExp(`the human took \`taken\` on ${day}`),
+      )
+    })
+
+    it('lets send_to_feature reach a human-owned feature, which stays the human’s', async () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'free', chatId: a.id })
+
+      await expect(toolSendToFeature(ctx, a, { slug: 'free', message: 'a sibling merged' })).resolves.toEqual({ deliveredToLead: true })
+
+      expect(holderOfSlug(feature)).toBeUndefined()
+      expect(typesOn(feature)).not.toContain(OWNER_CHANGED)
     })
 
     it('lets the holder act again without a second timeline line', async () => {
@@ -131,7 +184,7 @@ describe('threads hold features', () => {
       const a = thread('A')
       const b = thread('B')
       const dep = seedFeature(ctx, projectId, { slug: 'dep', heldBy: a.id })
-      const draft = seedFeature(ctx, projectId, { slug: 'draft', status: 'draft' })
+      const draft = seedFeature(ctx, projectId, { slug: 'draft', status: 'draft', heldBy: b.id })
 
       toolSetFeatureDependencies(ctx, b, { slug: 'draft', dependsOn: ['dep'] })
 
@@ -166,13 +219,39 @@ describe('threads hold features', () => {
   })
 
   describe('creating', () => {
-    it('makes a project thread the holder of what it creates, started or parked', async () => {
-      const a = thread('A')
-      const started = await toolCreateFeature(ctx, a, { title: 'Login form', oneLiner: 'log in' })
-      const parked = await toolCreateFeature(ctx, a, { title: 'Later', oneLiner: 'later', draft: true, brief: 'b' })
+    const pairs: { planning: 'with-me' | 'self'; finish: 'you' | 'show' | 'merge'; owned: boolean }[] = [
+      { planning: 'with-me', finish: 'you', owned: false },
+      { planning: 'with-me', finish: 'show', owned: false },
+      { planning: 'with-me', finish: 'merge', owned: false },
+      { planning: 'self', finish: 'you', owned: false },
+      { planning: 'self', finish: 'show', owned: true },
+      { planning: 'self', finish: 'merge', owned: true },
+    ]
+    for (const { planning, finish, owned } of pairs) {
+      it(`planning ${planning}, finish ${finish}: ${owned ? 'the chat owns it' : 'the human owns it'}, and it is the feature’s chat`, async () => {
+        const a = thread('A')
+        const made = await toolCreateFeature(ctx, a, { title: `F ${planning} ${finish}`, oneLiner: 'x', draft: true, brief: 'Why.', planning, finish })
+        const row = getFeatureRow(ctx, made.id)
 
-      expect(getFeatureRow(ctx, started.id).heldBy).toBe(a.id)
-      expect(getFeatureRow(ctx, parked.id).heldBy).toBe(a.id)
+        expect(row.heldBy).toBe(owned ? a.id : undefined)
+        expect(row.chatId).toBe(a.id)
+        expect(row.finish).toBe(finish)
+        expect(row.brief).toContain(planning === 'self' ? 'Planning mode: plans itself' : 'Planning mode: grill with you')
+        const created = listAfter(ctx, made.id, 0).find((e) => e.type === 'feature.created')
+        expect(created?.data).toMatchObject({ createdBy: a.id })
+        const changes = listAfter(ctx, made.id, 0).filter((e) => e.type === OWNER_CHANGED)
+        expect(changes.map((e) => e.data)).toEqual(
+          owned ? [expect.objectContaining({ owner: a.id, chatId: a.id, finish, cause: 'create', from: null })] : [],
+        )
+      })
+    }
+
+    it('keeps a planning line the brief already has, and starts a feature as the human’s when no choice is given', async () => {
+      const a = thread('A')
+      const made = await toolCreateFeature(ctx, a, { title: 'Plain', oneLiner: 'x', draft: true, brief: 'Planning mode: plans itself — small', planning: 'self', finish: 'show' })
+      expect(getFeatureRow(ctx, made.id).brief).toBe('Planning mode: plans itself — small')
+      const bare = await toolCreateFeature(ctx, a, { title: 'Bare', oneLiner: 'x', draft: true, brief: 'b' })
+      expect(getFeatureRow(ctx, bare.id)).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you', brief: 'b' })
     })
 
     it('leaves a draft a feature’s agent parks to the human', async () => {
@@ -191,27 +270,29 @@ describe('threads hold features', () => {
       const b = thread('B')
       const feature = seedFeature(ctx, projectId, { slug: 'held', heldBy: a.id })
 
-      expect(toolTakeFeature(ctx, b, { slug: 'held' })).toEqual({ slug: 'held', heldBy: 'B', takenFrom: 'A' })
+      expect(toolTakeFeature(ctx, b, { slug: 'held' })).toEqual({ slug: 'held', heldBy: 'B', takenFrom: 'A', finish: 'show' })
 
       expect(holderOfSlug(feature)).toBe(b.id)
-      const taken = listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.taken')
-      expect(taken?.message).toBe('taken by the thread "B" from "A"')
-      expect(taken?.data).toMatchObject({ threadId: b.id, from: a.id, name: 'B', actor: 'orchestrator' })
+      const taken = listAfter(ctx, feature.id, 0).filter((e) => e.type === OWNER_CHANGED)
+      expect(taken).toHaveLength(1)
+      expect(taken[0]?.message).toBe('owned by the orchestrator chat "B", which shows you before merging (you asked the chat to run it)')
+      expect(taken[0]?.data).toMatchObject({ owner: b.id, chatId: b.id, finish: 'show', cause: 'take', from: a.id, actor: 'orchestrator' })
     })
 
-    it('takes a feature nobody holds, as a hold with no loser', () => {
+    it('takes a human-owned feature with the finish asked for, making the taking chat its chat', () => {
       const a = thread('A')
-      const feature = seedFeature(ctx, projectId, { slug: 'free' })
+      const b = thread('B')
+      const feature = seedFeature(ctx, projectId, { slug: 'free', chatId: a.id })
 
-      expect(toolTakeFeature(ctx, a, { slug: 'free' }).takenFrom).toBeNull()
+      expect(toolTakeFeature(ctx, b, { slug: 'free', finish: 'merge' }).takenFrom).toBeNull()
 
-      expect(typesOn(feature)).toContain('feature.held')
-      expect(typesOn(feature)).not.toContain('feature.taken')
+      expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: b.id, chatId: b.id, finish: 'merge' })
+      expect(typesOn(feature).filter((t) => t === OWNER_CHANGED)).toHaveLength(1)
     })
 
-    it('changes nothing when the thread already holds it', () => {
+    it('changes nothing when the thread already owns it', () => {
       const a = thread('A')
-      const feature = seedFeature(ctx, projectId, { slug: 'mine', heldBy: a.id })
+      const feature = seedFeature(ctx, projectId, { slug: 'mine', heldBy: a.id, chatId: a.id, finish: 'show' })
 
       toolTakeFeature(ctx, a, { slug: 'mine' })
 
@@ -284,6 +365,265 @@ describe('threads hold features', () => {
       inheritHolds(ctx, a.id, b.id)
 
       expect(holderOfSlug(other)).toBe(c.id)
+    })
+  })
+
+  describe('changing the owner', () => {
+    const caller = () => createCallerFactory(appRouter)(ctx)
+    const changes = (feature: Feature) => listAfter(ctx, feature.id, 0).filter((e) => e.type === OWNER_CHANGED)
+    const cleared = (feature: Feature) => listAfter(ctx, feature.id, 0).filter((e) => e.type === HANDBACK_CLEARED)
+    const handedBack = (feature: Feature) => setHandback(ctx, feature.id, 'Ready to merge.')
+
+    function lead(feature: Feature, kind: 'chat' | 'side' = 'chat'): SessionRow {
+      return createSessionRow(ctx, { featureId: feature.id, kind, worktreePath: repoPath })
+    }
+
+    it('the control’s "I’ll finish it" makes it the human’s, keeping its chat: one event, handback cleared', async () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'f', heldBy: a.id, chatId: a.id, finish: 'merge' })
+      handedBack(feature)
+
+      const after = await caller().feature.setOwner({ featureId: feature.id, choice: 'you' })
+
+      expect(after).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you', handback: null })
+      expect(changes(feature).map((e) => e.data)).toEqual([
+        expect.objectContaining({ owner: null, chatId: a.id, finish: 'you', cause: 'control', from: a.id }),
+      ])
+      expect(cleared(feature).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
+    })
+
+    for (const choice of ['show', 'merge'] as const) {
+      it(`the control’s "${choice}" gives a human-owned feature to its chat: one event, handback cleared`, async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: `f-${choice}`, chatId: a.id })
+        handedBack(feature)
+
+        const after = await caller().feature.setOwner({ featureId: feature.id, choice })
+
+        expect(after).toMatchObject({ heldBy: a.id, chatId: a.id, finish: choice, handback: null })
+        expect(changes(feature).map((e) => e.data)).toEqual([
+          expect.objectContaining({ owner: a.id, chatId: a.id, finish: choice, cause: 'control', from: null }),
+        ])
+        expect(cleared(feature)).toHaveLength(1)
+      })
+    }
+
+    it('refuses a chat’s choice on a feature with no chat (BAD_REQUEST), changing nothing', async () => {
+      const feature = seedFeature(ctx, projectId, { slug: 'lonely' })
+      await expect(caller().feature.setOwner({ featureId: feature.id, choice: 'show' })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+      expect(changes(feature)).toHaveLength(0)
+    })
+
+    describe('typing in the lead’s chat', () => {
+      beforeEach(() => setRuntimeCtx(ctx))
+      afterEach(() => clearRuntimeCtx())
+
+      async function prompt(session: SessionRow, text: string): Promise<void> {
+        const app = new Hono()
+        app.route('/api/hooks', hooksApp)
+        await app.request('/api/hooks/user-prompt', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: session.id, payload: { hook_event_name: 'UserPromptSubmit', prompt: text } }),
+        })
+      }
+
+      it('a typed message in the main chat makes a chat-owned feature the human’s: one event, handback cleared', async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: 'typed', heldBy: a.id, chatId: a.id, finish: 'show' })
+        handedBack(feature)
+
+        await prompt(lead(feature), 'I will take it from here')
+
+        expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you' })
+        expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: null, cause: 'typed', from: a.id })])
+        expect(cleared(feature).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
+      })
+
+      it('the first message to a lead nobody started takes it, though it rides behind runcastle’s held opening', async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: 'idle', heldBy: a.id, chatId: a.id, finish: 'show' })
+        const opening = heldOpening(tagRuncastlePrompt('Proceed with your task.'))
+
+        // A relay carried behind the opening is still runcastle's, and takes nothing.
+        await prompt(lead(feature), `${opening}\n\n${tagRuncastlePrompt('From the orchestrator: carry on')}`)
+        expect(holderOfSlug(feature)).toBe(a.id)
+
+        await prompt(lead(feature), `${opening}\n\nThis is mine now`)
+        expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: undefined, finish: 'you' })
+        expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: null, cause: 'typed', from: a.id })])
+      })
+
+      it('runcastle’s own prompt, a side chat, and the chat’s send_to_feature never take it', async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: 'kept', heldBy: a.id, chatId: a.id, finish: 'show' })
+
+        await prompt(lead(feature), tagRuncastlePrompt('a delivered message'))
+        await prompt(lead(feature, 'side'), 'a side question')
+        await toolSendToFeature(ctx, a, { slug: 'kept', message: 'carry on' })
+
+        expect(holderOfSlug(feature)).toBe(a.id)
+        expect(changes(feature)).toHaveLength(0)
+      })
+
+      it('the chat hears of it once, on its next turn, and is not woken', async () => {
+        const a = thread('A')
+        const feature = seedFeature(ctx, projectId, { slug: 'gone', heldBy: a.id, chatId: a.id, finish: 'show' })
+        await prompt(lead(feature), 'mine now')
+
+        const first = (await toolGetProjectContext(ctx, a)).takenByHuman
+        expect(first).toEqual([expect.stringMatching(/^The human took `gone`/)])
+        expect((await toolGetProjectContext(ctx, a)).takenByHuman).toBeUndefined()
+      })
+    })
+
+    it('a plan yes on a human-owned feature its chat finishes passes it to that chat', () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'grilled', chatId: a.id, finish: 'merge' })
+      handedBack(feature)
+
+      expect(passAtPlanYes(ctx, getFeatureRow(ctx, feature.id))).toBe(true)
+
+      expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: a.id, finish: 'merge' })
+      expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: a.id, cause: 'plan-agreed', from: null })])
+      expect(cleared(feature)).toHaveLength(1)
+      // The human finishes it: nothing passes.
+      const mine = seedFeature(ctx, projectId, { slug: 'mine', chatId: a.id, finish: 'you' })
+      expect(passAtPlanYes(ctx, mine)).toBe(false)
+    })
+
+    it('a replacement chat inherits what the old one owned and every feature whose chat it was', () => {
+      const old = thread('Old')
+      const next = thread('Next')
+      const owned = seedFeature(ctx, projectId, { slug: 'owned', heldBy: old.id, chatId: old.id, finish: 'show' })
+      const human = seedFeature(ctx, projectId, { slug: 'human', chatId: old.id })
+      handedBack(owned)
+
+      inheritHolds(ctx, old.id, next.id)
+
+      expect(getFeatureRow(ctx, owned.id)).toMatchObject({ heldBy: next.id, chatId: next.id, finish: 'show' })
+      expect(getFeatureRow(ctx, human.id)).toMatchObject({ heldBy: undefined, chatId: next.id, finish: 'you' })
+      expect(changes(owned).map((e) => e.data)).toEqual([expect.objectContaining({ owner: next.id, cause: 'replacement', from: old.id })])
+      expect(changes(human)).toHaveLength(1)
+      expect(cleared(owned)).toHaveLength(1)
+    })
+  })
+
+  describe('what each side may do', () => {
+    it('refuses the lead’s wait_for_you while a chat owns the feature, and allows it under the human', () => {
+      const a = thread('Notes triage')
+      const owned = seedFeature(ctx, projectId, { slug: 'owned', heldBy: a.id, chatId: a.id, finish: 'show' })
+      const mine = seedFeature(ctx, projectId, { slug: 'mine', chatId: a.id })
+      const leadOf = (f: Feature) => createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+
+      expect(() => toolWaitForYou(ctx, leadOf(owned), { why: 'pick a theme' })).toThrow(
+        '"Notes triage" owns this feature: bring it to them with hand_back.',
+      )
+      expect(getFeatureRow(ctx, owned.id).waitingReason).toBeNull()
+      expect(toolWaitForYou(ctx, leadOf(mine), { why: 'pick a theme' }).waitingReason).toBe('pick a theme')
+    })
+
+    it('posts a feature’s plan card in an orchestrator chat by slug, marked with its feature', () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'planned' })
+      const docs = join(repoPath, 'docs', 'features', 'planned')
+      mkdirSync(docs, { recursive: true })
+      writeFileSync(join(docs, 'spec.md'), '# Spec\n')
+
+      expect(toolShowPlan(ctx, a, { slug: 'planned' })).toEqual({ shown: true })
+
+      expect(readThreadEvents(a.id).filter((e) => e.type === 'plan_shown')).toEqual([
+        expect.objectContaining({ type: 'plan_shown', featureId: feature.id }),
+      ])
+      // The lead's "new to the human" mark is the lead's to set.
+      expect(typesOn(feature)).not.toContain('panel.show')
+    })
+
+    it('posts the card of a design the lead recorded, by slug and path, never approving it', () => {
+      const a = thread('A')
+      const feature = seedFeature(ctx, projectId, { slug: 'designed' })
+      const design = recordDesign(ctx, feature.id, { path: '/designs/owner.html', title: 'Owner control' })
+
+      expect(toolShowDesign(ctx, a, { slug: 'designed', path: 'designs/owner.html' })).toEqual({ recorded: true, state: 'waiting' })
+
+      expect(readThreadEvents(a.id).filter((e) => e.type === 'design_shown')).toEqual([
+        expect.objectContaining({ designId: design.id, featureId: feature.id }),
+      ])
+      expect(listDesigns(ctx, feature.id)).toEqual([expect.objectContaining({ id: design.id, state: 'waiting' })])
+      expect(() => toolShowDesign(ctx, a, { slug: 'designed', path: '/nope.html' })).toThrow(/recorded no design at \/nope.html/)
+    })
+  })
+
+  describe('moving today’s features', () => {
+    const ev = (id: number, featureId: string, type: string, data?: unknown) => ({ id, featureId, type, data })
+
+    it('plans: held keeps its chat with show; unheld gets its chat from its creation record; else stays chatless', () => {
+      const base = { status: 'active' as const, chatId: null, finish: 'you' as const }
+      const moves = planOwnerMove(
+        [
+          { ...base, id: 'f1', slug: 'held', title: 'Held', heldBy: 't1' },
+          { ...base, id: 'f2', slug: 'grilled', title: 'Grilled' },
+          { ...base, id: 'f3', slug: 'by-field', title: 'By field' },
+          { ...base, id: 'f4', slug: 'new-feature', title: 'New feature' },
+          { ...base, id: 'f5', slug: 'old', title: 'Old', status: 'shipped', heldBy: 't1' },
+          { ...base, id: 'f6', slug: 'moved', title: 'Moved', heldBy: 't1', chatId: 't1', finish: 'merge' },
+        ],
+        [
+          ev(3, 'f2', 'feature.held', { threadId: 't2' }),
+          ev(2, 'f2', 'feature.created', {}),
+          ev(4, 'f2', 'feature.held', { threadId: 't9' }),
+          ev(5, 'f3', 'feature.created', { createdBy: 't3' }),
+          ev(6, 'f4', 'feature.created', {}),
+        ],
+      )
+      expect(moves).toEqual([
+        expect.objectContaining({ slug: 'held', owner: 't1', chatId: 't1', finish: 'show' }),
+        expect.objectContaining({ slug: 'grilled', owner: null, chatId: 't2', finish: 'you' }),
+        expect.objectContaining({ slug: 'by-field', owner: null, chatId: 't3', finish: 'you' }),
+      ])
+      for (const m of moves) expect(m.reason).toBeTruthy()
+    })
+
+    it('runs once per project at boot, records what it moved, and stops the old sweep from placing holds', () => {
+      const a = thread('A')
+      const held = seedFeature(ctx, projectId, { slug: 'held', heldBy: a.id })
+      const grilled = seedFeature(ctx, projectId, { slug: 'grilled' })
+      emit(ctx, grilled.id, { type: 'feature.held', message: 'x', data: { threadId: a.id } })
+      ctx.db.update(features).set({ heldBy: null }).where(eq(features.id, grilled.id)).run()
+
+      moveOwners(ctx)
+      moveOwners(ctx)
+
+      expect(getFeatureRow(ctx, held.id)).toMatchObject({ heldBy: a.id, chatId: a.id, finish: 'show' })
+      expect(getFeatureRow(ctx, grilled.id)).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you' })
+      const markers = listByProject(ctx, projectId).filter((e) => e.type === OWNERS_MOVED)
+      expect(markers).toHaveLength(1)
+      expect((markers[0]?.data as { moves: unknown[] }).moves).toHaveLength(2)
+      expect(typesOn(held).filter((t) => t === OWNER_CHANGED)).toHaveLength(1)
+
+      // An unheld feature an orchestrator touched is the human's on purpose now: the sweep places nothing.
+      seedThreadLog(a.id, [
+        { type: 'tool', call: { id: 'c', kind: 'other', title: 'mcp__runcastle__add_to_brief', status: 'pending' }, i: 0, at: Date.now() } as ThreadEvent,
+      ])
+      runAsActor('orchestrator', () => emit(ctx, grilled.id, { type: 'brief.added', message: 'x' }))
+      ctx.db.delete(events).where(eq(events.type, HOLDERS_SWEPT)).run()
+      sweepHolders(ctx)
+      expect(holderOfSlug(grilled)).toBeUndefined()
+    })
+
+    it('never stops the server, and tries again on the next boot', () => {
+      seedFeature(ctx, projectId, { slug: 'held', heldBy: thread('A').id })
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const select = vi.spyOn(ctx.db, 'select').mockImplementationOnce(() => {
+        throw new Error('disk full')
+      })
+      expect(() => moveOwners(ctx)).not.toThrow()
+      expect(logged).toHaveBeenCalled()
+      select.mockRestore()
+      logged.mockRestore()
+
+      moveOwners(ctx)
+      expect(listByProject(ctx, projectId).filter((e) => e.type === OWNERS_MOVED)).toHaveLength(1)
     })
   })
 

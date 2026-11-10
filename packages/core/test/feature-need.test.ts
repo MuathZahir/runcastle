@@ -8,7 +8,8 @@ const NOW = 10_000_000
 function facts(over: Partial<NeedFacts> = {}): NeedFacts {
   return {
     status: 'active',
-    held: false,
+    owner: null,
+    askingChat: null,
     agentWorking: false,
     waiting: null,
     leadAwaitsHuman: null,
@@ -34,6 +35,9 @@ const waiting = (reason: string, kind: WaitingKind | null = null, since = 5_000)
 
 const approval = { kind: 'approval' as const, title: 'Bash: git push', threadId: 'side_1', since: 7_000 }
 
+/** An owner chat that is neither asking about the feature nor working. */
+const CHAT = { chat: 'Notes triage', asking: false, working: false }
+
 describe('featureNeed', () => {
   it('needs nothing when nothing is waited on', () => {
     expect(featureNeed(facts(), NOW)).toBeNull()
@@ -57,7 +61,7 @@ describe('featureNeed', () => {
 
   it('names a worker that needs the human, opening its thread, even while the lead works and on a held feature', () => {
     const worker = { label: 'Header', threadId: 'sess_w', since: 8_000 }
-    expect(featureNeed(facts({ workerNeedsYou: worker, agentWorking: true, held: true, waiting: waiting('which model?') }), NOW)).toEqual({
+    expect(featureNeed(facts({ workerNeedsYou: worker, agentWorking: true, owner: CHAT, handback: { at: 1, summary: "x" }, waiting: waiting('which model?') }), NOW)).toEqual({
       kind: 'worker',
       words: 'Header needs you',
       why: 'Header',
@@ -102,11 +106,9 @@ describe('featureNeed', () => {
     expect(featureNeed(facts({ waiting: waiting('banner to approve', 'design') }), NOW)).toEqual({
       kind: 'answer', words: 'Needs your answer · banner to approve', why: 'banner to approve', held: false, since: 5_000,
     })
-    // An answer like any other: a question to the human, never held, and it pings.
-    const since = NOW - 10 * 60_000
-    const handback = { at: since, summary: 'Ready' }
-    const held = featureNeed(facts({ held: true, handback, waiting: waiting('banner to approve', 'design', since - 1) }), NOW)
-    expect(held).toMatchObject({ kind: 'answer', held: false, words: 'Needs your answer · banner to approve' })
+    // An answer like any other: it pings, and under a chat owner it is the chat's.
+    const held = featureNeed(facts({ owner: CHAT, waiting: waiting('banner to approve', 'design') }), NOW)
+    expect(held).toMatchObject({ kind: 'answer', held: true, words: 'With Notes triage · Needs your answer · banner to approve' })
     expect(needPings(featureNeed(facts({ waiting: waiting('banner to approve', 'design') }), NOW))).toBe(true)
   })
 
@@ -114,8 +116,8 @@ describe('featureNeed', () => {
     const designs = { designsWaiting: 2, oldestDesignWaitingSince: 4_000 }
     expect(featureNeed(facts(designs), NOW)).toEqual({ kind: 'design', words: 'Design to approve', held: false, since: 4_000 })
     expect(featureNeed(facts({ ...designs, agentWorking: true }), NOW)).toBeNull()
-    // Never held, like every design need.
-    expect(featureNeed(facts({ ...designs, held: true }), NOW)).toMatchObject({ kind: 'design', held: false })
+    // Held under a chat owner (every-feature-has-one-owner decision 16).
+    expect(featureNeed(facts({ ...designs, owner: CHAT }), NOW)).toMatchObject({ kind: 'design', held: true, words: 'With Notes triage · Design to approve' })
     // A plan the lead waits on still comes first.
     expect(featureNeed(facts({ ...designs, waiting: waiting('start round 1?', 'plan') }), NOW)).toMatchObject({ kind: 'plan' })
   })
@@ -191,101 +193,104 @@ describe('featureNeed', () => {
     for (const [over, kind] of ladder) expect(featureNeed(facts(over), NOW)?.kind).toBe(kind)
   })
 
-  /** the-status-tells-the-truth decisions 1, 2, 5, 6, 15: only an outstanding handback holds anything. */
-  describe('held by an orchestrator', () => {
-    const at = NOW - 10 * 60_000
-    const handback = { at, summary: 'Ready to test: the header is done.\nDetails follow.' }
+  /** every-feature-has-one-owner decisions 15–17, 20: who owns the feature decides who has the need. */
+  describe('by owner', () => {
+    const recent = { at: NOW - 10 * 60_000, summary: 'Ready to test: the header is done.\nDetails follow.' }
+    const stale = { ...recent, at: NOW - HELD_NEED_GRACE_MS }
+    const asking = { ...CHAT, asking: true }
+    const working = { ...CHAT, working: true }
+    const old = recent.at - 1_000
 
-    it('holds nothing without a handback, even on a held feature', () => {
-      const cases: Array<Partial<NeedFacts>> = [
-        { waiting: waiting('which model?', null, at) },
-        { waiting: waiting('go?', 'plan', at) },
-        { waiting: waiting('stopped', null, at) },
-        { conflictSince: at },
-        { declaration: { scenario: 'checkout', at } },
-        { declaration: { scenario: 'checkout', at }, driveConfigured: false },
-        { leadAwaitsHuman: { since: at } },
-      ]
-      for (const over of cases) {
-        const need = featureNeed(facts({ ...over, held: true }), NOW)
-        expect(need?.held).toBe(false)
-        expect(need?.words.startsWith('With the orchestrator')).toBe(false)
-      }
-    })
+    /** Every need kind but the handback itself, with its plain words. */
+    const NEEDS: Array<[string, Partial<NeedFacts>, string, string]> = [
+      ['permission', { openAsk: { ...approval, since: old } }, 'permission', 'Needs permission · Bash: git push'],
+      ['conflict', { conflictSince: old }, 'conflict', 'Merge conflict'],
+      ['worker', { workerNeedsYou: { label: 'Header', threadId: 'w', since: old } }, 'worker', 'Header needs you'],
+      ['question ask', { openAsk: { kind: 'question', title: 'Which?', threadId: 'chat_1', since: old } }, 'answer', 'Needs your answer · Which?'],
+      ['answer wait', { waiting: waiting('which model?', 'answer', old) }, 'answer', 'Needs your answer · which model?'],
+      ['plan wait', { waiting: waiting('go?', 'plan', old) }, 'plan', 'Plan to approve'],
+      ['design', { designsWaiting: 1, oldestDesignWaitingSince: old }, 'design', 'Design to approve'],
+      ['stopped', { waiting: waiting('stopped', null, old) }, 'stopped', 'Stopped · you stopped it'],
+      ['ready to test', { declaration: { scenario: 'checkout', at: old } }, 'test', 'Ready to test · checkout'],
+      ['ready to merge', { declaration: { scenario: 'checkout', at: old }, driveConfigured: false }, 'merge', 'Ready to merge'],
+    ]
+    const onlyFeature = (kind: string) => kind === 'permission' || kind === 'worker'
 
-    it('reads a wait_for_you answer or plan on a held feature with no handback as needing the human, and pings', () => {
-      const answer = featureNeed(facts({ held: true, waiting: waiting('which model?', 'answer', at) }), NOW)
-      expect(answer).toMatchObject({ kind: 'answer', held: false, words: 'Needs your answer · which model?' })
-      expect(needPings(answer)).toBe(true)
-      const plan = featureNeed(facts({ held: true, waiting: waiting('go?', 'plan', at) }), NOW)
-      expect(plan).toMatchObject({ kind: 'plan', held: false, words: 'Plan to approve' })
-      expect(needPings(plan)).toBe(true)
-    })
+    /** [scenario, facts, how it reads: plain (the human's), held behind the chat's words, or held "asking you"] */
+    const SCENARIOS: Array<[string, Partial<NeedFacts>, 'plain' | 'held' | 'asking']> = [
+      ['the human owns it', {}, 'plain'],
+      ['the human owns it, its handback out to its chat', { handback: recent, askingChat: 'Notes triage' }, 'plain'],
+      ['a chat owns it, no handback', { owner: CHAT }, 'held'],
+      ['a chat owns it, a handback out', { owner: CHAT, handback: recent }, 'held'],
+      ['a chat owns it, a handback out, the chat asking about it', { owner: asking, handback: recent }, 'asking'],
+      ['a chat owns it, the chat asking about it but no handback', { owner: asking }, 'held'],
+      ['a chat owns it, the chat quiet past the hour', { owner: CHAT, handback: stale }, 'plain'],
+      ['a chat owns it, the chat working past the hour', { owner: working, handback: stale }, 'held'],
+      ['a chat owns it, the chat asking past the hour', { owner: asking, handback: stale }, 'asking'],
+    ]
 
-    it('reads the handback itself as With the orchestrator within the hour: no ping', () => {
-      const need = featureNeed(facts({ held: true, handback }), NOW)
+    for (const [scenario, base, reads] of SCENARIOS) {
+      describe(scenario, () => {
+        it.each(NEEDS)('%s', (_, over, kind, words) => {
+          const need = featureNeed(facts({ ...base, ...over }), NOW)
+          const plain = reads === 'plain' || onlyFeature(kind)
+          const expected = plain ? words : reads === 'asking' ? 'With Notes triage · asking you' : `With Notes triage · ${words}`
+          expect(need).toMatchObject({ kind, held: !plain, words: expected })
+          expect(needPings(need)).toBe(plain && !(kind === 'stopped'))
+        })
+      })
+    }
+
+    it('reads a chat-owned handback as With <Chat> · its line within the hour, and no ping', () => {
+      const need = featureNeed(facts({ owner: CHAT, handback: recent }), NOW)
       expect(need).toEqual({
         kind: 'handback',
-        words: 'With the orchestrator · Ready to test: the header is done',
+        words: 'With Notes triage · Ready to test: the header is done',
         why: 'Ready to test: the header is done',
         held: true,
-        since: at,
+        since: recent.at,
       })
       expect(needPings(need)).toBe(false)
     })
 
-    it('reads the handback as Handed back after the hour, or once nothing holds the feature, and pings', () => {
-      const late = featureNeed(facts({ held: true, handback: { ...handback, at: NOW - HELD_NEED_GRACE_MS } }), NOW)
+    it('reads it as With <Chat> · asking you while the chat asks about it', () => {
+      expect(featureNeed(facts({ owner: asking, handback: recent }), NOW)).toMatchObject({ kind: 'handback', held: true, words: 'With Notes triage · asking you' })
+    })
+
+    it('brings it back as Handed back under Needs you once the chat has been quiet an hour, and only then', () => {
+      const late = featureNeed(facts({ owner: CHAT, handback: stale }), NOW)
       expect(late).toMatchObject({ kind: 'handback', held: false, words: 'Handed back · Ready to test: the header is done' })
       expect(needPings(late)).toBe(true)
-      const unheld = featureNeed(facts({ held: false, handback }), NOW)
-      expect(unheld).toMatchObject({ kind: 'handback', held: false, words: 'Handed back · Ready to test: the header is done' })
-      expect(needPings(unheld)).toBe(true)
+      expect(featureNeed(facts({ owner: working, handback: stale }), NOW)).toMatchObject({ held: true, words: 'With Notes triage · Ready to test: the header is done' })
+      expect(featureNeed(facts({ owner: asking, handback: stale }), NOW)).toMatchObject({ held: true, words: 'With Notes triage · asking you' })
     })
 
-    it('shows the handback only while the lead is idle, last of all needs', () => {
-      expect(featureNeed(facts({ held: true, handback, agentWorking: true }), NOW)).toBeNull()
-      // The lead's turn that ended on the handback is not a quiet answer of its own.
-      expect(featureNeed(facts({ held: true, handback, leadAwaitsHuman: { since: at + 1 } }), NOW)).toMatchObject({ kind: 'handback' })
-    })
-
-    it('holds a machine state that stood at the handback, and not one that arose after it', () => {
-      const ready = { declaration: { scenario: 'checkout', at: at - 1_000 } }
-      expect(featureNeed(facts({ held: true, handback, ...ready }), NOW)).toMatchObject({
-        kind: 'test', held: true, words: 'With the orchestrator · Ready to test · checkout',
-      })
-      const after = featureNeed(facts({ held: true, handback, declaration: { scenario: 'checkout', at: at + 1_000 } }), NOW)
-      expect(after).toMatchObject({ kind: 'test', held: false, words: 'Ready to test · checkout' })
-      expect(needPings(after)).toBe(true)
-      for (const over of [{ conflictSince: at }, { waiting: waiting('stopped', null, at) }, { ...ready, driveConfigured: false }]) {
-        expect(featureNeed(facts({ held: true, handback, ...over }), NOW)?.held).toBe(true)
+    it('reads a human-owned feature asking its chat as Asking <Chat> · its line, held, never past the hour', () => {
+      for (const handback of [recent, stale]) {
+        const need = featureNeed(facts({ handback, askingChat: 'Notes triage' }), NOW)
+        expect(need).toMatchObject({ kind: 'handback', held: true, words: 'Asking Notes triage · Ready to test: the header is done' })
+        expect(needPings(need)).toBe(false)
       }
-      // After the hour it reads its plain words.
-      expect(featureNeed(facts({ held: true, handback, ...ready }), at + HELD_NEED_GRACE_MS)).toMatchObject({ kind: 'test', held: false })
+      expect(featureNeed(facts({ handback: { at: 1, summary: ' ' }, askingChat: 'Notes triage' }), NOW)?.words).toBe('Asking Notes triage')
     })
 
-    it('never holds a question to the human, even one that stood at the handback', () => {
-      const old = at - 1_000
-      const cases: Array<[Partial<NeedFacts>, string]> = [
-        [{ openAsk: { ...approval, since: old } }, 'permission'],
-        [{ openAsk: { kind: 'question', title: 'Which?', threadId: 'chat_1', since: old } }, 'answer'],
-        [{ workerNeedsYou: { label: 'Header', threadId: 'w', since: old } }, 'worker'],
-        [{ waiting: waiting('which model?', 'answer', old) }, 'answer'],
-        [{ waiting: waiting('go?', 'plan', old) }, 'plan'],
-        [{ waiting: waiting('look', 'design', old), designsWaiting: 1 }, 'design'],
-      ]
-      for (const [over, kind] of cases) {
-        expect(featureNeed(facts({ held: true, handback, ...over }), NOW)).toMatchObject({ kind, held: false })
-      }
+    it('reads a human-owned handback with no chat to ask as Handed back, as before', () => {
+      expect(featureNeed(facts({ handback: recent }), NOW)).toMatchObject({ kind: 'handback', held: false, words: 'Handed back · Ready to test: the header is done' })
     })
 
-    it('lets an unheld question outrank a held conflict', () => {
-      const need = featureNeed(facts({ held: true, handback, conflictSince: at - 1, waiting: waiting('which model?', 'answer', at + 1) }), NOW)
-      expect(need).toMatchObject({ kind: 'answer', held: false, words: 'Needs your answer · which model?' })
+    it('holds a bare reply under a chat owner, and leaves the human’s as it was', () => {
+      expect(featureNeed(facts({ leadAwaitsHuman: { since: old } }), NOW)).toMatchObject({ kind: 'answer', held: false, words: 'Needs your answer', quiet: true })
+      expect(featureNeed(facts({ owner: CHAT, leadAwaitsHuman: { since: old } }), NOW)).toMatchObject({ kind: 'answer', held: true, words: 'With Notes triage · Needs your answer' })
+    })
+
+    it('shows nothing while the lead works, whatever the chat does', () => {
+      expect(featureNeed(facts({ owner: asking, handback: recent, agentWorking: true }), NOW)).toBeNull()
+    })
+
+    it('lets what only the feature can answer outrank a held need', () => {
+      expect(featureNeed(facts({ owner: CHAT, conflictSince: old, workerNeedsYou: { label: 'Header', threadId: 'w', since: old } }), NOW)).toMatchObject({ kind: 'worker', held: false })
       // Among held needs, the usual order: the conflict before the handback.
-      expect(featureNeed(facts({ held: true, handback, conflictSince: at - 1 }), NOW)).toMatchObject({ kind: 'conflict', held: true })
-      // An unheld machine state outranks a held one too.
-      expect(featureNeed(facts({ held: true, handback, conflictSince: at - 1, declaration: { scenario: 'c', at: at + 1 } }), NOW)).toMatchObject({ kind: 'test', held: false })
+      expect(featureNeed(facts({ owner: CHAT, handback: recent, conflictSince: old }), NOW)).toMatchObject({ kind: 'conflict', held: true })
     })
   })
 
@@ -310,7 +315,7 @@ describe('needPings', () => {
   })
 
   it('stays quiet for a held need, and for the stop the human made', () => {
-    expect(needPings({ ...need, held: true, words: 'With the orchestrator · Plan to approve' })).toBe(false)
+    expect(needPings({ ...need, held: true, words: 'With Notes triage · Plan to approve' })).toBe(false)
     expect(needPings({ kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: YOU_STOPPED_IT })).toBe(false)
   })
 

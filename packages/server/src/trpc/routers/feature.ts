@@ -1,4 +1,4 @@
-import { Effort, FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { Effort, FeatureFinish, FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import { endSession, launchSession } from '../../launcher/launcher'
 import { listFeatureSessions } from '../../services/conversations'
@@ -6,6 +6,7 @@ import { setDependencies, setUpNext } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
+import { setOwner } from '../../services/holding'
 import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
@@ -49,6 +50,13 @@ export const featureRouter = router({
   setUpNext: publicProcedure
     .input(z.object({ featureId: z.string(), upNext: z.boolean() }))
     .mutation(({ ctx, input }) => setUpNext(ctx, input.featureId, input.upNext)),
+
+  // The owner control and the row menu (every-feature-has-one-owner decisions
+  // 11, 21): `you` makes the feature the human's; `show` / `merge` give it to
+  // its chat, refused (BAD_REQUEST) when it has none.
+  setOwner: publicProcedure
+    .input(z.object({ featureId: z.string(), choice: FeatureFinish }))
+    .mutation(({ ctx, input }) => setOwner(ctx, input.featureId, input.choice)),
 
   list: publicProcedure
     .input(z.object({ projectId: z.string() }))

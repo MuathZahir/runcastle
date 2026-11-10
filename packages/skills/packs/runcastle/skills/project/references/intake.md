@@ -2,7 +2,7 @@
 
 Load this when a feature idea lands (§1 of `/runcastle:project`). It carries the
 whole intake — the portfolio lookup, the shape grill and the cut, creating the
-features — and the working agreement you ask for before anything in a cut is
+features — and the two questions you ask before anything in a cut is
 created. **Orchestrating** in the skill carries how you work within it.
 
 ## 1. Intake
@@ -33,18 +33,18 @@ Now talk. In this order, and all of it before any `create_feature`:
   - **the width** — roughly how wide each piece is, including whether it needs research or a prototype before its design can lock.
 
   If you cannot say how an answer would swing the cut or change what the human gets, you do not need to ask it. The grill **stops at the cut**: it locks no decisions and writes no feature docs.
-- **A short or confident request is not a settled one.** Propose no cut and create nothing until the human has answered at least one question from you in this conversation, unless they said in words to skip it ("just do it", "you decide"). The working-agreement question does not count. Ask about anything that changes what they get or what it does for them, so that nothing about the work surprises them later. This is a shape question still: UX detail, edge cases and implementation choices go in the brief under **open**, as questions for the feature's own grill.
+- **A short or confident request is not a settled one.** Propose no cut and create nothing until the human has answered at least one question from you in this conversation, unless they said in words to skip it ("just do it", "you decide"). The two planning and finish questions do not count. Ask about anything that changes what they get or what it does for them, so that nothing about the work surprises them later. This is a shape question still: UX detail, edge cases and implementation choices go in the brief under **open**, as questions for the feature's own grill.
 - **Recommend with every question, and propose after the grill.** Never ask a bare question with no recommendation attached. Once the grill has run, put your proposed cut to them and say why it is the cut. They correct or confirm. **The cut is features and their boundaries, nothing more**: for each feature say in plain words what changes for the human ("your chats will compact themselves at 200k"), and put every decision about how a feature behaves to them as its own question — never inside the proposal, where a yes to the cut would carry it.
 - **Suggest how to split the work.** This is the advice they came for: is this one feature or three? What lands first, and what is it that later work needs from it? What should be built first, if the obvious version is too big to be worth doing whole? Say which order you would take and why.
 - **Cut until every feature fits one ideation window.** Each feature you propose must be thinkable in a single `/runcastle:feature` session. A piece that is not gets cut further, or its later parts are parked as drafts. Big intent never reaches ideation as one feature — you are the size gate.
 - **Push on the cut, not the design.** For each candidate: *what must this feature NOT swallow?* A boundary nobody can state is not a boundary.
-- **Give every feature a planning mode.** Each feature in the proposal shows how it gets planned, **grill with you** or **plans itself**, with a one-line reason (see **The planning mode** below).
+- **Give every feature a planning choice.** Each feature in the proposal shows how it gets planned, **plan it with me** or **plan it yourself**, with a one-line reason (see **The planning choice** below).
 
 **Across a big lump this is a shape grill, not a design grill.** No data shapes, no UX detail, no edge cases, no pushing until the design resolves. A big feature's design grill is `/runcastle:feature`'s job, done with the feature's whole context in one unbroken window; here it would spend the human's patience twice and produce the worse version, because you work from a one-line index where that session has the repo. When the human starts answering design questions about a big feature, say so and point them at its own session. **A small, nearly concrete feature is the exception**: you grill it to the end here (**Where each feature is grilled**, below).
 
 ### 1c. Create — once the split is agreed
 
-When they have confirmed the cut: **one `create_feature` call per feature.** Not before the agreement, and not one call for a shape you proposed and they have not answered on. The chat shows a card for each feature an action touched, so your words say why you acted and what comes next, not the list of features again.
+When they have confirmed the cut: **one `create_feature` call per feature.** Not before the cut is agreed, and not one call for a shape you proposed and they have not answered on. The chat shows a card for each feature an action touched, so your words say why you acted and what comes next, not the list of features again.
 
 **Ask, per feature: start it now, up next after something, or the backlog?** A backlog feature (status `draft`) is the same feature with no branch cut and nothing written to the repo, waiting on the human's **Start** click — pass `draft: true` for the backlog ones. The brief is stored either way, so adding to the backlog costs the conversation nothing. Intake routinely resolves into more features than anyone will work this week, and a branch cut for each is a branch going stale.
 
@@ -72,7 +72,7 @@ Each one carries a real `brief` — what the shape grill learned, in prose, so i
 
 It is written into `brief.md` verbatim and it is what the feature's agent (and eventually its workers) reads. A brief that just restates the one-liner throws away the entire conversation; that reasoning has no other home once this terminal closes.
 
-**Creating a feature sets nothing working.** The new cards appearing in the rail are the feedback. Whether you then plan or start one is what the human asked, or what the cut's working agreement says (**Orchestrating**); never your own reading of what should be worked next.
+**Creating a feature sets nothing working.** The new cards appearing in the rail are the feedback. Whether you then plan or start one is what the human asked, or what the feature's finish choice covers (**Orchestrating**); never your own reading of what should be worked next.
 
 ## How you grill — one decision at a time
 
@@ -87,53 +87,42 @@ This is how you put every question, in a shape grill, in a grill held here, and 
 
 ## Where each feature is grilled
 
-**Which grill a feature gets is your call, by its size, and you recommend it per feature in the cut** (the planning mode, below). Whichever it is, every decision that changes what the human gets is made by them.
+**Which grill a feature gets is your call, by its size, and you recommend it per feature in the cut** (the planning choice, below). Whichever it is, every decision that changes what the human gets is made by them.
 
-- **Small and nearly concrete** — a handful of decisions you can put now, with no new screen to design: **grill it here**, to the end, before you create it. Its brief carries every decision under `## Decided with the human`, it plans itself (how it is built is all that is left), and you recommend running it autonomously.
+- **Small and nearly concrete** — a handful of decisions you can put now, with no new screen to design: **grill it here**, to the end, before you create it. Its brief carries every decision under `## Decided with the human`, it plans itself (how it is built is all that is left).
 - **Big, or a new screen or workflow**: cut it into features and recommend the human grill each in its own chat. The pieces of the cut that turn out concrete plan themselves, or get grilled here if they hold a few decisions.
 - **Nothing left to decide** — a bug with its repro, mechanical work the brief fully specifies: it plans itself.
 
 Every plan a feature writes by itself still reaches the human before it builds: its decisions that change what they get are marked `**For the human.**`, and you put each one to them (**Judging a plan** in the skill).
 
-## The working agreement — before anything is created
+## Two questions per cut — before anything is created
 
-**Before you create anything for a cut, ask the human how they want the work run.** One question, with your recommendation, as the grill asks. Offer three shapes, and say what each means for merging:
+**Before you create anything for a cut, ask the human two plain questions, each with your recommendation, per feature where they differ.** The finish lives on the feature, where the human sees and changes it; the planning choice travels with the launch and is spent once the plan has its yes.
 
-- **Autonomous**: you carry everything through to merged, merging each feature when you judge it right, and they come back at the end.
-- **Checkpoints they name**: for example, play the core before the extras. You stop at each one, and merge only what they have passed there.
-- **A check-in after each feature**: you present each feature when it is ready, and merge it only once they say so.
+- **How is it planned?** "Plan it with me" (they grill it with its lead, in the feature's chat) or "plan it yourself and show me" (it plans itself).
+- **How far do you take it?** "I finish it", "you build it and show me before merging", or "you build and merge it".
 
-**"You decide" means autonomous, merge included.**
+Pass them to `create_feature` as `planning: 'with-me' | 'self'` and `finish: 'you' | 'show' | 'merge'`. They are not written into briefs. Offer all three finishes even for one feature; choosing is the human's. "Let me play the core first" means "show me before merging" on the core feature, plus the cut's order (`dependsOn`) so the rest waits for its merge. Whatever the finish, each decision that changes what the human gets is theirs.
 
-**Autonomous means the building runs unattended, never that decisions are made for them.** Under every shape, each decision that changes what the human gets is theirs: the agreement only says how far you carry the building, the review and the merge without them. Say so when you offer the shapes.
+**Every new request is a new cut** and gets the questions again; never carry an earlier answer over on your own reading.
 
-**Always offer all three shapes**, even for a cut of one feature. Recommend one, but do not drop one because it looks unlikely: a checkpoint inside a single feature, or a check-in before its merge, is still a real choice, and choosing is the human's.
+## The planning choice — one per feature, in the cut proposal
 
-**Every new request is a new cut**, even in a session that has already run one, and it gets the question before you create anything for it. Ask again unless the human has said the earlier agreement stands for it; never carry an earlier answer over on your own reading. How involved the human wants to be changes from cut to cut, which is why the agreement is made per cut.
+**Every feature in a cut proposal shows how it is planned, with a one-line reason**, as its own item on its line, so the human reads it rather than approving it by inertia:
 
-**Write the agreement into the brief of every feature in the cut**: put it in the `brief` you pass to `create_feature`, and use `add_to_brief` for a feature created before the agreement, or when the human changes it. After a compaction or a relaunch, read the agreement back from the briefs.
+- **Plan it with me**: the human plans it with the feature's lead, in the feature's own chat (`planning: 'with-me'`).
+- **Plan it yourself and show me**: it plans itself (`planning: 'self'`); you start its run with `plan_feature` once it is yours. A small, nearly concrete one you may grill here first (**Where each feature is grilled**): its brief then carries the answers, and it still plans itself.
 
-## The planning mode — one per feature, in the cut proposal
+**Recommend the grill** when the feature decides how something new works or looks (where the human would have opinions), is big or hard to undo, or has open questions its brief marks as the human's. **Recommend plan it yourself** for bug fixes, well-specified mechanical work, and small visible tweaks to something that already exists. **When unsure, recommend the grill**: a needless grill costs the human one "plan it yourself"; a skipped one costs a plan built on guesses. **Recommend grilling it here** instead of in its chat when the decisions are few and you can put them now.
 
-**Every feature in a cut proposal carries a planning mode, with a one-line reason**, shown as its own item on that feature's line so the human reads it rather than approving it by inertia:
+- Plan it with me: a new screen ("a page listing every run"); a change to how the human works with agents ("leads ask before each round").
+- Plan it yourself: "the login cache serves a stale user"; "the token meter turns amber at 80%".
 
-- **Grilled here**: small and nearly concrete; you grill it in this chat before creating it (**Where each feature is grilled**), then it plans itself.
-- **Grill with you**: the human plans it with the feature's lead, in the feature's own chat.
-- **Plans itself**: you start its self-planning run with `plan_feature` when the agreement calls for it.
+Put the planning choice to the human as its own question once the cut is agreed: they confirm or flip each. That answer is not the shape question §1b requires, and a cut of one feature gets one too. If they change it before the plan's yes, follow their words.
 
-**Recommend the grill** when the feature decides how something new works or looks (where the human would have opinions), is big or hard to undo, or has open questions its brief marks as the human's. **Recommend plans itself** for bug fixes, well-specified mechanical work, and small visible tweaks to something that already exists. **When unsure, recommend the grill**: a needless grill costs the human one "plan it yourself"; a skipped one costs a plan built on guesses. **Recommend grilling it here** instead of in its chat when the decisions are few and you can put them now.
+### A "plan it with me" feature, when its turn comes
 
-- Grill with you: a new screen ("a page listing every run"); a change to how the human works with agents ("leads ask before each round").
-- Plans itself: "the login cache serves a stale user"; "the token meter turns amber at 80%".
-
-Put the modes to the human as their own question once the cut is agreed: they confirm or flip each. That answer is not the shape question §1b requires, and a cut of one feature gets a mode too. A feature grilled here is grilled before it is created. **Write the mode into each feature's brief**, beside the working agreement, as one line with its reason (`Planning mode: grill with you — <reason>`). The human can flip a mode at any time: record it with `add_to_brief` and work to it.
-
-### A "grill with you" feature, when its turn comes
-
-- **Never call `plan_feature` on it, and never give its plan the yes yourself**, whatever the agreement says. The yes is the human's: in the feature's chat at the end of the grill, or told to you in words, which you relay as their answer (`send_to_feature` with `relaysHuman: true`). When its lead waits for that yes, leave the wait to the human.
-- **Hand the human its chat.** When the agreement says it is time to plan it, start it with `start_feature` if it is still a draft, then tell the human its grill is ready in the feature's chat, naming the features that wait on it. Several at once go in one message, with the order you would take them. If they seem away, `notify_human` once; do not nag.
-- **Skip the questions you ask before a self-planned run**: the feature's own grill asks them.
-- **Only it and the features waiting on it are held**; keep the rest of the cut moving. Under an autonomous agreement this is the one planned stop besides the decisions you must ask about. There is no fallback: it waits for the human however long it takes, and your reports list it as waiting on them. Only the human switching its mode sends it to plan itself.
-- **After their yes, the cut's working agreement takes over unchanged**: the lead builds it, and you carry the feature on as the agreement says.
-
-**A brief with no planning mode** (a feature from before modes existed, or created outside a cut): when the agreement calls for planning it, judge it by the same rule, and if you would recommend the grill, ask the human before you start a self-planning run.
+- **Never call `plan_feature` on it, and never give its plan the yes yourself.** It starts the human's: they grill it in its chat and give the yes there, or tell you in words, which you relay (`send_to_feature` with `relaysHuman: true`).
+- **Hand the human its chat.** Start it with `start_feature` if it is still a draft, then tell the human its grill is ready in the feature's chat, naming the features that wait on it. Several at once go in one message, with the order you would take them. If they seem away, `notify_human` once; do not nag.
+- **At the human's plan yes, if its finish is show or merge, its lead hands it to you and it becomes yours.** With "I finish it" it stays theirs.
+- **Only it and the features waiting on it wait**; keep the rest of the cut moving. There is no fallback: it waits for the human however long it takes, and your reports list it as waiting on them.

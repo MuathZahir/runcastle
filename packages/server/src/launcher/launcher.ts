@@ -25,7 +25,7 @@ import { ensureTalkWorktreeDuringDrive } from '../services/chat-branch'
 import { renderScenarioFollowUp } from './artifacts'
 import { mainChatContext } from '../services/main-chat-excerpt'
 import { featureStateLine } from '../services/feature-state'
-import { tagRuncastlePrompt } from '../services/lead-prompt'
+import { HELD_OPENING_END, tagRuncastlePrompt } from '../services/lead-prompt'
 import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent } from '../threads/types'
 import {
@@ -223,8 +223,8 @@ async function sayToThread(
   })
 }
 
-/** How an opening held for the human's first message ends: that message follows it, in the same prompt (decision 12). */
-export const HELD_OPENING_END = "The human's message follows."
+/** How an opening held for the human's first message ends (decision 12); the hook route reads it too. */
+export { HELD_OPENING_END }
 
 /** An opening in the form that rides ahead of the human's first message. */
 export function heldOpening(line: string): string {
@@ -248,7 +248,7 @@ export function openingSummary(row: SessionRow, selfPlan = false): string | unde
     case 'chat':
       return selfPlan ? 'Started this chat to plan the feature by itself' : 'Started this chat'
     case 'project':
-      return 'Started this orchestrator chat'
+      return 'Started this epic'
     default:
       return undefined
   }

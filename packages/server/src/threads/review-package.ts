@@ -23,7 +23,7 @@ export function postReviewPackage(ctx: AppCtx, featureId: string, ticketId: stri
   const chat = newestThread(ctx, { featureId }, 'chat')
   if (!chat) return
   seedFromTranscript(ctx, chat.id)
-  appendThreadEvent(chat.id, { type: 'review_package', ticketId })
+  appendThreadEvent(chat.id, { type: 'review_package', ticketId, featureId })
   emit(ctx, featureId, { type: 'review.package_posted', message: 'review package posted in the chat', ticketId })
 }
 
@@ -39,7 +39,7 @@ export async function showReviewPackage(
     passes.find((p) => (p.seq === null ? p.id === pictured?.workerId : p.seq === pictured?.seq)) ?? passes[0]
   if (!pass) throw new GateError(`${feature.slug} has had no review, so it has no review package.`)
   seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'review_package', ticketId: pass.id })
+  appendThreadEvent(session.id, { type: 'review_package', ticketId: pass.id, featureId: feature.id })
   const pack = await reviewPackage(ctx, pass, feature, projectForFeature(ctx, feature).repoPath)
   return {
     shown: true,

@@ -80,7 +80,7 @@ describe('before the server has answered', () => {
 
   it('says the Orchestrator’s dry run is holding the drive, and offers to stop it', () => {
     const html = render({ driveState: 'idle', drive: undefined, dryRun: { onStop: () => undefined, stopping: false } })
-    expect(html).toContain('The Orchestrator’s dry run is holding the drive')
+    expect(html).toContain('An epic’s dry run is holding the drive')
     expect(html).toContain('Stop the dry run')
   })
 })

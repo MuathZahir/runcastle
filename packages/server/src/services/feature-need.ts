@@ -12,7 +12,7 @@ import {
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, readyDeclarations, workers } from '../db/schema'
-import { leadState, NO_LEAD, openAskOf, type LeadState } from '../threads/read'
+import { chatActivity, leadState, NO_LEAD, openAskOf, type ChatActivity, type LeadState } from '../threads/read'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { designsWaiting } from './designs'
 import { HANDBACK_CLEARED } from './lead-status'
@@ -119,6 +119,31 @@ export interface NeedInputs {
   lead?: LeadState
   /** The project has a test drive set up (a dev command); read when absent. */
   driveConfigured?: boolean
+  /** What an orchestrator chat is doing, by thread id; a list passes one that reads each chat once. */
+  chat?: (threadId: string) => ChatActivity
+}
+
+/** A {@link NeedInputs.chat} that reads each chat once, for a list of features. */
+export function chatReader(ctx: AppCtx): (threadId: string) => ChatActivity {
+  const read = new Map<string, ChatActivity>()
+  return (threadId) => {
+    let activity = read.get(threadId)
+    if (!activity) read.set(threadId, (activity = chatActivity(ctx, threadId)))
+    return activity
+  }
+}
+
+/**
+ * Who has the feature's next move beyond its lead (every-feature-has-one-owner
+ * decisions 15–17, 20): the owner chat, its name and what it is doing; or, for a
+ * human-owned feature with a handback out to its chat, that chat's name.
+ */
+function ownerFacts(feature: Feature, chat: (threadId: string) => ChatActivity): Pick<NeedFacts, 'owner' | 'askingChat'> {
+  if (feature.heldBy) {
+    const c = chat(feature.heldBy)
+    return { owner: { chat: c.name, asking: c.askingAbout.includes(feature.id), working: c.working }, askingChat: null }
+  }
+  return { owner: null, askingChat: feature.handback && feature.chatId ? chat(feature.chatId).name : null }
 }
 
 /** Gather {@link NeedFacts} for one feature. */
@@ -136,7 +161,7 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
   const designs = designsWaiting(ctx, feature.id)
   return {
     status: feature.status,
-    held: !!feature.heldBy,
+    ...ownerFacts(feature, inputs.chat ?? ((id) => chatActivity(ctx, id))),
     agentWorking: hasActiveRun(ctx, feature.id) || lead.working,
     waiting: feature.waitingReason
       ? { reason: feature.waitingReason, kind: feature.waitingKind, since: timeline.waitingSetAt ?? 0 }

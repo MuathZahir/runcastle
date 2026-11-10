@@ -35,7 +35,7 @@ export function ProjectChat({
 }) {
   return (
     <ThreadColumn
-      label="Orchestrator chat"
+      label="Epic chat"
       threadId={threadId}
       {...(runtime ? { runtime } : {})}
       {...(start ? { start } : {})}
@@ -71,7 +71,7 @@ function OrchestratorOpening() {
       <div className="flex flex-col gap-1.5">
         <h2 className="m-0 text-xl font-semibold tracking-tight text-text">What are we building?</h2>
         <p className="m-0 max-w-[44ch] text-sm text-pretty text-text-tertiary">
-          Bring a raw idea. The <Term id="orchestrator">Orchestrator</Term> checks it against what’s built and cuts it into features.
+          Bring a raw idea. This <Term id="orchestrator">epic</Term> checks it against what’s built and cuts it into features.
         </p>
       </div>
     </div>

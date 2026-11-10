@@ -73,13 +73,13 @@ export function ProjectDriveView({
               explanation={
                 <>
                   Your checkout is as it was, but <code className="font-mono text-xs">{failure.command}</code>{' '}
-                  {failure.outcome} — so whatever it was meant to bring up is probably not running. The Orchestrator
+                  {failure.outcome} — so whatever it was meant to bring up is probably not running. An epic
                   repairs and proves this project’s drive commands.
                 </>
               }
             >
               <Button className="self-start" icon={<IconShield />} onClick={onAskOrchestrator}>
-                Ask the Orchestrator
+                Ask an epic
               </Button>
             </DriveFailureReport>
           )}

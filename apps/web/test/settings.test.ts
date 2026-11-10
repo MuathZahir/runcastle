@@ -1065,7 +1065,7 @@ describe('stepRows', () => {
     ])
     expect(rows.map((r) => r.label)).toEqual([
       'Chat',
-      'Orchestrator chat',
+      'Epic chat',
       'Implement',
       'Review',
       'Drive chats',

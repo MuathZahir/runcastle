@@ -8,7 +8,7 @@ import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { guardKindOf } from '../workers/drive'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { sessionAudience, toolsForAudience } from '../mcp/server'
+import { sessionAudience, takenByHumanNews, toolsForAudience } from '../mcp/server'
 import { clearSentMemoryOnStart } from '../mcp/sent-memory'
 import {
   getSessionRow,
@@ -21,7 +21,8 @@ import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt, stagedPathsAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
-import { isRuncastlePrompt } from '../services/lead-prompt'
+import { isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
+import { releaseOnTyped } from '../services/holding'
 import { markHumanMessage } from '../services/lead-status'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
@@ -96,7 +97,7 @@ hooks.post('/:event', async (c) => {
         case 'session-start':
           return c.json(await handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
-          return c.json(handleProjectScopedUserPrompt(session))
+          return c.json(handleProjectScopedUserPrompt(ctx, session))
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session, body.payload))
         case 'pre-tool':
@@ -269,11 +270,17 @@ async function handleProjectScopedSessionStart(
   }
 }
 
-function handleProjectScopedUserPrompt(session: SessionRow): unknown {
+/**
+ * Every turn of a project-scoped session is labelled; an orchestrator chat is
+ * also told, once, of each feature the human took from it since
+ * (every-feature-has-one-owner decision 23), as it is never woken for that.
+ */
+function handleProjectScopedUserPrompt(ctx: AppCtx, session: SessionRow): unknown {
+  const taken = session.kind === 'project' ? takenByHumanNews(ctx, session.id) : []
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: projectScopedPromptLabel(session.kind),
+      additionalContext: [projectScopedPromptLabel(session.kind), ...taken.map((line) => `[runcastle] ${line}`)].join('\n'),
     },
   }
 }
@@ -379,7 +386,8 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
 
 /**
  * A lead's turn starts (`the-feature-lead-runs-rounds` decision 12, spec
- * "Stopping"). A prompt without runcastle's tag is one the human typed — into
+ * "Stopping"). A prompt without runcastle's tag, or the human's first message
+ * riding behind a held opening, is one the human typed — into
  * the thread's composer, which sends it as it was written — so it stamps the
  * feature's last-human-message mark. A payload with no prompt text says
  * nothing about who wrote it, so it stamps nothing. Nor does the compaction
@@ -388,7 +396,12 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt === undefined || isRuncastlePrompt(prompt) || COMPACT_TEXT.test(prompt.trimStart())) return
+  if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart())) return
+  // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
+  if (isRuncastlePrompt(prompt) && typedAfterOpening(prompt) === null) return
+  // Typing in the lead's main chat takes a chat-owned feature (every-feature-has-one-owner
+  // decision 23). Only this path: a delivered message, a worker or a side chat never does.
+  releaseOnTyped(ctx, feature.id)
   markHumanMessage(ctx, feature.id, { typed: true })
 }
 

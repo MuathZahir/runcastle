@@ -320,7 +320,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     expect(lane('Done')).toEqual(['Footer', 'An old side thread'])
     expect(within(featurePage()!).getByText('Old side chat')).toBeTruthy()
     // The features list is not drawn while the page is.
-    expect(within(sidebar()).queryByRole('button', { name: 'Orchestrator' })).toBeNull()
+    expect(within(sidebar()).queryByRole('region', { name: 'Epics' })).toBeNull()
   })
 
   it('goes back to the features list leaving the chat in front unchanged, and the feature’s row brings its lead back without going down', async () => {
@@ -332,7 +332,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
 
     fireEvent.click(within(featurePage()!).getByRole('button', { name: 'Back to the features' }))
     expect(featurePage()).toBeNull()
-    expect(within(sidebar()).getByRole('region', { name: 'Needs you' })).toBeTruthy()
+    expect(within(sidebar()).getByRole('region', { name: 'Epics' })).toBeTruthy()
     expect(within(column()).getByText('said in w_ask')).toBeTruthy()
     expect(threadName().textContent).toBe('Header')
 

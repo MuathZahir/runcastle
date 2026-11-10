@@ -22,7 +22,7 @@ import { featureDocPath } from '../services/feature-docs'
 import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
-import { holderName, requireHold, takeHold } from '../services/holding'
+import { type ChatFinish, chatNameOf, holderName, requireHold, takeFeature } from '../services/holding'
 import { clearHandback } from '../services/lead-status'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
@@ -31,6 +31,7 @@ import {
   requireProjectById,
   rowToFeature,
 } from '../services/repo'
+import { EPIC_NAME_MAX, writeEpicName } from '../threads/epic-name'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import type { HeaderCarrier } from './server'
@@ -39,8 +40,9 @@ import type { HeaderCarrier } from './server'
  * The orchestrator's tools (`one-orchestrator-no-mode`): every orchestrator
  * is the orchestrator. What it may act on is drawn by its instructions (decision
  * 2), and by one server rule (`threads-hold-features`): every acting tool goes
- * through {@link requireHeldFeature}, so a thread cannot act on a feature another
- * thread holds. Beyond that each tool refuses what its service already refuses,
+ * through {@link requireHeldFeature}, so a chat acts only on features it owns
+ * (`every-feature-has-one-owner` decision 19; `send_to_feature` alone also
+ * reaches a human-owned one). Beyond that each tool refuses what its service already refuses,
  * with a sentence saying why, as the human's buttons do.
  */
 
@@ -118,19 +120,47 @@ export function recordFeatureAction(
   clearHandback(ctx, featureId, 'orchestrator')
 }
 
-/** Make this thread the holder of a feature, held or not, waking nothing on it. */
+/**
+ * On the human's words ("run X for me"), make this chat the feature's owner and
+ * its chat, taking it as far as `finish` says (default: shows the human before
+ * merging), whoever owned it. Wakes nothing on it.
+ */
 export const toolTakeFeature = orchestratorTool(
   (
     ctx: AppCtx,
     session: SessionRow,
-    input: { slug: string },
-  ): { slug: string; heldBy: string; takenFrom: string | null } => {
+    input: { slug: string; finish?: ChatFinish },
+  ): { slug: string; heldBy: string; takenFrom: string | null; finish: ChatFinish } => {
     const feature = requireProjectFeature(ctx, session, input.slug)
-    const { from } = takeHold(ctx, session, feature)
+    const finish = input.finish ?? 'show'
+    const { from } = takeFeature(ctx, session, feature, finish)
     recordFeatureAction(ctx, session, feature.id, 'taken')
-    return { slug: input.slug, heldBy: holderName(session), takenFrom: from }
+    return {
+      slug: input.slug,
+      heldBy: holderName(session),
+      takenFrom: from && from !== session.id ? chatNameOf(ctx, from) : null,
+      finish,
+    }
   },
 )
+
+/**
+ * Name this chat's epic (orchestrator-chats-become-epics decision 12): trimmed,
+ * non-empty, at most {@link EPIC_NAME_MAX} characters. Refused, with nothing
+ * changed, once the human renamed the chat.
+ */
+export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: string }): { name: string } {
+  requireOrchestratorSession(session)
+  const name = input.name.replace(/\s+/g, ' ').trim()
+  if (!name) throw new InvalidInputError('name the epic: the name is empty.')
+  if (name.length > EPIC_NAME_MAX) {
+    throw new InvalidInputError(`an epic's name is at most ${EPIC_NAME_MAX} characters; "${name}" has ${name.length}. Use 1–3 words.`)
+  }
+  seedFromTranscript(ctx, session.id)
+  const out = writeEpicName(session.id, name)
+  if (!out.named) throw new GateError(`The human named this chat "${out.humanName}"; keep it.`)
+  return { name: out.name }
+}
 
 /**
  * Start a draft, as Start does: refused where Start is. The orchestrator's own
@@ -333,13 +363,31 @@ export function registerOrchestratorTools(
   }
 
   acting(
+    'name_epic',
+    {
+      title: 'Name your epic',
+      description:
+        'Name this chat, your epic: 1–3 words, Title Case, a noun phrase ("Payment System"). ' +
+        'Refused once the human renamed it.',
+      inputSchema: { name: z.string().describe(`The epic's name, at most ${EPIC_NAME_MAX} characters.`) },
+    },
+    toolNameEpic,
+  )
+
+  acting(
     'take_feature',
     {
       title: 'Take a feature',
       description:
-        'Make this thread the holder of a feature: you hear its news and may act on it. Use it only ' +
-        'when the human asked you to act on this feature here.',
-      inputSchema: { slug: SlugInput },
+        'Make this chat the owner of a feature and its chat: you hear its news and may act on it. Use it only ' +
+        'on the human’s words ("run X for me"), never on your own judgement.',
+      inputSchema: {
+        slug: SlugInput,
+        finish: z
+          .enum(['show', 'merge'])
+          .optional()
+          .describe('`show` (default): build it and show the human before merging. `merge`: build and merge it.'),
+      },
     },
     toolTakeFeature,
   )

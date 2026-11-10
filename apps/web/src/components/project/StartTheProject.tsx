@@ -72,12 +72,12 @@ export function StartTheProject({
             style={{ animationDelay: '120ms' }}>
             {empty ? (
               <>
-                The repo is empty, so there is nothing to set up yet. The{' '}
-                <Term id="orchestrator">Orchestrator</Term> starts by asking what we’re building.
+                The repo is empty, so there is nothing to set up yet. The first{' '}
+                <Term id="orchestrator">epic</Term> starts by asking what we’re building.
               </>
             ) : (
               <>
-                The <Term id="orchestrator">Orchestrator</Term> reads the repo, gets test drives working with you, then
+                The first <Term id="orchestrator">epic</Term> reads the repo, gets test drives working with you, then
                 asks what we’re building.
               </>
             )}

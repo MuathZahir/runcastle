@@ -81,7 +81,7 @@ export function DriveStage({
           <StatusLabel tone="neutral">Drive held</StatusLabel>,
           <EmptyState
             icon={<IconShield />}
-            title="The Orchestrator’s dry run is holding the drive"
+            title="An epic’s dry run is holding the drive"
             hint={<>It is proving this project’s drive commands on your machine. Stop it, and this branch can take the wheel.</>}
             action={
               <Button size="sm" loading={dryRun.stopping} disabled={dryRun.stopping} onClick={dryRun.onStop}>

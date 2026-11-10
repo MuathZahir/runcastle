@@ -32,7 +32,7 @@ export function ProjectDriveButton({
 }) {
   if (card.state === 'setUp') {
     return (
-      <Button size="sm" variant="ghost" icon={<IconShield />} className="mr-1" title="No setup or dev command yet — ask the Orchestrator" onClick={onSetUp}>
+      <Button size="sm" variant="ghost" icon={<IconShield />} className="mr-1" title="No setup or dev command yet — ask an epic" onClick={onSetUp}>
         Set up drives
       </Button>
     )

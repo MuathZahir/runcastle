@@ -216,7 +216,7 @@ describe('the Orchestrator card', () => {
     )
 
   it('names itself and says what it holds', () => {
-    expect(card(false)).toContain('Orchestrator')
+    expect(card(false)).toContain('Epics')
     expect(card(false)).toContain('Waiting for you · 2 notes')
   })
 

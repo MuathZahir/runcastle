@@ -63,6 +63,7 @@ export function ThreadColumn({
   placeholder,
   label = 'Chat',
   children,
+  composerStrip,
 }: {
   threadId: string | null
   /** The thread's runtime, until its models (which know it, unstarted or not) say. */
@@ -102,6 +103,8 @@ export function ThreadColumn({
   label?: string
   /** What sits on the foot's top edge, above the composer or an ask: the notice strip. */
   children?: ReactNode
+  /** A line right above the composer, only while it shows: the owner strip (every-feature-has-one-owner decision 23). */
+  composerStrip?: ReactNode
 }) {
   const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}), ...(onPick ? { onPick } : {}) })
   const root = useRef<HTMLElement>(null)
@@ -232,6 +235,7 @@ export function ThreadColumn({
           footer={
             <div className="flex flex-col gap-1.5">
               {children && <div className="mb-0.5 empty:hidden">{children}</div>}
+              {!ask && !closed && composerStrip}
               {footer}
               {!ask && line && <span className="px-4 text-xs text-text-tertiary">{line}</span>}
             </div>

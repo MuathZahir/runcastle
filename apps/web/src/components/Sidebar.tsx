@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar } from '../ui'
+import { cx, IconButton, Kbd, Skeleton, SkeletonBar } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
@@ -18,18 +18,21 @@ import { useTheme } from '../lib/theme'
 import { useIsPhone } from '../lib/use-phone'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import type { ThreadEntry } from '../lib/chat-thread'
+import { threadIsActive, useSidebarThreads } from '../lib/sidebar-threads'
+import { epicNameOf, epicsFrom, shelfFeatureWords } from '../lib/feature-ui/epics'
 import { FeatureSidebar } from './workers/FeatureSidebar'
-import { useThreadActions } from '../lib/use-thread'
-import { UNSTARTED_CHAT, standIn } from '../lib/chat-sessions'
+import { hasDraft, useThreadActions } from '../lib/use-thread'
+import { UNSTARTED_CHAT, standIn, withStandIns } from '../lib/chat-sessions'
+import { ownerReading } from '../lib/feature-owner'
+import { useSetOwner } from '../lib/use-set-owner'
+import { OwnerChoices } from './workspace/OwnerControl'
 import {
   IconArchive,
-  IconClock,
   IconDoc,
   IconGitMerge,
   IconList,
-  IconMessage,
+  IconOrchestrator,
   IconPencil,
   IconSearch,
   IconX,
@@ -51,18 +54,15 @@ import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
 import { PhoneNotificationsRow } from './phone/PhoneNotificationsRow'
 import {
   DriveCard,
-  FeatureProgressIcon,
-  HoldMark,
-  HoldTip,
-  OrchestratorCard,
+  featureStateWords,
   Shelf,
   SidebarFeatureRow,
   SidebarBackdrop,
   SidebarStatusLine,
-  SidebarThreadList,
+  SidebarThreadRow,
   SidebarWorkerItem,
-  WorkingShelf,
 } from './SidebarParts'
+import { SidebarEpics } from './SidebarEpics'
 import { RenameThreadDialog } from './chat/thread/RenameThreadDialog'
 
 /**
@@ -86,10 +86,14 @@ export interface SidebarProps {
   view: WorkspaceView
   selectedFeatureId: string | null
   onSelect: (featureId: string | null) => void
-  /** The Orchestrator: the project's latest chat. */
+  /** The project's chats: its latest. */
   onSelectProject: () => void
-  /** New — open the Orchestrator on a fresh conversation. */
+  /** New epic: the project's chats on a fresh conversation. */
   onNewChat: () => void
+  /** An epic's row: open that chat, from whatever page is open. */
+  onOpenChat?: (threadId: string) => void
+  /** "All N epics": the page every epic lives on. */
+  onOpenConversations?: () => void
   /** Draft — open the overlay that parks an idea without cutting anything. */
   onDraft: () => void
   /** Open note capture — the discoverable half of ⌘/Ctrl+J. */
@@ -116,48 +120,24 @@ function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
   return [...features].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
 }
 
-/** The Orchestrator card's second line: its chats' state, in the words every thread list uses. */
-const CHATS_WORDS: Record<ThreadState, string> = {
-  waiting: 'Waiting for you',
-  working: 'Working',
-  idle: 'Plan, cut and ask',
-}
-
-/**
- * The project's chats as one state (decision 14): waiting if any waits on you,
- * else working if any works, else idle. An empty new thread is idle — nothing
- * starts until something is sent.
- */
-function chatsState(threads: readonly { state: ThreadState }[]): ThreadState {
-  if (threads.some((t) => t.state === 'waiting')) return 'waiting'
-  return threads.some((t) => t.state === 'working') ? 'working' : 'idle'
-}
-
-/**
- * The Orchestrator card's hover text: what the project chat is, and the warning
- * the retired Orchestrator setting used to carry (`one-orchestrator-no-mode`
- * decision 1).
- */
-export const ORCHESTRATOR_TITLE =
-  "Your project's orchestrator: it plans, starts, messages and merges features when you ask, and edits this repo and runs commands without asking."
-
 /**
  * The project sidebar (DESIGN.md §Frame, "The project sidebar") on the canvas,
- * composed from the pieces in `SidebarParts` the way /preview/sidebar.html does:
+ * composed from the pieces in `SidebarParts`:
  *
- * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New chat ·
+ * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New epic ·
  *   Add to backlog · Jot a note) and the collapse button, over the halftone;
- * - the Orchestrator card — the project's own door, its chat;
- * - what needs you, unheaded: the features waiting on you, then the ones in
- *   progress (nothing running, nothing asked);
- * - the Working shelf, its rows in the bay;
- * - the shelves: Up next (open), then folded Backlog, Shipped (five, then
- *   "Show N more"), Archived;
+ * - the epics (docs/features/orchestrator-chats-become-epics): each listed
+ *   orchestrator chat with the features it cut that are in motion or up next
+ *   nested under it, then "Other features", then "All N epics" — on every
+ *   page and on the phone;
+ * - the shelves: folded Backlog, Shipped (five, then "Show N more"), Archived,
+ *   each row naming its epic quietly;
  * - foot — live drives as cards, then the icon-only status line.
  *
  * Every feature row is two lines; its menu is a hover "…" or a right-click.
  * The slug is not on the row: it is in the URL and the feature page, and the
- * row menu's Copy link hands over that URL. Polls `feature.list` at 1.5s.
+ * row menu's Copy link hands over that URL. Polls `feature.list` and
+ * `thread.list` at 1.5s.
  */
 export function Sidebar(props: SidebarProps) {
   const {
@@ -168,6 +148,8 @@ export function Sidebar(props: SidebarProps) {
     onSelect,
     onSelectProject,
     onNewChat,
+    onOpenChat,
+    onOpenConversations,
     onDraft,
     onOpenNote,
     onOpenCmdk,
@@ -182,17 +164,28 @@ export function Sidebar(props: SidebarProps) {
     returnFocusRef: RefObject<HTMLButtonElement | null>
   } | null>(null)
 
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  // No interval of its own: every write to the pile emits a project event, and
-  // the stream invalidates this key with the rest (lib/live.ts).
-  const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
-  // Same query key the Orchestrator's chat list polls.
-  const chats = chatsState(trpc.thread.list.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data ?? [])
+  const poll = useLivePoll()
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: poll })
+  // The project's chats, fetched here so the epics never depend on which page
+  // published threads (orchestrator-chats-become-epics decision 18). Same query
+  // key the chat page polls.
+  const threadList = trpc.thread.list.useQuery({ projectId }, { refetchInterval: poll }).data
+  const setOwner = useSetOwner()
+  // The row menu's owner choices (every-feature-has-one-owner decisions 11, 21): none for a feature with no chat.
+  const ownerChoicesFor = (f: FeatureListItem): ReactNode => {
+    const reading = ownerReading(f, threadList ?? [])
+    if (!reading.chatName || f.status === 'shipped') return undefined
+    return (
+      <OwnerChoices
+        current={reading.owner.kind === 'chat' ? reading.owner.finish : 'you'}
+        chat={reading.chatName}
+        onChoose={(choice) => setOwner(f.id, choice)}
+      />
+    )
+  }
   const features = list.data ?? []
-  const { inbox, lanes } = sidebarLanes(features)
+  const { lanes } = sidebarLanes(features)
   const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
-  const inProgress = lane('inProgress')
-  const working = lane('agentWorking')
   // The Archived shelf counts its features while folded, so they are read
   // whether or not it is open — `sidebarLanes` leaves them out.
   const archived = features.filter((f) => f.status === 'archived')
@@ -270,10 +263,11 @@ export function Sidebar(props: SidebarProps) {
     return actions
   }
 
-  // The open page's threads (threads-in-the-sidebar): the open feature's under
-  // its row, the Orchestrator's in its card. Nothing else ever lists threads.
+  // What the open page publishes (threads-in-the-sidebar): the open feature's
+  // lead chat for its row's menu, and on the chats page the chat in front, its
+  // stand-ins and the project's own workers. The epics themselves come from
+  // the chat list fetched above.
   const published = useSidebarThreads()
-  const fold = useFoldedThreads()
   const threadActions = useThreadActions()
   const [renaming, setRenaming] = useState<{ threadId: string; title: string } | null>(null)
   // A chat nobody has started has no thread yet: nothing to rename or export.
@@ -289,20 +283,21 @@ export function Sidebar(props: SidebarProps) {
       ? published
       : null
   const projectThreads = view === 'project' && published && 'projectId' in published.scope ? published : null
-  // The Orchestrator's rows: its features, each opening its page, over Rename and Export.
-  const orchestratorThreadActions = (t: ThreadEntry): FeatureAction[] => {
-    const held = heldFeatures(t.id, features)
-    return [
-      ...held.map((f, i) => ({
-        key: `open-${f.id}`,
-        label: f.title,
-        icon: <FeatureProgressIcon f={f} size={14} label="" />,
-        ruleAfter: i === held.length - 1,
-        onSelect: () => onSelect(f.id),
-      })),
-      ...threadActionsFor(t),
-    ]
-  }
+
+  // The epics (orchestrator-chats-become-epics decisions 4–8, 16): the chat
+  // list, with the chats page's stand-ins (a chat in front the list has not
+  // caught up with), grouped with the features each cut.
+  const chats = withStandIns(threadList ?? [], projectThreads?.threads.filter((t) => t.role === 'project') ?? [])
+  const currentChat = projectThreads?.current ?? null
+  const now = Date.now()
+  const { epics, other } = epicsFrom(chats, features, (t) =>
+    threadIsActive(t, { current: currentChat, features, now, drafted: hasDraft }),
+  )
+  const allEpics = chats.filter((t) => t.role === 'project' && t.id !== UNSTARTED_CHAT).length
+  // On the chats page its own pick, which leaves the Epics page for the chat; elsewhere the shell's door.
+  const openEpic = (id: string) => (projectThreads ? projectThreads.pick(id) : onOpenChat?.(id))
+  const allConversations = projectThreads?.allConversations ?? onOpenConversations
+  const epicName = (f: FeatureListItem) => epicNameOf(f, chats)
 
   // The drill-in (interactive-workers decision 24): the open feature's own page
   // in place of the features list. Only the workers arrow on its row goes down
@@ -337,46 +332,75 @@ export function Sidebar(props: SidebarProps) {
     }))
   }
 
-  const row = (f: FeatureListItem, nested = false) => {
-    // The phone's list (phone decision 1): only shown with nothing open, so no
-    // row is current, and a row is the whole door — no hover menu, no threads,
-    // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
-    if (phone) return <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={onSelect} actions={[]} nested={nested} />
-    const open = f.id === selectedFeatureId && view === 'feature'
+  // The phone's list (phone decision 1): only shown with nothing open, so no
+  // row is current, and a row is the whole door — no hover menu, no threads,
+  // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
+  const currentFeature = !phone && view === 'feature' ? selectedFeatureId : null
+  const isOpen = (f: FeatureListItem) => f.id === currentFeature
+  // A feature row opens its lead, whatever its row says (decisions 1, 7); the
+  // open one's brings its lead back to the front.
+  const selectFeature = (id: string) => {
+    const main = id === currentFeature && featureThreads?.threads.find((t) => t.role === 'main')
+    if (main) featureThreads?.pick(main.id)
+    if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
+  }
+  const featureActions = (f: FeatureListItem): FeatureAction[] =>
+    phone ? [] : isOpen(f) ? [...leadChatActions(), ...actionsFor(f)] : actionsFor(f)
+  const workersFor = (f: FeatureListItem) =>
+    phone || !f.workersPage
+      ? undefined
+      : {
+          live: f.workersPage.inPlay,
+          // Down to its workers page: the open feature keeps the chat in front, any other opens on its lead.
+          onOpen: () => {
+            setDownTo(f.id)
+            setMotion('down')
+            if (!isOpen(f)) onSelect(f.id)
+          },
+        }
+  // A shelf row: its epic named quietly in its second line (decision 21).
+  const shelfRow = (f: FeatureListItem) => {
+    const workers = workersFor(f)
     return (
       <SidebarFeatureRow
         key={f.id}
         f={f}
-        active={open}
-        // A feature row opens its lead, whatever its row says (decisions 1, 7);
-        // the open one's brings its lead back to the front.
-        onSelect={(id) => {
-          const main = open && featureThreads?.threads.find((t) => t.role === 'main')
-          if (main) featureThreads?.pick(main.id)
-          if (!main || main.id === UNSTARTED_CHAT) onSelect(id)
-        }}
-        actions={open ? [...leadChatActions(), ...actionsFor(f)] : actionsFor(f)}
-        nested={nested}
-        {...(f.workersPage
-          ? {
-              workers: {
-                live: f.workersPage.inPlay,
-                // Down to its workers page: the open feature keeps the chat in front, any other opens on its lead.
-                onOpen: () => {
-                  setDownTo(f.id)
-                  setMotion('down')
-                  if (!open) onSelect(f.id)
-                },
-              },
-            }
-          : {})}
+        active={isOpen(f)}
+        onSelect={selectFeature}
+        actions={featureActions(f)}
+        words={shelfFeatureWords(f, featureStateWords(f), epicName(f))}
+        {...(workers ? { workers } : {})}
+        ownerChoices={ownerChoicesFor(f)}
       />
     )
   }
-  const orchestratorFold = projectThreads ? foldKey(projectThreads.scope) : ''
-
-  const notesWords = openNotes > 0 ? ` · ${openNotes} note${openNotes === 1 ? '' : 's'}` : ''
-  const nothingInMotion = features.length > 0 && inbox.length + inProgress.length + working.length === 0
+  // The project's own workers (a project drive's Scenarios worker) and an open
+  // errand's scenario chat: not epics, listed above them while the chats page
+  // publishes them (drive-chats-become-workers decision 2).
+  const errand = projectThreads?.errand
+  const errandChat = errand ? (threadList ?? []).find((t) => t.id === errand.threadId) : undefined
+  const projectWork =
+    projectThreads && !phone && ((projectThreads.workers?.length ?? 0) > 0 || errandChat) ? (
+      <section aria-label="Project workers" className="flex flex-col gap-px">
+        {projectThreads.workers?.map((w) => (
+          <SidebarWorkerItem
+            key={w.id}
+            worker={w}
+            active={w.id === projectThreads.current}
+            onSelect={projectThreads.pick}
+            actions={threadActionsFor(standIn(w.id, w.label, 'worker'))}
+          />
+        ))}
+        {errandChat && (
+          <SidebarThreadRow
+            thread={errandChat}
+            active={errandChat.id === projectThreads.current}
+            onOpen={projectThreads.pick}
+            actions={threadActionsFor(errandChat)}
+          />
+        )}
+      </section>
+    ) : null
 
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
@@ -410,101 +434,45 @@ export function Sidebar(props: SidebarProps) {
         </div>
       ) : (
       <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
-        <div className={phone ? 'mt-2' : 'mt-3'}>
-          {/* The project's own door (decision 20): not a feature, never in a
-              lane. It says what the chat holds — the open notes (project-notes
-              decisions #10) — and waits amber while the chat waits on you. */}
-          <OrchestratorCard
-            status={`${CHATS_WORDS[chats]}${notesWords}`}
-            state={chats}
-            active={view === 'project' && !phone}
-            onOpen={onSelectProject}
-            actions={[]}
-            title={ORCHESTRATOR_TITLE}
-            {...(projectThreads && !phone
-              ? {
-                  onNewThread: projectThreads.newThread,
-                  threads: (
-                    <>
-                    {/* The project's own workers, a project drive's Scenarios worker, above its chats (drive-chats-become-workers decision 2). */}
-                    {projectThreads.workers?.map((w) => (
-                      <SidebarWorkerItem
-                        key={w.id}
-                        worker={w}
-                        active={w.id === projectThreads.current}
-                        onSelect={projectThreads.pick}
-                        actions={threadActionsFor(standIn(w.id, w.label, 'worker'))}
-                        nested
-                      />
-                    ))}
-                    <SidebarThreadList
-                      label="Chats"
-                      threads={sidebarThreadOrder(projectThreads.threads)}
-                      current={projectThreads.current}
-                      onOpen={projectThreads.pick}
-                      actionsFor={orchestratorThreadActions}
-                      keep={(t) =>
-                        // An open errand's chat keeps its row, which is how it is closed.
-                        t.id === projectThreads.errand?.threadId ||
-                        threadIsActive(t, { current: projectThreads.current, features, now: Date.now() })
-                      }
-                      markFor={(t) => {
-                        const held = heldFeatures(t.id, features)
-                        return held.length > 0 ? <HoldMark features={held} /> : null
-                      }}
-                      tipFor={(t) => {
-                        const held = heldFeatures(t.id, features)
-                        return held.length > 0 ? <HoldTip features={held} /> : undefined
-                      }}
-                      {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
-                    />
-                    </>
-                  ),
-                  folded: fold.folded(orchestratorFold),
-                  onToggleThreads: () => fold.toggle(orchestratorFold),
-                }
-              : {})}
-          />
-        </div>
-  
-        <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
-          {list.isLoading && <FeatureRowsSkeleton />}
-          {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
-          {inbox.length + inProgress.length > 0 && (
-            <section aria-label="Needs you" className="flex flex-col gap-1">
-              {inbox.map((f) => row(f))}
-              {inProgress.map((f) => row(f))}
-            </section>
+        <div className="-mx-2 mt-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
+          {projectWork}
+          {list.isLoading ? (
+            <FeatureRowsSkeleton />
+          ) : (
+            <SidebarEpics
+              epics={epics}
+              other={other}
+              total={allEpics}
+              currentChat={phone ? null : currentChat}
+              currentFeature={currentFeature}
+              onOpenEpic={openEpic}
+              onSelectFeature={selectFeature}
+              onAllEpics={allConversations ?? onSelectProject}
+              featureActions={featureActions}
+              workersFor={workersFor}
+              ownerChoicesFor={ownerChoicesFor}
+              {...(phone ? {} : { epicActions: threadActionsFor })}
+            />
           )}
-          {list.data && list.data.length === 0 && (
+          {list.data && list.data.length === 0 && epics.length === 0 && (
             <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
-              No features yet. Start a chat to cut the first one.
+              No features yet. Start an epic to cut the first one.
             </div>
           )}
-          <WorkingShelf features={working} renderRow={row} />
           <div className="flex flex-col divide-y divide-border-subtle">
-            {/* After live work, before the backlog (waiting-is-not-backlog
-                decision 16); open, because what is in it is wanted. */}
-            <Shelf
-              icon={<IconClock />}
-              label="Up next"
-              features={lane('upNext')}
-              renderRow={(f) => row(f)}
-              defaultOpen
-            />
-            <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
+            <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={shelfRow} />
             <Shelf
               icon={<IconGitMerge />}
               label="Shipped"
               features={byLastMoved(lane('shipped'))}
-              renderRow={(f) => row(f)}
+              renderRow={shelfRow}
               cap={5}
             />
             <Shelf
               icon={<IconArchive />}
               label="Archived"
               features={byLastMoved(archived)}
-              renderRow={(f) => row(f)}
+              renderRow={shelfRow}
               open={archivedOpen}
               onOpenChange={onArchivedOpenChange}
             />
@@ -560,9 +528,9 @@ export function CreateMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
         <CreateItem
-          icon={<IconMessage />}
-          label="New chat"
-          hint="A new chat with the orchestrator — talk an idea through before it becomes a feature"
+          icon={<IconOrchestrator />}
+          label="New epic"
+          hint="A new chat for one topic — talk an idea through, and it cuts the features"
           onSelect={onNewChat}
         />
         <CreateItem

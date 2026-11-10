@@ -420,8 +420,12 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
    * `before`: the context size it compacted, when known.
    */
   z.object({ type: z.literal('compacted'), trigger: CompactTrigger.optional(), before: z.number().nonnegative().optional() }),
-  /** The thread's name: the runtime's generated title, or with `renamed` the human's rename, which wins over every other name. */
-  z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional() }),
+  /**
+   * The thread's name: the runtime's generated title; with `renamed` the human's
+   * rename, which wins over every other name; with `by: 'orchestrator'` the name an
+   * Orchestrator chat gave itself (its epic's name), which wins over all but the human's.
+   */
+  z.object({ type: z.literal('title'), title: z.string(), renamed: z.boolean().optional(), by: z.literal('orchestrator').optional() }),
   /** The thread branched off another thread, then called `from`; shows nothing, and names it "Branch of …" until the human writes in it. */
   z.object({ type: z.literal('branched'), from: z.string() }),
   /** The agent's guess at the human's next message; `null` clears it. */
@@ -434,12 +438,17 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rewound'), toPromptId: z.string() }),
   /** An agent showed the human a file (`show_file`). */
   z.object({ type: z.literal('file_shown'), file: ShownFile }),
-  /** What a review pass left, shown as one package (`show_review_package`, or the pass's end). */
-  z.object({ type: z.literal('review_package'), ticketId: z.string() }),
+  /**
+   * What a review pass left, shown as one package (`show_review_package`, or the pass's end).
+   * The three card events carry `featureId`, the feature the card belongs to, so an
+   * orchestrator chat's log says which feature it showed (every-feature-has-one-owner
+   * decision 17: which feature a chat asks about). Absent in logs written before.
+   */
+  z.object({ type: z.literal('review_package'), ticketId: z.string(), featureId: z.string().optional() }),
   /** The agent showed the feature's plan (`show_plan`): a plan card. */
-  z.object({ type: z.literal('plan_shown') }),
+  z.object({ type: z.literal('plan_shown'), featureId: z.string().optional() }),
   /** The agent showed one recorded design (`show_design`): a design card, which reads the record by id. */
-  z.object({ type: z.literal('design_shown'), designId: z.string() }),
+  z.object({ type: z.literal('design_shown'), designId: z.string(), featureId: z.string().optional() }),
   /** An orchestrator tool changed a feature (`create_feature`, `merge_feature`…): a row of the turn's features card. */
   z.object({
     type: z.literal('feature_acted'),
@@ -527,14 +536,17 @@ export type ThreadItem =
   /** The files a turn showed. It stays in view when the turn's work folds. */
   | { kind: 'shown'; id: string; files: ShownFile[] }
   /** A review pass's package: one attachment that opens everything the pass left. */
-  | { kind: 'review_package'; id: string; ticketId: string }
-  /** The plan, shown as a card; `older` when a later plan card follows it (it still opens the current plan). */
-  | { kind: 'plan_card'; id: string; older?: boolean }
+  | { kind: 'review_package'; id: string; ticketId: string; featureId?: string }
+  /**
+   * The plan, shown as a card; `older` when a later plan card of the same feature follows it
+   * (it still opens the current plan). `featureId`: the feature, when an orchestrator chat showed it.
+   */
+  | { kind: 'plan_card'; id: string; older?: boolean; featureId?: string }
   /**
    * The designs a turn showed, one card each, in order. `older` names the
    * designs a later card for the same design follows (decision 19).
    */
-  | { kind: 'design_cards'; id: string; designIds: string[]; older: string[] }
+  | { kind: 'design_cards'; id: string; designIds: string[]; older: string[]; featureId?: string }
   /** What a turn's orchestrator tools did to features: one row per feature. */
   | {
       kind: 'features_card'
@@ -603,6 +615,16 @@ export interface ThreadEntry {
   runtime: 'claude-code' | 'codex'
   /** A conversation from before threads had logs: it reads back as plain turns until it is continued. */
   readOnlyTranscript?: boolean
+  /** The Orchestrator named this chat itself (its epic's name). Absent (false) on a thread with no log. */
+  epicNamed?: boolean
+  /** The human renamed this chat, which outranks every other name. Absent (false) on a thread with no log. */
+  humanNamed?: boolean
+  /**
+   * An orchestrator chat's: the features it is asking the human about now
+   * ({@link featuresAskedAbout}), by id; absent when none. While any are, the
+   * chat waits on the human (`state` is `waiting`).
+   */
+  askingAbout?: string[]
 }
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */
@@ -795,6 +817,41 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
 }
 
 /**
+ * Which features an orchestrator chat is asking the human about
+ * (every-feature-has-one-owner decision 17): when the chat waits on the human
+ * with a question — an ask still open while its process runs, or its last turn
+ * ended on a message holding a question mark anywhere (real orchestrator turns
+ * often ask, then add a recommendation: "Start it now? I recommend yes.") — the features whose plan, design or review card it showed in
+ * that turn, in the order first shown. Otherwise none: a chat that is working,
+ * idle, or ended its turn on words that ask nothing is asking about nothing. A
+ * card from an earlier turn never counts, nor one shown before the human last
+ * wrote. A card logged before cards carried their feature names none.
+ */
+export function featuresAskedAbout(events: readonly ThreadEvent[], running: boolean, now: number): string[] {
+  const activity = threadActivity(events, running, now)
+  if (activity !== 'asking' && activity !== 'replied') return []
+  let shown: string[] = []
+  let lastSaid = ''
+  let lastMessage: string | undefined
+  for (const e of outsideCompactions(liveEvents(events))) {
+    if ((e.type === 'prompt' && !e.held && !e.hidden) || e.type === 'turn_started') {
+      shown = []
+      if (e.type === 'turn_started') {
+        lastSaid = ''
+        lastMessage = undefined
+      }
+    } else if (e.type === 'agent_text') {
+      lastSaid = e.messageId === lastMessage ? lastSaid + e.text : e.text
+      lastMessage = e.messageId
+    } else if (e.type === 'plan_shown' || e.type === 'design_shown' || e.type === 'review_package') {
+      if (e.featureId && !shown.includes(e.featureId)) shown.push(e.featureId)
+    }
+  }
+  if (activity === 'replied' && !/[?？؟]/.test(lastSaid)) return []
+  return shown
+}
+
+/**
  * One piece of a turn, in arrival order, each with when it arrived (`at`), before
  * the turn is laid out as words, runs of work and the items between them.
  */
@@ -871,13 +928,15 @@ export function lastPickedModel(log: readonly ThreadEvent[]): Extract<ThreadEven
  * card for each stays unmarked.
  */
 function markOlderCards(items: ThreadItem[]): void {
-  let planSeen = false
+  // Per feature: an orchestrator chat can show several features' plans.
+  const plansSeen = new Set<string>()
   const designsSeen = new Set<string>()
   for (let n = items.length - 1; n >= 0; n--) {
     const item = items[n]
     if (item.kind === 'plan_card') {
-      if (planSeen) item.older = true
-      planSeen = true
+      const key = item.featureId ?? ''
+      if (plansSeen.has(key)) item.older = true
+      plansSeen.add(key)
     } else if (item.kind === 'design_cards') {
       const older = new Set<string>()
       for (let d = item.designIds.length - 1; d >= 0; d--) {
@@ -1455,18 +1514,21 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         break
       }
       case 'review_package':
-        add({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId }, e.at)
+        add({ kind: 'review_package', id: `review_package:${e.i}`, ticketId: e.ticketId, ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
         break
       case 'plan_shown':
-        add({ kind: 'plan_card', id: `plan_card:${e.i}` }, e.at)
+        add({ kind: 'plan_card', id: `plan_card:${e.i}`, ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
         break
       case 'design_shown': {
         // Designs shown one after another in a turn are one group of cards, as shown files are.
+        // An orchestrator chat may show several features' designs: a group holds one feature's.
         const group = groupWith('design_cards')
-        if (group) {
+        if (group && group.featureId === e.featureId) {
           group.designIds.push(e.designId)
           render(true)
-        } else add({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [] }, e.at)
+        } else {
+          add({ kind: 'design_cards', id: `design_cards:${e.i}`, designIds: [e.designId], older: [], ...(e.featureId ? { featureId: e.featureId } : {}) }, e.at)
+        }
         break
       }
       case 'feature_acted': {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
-import { IconOrchestrator } from '../icons'
+import { EpicGlyph } from './SidebarEpics'
 import { useLivePoll } from '../lib/live'
 import { PageTopbar } from '../ui'
 import { backInApp } from '../lib/use-history-sync'
@@ -344,32 +344,25 @@ export function ProjectWorkspace({
         </ScenarioChatContext.Provider>
       )}
       <div className={onDrive ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
-      {/* The one header row (design-mode decision 12): the Orchestrator, then
-          the chat in front named as plain text (threads-in-the-sidebar decision
-          6); at most one action; the panel toggle. */}
+      {/* The one header row (design-mode decision 12): the epic in front, its
+          glyph and name (orchestrator-chats-become-epics decision 14), or
+          "Epics" on the page that lists them all; at most one action; the
+          panel toggle. */}
       {phone ? (
         <PhoneChatBar
-          title="Orchestrator"
+          title={allChats ? 'Epics' : (inFrontTitle ?? 'Epics')}
           status={threadPhoneStatus(threads.find((t) => t.id === inFront)?.state)}
           onBack={() => backInApp(() => onBackToList?.())}
         />
       ) : (
       <PageTopbar
-        crumbs={[
-          {
-            label: 'Orchestrator',
-            icon: <IconOrchestrator size={14} />,
-            ...(allChats
-              ? {
-                  onClick: () => {
-                    setListing(false)
-                    onCloseConversations?.()
-                  },
-                }
-              : {}),
-          },
-          ...(allChats ? [{ label: 'Chats' }] : inFrontTitle ? [{ label: inFrontTitle }] : []),
-        ]}
+        crumbs={
+          allChats
+            ? [{ label: 'Epics', icon: <EpicGlyph small /> }]
+            : inFrontTitle
+              ? [{ label: inFrontTitle, ...(workerFront ? {} : { icon: <EpicGlyph small /> }) }]
+              : []
+        }
         trail
         {...(workerHeader ? { status: workerHeader.status } : {})}
         actions={

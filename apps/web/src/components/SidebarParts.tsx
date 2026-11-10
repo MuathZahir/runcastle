@@ -70,8 +70,8 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
 }
 
 /**
- * A held need on a row with no workers at work: its words ("With the
- * orchestrator · Plan to approve") stand in for "Agent working" (decision 18).
+ * A held need on a row with no workers at work: its words ("With Notes
+ * triage · Plan to approve") stand in for "Agent working" (decision 18).
  */
 function heldNeedWords(f: FeatureListItem): string | null {
   return f.workersWorking === 0 && f.need?.held ? f.need.words : null
@@ -261,11 +261,15 @@ export function SidebarFeatureRow({
   onToggleThreads,
   needsYou = false,
   workers,
+  words: wordsProp,
+  ownerChoices,
 }: {
   f: FeatureListItem
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
+  /** The owner choices atop the row's "…" menu (every-feature-has-one-owner decision 11); none for a feature with no chat. */
+  ownerChoices?: ReactNode
   nested?: boolean
   /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
   onNewThread?: () => void
@@ -286,12 +290,14 @@ export function SidebarFeatureRow({
    * (clicking-a-feature-opens-its-lead decisions 2, 4, 5).
    */
   workers?: { live: number; onOpen: () => void }
+  /** The second line's words in place of the feature's own: a row under its epic, a shelf row naming its epic. */
+  words?: string
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
   const nm = lane === 'needsYou' ? needsMe(f) : null
-  const words = featureStateWords(f)
-  const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
+  const words = wordsProp ?? featureStateWords(f)
+  const menu = actions.length > 0 || ownerChoices ? <FeatureActionsMenu actions={actions} {...(ownerChoices ? { choices: ownerChoices } : {})} /> : undefined
   const row = (
     <TwoLineRow
       title={f.title}
@@ -596,6 +602,7 @@ export function SidebarThreadRow({
   actions,
   mark,
   tip,
+  about,
 }: {
   thread: ThreadEntry
   active: boolean
@@ -603,16 +610,16 @@ export function SidebarThreadRow({
   actions: FeatureAction[]
   mark?: ReactNode
   tip?: ReactNode
+  /**
+   * A plain second line under the title: what an Orchestrator chat is asking
+   * about ("Asking about <feature>", every-feature-has-one-owner decisions 17,
+   * 30). The row's amber dot stays the only mark of the question.
+   */
+  about?: string | null
 }) {
   const bare = mark === null
-  const open = (
-    <button
-      type="button"
-      title={tip ? undefined : thread.title}
-      aria-current={active ? 'page' : undefined}
-      onClick={() => onOpen(thread.id)}
-      className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[inherit] px-2.5 text-left"
-    >
+  const line = (
+    <>
       <ThreadGlyph state={thread.state} />
       <span
         className={cx(
@@ -631,6 +638,27 @@ export function SidebarThreadRow({
       >
         {mark === undefined ? thread.updatedAt > 0 && relTime(thread.updatedAt) : mark}
       </span>
+    </>
+  )
+  const open = (
+    <button
+      type="button"
+      title={tip ? undefined : about ? `${thread.title} — ${about}` : thread.title}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onOpen(thread.id)}
+      className={cx(
+        'flex w-full cursor-pointer rounded-[inherit] px-2.5 text-left',
+        about ? 'flex-col gap-0.5 py-1.5' : 'h-8 items-center gap-2',
+      )}
+    >
+      {about ? (
+        <>
+          <span className="flex h-5 w-full min-w-0 items-center gap-2">{line}</span>
+          <span className="min-w-0 truncate pl-6 text-xs text-text-tertiary">{about}</span>
+        </>
+      ) : (
+        line
+      )}
     </button>
   )
   return (
@@ -690,6 +718,7 @@ export function SidebarThreadList({
   keep,
   markFor,
   tipFor,
+  aboutFor,
 }: {
   threads: readonly ThreadEntry[]
   /** The thread in front, or null when none is (the Conversations page). */
@@ -705,6 +734,8 @@ export function SidebarThreadList({
   markFor?: (t: ThreadEntry) => ReactNode
   /** The names behind that mark, on hover. */
   tipFor?: (t: ThreadEntry) => ReactNode
+  /** A plain second line under a row's title ("Asking about …"); null for none. */
+  aboutFor?: (t: ThreadEntry) => string | null
 }) {
   const [all, setAll] = useState(false)
   const listed = keep ? threads.filter(keep) : null
@@ -726,6 +757,7 @@ export function SidebarThreadList({
             actions={actionsFor(t)}
             mark={markFor?.(t)}
             tip={tipFor?.(t)}
+            about={aboutFor?.(t)}
           />
         </li>
       ))}
@@ -843,7 +875,7 @@ export function OrchestratorCard({
   threads,
   folded = false,
   onToggleThreads,
-  name = 'Orchestrator',
+  name = 'Epics',
   tile,
 }: {
   /** The card's name: "Orchestrator", or "Lead" on a feature's own page, one level down. */
@@ -922,7 +954,7 @@ export function OrchestratorCard({
             )}
           >
             {onNewThread && <NewThreadButton onClick={onNewThread} />}
-            <FeatureActionsMenu actions={actions} label={name === 'Orchestrator' ? 'Project actions' : `${name} actions`} />
+            <FeatureActionsMenu actions={actions} label={name === 'Epics' ? 'Project actions' : `${name} actions`} />
           </span>
         )}
         {toggles && onToggleThreads && (
