@@ -62,6 +62,7 @@ Check first: 4, 6, 12, 13, 14
 **Assumed.** Alternative: every row keeps the full owner words.
 **Challenged:** A plain "asking you" right under a yellow epic row can read as a second thing to do; words that point up ("question above"), or none, keep one yellow thing to click.
 **Changed by the orchestrator:** it took the challenger's side (2026-11-09, on the human's delegation): "Question above" in the quiet colour, and "Asking above" for a human-owned feature consulting its epic.
+**Amended after the review (2026-11-10):** only the chat's question about the feature becomes "Question above". Any other need the epic's chat holds keeps the full words, "With <epic> · Plan to approve". The review found that dropping the name left "Plan to approve" or "Needs your answer" under the epic with no yellow dot, which reads as the human's to do while the chat has it. Rows with no need ("Agent working") never carried the name, so nothing else changes.
 **For the human.**
 
 ## 11. An epic's row says what it asks and what it is doing

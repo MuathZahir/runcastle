@@ -91,19 +91,17 @@ export function orderEpicList(epics: readonly Epic[], other: readonly FeatureLis
 /** "With <chat> · " at the head of a feature's words. */
 const WITH_PREFIX = /^With (.+?) · /
 
-/** First letter up: "asking you" → "Asking you". */
-const capital = (s: string) => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s)
-
 /**
- * A nested feature row's words (decision 10). Run by its own epic's chat, the
- * "With <chat> ·" part goes ("Agent working"), and its chat's question reads
- * "Question above": the epic row holds the one yellow thing to click. Run by
- * the human, "Yours · …", or "Asking above · <first line>" while it consults
- * its epic's chat; run by a different chat, "With <that chat> · …".
+ * A nested feature row's words (decision 10). Run by its own epic's chat, its
+ * chat's question reads "Question above": the epic row holds the one yellow
+ * thing to click. Any other need its chat holds keeps "With <chat> ·", so
+ * "Plan to approve" never reads as the human's to do. Run by the human,
+ * "Yours · …", or "Asking above · <first line>" while it consults its epic's
+ * chat; run by a different chat, "With <that chat> · …".
  */
 export function nestedFeatureWords(words: string, holder: EpicHolder, epic: string): string {
   const rest = words.replace(WITH_PREFIX, '')
-  if (holder.kind === 'epic') return rest.trim().toLowerCase() === 'asking you' ? 'Question above' : capital(rest)
+  if (holder.kind === 'epic') return rest.trim().toLowerCase() === 'asking you' ? 'Question above' : words
   if (holder.kind === 'you') {
     const consulting = `Asking ${epic} · `
     return words.toLowerCase().startsWith(consulting.toLowerCase())

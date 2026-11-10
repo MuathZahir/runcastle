@@ -116,9 +116,18 @@ describe('the order (decision 8)', () => {
 })
 
 describe('the nested words (decision 10)', () => {
-  it('drops "With <its epic> ·" and reads its question as "Question above"', () => {
-    expect(nestedFeatureWords('With Payment System · Agent working', { kind: 'epic' }, 'Payment System')).toBe('Agent working')
+  it('reads its epic chat\'s question as "Question above"', () => {
     expect(nestedFeatureWords('With Payment System · asking you', { kind: 'epic' }, 'Payment System')).toBe('Question above')
+    expect(nestedFeatureWords('Agent working', { kind: 'epic' }, 'Payment System')).toBe('Agent working')
+  })
+
+  it('keeps "With <its epic> ·" on any other need its chat holds, so it never reads as the human\'s to do', () => {
+    expect(nestedFeatureWords('With Payment System · Plan to approve', { kind: 'epic' }, 'Payment System')).toBe(
+      'With Payment System · Plan to approve',
+    )
+    expect(nestedFeatureWords('With Payment System · Needs your answer', { kind: 'epic' }, 'Payment System')).toBe(
+      'With Payment System · Needs your answer',
+    )
   })
 
   it('says "Yours · …" for a feature the human runs', () => {
