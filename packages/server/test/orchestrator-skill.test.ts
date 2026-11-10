@@ -132,6 +132,11 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('relay their own yes with `relaysHuman: true`')
     expect(text).toContain('never a grill feature\'s plan')
     expect(text).toContain('a "grill with you" one waits for the human\'s chat')
+    // the-status-tells-the-truth 7, 8: a self-planned plan's yes arrives as a handback,
+    // and the feature reads "With the orchestrator" until the orchestrator acts.
+    const flatText = read('project', 'SKILL.md').replace(/\s+/g, ' ')
+    expect(flatText).toContain('a feature that plans itself asks for it with a handback')
+    expect(flatText).toContain('it reads "With the orchestrator" in the human\'s Working lane')
     expect(text).toContain('the briefs for each cut\'s agreement and planning modes')
   })
 

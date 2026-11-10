@@ -267,7 +267,7 @@ function Item({
         <UserMessage item={item} actions={actions} locked={locked} />
       )
     case 'work':
-      return <WorkBlock steps={item.steps} seconds={item.seconds} live={item.live} />
+      return <WorkBlock steps={item.steps} seconds={item.seconds} live={item.live} running={item.running} />
     case 'agent':
       return <AgentMessage item={item} actions={actions} {...(turnWords !== undefined ? { turnWords } : {})} {...(changes ? { changes } : {})} />
     case 'changes':

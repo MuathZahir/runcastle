@@ -950,9 +950,13 @@ describe('turn-aware feature states', () => {
   })
 
   it('files a need its orchestrator holds with the work in motion, not Needs you', () => {
-    const f = listItem({ need: need('plan', 'With the orchestrator · Plan to approve', { held: true }) })
+    const f = listItem({ need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
+    // Once its hour passes it is the human's, with its own words.
+    const due = listItem({ need: need('handback', 'Handed back · Ready to merge') })
+    expect(needsMe(due)).toEqual({ kind: 'handback', label: 'Handed back · Ready to merge' })
+    expect(triageOf(due)).toBe('needsYou')
   })
 
   it('leaves a feature with pending tickets and nothing running or asked in progress, whatever its phase', () => {
