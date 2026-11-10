@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
   EPIC_ICON_IDS,
-  EPIC_ICON_LABEL,
   type EpicIconId,
   type Feature,
   type FeatureAction,
@@ -408,9 +407,8 @@ export function registerOrchestratorTools(
         'for the kind of work it is. The human’s rename or icon pick is kept; the other still applies.',
       inputSchema: {
         name: z.string().describe(`The epic's name, at most ${EPIC_NAME_MAX} characters.`),
-        icon: z
-          .enum(EPIC_ICON_IDS)
-          .describe(`The epic's icon, by id: ${EPIC_ICON_IDS.map((id) => `${id} (${EPIC_ICON_LABEL[id]})`).join(', ')}.`),
+        // The ids themselves reach the model as the schema's enum; the skill lists what each one shows.
+        icon: z.enum(EPIC_ICON_IDS).describe("The epic's icon, by id: the one closest to the kind of work."),
       },
     },
     toolNameEpic,
