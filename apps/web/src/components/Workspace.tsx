@@ -1161,9 +1161,11 @@ export function Workspace({
                 onChoose={(choice) => setOwner(featureId, choice)}
               />
             ),
+            shrink: true,
           },
           {
             label: feature.title,
+            shrink: true,
             icon: (
               <ProgressIcon
                 state={isDraft ? 'draft' : shipped ? 'shipped' : 'active'}

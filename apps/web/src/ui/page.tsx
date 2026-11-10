@@ -25,6 +25,12 @@ export interface Crumb {
   href?: string
   /** Code-shaped (a branch): mono. */
   mono?: boolean
+  /**
+   * A parent that gives way too when the trail runs out of room (a feature
+   * header's owner control and title): it truncates, as the current item does,
+   * rather than pushing the trail past its edge. A node label truncates itself.
+   */
+  shrink?: boolean
 }
 
 /**
@@ -47,16 +53,18 @@ export function Crumbs({ items, className, trail }: { items: Crumb[]; className?
           const content = (
             <>
               {c.icon && <span className="inline-flex shrink-0 text-icon [&>svg]:size-3.5">{c.icon}</span>}
-              <span className={cx('truncate', c.mono && 'font-mono text-xs')}>{c.label}</span>
+              <span className={cx(typeof c.label === 'string' ? 'truncate' : 'flex min-w-0 overflow-hidden', c.mono && 'font-mono text-xs')}>
+                {c.label}
+              </span>
             </>
           )
           const itemClass = cx(
             'inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5',
             lead ? 'font-medium text-text' : trailing && last ? 'text-text-secondary' : 'text-text-tertiary',
-            !last && 'shrink-0',
+            !last && !c.shrink && 'shrink-0',
           )
           return (
-            <li key={i} className={cx('flex min-w-0 items-center gap-1', !last && 'shrink-0')}>
+            <li key={i} className={cx('flex min-w-0 items-center gap-1', !last && !c.shrink && 'shrink-0')}>
               {last ? (
                 <span aria-current="page" className={itemClass}>
                   {content}
