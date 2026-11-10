@@ -1266,7 +1266,7 @@ export function Workspace({
                   }}
                   ownedBy={
                     owner.holderId && owner.chatName
-                      ? { chat: owner.chatName, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
+                      ? { chat: owner.chatName, asking: owner.asking, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
                       : null
                   }
                 />
