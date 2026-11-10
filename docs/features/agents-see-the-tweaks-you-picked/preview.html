@@ -159,7 +159,7 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
 <header id="what">
   <!-- FILL:what -->
   <h1>Agents see the tweaks you picked</h1>
-  <p class="lede">A design page tells runcastle which state it shows and which tweaks you picked. Approve, and every message you send while a design is open, hand those values to the agent, so nobody copies a readout line again.</p>
+  <p class="lede">A design page tells runcastle which state it shows and which tweaks you picked. When you approve, the agent hears the values you picked, so nobody copies a readout line again. <a class="pin" data-d="12">12</a></p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/agents-see-the-tweaks-you-picked/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -176,36 +176,17 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
     <div class="flow">
       <div class="node"><b>Design page</b><span>posts state + tweaks on load and on every change</span><span class="mono small">remembers its tweaks across a reload</span> <a class="pin" data-d="11">11</a></div>
       <div class="arr">→</div>
-      <div class="node"><b>Design tab</b><span>hears only its own frame; holds the open design's latest report</span> <a class="pin" data-d="2">2</a> <a class="pin" data-d="8">8</a></div>
+      <div class="node"><b>Design tab</b><span>hears only the frame it shows</span></div>
       <div class="arr">→</div>
-      <div class="node split"><div><b>Runcastle keeps it</b><span>on the design; copied at each Approve click</span> <a class="pin" data-d="6">6</a></div><div><b>Your message</b><span>carries what the tab holds as you send</span> <a class="pin" data-d="1">1</a></div></div>
+      <div class="node"><b>Runcastle keeps it</b><span>on the design; copied at each Approve click</span> <a class="pin" data-d="6">6</a></div>
       <div class="arr">→</div>
-      <div class="node"><b>The agent</b><span>gets one <span class="mono">[runcastle]</span> line with the values</span></div>
+      <div class="node"><b>The agent</b><span>hears the values in the approval line, and nowhere else</span> <a class="pin" data-d="12">12</a></div>
     </div>
-  </div>
-
-  <div class="sub">
-    <h3>What you and the agent see</h3>
-    <p class="hint">Switch the case to see each wording. <a class="pin" data-d="9">9</a> <a class="pin" data-d="10">10</a> <a class="pin" data-d="4">4</a></p>
-    <div class="seg" role="group" aria-label="Case">
-      <button aria-pressed="true" data-case="tweaks">Has tweaks</button><button aria-pressed="false" data-case="none">No Tweaks menu</button><button aria-pressed="false" data-case="silent">Reported nothing</button>
-    </div>
-<!-- screen:composer-line -->
-    <div class="screen chat">
-      <div class="bubble"><p>make the header darker</p><div class="ctx"><svg class="i"><use href="#i-eye"/></svg><span data-human>Invoice list · full · accent teal, density compact</span></div></div>
-      <div class="composer">
-        <div class="ctx"><svg class="i"><use href="#i-eye"/></svg><span>Goes with your message:</span> <span data-human>Invoice list · full · accent teal, density compact</span></div>
-        <div class="box">Message the agent…</div>
-      </div>
-      <p class="note">The line above the composer shows while a design is open; the sent message keeps it under your words. Neither can be edited or removed. Quiet text, the app's tertiary colour, with a small eye icon.</p>
-    </div>
-<!-- /screen:composer-line -->
-    <div class="agentsees"><span class="hint">The agent gets your words, then:</span><pre class="mono" data-agent>[runcastle] Open in the Design tab: “Invoice list” (/preview/invoice-list), state “full”. Tweaks: accent = teal, density = compact.</pre></div>
   </div>
 
   <div class="sub">
     <h3>On Approve</h3>
-    <p class="hint">Still quiet until the last waiting design is approved; each click keeps that design's values. <a class="pin" data-d="7">7</a></p>
+    <p class="hint">Still quiet until the last waiting design is approved; each click keeps that design's values. <a class="pin" data-d="7">7</a> A design with no Tweaks menu says so; one that reported nothing says that plainly. <a class="pin" data-d="10">10</a> <a class="pin" data-d="4">4</a></p>
     <pre class="mono agentline">[runcastle] The human approved the 1 design in the Design tab: “Invoice list” (/preview/invoice-list) with tweaks accent = teal, density = compact. Write those values into the code, delete its Tweaks menu, and commit it as "design: Invoice list".</pre>
   </div>
 
@@ -221,12 +202,11 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
   <div class="sub">
     <h3>Who builds what</h3>
     <ul class="who">
-      <li><span class="tag">on its own</span><b>Relay</b><span>The report a page posts, the Design tab's listener and store, keeping it on the design, the approval line, chat messages carrying it, and the guide change.</span></li>
-      <li><span class="tag">with you</span><b>What goes along</b><span>The quiet line above the composer and under your sent message; starts once Relay has landed.</span></li>
-      <li><span class="tag">me</span><b>Lead</b><span>Docs, landing both workers, running the checks.</span></li>
+      <li><span class="tag">on its own</span><b>Relay</b><span>The report a page posts, the Design tab's listener, keeping it on the design, the approval line, and the guide change.</span></li>
+      <li><span class="tag">me</span><b>Lead</b><span>Docs, landing the worker, running the checks.</span></li>
       <li><span class="tag">review</span><b>Review worker</b><span>Drives it on a throwaway design page with two tweaks, then reads the diff.</span></li>
     </ul>
-    <p class="hint" style="margin-top:8px">No designs to approve: the only new pieces are the two quiet lines above, too small to design live.</p>
+    <p class="hint" style="margin-top:8px">No designs to approve: nothing new appears on screen.</p>
   </div>
 </section>
 
@@ -252,7 +232,7 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
       <li><i class="dot"></i>Migrating design pages already committed</li>
       <li><i class="dot"></i>A shared switcher or tweaks component for project pages</li>
       <li><i class="dot"></i>Runcastle sending values back into a page</li>
-      <li><i class="dot"></i>A way to leave the line off a message</li>
+      <li><i class="dot"></i>Tweak values in chat messages, or a button to send them</li>
     </ul></div>
   </div>
 </section>
@@ -269,9 +249,8 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
   tweaks?: { accent: 'teal', density: 'compact' } }   // {} = no Tweaks menu; missing = did not say</pre>
       <ul class="who" style="margin-top:12px">
         <li><b>core</b><span>zod schema for the report; caps at 12 tweaks, 80 characters each.</span></li>
-        <li><b>web</b><span>Design view listens where <span class="mono">event.source</span> is its own frame (desktop and phone); a per-feature design-context store like the composer inbox; debounced <span class="mono">design.report</span>.</span></li>
+        <li><b>web</b><span>Design view listens where <span class="mono">event.source</span> is its own frame (desktop and phone); debounced <span class="mono">design.report</span>.</span></li>
         <li><b>server</b><span><span class="mono">designs</span> gains <span class="mono">report</span>, <span class="mono">reportedAt</span>, <span class="mono">approvedReport</span>; <span class="mono">design.report</span> mutation; <span class="mono">approveDesign</span> copies at the click; the approval line names values; feature context shows each report.</span></li>
-        <li><b>chat</b><span><span class="mono">thread.send</span> takes optional <span class="mono">design</span>; the agent gets text + one line; the human's bubble keeps their words and draws the line from display data.</span></li>
         <li><b>skills</b><span>design guide sections 2 and 4; <span class="mono">.runcastle/preview/</span> switcher helper reports.</span></li>
       </ul>
     </div>
@@ -289,24 +268,23 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['When the values reach the agent', 'On Approve, and with every chat message while a design is open, so the human never retypes what they picked.'],
+    ['When the values reach the agent', 'Superseded by 12: now on Approve only.'],
     ['Only the open design', 'The open design is what the human is talking about; the others are noise.'],
     ['Drop the copy-paste readout line', 'It was a workaround for exactly this gap; the Tweaks menu itself stays.'],
     ['No silent gaps', 'When a page reported nothing, the agent is told so, never left to assume defaults.'],
     ['The design page reports; runcastle only relays', 'One standard browser message works in any framework, on desktop and through the phone proxy.', 'assumed'],
     ['Runcastle keeps each design\'s last report', 'Approve then works from a card, the phone, or with the frame not loaded.', 'assumed'],
     ['Approval carries each approved design\'s values in the one line', 'Values are kept at each click and sent in the existing quiet-until-last line; approval rules untouched.', 'assumed'],
-    ['On the phone, the design you just left counts as open', 'Chat and design never share the phone screen; without this, phone messages would never carry values.', 'assumed'],
-    ['You see what goes along with your message', 'A quiet line above the composer and under the sent message, so the agent is never told something you cannot see.', 'assumed'],
+    ['On the phone, the design you just left counts as open', 'Superseded by 12: chat messages carry nothing.'],
+    ['You see what goes along with your message', 'Superseded by 12: nothing new on screen.'],
     ['"No Tweaks menu" is said by the page, never guessed', 'An empty set means no menu; a missing one means the page did not say, so a forgotten wiring is never hidden.', 'assumed'],
-    ['A page remembers its tweaks across a reload', 'Otherwise a reload reports defaults and quietly overwrites your picks before Approve.', 'assumed']
+    ['A page remembers its tweaks across a reload', 'Otherwise a reload reports defaults and quietly overwrites your picks before Approve.', 'assumed'],
+    ['The values go to the agent only on Approve', 'Your call: Approve is when the picks matter; sending them with messages or behind a button was machinery you did not want.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [8, 'The phone attaches nothing to chat messages; only Approve carries values there', 'Your brief says "while a design is open", and on the phone a design is never open beside the chat', 'phone'],
-    [9, 'Attach the values invisibly', 'Adds two quiet lines to the chat you did not ask for', 'visible'],
     [11, 'Runcastle sends stored values back into the page on load', 'Asks every design page to keep its tweaks in its own storage; the other way is a two-way exchange', 'guide'],
     [6, 'Keep the values only in the browser tab', 'Adds stored state on each design so Approve works after a reload or from the phone', 'storage']
   ]
@@ -350,20 +328,6 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
   }
   $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
 
-  // the show's case switcher: the human's line and the agent's line per case
-  var CASES = {
-    tweaks: ['Invoice list · full · accent teal, density compact', '[runcastle] Open in the Design tab: “Invoice list” (/preview/invoice-list), state “full”. Tweaks: accent = teal, density = compact.'],
-    none: ['Invoice list · full · no Tweaks menu', '[runcastle] Open in the Design tab: “Invoice list” (/preview/invoice-list), state “full”. It has no Tweaks menu.'],
-    silent: ['Invoice list · reported nothing', '[runcastle] Open in the Design tab: “Invoice list” (/preview/invoice-list). This design reported no state or tweak values.']
-  }
-  $$('[data-case]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      $$('[data-case]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)) })
-      var c = CASES[b.dataset.case]
-      $$('[data-human]').forEach(function (el) { el.textContent = c[0] })
-      $('[data-agent]').textContent = c[1]
-    })
-  })
 
   // a pin opens its decision; in-page links scroll by script, because hash
   // navigation is unreliable inside the app's sandboxed frame

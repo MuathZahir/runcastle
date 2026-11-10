@@ -4,11 +4,12 @@ Planned without the human (headless run, 2026-11-10). Decisions 1–4 were settl
 with the human in the orchestrator's grill and are theirs; the rest are the
 lead's assumptions, each naming the alternative it was chosen over.
 
-Check first: 8, 9, 11, 6
+Check first: 11, 6
 
 ## 1. When the values reach the agent
 **Decision:** On Approve, and with every chat message the human sends while a design is open in the Design tab. "Make this darker" arrives with the tweak values and the state the human is looking at.
 **Why:** Both are moments the agent acts on the look; the human should never have to retype what they picked.
+**Superseded by 12.**
 
 ## 2. Only the open design
 **Decision:** When a feature has several designs, a chat message carries only the tweaks and state of the design that is open, never the others'. Approve carries the approved design's values.
@@ -28,7 +29,7 @@ Check first: 8, 9, 11, 6
 **Assumed.** Alternative: runcastle reads the `?state=` address and a tweaks object out of the page itself, which a cross-origin frame does not allow and would tie runcastle to one page shape.
 
 ## 6. Runcastle keeps each design's last report
-**Decision:** Runcastle stores the latest state and tweak values each design page reported, on the design itself, so they survive a reload and reach another device. Approve uses that stored report, even when approved from a card, on the phone, or with the frame not loaded. The lead also finds it on each design in its feature context. A chat message carries the values the Design tab holds at the moment of sending, so a message never races a report still on its way.
+**Decision:** Runcastle stores the latest state and tweak values each design page reported, on the design itself, so they survive a reload and reach another device. Approve uses that stored report, even when approved from a card, on the phone, or with the frame not loaded. The lead also finds it on each design in its feature context.
 **Why:** The brief wants Approve to use the last values reported even when the frame is not loaded; only a stored copy does that across reloads and devices.
 **Assumed.** Alternative: keep the values only in the browser tab, losing them on reload and on the phone.
 
@@ -42,12 +43,14 @@ Check first: 8, 9, 11, 6
 **Why:** Without this, "make it darker" typed on the phone after looking at a design would never carry the values, which is the main thing the feature is for.
 **Assumed.** Alternative: the phone attaches nothing to chat messages and only Approve carries values there.
 **For the human.** On the phone, messages carry a design's values after you have left the design view.
+**Superseded by 12.**
 
 ## 9. You see what goes along with your message
 **Decision:** While a design counts as open, a quiet line above the composer says what will go with the message ("Invoice list · state full · accent teal, density compact"). The sent message shows the same line under the human's own words. The agent gets the human's words followed by one `[runcastle]` line naming the design, its state and its tweak values. It goes with every message, changed or not, and the human cannot edit or remove it: to correct a value they change the Tweak, or say so in words.
 **Why:** The human should never be surprised by what the agent was told, and the sent line is the record of it. Every message carries it by the brief's own decision, so an off switch or an editable line adds controls nobody asked for, and an edited line would stop matching the page.
 **Assumed.** Alternative: attach it invisibly, with the human seeing nothing.
 **For the human.** A new line above the composer and under your sent messages while a design is open.
+**Superseded by 12.**
 
 ## 10. "No Tweaks menu" is said by the page, never guessed
 **Decision:** A page reports its tweaks as a set of values, empty when it has no Tweaks menu. A report with an empty set is told to the agent as "no Tweaks menu". A report with no tweaks field at all, or no report from the page, is told as "this design reported no tweak values". Both are said plainly in the agent's line; the human's line shows "reported nothing" for the second. The guide asks every design page to report, single-state pages included.
@@ -59,3 +62,7 @@ Check first: 8, 9, 11, 6
 **Why:** A page that reset on every reload would report its defaults and quietly overwrite the human's picks before Approve. Keeping it in the page costs a few lines there and keeps runcastle a one-way relay.
 **Assumed.** Alternative: runcastle sends the stored values back into the page when it loads, a two-way exchange every design page would have to answer.
 **For the human.** Your tweak picks survive a reload of the design, on the same device.
+
+## 12. The values go to the agent only on Approve
+**Decision:** The tweak values reach the agent only in the approval line. Chat messages carry nothing extra, there is no button to send the values, and nothing new appears above the composer or under sent messages. Supersedes: 1 (the chat-message half), 8 and 9; decision 2 now applies to Approve only.
+**Why:** The human chose it: Approve is the moment the picks matter, and sending them with every message (or behind a button) was machinery they did not want.
