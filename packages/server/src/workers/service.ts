@@ -446,7 +446,6 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     })
     .run()
   if (input.review) keepReviewAssignment(session.id, input.review.assignment)
-  recordLeadStart(ctx, requireWorker(ctx, session.id), mainChat?.id)
   const short = shortId(session.id)
   let sb: WorkerSandbox
   try {
@@ -470,10 +469,13 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   } catch (err) {
     const failure = err instanceof Error ? err.message : String(err)
     const failed = updateWorker(ctx, session.id, { status: 'failed', failure: failure.slice(0, 2000) })
+    // Its row in the lead's chat lands with the event that lists it, so the card never names a worker the list lacks.
+    recordLeadStart(ctx, failed, mainChat?.id)
     emitWorker(ctx, failed, 'worker.failed', `worker "${input.label}" could not start its sandbox`, { failure })
     throw new GateError(`worker "${input.label}" could not start its sandbox: ${failure}`)
   }
   const started = updateWorker(ctx, session.id, { container: sb.container, branch: sb.branch, previewPort: sb.port })
+  recordLeadStart(ctx, started, mainChat?.id)
   emitWorker(ctx, started, 'worker.started', `worker "${input.label}" started in its sandbox`, {
     sessionId: session.id,
     kind: input.kind,
